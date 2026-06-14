@@ -1095,7 +1095,7 @@ void Window::SetShaded(bool make_shaded)
  */
 Window *Window::FindChildWindow(WindowClass wc) const
 {
-	if (!_present_window_types[wc]) return nullptr;
+	if (wc != WindowClass::Invalid && !_present_window_types[wc]) return nullptr;
 
 	for (Window *v : Window::IterateFromBack()) {
 		if ((wc == WindowClass::Invalid || wc == v->window_class) && v->parent == this) return v;
