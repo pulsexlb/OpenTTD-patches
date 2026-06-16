@@ -1686,8 +1686,7 @@ CommandCost CmdSkipToOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 
 		InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);
 
-		v->ClearSeparation();
-		if (v->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) v->vehicle_flags.Reset(VehicleFlag::TimetableStarted);
+		v->StopSeparation();
 
 		/* We have an aircraft/ship, they have a mini-schedule, so update them all */
 		if (v->type == VehicleType::Aircraft || v->type == VehicleType::Ship) DirtyVehicleListWindowForVehicle(v);
@@ -2885,8 +2884,7 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 				dst->vehicle_flags.Reset(VehicleFlag::AutofillTimetable);
 				dst->vehicle_flags.Reset(VehicleFlag::AutofillPreserveWaitTime);
 
-				dst->ClearSeparation();
-				if (dst->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) dst->vehicle_flags.Reset(VehicleFlag::TimetableStarted);
+				dst->StopSeparation();
 
 				InvalidateVehicleOrder(dst, VIWD_REMOVE_ALL_ORDERS);
 				InvalidateVehicleOrder(src, VIWD_MODIFY_ORDERS);

@@ -205,6 +205,8 @@ class NIHVehicle : public NIHelper {
 			output.Print("  Current order time: ({}, {} mins), current loading time: ({}, {} mins)",
 					v->current_order_time, v->current_order_time / _settings_time.ticks_per_minute,
 					v->current_loading_time, v->current_loading_time / _settings_time.ticks_per_minute);
+			output.Print("  Lateness: ({}, {} mins)",
+					v->lateness_counter, v->lateness_counter / _settings_time.ticks_per_minute);
 		}
 		output.Print("  Speed: {}, sub-speed: {}, progress: {}, acceleration: {}",
 				v->cur_speed, v->subspeed, v->progress, v->acceleration);

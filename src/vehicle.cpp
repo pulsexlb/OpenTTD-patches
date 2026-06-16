@@ -399,8 +399,7 @@ uint Vehicle::Crash(bool)
 		v->InvalidateImageCache();
 	}
 
-	this->ClearSeparation();
-	if (this->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) this->vehicle_flags.Reset(VehicleFlag::TimetableStarted);
+	this->StopSeparation();
 
 	/* Dirty some windows */
 	InvalidateVehicleListWindows(this->type);
@@ -4043,8 +4042,7 @@ CommandCost Vehicle::SendToDepot(DoCommandFlags flags, DepotCommandFlags command
 			if (this->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::Breakdown)) {
 				this->current_order.SetDepotActionType(this->current_order.GetDepotActionType() == ODATFB_HALT ? ODATF_SERVICE_ONLY : ODATFB_HALT);
 			} else {
-				this->ClearSeparation();
-				if (this->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) this->vehicle_flags.Reset(VehicleFlag::TimetableStarted);
+				this->StopSeparation();
 
 				this->current_order.MakeDummy();
 				InvalidateWindowData(WindowClass::VehicleView, this->index);
@@ -4074,8 +4072,7 @@ CommandCost Vehicle::SendToDepot(DoCommandFlags flags, DepotCommandFlags command
 			if (flags.Test(DoCommandFlag::Execute)) {
 				if (!this->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::Breakdown)) this->current_order.SetDepotOrderType({});
 				this->current_order.SetDepotActionType(command.Test(DepotCommandFlag::Sell) ? ODATFB_HALT | ODATFB_SELL : (command.Test(DepotCommandFlag::Service) ? ODATF_SERVICE_ONLY : ODATFB_HALT));
-				this->ClearSeparation();
-				if (this->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) this->vehicle_flags.Reset(VehicleFlag::TimetableStarted);
+				this->StopSeparation();
 				InvalidateWindowData(WindowClass::VehicleView, this->index);
 			}
 			return CommandCost();
@@ -4509,6 +4506,18 @@ Money Vehicle::GetDisplayRunningCost() const
 }
 
 /**
+ * Stop vehicle separation.
+ */
+void Vehicle::StopSeparation()
+{
+	this->vehicle_flags.Reset(VehicleFlag::SeparationActive);
+	if (this->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) {
+		this->vehicle_flags.Reset(VehicleFlag::TimetableStarted);
+		this->lateness_counter = 0;
+	}
+}
+
+/**
  * Adds this vehicle to a shared vehicle chain.
  * @param shared_chain a vehicle of the chain with shared vehicles.
  * @pre !this->IsOrderListShared()
@@ -4567,8 +4576,7 @@ void Vehicle::RemoveFromShared()
 	this->next_shared     = nullptr;
 	this->previous_shared = nullptr;
 
-	this->ClearSeparation();
-	if (this->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) this->vehicle_flags.Reset(VehicleFlag::TimetableStarted);
+	this->StopSeparation();
 }
 
 template <typename T, typename U>

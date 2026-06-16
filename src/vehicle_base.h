@@ -807,10 +807,7 @@ public:
 	 */
 	inline Order *GetFirstOrder() const { return (this->orders == nullptr) ? nullptr : this->orders->GetFirstOrder(); }
 
-	/**
-	 * Clears this vehicle's separation status
-	 */
-	inline void ClearSeparation() { this->vehicle_flags.Reset(VehicleFlag::SeparationActive); }
+	void StopSeparation();
 
 	void AddToShared(Vehicle *shared_chain);
 	void RemoveFromShared();

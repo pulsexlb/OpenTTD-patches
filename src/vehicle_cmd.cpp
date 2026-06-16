@@ -689,8 +689,7 @@ CommandCost CmdStartStopVehicle(DoCommandFlags flags, VehicleID veh_id, bool eva
 	if (flags.Test(DoCommandFlag::Execute)) {
 		if (v->IsStoppedInDepot() && !flags.Test(DoCommandFlag::AutoReplace)) DeleteVehicleNews(veh_id, AdviceType::VehicleWaiting);
 
-		v->ClearSeparation();
-		if (v->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) v->vehicle_flags.Reset(VehicleFlag::TimetableStarted);
+		v->StopSeparation();
 
 		v->vehstatus.Flip(VehState::Stopped);
 		if (v->type == VehicleType::Road) {

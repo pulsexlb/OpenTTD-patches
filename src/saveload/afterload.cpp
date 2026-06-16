@@ -3701,13 +3701,13 @@ bool AfterLoadGame()
 		for (OrderList *list : _jokerpp_auto_separation) {
 			for (Vehicle *w = list->GetFirstSharedVehicle(); w != nullptr; w = w->NextShared()) {
 				w->vehicle_flags.Set(VehicleFlag::TimetableSeparation);
-				w->ClearSeparation();
+				w->vehicle_flags.Reset(VehicleFlag::SeparationActive);
 			}
 		}
 		for (OrderList *list : _jokerpp_non_auto_separation) {
 			for (Vehicle *w = list->GetFirstSharedVehicle(); w != nullptr; w = w->NextShared()) {
 				w->vehicle_flags.Reset(VehicleFlag::TimetableSeparation);
-				w->ClearSeparation();
+				w->vehicle_flags.Reset(VehicleFlag::SeparationActive);
 			}
 		}
 		_jokerpp_auto_separation.clear();
