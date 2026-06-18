@@ -2,6 +2,13 @@
 
 * * *
 
+### v0.72.4 (2026-06-19)
+* Fix various dialog windows not being closed.
+* Fix text rendering in scheduled dispatch window dropdown.
+* Improve timetable lateness/earliness handling when timetable separation is enabled but not active.
+* Fix crash when running on some very rare machine architectures (big endian).
+* Bump trunk base from commit d68553bbd6b992235d85646552ddf333999db05e to commit af6868198eae395d8bc1963620d846633ac53eec.
+
 ### v0.72.3 (2026-06-10)
 * Fix reversing trains by flipping when partially in a depot causing trains to split apart in some cases.
 * Fix crash when using rail type change hotkeys with the polyrail tool.
