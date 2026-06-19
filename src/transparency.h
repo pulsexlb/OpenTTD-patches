@@ -59,7 +59,7 @@ void PostTransparencyOptionLoad();
  */
 inline bool IsTransparencySet(TransparencyOption to)
 {
-	return (HasBit(_transparency_opt, to) && _game_mode != GM_MENU);
+	return (HasBit(_transparency_opt, to) && _game_mode != GameMode::Menu);
 }
 
 /**
@@ -71,7 +71,7 @@ inline bool IsTransparencySet(TransparencyOption to)
  */
 inline bool IsInvisibilitySet(TransparencyOption to)
 {
-	return (HasBit(_transparency_opt & _invisibility_opt, to) && _game_mode != GM_MENU);
+	return (HasBit(_transparency_opt & _invisibility_opt, to) && _game_mode != GameMode::Menu);
 }
 
 /**

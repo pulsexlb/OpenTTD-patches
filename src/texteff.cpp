@@ -46,7 +46,7 @@ void TextEffect::Reset()
 /* Text Effects */
 TextEffectID AddTextEffect(StringID msg, int center, int y, uint8_t duration, TextEffectMode mode, uint64_t param1, uint64_t param2)
 {
-	if (_game_mode == GM_MENU) return INVALID_TE_ID;
+	if (_game_mode == GameMode::Menu) return INVALID_TE_ID;
 
 	TextEffectID i = _free_text_effect;
 	if (i == _text_effects.size()) {

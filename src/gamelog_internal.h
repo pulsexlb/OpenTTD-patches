@@ -11,6 +11,7 @@
 #define GAMELOG_INTERNAL_H
 
 #include "gamelog.h"
+#include "openttd.h"
 #include "landscape_type.h"
 
 #include <vector>
@@ -40,7 +41,7 @@ struct LoggedChange {
 	GamelogChangeType ct; ///< Type of change logged in this struct
 	union {
 		struct {
-			uint8_t mode;        ///< new game mode - Editor x Game
+			GameMode mode;           ///< new game mode - Editor x Game
 			LandscapeType landscape; ///< landscape (temperate, arctic, ...)
 		} mode;
 		struct {

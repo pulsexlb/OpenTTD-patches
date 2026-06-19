@@ -84,7 +84,7 @@ static WindowDesc _gs_config_desc(__FILE__, __LINE__,
 
 bool UserIsAllowedToChangeGameScript()
 {
-	return _game_mode != GM_NORMAL || _settings_client.gui.ai_developer_tools;
+	return _game_mode != GameMode::Normal || _settings_client.gui.ai_developer_tools;
 }
 
 /**
@@ -345,7 +345,7 @@ struct GSConfigWindow : public Window {
 			}
 
 			case WID_GSC_RESET:
-				this->gs_config->ResetEditableSettings(_game_mode == GM_MENU);
+				this->gs_config->ResetEditableSettings(_game_mode == GameMode::Menu);
 				this->SetDirty();
 				break;
 		}
@@ -416,8 +416,8 @@ struct GSConfigWindow : public Window {
 private:
 	bool IsEditableItem(const ScriptConfigItem &config_item) const
 	{
-		return _game_mode == GM_MENU
-			|| _game_mode == GM_EDITOR
+		return _game_mode == GameMode::Menu
+			|| _game_mode == GameMode::Editor
 			|| config_item.flags.Test(ScriptConfigFlag::InGame)
 			|| _settings_client.gui.ai_developer_tools;
 	}
@@ -425,7 +425,7 @@ private:
 	void SetValue(int value)
 	{
 		const ScriptConfigItem &config_item = *this->visible_settings[this->clicked_row];
-		if (_game_mode == GM_NORMAL && !config_item.flags.Test(ScriptConfigFlag::InGame)) return;
+		if (_game_mode == GameMode::Normal && !config_item.flags.Test(ScriptConfigFlag::InGame)) return;
 		this->gs_config->SetSetting(config_item.name, value);
 		this->SetDirty();
 	}

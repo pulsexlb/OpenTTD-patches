@@ -106,7 +106,7 @@ struct BuildDocksToolbarWindow : Window {
 	{
 		this->invalidation_policy = WindowInvalidationPolicy::QueueSingle;
 		this->CreateNestedTree();
-		if (_game_mode != GM_EDITOR) {
+		if (_game_mode != GameMode::Editor) {
 			this->GetWidget<NWidgetStacked>(WID_DT_RIVER_SEL)->SetDisplayedPlane(_settings_game.construction.enable_build_river ? 0 : SZSP_NONE);
 		}
 		this->FinishInitNested(window_number);
@@ -116,7 +116,7 @@ struct BuildDocksToolbarWindow : Window {
 
 	void Close([[maybe_unused]] int data = 0) override
 	{
-		if (_game_mode == GM_NORMAL && this->IsWidgetLowered(WID_DT_STATION)) SetViewportCatchmentStation(nullptr, true);
+		if (_game_mode == GameMode::Normal && this->IsWidgetLowered(WID_DT_STATION)) SetViewportCatchmentStation(nullptr, true);
 		if (_settings_client.gui.link_terraform_toolbar) CloseWindowById(WindowClass::ScenarioGenerateLandscape, 0, false);
 		this->Window::Close();
 	}
@@ -140,7 +140,7 @@ struct BuildDocksToolbarWindow : Window {
 			CloseWindowById(WindowClass::BuildDepot, TRANSPORT_WATER);
 		}
 
-		if (_game_mode != GM_EDITOR) {
+		if (_game_mode != GameMode::Editor) {
 			if (!can_build) {
 				/* Show in the tooltip why this button is disabled. */
 				this->GetWidget<NWidgetCore>(WID_DT_DEPOT)->SetToolTip(STR_TOOLBAR_DISABLED_NO_VEHICLE_AVAILABLE);
@@ -158,7 +158,7 @@ struct BuildDocksToolbarWindow : Window {
 	{
 		switch (widget) {
 			case WID_DT_CANAL: // Build canal button
-				if (_game_mode == GM_EDITOR) {
+				if (_game_mode == GameMode::Editor) {
 					HandlePlacePushButton(this, WID_DT_CANAL, SPR_CURSOR_CANAL, HT_RECT);
 				} else {
 					HandlePlacePushButton(this, WID_DT_CANAL, SPR_CURSOR_CANAL, HT_RECT | HT_DIAGONAL);
@@ -186,8 +186,8 @@ struct BuildDocksToolbarWindow : Window {
 				break;
 
 			case WID_DT_RIVER: // Build river button (in scenario editor)
-				if (_game_mode != GM_EDITOR && !_settings_game.construction.enable_build_river) return;
-				HandlePlacePushButton(this, WID_DT_RIVER, SPR_CURSOR_RIVER, _game_mode == GM_EDITOR ? HT_RECT | HT_DIAGONAL : HT_RECT);
+				if (_game_mode != GameMode::Editor && !_settings_game.construction.enable_build_river) return;
+				HandlePlacePushButton(this, WID_DT_RIVER, SPR_CURSOR_RIVER, _game_mode == GameMode::Editor ? HT_RECT | HT_DIAGONAL : HT_RECT);
 				break;
 
 			case WID_DT_BUILD_AQUEDUCT: // Build aqueduct button
@@ -241,7 +241,7 @@ struct BuildDocksToolbarWindow : Window {
 				break;
 
 			case WID_DT_RIVER: // Build river button (in scenario editor)
-				VpStartPlaceSizing(tile, (_game_mode == GM_EDITOR) ? VPM_X_AND_Y : VPM_X_OR_Y, DDSP_CREATE_RIVER);
+				VpStartPlaceSizing(tile, (_game_mode == GameMode::Editor) ? VPM_X_AND_Y : VPM_X_OR_Y, DDSP_CREATE_RIVER);
 				break;
 
 			case WID_DT_BUILD_AQUEDUCT: // Build aqueduct button
@@ -270,7 +270,7 @@ struct BuildDocksToolbarWindow : Window {
 					GUIPlaceProcDragXY(select_proc, start_tile, end_tile);
 					break;
 				case DDSP_CREATE_WATER:
-					if (_game_mode == GM_EDITOR) {
+					if (_game_mode == GameMode::Editor) {
 						Command<Commands::BuildCanal>::Post(STR_ERROR_CAN_T_BUILD_CANALS, CommandCallback::PlaySound_CONSTRUCTION_WATER, end_tile, start_tile, _ctrl_pressed ? WaterClass::Sea : WaterClass::Canal, false);
 					} else {
 						Command<Commands::BuildCanal>::Post(STR_ERROR_CAN_T_BUILD_CANALS, CommandCallback::PlaySound_CONSTRUCTION_WATER, end_tile, start_tile, WaterClass::Canal, _ctrl_pressed);
@@ -287,7 +287,7 @@ struct BuildDocksToolbarWindow : Window {
 
 	void OnPlaceObjectAbort() override
 	{
-		if (_game_mode != GM_EDITOR && this->IsWidgetLowered(WID_DT_STATION)) SetViewportCatchmentStation(nullptr, true);
+		if (_game_mode != GameMode::Editor && this->IsWidgetLowered(WID_DT_STATION)) SetViewportCatchmentStation(nullptr, true);
 
 		this->RaiseButtons();
 
@@ -323,7 +323,7 @@ struct BuildDocksToolbarWindow : Window {
 	 */
 	static EventState DockToolbarGlobalHotkeys(int hotkey)
 	{
-		if (_game_mode != GM_NORMAL) return ES_NOT_HANDLED;
+		if (_game_mode != GameMode::Normal) return ES_NOT_HANDLED;
 		Window *w = ShowBuildDocksToolbar();
 		if (w == nullptr) return ES_NOT_HANDLED;
 		return w->OnHotkey(hotkey);
@@ -437,7 +437,7 @@ void ShowBuildDocksToolbarFromTile(TileIndex tile)
 {
 	BuildDocksToolbarWindow *w;
 
-	if (_game_mode == GM_EDITOR) {
+	if (_game_mode == GameMode::Editor) {
 		w = static_cast<BuildDocksToolbarWindow *>(ShowBuildDocksScenToolbar());
 	} else {
 		w = static_cast<BuildDocksToolbarWindow *>(ShowBuildDocksToolbar());

@@ -1319,7 +1319,7 @@ void CallVehicleOnNewDay(Vehicle *v)
  */
 static void RunVehicleDayProc()
 {
-	if (_game_mode != GM_NORMAL) return;
+	if (_game_mode != GameMode::Normal) return;
 
 	/* Run the day_proc for every DAY_TICKS vehicle starting at _date_fract. */
 	Vehicle *v = nullptr;
@@ -1371,7 +1371,7 @@ static void RunVehicleDayProc()
  */
 static void RunVehicleCalendarDayProc()
 {
-	if (_game_mode != GM_NORMAL) return;
+	if (_game_mode != GameMode::Normal) return;
 
 	Vehicle *v = nullptr;
 	SCOPE_INFO_FMT([&v], "RunVehicleCalendarDayProc: {}", VehicleInfoDumper(v));
@@ -1596,7 +1596,7 @@ void CallVehicleTicks()
 		RunVehicleCalendarDayProc();
 	}
 
-	if (DayLengthFactor() >= 8 && _game_mode == GM_NORMAL) {
+	if (DayLengthFactor() >= 8 && _game_mode == GameMode::Normal) {
 		/*
 		 * Vehicle::OnPeriodic is decoupled from Vehicle::OnNewDay at day lengths >= 8
 		 * Use a fixed interval of 512 ticks (unscaled) instead
@@ -2288,7 +2288,7 @@ void DetermineBreakdownType(Vehicle *v, uint32_t r) {
 void CheckVehicleBreakdown(Vehicle *v)
 {
 	/* Vehicles in the menu don't break down. */
-	if (_game_mode == GM_MENU) return;
+	if (_game_mode == GameMode::Menu) return;
 
 	/* If both breakdowns and automatic servicing are disabled, we don't decrease reliability or break down. */
 	if (_settings_game.difficulty.vehicle_breakdowns == VehicleBreakdowns::None && _settings_game.order.no_servicing_if_no_breakdowns) return;
@@ -4294,6 +4294,17 @@ static bool IsBridgeAboveVehicle(const Vehicle *v)
 	return true;
 }
 
+
+/** Models for spawning visual effects. */
+enum VisualEffectSpawnModel : uint8_t {
+	None = 0, ///< No visual effect
+	Steam, ///< Steam model
+	Diesel, ///< Diesel model
+	Electric, ///< Electric model
+
+	End, ///< End marker.
+};
+
 /**
  * Draw visual effects (smoke and/or sparks) for a vehicle chain.
  * @param max_speed The speed as limited by underground and orders, UINT_MAX if not already known
@@ -4341,17 +4352,17 @@ void Vehicle::ShowVisualEffect(uint max_speed) const
 	do {
 		bool advanced = HasBit(v->vcache.cached_vis_effect, VE_ADVANCED_EFFECT);
 		int effect_offset = GB(v->vcache.cached_vis_effect, VE_OFFSET_START, VE_OFFSET_COUNT) - VE_OFFSET_CENTRE;
-		VisualEffectSpawnModel effect_model = VESM_NONE;
+		VisualEffectSpawnModel effect_model = VisualEffectSpawnModel::None;
 		if (advanced) {
 			effect_offset = VE_OFFSET_CENTRE;
-			effect_model = (VisualEffectSpawnModel)GB(v->vcache.cached_vis_effect, 0, VE_ADVANCED_EFFECT);
-			if (effect_model >= VESM_END) effect_model = VESM_NONE; // unknown spawning model
+			effect_model = static_cast<VisualEffectSpawnModel>(GB(v->vcache.cached_vis_effect, 0, VE_ADVANCED_EFFECT));
+			if (effect_model >= VisualEffectSpawnModel::End) effect_model = VisualEffectSpawnModel::None; // unknown spawning model
 		} else {
-			effect_model = (VisualEffectSpawnModel)GB(v->vcache.cached_vis_effect, VE_TYPE_START, VE_TYPE_COUNT);
-			assert(effect_model != (VisualEffectSpawnModel)VE_TYPE_DEFAULT); // should have been resolved by UpdateVisualEffect
-			static_assert((uint)VESM_STEAM    == (uint)VE_TYPE_STEAM);
-			static_assert((uint)VESM_DIESEL   == (uint)VE_TYPE_DIESEL);
-			static_assert((uint)VESM_ELECTRIC == (uint)VE_TYPE_ELECTRIC);
+			effect_model = static_cast<VisualEffectSpawnModel>(GB(v->vcache.cached_vis_effect, VE_TYPE_START, VE_TYPE_COUNT));
+			assert(to_underlying(effect_model) != to_underlying(VE_TYPE_DEFAULT)); // should have been resolved by UpdateVisualEffect
+			static_assert(to_underlying(VisualEffectSpawnModel::Steam) == to_underlying(VE_TYPE_STEAM));
+			static_assert(to_underlying(VisualEffectSpawnModel::Diesel) == to_underlying(VE_TYPE_DIESEL));
+			static_assert(to_underlying(VisualEffectSpawnModel::Electric) == to_underlying(VE_TYPE_ELECTRIC));
 		}
 
 		/* Show no smoke when:
@@ -4361,7 +4372,7 @@ void Vehicle::ShowVisualEffect(uint max_speed) const
 		 * - The vehicle is on a depot tile
 		 * - The vehicle is on a tunnel tile
 		 * - The vehicle is a train engine that is currently unpowered */
-		if (effect_model == VESM_NONE ||
+		if (effect_model == VisualEffectSpawnModel::None ||
 				v->vehstatus.Test(VehState::Hidden) ||
 				IsBridgeAboveVehicle(v) ||
 				IsDepotTile(v->tile) ||
@@ -4374,7 +4385,7 @@ void Vehicle::ShowVisualEffect(uint max_speed) const
 
 		EffectVehicleType evt = EV_END;
 		switch (effect_model) {
-			case VESM_STEAM:
+			case VisualEffectSpawnModel::Steam:
 				/* Steam smoke - amount is gradually falling until vehicle reaches its maximum speed, after that it's normal.
 				 * Details: while vehicle's current speed is gradually increasing, steam plumes' density decreases by one third each
 				 * third of its maximum speed spectrum. Steam emission finally normalises at very close to vehicle's maximum speed.
@@ -4385,7 +4396,7 @@ void Vehicle::ShowVisualEffect(uint max_speed) const
 				}
 				break;
 
-			case VESM_DIESEL: {
+			case VisualEffectSpawnModel::Diesel: {
 				/* Diesel smoke - thicker when vehicle is starting, gradually subsiding till it reaches its maximum speed
 				 * when smoke emission stops.
 				 * Details: Vehicle's (max.) speed spectrum is divided into 32 parts. When max. speed is reached, chance for smoke
@@ -4408,7 +4419,7 @@ void Vehicle::ShowVisualEffect(uint max_speed) const
 				break;
 			}
 
-			case VESM_ELECTRIC:
+			case VisualEffectSpawnModel::Electric:
 				/* Electric train's spark - more often occurs when train is departing (more load)
 				 * Details: Electric locomotives are usually at least twice as powerful as their diesel counterparts, so spark
 				 * emissions are kept simple. Only when starting, creating huge force are sparks more likely to happen, but when

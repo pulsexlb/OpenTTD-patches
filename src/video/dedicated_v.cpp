@@ -223,8 +223,8 @@ void VideoDriver_Dedicated::MainLoop()
 	_network_dedicated = true;
 	_current_company = _local_company = COMPANY_SPECTATOR;
 
-	/* If SwitchMode is SM_LOAD_GAME / SM_START_HEIGHTMAP, it means that the user used the '-g' options */
-	if (_switch_mode != SM_LOAD_GAME && _switch_mode != SM_START_HEIGHTMAP) {
+	/* If SwitchMode is SwitchMode::LoadGame / SwitchMode::StartHeightmap, it means that the user used the '-g' options */
+	if (_switch_mode != SwitchMode::LoadGame && _switch_mode != SwitchMode::StartHeightmap) {
 		StartNewGameWithoutGUI(GENERATE_NEW_SEED);
 	}
 
@@ -241,7 +241,7 @@ void VideoDriver_Dedicated::MainLoop()
 
 #if defined(UNIX)
 		if (_dedicated_exit_requested) {
-			if (_game_mode == GM_NORMAL && _settings_client.gui.autosave_on_exit) DoExitSave();
+			if (_game_mode == GameMode::Normal && _settings_client.gui.autosave_on_exit) DoExitSave();
 			_exit_game = true;
 		}
 #endif

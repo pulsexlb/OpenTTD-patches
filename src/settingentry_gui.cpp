@@ -223,7 +223,7 @@ bool SettingEntry::IsVisibleByRestrictionMode(RestrictionMode mode) const
  */
 bool SettingEntry::UpdateFilterState(SettingFilter &filter, bool force_visible)
 {
-	if (this->setting->flags.Test(SettingFlag::NoNewgame) && _game_mode == GM_MENU) {
+	if (this->setting->flags.Test(SettingFlag::NoNewgame) && _game_mode == GameMode::Menu) {
 		this->flags.Set(SettingEntryFlag::Filtered);
 		return false;
 	}
@@ -269,7 +269,7 @@ bool SettingEntry::UpdateFilterState(SettingFilter &filter, bool force_visible)
 const void *ResolveObject(const GameSettings *settings_ptr, const IntSettingDesc *sd)
 {
 	if (sd->flags.Test(SettingFlag::PerCompany)) {
-		if (Company::IsValidID(_local_company) && _game_mode != GM_MENU) {
+		if (Company::IsValidID(_local_company) && _game_mode != GameMode::Menu) {
 			return &Company::Get(_local_company)->settings;
 		}
 		return &_settings_client.company;
@@ -841,7 +841,7 @@ SettingsContainer &GetSettingsTree()
 					SettingsPage *game = clock->Add(new SettingsPage(STR_CONFIG_SETTING_INTERFACE_TIME_SAVEGAME));
 					{
 						game->hide_callback = []() -> bool {
-							return _game_mode == GM_MENU;
+							return _game_mode == GameMode::Menu;
 						};
 						game->Add(new SettingEntry("game_time.time_in_minutes"));
 						game->Add(new SettingEntry("game_time.ticks_per_minute"));
@@ -850,7 +850,7 @@ SettingsContainer &GetSettingsTree()
 					SettingsPage *client = clock->Add(new SettingsPage(STR_CONFIG_SETTING_INTERFACE_TIME_CLIENT));
 					{
 						client->hide_callback = []() -> bool {
-							return _game_mode != GM_MENU && !_settings_client.gui.override_time_settings;
+							return _game_mode != GameMode::Menu && !_settings_client.gui.override_time_settings;
 						};
 						client->Add(new SettingEntry("gui.time_in_minutes"));
 						client->Add(new SettingEntry("gui.ticks_per_minute"));
@@ -1097,7 +1097,7 @@ SettingsContainer &GetSettingsTree()
 			genworld->Add(new SettingEntry("game_creation.variety"));
 			genworld->Add(new SettingEntry("game_creation.climate_threshold_mode"));
 			auto coverage_hide = []() -> bool { return GetGameSettings().game_creation.climate_threshold_mode != 0; };
-			auto snow_line_height_hide = []() -> bool { return GetGameSettings().game_creation.climate_threshold_mode != 1 && _game_mode == GM_MENU; };
+			auto snow_line_height_hide = []() -> bool { return GetGameSettings().game_creation.climate_threshold_mode != 1 && _game_mode == GameMode::Menu; };
 			auto rainforest_line_height_hide = []() -> bool { return GetGameSettings().game_creation.climate_threshold_mode != 1; };
 			genworld->Add(new ConditionallyHiddenSettingEntry("game_creation.snow_coverage", coverage_hide));
 			genworld->Add(new ConditionallyHiddenSettingEntry("game_creation.snow_line_height", snow_line_height_hide));

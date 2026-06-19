@@ -334,12 +334,12 @@ struct ViewportDrawerDynamic {
 
 	inline bool IsTransparencySet(TransparencyOption to)
 	{
-		return (HasBit(this->transparency_opt, to) && _game_mode != GM_MENU);
+		return (HasBit(this->transparency_opt, to) && _game_mode != GameMode::Menu);
 	}
 
 	inline bool IsInvisibilitySet(TransparencyOption to)
 	{
-		return (HasBit(this->transparency_opt & this->invisibility_opt, to) && _game_mode != GM_MENU);
+		return (HasBit(this->transparency_opt & this->invisibility_opt, to) && _game_mode != GameMode::Menu);
 	}
 
 	inline DrawPixelInfo MakeDPIForText() const
@@ -2126,9 +2126,9 @@ static void ViewportAddKdtreeSigns(ViewportDrawerDynamic *vdd, DrawPixelInfo *dp
 	Rect search_rect{ dpi->left, dpi->top, dpi->left + dpi->width, dpi->top + dpi->height };
 	search_rect = ExpandRectWithViewportSignMargins(search_rect, dpi->zoom);
 
-	bool show_stations = _display_opt.Test(DisplayOption::ShowStationNames) && _game_mode != GM_MENU && !towns_only;
-	bool show_waypoints = _display_opt.Test(DisplayOption::ShowWaypointNames) && _game_mode != GM_MENU && !towns_only;
-	bool show_towns = _display_opt.Test(DisplayOption::ShowTownNames) && _game_mode != GM_MENU;
+	bool show_stations = _display_opt.Test(DisplayOption::ShowStationNames) && _game_mode != GameMode::Menu && !towns_only;
+	bool show_waypoints = _display_opt.Test(DisplayOption::ShowWaypointNames) && _game_mode != GameMode::Menu && !towns_only;
+	bool show_towns = _display_opt.Test(DisplayOption::ShowTownNames) && _game_mode != GameMode::Menu;
 	bool show_signs = _display_opt.Test(DisplayOption::ShowSigns) && !vdd->IsInvisibilitySet(TO_SIGNS) && !towns_only;
 	bool show_competitors = _display_opt.Test(DisplayOption::ShowCompetitorSigns) && !towns_only;
 	bool hide_hidden_waypoints = _settings_client.gui.allow_hiding_waypoint_labels && !HasBit(_extra_display_opt, XDO_SHOW_HIDDEN_SIGNS);
@@ -5217,7 +5217,7 @@ static bool CheckClickOnViewportSign(const Viewport *vp, int x, int y, const Vie
  */
 static bool CheckClickOnViewportSign(const Viewport *vp, int x, int y)
 {
-	if (_game_mode == GM_MENU) return false;
+	if (_game_mode == GameMode::Menu) return false;
 
 	x = ScaleByZoom(x - vp->left, vp->zoom) + vp->virtual_left;
 	y = ScaleByZoom(y - vp->top, vp->zoom) + vp->virtual_top;

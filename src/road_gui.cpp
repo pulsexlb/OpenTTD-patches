@@ -375,8 +375,8 @@ struct BuildRoadToolbarWindow : Window {
 
 	void Close([[maybe_unused]] int data = 0) override
 	{
-		if (_game_mode == GM_NORMAL && (this->IsWidgetLowered(WID_ROT_BUS_STATION) || this->IsWidgetLowered(WID_ROT_TRUCK_STATION))) SetViewportCatchmentStation(nullptr, true);
-		if (_game_mode == GM_NORMAL && this->IsWidgetLowered(WID_ROT_BUILD_WAYPOINT)) SetViewportCatchmentWaypoint(nullptr, true);
+		if (_game_mode == GameMode::Normal && (this->IsWidgetLowered(WID_ROT_BUS_STATION) || this->IsWidgetLowered(WID_ROT_TRUCK_STATION))) SetViewportCatchmentStation(nullptr, true);
+		if (_game_mode == GameMode::Normal && this->IsWidgetLowered(WID_ROT_BUILD_WAYPOINT)) SetViewportCatchmentWaypoint(nullptr, true);
 		if (_settings_client.gui.link_terraform_toolbar) CloseWindowById(WindowClass::ScenarioGenerateLandscape, 0, false);
 		CloseWindowById(WindowClass::JoinStation, 0);
 		this->Window::Close();
@@ -412,7 +412,7 @@ struct BuildRoadToolbarWindow : Window {
 			CloseWindowById(WindowClass::BuildWaypoint, TRANSPORT_ROAD);
 		}
 
-		if (_game_mode != GM_EDITOR) {
+		if (_game_mode != GameMode::Editor) {
 			if (!can_build) {
 				/* Show in the tooltip why this button is disabled. */
 				this->GetWidget<NWidgetCore>(WID_ROT_DEPOT)->SetToolTip(STR_TOOLBAR_DISABLED_NO_VEHICLE_AVAILABLE);
@@ -435,7 +435,7 @@ struct BuildRoadToolbarWindow : Window {
 		this->GetWidget<NWidgetCore>(WID_ROT_ROAD_X)->SetSprite(rti->gui_sprites.build_x_road);
 		this->GetWidget<NWidgetCore>(WID_ROT_ROAD_Y)->SetSprite(rti->gui_sprites.build_y_road);
 		this->GetWidget<NWidgetCore>(WID_ROT_AUTOROAD)->SetSprite(rti->gui_sprites.auto_road);
-		if (_game_mode != GM_EDITOR) {
+		if (_game_mode != GameMode::Editor) {
 			this->GetWidget<NWidgetCore>(WID_ROT_DEPOT)->SetSprite(rti->gui_sprites.build_depot);
 		}
 		this->GetWidget<NWidgetCore>(WID_ROT_CONVERT_ROAD)->SetSprite(rti->gui_sprites.convert_road);
@@ -721,8 +721,8 @@ struct BuildRoadToolbarWindow : Window {
 
 	void OnPlaceObjectAbort() override
 	{
-		if (_game_mode != GM_EDITOR && (this->IsWidgetLowered(WID_ROT_BUS_STATION) || this->IsWidgetLowered(WID_ROT_TRUCK_STATION))) SetViewportCatchmentStation(nullptr, true);
-		if (_game_mode != GM_EDITOR && this->IsWidgetLowered(WID_ROT_BUILD_WAYPOINT)) SetViewportCatchmentWaypoint(nullptr, true);
+		if (_game_mode != GameMode::Editor && (this->IsWidgetLowered(WID_ROT_BUS_STATION) || this->IsWidgetLowered(WID_ROT_TRUCK_STATION))) SetViewportCatchmentStation(nullptr, true);
+		if (_game_mode != GameMode::Editor && this->IsWidgetLowered(WID_ROT_BUILD_WAYPOINT)) SetViewportCatchmentWaypoint(nullptr, true);
 
 		this->RaiseButtons();
 		this->SetWidgetDisabledState(WID_ROT_REMOVE, true);
@@ -886,7 +886,7 @@ struct BuildRoadToolbarWindow : Window {
 
 	void OnRealtimeTick(uint delta_ms) override
 	{
-		if (_game_mode == GM_NORMAL && this->IsWidgetLowered(WID_ROT_BUILD_WAYPOINT)) CheckRedrawRoadWaypointCoverage(this);
+		if (_game_mode == GameMode::Normal && this->IsWidgetLowered(WID_ROT_BUILD_WAYPOINT)) CheckRedrawRoadWaypointCoverage(this);
 	}
 
 	/**
@@ -960,11 +960,11 @@ Window *CreateRoadTramToolbarForRoadType(RoadType roadtype, RoadTramType rtt)
 {
 	Window *w = nullptr;
 	switch (_game_mode) {
-		case GM_NORMAL:
+		case GameMode::Normal:
 			w = ShowBuildRoadToolbar(roadtype);
 			break;
 
-		case GM_EDITOR:
+		case GameMode::Editor:
 			if (!GetRoadTypes(true).Any(GetMaskForRoadTramType(rtt))) return nullptr;
 			w = ShowBuildRoadScenToolbar(roadtype);
 			break;
@@ -2058,7 +2058,7 @@ static BuildRoadToolbarWindow *GetRoadToolbarWindowForRoadStop(const RoadStopSpe
 	extern RoadType _last_built_roadtype;
 	extern RoadType _last_built_tramtype;
 
-	BuildRoadToolbarWindow *w = dynamic_cast<BuildRoadToolbarWindow *>(FindWindowById(_game_mode == GM_EDITOR ? WindowClass::ScenarioBuildToolbar : WindowClass::BuildToolbar, TRANSPORT_ROAD));
+	BuildRoadToolbarWindow *w = dynamic_cast<BuildRoadToolbarWindow *>(FindWindowById(_game_mode == GameMode::Editor ? WindowClass::ScenarioBuildToolbar : WindowClass::BuildToolbar, TRANSPORT_ROAD));
 	if (w != nullptr) {
 		if (spec != nullptr && ((spec->flags.Test(RoadStopSpecFlag::RoadOnly) && !RoadTypeIsRoad(_cur_roadtype)) ||
 				(spec->flags.Test(RoadStopSpecFlag::TramOnly) && !RoadTypeIsTram(_cur_roadtype)))) {

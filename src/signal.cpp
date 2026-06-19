@@ -2054,7 +2054,7 @@ void UpdateExtraAspectsVariable(bool update_always_reserve_through)
 	bool style_change = DetermineExtraAspectsVariable();
 
 	if (style_remap || style_change) {
-		if (_networking && !_network_server && _game_mode != GM_MENU) {
+		if (_networking && !_network_server && _game_mode != GameMode::Menu) {
 			const char *msg = "Network client recalculating signal states and/or signal style mappings, this is likely to cause desyncs";
 			Debug(desync, 0, "{}", msg);
 			LogDesyncMsg(msg);

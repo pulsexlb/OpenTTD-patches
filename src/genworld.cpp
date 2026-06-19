@@ -151,7 +151,7 @@ static void _GenerateWorld()
 			}
 
 			/* Make the map the height of the setting */
-			if (_game_mode != GM_MENU) FlatEmptyWorld(_settings_game.game_creation.se_flat_world_height);
+			if (_game_mode != GameMode::Menu) FlatEmptyWorld(_settings_game.game_creation.se_flat_world_height);
 
 			ConvertGroundTilesIntoWaterTiles();
 			CountLandTiles();
@@ -165,7 +165,7 @@ static void _GenerateWorld()
 			CountLandTiles();
 
 			/* Only generate towns, tree and industries in newgame mode. */
-			if (_game_mode != GM_EDITOR) {
+			if (_game_mode != GameMode::Editor) {
 				if (!GenerateTowns(_settings_game.economy.town_layout)) {
 					HandleGeneratingWorldAbortion(true);
 					return;
@@ -201,7 +201,7 @@ static void _GenerateWorld()
 				IncreaseGeneratingWorldProgress(GenWorldProgress::RunTileLoop);
 			}
 
-			if (_game_mode != GM_EDITOR) {
+			if (_game_mode != GameMode::Editor) {
 				if (Game::GetInstance() != nullptr) {
 					SetGeneratingWorldProgress(GenWorldProgress::GameScript, 2500);
 					_generating_world = true;
@@ -221,7 +221,7 @@ static void _GenerateWorld()
 		cur_company.Trash();
 		_current_company = _local_company = GenWorldInfo::lc;
 		/* Show all vital windows again, because we have hidden them. */
-		if (_game_mode != GM_MENU) ShowVitalWindows();
+		if (_game_mode != GameMode::Menu) ShowVitalWindows();
 
 		SetGeneratingWorldProgress(GenWorldProgress::GameStart, 1);
 		/* Call any callback */
@@ -299,7 +299,7 @@ bool IsGeneratingWorldAborted()
 void HandleGeneratingWorldAbortion(bool no_retry)
 {
 	/* Clean up - in SE create an empty map, otherwise, go to intro menu */
-	_switch_mode = (_game_mode == GM_EDITOR && !no_retry) ? SM_EDITOR : SM_MENU;
+	_switch_mode = (_game_mode == GameMode::Editor && !no_retry) ? SwitchMode::Editor : SwitchMode::Menu;
 
 	if (GenWorldInfo::abortp != nullptr) GenWorldInfo::abortp();
 
@@ -333,7 +333,7 @@ void GenerateWorld(GenWorldMode mode, uint size_x, uint size_y, bool reset_setti
 	if (_settings_game.construction.map_height_limit == 0) {
 		uint estimated_height = 0;
 
-		if (GenWorldInfo::mode == GWM_EMPTY && _game_mode != GM_MENU) {
+		if (GenWorldInfo::mode == GWM_EMPTY && _game_mode != GameMode::Menu) {
 			estimated_height = _settings_game.game_creation.se_flat_world_height;
 		} else if (GenWorldInfo::mode == GWM_HEIGHTMAP) {
 			estimated_height = _settings_game.game_creation.heightmap_height;
@@ -388,7 +388,7 @@ void ExecuteWithGenerateWorld(std::function<void()> func)
 	MarkWholeScreenDirty();
 	GenWorldInfo::abort  = false;
 	GenWorldInfo::abortp = []() {
-		_switch_mode = SM_NONE; // Don't switch mode on abort
+		_switch_mode = SwitchMode::None; // Don't switch mode on abort
 	};
 
 	PrepareGenerateWorldProgress(true);

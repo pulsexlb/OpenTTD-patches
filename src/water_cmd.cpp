@@ -508,7 +508,7 @@ CommandCost CmdBuildCanal(DoCommandFlags flags, TileIndex tile, TileIndex start_
 	if (start_tile >= Map::Size() || wc == WaterClass::Invalid) return CMD_ERROR;
 
 	/* Outside of the editor you can only build canals, not oceans */
-	if (_game_mode != GM_EDITOR) {
+	if (_game_mode != GameMode::Editor) {
 		if (wc == WaterClass::River) {
 			if (!_settings_game.construction.enable_build_river && _current_company != OWNER_DEITY) {
 				return CMD_ERROR;
@@ -533,7 +533,7 @@ CommandCost CmdBuildCanal(DoCommandFlags flags, TileIndex tile, TileIndex start_
 		bool water = IsWaterTile(current_tile);
 
 		/* Outside the editor, prevent building canals over your own or OWNER_NONE owned canals */
-		if (water && IsCanal(current_tile) && _game_mode != GM_EDITOR && (IsTileOwner(current_tile, _current_company) || IsTileOwner(current_tile, OWNER_NONE))) continue;
+		if (water && IsCanal(current_tile) && _game_mode != GameMode::Editor && (IsTileOwner(current_tile, _current_company) || IsTileOwner(current_tile, OWNER_NONE))) continue;
 
 		ret = Command<Commands::LandscapeClear>::Do(flags, current_tile);
 		if (ret.Failed()) return ret;
@@ -554,7 +554,7 @@ CommandCost CmdBuildCanal(DoCommandFlags flags, TileIndex tile, TileIndex start_
 			switch (wc) {
 				case WaterClass::River:
 					MakeRiver(current_tile, Random());
-					if (_game_mode == GM_EDITOR && _settings_game.game_creation.landscape == LandscapeType::Tropic) {
+					if (_game_mode == GameMode::Editor && _settings_game.game_creation.landscape == LandscapeType::Tropic) {
 						IterateCurvedCircularTileArea(current_tile, _settings_game.game_creation.river_tropics_width, RiverModifyDesertZone, nullptr);
 					}
 					break;
@@ -613,7 +613,7 @@ static CommandCost ClearTile_Water(TileIndex tile, DoCommandFlags flags)
 		case WaterTileType::Clear: {
 			if (flags.Test(DoCommandFlag::NoWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
 
-			if (!IsCanal(tile) && _game_mode != GM_EDITOR && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)
+			if (!IsCanal(tile) && _game_mode != GameMode::Editor && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)
 					&& _current_company != OWNER_WATER) {
 				return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
 			}
@@ -667,7 +667,7 @@ static CommandCost ClearTile_Water(TileIndex tile, DoCommandFlags flags)
 			if (ret.Failed()) return ret;
 
 			if (IsSlopeWithOneCornerRaised(slope)) {
-				if (_game_mode != GM_EDITOR && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
+				if (_game_mode != GameMode::Editor && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
 				ret = CommandCost(ExpensesType::Construction, _price[Price::ClearWater]);
 			} else {
 				ret = CommandCost(ExpensesType::Construction, _price[Price::ClearRough]);
@@ -1196,39 +1196,39 @@ static void FloodVehicles(TileIndex tile)
  */
 FloodingBehaviour GetFloodingBehaviour(TileIndex tile)
 {
-	/* FLOOD_ACTIVE:  'single-corner-raised'-coast, sea, sea-shipdepots, sea-buoys, sea-docks (water part), rail with flooded halftile, sea-water-industries, sea-oilrigs
-	 * FLOOD_DRYUP:   coast with more than one corner raised, coast with rail-track, coast with trees
-	 * FLOOD_PASSIVE: (not used)
-	 * FLOOD_NONE:    canals, rivers, everything else
+	/* FloodingBehaviour::Active: 'single-corner-raised'-coast, sea, sea-shipdepots, sea-buoys, sea-docks (water part), rail with flooded halftile, sea-water-industries, sea-oilrigs
+	 * FloodingBehaviour::DryOut: coast with more than one corner raised, coast with rail-track, coast with trees
+	 * FloodingBehaviour::Passive: (not used)
+	 * FloodingBehaviour::None: canals, rivers, everything else
 	 */
 	switch (GetTileType(tile)) {
 		case TileType::Water:
 			if (IsCoast(tile)) {
 				Slope tileh = GetTileSlope(tile);
-				return (IsSlopeWithOneCornerRaised(tileh) ? FLOOD_ACTIVE : FLOOD_DRYUP);
+				return IsSlopeWithOneCornerRaised(tileh) ? FloodingBehaviour::Active : FloodingBehaviour::DryOut;
 			}
 			[[fallthrough]];
 		case TileType::Station:
 		case TileType::Industry:
-			return (GetWaterClass(tile) == WaterClass::Sea) ? FLOOD_ACTIVE : FLOOD_NONE;
+			return (GetWaterClass(tile) == WaterClass::Sea) ? FloodingBehaviour::Active : FloodingBehaviour::None;
 
 		case TileType::Railway:
 			if (GetRailGroundType(tile) == RailGroundType::HalfTileWater) {
-				return (IsSlopeWithOneCornerRaised(GetTileSlope(tile)) ? FLOOD_ACTIVE : FLOOD_DRYUP);
+				return IsSlopeWithOneCornerRaised(GetTileSlope(tile)) ? FloodingBehaviour::Active : FloodingBehaviour::DryOut;
 			}
-			return FLOOD_NONE;
+			return FloodingBehaviour::None;
 
 		case TileType::Trees:
-			return (GetTreeGround(tile) == TreeGround::Shore ? FLOOD_DRYUP : FLOOD_NONE);
+			return GetTreeGround(tile) == TreeGround::Shore ? FloodingBehaviour::DryOut : FloodingBehaviour::None;
 
 		case TileType::Object:
-			return (GetObjectGroundType(tile) == OBJECT_GROUND_SHORE ? FLOOD_DRYUP : ((GetWaterClass(tile) == WaterClass::Sea) ? FLOOD_ACTIVE : FLOOD_NONE));
+			return (GetObjectGroundType(tile) == OBJECT_GROUND_SHORE ? FloodingBehaviour::DryOut : ((GetWaterClass(tile) == WaterClass::Sea) ? FloodingBehaviour::Active : FloodingBehaviour::None));
 
 		case TileType::Void:
-			return _settings_game.construction.flood_from_edges ? FLOOD_ACTIVE : FLOOD_NONE;
+			return _settings_game.construction.flood_from_edges ? FloodingBehaviour::Active : FloodingBehaviour::None;
 
 		default:
-			return FLOOD_NONE;
+			return FloodingBehaviour::None;
 	}
 }
 
@@ -1389,7 +1389,7 @@ void TileLoop_Water(TileIndex tile)
 	if (IsTileType(tile, TileType::Water)) AmbientSoundEffect(tile);
 
 	/* At day lengths > 4, handle flooding in auxiliary tile loop */
-	if (DayLengthFactor() > 4 && _game_mode != GM_EDITOR) return;
+	if (DayLengthFactor() > 4 && _game_mode != GameMode::Editor) return;
 
 	if (IsNonFloodingWaterTile(tile)) return;
 
@@ -1399,7 +1399,7 @@ void TileLoop_Water(TileIndex tile)
 void TileLoopWaterFlooding(FloodingBehaviour flooding_behaviour, TileIndex tile)
 {
 	switch (flooding_behaviour) {
-		case FLOOD_ACTIVE: {
+		case FloodingBehaviour::Active: {
 			bool continue_flooding = false;
 			for (Direction dir = DIR_BEGIN; dir < DIR_END; dir++) {
 				TileIndex dest = AddTileIndexDiffCWrap(tile, TileIndexDiffCByDir(dir));
@@ -1429,7 +1429,7 @@ void TileLoopWaterFlooding(FloodingBehaviour flooding_behaviour, TileIndex tile)
 			break;
 		}
 
-		case FLOOD_DRYUP: {
+		case FloodingBehaviour::DryOut: {
 			Slope slope_here = std::get<Slope>(GetFoundationSlope(tile)) & ~SLOPE_HALFTILE_MASK & ~SLOPE_STEEP;
 			for (Direction dir : _flood_from_dirs[slope_here].IterateSetBits()) {
 				TileIndex dest = AddTileIndexDiffCWrap(tile, TileIndexDiffCByDir(dir));
@@ -1437,7 +1437,7 @@ void TileLoopWaterFlooding(FloodingBehaviour flooding_behaviour, TileIndex tile)
 				if (dest == INVALID_TILE) continue;
 
 				FloodingBehaviour dest_behaviour = GetFloodingBehaviour(dest);
-				if ((dest_behaviour == FLOOD_ACTIVE) || (dest_behaviour == FLOOD_PASSIVE)) return;
+				if (dest_behaviour == FloodingBehaviour::Active || dest_behaviour == FloodingBehaviour::Passive) return;
 			}
 			DoDryUp(tile);
 			break;

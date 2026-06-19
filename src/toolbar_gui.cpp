@@ -439,7 +439,7 @@ static CallBackFunction ToolbarScenSaveOrLoad(Window *w)
  */
 static CallBackFunction MenuClickSaveLoad(int index = 0)
 {
-	if (_game_mode == GM_EDITOR) {
+	if (_game_mode == GameMode::Editor) {
 		switch (SaveLoadEditorMenuEntries(index)) {
 			case SaveLoadEditorMenuEntries::SaveScenario: ShowSaveLoadDialog(AbstractFileType::Scenario, SaveLoadOperation::Save); break;
 			case SaveLoadEditorMenuEntries::LoadScenario: ShowSaveLoadDialog(AbstractFileType::Scenario, SaveLoadOperation::Load); break;
@@ -908,7 +908,7 @@ static CallBackFunction MenuClickShowAir(int index)
 static CallBackFunction ToolbarZoomInClick(Window *w)
 {
 	if (DoZoomInOutWindow(ZOOM_IN, GetMainWindow())) {
-		w->HandleButtonClick((_game_mode == GM_EDITOR) ? (WidgetID)WID_TE_ZOOM_IN : (WidgetID)WID_TN_ZOOM_IN);
+		w->HandleButtonClick((_game_mode == GameMode::Editor) ? (WidgetID)WID_TE_ZOOM_IN : (WidgetID)WID_TN_ZOOM_IN);
 	}
 	return CallBackFunction::None;
 }
@@ -918,7 +918,7 @@ static CallBackFunction ToolbarZoomInClick(Window *w)
 static CallBackFunction ToolbarZoomOutClick(Window *w)
 {
 	if (DoZoomInOutWindow(ZOOM_OUT, GetMainWindow())) {
-		w->HandleButtonClick((_game_mode == GM_EDITOR) ? (WidgetID)WID_TE_ZOOM_OUT : (WidgetID)WID_TN_ZOOM_OUT);
+		w->HandleButtonClick((_game_mode == GameMode::Editor) ? (WidgetID)WID_TE_ZOOM_OUT : (WidgetID)WID_TN_ZOOM_OUT);
 	}
 	return CallBackFunction::None;
 }
@@ -1068,7 +1068,7 @@ static CallBackFunction MenuClickForest(int index)
 
 static CallBackFunction ToolbarMusicClick(Window *w)
 {
-	PopupMainToolbarMenu(w, _game_mode == GM_EDITOR ? (WidgetID)WID_TE_MUSIC_SOUND : (WidgetID)WID_TN_MUSIC_SOUND, {STR_TOOLBAR_SOUND_MUSIC});
+	PopupMainToolbarMenu(w, _game_mode == GameMode::Editor ? (WidgetID)WID_TE_MUSIC_SOUND : (WidgetID)WID_TN_MUSIC_SOUND, {STR_TOOLBAR_SOUND_MUSIC});
 	return CallBackFunction::None;
 }
 
@@ -1208,7 +1208,7 @@ static void UsePickerTool(TileIndex tile)
 			 * Rivers only work if river building is enabled or in scenario editor. */
 			if (IsLock(tile) || IsCanal(tile)) {
 				ShowBuildDocksToolbarFromTile(tile);
-			} else if (IsRiver(tile) && (_settings_game.construction.enable_build_river || _game_mode == GM_EDITOR)) {
+			} else if (IsRiver(tile) && (_settings_game.construction.enable_build_river || _game_mode == GameMode::Editor)) {
 				ShowBuildDocksToolbarFromTile(tile);
 			/* Depots for now only opens waterways toolbar like other depots */
 			} else if (GetWaterTileType(tile) == WaterTileType::Depot) {
@@ -1228,7 +1228,7 @@ static void UsePickerTool(TileIndex tile)
 		}
 
 		case TileType::House: {
-			if (_game_mode == GM_EDITOR || _settings_game.economy.place_houses != PlaceHouses::Forbidden) {
+			if (_game_mode == GameMode::Editor || _settings_game.economy.place_houses != PlaceHouses::Forbidden) {
 				ShowBuildHousePickerAndSelect(tile);
 			}
 			break;
@@ -1265,7 +1265,7 @@ static CallBackFunction PlacePickerTool()
 
 static CallBackFunction ToolbarHelpClick(Window *w)
 {
-	WidgetID widget = (_game_mode == GM_EDITOR) ? (WidgetID)WID_TE_HELP : (WidgetID)WID_TN_HELP;
+	WidgetID widget = (_game_mode == GameMode::Editor) ? (WidgetID)WID_TE_HELP : (WidgetID)WID_TN_HELP;
 
 	DropDownList list;
 	list.push_back(MakeDropDownListStringItem(STR_ABOUT_MENU_LAND_BLOCK_INFO,           HME_LANDINFO,      false));
@@ -1399,7 +1399,7 @@ static CallBackFunction ToolbarSwitchClick(Window *w)
 	}
 
 	w->ReInit();
-	w->SetWidgetLoweredState(_game_mode == GM_EDITOR ? (WidgetID)WID_TE_SWITCH_BAR : (WidgetID)WID_TN_SWITCH_BAR, _toolbar_mode == ToolbarMode::Lower);
+	w->SetWidgetLoweredState(_game_mode == GameMode::Editor ? (WidgetID)WID_TE_SWITCH_BAR : (WidgetID)WID_TN_SWITCH_BAR, _toolbar_mode == ToolbarMode::Lower);
 	SndClickBeep();
 	return CallBackFunction::None;
 }
@@ -2255,7 +2255,7 @@ struct MainToolbarWindow : Window {
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
-		if (_game_mode != GM_MENU && !this->IsWidgetDisabled(widget)) _toolbar_button_procs[widget](this);
+		if (_game_mode != GameMode::Menu && !this->IsWidgetDisabled(widget)) _toolbar_button_procs[widget](this);
 	}
 
 	void OnDropdownSelect(WidgetID widget, int index, int) override
@@ -2685,7 +2685,7 @@ struct ScenarioEditorToolbarWindow : Window {
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
-		if (_game_mode == GM_MENU) return;
+		if (_game_mode == GameMode::Menu) return;
 		CallBackFunction cbf = _scen_toolbar_button_procs[widget](this);
 		if (cbf != CallBackFunction::None) _last_started_action = cbf;
 	}
@@ -2889,7 +2889,7 @@ static WindowDesc _toolb_scen_desc(__FILE__, __LINE__,
 /** Allocate the toolbar. */
 void AllocateToolbar()
 {
-	if (_game_mode == GM_EDITOR) {
+	if (_game_mode == GameMode::Editor) {
 		new ScenarioEditorToolbarWindow(_toolb_scen_desc);
 	} else {
 		new MainToolbarWindow(_toolb_normal_desc);

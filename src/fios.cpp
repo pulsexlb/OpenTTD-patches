@@ -224,7 +224,7 @@ static std::string FiosMakeFilename(const std::string *path, const char *name, c
  */
 std::string FiosMakeSavegameName(const char *name)
 {
-	const char *extension = (_game_mode == GM_EDITOR) ? ".scn" : ".sav";
+	const char *extension = (_game_mode == GameMode::Editor) ? ".scn" : ".sav";
 
 	return FiosMakeFilename(_fios_path, name, extension);
 }

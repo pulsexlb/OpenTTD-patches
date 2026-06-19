@@ -238,7 +238,7 @@ void Town::InitializeLayout(TownLayout layout)
  */
 void Town::UpdateLabel()
 {
-	if (!(_game_mode == GM_EDITOR) && (_local_company < MAX_COMPANIES)) {
+	if (!(_game_mode == GameMode::Editor) && (_local_company < MAX_COMPANIES)) {
 		if (!this->have_ratings.Test(_local_company)) {
 			this->town_label_rating = to_underlying(TextColour::White);
 			return;
@@ -262,7 +262,7 @@ void Town::UpdateLabel()
 uint64_t Town::LabelParam2() const
 {
 	uint64_t value = this->cache.population;
-	if (!(_game_mode == GM_EDITOR) && (_local_company < MAX_COMPANIES)) {
+	if (!(_game_mode == GameMode::Editor) && (_local_company < MAX_COMPANIES)) {
 		SB(value, 32, 8, this->town_label_rating);
 	} else {
 		SB(value, 32, 8, to_underlying(TextColour::White));
@@ -961,7 +961,7 @@ static void TownTickHandler(Town *t)
 /** Iterate through all towns and call their tick handler. */
 void OnTick_Town()
 {
-	if (_game_mode == GM_EDITOR) return;
+	if (_game_mode == GameMode::Editor) return;
 
 	for (Town *t : Town::Iterate()) {
 		TownTickHandler(t);
@@ -1997,7 +1997,7 @@ static bool GrowTownAtRoad(Town *t, TileIndex tile, TownExpandModes modes)
 			/* Don't allow building over roads of other cities */
 			if (IsRoadOwner(tile, RoadTramType::Road, OWNER_TOWN) && Town::GetByTile(tile) != t) {
 				return false;
-			} else if (IsRoadOwner(tile, RoadTramType::Road, OWNER_NONE) && _game_mode == GM_EDITOR) {
+			} else if (IsRoadOwner(tile, RoadTramType::Road, OWNER_NONE) && _game_mode == GameMode::Editor) {
 				/* If we are in the SE, and this road-piece has no town owner yet, it just found an
 				 * owner :) (happy happy happy road now) */
 				SetRoadOwner(tile, RoadTramType::Road, OWNER_TOWN);
@@ -2259,7 +2259,7 @@ static void DoCreateTown(Town *t, TileIndex tile, uint32_t townnameparts, TownSi
 	int x = (int)size * 16 + 3;
 	if (size == TSZ_RANDOM) x = (Random() & 0xF) + 8;
 	/* Don't create huge cities when founding town in-game */
-	if (city && (!manual || _game_mode == GM_EDITOR)) x *= _settings_game.economy.initial_city_size;
+	if (city && (!manual || _game_mode == GameMode::Editor)) x *= _settings_game.economy.initial_city_size;
 
 	t->cache.num_houses += x;
 	UpdateTownRadius(t);
@@ -2390,7 +2390,7 @@ CommandCost CmdFoundTown(DoCommandFlags flags, TileIndex tile, TownSize size, bo
 	if (layout >= NUM_TLS) return CMD_ERROR;
 
 	/* Some things are allowed only in the scenario editor and for game scripts. */
-	if (_game_mode != GM_EDITOR && _current_company != OWNER_DEITY) {
+	if (_game_mode != GameMode::Editor && _current_company != OWNER_DEITY) {
 		if (_settings_game.economy.found_town == TF_FORBIDDEN) return CMD_ERROR;
 		if (size == TSZ_LARGE) return CMD_ERROR;
 		if (random_location) return CMD_ERROR;
@@ -2469,7 +2469,7 @@ CommandCost CmdFoundTown(DoCommandFlags flags, TileIndex tile, TownSize size, bo
 		}
 		_record_house_coords = false;
 
-		if (_game_mode != GM_EDITOR) {
+		if (_game_mode != GameMode::Editor) {
 			/* 't' can't be nullptr since 'random' is false outside scenedit */
 			assert(!random_location);
 
@@ -2631,7 +2631,7 @@ static TileIndex BetterTownPlacementTile(TileIndex tile, bool city, TownLayout l
  */
 static Town *CreateRandomTown(uint attempts, uint32_t townnameparts, TownSize size, bool city, TownLayout layout)
 {
-	assert(_game_mode == GM_EDITOR || _generating_world); // These are the preconditions for Commands::DeleteTown
+	assert(_game_mode == GameMode::Editor || _generating_world); // These are the preconditions for Commands::DeleteTown
 
 	if (!Town::CanAllocateItem()) return nullptr;
 
@@ -2752,7 +2752,7 @@ bool GenerateTowns(TownLayout layout, std::optional<uint> number)
 	}
 
 	/* If there are no towns at all and we are generating new game, bail out */
-	if (Town::GetNumItems() == 0 && _game_mode != GM_EDITOR) {
+	if (Town::GetNumItems() == 0 && _game_mode != GameMode::Editor) {
 		ShowErrorMessage(GetEncodedString(STR_ERROR_COULD_NOT_CREATE_TOWN), {}, WarningLevel::Critical);
 	}
 
@@ -3062,7 +3062,7 @@ static CommandCost CheckCanBuildHouse(HouseID house, const Town *t)
 {
 	const HouseSpec *hs = HouseSpec::Get(house);
 
-	if (!_generating_world && _game_mode != GM_EDITOR && hs->extra_flags.Test(HouseExtraFlag::BuildingIsHistorical)) {
+	if (!_generating_world && _game_mode != GameMode::Editor && hs->extra_flags.Test(HouseExtraFlag::BuildingIsHistorical)) {
 		return CMD_ERROR;
 	}
 
@@ -3104,7 +3104,7 @@ static void BuildTownHouse(Town *t, TileIndex tile, const HouseSpec *hs, HouseID
 	uint8_t construction_counter = 0;
 	uint8_t construction_stage = 0;
 
-	if (_generating_world || _game_mode == GM_EDITOR || house_completed) {
+	if (_generating_world || _game_mode == GameMode::Editor || house_completed) {
 		uint32_t construction_random = Random();
 
 		construction_stage = TOWN_HOUSE_COMPLETED;
@@ -3220,7 +3220,7 @@ static bool TryBuildTownHouse(Town *t, TileIndex tile, TownExpandModes modes)
  */
 CommandCost CmdPlaceHouse(DoCommandFlags flags, TileIndex tile, HouseID house, bool is_protected, TownID town_id, bool replace)
 {
-	if (_game_mode != GM_EDITOR && _settings_game.economy.place_houses == PlaceHouses::Forbidden) return CMD_ERROR;
+	if (_game_mode != GameMode::Editor && _settings_game.economy.place_houses == PlaceHouses::Forbidden) return CMD_ERROR;
 
 	if (Town::GetNumItems() == 0) return CommandCost(STR_ERROR_MUST_FOUND_TOWN_FIRST);
 
@@ -3283,7 +3283,7 @@ CommandCost CmdPlaceHouseArea(DoCommandFlags flags, TileIndex tile, TileIndex st
 {
 	if (start_tile >= Map::Size()) return CMD_ERROR;
 
-	if (_game_mode != GM_EDITOR && _settings_game.economy.place_houses == PlaceHouses::Forbidden) return CMD_ERROR;
+	if (_game_mode != GameMode::Editor && _settings_game.economy.place_houses == PlaceHouses::Forbidden) return CMD_ERROR;
 
 	if (Town::GetNumItems() == 0) return CommandCost(STR_ERROR_MUST_FOUND_TOWN_FIRST);
 
@@ -3644,7 +3644,7 @@ CommandCost CmdTownRating(DoCommandFlags flags, TownID town_id, CompanyID compan
  */
 CommandCost CmdExpandTown(DoCommandFlags flags, TownID town_id, uint32_t grow_amount, TownExpandModes modes)
 {
-	if (_game_mode != GM_EDITOR && _current_company != OWNER_DEITY) return CMD_ERROR;
+	if (_game_mode != GameMode::Editor && _current_company != OWNER_DEITY) return CMD_ERROR;
 	if (modes.None()) return CMD_ERROR;
 	Town *t = Town::GetIfValid(town_id);
 	if (t == nullptr) return CMD_ERROR;
@@ -3682,7 +3682,7 @@ CommandCost CmdExpandTown(DoCommandFlags flags, TownID town_id, uint32_t grow_am
  */
 CommandCost CmdDeleteTown(DoCommandFlags flags, TownID town_id)
 {
-	if (_game_mode != GM_EDITOR && !_generating_world) return CMD_ERROR;
+	if (_game_mode != GameMode::Editor && !_generating_world) return CMD_ERROR;
 	Town *t = Town::GetIfValid(town_id);
 	if (t == nullptr) return CMD_ERROR;
 

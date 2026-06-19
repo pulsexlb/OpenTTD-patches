@@ -58,7 +58,7 @@ bool _screen_disable_anim = false;   ///< Disable palette animation (important f
 bool _check_special_modes;
 std::atomic<bool> _exit_game;
 GameMode _game_mode;
-SwitchMode _switch_mode;  ///< The next mainloop command.
+SwitchMode _switch_mode; ///< The next mainloop command.
 PauseModes _pause_mode;
 GameSessionStats _game_session_stats; ///< Statistics about the current session.
 uint32_t _pause_countdown;
@@ -1623,7 +1623,7 @@ static void DrawDirtyViewport(uint occlusion, int left, int top, int right, int 
 		}
 	}
 
-	if (_game_mode == GM_MENU) {
+	if (_game_mode == GameMode::Menu) {
 		RedrawScreenRect(left, top, right, bottom);
 	} else {
 		extern void ViewportDrawChk(Viewport *vp, int left, int top, int right, int bottom, NWidgetDisplayFlags display_flags);

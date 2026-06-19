@@ -1083,7 +1083,7 @@ struct BuildRailToolbarWindow : Window {
 	 */
 	static EventState RailToolbarGlobalHotkeys(int hotkey)
 	{
-		if (_game_mode != GM_NORMAL) return ES_NOT_HANDLED;
+		if (_game_mode != GameMode::Normal) return ES_NOT_HANDLED;
 		extern RailType _last_built_railtype;
 		Window *w = ShowBuildRailToolbar(_last_built_railtype);
 		if (w == nullptr) return ES_NOT_HANDLED;
@@ -1645,7 +1645,7 @@ public:
 	 */
 	static EventState BuildRailStationGlobalHotkeys(int hotkey)
 	{
-		if (_game_mode == GM_MENU) return ES_NOT_HANDLED;
+		if (_game_mode == GameMode::Menu) return ES_NOT_HANDLED;
 		Window *w = ShowStationBuilder(FindWindowById(WindowClass::BuildToolbar, TRANSPORT_RAIL));
 		if (w == nullptr) return ES_NOT_HANDLED;
 		return w->OnHotkey(hotkey);

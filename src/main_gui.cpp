@@ -164,7 +164,7 @@ void ZoomInOrOutToCursorWindow(bool in, Window *w)
 {
 	assert(w != nullptr);
 
-	if (_game_mode != GM_MENU) {
+	if (_game_mode != GameMode::Menu) {
 		Viewport *vp = w->viewport;
 		if ((in && vp->zoom <= _settings_client.gui.zoom_min) || (!in && vp->zoom >= _settings_client.gui.zoom_max)) return;
 
@@ -179,7 +179,7 @@ void ZoomInOrOutToCursorWindow(bool in, Window *w)
 
 void FixTitleGameZoom(int zoom_adjust)
 {
-	if (_game_mode != GM_MENU) return;
+	if (_game_mode != GameMode::Menu) return;
 
 	Viewport *vp = GetMainWindow()->viewport;
 
@@ -279,7 +279,7 @@ struct MainWindow : Window
 	void OnPaint() override
 	{
 		this->DrawWidgets();
-		if (_game_mode == GM_MENU) {
+		if (_game_mode == GameMode::Menu) {
 			ViewportDoDrawProcessAllPending();
 
 			static const std::initializer_list<SpriteID> title_sprites = {SPR_OTTD_O, SPR_OTTD_P, SPR_OTTD_E, SPR_OTTD_N, SPR_OTTD_T, SPR_OTTD_T, SPR_OTTD_D};
@@ -319,10 +319,10 @@ struct MainWindow : Window
 		switch (hotkey) {
 			case GHK_ABANDON:
 				/* No point returning from the main menu to itself */
-				if (_game_mode == GM_MENU) return ES_HANDLED;
+				if (_game_mode == GameMode::Menu) return ES_HANDLED;
 				if (_settings_client.gui.autosave_on_exit) {
 					DoExitSave();
-					_switch_mode = SM_MENU;
+					_switch_mode = SwitchMode::Menu;
 				} else {
 					AskExitToGameMenu();
 				}
@@ -345,7 +345,7 @@ struct MainWindow : Window
 				return ES_HANDLED;
 		}
 
-		if (_game_mode == GM_MENU) return ES_NOT_HANDLED;
+		if (_game_mode == GameMode::Menu) return ES_NOT_HANDLED;
 
 		switch (hotkey) {
 			case GHK_CENTER:
@@ -553,7 +553,7 @@ struct MainWindow : Window
 
 	virtual void OnMouseOver(Point pt, WidgetID widget) override
 	{
-		if (pt.x != -1 && _game_mode != GM_MENU && IsViewportMouseHoverActive()) {
+		if (pt.x != -1 && _game_mode != GameMode::Menu && IsViewportMouseHoverActive()) {
 			/* Show tooltip with last month production or town name */
 			const Point p = GetTileBelowCursor();
 			const TileIndex tile = TileVirtXY(p.x, p.y);
@@ -655,12 +655,12 @@ void SetupColoursAndInitialWindow()
 	/* XXX: these are not done */
 	switch (_game_mode) {
 		default: NOT_REACHED();
-		case GM_MENU:
+		case GameMode::Menu:
 			ShowSelectGameWindow();
 			break;
 
-		case GM_NORMAL:
-		case GM_EDITOR:
+		case GameMode::Normal:
+		case GameMode::Editor:
 			ShowVitalWindows();
 			break;
 	}
@@ -674,7 +674,7 @@ void ShowVitalWindows()
 	AllocateToolbar();
 
 	/* Status bad only for normal games */
-	if (_game_mode == GM_EDITOR) return;
+	if (_game_mode == GameMode::Editor) return;
 
 	ShowStatusBar();
 }

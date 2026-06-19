@@ -516,7 +516,7 @@ void PlaceTreesRandomly()
 	uint8_t max_height = _settings_game.construction.map_height_limit;
 
 	i = Map::ScaleBySize(DEFAULT_TREE_STEPS);
-	if (_game_mode == GM_EDITOR) i /= EDITOR_TREE_DIV;
+	if (_game_mode == GameMode::Editor) i /= EDITOR_TREE_DIV;
 	do {
 		uint32_t r = Random();
 		TileIndex tile = RandomTileSeed(r);
@@ -549,7 +549,7 @@ void PlaceTreesRandomly()
 	/* place extra trees at rainforest area */
 	if (_settings_game.game_creation.landscape == LandscapeType::Tropic) {
 		i = Map::ScaleBySize(DEFAULT_RAINFOREST_TREE_STEPS);
-		if (_game_mode == GM_EDITOR) i /= EDITOR_TREE_DIV;
+		if (_game_mode == GameMode::Editor) i /= EDITOR_TREE_DIV;
 
 		do {
 			uint32_t r = Random();
@@ -571,7 +571,7 @@ void PlaceTreesRandomly()
  */
 void RemoveAllTrees()
 {
-	if (_game_mode != GM_EDITOR) return;
+	if (_game_mode != GameMode::Editor) return;
 
 	for (TileIndex tile(0); tile < Map::Size(); ++tile) {
 		if (GetTileType(tile) == TileType::Trees) {
@@ -622,7 +622,7 @@ void PlaceTreeGroupAroundTile(TileIndex tile, TreeTypes tree_types, uint radius,
 			}
 
 			/* Editor places trees for real, in-game only pretends. Easier for network connections to handle. */
-			if (_game_mode == GM_EDITOR) {
+			if (_game_mode == GameMode::Editor) {
 				if (IsTileType(tile_to_plant, TileType::Trees) && cur_tree_count < 4) {
 					AddTreeCount(tile_to_plant, 1);
 					SetTreeGrowth(tile_to_plant, TreeGrowthStage::Growing1);
@@ -641,7 +641,7 @@ void PlaceTreeGroupAroundTile(TileIndex tile, TreeTypes tree_types, uint radius,
 		}
 	}
 
-	if (_game_mode == GM_EDITOR && HasExactlyOneBit(tree_types) && IsInsideMM(*tree_types.IterateSetBits().begin(), TREE_RAINFOREST, TREE_CACTUS)) {
+	if (_game_mode == GameMode::Editor && HasExactlyOneBit(tree_types) && IsInsideMM(*tree_types.IterateSetBits().begin(), TREE_RAINFOREST, TREE_CACTUS)) {
 		for (TileIndex t : TileArea(tile).Expand(radius)) {
 			if (GetTileType(t) != TileType::Void && DistanceSquare(tile, t) < radius * radius) SetTropicZone(t, TropicZone::Rainforest);
 		}
@@ -750,7 +750,7 @@ struct CmdPlantTreeHelper {
 						/* No cacti outside the desert */
 						(treetype == TREE_CACTUS && GetTropicZone(tile) != TropicZone::Desert) ||
 						/* No rain forest trees outside the rainforest, except in the editor mode where it makes those tiles rainforest tile */
-						(IsInsideMM(treetype, TREE_RAINFOREST, TREE_CACTUS) && GetTropicZone(tile) != TropicZone::Rainforest && _game_mode != GM_EDITOR) ||
+						(IsInsideMM(treetype, TREE_RAINFOREST, TREE_CACTUS) && GetTropicZone(tile) != TropicZone::Rainforest && _game_mode != GameMode::Editor) ||
 						/* And no subtropical trees in the desert/rainforest */
 						(IsInsideMM(treetype, TREE_SUB_TROPICAL, TREE_TOYLAND) && GetTropicZone(tile) != TropicZone::Normal))) {
 					this->msg = STR_ERROR_TREE_WRONG_TERRAIN_FOR_TREE_TYPE;
@@ -790,7 +790,7 @@ struct CmdPlantTreeHelper {
 					}
 				}
 
-				if (_game_mode != GM_EDITOR && Company::IsValidID(_current_company)) {
+				if (_game_mode != GameMode::Editor && Company::IsValidID(_current_company)) {
 					Town *t = ClosestTownFromTile(tile, _settings_game.economy.dist_local_authority);
 					if (t != nullptr) ChangeTownRating(t, RATING_TREE_UP_STEP, RATING_TREE_MAXIMUM, this->flags);
 				}
@@ -812,12 +812,12 @@ struct CmdPlantTreeHelper {
 					}
 
 					/* Plant full grown trees in scenario editor */
-					PlantTreesOnTile(tile, treetype, to_plant - 1, _game_mode == GM_EDITOR ? TreeGrowthStage::Grown : TreeGrowthStage::Growing1);
+					PlantTreesOnTile(tile, treetype, to_plant - 1, _game_mode == GameMode::Editor ? TreeGrowthStage::Grown : TreeGrowthStage::Growing1);
 					MarkTileDirtyByTile(tile, VMDF_NOT_MAP_MODE_NON_VEG);
 					if (this->c != nullptr) this->c->tree_limit -= to_plant << 16;
 
 					/* When planting rainforest-trees, set tropiczone to rainforest in editor. */
-					if (_game_mode == GM_EDITOR && IsInsideMM(treetype, TREE_RAINFOREST, TREE_CACTUS)) {
+					if (_game_mode == GameMode::Editor && IsInsideMM(treetype, TREE_RAINFOREST, TREE_CACTUS)) {
 						SetTropicZone(tile, TropicZone::Rainforest);
 					}
 				}
@@ -877,7 +877,7 @@ CommandCost CmdPlantTree(DoCommandFlags flags, TileIndex end_tile, TileIndex sta
 		randomise_tree_type = tree_type_count > 1;
 	}
 
-	CmdPlantTreeHelper helper(flags, (_game_mode != GM_EDITOR) ? Company::GetIfValid(_current_company) : nullptr);
+	CmdPlantTreeHelper helper(flags, (_game_mode != GameMode::Editor) ? Company::GetIfValid(_current_company) : nullptr);
 
 	SavedRandomSeeds random_seeds{};
 	if (!flags.Test(DoCommandFlag::Execute)) SaveRandomSeeds(&random_seeds);
@@ -909,7 +909,7 @@ CommandCost CmdPlantTree(DoCommandFlags flags, TileIndex end_tile, TileIndex sta
  */
 CommandCost CmdBulkTree(DoCommandFlags flags, const BulkTreeCmdData &cmd_data)
 {
-	CmdPlantTreeHelper helper(flags, (_game_mode != GM_EDITOR) ? Company::GetIfValid(_current_company) : nullptr);
+	CmdPlantTreeHelper helper(flags, (_game_mode != GameMode::Editor) ? Company::GetIfValid(_current_company) : nullptr);
 
 	const TreeTypeRange tree_range = _current_tree_type_range;
 

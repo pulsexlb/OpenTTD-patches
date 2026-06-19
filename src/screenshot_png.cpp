@@ -84,7 +84,7 @@ public:
 
 		text_buf.format("Graphics set: {} ({})\n", BaseGraphics::GetUsedSet()->name, BaseGraphics::GetUsedSet()->FormatVersion());
 		text_buf.append("NewGRFs:\n");
-		if (_game_mode != GM_MENU) {
+		if (_game_mode != GameMode::Menu) {
 			for (const auto &c : _grfconfig) {
 				text_buf.format("{:08X} {} {}\n", std::byteswap(c->ident.grfid), c->ident.md5sum, c->filename);
 			}

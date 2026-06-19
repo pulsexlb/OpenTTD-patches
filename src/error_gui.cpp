@@ -327,7 +327,7 @@ void ShowErrorMessage(EncodedString &&summary_msg, EncodedString &&detailed_msg,
 
 	bool no_timeout = wl == WarningLevel::Critical;
 
-	if (_game_mode == GM_BOOTSTRAP) return;
+	if (_game_mode == GameMode::Bootstrap) return;
 	if (_settings_client.gui.errmsg_duration == 0 && !no_timeout) return;
 
 	if (company != CompanyID::Invalid() && !Company::IsValidID(company)) company = CompanyID::Invalid();

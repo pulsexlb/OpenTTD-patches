@@ -937,12 +937,12 @@ bool SettingDesc::IsEditable(bool do_command) const
 {
 	if (!do_command && !this->flags.Test(SettingFlag::NoNetworkSync) && IsNonAdminNetworkClient() && !this->flags.Test(SettingFlag::PerCompany)) return false;
 	if (do_command && this->flags.Test(SettingFlag::NoNetworkSync)) return false;
-	if (this->flags.Test(SettingFlag::NetworkOnly) && !_networking && _game_mode != GM_MENU) return false;
+	if (this->flags.Test(SettingFlag::NetworkOnly) && !_networking && _game_mode != GameMode::Menu) return false;
 	if (this->flags.Test(SettingFlag::NoNetwork) && _networking) return false;
 	if (this->flags.Test(SettingFlag::NewgameOnly) &&
-			(_game_mode == GM_NORMAL ||
-			(_game_mode == GM_EDITOR && !this->flags.Test(SettingFlag::SceneditToo)))) return false;
-	if (this->flags.Test(SettingFlag::SceneditOnly) && _game_mode != GM_EDITOR) return false;
+			(_game_mode == GameMode::Normal ||
+			(_game_mode == GameMode::Editor && !this->flags.Test(SettingFlag::SceneditToo)))) return false;
+	if (this->flags.Test(SettingFlag::SceneditOnly) && _game_mode != GameMode::Editor) return false;
 	return true;
 }
 
@@ -1854,7 +1854,7 @@ SaveToConfigFlags ConfigSaveFlagsFor(const SettingDesc *sd)
 SaveToConfigFlags ConfigSaveFlagsUsingGameSettingsFor(const SettingDesc *sd)
 {
 	SaveToConfigFlags flags = ConfigSaveFlagsFor(sd);
-	if (_game_mode != GM_MENU && !sd->save.global) flags &= ~STCF_GENERIC;
+	if (_game_mode != GameMode::Menu && !sd->save.global) flags &= ~STCF_GENERIC;
 	return flags;
 }
 
@@ -1950,7 +1950,7 @@ bool SetSettingValue(const IntSettingDesc *sd, int32_t value, bool force_newgame
 {
 	const IntSettingDesc *setting = sd->AsIntSetting();
 	if (setting->flags.Test(SettingFlag::PerCompany)) {
-		if (Company::IsValidID(_local_company) && _game_mode != GM_MENU) {
+		if (Company::IsValidID(_local_company) && _game_mode != GameMode::Menu) {
 			return Command<Commands::ChangeCompanySetting>::Post(setting->name, value);
 		} else if (setting->flags.Test(SettingFlag::NoNewgame)) {
 			return false;
@@ -1965,9 +1965,9 @@ bool SetSettingValue(const IntSettingDesc *sd, int32_t value, bool force_newgame
 	 * of settings because changing a company-based setting in a game also
 	 * changes its defaults. At least that is the convention we have chosen */
 	bool no_newgame = setting->flags.Test(SettingFlag::NoNewgame);
-	if (no_newgame && _game_mode == GM_MENU) return false;
+	if (no_newgame && _game_mode == GameMode::Menu) return false;
 	if (setting->flags.Test(SettingFlag::NoNetworkSync)) {
-		if (_game_mode != GM_MENU && !no_newgame) {
+		if (_game_mode != GameMode::Menu && !no_newgame) {
 			setting->ChangeValue(&_settings_newgame, value, ConfigSaveFlagsFor(setting));
 		}
 		setting->ChangeValue(&GetGameSettings(), value, ConfigSaveFlagsUsingGameSettingsFor(setting));
@@ -2036,7 +2036,7 @@ bool SetSettingValue(const StringSettingDesc *sd, std::string_view value, bool f
 		value = {};
 	}
 
-	const void *object = (_game_mode == GM_MENU || force_newgame) ? &_settings_newgame : &_settings_game;
+	const void *object = (_game_mode == GameMode::Menu || force_newgame) ? &_settings_newgame : &_settings_game;
 	sd->AsStringSetting()->ChangeValue(object, std::string{value}, object == &_settings_newgame ? ConfigSaveFlagsFor(sd) : STCF_NONE);
 	return true;
 }
@@ -2074,13 +2074,13 @@ void IConsoleSetSetting(std::string_view name, std::string_view value, bool forc
 {
 	const SettingDesc *sd = GetSettingFromName(name);
 	/* Company settings are not in "list_settings", so don't try to modify them. */
-	if (sd == nullptr || sd->flags.Test(SettingFlag::PerCompany) || (sd->flags.Test(SettingFlag::NoNewgame) && (_game_mode == GM_MENU || force_newgame))) {
+	if (sd == nullptr || sd->flags.Test(SettingFlag::PerCompany) || (sd->flags.Test(SettingFlag::NoNewgame) && (_game_mode == GameMode::Menu || force_newgame))) {
 		IConsolePrint(CC_ERROR, "'{}' is an unknown setting.", name);
 		return;
 	}
 
 	const auto old_game_mode = _game_mode;
-	if (force_newgame) _game_mode = GM_MENU;
+	if (force_newgame) _game_mode = GameMode::Menu;
 	auto guard = scope_guard([force_newgame, old_game_mode]() {
 		if (force_newgame) _game_mode = old_game_mode;
 	});
@@ -2124,12 +2124,12 @@ void IConsoleGetSetting(std::string_view name, bool force_newgame)
 {
 	const SettingDesc *sd = GetSettingFromName(name);
 	/* Company settings are not in "list_settings", so don't try to read them. */
-	if (sd == nullptr || sd->flags.Test(SettingFlag::PerCompany) || (sd->flags.Test(SettingFlag::NoNewgame) && (_game_mode == GM_MENU || force_newgame))) {
+	if (sd == nullptr || sd->flags.Test(SettingFlag::PerCompany) || (sd->flags.Test(SettingFlag::NoNewgame) && (_game_mode == GameMode::Menu || force_newgame))) {
 		IConsolePrint(CC_ERROR, "'{}' is an unknown setting.", name);
 		return;
 	}
 
-	const void *object = (_game_mode == GM_MENU || force_newgame) ? &_settings_newgame : &_settings_game;
+	const void *object = (_game_mode == GameMode::Menu || force_newgame) ? &_settings_newgame : &_settings_game;
 
 	if (sd->IsStringSetting()) {
 		IConsolePrint(CC_WARNING, "Current value for '{}' is: '{}'", name, sd->AsStringSetting()->Read(object));
@@ -2174,7 +2174,7 @@ static void IConsoleListSettingsTable(const SettingTable &table, std::string_vie
 	for (auto &sd : table) {
 		if (!SlIsObjectCurrentlyValid(sd->save.version_from, sd->save.version_to, sd->save.ext_feature_test)) continue;
 		if (!prefilter.empty() && std::string_view(sd->name).find(prefilter) == std::string::npos) continue;
-		if (sd->flags.Test(SettingFlag::NoNewgame) && _game_mode == GM_MENU) continue;
+		if (sd->flags.Test(SettingFlag::NoNewgame) && _game_mode == GameMode::Menu) continue;
 		format_buffer value;
 		sd->FormatValue(value, &GetGameSettings());
 		if (show_defaults && sd->IsIntSetting()) {
@@ -2554,7 +2554,7 @@ static bool IsSignedVarMemType(VarType vt)
 
 void SetupTimeSettings()
 {
-	_settings_time = (_game_mode == GM_MENU || _settings_client.gui.override_time_settings) ? _settings_client.gui : _settings_game.game_time;
+	_settings_time = (_game_mode == GameMode::Menu || _settings_client.gui.override_time_settings) ? _settings_client.gui : _settings_game.game_time;
 }
 
 std::initializer_list<SettingTable> GetSaveLoadSettingsTables()

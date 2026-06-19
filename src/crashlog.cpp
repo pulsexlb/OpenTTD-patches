@@ -223,10 +223,10 @@ void CrashLog::LogConfiguration(format_target_ctrl &buffer) const
 {
 	auto mode_name = []() -> const char * {
 		switch (_game_mode) {
-			case GM_MENU: return "MENU";
-			case GM_NORMAL: return "NORMAL";
-			case GM_EDITOR: return "EDITOR";
-			case GM_BOOTSTRAP:  return "BOOTSTRAP";
+			case GameMode::Menu: return "Menu";
+			case GameMode::Normal: return "Normal";
+			case GameMode::Editor: return "Editor";
+			case GameMode::Bootstrap:  return "Bootstrap";
 			default: return "-";
 		};
 	};
@@ -262,7 +262,7 @@ void CrashLog::LogConfiguration(format_target_ctrl &buffer) const
 			video_driver == nullptr ? "none" : video_driver->GetInfoString()
 	);
 	buffer.format(" Game mode:    {}", mode_name());
-	if (_switch_mode != SM_NONE) buffer.format(", SM: {}", _switch_mode);
+	if (_switch_mode != SwitchMode::None) buffer.format(", SM: {}", _switch_mode);
 	if (HasModalProgress()) buffer.append(", HMP");
 	buffer.append("\n\n");
 
@@ -903,7 +903,7 @@ void CrashLog::CloseCrashLogFile(const char *end)
 
 void CrashLog::SendSurvey() const
 {
-	if (_game_mode == GM_NORMAL) {
+	if (_game_mode == GameMode::Normal) {
 		_survey.Transmit(NetworkSurveyHandler::Reason::Crash, true);
 	}
 }

@@ -169,7 +169,7 @@ public:
 
 		this->LowerWidget(WID_BT_MODE_NORMAL);
 		/* Show scenario editor tools in editor */
-		if (_game_mode != GM_EDITOR) {
+		if (_game_mode != GameMode::Editor) {
 			this->GetWidget<NWidgetStacked>(WID_BT_SE_PANE)->SetDisplayedPlane(SZSP_HORIZONTAL);
 		}
 		this->FinishInitNested(window_number);
@@ -259,7 +259,7 @@ public:
 
 	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override
 	{
-		if (_game_mode != GM_EDITOR && this->mode == PM_NORMAL) {
+		if (_game_mode != GameMode::Editor && this->mode == PM_NORMAL) {
 			VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_PLANT_TREES);
 		} else {
 			VpStartDragging(DDSP_PLANT_TREES);
@@ -290,7 +290,7 @@ public:
 				Command<Commands::PlantTree>::Post(STR_ERROR_CAN_T_PLANT_TREE_HERE, end_tile, start_tile, this->trees_to_plant, 1, _ctrl_pressed);
 			}
 		} else {
-			if (_game_mode != GM_EDITOR && pt.x != -1 && select_proc == DDSP_PLANT_TREES && this->trees_to_plant.Any()) {
+			if (_game_mode != GameMode::Editor && pt.x != -1 && select_proc == DDSP_PLANT_TREES && this->trees_to_plant.Any()) {
 				SendSyncTrees(this->last_tile);
 			}
 
@@ -377,6 +377,6 @@ static WindowDesc _build_trees_desc(__FILE__, __LINE__,
 
 void ShowBuildTreesToolbar()
 {
-	if (_game_mode != GM_EDITOR && !Company::IsValidID(_local_company)) return;
+	if (_game_mode != GameMode::Editor && !Company::IsValidID(_local_company)) return;
 	AllocateWindowDescFront<BuildTreesWindow>(_build_trees_desc, 0);
 }

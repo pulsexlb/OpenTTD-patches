@@ -378,13 +378,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 	};
 
 	for (DiagDirection i = DIAGDIR_BEGIN; i < DIAGDIR_END; i++) {
-		static const uint edge_corners[] = {
-			1 << CORNER_N | 1 << CORNER_E, // DIAGDIR_NE
-			1 << CORNER_S | 1 << CORNER_E, // DIAGDIR_SE
-			1 << CORNER_S | 1 << CORNER_W, // DIAGDIR_SW
-			1 << CORNER_N | 1 << CORNER_W, // DIAGDIR_NW
-		};
-		SpriteID pylon_base = get_pylon_sprite(i, halftile_corner != CORNER_INVALID && HasBit(edge_corners[i], halftile_corner));
+		SpriteID pylon_base = get_pylon_sprite(i, halftile_corner != CORNER_INVALID && HasBit(InclinedSlope(i), halftile_corner));
 		TileIndex neighbour = ti->tile + TileOffsByDiagDir(i);
 		int elevation = GetPCPElevation(ti->tile, i);
 

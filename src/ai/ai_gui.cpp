@@ -154,7 +154,7 @@ struct AIConfigWindow : public Window {
 	 */
 	static bool IsEditable(CompanyID slot)
 	{
-		if (_game_mode != GM_NORMAL) {
+		if (_game_mode != GameMode::Normal) {
 			return slot > 0 && slot < MAX_COMPANIES;
 		}
 		return slot < MAX_COMPANIES && !Company::IsValidID(slot);
@@ -167,7 +167,7 @@ struct AIConfigWindow : public Window {
 	 */
 	std::string GetSlotText(CompanyID cid) const
 	{
-		if ((_game_mode != GM_NORMAL && cid == 0) || (_game_mode == GM_NORMAL && Company::IsValidHumanID(cid))) return GetString(STR_AI_CONFIG_HUMAN_PLAYER);
+		if ((_game_mode != GameMode::Normal && cid == 0) || (_game_mode == GameMode::Normal && Company::IsValidHumanID(cid))) return GetString(STR_AI_CONFIG_HUMAN_PLAYER);
 		if (const AIInfo *info = AIConfig::GetConfig(cid)->GetInfo(); info != nullptr) return info->GetName();
 		return GetString(STR_AI_CONFIG_RANDOM_AI);
 	}
@@ -192,7 +192,7 @@ struct AIConfigWindow : public Window {
 			case WID_AIC_LIST: {
 				Rect tr = r.Shrink(WidgetDimensions::scaled.matrix);
 				int max_slot = GetGameSettings().difficulty.max_no_competitors;
-				if (_game_mode == GM_NORMAL) {
+				if (_game_mode == GameMode::Normal) {
 					for (const Company *c : Company::Iterate()) {
 						if (c->is_ai) max_slot--;
 					}

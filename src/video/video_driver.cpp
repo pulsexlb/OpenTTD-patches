@@ -149,7 +149,7 @@ void VideoDriver::Tick()
 
 			this->InputLoop();
 
-			const bool fast_forward_key_active = this->fast_forward_key_pressed && !_networking && _game_mode != GM_MENU &&
+			const bool fast_forward_key_active = this->fast_forward_key_pressed && !_networking && _game_mode != GameMode::Menu &&
 					!FocusedWindowSuppressesTabToFastForward();
 
 			/* Check if the fast-forward button is still pressed. */
@@ -171,7 +171,7 @@ void VideoDriver::Tick()
 			::InputLoop();
 
 			/* Prevent drawing when switching mode, as windows can be removed when they should still appear. */
-			if (_game_mode == GM_BOOTSTRAP || _switch_mode == SM_NONE || HasModalProgress()) {
+			if (_game_mode == GameMode::Bootstrap || _switch_mode == SwitchMode::None || HasModalProgress()) {
 				::UpdateWindows();
 			}
 

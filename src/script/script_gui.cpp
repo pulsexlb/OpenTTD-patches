@@ -171,16 +171,16 @@ struct ScriptListWindow : public Window {
 	 */
 	void ChangeScript()
 	{
-		if (_game_mode == GM_NORMAL && slot == OWNER_DEITY) Game::Uninitialize(false);
+		if (_game_mode == GameMode::Normal && slot == OWNER_DEITY) Game::Uninitialize(false);
 		if (this->selected == -1) {
 			GetConfig(this->slot)->Change(std::nullopt);
 		} else {
 			ScriptInfoList::const_iterator it = this->info_list->cbegin();
 			std::advance(it, this->selected);
 			GetConfig(slot)->Change(it->second->GetName(), it->second->GetVersion());
-			if (_game_mode == GM_NORMAL && slot == OWNER_DEITY) Game::StartNew();
+			if (_game_mode == GameMode::Normal && slot == OWNER_DEITY) Game::StartNew();
 		}
-		if (_game_mode == GM_EDITOR) {
+		if (_game_mode == GameMode::Editor) {
 			if (this->slot == OWNER_DEITY) {
 				if (Game::GetInstance() != nullptr) Game::ResetInstance();
 				Game::StartNew();
@@ -197,7 +197,7 @@ struct ScriptListWindow : public Window {
 		InvalidateWindowClassesData(WindowClass::ScriptDebug, -1);
 		CloseWindowByClass(WindowClass::QueryString);
 		InvalidateWindowClassesData(WindowClass::Textfile);
-		if (_game_mode == GM_NORMAL && slot == OWNER_DEITY) {
+		if (_game_mode == GameMode::Normal && slot == OWNER_DEITY) {
 			InvalidateWindowData(WindowClass::ScriptDebug, 0, -1);
 			SetWindowClassesDirty(WindowClass::ScriptDebug);
 		}
@@ -239,7 +239,7 @@ struct ScriptListWindow : public Window {
 	 */
 	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
 	{
-		if (_game_mode == GM_NORMAL && Company::IsValidID(this->slot)) {
+		if (_game_mode == GameMode::Normal && Company::IsValidID(this->slot)) {
 			this->Close();
 			return;
 		}
@@ -494,7 +494,7 @@ struct ScriptSettingsWindow : public Window {
 			}
 
 			case WID_SCRS_RESET:
-				this->script_config->ResetEditableSettings(_game_mode == GM_MENU || ((this->slot != OWNER_DEITY) && !Company::IsValidID(this->slot)));
+				this->script_config->ResetEditableSettings(_game_mode == GameMode::Menu || ((this->slot != OWNER_DEITY) && !Company::IsValidID(this->slot)));
 				this->SetDirty();
 				break;
 		}
@@ -557,8 +557,8 @@ struct ScriptSettingsWindow : public Window {
 private:
 	bool IsEditableItem(const ScriptConfigItem &config_item) const
 	{
-		return _game_mode == GM_MENU
-			|| _game_mode == GM_EDITOR
+		return _game_mode == GameMode::Menu
+			|| _game_mode == GameMode::Editor
 			|| ((this->slot != OWNER_DEITY) && !Company::IsValidID(this->slot))
 			|| config_item.flags.Test(ScriptConfigFlag::InGame)
 			|| _settings_client.gui.ai_developer_tools;
@@ -567,7 +567,7 @@ private:
 	void SetValue(int value)
 	{
 		const ScriptConfigItem &config_item = *this->visible_settings[this->clicked_row];
-		if (_game_mode == GM_NORMAL && ((this->slot == OWNER_DEITY) || Company::IsValidID(this->slot)) && !config_item.flags.Test(ScriptConfigFlag::InGame)) return;
+		if (_game_mode == GameMode::Normal && ((this->slot == OWNER_DEITY) || Company::IsValidID(this->slot)) && !config_item.flags.Test(ScriptConfigFlag::InGame)) return;
 		this->script_config->SetSetting(config_item.name, value);
 		this->SetDirty();
 	}
@@ -1189,7 +1189,7 @@ struct ScriptDebugWindow : public Window {
 	 */
 	static EventState ScriptDebugGlobalHotkeys(int hotkey)
 	{
-		if (_game_mode != GM_NORMAL) return ES_NOT_HANDLED;
+		if (_game_mode != GameMode::Normal) return ES_NOT_HANDLED;
 		Window *w = ShowScriptDebugWindow(CompanyID::Invalid());
 		if (w == nullptr) return ES_NOT_HANDLED;
 		return w->OnHotkey(hotkey);

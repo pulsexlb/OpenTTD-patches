@@ -3003,7 +3003,7 @@ void HandleTextInput(std::string_view str, bool marked, std::optional<size_t> ca
  */
 static void HandleAutoscroll()
 {
-	if (_game_mode == GM_MENU || _game_mode == GM_BOOTSTRAP || HasModalProgress()) return;
+	if (_game_mode == GameMode::Menu || _game_mode == GameMode::Bootstrap || HasModalProgress()) return;
 	if (_settings_client.gui.auto_scrolling == VA_DISABLED) return;
 	if (_settings_client.gui.auto_scrolling == VA_MAIN_VIEWPORT_FULLSCREEN && !_fullscreen) return;
 
@@ -3055,7 +3055,7 @@ static const std::chrono::milliseconds TIME_BETWEEN_DOUBLE_CLICK{500}; ///< Time
 
 static void ScrollMainViewport(int x, int y)
 {
-	if (_game_mode != GM_MENU && _game_mode != GM_BOOTSTRAP) {
+	if (_game_mode != GameMode::Menu && _game_mode != GameMode::Bootstrap) {
 		Window *w = GetMainWindow();
 		assert(w);
 
@@ -3101,7 +3101,7 @@ static void HandleKeyScrolling()
 	if (_dirkeys.Any() && !EditBoxInGlobalFocus()) {
 		int factor = _shift_pressed ? 50 : 10;
 
-		if (_game_mode != GM_MENU && _game_mode != GM_BOOTSTRAP) {
+		if (_game_mode != GameMode::Menu && _game_mode != GameMode::Bootstrap) {
 			/* Key scrolling stops following a vehicle. */
 			Window *main_window = GetMainWindow();
 			main_window->viewport->CancelFollow(*main_window);
@@ -3140,7 +3140,7 @@ static void MouseLoop(MouseClick click, int mousewheel)
 	Viewport *vp = IsPtInWindowViewport(w, x, y);
 
 	/* Don't allow any action in a viewport if either in menu or when having a modal progress window */
-	if (vp != nullptr && (_game_mode == GM_MENU || _game_mode == GM_BOOTSTRAP || HasModalProgress())) return;
+	if (vp != nullptr && (_game_mode == GameMode::Menu || _game_mode == GameMode::Bootstrap || HasModalProgress())) return;
 
 	if (mousewheel != 0) {
 		/* Send mousewheel event to window, unless we're scrolling a viewport or the map */
@@ -3441,7 +3441,7 @@ void UpdateWindows()
 		_window_highlight_colour = !_window_highlight_colour;
 	}
 
-	if (_pause_mode.None() || _game_mode == GM_EDITOR || _settings_game.construction.command_pause_level > CommandPauseLevel::NoConstruction) MoveAllTextEffects(delta_ms);
+	if (_pause_mode.None() || _game_mode == GameMode::Editor || _settings_game.construction.command_pause_level > CommandPauseLevel::NoConstruction) MoveAllTextEffects(delta_ms);
 
 	/* Skip the actual drawing on dedicated servers without screen.
 	 * But still empty the invalidation queues above. */

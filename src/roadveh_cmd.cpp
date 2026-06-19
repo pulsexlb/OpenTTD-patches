@@ -249,7 +249,7 @@ void RoadVehUpdateCache(RoadVehicle *v, bool same_length)
 		/* Update visual effect */
 		u->UpdateVisualEffect();
 		ClrBit(u->vcache.cached_veh_flags, VCF_LAST_VISUAL_EFFECT);
-		if (!(HasBit(u->vcache.cached_vis_effect, VE_ADVANCED_EFFECT) && GB(u->vcache.cached_vis_effect, 0, VE_ADVANCED_EFFECT) == VESM_NONE)) last_vis_effect = u;
+		if (!(HasBit(u->vcache.cached_vis_effect, VE_ADVANCED_EFFECT) && GB(u->vcache.cached_vis_effect, 0, VE_ADVANCED_EFFECT) == 0 /* VisualEffectSpawnModel::None */)) last_vis_effect = u;
 
 		/* Update cargo aging period. */
 		if (unlikely(v->GetGRFID() == std::byteswap<uint32_t>(0x44450602))) {

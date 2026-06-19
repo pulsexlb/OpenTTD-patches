@@ -630,7 +630,7 @@ Foundation GetRailFoundation(Slope tileh, TrackBits bits)
 static CommandCost CheckRailSlope(Slope tileh, TrackBits rail_bits, TrackBits existing, TileIndex tile)
 {
 	/* don't allow building on the lower side of a coast */
-	if (GetFloodingBehaviour(tile) != FLOOD_NONE) {
+	if (GetFloodingBehaviour(tile) != FloodingBehaviour::None) {
 		if (!IsSteepSlope(tileh) && ((~_valid_tracks_on_leveled_foundation[tileh] & (rail_bits | existing)) != 0)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
 	}
 
@@ -3155,7 +3155,7 @@ static CommandCost ClearTile_Rail(TileIndex tile, DoCommandFlags flags)
 				CommandCost ret = EnsureNoVehicleOnGround(tile);
 				if (ret.Failed()) return ret;
 
-				if (_game_mode != GM_EDITOR && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
+				if (_game_mode != GameMode::Editor && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
 
 				/* The track was removed, and left a coast tile. Now also clear the water. */
 				if (flags.Test(DoCommandFlag::Execute)) {
@@ -3923,7 +3923,7 @@ void DrawTrackBits(TileInfo *ti, TrackBits track, RailType rt, RailGroundType rg
 	}
 
 	/* PBS debugging, draw reserved tracks darker */
-	if (_game_mode != GM_MENU && _settings_client.gui.show_track_reservation) {
+	if (_game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation) {
 		/* Get reservation, but mask track on halftile slope */
 		TrackBits pbs = (is_bridge ? GetTunnelBridgeReservationTrackBits(ti->tile) : GetRailReservationTrackBits(ti->tile)) & track;
 		if (pbs & TRACK_BIT_X) {
@@ -3961,7 +3961,7 @@ void DrawTrackBits(TileInfo *ti, TrackBits track, RailType rt, RailGroundType rg
 		}
 		DrawGroundSprite(image, pal, &(_halftile_sub_sprite[halftile_corner]));
 
-		if (_game_mode != GM_MENU && _settings_client.gui.show_track_reservation && HasReservedTracks(ti->tile, CornerToTrackBits(halftile_corner))) {
+		if (_game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation && HasReservedTracks(ti->tile, CornerToTrackBits(halftile_corner))) {
 			static const uint8_t _corner_to_track_sprite[] = {3, 1, 2, 0};
 			DrawGroundSprite(_corner_to_track_sprite[halftile_corner] + rti->base_sprites.single_n, PALETTE_CRASH, nullptr, 0, -(int)TILE_HEIGHT);
 		}
@@ -4168,7 +4168,7 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 			}
 		} else {
 			/* PBS debugging, draw reserved tracks darker */
-			if (_game_mode != GM_MENU && _settings_client.gui.show_track_reservation && HasDepotReservation(ti->tile)) {
+			if (_game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation && HasDepotReservation(ti->tile)) {
 				switch (GetRailDepotDirection(ti->tile)) {
 					case DIAGDIR_NE:
 						if (!IsInvisibilitySet(TO_BUILDINGS)) break;
@@ -4678,13 +4678,32 @@ static void ChangeTileOwner_Rail(TileIndex tile, Owner old_owner, Owner new_owne
 	}
 }
 
-static const uint8_t _fractcoords_behind[4] = { 0x8F, 0x8, 0x80, 0xF8 };
-static const uint8_t _fractcoords_enter[4] = { 0x8A, 0x48, 0x84, 0xA8 };
-static const int8_t _deltacoord_leaveoffset[8] = {
-	-1,  0,  1,  0, /* x */
-	 0,  1,  0, -1  /* y */
-};
+/** Coordinates to detect when a train is approaching a depot from behind for each depot direction. */
+static constexpr DiagDirectionIndexArray<Coord2D<uint8_t>> _fractcoords_behind{{{
+	{15, 8}, // NE
+	{8, 0}, // SE
+	{0, 8}, // SW
+	{8, 15}, // NW
+}}};
 
+/** Coordinates where a train should enter a depot for each depot direction. */
+static constexpr DiagDirectionIndexArray<Coord2D<uint8_t>> _fractcoords_enter{{{
+	{10, 8}, // NE
+	{8, 4}, // SE
+	{4, 8}, // SW
+	{8, 10}, // NW
+}}};
+
+/**
+ * Offsets (to be multiplied by length) from the depot enter coordinates where
+ * a train should appear when exiting a depot for each depot direction.
+ */
+static constexpr DiagDirectionIndexArray<Coord2D<int8_t>> _deltacoord_leaveoffset{{{
+	{-1, 0}, // NE
+	{0, 1}, // SE
+	{1, 0}, // SW
+	{0, -1}, // NW
+}}};
 
 /**
  * Compute number of ticks when next wagon will leave a depot.
@@ -4695,13 +4714,13 @@ static const int8_t _deltacoord_leaveoffset[8] = {
 int TicksToLeaveDepot(const Train *v)
 {
 	DiagDirection dir = GetRailDepotDirection(v->tile);
-	int length = v->CalcNextVehicleOffset();
+	int length = v->CalcNextVehicleOffset() + 1;
 
 	switch (dir) {
-		case DIAGDIR_NE: return  ((int)(v->x_pos & 0x0F) - ((_fractcoords_enter[dir] & 0x0F) - (length + 1)));
-		case DIAGDIR_SE: return -((int)(v->y_pos & 0x0F) - ((_fractcoords_enter[dir] >> 4)   + (length + 1)));
-		case DIAGDIR_SW: return -((int)(v->x_pos & 0x0F) - ((_fractcoords_enter[dir] & 0x0F) + (length + 1)));
-		case DIAGDIR_NW: return  ((int)(v->y_pos & 0x0F) - ((_fractcoords_enter[dir] >> 4)   - (length + 1)));
+		case DIAGDIR_NE: return  (static_cast<int>(v->x_pos & TILE_UNIT_MASK) - (_fractcoords_enter[dir].x - length));
+		case DIAGDIR_SE: return -(static_cast<int>(v->y_pos & TILE_UNIT_MASK) - (_fractcoords_enter[dir].y + length));
+		case DIAGDIR_SW: return -(static_cast<int>(v->x_pos & TILE_UNIT_MASK) - (_fractcoords_enter[dir].x + length));
+		case DIAGDIR_NW: return  (static_cast<int>(v->y_pos & TILE_UNIT_MASK) - (_fractcoords_enter[dir].y - length));
 		default: NOT_REACHED();
 	}
 }
@@ -4739,7 +4758,9 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 	/* Depot direction. */
 	const DiagDirection dir = GetRailDepotDirection(tile);
 
-	const uint8_t fract_coord = (x & 0xF) + ((y & 0xF) << 4);
+	const Coord2D<uint8_t> fract_coord{
+		static_cast<uint8_t>(x & TILE_UNIT_MASK),
+		static_cast<uint8_t>(y & TILE_UNIT_MASK)};
 
 	/* Make sure a train is not entering the tile from behind. */
 	if (_fractcoords_behind[dir] == fract_coord) return VehicleEnterTileState::CannotEnter;
@@ -4747,13 +4768,11 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 	/* Leaving depot? */
 	if (v->GetMovingDirection() == DiagDirToDir(dir)) {
 		/* Calculate the point where the following wagon should be activated. */
-		int length = v->CalcNextVehicleOffset();
+		int length = v->CalcNextVehicleOffset() + 1;
 
-		uint8_t fract_coord_leave =
-			((_fractcoords_enter[dir] & 0x0F) + // x
-				(length + 1) * _deltacoord_leaveoffset[dir]) +
-			(((_fractcoords_enter[dir] >> 4) +  // y
-				((length + 1) * _deltacoord_leaveoffset[dir + 4])) << 4);
+		Coord2D<uint8_t> fract_coord_leave{
+			static_cast<uint8_t>(_fractcoords_enter[dir].x + length * _deltacoord_leaveoffset[dir].x),
+			static_cast<uint8_t>(_fractcoords_enter[dir].y + length * _deltacoord_leaveoffset[dir].y)};
 
 		if (fract_coord_leave == fract_coord) {
 			/* Leave the depot. */
@@ -4850,7 +4869,7 @@ static CommandCost TestAutoslopeOnRailTile(TileIndex tile, DoCommandFlags flags,
 	if (tileh_old != tileh_new) {
 		/* If there is flat water on the lower halftile add the cost for clearing it */
 		if (GetRailGroundType(tile) == RailGroundType::HalfTileWater && IsSlopeWithOneCornerRaised(tileh_old)) {
-			if (_game_mode != GM_EDITOR && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
+			if (_game_mode != GameMode::Editor && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
 			cost.AddCost(_price[Price::ClearWater]);
 		}
 		if (flags.Test(DoCommandFlag::Execute)) SetRailGroundType(tile, RailGroundType::Barren);
@@ -4872,7 +4891,7 @@ static CommandCost TerraformTile_Rail(TileIndex tile, DoCommandFlags flags, int 
 			return CommandCost(STR_ERROR_SHIP_IN_THE_WAY);
 		}
 
-		if (was_water && _game_mode != GM_EDITOR && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
+		if (was_water && _game_mode != GameMode::Editor && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
 
 		/* First test autoslope. However if it succeeds we still have to test the rest, because non-autoslope terraforming is cheaper. */
 		CommandCost autoslope_result = TestAutoslopeOnRailTile(tile, flags, z_old, tileh_old, z_new, tileh_new, rail_bits);

@@ -619,7 +619,7 @@ CommandCost CmdLandscapeClear(DoCommandFlags flags, TileIndex tile)
 		if (flags.Test(DoCommandFlag::Auto) && GetWaterClass(tile) == WaterClass::Canal) return CommandCost(STR_ERROR_MUST_DEMOLISH_CANAL_FIRST);
 
 		const bool is_canal = GetWaterClass(tile) == WaterClass::Canal;
-		if (!is_canal && _game_mode != GM_EDITOR && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
+		if (!is_canal && _game_mode != GameMode::Editor && !_settings_game.construction.enable_remove_water && !flags.Test(DoCommandFlag::AllowRemoveWater)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
 
 		/* Buoy tiles are special as they can be cleared by anyone, but the underlying tile shouldn't be cleared if it has a different owner. */
 		if (!IsBuoyTile(tile) || GetTileOwner(tile) == _current_company) {
@@ -823,7 +823,7 @@ void RunAuxiliaryTileLoop()
 
 		if (IsFloodingTypeTile(tile) && !IsNonFloodingWaterTile(tile)) {
 			FloodingBehaviour fb = GetFloodingBehaviour(tile);
-			if (fb != FLOOD_NONE) TileLoopWaterFlooding(fb, tile);
+			if (fb != FloodingBehaviour::None) TileLoopWaterFlooding(fb, tile);
 		}
 
 		tile = next;

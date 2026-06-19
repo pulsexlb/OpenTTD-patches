@@ -568,7 +568,7 @@ void IncreaseDate()
 	/* increase day, and check if a new day is there? */
 	_tick_counter++;
 
-	if (_game_mode == GM_MENU || _game_mode == GM_BOOTSTRAP) return;
+	if (_game_mode == GameMode::Menu || _game_mode == GameMode::Bootstrap) return;
 
 	IncreaseCalendarDate();
 	IncreaseEconomyDate();

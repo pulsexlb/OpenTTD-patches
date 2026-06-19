@@ -767,7 +767,7 @@ static WindowDesc _cheats_desc(__FILE__, __LINE__,
 
 bool CheatWindowMayBeShown()
 {
-	return _game_mode != GM_EDITOR && (!IsNonAdminNetworkClient() || _settings_game.difficulty.money_cheat_in_multiplayer);
+	return _game_mode != GameMode::Editor && (!IsNonAdminNetworkClient() || _settings_game.difficulty.money_cheat_in_multiplayer);
 }
 
 /** Open cheat window. */

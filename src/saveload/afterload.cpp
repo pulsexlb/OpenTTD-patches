@@ -1060,7 +1060,7 @@ bool AfterLoadGame()
 	AfterLoadTemplateVehicles();
 
 	/* make sure there is a town in the game */
-	if (_game_mode == GM_NORMAL && Town::GetNumItems() == 0) {
+	if (_game_mode == GameMode::Normal && Town::GetNumItems() == 0) {
 		SetSaveLoadError(STR_ERROR_NO_TOWN_IN_SCENARIO);
 		/* Restore the signals */
 		ResetSignalHandlers();
@@ -4125,7 +4125,7 @@ bool AfterLoadGame()
 		}
 	}
 
-	if (_file_to_saveload.ftype.abstract == AbstractFileType::Scenario && _game_mode == GM_NORMAL) {
+	if (_file_to_saveload.ftype.abstract == AbstractFileType::Scenario && _game_mode == GameMode::Normal) {
 		/* Apply the new-game cargo scale values for scenarios */
 		_settings_game.economy.town_cargo_scale = _settings_newgame.economy.town_cargo_scale;
 		_settings_game.economy.industry_cargo_scale = _settings_newgame.economy.industry_cargo_scale;

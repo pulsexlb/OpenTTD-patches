@@ -2090,7 +2090,7 @@ static void FormatString(StringBuilder builder, std::string_view str_arg, String
 				}
 
 				case SCC_UNITS_DAYS_OR_SECONDS: { // {UNITS_DAYS_OR_SECONDS}
-					uint8_t realtime = EconTime::UsingWallclockUnits(_game_mode == GM_MENU);
+					uint8_t realtime = EconTime::UsingWallclockUnits(_game_mode == GameMode::Menu);
 					const auto &x = _units_time_days_or_seconds[realtime];
 					int64_t duration = args.GetNextParameter<int64_t>();
 					if (realtime) duration *= DayLengthFactor();
@@ -2100,7 +2100,7 @@ static void FormatString(StringBuilder builder, std::string_view str_arg, String
 				}
 
 				case SCC_UNITS_MONTHS_OR_MINUTES: { // {UNITS_MONTHS_OR_MINUTES}
-					uint8_t realtime = EconTime::UsingWallclockUnits(_game_mode == GM_MENU);
+					uint8_t realtime = EconTime::UsingWallclockUnits(_game_mode == GameMode::Menu);
 					if (realtime > 0 && ReplaceWallclockMinutesUnit()) realtime++;
 					const auto &x = _units_time_months_or_minutes[realtime];
 					auto tmp_params = MakeParameters(x.c.ToDisplay(args.GetNextParameter<int64_t>()), x.decimal_places);
@@ -2109,7 +2109,7 @@ static void FormatString(StringBuilder builder, std::string_view str_arg, String
 				}
 
 				case SCC_UNITS_YEARS_OR_PERIODS: { // {UNITS_YEARS_OR_PERIODS}
-					uint8_t realtime = EconTime::UsingWallclockUnits(_game_mode == GM_MENU);
+					uint8_t realtime = EconTime::UsingWallclockUnits(_game_mode == GameMode::Menu);
 					const auto &x = _units_time_years_or_periods[realtime];
 					auto tmp_params = MakeParameters(x.c.ToDisplay(args.GetNextParameter<int64_t>()), x.decimal_places);
 					FormatStringDirect(builder, GetStringPtr(x.s), tmp_params);
@@ -2117,7 +2117,7 @@ static void FormatString(StringBuilder builder, std::string_view str_arg, String
 				}
 
 				case SCC_UNITS_YEARS_OR_MINUTES: { // {UNITS_YEARS_OR_MINUTES}
-					uint8_t realtime = EconTime::UsingWallclockUnits(_game_mode == GM_MENU);
+					uint8_t realtime = EconTime::UsingWallclockUnits(_game_mode == GameMode::Menu);
 					if (realtime > 0 && ReplaceWallclockMinutesUnit()) realtime++;
 					const auto &x = _units_time_years_or_minutes[realtime];
 					auto tmp_params = MakeParameters(x.c.ToDisplay(args.GetNextParameter<int64_t>()), x.decimal_places);

@@ -274,7 +274,7 @@ CommandCost CmdTerraformLand(DoCommandFlags flags, TileIndex tile, Slope slope, 
 
 			/* Check tiletype-specific things, and add extra-cost */
 			Backup<bool> old_generating_world(_generating_world, FILE_LINE);
-			if (_game_mode == GM_EDITOR) old_generating_world.Change(true); // used to create green terraformed land
+			if (_game_mode == GameMode::Editor) old_generating_world.Change(true); // used to create green terraformed land
 			DoCommandFlags tile_flags = flags | DoCommandFlag::Auto | DoCommandFlag::ForceClearTile;
 			if (pass == 0) {
 				tile_flags.Reset(DoCommandFlag::Execute);

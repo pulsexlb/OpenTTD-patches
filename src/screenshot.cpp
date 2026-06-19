@@ -163,7 +163,7 @@ static const char *MakeScreenshotName(std::string_view default_fn, std::string_v
 	bool generate = _screenshot_name.empty();
 
 	if (generate) {
-		if (_game_mode == GM_EDITOR || _game_mode == GM_MENU || _local_company == COMPANY_SPECTATOR) {
+		if (_game_mode == GameMode::Editor || _game_mode == GameMode::Menu || _local_company == COMPANY_SPECTATOR) {
 			_screenshot_name = default_fn;
 		} else {
 			_screenshot_name = GenerateDefaultSaveName();
