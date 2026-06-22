@@ -2759,6 +2759,38 @@ bool GenerateTowns(TownLayout layout, std::optional<uint> number)
 	return false;  // we are still without a town? we failed, simply
 }
 
+/**
+ * Try to generate a named town around a tile.
+ *
+ * @param target_tile Target tile.
+ * @param townnameparts The town name.
+ * @param size The preset size of the town.
+ * @param city Should we create a city?
+ * @param layout The road layout of the town.
+ * @param name Town name.
+ * @return town or nullptr.
+ */
+Town *TryGenerateNamedTownAroundTile(TileIndex target_tile, TownSize size, bool city, TownLayout layout, std::string_view name)
+{
+	if (!Town::CanAllocateItem() || name.empty() || Utf8StringLength(name) >= MAX_LENGTH_TOWN_NAME_CHARS || !IsUniqueTownName(name)) {
+		return nullptr;
+	}
+
+	/* Try founding on the target tile, and if that doesn't work, find the nearest suitable tile up to 16 tiles away.
+	 * The target might be on water, blocked somehow, or on a steep slope that can't be terraformed by the founding command. */
+	for (auto tile : SpiralTileSequence(target_tile, 16, 0, 0)) {
+		CommandCost ret = TownCanBePlacedHere(tile, city, false);
+		if (ret.Failed()) continue;
+
+		Town *t = Town::Create(tile);
+		t->name = name;
+		DoCreateTown(t, tile, 0, size, city, layout, true);
+		return t;
+	}
+
+	return nullptr;
+}
+
 
 /**
  * Returns the bit corresponding to the town zone of the specified tile

@@ -45,6 +45,7 @@
 #include "station_func.h"
 #include "town_cmd.h"
 #include "signs_cmd.h"
+#include "road_cmd.h"
 
 #include "table/strings.h"
 
@@ -454,6 +455,12 @@ void LoadTownData()
 		return;
 	}
 
+	AutoRestoreBackup old_generating_world(_generating_world, true);
+	bool road_pending = UpdateNearestTownForRoadTiles(true);
+	auto guard = scope_guard([road_pending]() {
+		if (road_pending) UpdateNearestTownForRoadTiles(false);
+	});
+
 	std::vector<std::pair<Town *, uint> > towns;
 	uint failed_towns = 0;
 
@@ -519,27 +526,17 @@ void LoadTownData()
 			default: NOT_REACHED();
 		}
 
-		TownID town_id = TownID::Invalid(); // The TownID of the town in OpenTTD. Not imported, but set during the founding process and stored here for convenience.
-		/* Try founding on the target tile, and if that doesn't work, find the nearest suitable tile up to 16 tiles away.
-		 * The target might be on water, blocked somehow, or on a steep slope that can't be terraformed by the founding command. */
-		for (auto tile : SpiralTileSequence(target_tile, 16, 0, 0)) {
-			CommandCost result = Command<Commands::FoundTown>::Do(DoCommandFlag::Execute, tile, TSZ_SMALL, is_city, _settings_game.economy.town_layout, false, 0, name);
-			auto town_result = result.GetResultData<TownID>();
-			if (town_result.has_value()) {
-				town_id = *town_result;
-				break;
-			}
-		}
+		Town *t = TryGenerateNamedTownAroundTile(target_tile, TSZ_SMALL, is_city, _settings_game.economy.town_layout, name);
 
 		/* If we still fail to found the town, we'll create a sign at the intended location and tell the player how many towns we failed to create in an error message.
 		 * This allows the player to diagnose a heightmap misalignment, if towns end up in the sea, or place towns manually, if in rough terrain. */
-		if (town_id == TownID::Invalid()) {
+		if (t == nullptr) {
 			Command<Commands::PlaceSign>::Post(target_tile, name);
 			failed_towns++;
 			continue;
 		}
 
-		towns.emplace_back(std::make_pair(Town::Get(town_id), population));
+		towns.emplace_back(std::make_pair(t, population));
 	}
 
 	/* If we couldn't found a town (or multiple), display a message to the player with the number of failed towns. */
