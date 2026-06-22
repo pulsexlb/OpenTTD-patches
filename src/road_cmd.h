@@ -16,7 +16,7 @@
 #include "town_type.h"
 
 void DrawRoadDepotSprite(int x, int y, DiagDirection dir, RoadType rt);
-void UpdateNearestTownForRoadTiles(bool invalidate);
+bool UpdateNearestTownForRoadTiles(bool invalidate);
 
 enum class BuildRoadFlags : uint8_t {
 	None                  = 0,         ///< No flag set.

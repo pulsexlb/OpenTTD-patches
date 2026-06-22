@@ -2441,7 +2441,7 @@ CommandCost CmdFoundTown(DoCommandFlags flags, TileIndex tile, TownSize size, bo
 			_record_house_rect = { (int)Map::SizeX(), (int)Map::SizeY(), 0, 0 };
 		}
 		Backup<bool> old_generating_world(_generating_world, true, FILE_LINE);
-		UpdateNearestTownForRoadTiles(true);
+		bool road_pending = UpdateNearestTownForRoadTiles(true);
 		Town *t;
 		if (random_location) {
 			t = CreateRandomTown(20, townnameparts, size, city, layout);
@@ -2450,7 +2450,7 @@ CommandCost CmdFoundTown(DoCommandFlags flags, TileIndex tile, TownSize size, bo
 			DoCreateTown(t, tile, townnameparts, size, city, layout, true);
 		}
 
-		UpdateNearestTownForRoadTiles(false);
+		if (road_pending) UpdateNearestTownForRoadTiles(false);
 		old_generating_world.Restore();
 
 		if (t == nullptr) return CommandCost(STR_ERROR_NO_SPACE_FOR_TOWN);
