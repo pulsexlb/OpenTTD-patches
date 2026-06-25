@@ -137,7 +137,7 @@ extern btree::btree_map<uint64_t, Money> _cargo_packet_deferred_payments;
 			assert_msg(st != nullptr, "{}", VehicleInfoDumper(v));
 			for (CargoPacket *cp : iter.second) {
 				st->goods[v->cargo_type].CreateData().cargo.AfterLoadIncreaseReservationCount(cp->count);
-				v->cargo.Append(cp, VehicleCargoList::MTA_LOAD);
+				v->cargo.Append(cp, VehicleCargoList::MoveToAction::Load);
 				if (cp->source_xy != INVALID_TILE) {
 					cp->UpdateLoadingTile(cp->source_xy);
 				}

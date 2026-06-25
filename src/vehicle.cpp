@@ -2934,15 +2934,20 @@ VehicleOrderID Vehicle::GetFirstWaitingLocation(bool require_wait_timetabled) co
  */
 GetNewVehiclePosResult GetNewVehiclePos(const Vehicle *v)
 {
-	static const int8_t _delta_coord[16] = {
-		-1,-1,-1, 0, 1, 1, 1, 0, /* x */
-		-1, 0, 1, 1, 1, 0,-1,-1, /* y */
-	};
+	static constexpr DirectionIndexArray<Coord2D<int8_t>> delta_coord{{{
+		{-1, -1}, // N
+		{-1, 0}, // NE
+		{-1, 1}, // E
+		{0, 1}, // SE
+		{1, 1}, // S
+		{1, 0}, // SW
+		{1, -1}, // W
+		{0, -1}, // NW
+	}}};
 
-	Direction dir = v->GetMovingDirection();
-
-	int x = v->x_pos + _delta_coord[dir];
-	int y = v->y_pos + _delta_coord[dir + 8];
+	const Coord2D<int8_t> &coord = delta_coord[v->GetMovingDirection()];
+	int x = v->x_pos + coord.x;
+	int y = v->y_pos + coord.y;
 
 	GetNewVehiclePosResult gp;
 	gp.x = x;
@@ -3538,7 +3543,7 @@ void Vehicle::CancelReservation(StationID next, Station *st)
 {
 	for (Vehicle *v = this; v != nullptr; v = v->next) {
 		VehicleCargoList &cargo = v->cargo;
-		if (cargo.ActionCount(VehicleCargoList::MTA_LOAD) > 0) {
+		if (cargo.ActionCount(VehicleCargoList::MoveToAction::Load) > 0) {
 			Debug(misc, 1, "cancelling cargo reservation");
 			cargo.Return(UINT_MAX, &st->goods[v->cargo_type].CreateData().cargo, next, v->tile);
 		}
@@ -5077,4 +5082,63 @@ bool VehiclesHaveSameOrderList(const Vehicle *v1, const Vehicle *v2)
 		o1 = v1->orders->GetNextNoWrap(o1);
 		o2 = v2->orders->GetNextNoWrap(o2);
 	}
+}
+
+/** Vehicle sub-coordinate data for moving into a new tile. */
+struct VehicleSubcoordData : Coord2D<uint8_t> {
+	Direction dir = INVALID_DIR; ///< new direction.
+};
+
+/**
+ * Table of subtile coordinates and direction for each combination of chosen track and tile enter direction.
+ * Combinations that are not possible result in INVALID_DIR.
+ */
+static constexpr DiagDirectionIndexArray<TrackIndexArray<VehicleSubcoordData>> _vehicle_subcoord{{{
+	{{{ // NE
+		{{15, 8}, DIR_NE}, // TRACK_X
+		{}, // TRACK_Y
+		{}, // TRACK_UPPER
+		{{15, 8}, DIR_E}, // TRACK_LOWER
+		{{15, 7}, DIR_N}, // TRACK_LEFT
+		{}, // TRACK_RIGHT
+	}}},
+	{{{ // SE
+		{}, // TRACK_X
+		{{8, 0}, DIR_SE}, // TRACK_Y
+		{{7, 0}, DIR_E}, // TRACK_UPPER
+		{}, // TRACK_LOWER
+		{{8, 0}, DIR_S}, // TRACK_LEFT
+		{}, // TRACK_RIGHT
+	}}},
+	{{{ // SW
+		{{0, 8}, DIR_SW}, // TRACK_X
+		{}, // TRACK_Y
+		{{0, 7}, DIR_W}, // TRACK_UPPER
+		{}, // TRACK_LOWER
+		{}, // TRACK_LEFT
+		{{0, 8}, DIR_S}, // TRACK_RIGHT
+	}}},
+	{{{ // NW
+		{}, // TRACK_X
+		{{8, 15}, DIR_NW}, // TRACK_Y
+		{}, // TRACK_UPPER
+		{{8, 15}, DIR_W}, // TRACK_LOWER
+		{}, // TRACK_LEFT
+		{{7, 15}, DIR_N}, // TRACK_RIGHT
+	}}},
+}}};
+
+/**
+ * Lookup new subposition coordinates and direction to use when entering a new tile, applying the subcoordinates to the vehicle position result.
+ * @param gp new vehicle position result to apply subcoordinates to.
+ * @param enterdir the enter direction for the tile.
+ * @param track The chosen track for the tile.
+ * @return the new vehicle direction.
+ */
+Direction VehicleEnterTileCoordinates(GetNewVehiclePosResult &gp, DiagDirection enterdir, Track track)
+{
+	const VehicleSubcoordData &b = _vehicle_subcoord[enterdir][track];
+	gp.x = (gp.x & ~TILE_UNIT_MASK) | b.x;
+	gp.y = (gp.y & ~TILE_UNIT_MASK) | b.y;
+	return b.dir;
 }

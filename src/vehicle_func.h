@@ -208,6 +208,7 @@ bool VehiclesHaveSameEngineList(const Vehicle *v1, const Vehicle *v2);
 bool VehiclesHaveSameOrderList(const Vehicle *v1, const Vehicle *v2);
 
 bool IsUniqueVehicleName(std::string_view name);
+Direction VehicleEnterTileCoordinates(GetNewVehiclePosResult &gp, DiagDirection enterdir, Track track);
 
 void ShowTrainTooHeavyAdviceMessage(const Vehicle *v);
 

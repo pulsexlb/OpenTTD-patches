@@ -219,8 +219,8 @@ class NIHVehicle : public NIHelper {
 		if (v->cargo_type != INVALID_CARGO) {
 			output.Print("  V Cargo: type: {}, sub type: {}, cap: {}, transfer: {}, deliver: {}, keep: {}, load: {}",
 					v->cargo_type, v->cargo_subtype, v->cargo_cap,
-					v->cargo.ActionCount(VehicleCargoList::MTA_TRANSFER), v->cargo.ActionCount(VehicleCargoList::MTA_DELIVER),
-					v->cargo.ActionCount(VehicleCargoList::MTA_KEEP), v->cargo.ActionCount(VehicleCargoList::MTA_LOAD));
+					v->cargo.ActionCount(VehicleCargoList::MoveToAction::Transfer), v->cargo.ActionCount(VehicleCargoList::MoveToAction::Deliver),
+					v->cargo.ActionCount(VehicleCargoList::MoveToAction::Keep), v->cargo.ActionCount(VehicleCargoList::MoveToAction::Load));
 		}
 		if (BaseStation::IsValidID(v->last_station_visited)) {
 			output.Print("  V Last station visited: {}, {}", v->last_station_visited, BaseStation::Get(v->last_station_visited)->GetCachedName());

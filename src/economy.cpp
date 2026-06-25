@@ -2105,23 +2105,23 @@ static void LoadUnloadVehicle(Vehicle *front)
 			uint amount_unloaded = _settings_game.order.gradual_loading ? std::min(cargo_count, GetLoadAmount(v)) : cargo_count;
 			bool remaining = false; // Are there cargo entities in this vehicle that can still be unloaded here?
 
-			if (!ge->status.Test(GoodsEntry::State::Acceptance) && v->cargo.ActionCount(VehicleCargoList::MTA_DELIVER) > 0) {
+			if (!ge->status.Test(GoodsEntry::State::Acceptance) && v->cargo.ActionCount(VehicleCargoList::MoveToAction::Deliver) > 0) {
 				/* The station does not accept our goods anymore. */
 				OrderUnloadType unload_type = GetUnloadType(v);
 				if (unload_type == OrderUnloadType::Transfer || unload_type == OrderUnloadType::Unload) {
 					/* Transfer instead of delivering. */
-					v->cargo.Reassign<VehicleCargoList::MTA_DELIVER, VehicleCargoList::MTA_TRANSFER>(
-							v->cargo.ActionCount(VehicleCargoList::MTA_DELIVER));
+					v->cargo.Reassign<VehicleCargoList::MoveToAction::Deliver, VehicleCargoList::MoveToAction::Transfer>(
+							v->cargo.ActionCount(VehicleCargoList::MoveToAction::Deliver));
 				} else {
-					uint new_remaining = v->cargo.RemainingCount() + v->cargo.ActionCount(VehicleCargoList::MTA_DELIVER);
+					uint new_remaining = v->cargo.RemainingCount() + v->cargo.ActionCount(VehicleCargoList::MoveToAction::Deliver);
 					if (v->cargo_cap < new_remaining) {
 						/* Return some of the reserved cargo to not overload the vehicle. */
 						v->cargo.Return(new_remaining - v->cargo_cap, &ged->cargo, StationID::Invalid(), v->GetCargoTile());
 					}
 
 					/* Keep instead of delivering. This may lead to no cargo being unloaded, so ...*/
-					v->cargo.Reassign<VehicleCargoList::MTA_DELIVER, VehicleCargoList::MTA_KEEP>(
-							v->cargo.ActionCount(VehicleCargoList::MTA_DELIVER));
+					v->cargo.Reassign<VehicleCargoList::MoveToAction::Deliver, VehicleCargoList::MoveToAction::Keep>(
+							v->cargo.ActionCount(VehicleCargoList::MoveToAction::Deliver));
 
 					/* ... say we unloaded something, otherwise we'll think we didn't unload
 					 * something and we didn't load something, so we must be finished
@@ -2131,7 +2131,7 @@ static void LoadUnloadVehicle(Vehicle *front)
 				}
 			}
 
-			if (v->cargo.ActionCount(VehicleCargoList::MTA_TRANSFER) > 0) {
+			if (v->cargo.ActionCount(VehicleCargoList::MoveToAction::Transfer) > 0) {
 				/* Mark the station dirty if we transfer, but not if we only deliver. */
 				dirty_station = true;
 
@@ -2225,12 +2225,12 @@ static void LoadUnloadVehicle(Vehicle *front)
 
 			/* If there's goods waiting at the station, and the vehicle
 			 * has capacity for it, load it on the vehicle. */
-			if ((v->cargo.ActionCount(VehicleCargoList::MTA_LOAD) > 0 || ged->cargo.AvailableCount() > 0) && MayLoadUnderExclusiveRights(st, v)) {
+			if ((v->cargo.ActionCount(VehicleCargoList::MoveToAction::Load) > 0 || ged->cargo.AvailableCount() > 0) && MayLoadUnderExclusiveRights(st, v)) {
 				if (v->cargo.StoredCount() == 0) TriggerVehicleRandomisation(v, VehicleRandomTrigger::NewCargo);
 				if (_settings_game.order.gradual_loading) cap_left = std::min(cap_left, GetLoadAmount(v));
 
 				uint loaded = ged->cargo.Load(cap_left, &v->cargo, next_station.Get(v->cargo_type), v->GetCargoTile());
-				if (v->cargo.ActionCount(VehicleCargoList::MTA_LOAD) > 0) {
+				if (v->cargo.ActionCount(VehicleCargoList::MoveToAction::Load) > 0) {
 					/* Remember if there are reservations left so that we don't stop
 					 * loading before they're loaded. */
 					reservation_left.Set(v->cargo_type);
