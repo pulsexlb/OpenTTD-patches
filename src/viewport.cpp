@@ -239,7 +239,7 @@ enum RailSnapMode {
  * allowed line directions.
  */
 struct LineSnapPoint : Point {
-	uint8_t dirs; ///< Allowed line directions, set of #Direction bits.
+	Directions dirs; ///< Allowed line directions, set of #Direction bits.
 };
 
 typedef std::vector<LineSnapPoint> LineSnapPoints; ///< Set of snapping points
@@ -2439,7 +2439,7 @@ static void ViewportMapStoreBridge(const Viewport * const vp, const TileIndex ti
 	if (o < MAX_COMPANIES && !_legend_land_owners[_company_to_list_pos[o]].show_on_map) return;
 
 	switch (GetTunnelBridgeDirection(tile)) {
-		case DIAGDIR_NE: {
+		case DiagDirection::NE: {
 			/* X axis: tile at higher coordinate, facing towards lower coordinate */
 			auto iter = _vdd->bridge_to_map_x.lower_bound(tile);
 			if (iter != _vdd->bridge_to_map_x.begin()) {
@@ -2451,7 +2451,7 @@ static void ViewportMapStoreBridge(const Viewport * const vp, const TileIndex ti
 			break;
 		}
 
-		case DIAGDIR_NW: {
+		case DiagDirection::NW: {
 			/* Y axis: tile at higher coordinate, facing towards lower coordinate */
 			auto iter = _vdd->bridge_to_map_y.lower_bound(tile);
 			if (iter != _vdd->bridge_to_map_y.begin()) {
@@ -2463,7 +2463,7 @@ static void ViewportMapStoreBridge(const Viewport * const vp, const TileIndex ti
 			break;
 		}
 
-		case DIAGDIR_SW: {
+		case DiagDirection::SW: {
 			/* X axis: tile at lower coordinate, facing towards higher coordinate */
 			auto iter = _vdd->bridge_to_map_x.lower_bound(tile);
 			if (iter != _vdd->bridge_to_map_x.end() && iter->first == tile) return;
@@ -2471,7 +2471,7 @@ static void ViewportMapStoreBridge(const Viewport * const vp, const TileIndex ti
 			break;
 		}
 
-		case DIAGDIR_SE: {
+		case DiagDirection::SE: {
 			/* Y axis: tile at lower coordinate, facing towards higher coordinate */
 			auto iter = _vdd->bridge_to_map_y.lower_bound(tile);
 			if (iter != _vdd->bridge_to_map_y.end() && iter->first == tile) return;
@@ -5949,7 +5949,7 @@ static void VpStartPreSizing()
  * @param direction The rough direction the drag has been made in.
  * @return The highlight style of the first tile.
  * @note Depending on where on the start tile the click was, and some hysterasis, the
- *       direction for dragging to the east could be either DIAGDIR_NE or DIAGDIR_SE.
+ *       direction for dragging to the east could be either DiagDirection::NE or DiagDirection::SE.
  */
 static HighLightStyle Check2x1AutoRail(DiagDirection direction)
 {
@@ -5960,22 +5960,22 @@ static HighLightStyle Check2x1AutoRail(DiagDirection direction)
 
 	switch (direction) {
 		default: NOT_REACHED();
-		case DIAGDIR_SE: // end piece is lower right
+		case DiagDirection::SE: // end piece is lower right
 			if (fxpy >= 20 && sxpy <= 12) return HT_DIR_HL;
 			if (fxmy < -3 && sxmy > 3) return HT_DIR_VR;
 			return HT_DIR_Y;
 
-		case DIAGDIR_NW:
+		case DiagDirection::NW:
 			if (fxmy > 3 && sxmy < -3) return HT_DIR_VL;
 			if (fxpy <= 12 && sxpy >= 20) return HT_DIR_HU;
 			return HT_DIR_Y;
 
-		case DIAGDIR_SW:
+		case DiagDirection::SW:
 			if (fxmy > 3 && sxmy < -3) return HT_DIR_VL;
 			if (fxpy >= 20 && sxpy <= 12) return HT_DIR_HL;
 			return HT_DIR_X;
 
-		case DIAGDIR_NE:
+		case DiagDirection::NE:
 			if (fxmy < -3 && sxmy > 3) return HT_DIR_VR;
 			if (fxpy <= 12 && sxpy >= 20) return HT_DIR_HU;
 			return HT_DIR_X;
@@ -5985,10 +5985,10 @@ static HighLightStyle Check2x1AutoRail(DiagDirection direction)
 /**
  * Check if the direction of start and end tile should be swapped based on
  * the dragging-style. Default directions are:
- * in the case of a line (HT_RAIL, HT_LINE):  DIR_NE, DIR_NW, DIR_N, DIR_E
- * in the case of a rect (HT_RECT, HT_POINT): DIR_S, DIR_E
+ * in the case of a line (HT_RAIL, HT_LINE):  Direction::NE, Direction::NW, Direction::N, Direction::E
+ * in the case of a rect (HT_RECT, HT_POINT): Direction::S, Direction::E
  * For example dragging a rectangle area from south to north should be swapped to
- * north-south (DIR_S) to obtain the same results with less code. This is what
+ * north-south (Direction::S) to obtain the same results with less code. This is what
  * the return value signifies.
  * @param style HighLightStyle dragging style
  * @param start_tile start tile of drag
@@ -6043,11 +6043,11 @@ static int CalcHeightdiff(HighLightStyle style, uint distance, TileIndex start_t
 			 * east by checking the X-coordinates of the tiles */
 			if (TileX(end_tile) > TileX(start_tile)) {
 				/* Dragging south does not need to change the start tile. */
-				end_tile = TileAddByDir(end_tile, DIR_S);
+				end_tile = TileAddByDir(end_tile, Direction::S);
 			} else {
 				/* Dragging east. */
-				start_tile = TileAddByDir(start_tile, DIR_SW);
-				end_tile = TileAddByDir(end_tile, DIR_SE);
+				start_tile = TileAddByDir(start_tile, Direction::SW);
+				end_tile = TileAddByDir(end_tile, Direction::SE);
 			}
 			[[fallthrough]];
 
@@ -6164,10 +6164,9 @@ static void CheckOverflow(int &test, int &other, int max, int mult)
 	test = max;
 }
 
-[[maybe_unused]] static const uint X_DIRS = (1 << DIR_NE) | (1 << DIR_SW);
-[[maybe_unused]] static const uint Y_DIRS = (1 << DIR_SE) | (1 << DIR_NW);
-static const uint HORZ_DIRS = (1 << DIR_W) | (1 << DIR_E);
-//static const uint VERT_DIRS = (1 << DIR_N) | (1 << DIR_S);
+[[maybe_unused]] static const Directions X_DIRS{Direction::NE, Direction::SW};
+[[maybe_unused]] static const Directions Y_DIRS{Direction::SE, Direction::NW};
+static const Directions HORZ_DIRS{Direction::W, Direction::E};
 
 Trackdir PointDirToTrackdir(const Point &pt, Direction dir)
 {
@@ -6180,7 +6179,7 @@ Trackdir PointDirToTrackdir(const Point &pt, Direction dir)
 		int y = pt.y & TILE_UNIT_MASK;
 		int ns = x + y;
 		int we = y - x;
-		if (HasBit(HORZ_DIRS, dir)) {
+		if (HORZ_DIRS.Test(dir)) {
 			ret = TrackDirectionToTrackdir(ns < (int)TILE_SIZE ? TRACK_UPPER : TRACK_LOWER, dir);
 		} else {
 			ret = TrackDirectionToTrackdir(we < 0 ? TRACK_LEFT : TRACK_RIGHT, dir);
@@ -6201,7 +6200,7 @@ static bool FindPolyline(const Point &pt, const LineSnapPoint &start, PolylineIn
 	/* in-tile alignment of the snap point (there are two variants: [0, 8] or [8, 0]) */
 	uint align_x = start.x & TILE_UNIT_MASK;
 	uint align_y = start.y & TILE_UNIT_MASK;
-	assert((align_x == TILE_SIZE / 2 && align_y == 0 && !(start.dirs & X_DIRS)) || (align_x == 0 && align_y == TILE_SIZE / 2 && !(start.dirs & Y_DIRS)));
+	assert((align_x == TILE_SIZE / 2 && align_y == 0 && !start.dirs.Any(X_DIRS)) || (align_x == 0 && align_y == TILE_SIZE / 2 && !start.dirs.Any(Y_DIRS)));
 
 	/* absolute distance between points (in tiles) */
 	uint d_x = abs(RoundDivSU(x < 0 ? x - align_y : x + align_y, TILE_SIZE));
@@ -6221,13 +6220,13 @@ static bool FindPolyline(const Point &pt, const LineSnapPoint &start, PolylineIn
 	uint diag_quadrant = 2 * (ns < 0) + ((ns < 0) != (we < 0));
 
 	/* direction from the snap point to the mouse point */
-	Direction ortho_line_dir = ChangeDir(DIR_S, (DirDiff)(2 * ortho_quadrant)); // DIR_S is the middle of the ortho quadrant no. 0
-	Direction diag_line_dir = ChangeDir(DIR_SE, (DirDiff)(2 * diag_quadrant));  // DIR_SE is the middle of the diag quadrant no. 0
-	if (!HasBit(start.dirs, ortho_line_dir) && !HasBit(start.dirs, diag_line_dir)) return false;
+	Direction ortho_line_dir = ChangeDir(Direction::S, (DirDiff)(2 * ortho_quadrant)); // Direction::S is the middle of the ortho quadrant no. 0
+	Direction diag_line_dir = ChangeDir(Direction::SE, (DirDiff)(2 * diag_quadrant));  // Direction::SE is the middle of the diag quadrant no. 0
+	if (!start.dirs.Test(ortho_line_dir) && !start.dirs.Test(diag_line_dir)) return false;
 
 	/* length of both segments of auto line (choosing orthogonal direction first) */
 	uint ortho_len = 0, ortho_len2 = 0;
-	if (HasBit(start.dirs, ortho_line_dir)) {
+	if (start.dirs.Test(ortho_line_dir)) {
 		bool is_len_even = (align_x != 0) ? d_x >= d_y : d_x <= d_y;
 		ortho_len = 2 * std::min(d_x, d_y) - (int)is_len_even;
 		assert((int)ortho_len >= 0);
@@ -6240,7 +6239,7 @@ static bool FindPolyline(const Point &pt, const LineSnapPoint &start, PolylineIn
 
 	/* length of both segments of auto line (choosing diagonal direction first) */
 	uint diag_len = 0, diag_len2 = 0;
-	if (HasBit(start.dirs, diag_line_dir)) {
+	if (start.dirs.Test(diag_line_dir)) {
 		if (d_x == 0 || d_y == 0) { // just single segment?
 			diag_len = d_x + d_y;
 		} else {
@@ -6270,12 +6269,12 @@ static bool FindPolyline(const Point &pt, const LineSnapPoint &start, PolylineIn
 	if (ortho_len != 0) {
 		ret->first_dir = ortho_line_dir;
 		ret->first_len = ortho_len;
-		ret->second_dir = (ortho_len2 != 0) ? diag_line_dir : INVALID_DIR;
+		ret->second_dir = (ortho_len2 != 0) ? diag_line_dir : Direction::Invalid;
 		ret->second_len = ortho_len2;
 	} else if (diag_len != 0) {
 		ret->first_dir = diag_line_dir;
 		ret->first_len = diag_len;
-		ret->second_dir = (diag_len2 != 0) ? ortho_line_dir : INVALID_DIR;
+		ret->second_dir = (diag_len2 != 0) ? ortho_line_dir : Direction::Invalid;
 		ret->second_len = diag_len2;
 	} else {
 		return false;
@@ -6440,18 +6439,18 @@ static void CalcRaildirsDrawstyle(int x, int y, int method)
 		}
 	} else if (h == TILE_SIZE) { // Is this in X direction?
 		if (dx == (int)TILE_SIZE) { // 2x1 special handling
-			b = Check2x1AutoRail(DIAGDIR_NE) | HT_LINE;
+			b = Check2x1AutoRail(DiagDirection::NE) | HT_LINE;
 		} else if (dx == -(int)TILE_SIZE) {
-			b = Check2x1AutoRail(DIAGDIR_SW) | HT_LINE;
+			b = Check2x1AutoRail(DiagDirection::SW) | HT_LINE;
 		} else {
 			b = HT_LINE | HT_DIR_X;
 		}
 		y = _thd.selstart.y;
 	} else if (w == TILE_SIZE) { // Or Y direction?
 		if (dy == (int)TILE_SIZE) { // 2x1 special handling
-			b = Check2x1AutoRail(DIAGDIR_NW) | HT_LINE;
+			b = Check2x1AutoRail(DiagDirection::NW) | HT_LINE;
 		} else if (dy == -(int)TILE_SIZE) { // 2x1 other direction
-			b = Check2x1AutoRail(DIAGDIR_SE) | HT_LINE;
+			b = Check2x1AutoRail(DiagDirection::SE) | HT_LINE;
 		} else {
 			b = HT_LINE | HT_DIR_Y;
 		}
@@ -6563,7 +6562,7 @@ static HighLightStyle CalcPolyrailDrawstyle(Point pt, bool dragging)
 	if (lock_snapping && _current_snap_lock.x == -1) {
 		/* lock down the snap point */
 		_current_snap_lock = *snap_point;
-		_current_snap_lock.dirs &= (1 << line.first_dir) | (1 << ReverseDir(line.first_dir));
+		_current_snap_lock.dirs &= Directions{line.first_dir, ReverseDir(line.first_dir)};
 	}
 
 	TileIndexDiffC first_dir = TileIndexDiffCByDir(line.first_dir);
@@ -7024,11 +7023,11 @@ static LineSnapPoint LineSnapPointAtRailTrackEndpoint(TileIndex tile, DiagDirect
 	ret.x = (TILE_SIZE / 2) * (uint)(2 * TileX(tile) + TileIndexDiffCByDiagDir(exit_dir).x + 1);
 	ret.y = (TILE_SIZE / 2) * (uint)(2 * TileY(tile) + TileIndexDiffCByDiagDir(exit_dir).y + 1);
 
-	ret.dirs = 0;
-	SetBit(ret.dirs, DiagDirToDir(exit_dir));
-	SetBit(ret.dirs, ChangeDir(DiagDirToDir(exit_dir), DirDiff::Left45));
-	SetBit(ret.dirs, ChangeDir(DiagDirToDir(exit_dir), DirDiff::Right45));
-	if (bidirectional) ret.dirs |= std::rotr<uint8_t>(ret.dirs, to_underlying(DirDiff::Reverse));
+	ret.dirs = {};
+	ret.dirs.Set(DiagDirToDir(exit_dir));
+	ret.dirs.Set(ChangeDir(DiagDirToDir(exit_dir), DirDiff::Left45));
+	ret.dirs.Set(ChangeDir(DiagDirToDir(exit_dir), DirDiff::Right45));
+	if (bidirectional) ret.dirs |= static_cast<Directions>(std::rotr<uint8_t>(ret.dirs.base(), to_underlying(DirDiff::Reverse)));
 
 	return ret;
 }
@@ -7148,7 +7147,7 @@ static void SetRailSnapMode(RailSnapMode mode)
 static TileIndex GetRailSnapTile()
 {
 	if (_tile_snap_points.size() == 0) return INVALID_TILE;
-	return TileVirtXY(_tile_snap_points[DIAGDIR_NE].x, _tile_snap_points[DIAGDIR_NE].y);
+	return TileVirtXY(_tile_snap_points[to_underlying(DiagDirection::NE)].x, _tile_snap_points[to_underlying(DiagDirection::NE)].y);
 }
 
 static void SetRailSnapTile(TileIndex tile)
@@ -7156,10 +7155,10 @@ static void SetRailSnapTile(TileIndex tile)
 	_tile_snap_points.clear();
 	if (tile == INVALID_TILE) return;
 
-	for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+	for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
 		_tile_snap_points.push_back(LineSnapPointAtRailTrackEndpoint(tile, dir, false));
 		LineSnapPoint &point = _tile_snap_points.back();
-		point.dirs = std::rotr<uint8_t>(point.dirs, to_underlying(DirDiff::Reverse));
+		point.dirs = static_cast<Directions>(std::rotr<uint8_t>(point.dirs.base(), to_underlying(DirDiff::Reverse)));
 	}
 }
 

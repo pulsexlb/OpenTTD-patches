@@ -280,7 +280,7 @@ public:
 	{
 		auto set_trackdirs = [&]() {
 			DiagDirection dir = v->current_order.GetRoadVehTravelDirection();
-			this->dest_trackdirs = (dir == INVALID_DIAGDIR) ? INVALID_TRACKDIR_BIT : TrackdirToTrackdirBits(DiagDirToDiagTrackdir(dir));
+			this->dest_trackdirs = (dir == DiagDirection::Invalid) ? INVALID_TRACKDIR_BIT : TrackdirToTrackdirBits(DiagDirToDiagTrackdir(dir));
 		};
 		if (v->current_order.IsType(OT_GOTO_STATION)) {
 			this->dest_station   = v->current_order.GetDestination().ToStationID();

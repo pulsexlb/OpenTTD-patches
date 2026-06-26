@@ -139,7 +139,7 @@ inline void MakeRoadTunnel(TileIndex t, Owner o, TunnelID id, DiagDirection d, R
 	SetTunnelIndex(t, id);
 	_m[t].m3 = 0;
 	_m[t].m4 = 0;
-	_m[t].m5 = TRANSPORT_ROAD << 2 | d;
+	_m[t].m5 = TRANSPORT_ROAD << 2 | to_underlying(d);
 	_me[t].m6 = 0;
 	_me[t].m7 = 0;
 	_me[t].m8 = 0;
@@ -163,7 +163,7 @@ inline void MakeRailTunnel(TileIndex t, Owner o, TunnelID id, DiagDirection d, R
 	SetTunnelIndex(t, id);
 	_m[t].m3 = 0;
 	_m[t].m4 = 0;
-	_m[t].m5 = TRANSPORT_RAIL << 2 | d;
+	_m[t].m5 = TRANSPORT_RAIL << 2 | to_underlying(d);
 	_me[t].m6 = 0;
 	_me[t].m7 = 0;
 	_me[t].m8 = r;

@@ -236,25 +236,25 @@ struct GroundVehicle : public SpecializedVehicle<T, Type, BaseGroundVehicle> {
 
 		if (HasBit(this->gv_flags, GVF_GOINGUP_BIT)) {
 			switch (this->GetMovingDirection()) {
-				case DIR_NE:
+				case Direction::NE:
 					this->z_pos += (this->x_pos & 1) ^ 1; break;
-				case DIR_SW:
+				case Direction::SW:
 					this->z_pos += (this->x_pos & 1); break;
-				case DIR_NW:
+				case Direction::NW:
 					this->z_pos += (this->y_pos & 1) ^ 1; break;
-				case DIR_SE:
+				case Direction::SE:
 					this->z_pos += (this->y_pos & 1); break;
 				default: break;
 			}
 		} else if (HasBit(this->gv_flags, GVF_GOINGDOWN_BIT)) {
 			switch (this->GetMovingDirection()) {
-				case DIR_NE:
+				case Direction::NE:
 					this->z_pos -= (this->x_pos & 1) ^ 1; break;
-				case DIR_SW:
+				case Direction::SW:
 					this->z_pos -= (this->x_pos & 1); break;
-				case DIR_NW:
+				case Direction::NW:
 					this->z_pos -= (this->y_pos & 1) ^ 1; break;
-				case DIR_SE:
+				case Direction::SE:
 					this->z_pos -= (this->y_pos & 1); break;
 				default: break;
 			}
@@ -284,7 +284,7 @@ struct GroundVehicle : public SpecializedVehicle<T, Type, BaseGroundVehicle> {
 			int8_t d = DiagDirToAxis(dir) == Axis::X ? x_pos : y_pos;
 			/* We need only the least significant bit */
 			d &= 1;
-			d ^= (int8_t)(dir == DIAGDIR_NW || dir == DIAGDIR_NE);
+			d ^= (int8_t)(dir == DiagDirection::NW || dir == DiagDirection::NE);
 			/* Subtraction instead of addition because we are testing for GVF_GOINGUP_BIT.
 			 * GVF_GOINGUP_BIT is used because it's bit 0, so simple AND can be used,
 			 * without any shift */

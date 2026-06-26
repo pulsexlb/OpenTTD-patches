@@ -310,10 +310,10 @@ void GetSlopePixelZOnEdge(Slope tileh, DiagDirection edge, int &z1, int &z2)
 	static const DiagDirectionIndexArray<std::array<Slope, 4>> corners{{{
 		/*    corner     |          steep slope
 		 *  z1      z2   |       z1             z2        */
-		{SLOPE_E, SLOPE_N, SLOPE_STEEP_E, SLOPE_STEEP_N}, // DIAGDIR_NE, z1 = E, z2 = N
-		{SLOPE_S, SLOPE_E, SLOPE_STEEP_S, SLOPE_STEEP_E}, // DIAGDIR_SE, z1 = S, z2 = E
-		{SLOPE_S, SLOPE_W, SLOPE_STEEP_S, SLOPE_STEEP_W}, // DIAGDIR_SW, z1 = S, z2 = W
-		{SLOPE_W, SLOPE_N, SLOPE_STEEP_W, SLOPE_STEEP_N}, // DIAGDIR_NW, z1 = W, z2 = N
+		{SLOPE_E, SLOPE_N, SLOPE_STEEP_E, SLOPE_STEEP_N}, // DiagDirection::NE, z1 = E, z2 = N
+		{SLOPE_S, SLOPE_E, SLOPE_STEEP_S, SLOPE_STEEP_E}, // DiagDirection::SE, z1 = S, z2 = E
+		{SLOPE_S, SLOPE_W, SLOPE_STEEP_S, SLOPE_STEEP_W}, // DiagDirection::SW, z1 = S, z2 = W
+		{SLOPE_W, SLOPE_N, SLOPE_STEEP_W, SLOPE_STEEP_N}, // DiagDirection::NW, z1 = W, z2 = N
 	}}};
 
 	Slope halftile_test = IsHalftileSlope(tileh) ? SlopeWithOneCornerRaised(GetHalftileSlopeCorner(tileh)) : SLOPE_FLAT;
@@ -352,16 +352,16 @@ std::pair<Slope, int> GetFoundationSlope(TileIndex tile)
 
 bool HasFoundationNW(TileIndex tile, Slope slope_here, uint z_here)
 {
-	if (IsCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DIAGDIR_NW) return false;
+	if (IsCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DiagDirection::NW) return false;
 
 	int z_W_here = z_here;
 	int z_N_here = z_here;
-	GetSlopePixelZOnEdge(slope_here, DIAGDIR_NW, z_W_here, z_N_here);
+	GetSlopePixelZOnEdge(slope_here, DiagDirection::NW, z_W_here, z_N_here);
 
 	auto [slope, z] = GetFoundationPixelSlope(TileAddXY(tile, 0, -1));
 	int z_W = z;
 	int z_N = z;
-	GetSlopePixelZOnEdge(slope, DIAGDIR_SE, z_W, z_N);
+	GetSlopePixelZOnEdge(slope, DiagDirection::SE, z_W, z_N);
 
 	return (z_N_here > z_N) || (z_W_here > z_W);
 }
@@ -369,16 +369,16 @@ bool HasFoundationNW(TileIndex tile, Slope slope_here, uint z_here)
 
 bool HasFoundationNE(TileIndex tile, Slope slope_here, uint z_here)
 {
-	if (IsCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DIAGDIR_NE) return false;
+	if (IsCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DiagDirection::NE) return false;
 
 	int z_E_here = z_here;
 	int z_N_here = z_here;
-	GetSlopePixelZOnEdge(slope_here, DIAGDIR_NE, z_E_here, z_N_here);
+	GetSlopePixelZOnEdge(slope_here, DiagDirection::NE, z_E_here, z_N_here);
 
 	auto [slope, z] = GetFoundationPixelSlope(TileAddXY(tile, -1, 0));
 	int z_E = z;
 	int z_N = z;
-	GetSlopePixelZOnEdge(slope, DIAGDIR_SW, z_E, z_N);
+	GetSlopePixelZOnEdge(slope, DiagDirection::SW, z_E, z_N);
 
 	return (z_N_here > z_N) || (z_E_here > z_E);
 }
@@ -511,7 +511,7 @@ void DoClearSquare(TileIndex tile)
  * @param tile tile to get info about
  * @param mode transport type
  * @param sub_mode for TRANSPORT_ROAD, roadtypes to check
- * @param side side we are entering from, INVALID_DIAGDIR to return all trackbits
+ * @param side side we are entering from, DiagDirection::Invalid to return all trackbits
  * @return trackdirbits and other info depending on 'mode'
  */
 TrackStatus GetTileTrackStatus(TileIndex tile, TransportType mode, uint sub_mode, DiagDirection side)
@@ -914,7 +914,7 @@ static void GenerateTerrain(int type, uint flag)
 	 * is higher than the height of the map. In other words, this only raises the tile heights. */
 	switch (direction) {
 		default: NOT_REACHED();
-		case DIAGDIR_NE:
+		case DiagDirection::NE:
 			do {
 				TileIndex tile_cur = tile;
 
@@ -927,7 +927,7 @@ static void GenerateTerrain(int type, uint flag)
 			} while (--h != 0);
 			break;
 
-		case DIAGDIR_SE:
+		case DiagDirection::SE:
 			do {
 				TileIndex tile_cur = tile;
 
@@ -940,7 +940,7 @@ static void GenerateTerrain(int type, uint flag)
 			} while (--w != 0);
 			break;
 
-		case DIAGDIR_SW:
+		case DiagDirection::SW:
 			tile += TileDiffXY(w - 1, 0);
 			do {
 				TileIndex tile_cur = tile;
@@ -954,7 +954,7 @@ static void GenerateTerrain(int type, uint flag)
 			} while (--h != 0);
 			break;
 
-		case DIAGDIR_NW:
+		case DiagDirection::NW:
 			tile += TileDiffXY(0, h - 1);
 			do {
 				TileIndex tile_cur = tile;
@@ -1069,7 +1069,7 @@ static bool FindSpring(TileIndex tile)
 	};
 
 	uint num_hills = 0;
-	for (DiagDirection d = DIAGDIR_BEGIN; d < DIAGDIR_END; d++) {
+	for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
 		TileIndex check_tile = tile;
 		for (uint i = 0; i < max_hill_distance; i++) {
 			check_tile = TileAddByDiagDir(check_tile, d);
@@ -1132,7 +1132,7 @@ static void MakeLakeHandler(TileIndex tile, const MakeLakeData *data)
 	/* Check if inside ellipse */
 	if ((a_delta * a_delta) + ((data->secondary_axis_scale * b_delta * b_delta) >> 16) > ((int64_t)(max_distance * max_distance) << 16)) return;
 
-	for (DiagDirection d = DIAGDIR_BEGIN; d < DIAGDIR_END; d++) {
+	for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
 		TileIndex t2 = tile + TileOffsByDiagDir(d);
 		if (IsWaterTile(t2)) {
 			MakeRiverAndModifyDesertZoneAround(tile);
@@ -1278,7 +1278,7 @@ static void River_GetNeighbours(AyStar *aystar, OpenListNode *current)
 	TileIndex tile = current->path.node.tile;
 
 	aystar->num_neighbours = 0;
-	for (DiagDirection d = DIAGDIR_BEGIN; d < DIAGDIR_END; d++) {
+	for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
 		TileIndex t = tile + TileOffsByDiagDir(d);
 		if (IsValidTile(t) && FlowsDown(tile, t)) {
 			aystar->neighbours[aystar->num_neighbours].tile = t;
@@ -1386,7 +1386,7 @@ static bool CountConnectedSeaTiles(TileIndex start_tile, std::vector<TileIndex> 
 		if (sea.size() > limit) break;
 
 		/* Queue adjacent tiles which have not already been queued. */
-		for (DiagDirection d = DIAGDIR_BEGIN; d < DIAGDIR_END; d++) {
+		for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
 			TileIndex t = tile + TileOffsByDiagDir(d);
 			if (IsValidTile(t)) {
 				auto res = seen_tiles.insert(t);
@@ -1458,7 +1458,7 @@ static bool FlowRiver(TileIndex spring, TileIndex begin, uint min_river_length)
 			}
 		}
 
-		for (DiagDirection d = DIAGDIR_BEGIN; d < DIAGDIR_END; d++) {
+		for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
 			TileIndex t = end + TileOffsByDiagDir(d);
 			if (IsValidTile(t) && !marks.contains(t) && FlowsDown(end, t)) {
 				marks.insert(t);
@@ -1592,7 +1592,7 @@ static uint CalculateCoverageLine(uint coverage, uint edge_multiplier)
 
 		if (edge_multiplier != 0) {
 			/* Check if any of our neighbours is below us. */
-			for (DiagDirection dir = DIAGDIR_BEGIN; dir != DIAGDIR_END; dir++) {
+			for (DiagDirection dir = DiagDirection::Begin; dir != DiagDirection::End; dir++) {
 				TileIndex neighbour_tile = AddTileIndexDiffCWrap(tile, TileIndexDiffCByDiagDir(dir));
 				if (IsValidTile(neighbour_tile) && TileHeight(neighbour_tile) < h) {
 					edge_histogram[h]++;

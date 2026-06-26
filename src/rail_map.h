@@ -796,7 +796,7 @@ inline void MakeRailDepot(TileIndex t, Owner o, DepotID did, DiagDirection d, Ra
 	_m[t].m2 = did.base();
 	_m[t].m3 = 0;
 	_m[t].m4 = 0;
-	_m[t].m5 = to_underlying(RailTileType::Depot) << 6 | d;
+	_m[t].m5 = to_underlying(RailTileType::Depot) << 6 | to_underlying(d);
 	_me[t].m6 = 0;
 	_me[t].m7 = 0;
 	_me[t].m8 = r;

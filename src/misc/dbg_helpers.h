@@ -35,7 +35,7 @@ inline std::string_view ItemAt(E idx, std::span<const char * const> names, std::
 	if (static_cast<size_t>(idx) >= std::size(names)) {
 		return unknown_name;
 	}
-	return names[idx];
+	return names[to_underlying(idx)];
 }
 
 /**
@@ -83,7 +83,7 @@ inline std::string ComposeName(E value, std::span<const char * const> names, std
 			if ((value & (1 << i)) == 0) continue;
 			out += (!out.empty() ? "+" : "");
 			out += names[i];
-			value &= ~(E)(1 << i);
+			value &= ~static_cast<E>(1 << i);
 		}
 		if (value != 0) {
 			out += (!out.empty() ? "+" : "");

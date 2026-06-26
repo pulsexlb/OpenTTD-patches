@@ -403,7 +403,7 @@ void UpdateAllBlockSignals(Owner owner)
 			Owner track_owner = GetTileOwner(tile);
 			if (check_owner(track_owner)) continue;
 			if (IsTunnelBridgeSignalSimulationExit(tile)) {
-				AddSideToSignalBuffer(tile, INVALID_DIAGDIR, track_owner);
+				AddSideToSignalBuffer(tile, DiagDirection::Invalid, track_owner);
 			}
 			if (_extra_aspects > 0 && IsTunnelBridgeSignalSimulationEntrance(tile) && GetTunnelBridgeEntranceSignalState(tile) == SIGNAL_STATE_GREEN) {
 				SetTunnelBridgeEntranceSignalAspect(tile, 0);

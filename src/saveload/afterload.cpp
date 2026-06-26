@@ -127,7 +127,7 @@ void SetWaterClassDependingOnSurroundings(TileIndex t, bool include_invalid_wate
 	bool has_canal = false;
 	bool has_river = false;
 
-	for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+	for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
 		TileIndex neighbour = TileAddByDiagDir(t, dir);
 		switch (GetTileType(neighbour)) {
 			case TileType::Water:
@@ -510,7 +510,7 @@ static void FixOwnerOfRailTrack(TileIndex t)
 	}
 
 	/* try to find any connected rail */
-	for (DiagDirection dd = DIAGDIR_BEGIN; dd < DIAGDIR_END; dd++) {
+	for (DiagDirection dd = DiagDirection::Begin; dd < DiagDirection::End; dd++) {
 		TileIndex tt = t + TileOffsByDiagDir(dd);
 		if (GetTileTrackStatus(t, TRANSPORT_RAIL, 0, dd) != 0 &&
 				GetTileTrackStatus(tt, TRANSPORT_RAIL, 0, ReverseDiagDir(dd)) != 0 &&
@@ -545,7 +545,7 @@ static void FixOwnerOfRailTrack(TileIndex t)
 /**
  * Fixes inclination of a vehicle. Older OpenTTD versions didn't update the bits correctly.
  * @param v vehicle
- * @param dir vehicle's direction, or # INVALID_DIR if it can be ignored
+ * @param dir vehicle's direction, or # Direction::Invalid if it can be ignored
  * @return inclination bits to set
  */
 static uint FixVehicleInclination(Vehicle *v, Direction dir)
@@ -554,11 +554,11 @@ static uint FixVehicleInclination(Vehicle *v, Direction dir)
 	int entry_x = v->x_pos;
 	int entry_y = v->y_pos;
 	switch (dir) {
-		case DIR_NE: entry_x |= TILE_UNIT_MASK; break;
-		case DIR_NW: entry_y |= TILE_UNIT_MASK; break;
-		case DIR_SW: entry_x &= ~TILE_UNIT_MASK; break;
-		case DIR_SE: entry_y &= ~TILE_UNIT_MASK; break;
-		case INVALID_DIR: break;
+		case Direction::NE: entry_x |= TILE_UNIT_MASK; break;
+		case Direction::NW: entry_y |= TILE_UNIT_MASK; break;
+		case Direction::SW: entry_x &= ~TILE_UNIT_MASK; break;
+		case Direction::SE: entry_y &= ~TILE_UNIT_MASK; break;
+		case Direction::Invalid: break;
 		default: NOT_REACHED();
 	}
 	uint8_t entry_z = GetSlopePixelZ(entry_x, entry_y, true);
@@ -1513,7 +1513,7 @@ bool AfterLoadGame()
 					DiagDirection dir = ReverseDiagDir(XYNSToDiagDir(axis, north_south));
 					TransportType type = (TransportType)GB(_m[t].m5, 1, 2);
 
-					_m[t].m5 = 1 << 7 | type << 2 | dir;
+					_m[t].m5 = 1 << 7 | type << 2 | to_underlying(dir);
 				}
 			}
 		}
@@ -1526,10 +1526,10 @@ bool AfterLoadGame()
 				if (dir != DirToDiagDir(v->direction)) continue;
 				switch (dir) {
 					default: SlErrorCorrupt("Invalid vehicle direction");
-					case DIAGDIR_NE: if ((v->x_pos & 0xF) !=  0)            continue; break;
-					case DIAGDIR_SE: if ((v->y_pos & 0xF) != TILE_SIZE - 1) continue; break;
-					case DIAGDIR_SW: if ((v->x_pos & 0xF) != TILE_SIZE - 1) continue; break;
-					case DIAGDIR_NW: if ((v->y_pos & 0xF) !=  0)            continue; break;
+					case DiagDirection::NE: if ((v->x_pos & 0xF) !=  0)            continue; break;
+					case DiagDirection::SE: if ((v->y_pos & 0xF) != TILE_SIZE - 1) continue; break;
+					case DiagDirection::SW: if ((v->x_pos & 0xF) != TILE_SIZE - 1) continue; break;
+					case DiagDirection::NW: if ((v->y_pos & 0xF) !=  0)            continue; break;
 				}
 			} else if (v->z_pos > GetTileMaxPixelZ(TileVirtXY(v->x_pos, v->y_pos))) {
 				v->tile = GetNorthernBridgeEnd(v->tile);
@@ -2459,7 +2459,7 @@ bool AfterLoadGame()
 		for (TileIndex t(0); t < map_size; t++) {
 			if (IsTunnelTile(t)) {
 				DiagDirection dir = GetTunnelBridgeDirection(t);
-				if (dir == DIAGDIR_SE || dir == DIAGDIR_SW) {
+				if (dir == DiagDirection::SE || dir == DiagDirection::SW) {
 					TileIndex start_tile = t;
 					TileIndex end_tile = GetOtherTunnelBridgeEndOld(start_tile);
 
@@ -2984,7 +2984,7 @@ bool AfterLoadGame()
 
 	if (IsSavegameVersionBefore(SLV_145)) {
 		for (Station *st : Station::Iterate()) {
-			if (st->facilities.Test(StationFacility::Airport)) st->airport.rotation = DIR_N;
+			if (st->facilities.Test(StationFacility::Airport)) st->airport.rotation = Direction::N;
 		}
 	}
 
@@ -3098,7 +3098,7 @@ bool AfterLoadGame()
 
 			/* Have we passed the visibility "switch" state already? */
 			uint8_t pos = (DiagDirToAxis(vdir) == Axis::X ? v->x_pos : v->y_pos) & TILE_UNIT_MASK;
-			uint8_t frame = (vdir == DIAGDIR_NE || vdir == DIAGDIR_NW) ? TILE_SIZE - 1 - pos : pos;
+			uint8_t frame = (vdir == DiagDirection::NE || vdir == DiagDirection::NW) ? TILE_SIZE - 1 - pos : pos;
 			extern const DiagDirectionIndexArray<uint8_t> _tunnel_visibility_frame;
 
 			/* Should the vehicle be hidden or not? */
@@ -3237,7 +3237,7 @@ bool AfterLoadGame()
 							AxisToDirection(a) != ReverseDir(dir)) {
 						/* When reversing, the road vehicle is on the edge of the tile,
 						 * so it can be safely compared to the middle of the tile. */
-						dir = INVALID_DIR;
+						dir = Direction::Invalid;
 					}
 
 					rv->gv_flags |= FixVehicleInclination(rv, dir);
@@ -3369,11 +3369,11 @@ bool AfterLoadGame()
 			if (IsTileType(t, TileType::Clear) && IsClearGround(t, ClearGround::Fields)) continue;
 			uint fence = GB(_m[t].m4, 5, 3);
 			if (fence != 0 && IsTileType(TileAddXY(t, 1, 0), TileType::Clear) && IsClearGround(TileAddXY(t, 1, 0), ClearGround::Fields)) {
-				SetFence(TileAddXY(t, 1, 0), DIAGDIR_NE, fence);
+				SetFence(TileAddXY(t, 1, 0), DiagDirection::NE, fence);
 			}
 			fence = GB(_m[t].m4, 2, 3);
 			if (fence != 0 && IsTileType(TileAddXY(t, 0, 1), TileType::Clear) && IsClearGround(TileAddXY(t, 0, 1), ClearGround::Fields)) {
-				SetFence(TileAddXY(t, 0, 1), DIAGDIR_NW, fence);
+				SetFence(TileAddXY(t, 0, 1), DiagDirection::NW, fence);
 			}
 			SB(_m[t].m4, 2, 3, 0);
 			SB(_m[t].m4, 5, 3, 0);
@@ -3886,7 +3886,7 @@ bool AfterLoadGame()
 			if (IsTileType(t, TileType::TunnelBridge) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL && IsTunnelBridgeWithSignalSimulation(t)) {
 				SetTunnelBridgeSemaphore(t, CalTime::CurYear() < _settings_client.gui.semaphore_build_before);
 				SetTunnelBridgePBS(t, false);
-				UpdateSignalsOnSegment(t, INVALID_DIAGDIR, GetTileOwner(t));
+				UpdateSignalsOnSegment(t, DiagDirection::Invalid, GetTileOwner(t));
 			}
 		}
 	}
@@ -3934,7 +3934,7 @@ bool AfterLoadGame()
 		for (TileIndex t(0); t < map_size; t++) {
 			if (IsTileType(t, TileType::TunnelBridge) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL && IsTunnelBridgeWithSignalSimulation(t)) {
 				DiagDirection dir = GetTunnelBridgeDirection(t);
-				if (dir == DIAGDIR_NE || dir == DIAGDIR_SE) {
+				if (dir == DiagDirection::NE || dir == DiagDirection::SE) {
 					TileIndex other = GetOtherTunnelBridgeEnd(t);
 					Owner owner = GetTileOwner(t);
 					int target;
@@ -3979,10 +3979,10 @@ bool AfterLoadGame()
 			DiagDirection shipdiagdir = DirToDiagDir(s->direction);
 			switch (shipdiagdir) {
 				default: NOT_REACHED();
-				case DIAGDIR_NE: second_half = x < 8; break;
-				case DIAGDIR_NW: second_half = y < 8; break;
-				case DIAGDIR_SW: second_half = x > 8; break;
-				case DIAGDIR_SE: second_half = y > 8; break;
+				case DiagDirection::NE: second_half = x < 8; break;
+				case DiagDirection::NW: second_half = y < 8; break;
+				case DiagDirection::SW: second_half = x > 8; break;
+				case DiagDirection::SE: second_half = y > 8; break;
 			}
 
 			DiagDirection slopediagdir = GetInclinedSlopeDirection(GetTileSlope(s->tile));

@@ -25,10 +25,10 @@ static btree::btree_multimap<uint64_t, Tunnel *> _tunnel_axis_height_index;
 
 static uint64_t GetTunnelAxisHeightCacheKey(TileIndex tile, uint8_t height, bool y_axis) {
 	if (y_axis) {
-		// tunnel extends along Y axis (DIAGDIR_SE from north end), has same X values
+		// tunnel extends along Y axis (DiagDirection::SE from north end), has same X values
 		return TileX(tile) | (((uint64_t) height) << 24) | (((uint64_t) 1) << 32);
 	} else {
-		// tunnel extends along X axis (DIAGDIR_SW from north end), has same Y values
+		// tunnel extends along X axis (DiagDirection::SW from north end), has same Y values
 		return TileY(tile) | (((uint64_t) height) << 24);
 	}
 }
@@ -131,7 +131,7 @@ static inline bool IsTunnelInWaySingleAxis(TileIndex tile, int z, IsTunnelInWayF
  */
 bool IsTunnelInWay(TileIndex tile, int z, IsTunnelInWayFlags flags)
 {
-	return IsTunnelInWaySingleAxis(tile, z, flags, false, 1) || IsTunnelInWaySingleAxis(tile, z, flags, true, TileOffsByDiagDir(DIAGDIR_SE));
+	return IsTunnelInWaySingleAxis(tile, z, flags, false, 1) || IsTunnelInWaySingleAxis(tile, z, flags, true, TileOffsByDiagDir(DiagDirection::SE));
 }
 
 void SetTunnelSignalStyle(TileIndex t, uint8_t style)

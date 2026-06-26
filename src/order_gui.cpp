@@ -914,9 +914,9 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 						AppendStringInPlace(line, STR_ORDER_STOP_LOCATION_NEAR_END + to_underlying(order->GetStopLocation()));
 					}
 				}
-				if (v->type == VehicleType::Road && order->GetRoadVehTravelDirection() != INVALID_DIAGDIR) {
+				if (v->type == VehicleType::Road && order->GetRoadVehTravelDirection() != DiagDirection::Invalid) {
 					line.push_back(' ');
-					AppendStringInPlace(line, STR_ORDER_RV_DIR_NE + order->GetRoadVehTravelDirection());
+					AppendStringInPlace(line, STR_ORDER_RV_DIR_NE + to_underlying(order->GetRoadVehTravelDirection()));
 				}
 			}
 			break;
@@ -970,9 +970,9 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				AppendStringInPlace(line, STR_TIMETABLE_STAY_FOR, str, value);
 				timetable_wait_time_valid = true;
 			}
-			if (!timetable && v->type == VehicleType::Road && order->GetRoadVehTravelDirection() != INVALID_DIAGDIR) {
+			if (!timetable && v->type == VehicleType::Road && order->GetRoadVehTravelDirection() != DiagDirection::Invalid) {
 				line.push_back(' ');
-				AppendStringInPlace(line, STR_ORDER_RV_DIR_NE + order->GetRoadVehTravelDirection());
+				AppendStringInPlace(line, STR_ORDER_RV_DIR_NE + to_underlying(order->GetRoadVehTravelDirection()));
 			}
 			break;
 		}
@@ -3024,9 +3024,9 @@ public:
 					}
 					if (this->vehicle->type == VehicleType::Road) {
 						DiagDirection current = order->GetRoadVehTravelDirection();
-						if (_settings_client.gui.show_adv_load_mode_features || current != INVALID_DIAGDIR) {
-							uint dir = (current + 1) & 0xFF;
-							if (dir >= DIAGDIR_END) dir = INVALID_DIAGDIR;
+						if (_settings_client.gui.show_adv_load_mode_features || current != DiagDirection::Invalid) {
+							uint dir = (to_underlying(current) + 1) & 0xFF;
+							if (dir >= to_underlying(DiagDirection::End)) dir = to_underlying(DiagDirection::Invalid);
 							this->ModifyOrder(sel, MOF_RV_TRAVEL_DIR, dir);
 						}
 					}
@@ -3093,13 +3093,13 @@ public:
 
 				if (this->vehicle->type == VehicleType::Road && (order->IsType(OT_GOTO_STATION) || order->IsType(OT_GOTO_WAYPOINT))) {
 					const DiagDirection dir = order->GetRoadVehTravelDirection();
-					if (_settings_client.gui.show_adv_load_mode_features || dir != INVALID_DIAGDIR) {
+					if (_settings_client.gui.show_adv_load_mode_features || dir != DiagDirection::Invalid) {
 						list.push_back(MakeDropDownListDividerItem());
-						list.push_back(MakeDropDownListCheckedItem(dir == INVALID_DIAGDIR, STR_ORDER_RV_DIR_ANY, 0x300 + INVALID_DIAGDIR, false));
-						list.push_back(MakeDropDownListCheckedItem(dir == DIAGDIR_NE, STR_ORDER_RV_DIR_NE, 0x300 + DIAGDIR_NE, false));
-						list.push_back(MakeDropDownListCheckedItem(dir == DIAGDIR_SE, STR_ORDER_RV_DIR_SE, 0x300 + DIAGDIR_SE, false));
-						list.push_back(MakeDropDownListCheckedItem(dir == DIAGDIR_SW, STR_ORDER_RV_DIR_SW, 0x300 + DIAGDIR_SW, false));
-						list.push_back(MakeDropDownListCheckedItem(dir == DIAGDIR_NW, STR_ORDER_RV_DIR_NW, 0x300 + DIAGDIR_NW, false));
+						list.push_back(MakeDropDownListCheckedItem(dir == DiagDirection::Invalid, STR_ORDER_RV_DIR_ANY, 0x300 + to_underlying(DiagDirection::Invalid), false));
+						list.push_back(MakeDropDownListCheckedItem(dir == DiagDirection::NE, STR_ORDER_RV_DIR_NE, 0x300 + to_underlying(DiagDirection::NE), false));
+						list.push_back(MakeDropDownListCheckedItem(dir == DiagDirection::SE, STR_ORDER_RV_DIR_SE, 0x300 + to_underlying(DiagDirection::SE), false));
+						list.push_back(MakeDropDownListCheckedItem(dir == DiagDirection::SW, STR_ORDER_RV_DIR_SW, 0x300 + to_underlying(DiagDirection::SW), false));
+						list.push_back(MakeDropDownListCheckedItem(dir == DiagDirection::NW, STR_ORDER_RV_DIR_NW, 0x300 + to_underlying(DiagDirection::NW), false));
 					}
 				}
 
@@ -3931,7 +3931,7 @@ public:
 					this->ModifyOrder(this->OrderGetSel(), MOF_STOP_LOCATION, index & 0xFF);
 					break;
 				}
-				if (index >= 0x300 && index <= 0x300 + INVALID_DIAGDIR) {
+				if (index >= 0x300 && index <= 0x300 + to_underlying(DiagDirection::Invalid)) {
 					this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRAVEL_DIR, index & 0xFF);
 					break;
 				}

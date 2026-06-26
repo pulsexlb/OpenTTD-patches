@@ -247,7 +247,7 @@ void UnreserveRailTrack(TileIndex tile, Track t)
 						SetTunnelBridgeExitSignalState(tile, SIGNAL_STATE_RED);
 						if (_extra_aspects > 0) PropagateAspectChange(tile, GetTunnelBridgeExitTrackdir(tile), 0);
 					} else {
-						UpdateSignalsOnSegment(tile, INVALID_DIAGDIR, GetTileOwner(tile));
+						UpdateSignalsOnSegment(tile, DiagDirection::Invalid, GetTileOwner(tile));
 					}
 				}
 				MarkBridgeOrTunnelDirtyOnReservationChange(tile, VMDF_NOT_MAP_MODE);
@@ -436,7 +436,7 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 	if (!(flags & FRF_TB_EXIT_FREE) && !HasReservedTracks(tile, TrackToTrackBits(TrackdirToTrack(trackdir)))) return PBSTileInfo(tile, trackdir, false);
 
 	RailType rt = INVALID_RAILTYPE;
-	Direction dir = INVALID_DIR;
+	Direction dir = Direction::Invalid;
 	int z = 0;
 	auto update_z = [&](TileIndex t, Trackdir td, bool force) {
 		if (force || TrackdirToTrack(td) == TRACK_X || TrackdirToTrack(td) == TRACK_Y) {
@@ -447,10 +447,10 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 				int y = (TileY(t) * TILE_SIZE) + 8;
 				if (!IsTunnelTile(tile)) {
 					switch (TrackdirToExitdir(td)) {
-						case DIAGDIR_NE: x -= 8; break;
-						case DIAGDIR_SE: y += 7; break;
-						case DIAGDIR_SW: x += 7; break;
-						case DIAGDIR_NW: y -= 8; break;
+						case DiagDirection::NE: x -= 8; break;
+						case DiagDirection::SE: y += 7; break;
+						case DiagDirection::SW: x += 7; break;
+						case DiagDirection::NW: y -= 8; break;
 						default: NOT_REACHED();
 					}
 				}
@@ -992,7 +992,7 @@ static void FillLookAheadCurveDataFromTrainPosition(Train *moving_front, TrainRe
 {
 	TileIndex tile = TileVirtXY(moving_front->x_pos, moving_front->y_pos);
 	Direction dir = moving_front->direction;
-	int32_t current_pos = lookahead.reservation_end_position + 4 - ((dir & 1) ? 16 : 8);
+	int32_t current_pos = lookahead.reservation_end_position + 4 - (IsDiagonalDirection(dir) ? 16 : 8);
 	for (Train *u = moving_front->GetMovingNext(); u != nullptr; u = u->GetMovingNext()) {
 		TileIndex cur_tile = TileVirtXY(u->x_pos, u->y_pos);
 		if (cur_tile == tile) continue;
@@ -1003,7 +1003,7 @@ static void FillLookAheadCurveDataFromTrainPosition(Train *moving_front, TrainRe
 			lookahead.curves.push_front({ current_pos, dirdiff });
 			dir = u_dir;
 		}
-		current_pos -= ((dir & 1) ? 16 : 8);
+		current_pos -= (IsDiagonalDirection(dir) ? 16 : 8);
 	}
 }
 

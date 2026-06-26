@@ -357,18 +357,18 @@ static SigInfo ExploreSegment(Owner owner)
 	SigInfo info;
 
 	TileIndex tile = INVALID_TILE; // Stop GCC from complaining about a possibly uninitialized variable (issue #8280).
-	DiagDirection enterdir = INVALID_DIAGDIR;
+	DiagDirection enterdir = DiagDirection::Invalid;
 
 	while (_tbdset.Get(&tile, &enterdir)) { // tile and enterdir are initialized here, unless I'm mistaken.
 		TileIndex oldtile = tile; // tile we are leaving
-		DiagDirection exitdir = enterdir == INVALID_DIAGDIR ? INVALID_DIAGDIR : ReverseDiagDir(enterdir); // expected new exit direction (for straight line)
+		DiagDirection exitdir = enterdir == DiagDirection::Invalid ? DiagDirection::Invalid : ReverseDiagDir(enterdir); // expected new exit direction (for straight line)
 
 		switch (GetTileType(tile)) {
 			case TileType::Railway: {
 				if (!IsOneSignalBlock(owner, GetTileOwner(tile))) continue;
 
 				if (IsRailDepot(tile)) {
-					if (enterdir == INVALID_DIAGDIR) { // from 'inside' - train just entered or left the depot
+					if (enterdir == DiagDirection::Invalid) { // from 'inside' - train just entered or left the depot
 						info.flags |= SF_JUNCTION;
 						if (!(info.flags & SF_TRAIN) && HasVehicleOnTile<VehicleType::Train>(tile, IsTrainNotInDepot)) info.flags |= SF_TRAIN;
 						exitdir = GetRailDepotDirection(tile);
@@ -465,7 +465,7 @@ static SigInfo ExploreSegment(Owner owner)
 					info.flags |= SF_JUNCTION;
 				}
 
-				for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) { // test all possible exit directions
+				for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) { // test all possible exit directions
 					if (dir != enterdir && (tracks & _enterdir_to_trackbits[dir])) { // any accessible track?
 						TileIndex newtile = tile + TileOffsByDiagDir(dir);  // new tile to check
 						DiagDirection newdir = ReverseDiagDir(dir); // direction we are entering from
@@ -521,7 +521,7 @@ static SigInfo ExploreSegment(Owner owner)
 					}
 				};
 
-				TrackBits tracks_masked = (TrackBits)(tracks & _enterdir_to_trackbits[enterdir == INVALID_DIAGDIR ? tunnel_bridge_dir : enterdir]); // only incidating trackbits
+				TrackBits tracks_masked = (TrackBits)(tracks & _enterdir_to_trackbits[enterdir == DiagDirection::Invalid ? tunnel_bridge_dir : enterdir]); // only incidating trackbits
 				if (tracks == TRACK_BIT_HORZ || tracks == TRACK_BIT_VERT) tracks = tracks_masked;
 
 				if (IsTunnelBridgeWithSignalSimulation(tile)) {
@@ -540,7 +540,7 @@ static SigInfo ExploreSegment(Owner owner)
 						}
 					};
 
-					if (enterdir == INVALID_DIAGDIR) {
+					if (enterdir == DiagDirection::Invalid) {
 						/* Incoming from the wormhole, onto signal */
 						if (!(info.flags & SF_TRAIN) && IsTunnelBridgeSignalSimulationExit(tile)) { // tunnel entrance is ignored
 							if (IsTrainInWormholeTile(GetOtherTunnelBridgeEnd(tile), tile)) info.flags |= SF_TRAIN;
@@ -584,17 +584,17 @@ static SigInfo ExploreSegment(Owner owner)
 				} else if (!HasAtMostOneBit(tracks)) {
 					info.flags |= SF_JUNCTION;
 				}
-				if (enterdir == INVALID_DIAGDIR) { // incoming from the wormhole
+				if (enterdir == DiagDirection::Invalid) { // incoming from the wormhole
 					if (!(info.flags & SF_TRAIN) && check_train_present(tunnel_bridge_dir)) info.flags |= SF_TRAIN;
 					enterdir = tunnel_bridge_dir;
 				} else if (enterdir != tunnel_bridge_dir) { // NOT incoming from the wormhole!
 					if (tracks_masked == TRACK_BIT_NONE) continue; // no incidating track
 					if (!(info.flags & SF_TRAIN) && check_train_present(enterdir)) info.flags |= SF_TRAIN;
 				}
-				for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) { // test all possible exit directions
+				for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) { // test all possible exit directions
 					if (dir != enterdir && (tracks & _enterdir_to_trackbits[dir])) { // any track incidating?
 						if (dir == tunnel_bridge_dir) {
-							if (!MaybeAddToTodoSet(GetOtherTunnelBridgeEnd(tile), INVALID_DIAGDIR, tile, INVALID_DIAGDIR)) {
+							if (!MaybeAddToTodoSet(GetOtherTunnelBridgeEnd(tile), DiagDirection::Invalid, tile, DiagDirection::Invalid)) {
 								info.flags |= SF_FULL;
 								return info;
 							}
@@ -1054,7 +1054,7 @@ static SigSegState UpdateSignalsInBuffer(Owner owner)
 	_num_signals_evaluated = 0;
 
 	TileIndex tile = INVALID_TILE; // Stop GCC from complaining about a possibly uninitialized variable (issue #8280).
-	DiagDirection dir = INVALID_DIAGDIR;
+	DiagDirection dir = DiagDirection::Invalid;
 
 	while (_globset.Get(&tile, &dir)) {
 		assert(_tbuset.IsEmpty());
@@ -1069,15 +1069,15 @@ static SigSegState UpdateSignalsInBuffer(Owner owner)
 			case TileType::TunnelBridge: {
 				/* 'optimization assert' - do not try to update signals when it is not needed */
 				assert_tile(GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL, tile);
-				if (IsTunnel(tile)) assert(dir == INVALID_DIAGDIR || dir == ReverseDiagDir(GetTunnelBridgeDirection(tile)));
+				if (IsTunnel(tile)) assert(dir == DiagDirection::Invalid || dir == ReverseDiagDir(GetTunnelBridgeDirection(tile)));
 				TrackBits across = GetAcrossTunnelBridgeTrackBits(tile);
-				if (dir == INVALID_DIAGDIR || _enterdir_to_trackbits[dir] & across) {
+				if (dir == DiagDirection::Invalid || _enterdir_to_trackbits[dir] & across) {
 					if (IsTunnelBridgeWithSignalSimulation(tile)) {
 						/* Don't worry about other side of tunnel. */
 						_tbdset.Add(tile, dir);
 					} else {
-						_tbdset.Add(tile, INVALID_DIAGDIR);  // we can safely start from wormhole centre
-						_tbdset.Add(GetOtherTunnelBridgeEnd(tile), INVALID_DIAGDIR);
+						_tbdset.Add(tile, DiagDirection::Invalid);  // we can safely start from wormhole centre
+						_tbdset.Add(GetOtherTunnelBridgeEnd(tile), DiagDirection::Invalid);
 					}
 					break;
 				}
@@ -1087,8 +1087,8 @@ static SigSegState UpdateSignalsInBuffer(Owner owner)
 			case TileType::Railway:
 				if (IsRailDepotTile(tile)) {
 					/* 'optimization assert' do not try to update signals in other cases */
-					assert(dir == INVALID_DIAGDIR || dir == GetRailDepotDirection(tile));
-					_tbdset.Add(tile, INVALID_DIAGDIR); // start from depot inside
+					assert(dir == DiagDirection::Invalid || dir == GetRailDepotDirection(tile));
+					_tbdset.Add(tile, DiagDirection::Invalid); // start from depot inside
 					break;
 				}
 				[[fallthrough]];
@@ -1183,10 +1183,10 @@ void UpdateSignalsInBufferIfOwnerNotAddable(Owner owner)
 void AddTrackToSignalBuffer(TileIndex tile, Track track, Owner owner)
 {
 	static const DiagDirection _search_dir_1[] = {
-		DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_SW, DIAGDIR_SE
+		DiagDirection::NE, DiagDirection::SE, DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::SE
 	};
 	static const DiagDirection _search_dir_2[] = {
-		DIAGDIR_SW, DIAGDIR_NW, DIAGDIR_NW, DIAGDIR_SW, DIAGDIR_NW, DIAGDIR_NE
+		DiagDirection::SW, DiagDirection::NW, DiagDirection::NW, DiagDirection::SW, DiagDirection::NW, DiagDirection::NE
 	};
 
 	/* do not allow signal updates for two companies in one run,
@@ -1195,10 +1195,10 @@ void AddTrackToSignalBuffer(TileIndex tile, Track track, Owner owner)
 
 	_last_owner = owner;
 
-	DiagDirection wormhole_dir = IsTileType(tile, TileType::TunnelBridge) ? GetTunnelBridgeDirection(tile) : INVALID_DIAGDIR;
+	DiagDirection wormhole_dir = IsTileType(tile, TileType::TunnelBridge) ? GetTunnelBridgeDirection(tile) : DiagDirection::Invalid;
 
 	auto add_dir = [&](DiagDirection dir) {
-		_globset.Add(tile, dir == wormhole_dir ? INVALID_DIAGDIR : dir);
+		_globset.Add(tile, dir == wormhole_dir ? DiagDirection::Invalid : dir);
 	};
 	add_dir(_search_dir_1[track]);
 	add_dir(_search_dir_2[track]);

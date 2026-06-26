@@ -740,7 +740,7 @@ public:
 	/** Set the road vehicle travel direction */
 	inline void SetRoadVehTravelDirection(DiagDirection dir)
 	{
-		if (dir != this->GetRoadVehTravelDirection()) SB(this->GetXFlagsRef(), 5, 3, (dir + 1) & 0x7);
+		if (dir != this->GetRoadVehTravelDirection()) SB(this->GetXFlagsRef(), 5, 3, (to_underlying(dir) + 1) & 0x7);
 	}
 
 	/**

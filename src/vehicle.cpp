@@ -515,7 +515,7 @@ Vehicle::Vehicle(VehicleID index, VehicleType type) : VehiclePool::PoolItem<&_ve
 	this->last_station_visited = StationID::Invalid();
 	this->last_loading_station = StationID::Invalid();
 	this->last_loading_tick = StateTicks{0};
-	this->cur_image_valid_dir  = INVALID_DIR;
+	this->cur_image_valid_dir  = Direction::Invalid;
 	this->vcache.cached_veh_flags = 0;
 }
 
@@ -720,10 +720,10 @@ static void FindClosestTrainToTunnelBridgeEndEnum(const Train *t, FindTrainClose
 	int32_t pos;
 	switch (info->direction) {
 		default: NOT_REACHED();
-		case DIAGDIR_NE: pos = -t->x_pos; break; // X: lower is better
-		case DIAGDIR_SE: pos =  t->y_pos; break; // Y: higher is better
-		case DIAGDIR_SW: pos =  t->x_pos; break; // X: higher is better
-		case DIAGDIR_NW: pos = -t->y_pos; break; // Y: lower is better
+		case DiagDirection::NE: pos = -t->x_pos; break; // X: lower is better
+		case DiagDirection::SE: pos =  t->y_pos; break; // Y: higher is better
+		case DiagDirection::SW: pos =  t->x_pos; break; // X: higher is better
+		case DiagDirection::NW: pos = -t->y_pos; break; // Y: lower is better
 	}
 
 	/* ALWAYS return the lowest ID (anti-desync!) if the coordinate is the same */
@@ -765,10 +765,10 @@ static void GetAvailableFreeTilesInSignalledTunnelBridgeEnum(const Train *v, Get
 	int v_pos;
 	switch (checker->direction) {
 		default: NOT_REACHED();
-		case DIAGDIR_NE: v_pos = -v->x_pos + TILE_UNIT_MASK; break;
-		case DIAGDIR_SE: v_pos =  v->y_pos; break;
-		case DIAGDIR_SW: v_pos =  v->x_pos; break;
-		case DIAGDIR_NW: v_pos = -v->y_pos + TILE_UNIT_MASK; break;
+		case DiagDirection::NE: v_pos = -v->x_pos + TILE_UNIT_MASK; break;
+		case DiagDirection::SE: v_pos =  v->y_pos; break;
+		case DiagDirection::SW: v_pos =  v->x_pos; break;
+		case DiagDirection::NW: v_pos = -v->y_pos + TILE_UNIT_MASK; break;
 	}
 	if (v_pos > checker->pos && v_pos < checker->lowest_seen) {
 		checker->lowest_seen = v_pos;
@@ -792,10 +792,10 @@ int GetAvailableFreeTilesInSignalledTunnelBridge(TileIndex entrance, TileIndex e
 	checker.lowest_seen = INT_MAX;
 	switch (checker.direction) {
 		default: NOT_REACHED();
-		case DIAGDIR_NE: checker.pos = -(int)(TileX(tile) * TILE_SIZE); break;
-		case DIAGDIR_SE: checker.pos =       (TileY(tile) * TILE_SIZE); break;
-		case DIAGDIR_SW: checker.pos =       (TileX(tile) * TILE_SIZE); break;
-		case DIAGDIR_NW: checker.pos = -(int)(TileY(tile) * TILE_SIZE); break;
+		case DiagDirection::NE: checker.pos = -(int)(TileX(tile) * TILE_SIZE); break;
+		case DiagDirection::SE: checker.pos =       (TileY(tile) * TILE_SIZE); break;
+		case DiagDirection::SW: checker.pos =       (TileX(tile) * TILE_SIZE); break;
+		case DiagDirection::NW: checker.pos = -(int)(TileY(tile) * TILE_SIZE); break;
 	}
 
 	for (const Train *t : VehiclesOnTile<VehicleType::Train>(entrance)) {
@@ -1920,7 +1920,7 @@ static void DoDrawVehicle(const Vehicle *v)
 
 	{
 		Vehicle *v_mutable = const_cast<Vehicle *>(v);
-		if (HasBit(v_mutable->vcache.cached_veh_flags, VCF_IMAGE_REFRESH) && v_mutable->cur_image_valid_dir != INVALID_DIR) {
+		if (HasBit(v_mutable->vcache.cached_veh_flags, VCF_IMAGE_REFRESH) && v_mutable->cur_image_valid_dir != Direction::Invalid) {
 			VehicleSpriteSeq seq;
 			v_mutable->GetImage(v_mutable->cur_image_valid_dir, EIT_ON_MAP, &seq);
 			v_mutable->sprite_seq = seq;
@@ -2694,7 +2694,7 @@ void VehicleEnterDepot(Vehicle *v)
 			SetDepotReservation(t->tile, false);
 			if (_settings_client.gui.show_track_reservation) MarkTileDirtyByTile(t->tile, VMDF_NOT_MAP_MODE);
 
-			UpdateSignalsOnSegment(t->tile, INVALID_DIAGDIR, t->owner);
+			UpdateSignalsOnSegment(t->tile, DiagDirection::Invalid, t->owner);
 			t->wait_counter = 0;
 			t->force_proceed = TFP_NONE;
 			t->ConsistChanged(CCF_ARRANGE);
@@ -2958,9 +2958,9 @@ GetNewVehiclePosResult GetNewVehiclePos(const Vehicle *v)
 }
 
 static const Direction _new_direction_table[] = {
-	DIR_N,  DIR_NW, DIR_W,
-	DIR_NE, DIR_SE, DIR_SW,
-	DIR_E,  DIR_SE, DIR_S
+	Direction::N,  Direction::NW, Direction::W,
+	Direction::NE, Direction::SE, Direction::SW,
+	Direction::E,  Direction::SE, Direction::S
 };
 
 Direction GetDirectionTowards(const Vehicle *v, int x, int y)
@@ -5086,45 +5086,45 @@ bool VehiclesHaveSameOrderList(const Vehicle *v1, const Vehicle *v2)
 
 /** Vehicle sub-coordinate data for moving into a new tile. */
 struct VehicleSubcoordData : Coord2D<uint8_t> {
-	Direction dir = INVALID_DIR; ///< new direction.
+	Direction dir = Direction::Invalid; ///< new direction.
 };
 
 /**
  * Table of subtile coordinates and direction for each combination of chosen track and tile enter direction.
- * Combinations that are not possible result in INVALID_DIR.
+ * Combinations that are not possible result in Direction::Invalid.
  */
 static constexpr DiagDirectionIndexArray<TrackIndexArray<VehicleSubcoordData>> _vehicle_subcoord{{{
 	{{{ // NE
-		{{15, 8}, DIR_NE}, // TRACK_X
+		{{15, 8}, Direction::NE}, // TRACK_X
 		{}, // TRACK_Y
 		{}, // TRACK_UPPER
-		{{15, 8}, DIR_E}, // TRACK_LOWER
-		{{15, 7}, DIR_N}, // TRACK_LEFT
+		{{15, 8}, Direction::E}, // TRACK_LOWER
+		{{15, 7}, Direction::N}, // TRACK_LEFT
 		{}, // TRACK_RIGHT
 	}}},
 	{{{ // SE
 		{}, // TRACK_X
-		{{8, 0}, DIR_SE}, // TRACK_Y
-		{{7, 0}, DIR_E}, // TRACK_UPPER
+		{{8, 0}, Direction::SE}, // TRACK_Y
+		{{7, 0}, Direction::E}, // TRACK_UPPER
 		{}, // TRACK_LOWER
-		{{8, 0}, DIR_S}, // TRACK_LEFT
+		{{8, 0}, Direction::S}, // TRACK_LEFT
 		{}, // TRACK_RIGHT
 	}}},
 	{{{ // SW
-		{{0, 8}, DIR_SW}, // TRACK_X
+		{{0, 8}, Direction::SW}, // TRACK_X
 		{}, // TRACK_Y
-		{{0, 7}, DIR_W}, // TRACK_UPPER
+		{{0, 7}, Direction::W}, // TRACK_UPPER
 		{}, // TRACK_LOWER
 		{}, // TRACK_LEFT
-		{{0, 8}, DIR_S}, // TRACK_RIGHT
+		{{0, 8}, Direction::S}, // TRACK_RIGHT
 	}}},
 	{{{ // NW
 		{}, // TRACK_X
-		{{8, 15}, DIR_NW}, // TRACK_Y
+		{{8, 15}, Direction::NW}, // TRACK_Y
 		{}, // TRACK_UPPER
-		{{8, 15}, DIR_W}, // TRACK_LOWER
+		{{8, 15}, Direction::W}, // TRACK_LOWER
 		{}, // TRACK_LEFT
-		{{7, 15}, DIR_N}, // TRACK_RIGHT
+		{{7, 15}, Direction::N}, // TRACK_RIGHT
 	}}},
 }}};
 

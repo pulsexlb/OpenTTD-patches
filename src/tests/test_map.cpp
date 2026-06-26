@@ -48,19 +48,19 @@ TEST_CASE("MayHaveRoad - Tunnel/bridge")
 
 	ResetRoadTypes();
 
-	MakeRoadTunnel(TileIndex{0}, OWNER_NONE, TunnelID{0}, DIAGDIR_NE, ROADTYPE_ROAD, INVALID_ROADTYPE);
+	MakeRoadTunnel(TileIndex{0}, OWNER_NONE, TunnelID{0}, DiagDirection::NE, ROADTYPE_ROAD, INVALID_ROADTYPE);
 	CHECK(MayHaveRoad(TileIndex{0}) == true);
 
-	MakeRailTunnel(TileIndex{1}, OWNER_NONE, TunnelID{0}, DIAGDIR_NE, RailType{0});
+	MakeRailTunnel(TileIndex{1}, OWNER_NONE, TunnelID{0}, DiagDirection::NE, RailType{0});
 	CHECK(MayHaveRoad(TileIndex{1}) == false);
 
-	MakeRoadBridgeRamp(TileIndex{2}, OWNER_NONE, OWNER_NONE, OWNER_NONE, BridgeType{0}, DIAGDIR_NE, ROADTYPE_ROAD, INVALID_ROADTYPE);
+	MakeRoadBridgeRamp(TileIndex{2}, OWNER_NONE, OWNER_NONE, OWNER_NONE, BridgeType{0}, DiagDirection::NE, ROADTYPE_ROAD, INVALID_ROADTYPE);
 	CHECK(MayHaveRoad(TileIndex{2}) == true);
 
-	MakeRailBridgeRamp(TileIndex{3}, OWNER_NONE, BridgeType{0}, DIAGDIR_NE, RailType{0}, false);
+	MakeRailBridgeRamp(TileIndex{3}, OWNER_NONE, BridgeType{0}, DiagDirection::NE, RailType{0}, false);
 	CHECK(MayHaveRoad(TileIndex{3}) == false);
 
-	MakeAqueductBridgeRamp(TileIndex{4}, OWNER_NONE, DIAGDIR_NE);
+	MakeAqueductBridgeRamp(TileIndex{4}, OWNER_NONE, DiagDirection::NE);
 	CHECK(MayHaveRoad(TileIndex{4}) == false);
 
 	DeallocateMap();

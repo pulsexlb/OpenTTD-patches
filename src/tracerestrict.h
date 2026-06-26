@@ -226,10 +226,10 @@ enum TraceRestrictNullTypeSpecialValue : uint8_t {
  * Enumeration of TraceRestrictItemvalue type field when value type is TRVT_DIRECTION
  */
 enum TraceRestrictDirectionTypeSpecialValue : uint8_t {
-	TRNTSV_NE                     = 0,       ///< DIAGDIR_NE: entering at NE tile edge
-	TRNTSV_SE                     = 1,       ///< DIAGDIR_SE: entering at SE tile edge
-	TRNTSV_SW                     = 2,       ///< DIAGDIR_SW: entering at SW tile edge
-	TRNTSV_NW                     = 3,       ///< DIAGDIR_NW: entering at NW tile edge
+	TRNTSV_NE                     = 0,       ///< DiagDirection::NE: entering at NE tile edge
+	TRNTSV_SE                     = 1,       ///< DiagDirection::SE: entering at SE tile edge
+	TRNTSV_SW                     = 2,       ///< DiagDirection::SW: entering at SW tile edge
+	TRNTSV_NW                     = 3,       ///< DiagDirection::NW: entering at NW tile edge
 	TRDTSV_FRONT                  = 4,       ///< entering at front face of signal
 	TRDTSV_BACK                   = 5,       ///< entering at rear face of signal
 	TRDTSV_TUNBRIDGE_ENTER        = 32,      ///< signal is a tunnel/bridge entrance

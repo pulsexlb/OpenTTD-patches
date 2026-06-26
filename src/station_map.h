@@ -800,7 +800,7 @@ inline void MakeRailWaypoint(TileIndex t, Owner o, StationID sid, Axis a, uint8_
  */
 inline void MakeRoadStop(TileIndex t, Owner o, StationID sid, RoadStopType rst, RoadType road_rt, RoadType tram_rt, DiagDirection d)
 {
-	MakeStation(t, o, sid, (rst == RoadStopType::Bus ? StationType::Bus : StationType::Truck), d);
+	MakeStation(t, o, sid, (rst == RoadStopType::Bus ? StationType::Bus : StationType::Truck), to_underlying(d));
 	SetRoadTypes(t, road_rt, tram_rt);
 	SetRoadOwner(t, RoadTramType::Road, o);
 	SetRoadOwner(t, RoadTramType::Tram, o);
@@ -863,7 +863,7 @@ inline void MakeBuoy(TileIndex t, StationID sid, WaterClass wc)
  */
 inline void MakeDock(TileIndex t, Owner o, StationID sid, DiagDirection d, WaterClass wc)
 {
-	MakeStation(t, o, sid, StationType::Dock, d);
+	MakeStation(t, o, sid, StationType::Dock, to_underlying(d));
 	MakeStation(t + TileOffsByDiagDir(d), o, sid, StationType::Dock, GFX_DOCK_BASE_WATER_PART + to_underlying(DiagDirToAxis(d)), wc);
 }
 

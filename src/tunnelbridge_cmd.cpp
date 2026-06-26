@@ -852,7 +852,7 @@ CommandCost CmdBuildBridge(DoCommandFlags flags, TileIndex tile_end, TileIndex t
 
 	if (flags.Test(DoCommandFlag::Execute) && transport_type == TRANSPORT_RAIL) {
 		Track track = AxisToTrack(direction);
-		AddSideToSignalBuffer(tile_start, INVALID_DIAGDIR, company);
+		AddSideToSignalBuffer(tile_start, DiagDirection::Invalid, company);
 		YapfNotifyTrackLayoutChange(tile_start, track);
 		for (uint i = 0; i < vehicles_affected.size(); ++i) {
 			TryPathReserve(vehicles_affected[i], true);
@@ -964,10 +964,10 @@ static inline CommandCost CanBuildChunnel(TileIndex tile, DiagDirection directio
 				/* Pass the water and find a proper shore tile that potentially
 				 * could have a tunnel portal behind. */
 				for (;;) {
-					if (direction == DIAGDIR_NE && (end_tileh & SLOPE_NE) == SLOPE_NE) break;
-					if (direction == DIAGDIR_SE && (end_tileh & SLOPE_SE) == SLOPE_SE) break;
-					if (direction == DIAGDIR_SW && (end_tileh & SLOPE_SW) == SLOPE_SW) break;
-					if (direction == DIAGDIR_NW && (end_tileh & SLOPE_NW) == SLOPE_NW) break;
+					if (direction == DiagDirection::NE && (end_tileh & SLOPE_NE) == SLOPE_NE) break;
+					if (direction == DiagDirection::SE && (end_tileh & SLOPE_SE) == SLOPE_SE) break;
+					if (direction == DiagDirection::SW && (end_tileh & SLOPE_SW) == SLOPE_SW) break;
+					if (direction == DiagDirection::NW && (end_tileh & SLOPE_NW) == SLOPE_NW) break;
 
 					/* No drilling under oil rigs.*/
 					if ((IsTileType(tile, TileType::Station) && IsOilRig(tile)) ||
@@ -1046,7 +1046,7 @@ CommandCost CmdBuildTunnel(DoCommandFlags flags, TileIndex start_tile, Transport
 
 	auto [start_tileh, start_z] = GetTileSlopeZ(start_tile);
 	DiagDirection direction = GetInclinedSlopeDirection(start_tileh);
-	if (direction == INVALID_DIAGDIR) return CommandCost(STR_ERROR_SITE_UNSUITABLE_FOR_TUNNEL);
+	if (direction == DiagDirection::Invalid) return CommandCost(STR_ERROR_SITE_UNSUITABLE_FOR_TUNNEL);
 
 	if (HasTileWaterGround(start_tile)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
 
@@ -1191,7 +1191,7 @@ CommandCost CmdBuildTunnel(DoCommandFlags flags, TileIndex start_tile, Transport
 			if (!IsTunnelTile(start_tile) && c != nullptr) c->infrastructure.rail[railtype] += num_pieces;
 			MakeRailTunnel(start_tile, company, t->index, direction,                 railtype);
 			MakeRailTunnel(end_tile,   company, t->index, ReverseDiagDir(direction), railtype);
-			AddSideToSignalBuffer(start_tile, INVALID_DIAGDIR, company);
+			AddSideToSignalBuffer(start_tile, DiagDirection::Invalid, company);
 			YapfNotifyTrackLayoutChange(start_tile, DiagDirToDiagTrack(direction));
 		} else {
 			if (c != nullptr) c->infrastructure.road[roadtype] += num_pieces * 2; // A full diagonal road has two road bits.
@@ -1346,7 +1346,7 @@ static CommandCost DoClearTunnel(TileIndex tile, DoCommandFlags flags)
 			DoClearSquare(tile);
 			DoClearSquare(endtile);
 
-			/* cannot use INVALID_DIAGDIR for signal update because the tunnel doesn't exist anymore */
+			/* cannot use DiagDirection::Invalid for signal update because the tunnel doesn't exist anymore */
 			AddSideToSignalBuffer(tile,    ReverseDiagDir(dir), owner);
 			AddSideToSignalBuffer(endtile, dir,                 owner);
 
@@ -1521,7 +1521,7 @@ static CommandCost DoClearBridge(TileIndex tile, DoCommandFlags flags)
 		}
 
 		if (rail) {
-			/* cannot use INVALID_DIAGDIR for signal update because the bridge doesn't exist anymore */
+			/* cannot use DiagDirection::Invalid for signal update because the bridge doesn't exist anymore */
 
 			auto notify_track_change = [owner](TileIndex tile, DiagDirection direction, TrackBits tracks) {
 				auto check_dir = [&](DiagDirection d) {
@@ -1843,8 +1843,8 @@ static void DrawTunnelBridgeRampSingleSignal(const TileInfo *ti, bool is_green, 
 	uint y = TileY(ti->tile) * TILE_SIZE + SignalPositions[side != show_exit][position ^ (show_exit ? 1 : 0)].y;
 	uint z = ti->z;
 
-	if (ti->tileh == SLOPE_FLAT && side == show_exit && dir == DIAGDIR_SE) z += 2;
-	if (ti->tileh == SLOPE_FLAT && side != show_exit && dir == DIAGDIR_SW) z += 2;
+	if (ti->tileh == SLOPE_FLAT && side == show_exit && dir == DiagDirection::SE) z += 2;
+	if (ti->tileh == SLOPE_FLAT && side != show_exit && dir == DiagDirection::SW) z += 2;
 
 	if (ti->tileh != SLOPE_FLAT && IsBridge(ti->tile)) z += 8; // sloped bridge head
 	SignalVariant variant = IsTunnelBridgeSemaphore(ti->tile) ? SIG_SEMAPHORE : SIG_ELECTRIC;
@@ -1917,10 +1917,10 @@ static void DrawTunnelBridgeRampSignal(const TileInfo *ti)
 	uint position;
 	switch (dir) {
 		default: NOT_REACHED();
-		case DIAGDIR_NE: position = 0; break;
-		case DIAGDIR_SE: position = 2; break;
-		case DIAGDIR_SW: position = 1; break;
-		case DIAGDIR_NW: position = 3; break;
+		case DiagDirection::NE: position = 0; break;
+		case DiagDirection::SE: position = 2; break;
+		case DiagDirection::SW: position = 1; break;
+		case DiagDirection::NW: position = 3; break;
 	}
 
 	if (IsTunnelBridgeSignalSimulationExit(ti->tile)) {
@@ -1954,10 +1954,10 @@ static void GetBridgeSignalXY(TileIndex tile, DiagDirection bridge_direction, bo
 
 	switch (bridge_direction) {
 		default: NOT_REACHED();
-		case DIAGDIR_NE: position = 0; break;
-		case DIAGDIR_SE: position = 2; break;
-		case DIAGDIR_SW: position = 1; break;
-		case DIAGDIR_NW: position = 3; break;
+		case DiagDirection::NE: position = 0; break;
+		case DiagDirection::SE: position = 2; break;
+		case DiagDirection::SW: position = 1; break;
+		case DiagDirection::NW: position = 3; break;
 	}
 
 	x = TileX(tile) * TILE_SIZE + SignalPositions[side][position].x;
@@ -2077,8 +2077,8 @@ static int GetTunnelBridgeSignalZNonRailCustom(TileIndex tile, bool side, bool e
 		Slope slope;
 		std::tie(slope, z) = GetTilePixelSlope(tile);
 		if (slope == SLOPE_FLAT) {
-			if (side == exit && dir == DIAGDIR_SE) z += 2;
-			if (side != exit && dir == DIAGDIR_SW) z += 2;
+			if (side == exit && dir == DiagDirection::SE) z += 2;
+			if (side != exit && dir == DiagDirection::SW) z += 2;
 		} else {
 			z += 8;
 		}
@@ -2130,10 +2130,10 @@ void MarkTunnelBridgeSignalDirty(TileIndex tile, bool exit)
 	uint position;
 	switch (dir) {
 		default: NOT_REACHED();
-		case DIAGDIR_NE: position = 0; break;
-		case DIAGDIR_SE: position = 2; break;
-		case DIAGDIR_SW: position = 1; break;
-		case DIAGDIR_NW: position = 3; break;
+		case DiagDirection::NE: position = 0; break;
+		case DiagDirection::SE: position = 2; break;
+		case DiagDirection::SW: position = 1; break;
+		case DiagDirection::NW: position = 3; break;
 	}
 
 	static const Point SignalPositions[2][4] = {
@@ -2236,7 +2236,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 
 		if (HasTunnelBridgeSnowOrDesert(ti->tile)) image += railtype_overlay != 0 ? 8 : 32;
 
-		image += tunnelbridge_direction * 2;
+		image += to_underlying(tunnelbridge_direction) * 2;
 		DrawGroundSprite(image, PAL_NONE);
 
 		if (transport_type == TRANSPORT_ROAD) {
@@ -2252,7 +2252,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 				if (road_rti->UsesOverlay()) {
 					SpriteID ground = GetCustomRoadSprite(road_rti, ti->tile, RoadSpriteType::Tunnel);
 					if (ground != 0) {
-						DrawGroundSprite(ground + tunnelbridge_direction, PAL_NONE);
+						DrawGroundSprite(ground + to_underlying(tunnelbridge_direction), PAL_NONE);
 						draw_underlay = false;
 					}
 				}
@@ -2260,7 +2260,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 				if (tram_rti->UsesOverlay()) {
 					SpriteID ground = GetCustomRoadSprite(tram_rti, ti->tile, RoadSpriteType::Tunnel);
 					if (ground != 0) {
-						DrawGroundSprite(ground + tunnelbridge_direction, PAL_NONE);
+						DrawGroundSprite(ground + to_underlying(tunnelbridge_direction), PAL_NONE);
 						draw_underlay = false;
 					}
 				}
@@ -2289,13 +2289,13 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 			if (catenary_sprite_base != 0) {
 				catenary = true;
 				StartSpriteCombine();
-				AddSortableSpriteToDraw(catenary_sprite_base + tunnelbridge_direction, PAL_NONE, *ti, catenary_bounds[tunnelbridge_direction], IsTransparencySet(TO_CATENARY));
+				AddSortableSpriteToDraw(catenary_sprite_base + to_underlying(tunnelbridge_direction), PAL_NONE, *ti, catenary_bounds[tunnelbridge_direction], IsTransparencySet(TO_CATENARY));
 			}
 		} else {
 			const RailTypeInfo *rti = GetRailTypeInfo(GetRailType(ti->tile));
 			if (rti->UsesOverlay()) {
 				SpriteID surface = GetCustomRailSprite(rti, ti->tile, RailSpriteType::Tunnel);
-				if (surface != 0) DrawGroundSprite(surface + tunnelbridge_direction, PAL_NONE);
+				if (surface != 0) DrawGroundSprite(surface + to_underlying(tunnelbridge_direction), PAL_NONE);
 			}
 
 			/* PBS debugging, draw reserved tracks darker */
@@ -2323,7 +2323,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 
 		AddSortableSpriteToDraw(image + 1, PAL_NONE, *ti, roof_bounds[tunnelbridge_direction], false);
 		/* Draw railtype tunnel portal overlay if defined. */
-		if (railtype_overlay != 0) AddSortableSpriteToDraw(railtype_overlay + tunnelbridge_direction, PAL_NONE, *ti, roof_bounds[tunnelbridge_direction], false);
+		if (railtype_overlay != 0) AddSortableSpriteToDraw(railtype_overlay + to_underlying(tunnelbridge_direction), PAL_NONE, *ti, roof_bounds[tunnelbridge_direction], false);
 
 		if (catenary || railtype_overlay != 0) EndSpriteCombine();
 
@@ -2382,12 +2382,12 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 				};
 				switch (t) {
 					default: NOT_REACHED();
-					case TRACK_X:     draw_signals( 8, SIGNAL_TO_SOUTHWEST, DIAGDIR_SW); break;
-					case TRACK_Y:     draw_signals(10, SIGNAL_TO_SOUTHEAST, DIAGDIR_NW); break;
-					case TRACK_UPPER: draw_signals( 4, SIGNAL_TO_WEST,      DIAGDIR_NW); break;
-					case TRACK_LOWER: draw_signals( 6, SIGNAL_TO_WEST,      DIAGDIR_SW); break;
-					case TRACK_LEFT:  draw_signals( 0, SIGNAL_TO_NORTH,     DIAGDIR_NW); break;
-					case TRACK_RIGHT: draw_signals( 2, SIGNAL_TO_NORTH,     DIAGDIR_NE); break;
+					case TRACK_X:     draw_signals( 8, SIGNAL_TO_SOUTHWEST, DiagDirection::SW); break;
+					case TRACK_Y:     draw_signals(10, SIGNAL_TO_SOUTHEAST, DiagDirection::NW); break;
+					case TRACK_UPPER: draw_signals( 4, SIGNAL_TO_WEST,      DiagDirection::NW); break;
+					case TRACK_LOWER: draw_signals( 6, SIGNAL_TO_WEST,      DiagDirection::SW); break;
+					case TRACK_LEFT:  draw_signals( 0, SIGNAL_TO_NORTH,     DiagDirection::NW); break;
+					case TRACK_RIGHT: draw_signals( 2, SIGNAL_TO_NORTH,     DiagDirection::NE); break;
 				}
 			}
 
@@ -2413,7 +2413,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 		bool is_custom_layout = false; // Set if rail/road bridge uses a custom layout.
 
 		/* HACK Wizardry to convert the bridge ramp direction into a sprite offset */
-		base_offset += (6 - tunnelbridge_direction) % 4;
+		base_offset += (6 - to_underlying(tunnelbridge_direction)) % 4;
 
 		/* Table number BRIDGE_PIECE_HEAD always refers to the bridge heads for any bridge type */
 		if (transport_type != TRANSPORT_WATER) {
@@ -2448,7 +2448,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 		AddSortableSpriteToDraw(psid->sprite, psid->pal, *ti, {{}, {TILE_SIZE, TILE_SIZE, static_cast<uint8_t>(ti->tileh == SLOPE_FLAT ? 0 : TILE_HEIGHT)}, {}});
 
 		if (transport_type == TRANSPORT_ROAD) {
-			uint offset = tunnelbridge_direction;
+			uint offset = to_underlying(tunnelbridge_direction);
 			int z = ti->z;
 			if (ti->tileh != SLOPE_FLAT) {
 				offset = (offset + 1) & 1;
@@ -2469,7 +2469,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 					if (HasBridgeFlatRamp(ti->tileh, DiagDirToAxis(tunnelbridge_direction))) {
 						AddSortableSpriteToDraw(surface + ((DiagDirToAxis(tunnelbridge_direction) == Axis::X) ? RTBO_X : RTBO_Y), PAL_NONE, *ti, {{0, 0, TILE_HEIGHT}, {TILE_SIZE, TILE_SIZE, 0}, {}});
 					} else {
-						AddSortableSpriteToDraw(surface + RTBO_SLOPE + tunnelbridge_direction, PAL_NONE, *ti, {{}, {TILE_SIZE, TILE_SIZE, TILE_HEIGHT}, {}});
+						AddSortableSpriteToDraw(surface + RTBO_SLOPE + to_underlying(tunnelbridge_direction), PAL_NONE, *ti, {{}, {TILE_SIZE, TILE_SIZE, TILE_HEIGHT}, {}});
 					}
 				}
 			}
@@ -2481,13 +2481,13 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 					if (HasBridgeFlatRamp(ti->tileh, DiagDirToAxis(tunnelbridge_direction))) {
 						AddSortableSpriteToDraw(overlay + RTO_X + to_underlying(DiagDirToAxis(tunnelbridge_direction)), PALETTE_CRASH, *ti, {{0, 0, TILE_HEIGHT}, {TILE_SIZE, TILE_SIZE, 0}, {}});
 					} else {
-						AddSortableSpriteToDraw(overlay + RTO_SLOPE_NE + tunnelbridge_direction, PALETTE_CRASH, *ti, {{}, {TILE_SIZE, TILE_SIZE, TILE_HEIGHT}, {}});
+						AddSortableSpriteToDraw(overlay + RTO_SLOPE_NE + to_underlying(tunnelbridge_direction), PALETTE_CRASH, *ti, {{}, {TILE_SIZE, TILE_SIZE, TILE_HEIGHT}, {}});
 					}
 				} else {
 					if (HasBridgeFlatRamp(ti->tileh, DiagDirToAxis(tunnelbridge_direction))) {
 						AddSortableSpriteToDraw(DiagDirToAxis(tunnelbridge_direction) == Axis::X ? rti->base_sprites.single_x : rti->base_sprites.single_y, PALETTE_CRASH, *ti, {{0, 0, TILE_HEIGHT}, {TILE_SIZE, TILE_SIZE, 0}, {}});
 					} else {
-						AddSortableSpriteToDraw(rti->base_sprites.single_sloped + tunnelbridge_direction, PALETTE_CRASH, *ti, {{}, {TILE_SIZE, TILE_SIZE, TILE_HEIGHT}, {}});
+						AddSortableSpriteToDraw(rti->base_sprites.single_sloped + to_underlying(tunnelbridge_direction), PALETTE_CRASH, *ti, {{}, {TILE_SIZE, TILE_SIZE, TILE_HEIGHT}, {}});
 					}
 				}
 			}
@@ -2747,10 +2747,10 @@ static int GetSlopePixelZ_TunnelBridge(TileIndex tile, uint x, uint y, bool grou
 
 			switch (dir) {
 				default: NOT_REACHED();
-				case DIAGDIR_NE: tileh = SLOPE_NE; break;
-				case DIAGDIR_SE: tileh = SLOPE_SE; break;
-				case DIAGDIR_SW: tileh = SLOPE_SW; break;
-				case DIAGDIR_NW: tileh = SLOPE_NW; break;
+				case DiagDirection::NE: tileh = SLOPE_NE; break;
+				case DiagDirection::SE: tileh = SLOPE_SE; break;
+				case DiagDirection::SW: tileh = SLOPE_SW; break;
+				case DiagDirection::NW: tileh = SLOPE_NW; break;
 			}
 		}
 	}
@@ -2863,36 +2863,36 @@ static void GetTileDesc_TunnelBridge(TileIndex tile, TileDesc &td)
 	}
 }
 
-static const RailGroundType _tunnel_bridge_fence_table[4][5] = {
-	{ // DIAGDIR_NE
+static const DiagDirectionIndexArray<std::array<RailGroundType, 5>> _tunnel_bridge_fence_table = {{{
+	{ // DiagDirection::NE
 		RailGroundType::FenceNW,
 		RailGroundType::FenceSE,
 		RailGroundType::FenceSW,
 		RailGroundType::FenceVert2,
 		RailGroundType::FenceHoriz1,
 	},
-	{ // DIAGDIR_SE
+	{ // DiagDirection::SE
 		RailGroundType::FenceNW,
 		RailGroundType::FenceNE,
 		RailGroundType::FenceSW,
 		RailGroundType::FenceVert2,
 		RailGroundType::FenceHoriz2,
 	},
-	{ // DIAGDIR_SW
+	{ // DiagDirection::SW
 		RailGroundType::FenceNW,
 		RailGroundType::FenceSE,
 		RailGroundType::FenceNE,
 		RailGroundType::FenceVert1,
 		RailGroundType::FenceHoriz2,
 	},
-	{ // DIAGDIR_NW
+	{ // DiagDirection::NW
 		RailGroundType::FenceSE,
 		RailGroundType::FenceNE,
 		RailGroundType::FenceSW,
 		RailGroundType::FenceVert1,
 		RailGroundType::FenceHoriz1,
 	},
-};
+}}};
 
 RailGroundType GetTunnelBridgeGroundType(TileIndex tile)
 {
@@ -2920,11 +2920,11 @@ static uint8_t MapTunnelBridgeGroundTypeBits(TileIndex tile, RailGroundType type
 			break;
 
 		case RailGroundType::FenceSE:
-			ground_bits = GetTunnelBridgeDirection(tile) == DIAGDIR_NW ? 3 : 4;
+			ground_bits = GetTunnelBridgeDirection(tile) == DiagDirection::NW ? 3 : 4;
 			break;
 
 		case RailGroundType::FenceNE:
-			ground_bits = GetTunnelBridgeDirection(tile) == DIAGDIR_SW ? 5 : 4;
+			ground_bits = GetTunnelBridgeDirection(tile) == DiagDirection::SW ? 5 : 4;
 			break;
 
 		case RailGroundType::FenceSW:
@@ -3054,7 +3054,7 @@ static TrackStatus GetTileTrackStatus_TunnelBridge(TileIndex tile, TransportType
 
 	DiagDirection dir = GetTunnelBridgeDirection(tile);
 
-	if (side != INVALID_DIAGDIR && side == dir) return 0;
+	if (side != DiagDirection::Invalid && side == dir) return 0;
 
 	TrackBits bits;
 	if (mode == TRANSPORT_ROAD && IsRoadCustomBridgeHeadTile(tile)) {
@@ -3278,7 +3278,7 @@ static const uint8_t TUNNEL_SOUND_FRAME = 1;
  */
 extern const DiagDirectionIndexArray<uint8_t> _tunnel_visibility_frame{12, 8, 8, 12};
 
-extern const uint8_t _tunnel_turnaround_pre_visibility_frame[DIAGDIR_END] = {31, 27, 27, 31};
+extern const DiagDirectionIndexArray<uint8_t> _tunnel_turnaround_pre_visibility_frame{31, 27, 27, 31};
 
 /** @copydoc VehicleEnterTileProc */
 static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileIndex tile, int x, int y)
@@ -3288,7 +3288,7 @@ static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileInde
 	/* New position of the vehicle on the tile */
 	int pos = (DiagDirToAxis(dir) == Axis::X ? x - (TileX(tile) * TILE_SIZE) : y - (TileY(tile) * TILE_SIZE));
 	/* Number of units moved by the vehicle since entering the tile */
-	int frame = (dir == DIAGDIR_NE || dir == DIAGDIR_NW) ? TILE_SIZE - 1 - pos : pos;
+	int frame = (dir == DiagDirection::NE || dir == DiagDirection::NW) ? TILE_SIZE - 1 - pos : pos;
 
 	if (frame > (int) TILE_SIZE || frame < 0) return VehicleEnterTileState::CannotEnter;
 	if (frame == TILE_SIZE) {
@@ -3525,7 +3525,7 @@ static CommandCost TerraformTile_TunnelBridge(TileIndex tile, DoCommandFlags fla
 		}
 
 		/* Check if new slope is valid for bridges in general (so we can safely call GetBridgeFoundation()) */
-		if ((direction == DIAGDIR_NW) || (direction == DIAGDIR_NE)) {
+		if ((direction == DiagDirection::NW) || (direction == DiagDirection::NE)) {
 			CheckBridgeSlope(BRIDGE_PIECE_SOUTH, axis, tileh_old, z_old);
 			res = CheckBridgeSlope(BRIDGE_PIECE_SOUTH, axis, tileh_new, z_new);
 		} else {

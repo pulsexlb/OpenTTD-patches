@@ -310,7 +310,7 @@ void Station::MarkTilesDirty(bool cargo_change) const
 	TileIndex start_tile = tile;
 	uint length = 0;
 	dbg_assert_tile(IsRailStationTile(tile), tile);
-	dbg_assert(dir < DIAGDIR_END);
+	dbg_assert(dir < DiagDirection::End);
 
 	do {
 		length++;

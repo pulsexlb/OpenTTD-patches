@@ -140,7 +140,7 @@ static CommandCost TerraformTileHeight(TerraformerState *ts, TileIndex tile, int
 	total_cost.AddCost(_price[Price::Terraform]);
 
 	/* Recurse to neighboured corners if height difference is larger than 1 */
-	for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+	for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
 		TileIndex neighbour_tile = AddTileIndexDiffCWrap(tile, TileIndexDiffCByDiagDir(dir));
 
 		/* Not using IsValidTile as we want to also change TileType::Void tiles, which IsValidTile excludes. */

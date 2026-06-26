@@ -726,7 +726,7 @@ bool WouldObjectLeaveWaterBehind(TileIndex tile)
 	Slope slope = GetTileSlope(tile);
 	if (slope != SLOPE_FLAT) {
 		/* Only river water should be restored on appropriate slopes. Other water would be invalid on slopes */
-		if (wc != WaterClass::River || GetInclinedSlopeDirection(slope) == INVALID_DIAGDIR) {
+		if (wc != WaterClass::River || GetInclinedSlopeDirection(slope) == DiagDirection::Invalid) {
 			wc = WaterClass::Invalid;
 		}
 	}
@@ -918,7 +918,7 @@ static void TileLoopObjectGroundAlps(TileIndex tile)
  */
 static inline bool NeighbourIsNormal(TileIndex tile)
 {
-	for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+	for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
 		TileIndex t = tile + TileOffsByDiagDir(dir);
 		if (!IsValidTile(t)) continue;
 		if (GetTropicZone(t) != TropicZone::Desert) return true;
@@ -1125,17 +1125,17 @@ static bool TryBuildCoastLighthouse()
 	/* Pick a random perimeter tile to start from. */
 	int perimeter = (GB(r, 16, 16) % (2 * (maxx + maxy))) - maxy;
 	DiagDirection dir;
-	for (dir = DIAGDIR_NE; perimeter > 0; dir++) {
+	for (dir = DiagDirection::NE; perimeter > 0; dir++) {
 		perimeter -= (DiagDirToAxis(dir) == Axis::X) ? maxx : maxy;
 	}
 
 	TileIndex tile;
 	switch (dir) {
 		default:
-		case DIAGDIR_NE: tile = TileXY(maxx - 1, r % maxy); break;
-		case DIAGDIR_SE: tile = TileXY(r % maxx, 1); break;
-		case DIAGDIR_SW: tile = TileXY(1, r % maxy); break;
-		case DIAGDIR_NW: tile = TileXY(r % maxx, maxy - 1); break;
+		case DiagDirection::NE: tile = TileXY(maxx - 1, r % maxy); break;
+		case DiagDirection::SE: tile = TileXY(r % maxx, 1); break;
+		case DiagDirection::SW: tile = TileXY(1, r % maxy); break;
+		case DiagDirection::NW: tile = TileXY(r % maxx, maxy - 1); break;
 	}
 
 	/* Now walk inwards until we find a valid tile, or hit the other edge of the map. */

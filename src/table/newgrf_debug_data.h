@@ -466,7 +466,7 @@ class NIHVehicle : public NIHelper {
 				v->bounds.offset.x, v->bounds.offset.y, v->bounds.offset.z);
 
 		output.Print("  Current image cacheable: {} ({:X}), spritenum: {:X}",
-				v->cur_image_valid_dir != INVALID_DIR ? "yes" : "no", v->cur_image_valid_dir, v->spritenum);
+				v->cur_image_valid_dir != Direction::Invalid ? "yes" : "no", v->cur_image_valid_dir, v->spritenum);
 
 		if (v->type == VehicleType::Train && HasBit(v->vcache.cached_veh_flags, VCF_IMAGE_CURVATURE)) {
 			output.Print("  Curvature: cached: {:X}, current: {:X}", v->vcache.cached_image_curvature, Train::From(v)->GetVehicleCurvature());

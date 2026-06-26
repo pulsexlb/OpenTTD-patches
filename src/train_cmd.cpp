@@ -294,7 +294,7 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 
 	const bool driving_backwards = this->vehicle_flags.Test(VehicleFlag::DrivingBackwards);
 
-	Direction normalised_direction = INVALID_DIR;
+	Direction normalised_direction = Direction::Invalid;
 	if (allowed_changes.Test(ConsistChangeFlag::DepotDirection)) {
 		normalised_direction = DiagDirToDir(GetRailDepotDirection(this->tile));
 		if (driving_backwards) normalised_direction = ReverseDir(normalised_direction);
@@ -509,7 +509,7 @@ int GetTileMarginInFrontOfTrain(const Train *v, int x_pos, int y_pos)
 	if (IsDiagonalDirection(vdir)) {
 		DiagDirection dir = DirToDiagDir(vdir);
 		int offset = ((DiagDirToAxis(dir) == Axis::X) ? x_pos : y_pos) & 0xF;
-		return ((dir == DIAGDIR_SE || dir == DIAGDIR_SW) ? TILE_SIZE - 1 - offset : offset) - ((v->gcache.cached_veh_length + rounding) / 2);
+		return ((dir == DiagDirection::SE || dir == DiagDirection::SW) ? TILE_SIZE - 1 - offset : offset) - ((v->gcache.cached_veh_length + rounding) / 2);
 	} else {
 		/* Calc position within the current tile */
 		uint x = x_pos & 0xF;
@@ -517,10 +517,10 @@ int GetTileMarginInFrontOfTrain(const Train *v, int x_pos, int y_pos)
 
 		/* for non-diagonal directions, x will be 1, 3, 5, ..., 15 */
 		switch (vdir) {
-			case DIR_N : x = ~x + ~y + 25; break;
-			case DIR_E : x = ~x + y + 9;   break;
-			case DIR_S : x = x + y - 7;    break;
-			case DIR_W : x = ~y + x + 9;   break;
+			case Direction::N : x = ~x + ~y + 25; break;
+			case Direction::E : x = ~x + y + 9;   break;
+			case Direction::S : x = x + y - 7;    break;
+			case Direction::W : x = ~y + x + 9;   break;
 			default: break;
 		}
 		x >>= 1; // x is now in range 0 ... 7
@@ -1415,7 +1415,7 @@ int Train::GetDisplayImageWidth(Point *offset) const
 static SpriteID GetDefaultTrainSprite(uint8_t spritenum, Direction direction)
 {
 	dbg_assert(IsValidImageIndex<VehicleType::Train>(spritenum));
-	return ((direction + _engine_sprite_add[spritenum]) & _engine_sprite_and[spritenum]) + _engine_sprite_base[spritenum];
+	return ((to_underlying(direction) + _engine_sprite_add[spritenum]) & _engine_sprite_and[spritenum]) + _engine_sprite_base[spritenum];
 }
 
 /**
@@ -1449,7 +1449,7 @@ void Train::GetImage(Direction direction, EngineImageType image_type, VehicleSpr
 static void GetRailIcon(EngineID engine, bool rear_head, int &y, EngineImageType image_type, VehicleSpriteSeq *result)
 {
 	const Engine *e = Engine::Get(engine);
-	Direction dir = rear_head ? DIR_E : DIR_W;
+	Direction dir = rear_head ? Direction::E : Direction::W;
 	uint8_t spritenum = e->VehInfo<RailVehicleInfo>().image_index;
 
 	if (IsCustomVehicleSpriteNum(spritenum)) {
@@ -1466,7 +1466,7 @@ static void GetRailIcon(EngineID engine, bool rear_head, int &y, EngineImageType
 
 	if (rear_head) spritenum++;
 
-	result->Set(GetDefaultTrainSprite(spritenum, DIR_W));
+	result->Set(GetDefaultTrainSprite(spritenum, Direction::W));
 }
 
 void DrawTrainEngine(int left, int right, int preferred_x, int y, EngineID engine, PaletteID pal, EngineImageType image_type)
@@ -2539,10 +2539,10 @@ void Train::UpdateDeltaXY()
 	if (!IsDiagonalDirection(dir)) {
 		static constexpr DiagDirectionIndexArray<Point> _sign_table{{{
 			/* x, y */
-			{-1, -1}, // DIAGDIR_N
-			{-1,  1}, // DIAGDIR_E
-			{ 1,  1}, // DIAGDIR_S
-			{ 1, -1}, // DIAGDIR_W
+			{-1, -1}, // DiagDirection::N
+			{-1,  1}, // DiagDirection::E
+			{ 1,  1}, // DiagDirection::S
+			{ 1, -1}, // DiagDirection::W
 		}}};
 
 		int half_shorten = (VEHICLE_LENGTH - this->gcache.cached_veh_length + flipped) / 2;
@@ -2554,13 +2554,13 @@ void Train::UpdateDeltaXY()
 		switch (dir) {
 				/* Shorten southern corner of the bounding box according the vehicle length
 				 * and center the bounding box on the vehicle. */
-			case DIR_NE:
+			case Direction::NE:
 				this->bounds.origin.x = -(this->gcache.cached_veh_length + 1) / 2 + flip_offs;
 				this->bounds.extent.x = this->gcache.cached_veh_length;
 				this->bounds.offset.x = 1;
 				break;
 
-			case DIR_NW:
+			case Direction::NW:
 				this->bounds.origin.y = -(this->gcache.cached_veh_length + 1) / 2 + flip_offs;
 				this->bounds.extent.y = this->gcache.cached_veh_length;
 				this->bounds.offset.y = 1;
@@ -2568,13 +2568,13 @@ void Train::UpdateDeltaXY()
 
 				/* Move northern corner of the bounding box down according to vehicle length
 				 * and center the bounding box on the vehicle. */
-			case DIR_SW:
+			case Direction::SW:
 				this->bounds.origin.x = -(this->gcache.cached_veh_length) / 2 - flip_offs;
 				this->bounds.extent.x = this->gcache.cached_veh_length;
 				this->bounds.offset.x = 1 - (VEHICLE_LENGTH - this->gcache.cached_veh_length);
 				break;
 
-			case DIR_SE:
+			case Direction::SE:
 				this->bounds.origin.y = -(this->gcache.cached_veh_length) / 2 - flip_offs;
 				this->bounds.extent.y = this->gcache.cached_veh_length;
 				this->bounds.offset.y = 1 - (VEHICLE_LENGTH - this->gcache.cached_veh_length);
@@ -3254,7 +3254,7 @@ static void ReverseTrainDirection(Train *consist)
 	/* VehicleExitDir does not always produce the desired dir for depots and
 	 * tunnels/bridges that is needed for UpdateSignalsOnSegment. */
 	DiagDirection dir = VehicleExitDir(moving_front->GetMovingDirection(), moving_front->track);
-	if (IsRailDepotTile(moving_front->tile) || (IsTileType(moving_front->tile, TileType::TunnelBridge) && (moving_front->track & TRACK_BIT_WORMHOLE || dir == GetTunnelBridgeDirection(moving_front->tile)))) dir = INVALID_DIAGDIR;
+	if (IsRailDepotTile(moving_front->tile) || (IsTileType(moving_front->tile, TileType::TunnelBridge) && (moving_front->track & TRACK_BIT_WORMHOLE || dir == GetTunnelBridgeDirection(moving_front->tile)))) dir = DiagDirection::Invalid;
 
 	if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SIGSEG_PBS || _settings_game.pf.reserve_paths) {
 		/* If we are currently on a tile with conventional signals, we can't treat the
@@ -3561,13 +3561,13 @@ static bool CheckTrainStayInDepot(Train *v)
 
 		v->wait_counter = 0;
 
-		seg_state = _settings_game.pf.reserve_paths ? SIGSEG_PBS : UpdateSignalsOnSegment(v->tile, INVALID_DIAGDIR, v->owner);
+		seg_state = _settings_game.pf.reserve_paths ? SIGSEG_PBS : UpdateSignalsOnSegment(v->tile, DiagDirection::Invalid, v->owner);
 		if (seg_state == SIGSEG_FULL || HasDepotReservation(v->tile)) {
 			/* Full and no PBS signal in block or depot reserved, can't exit. */
 			exit_blocked = true;
 		}
 	} else {
-		seg_state = _settings_game.pf.reserve_paths ? SIGSEG_PBS : UpdateSignalsOnSegment(v->tile, INVALID_DIAGDIR, v->owner);
+		seg_state = _settings_game.pf.reserve_paths ? SIGSEG_PBS : UpdateSignalsOnSegment(v->tile, DiagDirection::Invalid, v->owner);
 	}
 
 	/* We are leaving a depot, but have to go to the exact same one; re-enter. */
@@ -3667,7 +3667,7 @@ static bool CheckTrainStayInDepot(Train *v)
 
 	moving_front->UpdateViewport(true, true);
 	moving_front->UpdatePosition();
-	UpdateSignalsOnSegment(v->tile, INVALID_DIAGDIR, v->owner);
+	UpdateSignalsOnSegment(v->tile, DiagDirection::Invalid, v->owner);
 	v->UpdateAcceleration();
 	InvalidateWindowData(WindowClass::VehicleDepot, v->tile.base());
 
@@ -3788,7 +3788,7 @@ static void UnreserveBridgeTunnelTile(TileIndex tile)
 			SetTunnelBridgeExitSignalState(tile, SIGNAL_STATE_RED);
 			if (_extra_aspects > 0) PropagateAspectChange(tile, GetTunnelBridgeExitTrackdir(tile), 0);
 		} else {
-			UpdateSignalsOnSegment(tile, INVALID_DIAGDIR, GetTileOwner(tile));
+			UpdateSignalsOnSegment(tile, DiagDirection::Invalid, GetTileOwner(tile));
 		}
 	}
 }
@@ -3901,7 +3901,7 @@ void FreeTrainTrackReservation(Train *consist, TileIndex origin, Trackdir orig_t
 		if (!HasReservedTracks(tile, TrackToTrackBits(TrackdirToTrack(td)))) return;
 		UnreserveRailTrack(tile, TrackdirToTrack(td));
 		if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && !IsTunnelBridgePBS(tile)) {
-			UpdateSignalsOnSegment(tile, INVALID_DIAGDIR, GetTileOwner(tile));
+			UpdateSignalsOnSegment(tile, DiagDirection::Invalid, GetTileOwner(tile));
 		}
 	}
 
@@ -5367,10 +5367,10 @@ bool FindSpaceBetweenTrainsChecker::operator()(const Train *v) const
 
 	switch (this->direction) {
 		default: NOT_REACHED();
-		case DIAGDIR_NE: a = this->pos; b = v->x_pos; break;
-		case DIAGDIR_SE: a = v->y_pos; b = this->pos; break;
-		case DIAGDIR_SW: a = v->x_pos; b = this->pos; break;
-		case DIAGDIR_NW: a = this->pos; b = v->y_pos; break;
+		case DiagDirection::NE: a = this->pos; b = v->x_pos; break;
+		case DiagDirection::SE: a = v->y_pos; b = this->pos; break;
+		case DiagDirection::SW: a = v->x_pos; b = this->pos; break;
+		case DiagDirection::NW: a = this->pos; b = v->y_pos; break;
 	}
 
 	if (a > b && a <= (b + (int)(this->distance)) + (int)(TILE_SIZE) - 1) return true;
@@ -5421,10 +5421,10 @@ static bool IsTooCloseBehindTrain(Train *moving_front, TileIndex tile, uint16_t 
 	checker.direction = DirToDiagDirAlongAxis(moving_front->GetMovingDirection(), DiagDirToAxis(GetTunnelBridgeDirection(moving_front->tile)));
 	switch (checker.direction) {
 		default: NOT_REACHED();
-		case DIAGDIR_NE: checker.pos = (TileX(tile) * TILE_SIZE) + TILE_UNIT_MASK; break;
-		case DIAGDIR_SE: checker.pos = (TileY(tile) * TILE_SIZE); break;
-		case DIAGDIR_SW: checker.pos = (TileX(tile) * TILE_SIZE); break;
-		case DIAGDIR_NW: checker.pos = (TileY(tile) * TILE_SIZE) + TILE_UNIT_MASK; break;
+		case DiagDirection::NE: checker.pos = (TileX(tile) * TILE_SIZE) + TILE_UNIT_MASK; break;
+		case DiagDirection::SE: checker.pos = (TileY(tile) * TILE_SIZE); break;
+		case DiagDirection::SW: checker.pos = (TileX(tile) * TILE_SIZE); break;
+		case DiagDirection::NW: checker.pos = (TileY(tile) * TILE_SIZE) + TILE_UNIT_MASK; break;
 	}
 
 	if (HasVehicleOnTile<VehicleType::Train>(moving_front->tile, checker)) {
@@ -5596,7 +5596,7 @@ static bool CheckTrainStayInWormHole(Train *moving_front, TileIndex tile)
 		consist->flags.Set(VehicleRailFlag::Reversing);
 		return true;
 	}
-	SigSegState seg_state = (_settings_game.pf.reserve_paths || IsTunnelBridgeEffectivelyPBS(tile)) ? SIGSEG_PBS : UpdateSignalsOnSegment(tile, INVALID_DIAGDIR, moving_front->owner);
+	SigSegState seg_state = (_settings_game.pf.reserve_paths || IsTunnelBridgeEffectivelyPBS(tile)) ? SIGSEG_PBS : UpdateSignalsOnSegment(tile, DiagDirection::Invalid, moving_front->owner);
 	if (seg_state != SIGSEG_PBS) {
 		CFollowTrackRail ft(GetTileOwner(tile), consist->GetIndirectCompatibleRailTypes());
 		if (ft.Follow(tile, GetTunnelBridgeExitTrackdir(tile))) {
@@ -5633,10 +5633,10 @@ static void HandleSignalBehindTrain(Train *v, int signal_number)
 	TileIndex tile;
 	switch (v->GetMovingDirection()) {
 		default: NOT_REACHED();
-		case DIR_NE: tile = TileVirtXY(v->x_pos + (TILE_SIZE * simulated_wormhole_signals), v->y_pos); break;
-		case DIR_SE: tile = TileVirtXY(v->x_pos, v->y_pos - (TILE_SIZE * simulated_wormhole_signals) ); break;
-		case DIR_SW: tile = TileVirtXY(v->x_pos - (TILE_SIZE * simulated_wormhole_signals), v->y_pos); break;
-		case DIR_NW: tile = TileVirtXY(v->x_pos, v->y_pos + (TILE_SIZE * simulated_wormhole_signals)); break;
+		case Direction::NE: tile = TileVirtXY(v->x_pos + (TILE_SIZE * simulated_wormhole_signals), v->y_pos); break;
+		case Direction::SE: tile = TileVirtXY(v->x_pos, v->y_pos - (TILE_SIZE * simulated_wormhole_signals) ); break;
+		case Direction::SW: tile = TileVirtXY(v->x_pos - (TILE_SIZE * simulated_wormhole_signals), v->y_pos); break;
+		case Direction::NW: tile = TileVirtXY(v->x_pos, v->y_pos + (TILE_SIZE * simulated_wormhole_signals)); break;
 	}
 
 	if (tile == v->tile) {
@@ -5748,7 +5748,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 	SCOPE_INFO_FMT([&], "TrainController: {}, {}, {}", VehicleInfoDumper(v), VehicleInfoDumper(prev), VehicleInfoDumper(nomove));
 	bool direction_changed = false; // has direction of any part changed?
 	bool update_signal_tunbridge_exit = false;
-	Direction old_direction = INVALID_DIR;
+	Direction old_direction = Direction::Invalid;
 	TrackBits old_trackbits = TrackBits{0xFF};
 	uint16_t old_gv_flags = 0;
 
@@ -5771,7 +5771,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 		old_direction = v->direction;
 		old_trackbits = v->track;
 		old_gv_flags = v->gv_flags;
-		DiagDirection enterdir = DIAGDIR_BEGIN;
+		DiagDirection enterdir = DiagDirection::Begin;
 		bool update_signals_crossing = false; // will we update signals or crossing state?
 
 
@@ -5824,7 +5824,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 				/* Get the status of the tracks in the new tile and mask
 				 * away the bits that aren't reachable. */
-				TrackStatus ts = GetTileTrackStatus(gp.new_tile, TRANSPORT_RAIL, 0, (v->track & TRACK_BIT_WORMHOLE) ? INVALID_DIAGDIR : ReverseDiagDir(enterdir));
+				TrackStatus ts = GetTileTrackStatus(gp.new_tile, TRANSPORT_RAIL, 0, (v->track & TRACK_BIT_WORMHOLE) ? DiagDirection::Invalid : ReverseDiagDir(enterdir));
 				TrackdirBits reachable_trackdirs = DiagdirReachesTrackdirs(enterdir);
 
 				TrackdirBits trackdirbits = TrackStatusToTrackdirBits(ts) & reachable_trackdirs;
@@ -6170,7 +6170,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						/* We left ramp into wormhole. */
 						v->x_pos = gp.x;
 						v->y_pos = gp.y;
-						UpdateSignalsOnSegment(old_tile, INVALID_DIAGDIR, v->owner);
+						UpdateSignalsOnSegment(old_tile, DiagDirection::Invalid, v->owner);
 						UnreserveBridgeTunnelTile(old_tile);
 						if (_settings_client.gui.show_track_reservation) MarkTileDirtyByTile(old_tile, VMDF_NOT_MAP_MODE);
 					}
@@ -6245,7 +6245,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				}
 				if (v->IsDrawn()) v->Vehicle::UpdateViewport(true);
 				if (update_signal_tunbridge_exit) {
-					UpdateSignalsOnSegment(gp.new_tile, INVALID_DIAGDIR, v->owner);
+					UpdateSignalsOnSegment(gp.new_tile, DiagDirection::Invalid, v->owner);
 					update_signal_tunbridge_exit = false;
 					if (v->IsMovingFront() && IsTunnelBridgeSignalSimulationExit(gp.new_tile)) {
 						SetTunnelBridgeExitSignalState(gp.new_tile, SIGNAL_STATE_RED);
@@ -6279,7 +6279,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 		}
 
 		if (update_signal_tunbridge_exit) {
-			UpdateSignalsOnSegment(gp.new_tile, INVALID_DIAGDIR, v->owner);
+			UpdateSignalsOnSegment(gp.new_tile, DiagDirection::Invalid, v->owner);
 			update_signal_tunbridge_exit = false;
 			if (v->IsMovingFront() && IsTunnelBridgeSignalSimulationExit(gp.new_tile)) {
 				SetTunnelBridgeExitSignalState(gp.new_tile, SIGNAL_STATE_RED);
@@ -6540,11 +6540,11 @@ static void DeleteLastWagon(Train *v)
 	/* Update signals */
 	if (IsTunnelBridgeWithSignalSimulation(tile)) {
 		TileIndex end = GetOtherTunnelBridgeEnd(tile);
-		UpdateSignalsOnSegment(end, INVALID_DIAGDIR, owner);
+		UpdateSignalsOnSegment(end, DiagDirection::Invalid, owner);
 		SetSignalledBridgeTunnelGreenIfClear(tile, end);
 	}
 	if ((orig_trackbits & TRACK_BIT_WORMHOLE) || IsRailDepotTile(tile)) {
-		UpdateSignalsOnSegment(tile, INVALID_DIAGDIR, owner);
+		UpdateSignalsOnSegment(tile, DiagDirection::Invalid, owner);
 	} else {
 		SetSignalsOnBothDir(tile, track, owner);
 	}
@@ -6645,13 +6645,13 @@ static bool TrainApproachingLineEnd(Train *moving_front, bool signal, bool rever
 	/* for diagonal directions, 'x' will be 0..15 -
 	 * for other directions, it will be 1, 3, 5, ..., 15 */
 	switch (vdir) {
-		case DIR_N : x = ~x + ~y + 25; break;
-		case DIR_NW: x = y;            [[fallthrough]];
-		case DIR_NE: x = ~x + 16;      break;
-		case DIR_E : x = ~x + y + 9;   break;
-		case DIR_SE: x = y;            break;
-		case DIR_S : x = x + y - 7;    break;
-		case DIR_W : x = ~y + x + 9;   break;
+		case Direction::N : x = ~x + ~y + 25; break;
+		case Direction::NW: x = y;            [[fallthrough]];
+		case Direction::NE: x = ~x + 16;      break;
+		case Direction::E : x = ~x + y + 9;   break;
+		case Direction::SE: x = y;            break;
+		case Direction::S : x = x + y - 7;    break;
+		case Direction::W : x = ~y + x + 9;   break;
 		default: break;
 	}
 
@@ -6855,7 +6855,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		 * when an overlength train gets turned around in a station. */
 		const Train *moving_front = consist->GetMovingFront();
 		DiagDirection dir = VehicleExitDir(moving_front->GetMovingDirection(), moving_front->track);
-		if (IsRailDepotTile(moving_front->tile) || IsTileType(moving_front->tile, TileType::TunnelBridge)) dir = INVALID_DIAGDIR;
+		if (IsRailDepotTile(moving_front->tile) || IsTileType(moving_front->tile, TileType::TunnelBridge)) dir = DiagDirection::Invalid;
 
 		if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SIGSEG_PBS || _settings_game.pf.reserve_paths) {
 			TryPathReserve(consist, true, true);
@@ -7227,7 +7227,7 @@ void DeleteVisibleTrain(Train *v)
 			/* Vehicle is inside a wormhole, u->track contains no useful value then. */
 			if (IsTunnelBridgeWithSignalSimulation(tile)) {
 				TileIndex end = GetOtherTunnelBridgeEnd(tile);
-				AddSideToSignalBuffer(end, INVALID_DIAGDIR, GetTileOwner(tile));
+				AddSideToSignalBuffer(end, DiagDirection::Invalid, GetTileOwner(tile));
 				SetSignalledBridgeTunnelGreenIfClear(tile, end);
 			}
 		} else {
@@ -7238,7 +7238,7 @@ void DeleteVisibleTrain(Train *v)
 
 		/* Update signals */
 		if (in_wormhole || IsRailDepotTile(tile)) {
-			AddSideToSignalBuffer(tile, INVALID_DIAGDIR, GetTileOwner(tile));
+			AddSideToSignalBuffer(tile, DiagDirection::Invalid, GetTileOwner(tile));
 		} else {
 			AddTrackToSignalBuffer(tile, TrackBitsToTrack(trackbits), GetTileOwner(tile));
 		}
@@ -7263,7 +7263,7 @@ static Train *CmdBuildVirtualRailWagon(const Engine *e, ClientID user, bool no_c
 	v->engine_type = e->index;
 	v->gcache.first_engine = EngineID::Invalid(); // needs to be set before first callback
 
-	v->direction = DIR_W;
+	v->direction = Direction::W;
 	v->tile = {};
 
 	v->owner = _current_company;
@@ -7336,7 +7336,7 @@ Train *BuildVirtualRailVehicle(EngineID eid, StringID &error, ClientID user, boo
 	v->x_pos = 0;
 	v->y_pos = 0;
 
-	v->direction = DIR_W;
+	v->direction = Direction::W;
 	v->tile = {};
 	v->owner = _current_company;
 	v->track = TRACK_BIT_DEPOT;

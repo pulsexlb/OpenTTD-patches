@@ -66,7 +66,7 @@ static bool IsPossibleCrossing(const TileIndex tile, Axis ax)
 RoadBits CleanUpRoadBits(const TileIndex tile, RoadBits org_rb)
 {
 	if (!IsValidTile(tile)) return {};
-	for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+	for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
 		TileIndex neighbour_tile = TileAddByDiagDir(tile, dir);
 
 		/* Get the Roadbit pointing to the neighbour_tile */
@@ -565,23 +565,23 @@ static bool IsValidNeighbourOfPreviousTile(const TileIndex tile, const TileIndex
 	/* Check non-trivial foundations (those which aren't 3 corners raised or 2 opposite corners raised -> flat) */
 	if (is_non_trivial_foundation(sd) || is_non_trivial_foundation(previous_sd)) {
 		static const Corner test_corners[16] = {
-			// DIAGDIR_NE
+			// DiagDirection::NE
 			CORNER_N, CORNER_W,
 			CORNER_E, CORNER_S,
 
-			// DIAGDIR_SE
+			// DiagDirection::SE
 			CORNER_S, CORNER_W,
 			CORNER_E, CORNER_N,
 
-			// DIAGDIR_SW
+			// DiagDirection::SW
 			CORNER_S, CORNER_E,
 			CORNER_W, CORNER_N,
 
-			// DIAGDIR_NW
+			// DiagDirection::NW
 			CORNER_N, CORNER_E,
 			CORNER_W, CORNER_S
 		};
-		const Corner *corners = test_corners + (forward_direction * 4);
+		const Corner *corners = test_corners + (to_underlying(forward_direction) * 4);
 		return ((previous_sd.z + GetSlopeZInCorner(previous_sd.slope, corners[0])) == (sd.z + GetSlopeZInCorner(sd.slope, corners[1]))) &&
 				((previous_sd.z + GetSlopeZInCorner(previous_sd.slope, corners[2])) == (sd.z + GetSlopeZInCorner(sd.slope, corners[3])));
 	}
@@ -708,7 +708,7 @@ static void PublicRoad_GetNeighbours(AyStar *aystar, OpenListNode *current)
 		aystar->num_neighbours++;
 	} else {
 		// Handle regular neighbours.
-		for (DiagDirection d = DIAGDIR_BEGIN; d < DIAGDIR_END; d++) {
+		for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
 			const auto neighbour = current_tile + TileOffsByDiagDir(d);
 
 			if (neighbour == previous_tile) {

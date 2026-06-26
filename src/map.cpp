@@ -252,22 +252,22 @@ extern const AxisIndexArray<TileIndexDiffC> _tileoffs_by_axis{{{
 
 /** 'Lookup table' for tile offsets given a DiagDirection */
 extern const DiagDirectionIndexArray<TileIndexDiffC> _tileoffs_by_diagdir{{{
-	{-1,  0}, // DIAGDIR_NE
-	{ 0,  1}, // DIAGDIR_SE
-	{ 1,  0}, // DIAGDIR_SW
-	{ 0, -1}, // DIAGDIR_NW
+	{-1,  0}, // DiagDirection::NE
+	{ 0,  1}, // DiagDirection::SE
+	{ 1,  0}, // DiagDirection::SW
+	{ 0, -1}, // DiagDirection::NW
 }}};
 
 /** 'Lookup table' for tile offsets given a Direction */
 extern const DirectionIndexArray<TileIndexDiffC> _tileoffs_by_dir{{{
-	{-1, -1}, // DIR_N
-	{-1,  0}, // DIR_NE
-	{-1,  1}, // DIR_E
-	{ 0,  1}, // DIR_SE
-	{ 1,  1}, // DIR_S
-	{ 1,  0}, // DIR_SW
-	{ 1, -1}, // DIR_W
-	{ 0, -1}, // DIR_NW
+	{-1, -1}, // Direction::N
+	{-1,  0}, // Direction::NE
+	{-1,  1}, // Direction::E
+	{ 0,  1}, // Direction::SE
+	{ 1,  1}, // Direction::S
+	{ 1,  0}, // Direction::SW
+	{ 1, -1}, // Direction::W
+	{ 0, -1}, // Direction::NW
 }}};
 
 /**
@@ -359,10 +359,10 @@ uint DistanceFromEdge(TileIndex tile)
 uint DistanceFromEdgeDir(TileIndex tile, DiagDirection dir)
 {
 	switch (dir) {
-		case DIAGDIR_NE: return             TileX(tile) - (_settings_game.construction.freeform_edges ? 1 : 0);
-		case DIAGDIR_NW: return             TileY(tile) - (_settings_game.construction.freeform_edges ? 1 : 0);
-		case DIAGDIR_SW: return Map::MaxX() - TileX(tile) - 1;
-		case DIAGDIR_SE: return Map::MaxY() - TileY(tile) - 1;
+		case DiagDirection::NE: return             TileX(tile) - (_settings_game.construction.freeform_edges ? 1 : 0);
+		case DiagDirection::NW: return             TileY(tile) - (_settings_game.construction.freeform_edges ? 1 : 0);
+		case DiagDirection::SW: return Map::MaxX() - TileX(tile) - 1;
+		case DiagDirection::SE: return Map::MaxY() - TileY(tile) - 1;
 		default: NOT_REACHED();
 	}
 }
@@ -395,17 +395,17 @@ bool EnoughContiguousTilesMatchingCondition(TileIndex tile, uint threshold, Test
 			/* Tile not done/inserted already */
 			if (proc(t, user_data)) {
 				matching_count++;
-				for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+				for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
 					if (dir == exclude_onward_dir) continue;
 					TileIndex neighbour_tile = AddTileIndexDiffCWrap(t, TileIndexDiffCByDiagDir(dir));
 					if (IsValidTile(neighbour_tile)) {
-						candidates.push_back(neighbour_tile.base() | (ReverseDiagDir(dir) << 30));
+						candidates.push_back(neighbour_tile.base() | (to_underlying(ReverseDiagDir(dir)) << 30));
 					}
 				}
 			}
 		}
 	};
-	process_tile(tile, INVALID_DIAGDIR);
+	process_tile(tile, DiagDirection::Invalid);
 
 	while (matching_count < threshold && !candidates.empty()) {
 		uint32_t next = candidates.front();
@@ -475,7 +475,7 @@ uint GetClosestWaterDistance(TileIndex tile, bool water)
 		y--;
 
 		/* going counter-clockwise around this square */
-		for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+		for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
 			static constexpr DiagDirectionIndexArray<int8_t> ddx{-1,  1,  1, -1};
 			static constexpr DiagDirectionIndexArray<int8_t> ddy{ 1,  1, -1, -1};
 

@@ -138,7 +138,7 @@ struct RoadStop : RoadStopPool::PoolItem<&_roadstop_pool> {
 	 */
 	inline const Entry &GetEntry(DiagDirection dir) const
 	{
-		return dir >= DIAGDIR_SW ? this->entries->west : this->entries->east;
+		return dir >= DiagDirection::SW ? this->entries->west : this->entries->east;
 	}
 
 	/**
@@ -148,7 +148,7 @@ struct RoadStop : RoadStopPool::PoolItem<&_roadstop_pool> {
 	 */
 	inline Entry &GetEntry(DiagDirection dir)
 	{
-		return dir >= DIAGDIR_SW ? this->entries->west : this->entries->east;
+		return dir >= DiagDirection::SW ? this->entries->west : this->entries->east;
 	}
 
 	inline const Entry &GetEntry(const RoadVehicle *rv) const {

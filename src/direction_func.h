@@ -20,7 +20,7 @@
  */
 inline bool IsValidDiagDirection(DiagDirection d)
 {
-	return d < DIAGDIR_END;
+	return d < DiagDirection::End;
 }
 
 /**
@@ -31,7 +31,7 @@ inline bool IsValidDiagDirection(DiagDirection d)
  */
 inline bool IsValidDirection(Direction d)
 {
-	return d < DIR_END;
+	return d < Direction::End;
 }
 
 /**
@@ -54,7 +54,7 @@ inline bool IsValidAxis(Axis d)
 inline Direction ReverseDir(Direction d)
 {
 	dbg_assert(IsValidDirection(d));
-	return (Direction)(4 ^ d);
+	return static_cast<Direction>(4 ^ to_underlying(d));
 }
 
 
@@ -128,7 +128,7 @@ inline Direction ChangeDir(Direction d, DirDiff delta)
 inline DiagDirection ReverseDiagDir(DiagDirection d)
 {
 	dbg_assert(IsValidDiagDirection(d));
-	return (DiagDirection)(2 ^ d);
+	return static_cast<DiagDirection>(2 ^ to_underlying(d));
 }
 
 /**
@@ -168,7 +168,7 @@ inline DiagDirection ChangeDiagDir(DiagDirection d, DiagDirDiff delta)
  *
  * This function can be used to convert the 8-way Direction to
  * the 4-way DiagDirection. If the direction cannot be mapped its
- * "rounded clockwise". So DIR_N becomes DIAGDIR_NE.
+ * "rounded clockwise". So Direction::N becomes DiagDirection::NE.
  *
  * @param dir The direction to convert
  * @return The resulting DiagDirection, maybe "rounded clockwise".
@@ -176,7 +176,7 @@ inline DiagDirection ChangeDiagDir(DiagDirection d, DiagDirDiff delta)
 inline DiagDirection DirToDiagDir(Direction dir)
 {
 	dbg_assert(IsValidDirection(dir));
-	return (DiagDirection)(dir >> 1);
+	return static_cast<DiagDirection>(to_underlying(dir) >> 1);
 }
 
 /**
@@ -192,7 +192,7 @@ inline DiagDirection DirToDiagDir(Direction dir)
 inline Direction DiagDirToDir(DiagDirection dir)
 {
 	dbg_assert(IsValidDiagDirection(dir));
-	return (Direction)(dir * 2 + 1);
+	return static_cast<Direction>(to_underlying(dir) * 2 + 1);
 }
 
 
@@ -224,7 +224,7 @@ inline Axis OtherAxis(Axis a)
 inline Axis DiagDirToAxis(DiagDirection d)
 {
 	dbg_assert(IsValidDiagDirection(d));
-	return static_cast<Axis>(d & 1);
+	return static_cast<Axis>(to_underlying(d) & 1);
 }
 
 
@@ -259,8 +259,8 @@ inline DiagDirections AxisToDiagDirs(Axis a)
 	dbg_assert(IsValidAxis(a));
 	return static_cast<DiagDirections>(5 << to_underlying(a));
 //	return a == Axis::X
-//		? DiagDirections{DIAGDIR_NE, DIAGDIR_SW}
-//		: DiagDirections{DIAGDIR_SE, DIAGDIR_NW};
+//		? DiagDirections{DiagDirection::NE, DiagDirection::SW}
+//		: DiagDirections{DiagDirection::SE, DiagDirection::NW};
 }
 
 /**
@@ -301,7 +301,7 @@ inline DiagDirection XYNSToDiagDir(Axis xy, uint ns)
 inline bool IsDiagonalDirection(Direction dir)
 {
 	dbg_assert(IsValidDirection(dir));
-	return (dir & 1) != 0;
+	return (to_underlying(dir) & 1) != 0;
 }
 
 /**
@@ -309,17 +309,17 @@ inline bool IsDiagonalDirection(Direction dir)
  *
  * This function can be used to convert the 8-way Direction to
  * the 2-way DiagDirection along an axis. If the direction cannot be
- * mapped  INVALID_DIAGDIR is returned.
+ * mapped  DiagDirection::Invalid is returned.
  *
  * @param dir The direction to convert
  * @param axis axis to convert
- * @return The resulting DiagDirection, may be INVALID_DIAGDIR
+ * @return The resulting DiagDirection, may be DiagDirection::Invalid
  */
 inline DiagDirection DirToDiagDirAlongAxis(Direction dir, Axis axis)
 {
 	dbg_assert(IsValidDirection(dir));
 	dbg_assert(IsValidAxis(axis));
-	if ((dir & 3) == (3 ^ (to_underlying(axis) << 1))) return INVALID_DIAGDIR;
+	if ((to_underlying(dir) & 3) == (3 ^ (to_underlying(axis) << 1))) return DiagDirection::Invalid;
 	/* Mapping:
 	 * X 4, 5, 6 -> 2    0, 1, 2 -> 0
 	 * Y 2, 3, 4 -> 1    0, 6, 7 -> 3

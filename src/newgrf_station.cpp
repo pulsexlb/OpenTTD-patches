@@ -118,40 +118,34 @@ TileArea GetRailTileArea(const BaseStation *st, TileIndex tile, TriggerArea ta)
  * - P = Position along platform from start, p = from end
  * .
  * if centered, C/P start from the centre and c/p are not available.
- * @param axis The axis of the platform.
- * @param tile The tile layout number.
+ * @param gfx The tile layout number.
  * @param platforms Number of platforms.
  * @param length Length of platforms.
- * @param x The platform number.
- * @param y Position along the platform.
+ * @param platform The platform number.
+ * @param position Position along the platform.
  * @param centred Whether to 'center' the platform location, or use the absolute location.
  * @return Platform information in bit-stuffed format.
  */
-uint32_t GetPlatformInfo(Axis axis, uint8_t tile, int platforms, int length, int x, int y, bool centred)
+uint32_t GetPlatformInfo(StationGfx gfx, int platforms, int length, int platform, int position, bool centred)
 {
 	uint32_t retval = 0;
 
-	if (axis == Axis::X) {
-		std::swap(platforms, length);
-		std::swap(x, y);
-	}
-
 	if (centred) {
-		x -= platforms / 2;
-		y -= length / 2;
-		x = Clamp(x, -8, 7);
-		y = Clamp(y, -8, 7);
-		SB(retval,  0, 4, y & 0xF);
-		SB(retval,  4, 4, x & 0xF);
+		platform -= platforms / 2;
+		position -= length / 2;
+		platform = Clamp(platform, -8, 7);
+		position = Clamp(position, -8, 7);
+		SB(retval, 0, 4, position & 0xF);
+		SB(retval, 4, 4, platform & 0xF);
 	} else {
-		SB(retval,  0, 4, std::min(15, y));
-		SB(retval,  4, 4, std::min(15, length - y - 1));
-		SB(retval,  8, 4, std::min(15, x));
-		SB(retval, 12, 4, std::min(15, platforms - x - 1));
+		SB(retval, 0, 4, std::min(15, position));
+		SB(retval, 4, 4, std::min(15, length - position - 1));
+		SB(retval, 8, 4, std::min(15, platform));
+		SB(retval, 12, 4, std::min(15, platforms - platform - 1));
 	}
 	SB(retval, 16, 4, std::min(15, length));
 	SB(retval, 20, 4, std::min(15, platforms));
-	SB(retval, 24, 8, tile);
+	SB(retval, 24, 8, gfx);
 
 	return retval;
 }
@@ -200,19 +194,24 @@ static uint32_t GetPlatformInfoHelper(TileIndex tile, bool check_type, bool chec
 	tx -= sx; ex -= sx;
 	ty -= sy; ey -= sy;
 
-	return GetPlatformInfo(GetRailStationAxis(tile), GetStationGfx(tile), ex, ey, tx, ty, centred);
+	if (GetRailStationAxis(tile) == Axis::X) {
+		std::swap(ex, ey);
+		std::swap(tx, ty);
+	}
+
+	return GetPlatformInfo(GetStationGfx(tile), ex, ey, tx, ty, centred);
 }
 
 
 static uint32_t GetRailContinuationInfo(TileIndex tile)
 {
 	/* Tile offsets and exit dirs for X axis */
-	static const Direction x_dir[8] = { DIR_SW, DIR_NE, DIR_SE, DIR_NW, DIR_S, DIR_E, DIR_W, DIR_N };
-	static const DiagDirection x_exits[8] = { DIAGDIR_SW, DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_NW, DIAGDIR_SW, DIAGDIR_NE, DIAGDIR_SW, DIAGDIR_NE };
+	static const Direction x_dir[8] = { Direction::SW, Direction::NE, Direction::SE, Direction::NW, Direction::S, Direction::E, Direction::W, Direction::N };
+	static const DiagDirection x_exits[8] = { DiagDirection::SW, DiagDirection::NE, DiagDirection::SE, DiagDirection::NW, DiagDirection::SW, DiagDirection::NE, DiagDirection::SW, DiagDirection::NE };
 
 	/* Tile offsets and exit dirs for Y axis */
-	static const Direction y_dir[8] = { DIR_SE, DIR_NW, DIR_SW, DIR_NE, DIR_S, DIR_W, DIR_E, DIR_N };
-	static const DiagDirection y_exits[8] = { DIAGDIR_SE, DIAGDIR_NW, DIAGDIR_SW, DIAGDIR_NE, DIAGDIR_SE, DIAGDIR_NW, DIAGDIR_SE, DIAGDIR_NW };
+	static const Direction y_dir[8] = { Direction::SE, Direction::NW, Direction::SW, Direction::NE, Direction::S, Direction::W, Direction::E, Direction::N };
+	static const DiagDirection y_exits[8] = { DiagDirection::SE, DiagDirection::NW, DiagDirection::SW, DiagDirection::NE, DiagDirection::SE, DiagDirection::NW, DiagDirection::SE, DiagDirection::NW };
 
 	Axis axis = GetRailStationAxis(tile);
 

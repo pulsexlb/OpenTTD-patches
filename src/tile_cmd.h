@@ -235,19 +235,19 @@ enum TileTrackStatusSubMode {
 
 enum class RoadTramType : uint8_t;
 
-TrackStatus GetTileTrackStatus(TileIndex tile, TransportType mode, uint sub_mode, DiagDirection side = INVALID_DIAGDIR);
+TrackStatus GetTileTrackStatus(TileIndex tile, TransportType mode, uint sub_mode, DiagDirection side = DiagDirection::Invalid);
 
-inline TrackStatus GetTileTrackStatus(TileIndex tile, TransportType mode, RoadTramType sub_mode, DiagDirection side = INVALID_DIAGDIR)
+inline TrackStatus GetTileTrackStatus(TileIndex tile, TransportType mode, RoadTramType sub_mode, DiagDirection side = DiagDirection::Invalid)
 {
 	return GetTileTrackStatus(tile, mode, to_underlying(sub_mode), side);
 }
 
-inline TrackdirBits GetTileTrackdirBits(TileIndex tile, TransportType mode, uint sub_mode, DiagDirection side = INVALID_DIAGDIR)
+inline TrackdirBits GetTileTrackdirBits(TileIndex tile, TransportType mode, uint sub_mode, DiagDirection side = DiagDirection::Invalid)
 {
 	return TrackStatusToTrackdirBits(GetTileTrackStatus(tile, mode, sub_mode | TTSSM_NO_RED_SIGNALS, side));
 }
 
-inline TrackdirBits GetTileTrackdirBits(TileIndex tile, TransportType mode, RoadTramType sub_mode, DiagDirection side = INVALID_DIAGDIR)
+inline TrackdirBits GetTileTrackdirBits(TileIndex tile, TransportType mode, RoadTramType sub_mode, DiagDirection side = DiagDirection::Invalid)
 {
 	return GetTileTrackdirBits(tile, mode, to_underlying(sub_mode), side);
 }

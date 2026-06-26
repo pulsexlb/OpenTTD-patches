@@ -79,7 +79,7 @@ struct CFollowTrackT {
 		this->old_td = INVALID_TRACKDIR;
 		this->new_tile = INVALID_TILE;
 		this->new_td_bits = TRACKDIR_BIT_NONE;
-		this->exitdir = INVALID_DIAGDIR;
+		this->exitdir = DiagDirection::Invalid;
 		this->is_station = false;
 		this->is_bridge = false;
 		this->is_tunnel = false;
@@ -99,7 +99,7 @@ struct CFollowTrackT {
 	/**
 	 * Tests if a tile is a road tile with a single tramtrack (tram can reverse).
 	 * @param tile The tile to get this for.
-	 * @return The direction of the tram bit, or \c INVALID_DIAGDIR when there are no or multiple tram bits.
+	 * @return The direction of the tram bit, or \c DiagDirection::Invalid when there are no or multiple tram bits.
 	 */
 	inline DiagDirection GetSingleTramBit(TileIndex tile)
 	{
@@ -109,14 +109,14 @@ struct CFollowTrackT {
 		if (is_bridge || IsNormalRoadTile(tile)) {
 			RoadBits rb = is_bridge ? GetCustomBridgeHeadRoadBits(tile, RoadTramType::Tram) : GetRoadBits(tile, RoadTramType::Tram);
 			switch (rb.base()) {
-				case ROAD_NW.base(): return DIAGDIR_NW;
-				case ROAD_SW.base(): return DIAGDIR_SW;
-				case ROAD_SE.base(): return DIAGDIR_SE;
-				case ROAD_NE.base(): return DIAGDIR_NE;
+				case ROAD_NW.base(): return DiagDirection::NW;
+				case ROAD_SW.base(): return DiagDirection::SW;
+				case ROAD_SE.base(): return DiagDirection::SE;
+				case ROAD_NE.base(): return DiagDirection::NE;
 				default: break;
 			}
 		}
-		return INVALID_DIAGDIR;
+		return DiagDirection::Invalid;
 	}
 
 	/**
@@ -133,7 +133,7 @@ struct CFollowTrackT {
 		this->err = EC_NONE;
 
 		dbg_assert_tile([&]() {
-			if (this->IsTram() && GetSingleTramBit(this->old_tile) != INVALID_DIAGDIR) return true; // Skip the check for single tram bits
+			if (this->IsTram() && GetSingleTramBit(this->old_tile) != DiagDirection::Invalid) return true; // Skip the check for single tram bits
 			const uint sub_mode = (IsRoadTT() && this->veh != nullptr) ? to_underlying(this->IsTram() ? RoadTramType::Tram : RoadTramType::Road) : 0;
 			const TrackdirBits old_tile_valid_dirs = GetTileTrackdirBits(this->old_tile, TT(), sub_mode);
 			return (old_tile_valid_dirs & TrackdirToTrackdirBits(this->old_td)) != TRACKDIR_BIT_NONE;
@@ -280,7 +280,7 @@ protected:
 		/* single tram bits can only be left in one direction */
 		if (this->IsTram()) {
 			DiagDirection single_tram = GetSingleTramBit(this->old_tile);
-			if (single_tram != INVALID_DIAGDIR && single_tram != this->exitdir) {
+			if (single_tram != DiagDirection::Invalid && single_tram != this->exitdir) {
 				this->err = EC_NO_WAY;
 				return false;
 			}
@@ -320,7 +320,7 @@ protected:
 		/* single tram bits can only be entered from one direction */
 		if (this->IsTram()) {
 			DiagDirection single_tram = this->GetSingleTramBit(this->new_tile);
-			if (single_tram != INVALID_DIAGDIR && single_tram != ReverseDiagDir(this->exitdir)) {
+			if (single_tram != DiagDirection::Invalid && single_tram != ReverseDiagDir(this->exitdir)) {
 				this->err = EC_NO_WAY;
 				return false;
 			}

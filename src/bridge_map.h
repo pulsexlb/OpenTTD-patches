@@ -132,7 +132,7 @@ inline void MakeBridgeRamp(TileIndex t, Owner o, BridgeType bridgetype, DiagDire
 	_m[t].m2 = 0;
 	_m[t].m3 = 0;
 	_m[t].m4 = 0;
-	_m[t].m5 = 1 << 7 | tt << 2 | d;
+	_m[t].m5 = 1 << 7 | tt << 2 | to_underlying(d);
 	_me[t].m6 = 0;
 	SB(_me[t].m6, 2, 4, bridgetype);
 	_me[t].m7 = 0;

@@ -164,7 +164,7 @@ static TrackBits MaskWireBits(TileIndex t, TrackBits tracks)
 	if (!IsPlainRailTile(t)) return tracks;
 
 	TrackdirBits neighbour_tdb = TRACKDIR_BIT_NONE;
-	for (DiagDirection d = DIAGDIR_BEGIN; d < DIAGDIR_END; d++) {
+	for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
 		/* If the neighbour tile is either not electrified or has no tracks that can be reached
 		 * from this tile, mark all trackdirs that can be reached from the neighbour tile
 		 * as needing no catenary. We make an exception for blocked station tiles with a matching
@@ -344,11 +344,11 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 	SpriteID pylon_halftile_secondary = 0;
 
 	auto get_pylon_sprite = [&](DiagDirection edge, bool halftile) -> SpriteID {
-		static const uint edge_tracks[] = {
-			TRACK_BIT_UPPER | TRACK_BIT_RIGHT, // DIAGDIR_NE
-			TRACK_BIT_LOWER | TRACK_BIT_RIGHT, // DIAGDIR_SE
-			TRACK_BIT_LOWER | TRACK_BIT_LEFT,  // DIAGDIR_SW
-			TRACK_BIT_UPPER | TRACK_BIT_LEFT,  // DIAGDIR_NW
+		static const DiagDirectionIndexArray<TrackBits> edge_tracks = {
+			TRACK_BIT_UPPER | TRACK_BIT_RIGHT, // DiagDirection::NE
+			TRACK_BIT_LOWER | TRACK_BIT_RIGHT, // DiagDirection::SE
+			TRACK_BIT_LOWER | TRACK_BIT_LEFT,  // DiagDirection::SW
+			TRACK_BIT_UPPER | TRACK_BIT_LEFT,  // DiagDirection::NW
 		};
 		if (home_track_config.secondary && (home_track_config.secondary & edge_tracks[edge])) {
 			if (pylon_normal_secondary == 0) {
@@ -377,7 +377,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 		}
 	};
 
-	for (DiagDirection i = DIAGDIR_BEGIN; i < DIAGDIR_END; i++) {
+	for (DiagDirection i = DiagDirection::Begin; i < DiagDirection::End; i++) {
 		SpriteID pylon_base = get_pylon_sprite(i, halftile_corner != CORNER_INVALID && HasBit(InclinedSlope(i), halftile_corner));
 		TileIndex neighbour = ti->tile + TileOffsByDiagDir(i);
 		int elevation = GetPCPElevation(ti->tile, i);
@@ -487,7 +487,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 				(!HasStationTileRail(ti->tile) || CanStationTileHavePylons(ti->tile))) {
 
 			const auto &ppp_orders = _ppp_order[i][GetTileLocationGroup(ti->tile)];
-			for (Direction k = DIR_BEGIN; k < DIR_END; k++) {
+			for (Direction k = Direction::Begin; k < Direction::End; k++) {
 				Direction temp = ppp_orders[k];
 
 				if (ppp_allowed[i].Test(temp)) {
@@ -631,8 +631,8 @@ void DrawRailCatenaryOnBridge(const TileInfo *ti)
 	/* Finished with wires, draw pylons
 	 * every other tile needs a pylon on the northern end */
 	if (num % 2) {
-		DiagDirection pcp_pos = (axis == Axis::X ? DIAGDIR_NE : DIAGDIR_NW);
-		Direction ppp_pos = (axis == Axis::X ? DIR_NW : DIR_NE);
+		DiagDirection pcp_pos = (axis == Axis::X ? DiagDirection::NE : DiagDirection::NW);
+		Direction ppp_pos = (axis == Axis::X ? Direction::NW : Direction::NE);
 		if (HasBit(tlg, (axis == Axis::X ? 0 : 1))) ppp_pos = ReverseDir(ppp_pos);
 		uint x = ti->x + _x_pcp_offsets[pcp_pos] + _x_ppp_offsets[ppp_pos];
 		uint y = ti->y + _y_pcp_offsets[pcp_pos] + _y_ppp_offsets[ppp_pos];
@@ -641,8 +641,8 @@ void DrawRailCatenaryOnBridge(const TileInfo *ti)
 
 	/* need a pylon on the southern end of the bridge */
 	if (GetTunnelBridgeLength(ti->tile, start) + 1 == length) {
-		DiagDirection pcp_pos = (axis == Axis::X ? DIAGDIR_SW : DIAGDIR_SE);
-		Direction ppp_pos = (axis == Axis::X ? DIR_NW : DIR_NE);
+		DiagDirection pcp_pos = (axis == Axis::X ? DiagDirection::SW : DiagDirection::SE);
+		Direction ppp_pos = (axis == Axis::X ? Direction::NW : Direction::NE);
 		if (HasBit(tlg, (axis == Axis::X ? 0 : 1))) ppp_pos = ReverseDir(ppp_pos);
 		uint x = ti->x + _x_pcp_offsets[pcp_pos] + _x_ppp_offsets[ppp_pos];
 		uint y = ti->y + _y_pcp_offsets[pcp_pos] + _y_ppp_offsets[ppp_pos];

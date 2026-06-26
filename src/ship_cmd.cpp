@@ -48,14 +48,14 @@
 constexpr int MAX_SHIP_DEPOT_SEARCH_DISTANCE = 80;
 
 /** Directions to search towards given track bits and the ship's enter direction. */
-const DiagDirection _ship_search_directions[6][4] = {
-	{ DIAGDIR_NE,      INVALID_DIAGDIR, DIAGDIR_SW,      INVALID_DIAGDIR },
-	{ INVALID_DIAGDIR, DIAGDIR_SE,      INVALID_DIAGDIR, DIAGDIR_NW      },
-	{ INVALID_DIAGDIR, DIAGDIR_NE,      DIAGDIR_NW,      INVALID_DIAGDIR },
-	{ DIAGDIR_SE,      INVALID_DIAGDIR, INVALID_DIAGDIR, DIAGDIR_SW      },
-	{ DIAGDIR_NW,      DIAGDIR_SW,      INVALID_DIAGDIR, INVALID_DIAGDIR },
-	{ INVALID_DIAGDIR, INVALID_DIAGDIR, DIAGDIR_SE,      DIAGDIR_NE      },
-};
+const TrackIndexArray<DiagDirectionIndexArray<DiagDirection>> _ship_search_directions{{{
+	{ DiagDirection::NE,      DiagDirection::Invalid, DiagDirection::SW,      DiagDirection::Invalid },
+	{ DiagDirection::Invalid, DiagDirection::SE,      DiagDirection::Invalid, DiagDirection::NW      },
+	{ DiagDirection::Invalid, DiagDirection::NE,      DiagDirection::NW,      DiagDirection::Invalid },
+	{ DiagDirection::SE,      DiagDirection::Invalid, DiagDirection::Invalid, DiagDirection::SW      },
+	{ DiagDirection::NW,      DiagDirection::SW,      DiagDirection::Invalid, DiagDirection::Invalid },
+	{ DiagDirection::Invalid, DiagDirection::Invalid, DiagDirection::SE,      DiagDirection::NE      },
+}}};
 
 /**
  * Determine the effective #WaterClass for a ship travelling on a tile.
@@ -96,14 +96,14 @@ static void GetShipIcon(EngineID engine, EngineImageType image_type, VehicleSpri
 	uint8_t spritenum = e->VehInfo<ShipVehicleInfo>().image_index;
 
 	if (IsCustomVehicleSpriteNum(spritenum)) {
-		GetCustomVehicleIcon(engine, DIR_W, image_type, result);
+		GetCustomVehicleIcon(engine, Direction::W, image_type, result);
 		if (result->IsValid()) return;
 
 		spritenum = e->original_image_index;
 	}
 
 	dbg_assert(IsValidImageIndex<VehicleType::Ship>(spritenum));
-	result->Set(DIR_W + _ship_sprites[spritenum]);
+	result->Set(to_underlying(Direction::W) + _ship_sprites[spritenum]);
 }
 
 void DrawShipEngine(int left, int right, int preferred_x, int y, EngineID engine, PaletteID pal, EngineImageType image_type)
@@ -155,7 +155,7 @@ void Ship::GetImage(Direction direction, EngineImageType image_type, VehicleSpri
 	}
 
 	dbg_assert(IsValidImageIndex<VehicleType::Ship>(spritenum));
-	result->Set(_ship_sprites[spritenum] + direction);
+	result->Set(_ship_sprites[spritenum] + to_underlying(direction));
 }
 
 static const Depot *FindClosestShipDepot(const Vehicle *v, uint max_distance)
@@ -386,7 +386,7 @@ bool RecentreShipSpriteBounds(Vehicle *v)
 {
 	Ship *ship = Ship::From(v);
 	if (ship->rotation != ship->cur_image_valid_dir) {
-		ship->cur_image_valid_dir  = INVALID_DIR;
+		ship->cur_image_valid_dir  = Direction::Invalid;
 		ship->sprite_seq_bounds.left = -16;
 		ship->sprite_seq_bounds.right = 16;
 		ship->sprite_seq_bounds.top = -16;
@@ -799,7 +799,7 @@ bool IsShipDestinationTile(TileIndex tile, StationID station)
 {
 	dbg_assert(IsDockingTile(tile));
 	/* Check each tile adjacent to docking tile. */
-	for (DiagDirection d = DIAGDIR_BEGIN; d != DIAGDIR_END; d++) {
+	for (DiagDirection d = DiagDirection::Begin; d != DiagDirection::End; d++) {
 		TileIndex t = tile + TileOffsByDiagDir(d);
 		if (!IsValidTile(t)) continue;
 		if (IsDockTile(t) && GetStationIndex(t) == station && IsDockWaterPart(t)) return true;
@@ -815,12 +815,12 @@ bool IsShipDestinationTile(TileIndex tile, StationID station)
 static void ReverseShipIntoTrackdir(Ship *v, Trackdir trackdir)
 {
 	static constexpr Direction _trackdir_to_direction[] = {
-		DIR_NE, DIR_SE, DIR_E, DIR_E, DIR_S, DIR_S, INVALID_DIR, INVALID_DIR,
-		DIR_SW, DIR_NW, DIR_W, DIR_W, DIR_N, DIR_N, INVALID_DIR, INVALID_DIR,
+		Direction::NE, Direction::SE, Direction::E, Direction::E, Direction::S, Direction::S, Direction::Invalid, Direction::Invalid,
+		Direction::SW, Direction::NW, Direction::W, Direction::W, Direction::N, Direction::N, Direction::Invalid, Direction::Invalid,
 	};
 
 	v->direction = _trackdir_to_direction[trackdir];
-	dbg_assert(v->direction != INVALID_DIR);
+	dbg_assert(v->direction != Direction::Invalid);
 	v->state = TrackdirBitsToTrackBits(TrackdirToTrackdirBits(trackdir));
 
 	/* Remember our current location to avoid movement glitch */
@@ -960,7 +960,7 @@ static void ShipController(Ship *v)
 				if (!IsValidTile(gp.new_tile)) return ReverseShip(v);
 
 				const DiagDirection diagdir = DiagdirBetweenTiles(gp.old_tile, gp.new_tile);
-				dbg_assert(diagdir != INVALID_DIAGDIR);
+				dbg_assert(diagdir != DiagDirection::Invalid);
 				const TrackBits tracks = GetAvailShipTracks(gp.new_tile, diagdir);
 				if (tracks == TRACK_BIT_NONE) {
 					Trackdir trackdir = INVALID_TRACKDIR;

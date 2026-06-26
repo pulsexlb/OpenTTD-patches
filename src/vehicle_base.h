@@ -321,7 +321,7 @@ public:
 	int32_t x_pos = 0;                           ///< x coordinate.
 	int32_t y_pos = 0;                           ///< y coordinate.
 	int32_t z_pos = 0;                           ///< z coordinate.
-	Direction direction = INVALID_DIR;           ///< facing
+	Direction direction = Direction::Invalid;    ///< facing
 
 	/**
 	 * currently displayed sprite index
@@ -373,7 +373,7 @@ public:
 	OrderList *orders = nullptr;                 ///< Pointer to the order list for this vehicle
 
 	NO_UNIQUE_ADDRESS NewGRFCache grf_cache{};   ///< Cache of often used calculated NewGRF values
-	Direction cur_image_valid_dir = INVALID_DIR; ///< NOSAVE: direction for which cur_image does not need to be regenerated on the next tick
+	Direction cur_image_valid_dir = Direction::Invalid; ///< NOSAVE: direction for which cur_image does not need to be regenerated on the next tick
 
 	VehicleCache vcache{};                       ///< Cache of often used vehicle values.
 
@@ -578,7 +578,7 @@ public:
 	 */
 	inline void InvalidateImageCache()
 	{
-		this->cur_image_valid_dir = INVALID_DIR;
+		this->cur_image_valid_dir = Direction::Invalid;
 	}
 
 	/**
@@ -1619,12 +1619,12 @@ struct SpecializedVehicle : public Base {
 	{
 		uint16_t curvature = 0;
 		if (this->Previous() != nullptr) {
-			SB(curvature, 0, 4, this->Previous()->direction);
-			if (this->Previous()->Previous() != nullptr) SB(curvature, 4, 4, this->Previous()->Previous()->direction);
+			SB(curvature, 0, 4, to_underlying(this->Previous()->direction));
+			if (this->Previous()->Previous() != nullptr) SB(curvature, 4, 4, to_underlying(this->Previous()->Previous()->direction));
 		}
 		if (this->Next() != nullptr) {
-			SB(curvature, 8, 4, this->Next()->direction);
-			if (this->Next()->Next() != nullptr) SB(curvature, 12, 4, this->Next()->Next()->direction);
+			SB(curvature, 8, 4, to_underlying(this->Next()->direction));
+			if (this->Next()->Next() != nullptr) SB(curvature, 12, 4, to_underlying(this->Next()->Next()->direction));
 		}
 		return curvature;
 	}
@@ -1652,7 +1652,7 @@ public:
 			_sprite_group_resolve_check_veh_curvature_check = false;
 			this->cur_image_valid_dir = current_direction;
 		} else {
-			this->cur_image_valid_dir = _sprite_group_resolve_check_veh_check ? current_direction : INVALID_DIR;
+			this->cur_image_valid_dir = _sprite_group_resolve_check_veh_check ? current_direction : Direction::Invalid;
 		}
 		_sprite_group_resolve_check_veh_check = false;
 	}

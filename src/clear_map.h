@@ -218,10 +218,10 @@ inline uint GetFence(TileIndex t, DiagDirection side)
 	dbg_assert_tile(IsClearGround(t, ClearGround::Fields), t);
 	switch (side) {
 		default: NOT_REACHED();
-		case DIAGDIR_SE: return GB(_m[t].m4, 2, 3);
-		case DIAGDIR_SW: return GB(_m[t].m4, 5, 3);
-		case DIAGDIR_NE: return GB(_m[t].m3, 5, 3);
-		case DIAGDIR_NW: return GB(_me[t].m6, 2, 3);
+		case DiagDirection::SE: return GB(_m[t].m4, 2, 3);
+		case DiagDirection::SW: return GB(_m[t].m4, 5, 3);
+		case DiagDirection::NE: return GB(_m[t].m3, 5, 3);
+		case DiagDirection::NW: return GB(_me[t].m6, 2, 3);
 	}
 }
 
@@ -237,10 +237,10 @@ inline void SetFence(TileIndex t, DiagDirection side, uint h)
 	dbg_assert_tile(IsClearGround(t, ClearGround::Fields), t);
 	switch (side) {
 		default: NOT_REACHED();
-		case DIAGDIR_SE: SB(_m[t].m4, 2, 3, h); break;
-		case DIAGDIR_SW: SB(_m[t].m4, 5, 3, h); break;
-		case DIAGDIR_NE: SB(_m[t].m3, 5, 3, h); break;
-		case DIAGDIR_NW: SB(_me[t].m6, 2, 3, h); break;
+		case DiagDirection::SE: SB(_m[t].m4, 2, 3, h); break;
+		case DiagDirection::SW: SB(_m[t].m4, 5, 3, h); break;
+		case DiagDirection::NE: SB(_m[t].m3, 5, 3, h); break;
+		case DiagDirection::NW: SB(_me[t].m6, 2, 3, h); break;
 	}
 }
 

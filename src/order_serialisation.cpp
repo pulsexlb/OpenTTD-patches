@@ -239,7 +239,7 @@ static nlohmann::ordered_json OrderToJSON(const Order &o, VehicleType vt)
 
 		if (vt == VehicleType::Train && o.GetStopLocation() != _settings_client.gui.stop_location) {
 			json[OFName::STOP_LOCATION] = o.GetStopLocation();
-		} else if (vt == VehicleType::Road && o.GetRoadVehTravelDirection() != INVALID_DIAGDIR) {
+		} else if (vt == VehicleType::Road && o.GetRoadVehTravelDirection() != DiagDirection::Invalid) {
 			json[OFName::STOP_DIRECTION] = o.GetRoadVehTravelDirection();
 		}
 

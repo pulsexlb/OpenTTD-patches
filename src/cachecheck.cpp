@@ -62,7 +62,7 @@ static bool SignalInfraTotalMatches()
 			case TileType::TunnelBridge: {
 				/* Only count the tunnel/bridge if we're on the northern end tile. */
 				DiagDirection dir = GetTunnelBridgeDirection(tile);
-				if (dir == DIAGDIR_NE || dir == DIAGDIR_NW) break;
+				if (dir == DiagDirection::NE || dir == DiagDirection::NW) break;
 
 				if (IsTunnelBridgeWithSignalSimulation(tile)) {
 					const Company *c = Company::GetIfValid(GetTileOwner(tile));
@@ -357,8 +357,8 @@ void CheckCaches(bool force_check, std::function<void(std::string_view)> log, Ch
 		for (const RoadStop *rs : RoadStop::Iterate()) {
 			if (IsBayRoadStopTile(rs->xy)) continue;
 
-			rs->GetEntry(DIAGDIR_NE).CheckIntegrity(rs);
-			rs->GetEntry(DIAGDIR_NW).CheckIntegrity(rs);
+			rs->GetEntry(DiagDirection::NE).CheckIntegrity(rs);
+			rs->GetEntry(DiagDirection::NW).CheckIntegrity(rs);
 		}
 
 		struct SavedVehicleInfo {

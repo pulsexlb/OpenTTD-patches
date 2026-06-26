@@ -95,11 +95,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(OrderUnloadType, {
 })
 
 NLOHMANN_JSON_SERIALIZE_ENUM(DiagDirection, {
-	{INVALID_DIAGDIR, nullptr},
-	{DIAGDIR_NE, "north-east"},
-	{DIAGDIR_SE, "south-east"},
-	{DIAGDIR_NW, "north-west"},
-	{DIAGDIR_SW, "south-west"},
+	{DiagDirection::Invalid, nullptr},
+	{DiagDirection::NE, "north-east"},
+	{DiagDirection::SE, "south-east"},
+	{DiagDirection::NW, "north-west"},
+	{DiagDirection::SW, "south-west"},
 })
 
 NLOHMANN_JSON_SERIALIZE_ENUM(Colours, {

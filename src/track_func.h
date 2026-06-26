@@ -478,7 +478,7 @@ inline Trackdir TrackExitdirToTrackdir(Track track, DiagDirection diagdir)
  * you follow the DiagDirection and then turn by 45 deg left or right on the
  * next tile. The new direction on the new track will be the returning Trackdir
  * value. If the parameters makes no sense like the track TRACK_UPPER and the
- * direction DIAGDIR_NE (target track cannot be reached) this function returns
+ * direction DiagDirection::NE (target track cannot be reached) this function returns
  * INVALID_TRACKDIR.
  *
  * @param track The target track
@@ -517,7 +517,7 @@ inline Trackdir TrackDirectionToTrackdir(Track track, Direction dir)
 inline Track DiagDirToDiagTrack(DiagDirection diagdir)
 {
 	dbg_assert(IsValidDiagDirection(diagdir));
-	return (Track)(diagdir & 1);
+	return static_cast<Track>(to_underlying(diagdir) & 1);
 }
 
 /**
@@ -744,18 +744,18 @@ inline DiagDirection VehicleExitDir(Direction direction, TrackBits track)
 inline Direction TrackdirToDirection(Trackdir td)
 {
 	switch (td) {
-		case TRACKDIR_X_NE: return DIR_NE;
-		case TRACKDIR_Y_SE: return DIR_SE;
-		case TRACKDIR_UPPER_E: return DIR_E;
-		case TRACKDIR_LOWER_E: return DIR_E;
-		case TRACKDIR_LEFT_S: return DIR_S;
-		case TRACKDIR_RIGHT_S: return DIR_S;
-		case TRACKDIR_X_SW: return DIR_SW;
-		case TRACKDIR_Y_NW: return DIR_NW;
-		case TRACKDIR_UPPER_W: return DIR_W;
-		case TRACKDIR_LOWER_W: return DIR_W;
-		case TRACKDIR_LEFT_N: return DIR_N;
-		case TRACKDIR_RIGHT_N: return DIR_N;
+		case TRACKDIR_X_NE: return Direction::NE;
+		case TRACKDIR_Y_SE: return Direction::SE;
+		case TRACKDIR_UPPER_E: return Direction::E;
+		case TRACKDIR_LOWER_E: return Direction::E;
+		case TRACKDIR_LEFT_S: return Direction::S;
+		case TRACKDIR_RIGHT_S: return Direction::S;
+		case TRACKDIR_X_SW: return Direction::SW;
+		case TRACKDIR_Y_NW: return Direction::NW;
+		case TRACKDIR_UPPER_W: return Direction::W;
+		case TRACKDIR_LOWER_W: return Direction::W;
+		case TRACKDIR_LEFT_N: return Direction::N;
+		case TRACKDIR_RIGHT_N: return Direction::N;
 		default: NOT_REACHED();
 	}
 }

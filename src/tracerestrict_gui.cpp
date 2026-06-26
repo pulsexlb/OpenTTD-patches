@@ -484,10 +484,10 @@ static const StringID _diagdir_value_str[] = {
 	STR_TRACE_RESTRICT_DIRECTION_NW,
 };
 static const uint _diagdir_value_val[] = {
-	DIAGDIR_NE,
-	DIAGDIR_SE,
-	DIAGDIR_SW,
-	DIAGDIR_NW,
+	to_underlying(DiagDirection::NE),
+	to_underlying(DiagDirection::SE),
+	to_underlying(DiagDirection::SW),
+	to_underlying(DiagDirection::NW),
 };
 
 /** value drop down list for DiagDirection strings and values */

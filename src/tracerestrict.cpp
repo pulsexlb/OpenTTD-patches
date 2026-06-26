@@ -862,19 +862,21 @@ void TraceRestrictProgram::Execute(const Train *v, const TraceRestrictProgramInp
 						TileIndex target = o->GetLocation(v, true);
 						if (target == INVALID_TILE) break;
 
-						switch (condvalue) {
-							case DIAGDIR_NE:
+						switch (static_cast<DiagDirection>(condvalue)) {
+							case DiagDirection::NE:
 								result = TestBinaryConditionCommon(item, TileX(target) < TileX(input.tile));
 								break;
-							case DIAGDIR_SE:
+							case DiagDirection::SE:
 								result = TestBinaryConditionCommon(item, TileY(target) > TileY(input.tile));
 								break;
-							case DIAGDIR_SW:
+							case DiagDirection::SW:
 								result = TestBinaryConditionCommon(item, TileX(target) > TileX(input.tile));
 								break;
-							case DIAGDIR_NW:
+							case DiagDirection::NW:
 								result = TestBinaryConditionCommon(item, TileY(target) < TileY(input.tile));
 								break;
+							default:
+								result = false;
 						}
 						break;
 					}
@@ -1475,11 +1477,11 @@ CommandCost TraceRestrictProgram::Validate(const std::span<const TraceRestrictPr
 						default:
 							return unknown_instruction();
 					}
-					switch (item.GetValue()) {
-						case DIAGDIR_NE:
-						case DIAGDIR_SE:
-						case DIAGDIR_SW:
-						case DIAGDIR_NW:
+					switch (static_cast<DiagDirection>(item.GetValue())) {
+						case DiagDirection::NE:
+						case DiagDirection::SE:
+						case DiagDirection::SW:
+						case DiagDirection::NW:
 							break;
 
 						default:

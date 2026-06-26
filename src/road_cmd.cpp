@@ -223,10 +223,10 @@ static DiagDirection OneWaySideJunctionRoadRoadBitsToDiagDir(RoadBits bits)
 {
 	/*
 	 * Drive on left missing bit:
-	 * ROAD_SE (bit 2) -> DIAGDIR_NE (0)
-	 * ROAD_SW (bit 1) -> DIAGDIR_SE (1)
-	 * ROAD_NW (bit 0) -> DIAGDIR_SW (2)
-	 * ROAD_NE (bit 3) -> DIAGDIR_NW (3)
+	 * ROAD_SE (bit 2) -> DiagDirection::NE (0)
+	 * ROAD_SW (bit 1) -> DiagDirection::SE (1)
+	 * ROAD_NW (bit 0) -> DiagDirection::SW (2)
+	 * ROAD_NE (bit 3) -> DiagDirection::NW (3)
 	 */
 	uint8_t bit = FindFirstBit((bits ^ ROAD_ALL).base());
 	bit ^= 3;
@@ -235,7 +235,7 @@ static DiagDirection OneWaySideJunctionRoadRoadBitsToDiagDir(RoadBits bits)
 
 inline bool IsOneWaySideJunctionRoadDRDsPresent(TileIndex tile, DiagDirection dir)
 {
-	const DisallowedRoadDirections diagdir_to_drd[DIAGDIR_END] = { DRD_NORTHBOUND, DRD_NORTHBOUND, DRD_SOUTHBOUND, DRD_SOUTHBOUND };
+	const DiagDirectionIndexArray<DisallowedRoadDirections> diagdir_to_drd = { DRD_NORTHBOUND, DRD_NORTHBOUND, DRD_SOUTHBOUND, DRD_SOUTHBOUND };
 
 	TileIndexDiffC ti = TileIndexDiffCByDiagDir(dir);
 	TileIndex ahead = AddTileIndexDiffCWrap(tile, ti);
@@ -281,11 +281,11 @@ static void UpdateTileRoadCachedOneWayState(TileIndex tile)
 		if (HasExactlyOneBit(bits ^ ROAD_ALL)) {
 			DiagDirection dir = OneWaySideJunctionRoadRoadBitsToDiagDir(bits);
 			if (IsOneWaySideJunctionRoadDRDsPresent(tile, dir)) {
-				DiagDirection side_dir = (DiagDirection)((dir + 3 + (_settings_game.vehicle.road_side * 2)) % 4);
+				DiagDirection side_dir = (DiagDirection)((to_underlying(dir) + 3 + (_settings_game.vehicle.road_side * 2)) % 4);
 				TileIndexDiffC ti = TileIndexDiffCByDiagDir(side_dir);
 				TileIndex side = AddTileIndexDiffCWrap(tile, ti);
 
-				const DisallowedRoadDirections diagdir_to_drd[DIAGDIR_END] = { DRD_SOUTHBOUND, DRD_SOUTHBOUND, DRD_NORTHBOUND, DRD_NORTHBOUND };
+				const DiagDirectionIndexArray<DisallowedRoadDirections> diagdir_to_drd = { DRD_SOUTHBOUND, DRD_SOUTHBOUND, DRD_NORTHBOUND, DRD_NORTHBOUND };
 				SetRoadCachedOneWayState(tile, (GetOneWayRoadTileDisallowedRoadDirections(side) & diagdir_to_drd[side_dir]).Any() ? RCOWS_SIDE_JUNCTION_NO_EXIT : RCOWS_SIDE_JUNCTION);
 				return;
 			}
@@ -1999,7 +1999,7 @@ void DrawRoadTypeCatenary(const TileInfo *ti, RoadType rt, RoadBits rb)
 		/* On junctions we check whether neighbouring tiles also have catenary, and possibly
 		 * do not draw catenary towards those neighbours, which do not have catenary. */
 		RoadBits rb_new{};
-		for (DiagDirection dir = DIAGDIR_BEGIN; dir < DIAGDIR_END; dir++) {
+		for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
 			if (rb.Any(DiagDirToRoadBits(dir))) {
 				TileIndex neighbour = TileAddByDiagDir(ti->tile, dir);
 				if (MayHaveRoad(neighbour)) {
@@ -2434,19 +2434,19 @@ static void DrawTile_Road(TileInfo *ti, DrawTileProcParams params)
 							DrawRailTileSeq(ti, &_crossing_layout, TO_CATENARY, rail, 0, PAL_NONE);
 							break;
 
-						case DiagDirections{DIAGDIR_NE}.base():
+						case DiagDirections{DiagDirection::NE}.base():
 							DrawRailTileSeq(ti, &_crossing_layout_SW, TO_CATENARY, rail, 0, PAL_NONE);
 							break;
 
-						case DiagDirections{DIAGDIR_SE}.base():
+						case DiagDirections{DiagDirection::SE}.base():
 							DrawRailTileSeq(ti, &_crossing_layout_NW, TO_CATENARY, rail, 0, PAL_NONE);
 							break;
 
-						case DiagDirections{DIAGDIR_SW}.base():
+						case DiagDirections{DiagDirection::SW}.base():
 							DrawRailTileSeq(ti, &_crossing_layout_NE, TO_CATENARY, rail, 0, PAL_NONE);
 							break;
 
-						case DiagDirections{DIAGDIR_NW}.base():
+						case DiagDirections{DiagDirection::NW}.base():
 							DrawRailTileSeq(ti, &_crossing_layout_SE, TO_CATENARY, rail, 0, PAL_NONE);
 							break;
 
@@ -2806,7 +2806,7 @@ static TrackStatus GetTileTrackStatus_Road(TileIndex tile, TransportType mode, u
 					RoadBits bits = GetRoadBits(tile, rtt);
 
 					/* no roadbit at this side of tile, return 0 */
-					if (side != INVALID_DIAGDIR && !DiagDirToRoadBits(side).Any(bits)) break;
+					if (side != DiagDirection::Invalid && !DiagDirToRoadBits(side).Any(bits)) break;
 
 					if (!HasRoadWorks(tile)) {
 						RoadCachedOneWayState rcows = (rtt == RoadTramType::Tram) ? RCOWS_NORMAL : GetRoadCachedOneWayState(tile);
@@ -2834,7 +2834,7 @@ static TrackStatus GetTileTrackStatus_Road(TileIndex tile, TransportType mode, u
 				case RoadTileType::Crossing: {
 					Axis axis = GetCrossingRoadAxis(tile);
 
-					if (side != INVALID_DIAGDIR && axis != DiagDirToAxis(side)) break;
+					if (side != DiagDirection::Invalid && axis != DiagDirToAxis(side)) break;
 
 					trackdirbits = TrackBitsToTrackdirBits(AxisToTrackBits(axis));
 					auto is_non_colliding = [&]() -> bool {
@@ -2862,7 +2862,7 @@ static TrackStatus GetTileTrackStatus_Road(TileIndex tile, TransportType mode, u
 				case RoadTileType::Depot: {
 					DiagDirection dir = GetRoadDepotDirection(tile);
 
-					if (side != INVALID_DIAGDIR && side != dir) break;
+					if (side != DiagDirection::Invalid && side != dir) break;
 
 					trackdirbits = TrackBitsToTrackdirBits(DiagDirToDiagTrackBits(dir));
 					break;

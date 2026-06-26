@@ -668,7 +668,7 @@ inline void TerminateRoadWorks(TileIndex t)
 inline DiagDirection GetRoadDepotDirection(TileIndex t)
 {
 	dbg_assert_tile(IsRoadDepot(t), t);
-	return (DiagDirection)GB(_m[t].m5, 0, 2);
+	return static_cast<DiagDirection>(GB(_m[t].m5, 0, 2));
 }
 
 
@@ -791,7 +791,7 @@ inline void MakeRoadDepot(TileIndex t, Owner owner, DepotID did, DiagDirection d
 	_m[t].m2 = did.base();
 	_m[t].m3 = 0;
 	_m[t].m4 = INVALID_ROADTYPE;
-	_m[t].m5 = to_underlying(RoadTileType::Depot) << 6 | dir;
+	_m[t].m5 = to_underlying(RoadTileType::Depot) << 6 | to_underlying(dir);
 	_me[t].m6 = 0;
 	_me[t].m7 = owner.base();
 	_me[t].m8 = INVALID_ROADTYPE << 6;

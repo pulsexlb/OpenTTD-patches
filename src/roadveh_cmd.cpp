@@ -112,14 +112,14 @@ static void GetRoadVehIcon(EngineID engine, EngineImageType image_type, VehicleS
 	uint8_t spritenum = e->VehInfo<RoadVehicleInfo>().image_index;
 
 	if (IsCustomVehicleSpriteNum(spritenum)) {
-		GetCustomVehicleIcon(engine, DIR_W, image_type, result);
+		GetCustomVehicleIcon(engine, Direction::W, image_type, result);
 		if (result->IsValid()) return;
 
 		spritenum = e->original_image_index;
 	}
 
 	assert(IsValidImageIndex<VehicleType::Road>(spritenum));
-	result->Set(DIR_W + _roadveh_images[spritenum]);
+	result->Set(to_underlying(Direction::W) + _roadveh_images[spritenum]);
 }
 
 void RoadVehicle::GetImage(Direction direction, EngineImageType image_type, VehicleSpriteSeq *result) const
@@ -135,7 +135,7 @@ void RoadVehicle::GetImage(Direction direction, EngineImageType image_type, Vehi
 	}
 
 	assert(IsValidImageIndex<VehicleType::Road>(spritenum));
-	SpriteID sprite = direction + _roadveh_images[spritenum];
+	SpriteID sprite = to_underlying(direction) + _roadveh_images[spritenum];
 
 	if (this->cargo.StoredCount() >= this->cargo_cap / 2U) sprite += _roadveh_full_adder[spritenum];
 
@@ -452,10 +452,10 @@ void RoadVehicle::UpdateDeltaXY()
 	if (!IsDiagonalDirection(this->direction)) {
 		static const DiagDirectionIndexArray<Point> _sign_table{{{
 			/* x, y */
-			{-1, -1}, // DIR_N
-			{-1,  1}, // DIR_E
-			{ 1,  1}, // DIR_S
-			{ 1, -1}, // DIR_W
+			{-1, -1}, // Direction::N
+			{-1,  1}, // Direction::E
+			{ 1,  1}, // Direction::S
+			{ 1, -1}, // Direction::W
 		}}};
 
 		int half_shorten = (VEHICLE_LENGTH - this->gcache.cached_veh_length) / 2;
@@ -467,26 +467,26 @@ void RoadVehicle::UpdateDeltaXY()
 		/* Unlike trains, road vehicles do not have their offsets moved to the centre. */
 		switch (this->direction) {
 				/* Shorten southern corner of the bounding box according the vehicle length. */
-			case DIR_NE:
+			case Direction::NE:
 				this->bounds.origin.x = -3;
 				this->bounds.extent.x = this->gcache.cached_veh_length;
 				this->bounds.offset.x = 1;
 				break;
 
-			case DIR_NW:
+			case Direction::NW:
 				this->bounds.origin.y = -3;
 				this->bounds.extent.y = this->gcache.cached_veh_length;
 				this->bounds.offset.y = 1;
 				break;
 
 				/* Move northern corner of the bounding box down according to vehicle length. */
-			case DIR_SW:
+			case Direction::SW:
 				this->bounds.origin.x = -3 + (VEHICLE_LENGTH - this->gcache.cached_veh_length);
 				this->bounds.extent.x = this->gcache.cached_veh_length;
 				this->bounds.offset.x = 1 - (VEHICLE_LENGTH - this->gcache.cached_veh_length);
 				break;
 
-			case DIR_SE:
+			case Direction::SE:
 				this->bounds.origin.y = -3 + (VEHICLE_LENGTH - this->gcache.cached_veh_length);
 				this->bounds.extent.y = this->gcache.cached_veh_length;
 				this->bounds.offset.y = 1 - (VEHICLE_LENGTH - this->gcache.cached_veh_length);
@@ -846,9 +846,9 @@ int RoadVehicle::UpdateSpeed(int max_speed)
 static Direction RoadVehGetNewDirection(const RoadVehicle *v, int x, int y)
 {
 	static const Direction _roadveh_new_dir[] = {
-		DIR_N , DIR_NW, DIR_W , INVALID_DIR,
-		DIR_NE, DIR_N , DIR_SW, INVALID_DIR,
-		DIR_E , DIR_SE, DIR_S
+		Direction::N, Direction::NW, Direction::W, Direction::Invalid,
+		Direction::NE, Direction::N, Direction::SW, Direction::Invalid,
+		Direction::E, Direction::SE, Direction::S
 	};
 
 	x = x - v->x_pos + 1;
@@ -886,16 +886,16 @@ static bool EnumFindVehBlockingOvertake(const RoadVehicle *v, const OvertakeData
 
 	/* Check if other vehicle is behind */
 	switch (DirToDiagDir(v->direction)) {
-		case DIAGDIR_NE:
+		case DiagDirection::NE:
 			if (v->x_pos > od->v->x_pos) return false;
 			break;
-		case DIAGDIR_SE:
+		case DiagDirection::SE:
 			if (v->y_pos < od->v->y_pos) return false;
 			break;
-		case DIAGDIR_SW:
+		case DiagDirection::SW:
 			if (v->x_pos < od->v->x_pos) return false;
 			break;
-		case DIAGDIR_NW:
+		case DiagDirection::NW:
 			if (v->y_pos > od->v->y_pos) return false;
 			break;
 		default:
@@ -978,7 +978,7 @@ static bool IsNonOvertakingStationTile(TileIndex tile, DiagDirection diag_dir)
 {
 	if (!IsTileType(tile, TileType::Station) || IsRoadWaypoint(tile)) return false;
 	if (!IsDriveThroughStopTile(tile)) return true;
-	const DisallowedRoadDirections diagdir_to_drd[DIAGDIR_END] = { DRD_NORTHBOUND, DRD_NORTHBOUND, DRD_SOUTHBOUND, DRD_SOUTHBOUND };
+	const DiagDirectionIndexArray<DisallowedRoadDirections> diagdir_to_drd = { DRD_NORTHBOUND, DRD_NORTHBOUND, DRD_SOUTHBOUND, DRD_SOUTHBOUND };
 	return GetDriveThroughStopDisallowedRoadDirections(tile) != diagdir_to_drd[diag_dir];
 }
 
@@ -992,19 +992,19 @@ inline bool IsValidRoadVehStateForOvertake(const RoadVehicle *v)
 static bool CheckTunnelBridgeBlockedForOvertaking(OvertakeData *od, TileIndex behind_end, TileIndex ahead_end, TileIndex pos, int ahead_extent, int behind_extent)
 {
 	switch (DirToDiagDir(od->v->direction)) {
-		case DIAGDIR_NE:
+		case DiagDirection::NE:
 			od->tunnelbridge_min = (TileX(pos) - ahead_extent) * TILE_SIZE;
 			od->tunnelbridge_max = ((TileX(pos) + behind_extent) * TILE_SIZE) + TILE_UNIT_MASK;
 			break;
-		case DIAGDIR_SE:
+		case DiagDirection::SE:
 			od->tunnelbridge_min = (TileY(pos) - behind_extent) * TILE_SIZE;
 			od->tunnelbridge_max = ((TileY(pos) + ahead_extent) * TILE_SIZE) + TILE_UNIT_MASK;
 			break;
-		case DIAGDIR_SW:
+		case DiagDirection::SW:
 			od->tunnelbridge_min = (TileX(pos) - behind_extent) * TILE_SIZE;
 			od->tunnelbridge_max = ((TileX(pos) + ahead_extent) * TILE_SIZE) + TILE_UNIT_MASK;
 			break;
-		case DIAGDIR_NW:
+		case DiagDirection::NW:
 			od->tunnelbridge_min = (TileY(pos) - ahead_extent) * TILE_SIZE;
 			od->tunnelbridge_max = ((TileY(pos) + behind_extent) * TILE_SIZE) + TILE_UNIT_MASK;
 			break;
@@ -1026,7 +1026,7 @@ static void RoadVehCheckOvertake(RoadVehicle *v, RoadVehicle *u)
 	if (RoadTypeIsTram(v->roadtype)) return;
 
 	/* Other vehicle is facing the opposite direction || direction is not a diagonal direction */
-	if (v->direction == ReverseDir(u->Last()->direction) || !(v->direction & 1)) return;
+	if (v->direction == ReverseDir(u->Last()->direction) || !IsDiagonalDirection(v->direction)) return;
 
 	if (!IsValidRoadVehStateForOvertake(v)) return;
 
@@ -1087,7 +1087,7 @@ static void RoadVehCheckOvertake(RoadVehicle *v, RoadVehicle *u)
 	TileIndex behind_check_tile = v->tile - check_tile_diff;
 
 	int tile_offset = ((DiagDirToAxis(DirToDiagDir(v->direction)) == Axis::X) ? v->x_pos : v->y_pos) & 0xF;
-	int tile_ahead_margin = ((dir == DIAGDIR_SE || dir == DIAGDIR_SW) ? TILE_SIZE - 1 - tile_offset : tile_offset);;
+	int tile_ahead_margin = ((dir == DiagDirection::SE || dir == DiagDirection::SW) ? TILE_SIZE - 1 - tile_offset : tile_offset);;
 	int behind_tile_count = (v->gcache.cached_total_length + tile_ahead_margin) / TILE_SIZE;
 
 	if (IsTileType(check_tile, TileType::TunnelBridge)) {
@@ -1373,7 +1373,7 @@ static Trackdir FollowPreviousRoadVehicle(const RoadVehicle *v, const RoadVehicl
 	Trackdir dir;
 
 	if (prev_state == RVSB_WORMHOLE || prev_state == RVSB_IN_DEPOT) {
-		DiagDirection diag_dir = INVALID_DIAGDIR;
+		DiagDirection diag_dir = DiagDirection::Invalid;
 
 		if (IsTileType(tile, TileType::TunnelBridge)) {
 			diag_dir = GetTunnelBridgeDirection(tile);
@@ -1381,7 +1381,7 @@ static Trackdir FollowPreviousRoadVehicle(const RoadVehicle *v, const RoadVehicl
 			diag_dir = ReverseDiagDir(GetRoadDepotDirection(tile));
 		}
 
-		if (diag_dir == INVALID_DIAGDIR) return INVALID_TRACKDIR;
+		if (diag_dir == DiagDirection::Invalid) return INVALID_TRACKDIR;
 		dir = DiagDirToDiagTrackdir(diag_dir);
 	} else {
 		if (already_reversed && (prev->tile != tile || (prev_state < TRACKDIR_END && IsReversingRoadTrackdir((Trackdir)prev_state)))) {
@@ -1458,16 +1458,16 @@ static bool IsRoadVehicleOnOtherSideOfRoad(const RoadVehicle *v)
 {
 	bool is_right;
 	switch (DirToDiagDir(v->direction)) {
-		case DIAGDIR_NE:
+		case DiagDirection::NE:
 			is_right = ((TILE_UNIT_MASK & v->y_pos) == 9);
 			break;
-		case DIAGDIR_SE:
+		case DiagDirection::SE:
 			is_right = ((TILE_UNIT_MASK & v->x_pos) == 9);
 			break;
-		case DIAGDIR_SW:
+		case DiagDirection::SW:
 			is_right = ((TILE_UNIT_MASK & v->y_pos) == 5);
 			break;
-		case DIAGDIR_NW:
+		case DiagDirection::NW:
 			is_right = ((TILE_UNIT_MASK & v->x_pos) == 5);
 			break;
 		default:
@@ -1495,13 +1495,13 @@ bool FinishOvertakeData::operator()(const RoadVehicle *v) const
 
 	/* Check if other vehicle is behind */
 	switch (DirToDiagDir(v->direction)) {
-		case DIAGDIR_NE:
-		case DIAGDIR_SW:
+		case DiagDirection::NE:
+		case DiagDirection::SW:
 			if ((v->y_pos & TILE_UNIT_MASK) == this->not_road_pos) return false;
 			if (v->x_pos >= this->min_coord && v->x_pos <= this->max_coord) return true;
 			break;
-		case DIAGDIR_SE:
-		case DIAGDIR_NW:
+		case DiagDirection::SE:
+		case DiagDirection::NW:
 			if ((v->x_pos & TILE_UNIT_MASK) == this->not_road_pos) return false;
 			if (v->y_pos >= this->min_coord && v->y_pos <= this->max_coord) return true;
 			break;
@@ -1529,22 +1529,22 @@ static void RoadVehCheckFinishOvertake(RoadVehicle *v)
 	const int back_margin = 10;
 	DiagDirection dir = DirToDiagDir(v->direction);
 	switch (dir) {
-		case DIAGDIR_NE:
+		case DiagDirection::NE:
 			od.min_coord = v->x_pos - front_margin;
 			od.max_coord = last->x_pos + back_margin;
 			od.not_road_pos = (_settings_game.vehicle.road_side ? 5 : 9);
 			break;
-		case DIAGDIR_SE:
+		case DiagDirection::SE:
 			od.min_coord = last->y_pos - back_margin;
 			od.max_coord = v->y_pos + front_margin;
 			od.not_road_pos = (_settings_game.vehicle.road_side ? 5 : 9);
 			break;
-		case DIAGDIR_SW:
+		case DiagDirection::SW:
 			od.min_coord = last->x_pos - back_margin;
 			od.max_coord = v->x_pos + front_margin;
 			od.not_road_pos = (_settings_game.vehicle.road_side ? 9 : 5);
 			break;
-		case DIAGDIR_NW:
+		case DiagDirection::NW:
 			od.min_coord = v->y_pos - front_margin;
 			od.max_coord = last->y_pos + back_margin;
 			od.not_road_pos = (_settings_game.vehicle.road_side ? 9 : 5);
@@ -1614,7 +1614,7 @@ static bool CheckRestartLoadingAtRoadStop(RoadVehicle *v)
 	const Order *next_order = v->GetOrder(next_order_idx);
 	FlushAdvanceOrderIndexDeferred(v, false);
 	if (next_order != nullptr && next_order->IsType(OT_GOTO_STATION) && next_order->GetDestination() == station_id &&
-			(next_order->GetRoadVehTravelDirection() == INVALID_DIAGDIR || next_order->GetRoadVehTravelDirection() == DirToDiagDir(v->direction)) &&
+			(next_order->GetRoadVehTravelDirection() == DiagDirection::Invalid || next_order->GetRoadVehTravelDirection() == DirToDiagDir(v->direction)) &&
 			!(next_order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) &&
 			IsInfraTileUsageAllowed(VehicleType::Road, v->owner, v->tile) &&
 			GetRoadStopType(v->tile) == (v->IsBus() ? RoadStopType::Bus : RoadStopType::Truck) &&
@@ -1681,13 +1681,13 @@ bool IndividualRoadVehicleController(RoadVehicle *v, const RoadVehicle *prev)
 		if (v->overtaking & 1) {
 			DiagDirection dir = DirToDiagDir(v->direction);
 			switch (dir) {
-				case DIAGDIR_NE:
-				case DIAGDIR_SW:
-					SB(gp.y, 0, 4, (_settings_game.vehicle.road_side ^ (dir >> 1) ^ (v->overtaking >> RVS_DRIVE_SIDE)) ? 9 : 5);
+				case DiagDirection::NE:
+				case DiagDirection::SW:
+					SB(gp.y, 0, 4, (_settings_game.vehicle.road_side ^ (to_underlying(dir) >> 1) ^ (v->overtaking >> RVS_DRIVE_SIDE)) ? 9 : 5);
 					break;
-				case DIAGDIR_SE:
-				case DIAGDIR_NW:
-					SB(gp.x, 0, 4, (_settings_game.vehicle.road_side ^ (dir >> 1) ^ (v->overtaking >> RVS_DRIVE_SIDE)) ? 9 : 5);
+				case DiagDirection::SE:
+				case DiagDirection::NW:
+					SB(gp.x, 0, 4, (_settings_game.vehicle.road_side ^ (to_underlying(dir) >> 1) ^ (v->overtaking >> RVS_DRIVE_SIDE)) ? 9 : 5);
 					break;
 				default:
 					NOT_REACHED();
@@ -1928,12 +1928,12 @@ again:
 			 * going to be properly shown.
 			 */
 			turn_around_start_frame = RVC_START_FRAME_AFTER_LONG_TRAM;
-			switch (rd.x & 0x3) {
+			switch (static_cast<DiagDirection>(rd.x & 0x3)) {
 				default: NOT_REACHED();
-				case DIAGDIR_NW: dir = TRACKDIR_RVREV_SE; break;
-				case DIAGDIR_NE: dir = TRACKDIR_RVREV_SW; break;
-				case DIAGDIR_SE: dir = TRACKDIR_RVREV_NW; break;
-				case DIAGDIR_SW: dir = TRACKDIR_RVREV_NE; break;
+				case DiagDirection::NW: dir = TRACKDIR_RVREV_SE; break;
+				case DiagDirection::NE: dir = TRACKDIR_RVREV_SW; break;
+				case DiagDirection::SE: dir = TRACKDIR_RVREV_NW; break;
+				case DiagDirection::SW: dir = TRACKDIR_RVREV_NE; break;
 			}
 		} else {
 			if (v->IsFrontEngine()) {

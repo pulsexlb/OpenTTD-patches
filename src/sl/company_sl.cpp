@@ -139,7 +139,7 @@ void AfterLoadCompanyStats()
 
 			case TileType::TunnelBridge: {
 				/* Only count the tunnel/bridge if we're on the western end tile. */
-				if (GetTunnelBridgeDirection(tile) < DIAGDIR_SW) {
+				if (GetTunnelBridgeDirection(tile) < DiagDirection::SW) {
 					TileIndex other_end = GetOtherTunnelBridgeEnd(tile);
 
 					/* Count each tunnel/bridge TUNNELBRIDGE_TRACKBIT_FACTOR times to simulate
