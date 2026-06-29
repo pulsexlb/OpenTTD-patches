@@ -14,10 +14,34 @@
 #include "../../track_type.h"
 
 /**
+ * Base class for segment cost cache providers. Contains global counter
+ *  of track layout changes and static notification function called whenever
+ *  the track layout changes. It is implemented as base class because it needs
+ *  to be shared between all rail YAPF types (one shared counter, one notification
+ *  function.
+ */
+struct CSegmentCostCacheBase {
+	static int   s_rail_change_counter;
+
+	static void NotifyTrackLayoutChange()
+	{
+		s_rail_change_counter++;
+	}
+};
+
+/**
  * Use this function to notify YAPF that track layout (or signal configuration) has change.
  * @param tile  the tile that is changed
  * @param track what piece of track is changed
  */
-void YapfNotifyTrackLayoutChange(TileIndex tile, Track track);
+inline void YapfNotifyTrackLayoutChange(TileIndex tile, Track track)
+{
+	CSegmentCostCacheBase::NotifyTrackLayoutChange();
+}
+
+inline void YapfNotifyTrackLayoutChange(TileIndex tile, TrackBits tracks)
+{
+	if (tracks != TRACK_BIT_NONE) CSegmentCostCacheBase::NotifyTrackLayoutChange();
+}
 
 #endif /* YAPF_CACHE_H */

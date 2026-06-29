@@ -10,6 +10,7 @@
 #ifndef YAPF_COSTCACHE_HPP
 #define YAPF_COSTCACHE_HPP
 
+#include "yapf_cache.h"
 #include "../../core/arena_alloc.hpp"
 #include "../../misc/hashtable.hpp"
 #include "../../tile_type.h"
@@ -71,22 +72,6 @@ public:
 		CacheKey key(n.GetKey());
 		Yapf().ConnectNodeToCachedData(n, *(m_local_cache.New(key)));
 		return false;
-	}
-};
-
-/**
- * Base class for segment cost cache providers. Contains global counter
- *  of track layout changes and static notification function called whenever
- *  the track layout changes. It is implemented as base class because it needs
- *  to be shared between all rail YAPF types (one shared counter, one notification
- *  function.
- */
-struct CSegmentCostCacheBase {
-	static int   s_rail_change_counter;
-
-	static void NotifyTrackLayoutChange(TileIndex, Track)
-	{
-		s_rail_change_counter++;
 	}
 };
 

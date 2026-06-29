@@ -1530,9 +1530,7 @@ static CommandCost DoClearBridge(TileIndex tile, DoCommandFlags flags)
 				check_dir(ChangeDiagDir(direction, DiagDirDiff::Right90));
 				check_dir(ChangeDiagDir(direction, DiagDirDiff::Reverse));
 				check_dir(ChangeDiagDir(direction, DiagDirDiff::Left90));
-				while (tracks != TRACK_BIT_NONE) {
-					YapfNotifyTrackLayoutChange(tile, RemoveFirstTrack(&tracks));
-				}
+				YapfNotifyTrackLayoutChange(tile, tracks);
 			};
 			notify_track_change(tile, direction, tile_tracks);
 			notify_track_change(endtile, ReverseDiagDir(direction), endtile_tracks);

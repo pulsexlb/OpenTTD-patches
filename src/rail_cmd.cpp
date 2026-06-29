@@ -2598,9 +2598,7 @@ CommandCost CmdConvertRail(DoCommandFlags flags, TileIndex tile, TileIndex area_
 		};
 
 		auto yapf_notify_track_change = [](TileIndex tile, TrackBits tracks) {
-			while (tracks != TRACK_BIT_NONE) {
-				YapfNotifyTrackLayoutChange(tile, RemoveFirstTrack(&tracks));
-			}
+			YapfNotifyTrackLayoutChange(tile, tracks);
 		};
 
 		/* Vehicle on the tile when not converting Rail <-> ElRail
@@ -2901,9 +2899,7 @@ CommandCost CmdConvertRailTrack(DoCommandFlags flags, TileIndex end_tile, TileIn
 		};
 
 		auto yapf_notify_track_change = [](TileIndex tile, TrackBits tracks) {
-			while (tracks != TRACK_BIT_NONE) {
-				YapfNotifyTrackLayoutChange(tile, RemoveFirstTrack(&tracks));
-			}
+			YapfNotifyTrackLayoutChange(tile, tracks);
 		};
 
 		/* Vehicle on the tile when not converting Rail <-> ElRail
