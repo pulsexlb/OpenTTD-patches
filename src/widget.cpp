@@ -2380,10 +2380,9 @@ void NWidgetViewport::Draw(const Window *w)
 	this->base_flags.Reset(WidgetBaseFlag::Dirty);
 
 	if (this->disp_flags.Test(NWidgetDisplayFlag::NoTransparency)) {
-		TransparencyOptionBits to_backup = _transparency_opt;
-		_transparency_opt &= (1 << TO_SIGNS) | (1 << TO_LOADING); // Disable all transparency, except textual stuff
+		AutoRestoreBackup to_backup(_transparency_opt, AutoRestoreBackupNoNewValueTag{});
+		_transparency_opt &= TransparencyOptions{TransparencyOption::Signs, TransparencyOption::Loading}; // Disable all transparency, except textual stuff
 		w->DrawViewport(this->disp_flags);
-		_transparency_opt = to_backup;
 	} else {
 		w->DrawViewport(this->disp_flags);
 	}

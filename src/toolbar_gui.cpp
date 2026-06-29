@@ -330,8 +330,8 @@ static CallBackFunction ToolbarOptionsClick(Window *w)
 	}
 	list.push_back(MakeDropDownListCheckedItem(_display_opt.Test(DisplayOption::FullAnimation),        STR_SETTINGS_MENU_FULL_ANIMATION,          OptionMenuEntries::FullAnimation, false));
 	list.push_back(MakeDropDownListCheckedItem(_display_opt.Test(DisplayOption::FullDetail),           STR_SETTINGS_MENU_FULL_DETAIL,             OptionMenuEntries::FullDetails, false));
-	list.push_back(MakeDropDownListCheckedItem(IsTransparencySet(TO_HOUSES),                           STR_SETTINGS_MENU_TRANSPARENT_BUILDINGS,   OptionMenuEntries::TransparentBuildings, false));
-	list.push_back(MakeDropDownListCheckedItem(IsTransparencySet(TO_SIGNS),                            STR_SETTINGS_MENU_TRANSPARENT_SIGNS,       OptionMenuEntries::TransparentStationSigns, false));
+	list.push_back(MakeDropDownListCheckedItem(IsTransparencySet(TransparencyOption::Houses),                           STR_SETTINGS_MENU_TRANSPARENT_BUILDINGS,   OptionMenuEntries::TransparentBuildings, false));
+	list.push_back(MakeDropDownListCheckedItem(IsTransparencySet(TransparencyOption::Signs),                            STR_SETTINGS_MENU_TRANSPARENT_SIGNS,       OptionMenuEntries::TransparentStationSigns, false));
 	list.push_back(MakeDropDownListCheckedItem(HasBit(_extra_display_opt, XDO_SHOW_MONEY_TEXT_EFFECTS), STR_SETTINGS_MENU_MONEY_TEXT_EFFECTS,     OptionMenuEntries::ShowMoneyText, false));
 
 	ShowDropDownList(w, std::move(list), 0, WID_TN_SETTINGS, 140, GetToolbarDropDownOptions());
@@ -373,8 +373,8 @@ static CallBackFunction MenuClickSettings(int index)
 			break;
 		case OptionMenuEntries::FullAnimation:           _display_opt.Flip(DisplayOption::FullAnimation); CheckBlitter(); break;
 		case OptionMenuEntries::FullDetails:             _display_opt.Flip(DisplayOption::FullDetail); break;
-		case OptionMenuEntries::TransparentBuildings:    ToggleTransparency(TO_HOUSES); break;
-		case OptionMenuEntries::TransparentStationSigns: ToggleTransparency(TO_SIGNS); break;
+		case OptionMenuEntries::TransparentBuildings:    ToggleTransparency(TransparencyOption::Houses); break;
+		case OptionMenuEntries::TransparentStationSigns: ToggleTransparency(TransparencyOption::Signs); break;
 		case OptionMenuEntries::ShowMoneyText:           ToggleBit(_extra_display_opt, XDO_SHOW_MONEY_TEXT_EFFECTS); break;
 		case OptionMenuEntries::ShowHiddenSigns:         ToggleBit(_extra_display_opt, XDO_SHOW_HIDDEN_SIGNS); break;
 	}

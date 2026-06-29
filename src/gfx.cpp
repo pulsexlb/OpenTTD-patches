@@ -1730,7 +1730,7 @@ void DrawDirtyBlocks()
 					_dirty_viewport_disp_flags = w->viewport_widget->disp_flags;
 					AutoRestoreBackup to_backup(_transparency_opt, AutoRestoreBackupNoNewValueTag{});
 					if (_dirty_viewport_disp_flags.Test(NWidgetDisplayFlag::NoTransparency)) {
-						_transparency_opt &= (1 << TO_SIGNS) | (1 << TO_LOADING); // Disable all transparency, except textual stuff
+						_transparency_opt &= TransparencyOptions{TransparencyOption::Signs, TransparencyOption::Loading}; // Disable all transparency, except textual stuff
 					}
 
 					{

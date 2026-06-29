@@ -931,12 +931,10 @@ static bool CheckRoadInfraUnsuitableForOvertaking(OvertakeData *od)
 {
 	if (!HasTileAnyRoadType(od->tile, od->v->compatible_roadtypes)) return true;
 	TrackStatus ts = GetTileTrackStatus(od->tile, TRANSPORT_ROAD, ((od->v->roadtype + 1) << 8) | to_underlying(GetRoadTramType(od->v->roadtype)));
-	TrackdirBits trackdirbits = TrackStatusToTrackdirBits(ts);
-	TrackdirBits red_signals = TrackStatusToRedSignals(ts); // barred level crossing
-	TrackBits trackbits = TrackdirBitsToTrackBits(trackdirbits);
+	TrackBits trackbits = TrackdirBitsToTrackBits(ts.trackdirs);
 
 	/* Track does not continue along overtaking direction || levelcrossing is barred */
-	if (!HasBit(trackdirbits, od->trackdir) || (red_signals != TRACKDIR_BIT_NONE)) return true;
+	if (!HasBit(ts.trackdirs, od->trackdir) || (ts.signals != TRACKDIR_BIT_NONE)) return true;
 	/* Track has junction */
 	if (trackbits & ~TRACK_BIT_CROSS) {
 		RoadCachedOneWayState rcows = GetRoadCachedOneWayState(od->tile);
@@ -1191,39 +1189,37 @@ static Trackdir RoadFindPathToDest(RoadVehicle *v, TileIndex tile, DiagDirection
 	bool path_found = true;
 
 	TrackStatus ts = GetTileTrackStatus(tile, TRANSPORT_ROAD, ((v->roadtype + 1) << 8) | to_underlying(GetRoadTramType(v->roadtype)));
-	TrackdirBits red_signals = TrackStatusToRedSignals(ts); // crossing
-	TrackdirBits trackdirs = TrackStatusToTrackdirBits(ts);
 
 	/* Replaces the given track with INVALID_TRACK when there is red signal for that track. */
-	auto FilterRedSignal = [&red_signals](auto track) {
-		if (HasBit(red_signals, track)) return INVALID_TRACKDIR;
+	auto FilterRedSignal = [&ts](auto track) {
+		if (HasBit(ts.signals, track)) return INVALID_TRACKDIR;
 		return static_cast<Trackdir>(track);
 	};
 
 	if (IsTileType(tile, TileType::Road)) {
 		if (IsRoadDepot(tile) && (!IsInfraTileUsageAllowed(VehicleType::Road, v->owner, tile) || GetRoadDepotDirection(tile) == enterdir)) {
 			/* Road depot owned by another company or with the wrong orientation */
-			trackdirs = TRACKDIR_BIT_NONE;
+			ts.trackdirs = TRACKDIR_BIT_NONE;
 		}
 	} else if (IsTileType(tile, TileType::Station) && IsBayRoadStopTile(tile)) {
 		/* Standard road stop (drive-through stops are treated as normal road) */
 
 		if (!IsInfraTileUsageAllowed(VehicleType::Road, v->owner, tile) || GetBayRoadStopDir(tile) == enterdir || v->HasArticulatedPart()) {
 			/* different station owner or wrong orientation or the vehicle has articulated parts */
-			trackdirs = TRACKDIR_BIT_NONE;
+			ts.trackdirs = TRACKDIR_BIT_NONE;
 		} else {
 			/* Our station */
 			RoadStopType rstype = v->IsBus() ? RoadStopType::Bus : RoadStopType::Truck;
 
 			if (GetRoadStopType(tile) != rstype) {
 				/* Wrong station type */
-				trackdirs = TRACKDIR_BIT_NONE;
+				ts.trackdirs = TRACKDIR_BIT_NONE;
 			} else {
 				/* Proper station type, check if there is free loading bay */
 				if (!_settings_game.pf.roadveh_queue && IsBayRoadStopTile(tile) &&
 						!RoadStop::GetByTile(tile, rstype)->HasFreeBay()) {
 					/* Station is full and RV queuing is off */
-					trackdirs = TRACKDIR_BIT_NONE;
+					ts.trackdirs = TRACKDIR_BIT_NONE;
 				}
 			}
 		}
@@ -1234,8 +1230,8 @@ static Trackdir RoadFindPathToDest(RoadVehicle *v, TileIndex tile, DiagDirection
 	 */
 
 	/* Remove tracks unreachable from the enter dir */
-	trackdirs &= DiagdirReachesTrackdirs(enterdir);
-	if (trackdirs == TRACKDIR_BIT_NONE) {
+	ts.trackdirs &= DiagdirReachesTrackdirs(enterdir);
+	if (ts.trackdirs == TRACKDIR_BIT_NONE) {
 		/* If vehicle expected a path, it no longer exists, so invalidate it. */
 		if (v->cached_path != nullptr) v->cached_path->clear();
 		/* No reachable tracks, so we'll reverse */
@@ -1262,16 +1258,16 @@ static Trackdir RoadFindPathToDest(RoadVehicle *v, TileIndex tile, DiagDirection
 
 	if (v->dest_tile == INVALID_TILE) {
 		/* We've got no destination, pick a random track */
-		return FilterRedSignal(PickRandomBit(trackdirs));
+		return FilterRedSignal(PickRandomBit(ts.trackdirs));
 	}
 
 	/* Only one track to choose between? */
-	if (KillFirstBit(trackdirs) == TRACKDIR_BIT_NONE) {
+	if (KillFirstBit(ts.trackdirs) == TRACKDIR_BIT_NONE) {
 		if (v->cached_path != nullptr && !v->cached_path->empty() && v->cached_path->front_tile() == tile) {
 			/* Vehicle expected a choice here, invalidate its path. */
 			v->cached_path->clear();
 		}
-		return FilterRedSignal(FindFirstBit(trackdirs));
+		return FilterRedSignal(FindFirstBit(ts.trackdirs));
 	}
 
 	/* Path cache is out of date, clear it */
@@ -1287,7 +1283,7 @@ static Trackdir RoadFindPathToDest(RoadVehicle *v, TileIndex tile, DiagDirection
 		} else {
 			Trackdir trackdir = v->cached_path->front_td();
 
-			if (HasBit(trackdirs, trackdir)) {
+			if (HasBit(ts.trackdirs, trackdir)) {
 				v->cached_path->pop_front();
 				return FilterRedSignal(trackdir);
 			}
@@ -1297,7 +1293,7 @@ static Trackdir RoadFindPathToDest(RoadVehicle *v, TileIndex tile, DiagDirection
 		}
 	}
 
-	Trackdir best_track = YapfRoadVehicleChooseTrack(v, tile, enterdir, trackdirs, path_found, v->GetOrCreatePathCache());
+	Trackdir best_track = YapfRoadVehicleChooseTrack(v, tile, enterdir, ts.trackdirs, path_found, v->GetOrCreatePathCache());
 	DEBUG_UPDATESTATECHECKSUM("RoadFindPathToDest: v: {}, path_found: {}, best_track: {}", v->index, path_found, best_track);
 	UpdateStateChecksum((((uint64_t) v->index.base()) << 32) | (path_found << 16) | best_track);
 	v->HandlePathfindingResult(path_found);

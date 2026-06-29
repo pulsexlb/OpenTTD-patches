@@ -518,7 +518,7 @@ static void DrawTileLayout(TileInfo *ti, const TileLayoutSpriteGroup *group, con
 	}
 
 	if (building_z_offset) ti->z += building_z_offset;
-	DrawNewGRFTileSeq(ti, &dts, TO_STRUCTURES, 0, palette);
+	DrawNewGRFTileSeq(ti, &dts, TransparencyOption::Structures, 0, palette);
 	if (building_z_offset) ti->z -= building_z_offset;
 }
 

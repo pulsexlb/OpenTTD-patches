@@ -31,7 +31,7 @@ inline bool HasRailCatenary(RailType rt)
  */
 inline bool HasRailCatenaryDrawn(RailType rt, RailType secondary = INVALID_RAILTYPE)
 {
-	return !IsInvisibilitySet(TO_CATENARY) && !_settings_game.vehicle.disable_elrails && (HasRailCatenary(rt) || (secondary != INVALID_RAILTYPE && HasRailCatenary(secondary)));
+	return !IsInvisibilitySet(TransparencyOption::Catenary) && !_settings_game.vehicle.disable_elrails && (HasRailCatenary(rt) || (secondary != INVALID_RAILTYPE && HasRailCatenary(secondary)));
 }
 
 void DrawRailCatenary(const TileInfo *ti);

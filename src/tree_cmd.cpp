@@ -1018,7 +1018,7 @@ static void DrawTile_Trees(TileInfo *ti, DrawTileProcParams params)
 	}
 
 	/* Do not draw trees when the invisible trees setting is set */
-	if (IsInvisibilitySet(TO_TREES)) return;
+	if (IsInvisibilitySet(TransparencyOption::Trees)) return;
 
 	DrawTreeTileOverlayFlags flags{};
 	if ((GetTreeGround(ti->tile) == TreeGround::SnowOrDesert || GetTreeGround(ti->tile) == TreeGround::RoughSnow) &&
@@ -1101,7 +1101,7 @@ void DrawTreeTileOverlay(TileInfo *ti, TreeType tree_type, TreeGrowthStage growt
 		}
 
 		SpriteBounds bounds{{}, {TILE_SIZE, TILE_SIZE, 48}, {te[mi].x, te[mi].y, 0}};
-		AddSortableSpriteToDraw(te[mi].sprite, te[mi].pal, ti->x, ti->y, z, bounds, IsTransparencySet(TO_TREES));
+		AddSortableSpriteToDraw(te[mi].sprite, te[mi].pal, ti->x, ti->y, z, bounds, IsTransparencySet(TransparencyOption::Trees));
 
 		/* replace the removed one with the last one */
 		te[mi] = te[trees - 1];

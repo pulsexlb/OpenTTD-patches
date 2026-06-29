@@ -244,7 +244,7 @@ inline TrackStatus GetTileTrackStatus(TileIndex tile, TransportType mode, RoadTr
 
 inline TrackdirBits GetTileTrackdirBits(TileIndex tile, TransportType mode, uint sub_mode, DiagDirection side = DiagDirection::Invalid)
 {
-	return TrackStatusToTrackdirBits(GetTileTrackStatus(tile, mode, sub_mode | TTSSM_NO_RED_SIGNALS, side));
+	return GetTileTrackStatus(tile, mode, sub_mode | TTSSM_NO_RED_SIGNALS, side).trackdirs;
 }
 
 inline TrackdirBits GetTileTrackdirBits(TileIndex tile, TransportType mode, RoadTramType sub_mode, DiagDirection side = DiagDirection::Invalid)

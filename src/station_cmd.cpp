@@ -1174,12 +1174,9 @@ static CommandCost CheckFlatLandRailStation(TileArea tile_area, DoCommandFlags f
 
 				/* The current rail type must have power on the to-be-built type (e.g. convert normal rail to electrified rail). */
 				if (HasPowerOnRail(GetRailType(tile_cur), rt)) {
-					TrackBits tracks = GetTrackBits(tile_cur);
-					Track track = RemoveFirstTrack(&tracks);
-					Track expected_track = invalid_dirs.Test(DiagDirection::NE) ? TRACK_X : TRACK_Y;
-
 					/* The existing track must align with the desired station axis. */
-					if (tracks == TRACK_BIT_NONE && track == expected_track) {
+					Track track = AxisToTrack(axis);
+					if (GetTrackBits(tile_cur) == TrackToTrackBits(track)) {
 						/* Check for trains having a reservation for this tile. */
 						if (HasBit(GetRailReservationTrackBits(tile_cur), track)) {
 							Train *v = GetTrainForReservation(tile_cur, track);
@@ -3764,7 +3761,7 @@ static void DrawTile_Station(TileInfo *ti, DrawTileProcParams params)
 		total_offset = 0;
 	}
 
-	DrawRailTileSeq(ti, t, TO_BUILDINGS, total_offset, relocation, palette);
+	DrawRailTileSeq(ti, t, TransparencyOption::Buildings, total_offset, relocation, palette);
 	DrawBridgeMiddle(ti);
 }
 
@@ -3985,7 +3982,7 @@ static TrackStatus GetTileTrackStatus_Station(TileIndex tile, TransportType mode
 			break;
 	}
 
-	return CombineTrackStatus(trackdirbits, TRACKDIR_BIT_NONE);
+	return {trackdirbits, TRACKDIR_BIT_NONE};
 }
 
 

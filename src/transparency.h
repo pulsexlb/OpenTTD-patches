@@ -20,29 +20,31 @@
  * If you change the order, change the order of the ShowTransparencyToolbar() stuff in transparency_gui.cpp too.
  * If you add or remove an option don't forget to change the transparency 'hot keys' in main_gui.cpp.
  */
-enum TransparencyOption : uint8_t {
-	TO_SIGNS = 0,  ///< signs
-	TO_TREES,      ///< trees
-	TO_HOUSES,     ///< town buildings
-	TO_INDUSTRIES, ///< industries
-	TO_BUILDINGS,  ///< company buildings - depots, stations, HQ, ...
-	TO_BRIDGES,    ///< bridges
-	TO_STRUCTURES, ///< other objects such as transmitters and lighthouses
-	TO_CATENARY,   ///< catenary
-	TO_LOADING,    ///< loading indicators
-	TO_TUNNELS,    ///< vehicles in tunnels
-	TO_END,
-	TO_INVALID,    ///< Invalid transparency option
+enum class TransparencyOption : uint8_t {
+	Signs = 0, ///< signs
+	Trees = 1, ///< trees
+	Houses = 2, ///< town buildings
+	Industries = 3, ///< industries
+	Buildings = 4, ///< company buildings - depots, stations, HQ, ...
+	Bridges = 5, ///< bridges
+	Structures = 6, ///< other objects such as transmitters and lighthouses
+	Catenary = 7, ///< catenary
+	Loading = 8, ///< loading indicators
+	Tunnels = 9, ///< vehicles in tunnels
+	Invalid, ///< Invalid transparency option
 };
 
-typedef uint TransparencyOptionBits; ///< transparency option bits
-extern TransparencyOptionBits _transparency_opt;
-extern TransparencyOptionBits _transparency_lock;
-extern TransparencyOptionBits _transparency_opt_base;
-extern TransparencyOptionBits _transparency_lock_base;
-extern TransparencyOptionBits _transparency_opt_extra;
-extern TransparencyOptionBits _transparency_lock_extra;
-extern TransparencyOptionBits _invisibility_opt;
+/** Bitset of \c TransparencyOption elements. */
+using TransparencyOptions = EnumBitSet<TransparencyOption, uint32_t>;
+
+extern TransparencyOptions _transparency_opt;
+extern TransparencyOptions _transparency_lock;
+extern TransparencyOptions _transparency_opt_base;
+extern TransparencyOptions _transparency_lock_base;
+extern TransparencyOptions _transparency_opt_extra;
+extern TransparencyOptions _transparency_lock_extra;
+extern TransparencyOptions _invisibility_opt;
+
 extern DisplayOptions _display_opt;
 extern uint8_t _extra_display_opt;
 extern StationFacilities _facility_display_opt;
@@ -59,7 +61,7 @@ void PostTransparencyOptionLoad();
  */
 inline bool IsTransparencySet(TransparencyOption to)
 {
-	return (HasBit(_transparency_opt, to) && _game_mode != GameMode::Menu);
+	return _transparency_opt.Test(to) && _game_mode != GameMode::Menu;
 }
 
 /**
@@ -71,7 +73,7 @@ inline bool IsTransparencySet(TransparencyOption to)
  */
 inline bool IsInvisibilitySet(TransparencyOption to)
 {
-	return (HasBit(_transparency_opt & _invisibility_opt, to) && _game_mode != GameMode::Menu);
+	return IsTransparencySet(to) && _invisibility_opt.Test(to) && _game_mode != GameMode::Menu;
 }
 
 /**
@@ -81,13 +83,13 @@ inline bool IsInvisibilitySet(TransparencyOption to)
  */
 inline void ToggleTransparency(TransparencyOption to)
 {
-	ToggleBit(_transparency_opt, to);
+	_transparency_opt.Flip(to);
 
 	extern void UpdateAllVehiclesIsDrawn();
-	if (to == TO_TUNNELS) UpdateAllVehiclesIsDrawn();
+	if (to == TransparencyOption::Tunnels) UpdateAllVehiclesIsDrawn();
 
 	extern void MarkAllViewportMapLandscapesDirty();
-	if (to == TO_TREES) MarkAllViewportMapLandscapesDirty();
+	if (to == TransparencyOption::Trees) MarkAllViewportMapLandscapesDirty();
 }
 
 /**
@@ -97,10 +99,10 @@ inline void ToggleTransparency(TransparencyOption to)
  */
 inline void ToggleInvisibility(TransparencyOption to)
 {
-	ToggleBit(_invisibility_opt, to);
+	_invisibility_opt.Flip(to);
 
 	extern void MarkAllViewportMapLandscapesDirty();
-	if (to == TO_TREES) MarkAllViewportMapLandscapesDirty();
+	if (to == TransparencyOption::Trees) MarkAllViewportMapLandscapesDirty();
 }
 
 /**
@@ -113,11 +115,11 @@ inline void ToggleInvisibility(TransparencyOption to)
 inline void ToggleInvisibilityWithTransparency(TransparencyOption to)
 {
 	if (IsInvisibilitySet(to)) {
-		ClrBit(_invisibility_opt, to);
-		ClrBit(_transparency_opt, to);
+		_invisibility_opt.Reset(to);
+		_transparency_opt.Reset(to);
 	} else {
-		SetBit(_invisibility_opt, to);
-		SetBit(_transparency_opt, to);
+		_invisibility_opt.Set(to);
+		_transparency_opt.Set(to);
 	}
 }
 
@@ -128,28 +130,30 @@ inline void ToggleInvisibilityWithTransparency(TransparencyOption to)
  */
 inline void ToggleTransparencyLock(TransparencyOption to)
 {
-	ToggleBit(_transparency_lock, to);
+	_transparency_lock.Flip(to);
 }
 
 /** Set or clear all non-locked transparency options */
 inline void ResetRestoreAllTransparency()
 {
-	const TransparencyOptionBits old_transparency_opt = _transparency_opt;
+	const TransparencyOptions old_transparency_opt = _transparency_opt;
+	TransparencyOptions unlocked = _transparency_lock;
+	unlocked.Flip();
 
 	/* if none of the non-locked options are set */
-	if ((_transparency_opt & ~_transparency_lock) == 0) {
+	if (!_transparency_opt.Any(unlocked)) {
 		/* set all non-locked options */
-		_transparency_opt |= GB(~_transparency_lock, 0, TO_END);
+		_transparency_opt.Set(unlocked);
 	} else {
 		/* clear all non-locked options */
-		_transparency_opt &= _transparency_lock;
+		_transparency_opt.Reset(unlocked);
 	}
 
-	if (HasBit(old_transparency_opt ^ _transparency_opt, TO_TUNNELS)) {
+	if ((old_transparency_opt ^ _transparency_opt).Test(TransparencyOption::Tunnels)) {
 		extern void UpdateAllVehiclesIsDrawn();
 		UpdateAllVehiclesIsDrawn();
 	}
-	if (HasBit(old_transparency_opt ^ _transparency_opt, TO_TREES)) {
+	if ((old_transparency_opt ^ _transparency_opt).Test(TransparencyOption::Trees)) {
 		extern void MarkAllViewportMapLandscapesDirty();
 		MarkAllViewportMapLandscapesDirty();
 	}

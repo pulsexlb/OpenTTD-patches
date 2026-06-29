@@ -1231,15 +1231,26 @@ bool FloodHalftile(TileIndex t)
 	return flooded;
 }
 
-static const TileIndexDiffC _trackdelta[] = {
+/** Tile deltas for each trackdir. */
+static const TrackdirIndexArray<TileIndexDiffC> _trackdelta{{{
 	{ -1,  0 }, {  0,  1 }, { -1,  0 }, {  0,  1 }, {  1,  0 }, {  0,  1 },
 	{  0,  0 },
 	{  0,  0 },
 	{  1,  0 }, {  0, -1 }, {  0, -1 }, {  1,  0 }, {  0, -1 }, { -1,  0 },
 	{  0,  0 },
 	{  0,  0 }
-};
+}}};
 
+/**
+ * Get the other Trackdir for a non-diagonal Trackdir.
+ * i.e. upper -> lower, left -> right, etc.
+ * @param trackdir the trackdir.
+ * @return The other trackdir.
+ */
+static Trackdir GetOtherTrackdir(Trackdir trackdir)
+{
+	return static_cast<Trackdir>(to_underlying(trackdir) ^ 1);
+}
 
 static CommandCost ValidateAutoDrag(Trackdir *trackdir, TileIndex start, TileIndex end)
 {
@@ -1259,8 +1270,8 @@ static CommandCost ValidateAutoDrag(Trackdir *trackdir, TileIndex start, TileInd
 	int trdy = _trackdelta[*trackdir].y;
 
 	if (!IsDiagonalTrackdir(*trackdir)) {
-		trdx += _trackdelta[*trackdir ^ 1].x;
-		trdy += _trackdelta[*trackdir ^ 1].y;
+		trdx += _trackdelta[GetOtherTrackdir(*trackdir)].x;
+		trdy += _trackdelta[GetOtherTrackdir(*trackdir)].y;
 	}
 
 	/* validate the direction */
@@ -1344,7 +1355,7 @@ static CommandCost CmdRailTrackHelper(DoCommandFlags flags, TileIndex tile, Tile
 		tile += ToTileIndexDiff(_trackdelta[trackdir]);
 
 		/* toggle railbit for the non-diagonal tracks */
-		if (!IsDiagonalTrackdir(trackdir)) ToggleBit(trackdir, 0);
+		if (!IsDiagonalTrackdir(trackdir)) trackdir = GetOtherTrackdir(trackdir);
 	}
 
 	if (had_success) return total_cost;
@@ -2279,7 +2290,7 @@ static CommandCost CmdSignalTrackHelper(DoCommandFlags flags, TileIndex tile, Ti
 			if (IsDiagonalTrackdir(trackdir)) {
 				signal_ctr++;
 			} else {
-				ToggleBit(trackdir, 0);
+				trackdir = GetOtherTrackdir(trackdir);
 			}
 		}
 	}
@@ -2797,7 +2808,7 @@ CommandCost CmdConvertRailTrack(DoCommandFlags flags, TileIndex end_tile, TileIn
 		tile += ToTileIndexDiff(_trackdelta[trackdir]);
 
 		/* toggle railbit for the non-diagonal tracks */
-		if (!IsDiagonalTrackdir(trackdir)) ToggleBit(trackdir, 0);
+		if (!IsDiagonalTrackdir(trackdir)) trackdir = GetOtherTrackdir(trackdir);
 		return true;
 	};
 	do {
@@ -3141,9 +3152,7 @@ static CommandCost ClearTile_Rail(TileIndex tile, DoCommandFlags flags)
 			/* Is there flat water on the lower halftile that gets cleared expensively? */
 			bool water_ground = (GetRailGroundType(tile) == RailGroundType::HalfTileWater && IsSlopeWithOneCornerRaised(tileh));
 
-			TrackBits tracks = GetTrackBits(tile);
-			while (tracks != TRACK_BIT_NONE) {
-				Track track = RemoveFirstTrack(&tracks);
+			for (Track track : SetTrackBitIterator(GetTrackBits(tile))) {
 				CommandCost ret = Command<Commands::RemoveRail>::Do(flags, tile, track);
 				if (ret.Failed()) return ret;
 				cost.AddCost(ret.GetCost());
@@ -4100,7 +4109,7 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 
 		if (ti->tileh != SLOPE_FLAT) DrawFoundation(ti, FOUNDATION_LEVELED);
 
-		if (IsInvisibilitySet(TO_BUILDINGS)) {
+		if (IsInvisibilitySet(TransparencyOption::Buildings)) {
 			/* Draw rail instead of depot */
 			dts = &_depot_invisible_gfx_table[GetRailDepotDirection(ti->tile)];
 		} else {
@@ -4131,13 +4140,13 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 
 			switch (GetRailDepotDirection(ti->tile)) {
 				case DiagDirection::NE:
-					if (!IsInvisibilitySet(TO_BUILDINGS)) break;
+					if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
 					[[fallthrough]];
 				case DiagDirection::SW:
 					DrawGroundSprite(ground + RTO_X, PAL_NONE);
 					break;
 				case DiagDirection::NW:
-					if (!IsInvisibilitySet(TO_BUILDINGS)) break;
+					if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
 					[[fallthrough]];
 				case DiagDirection::SE:
 					DrawGroundSprite(ground + RTO_Y, PAL_NONE);
@@ -4151,13 +4160,13 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 
 				switch (GetRailDepotDirection(ti->tile)) {
 					case DiagDirection::NE:
-						if (!IsInvisibilitySet(TO_BUILDINGS)) break;
+						if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
 						[[fallthrough]];
 					case DiagDirection::SW:
 						DrawGroundSprite(overlay + RTO_X, PALETTE_CRASH);
 						break;
 					case DiagDirection::NW:
-						if (!IsInvisibilitySet(TO_BUILDINGS)) break;
+						if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
 						[[fallthrough]];
 					case DiagDirection::SE:
 						DrawGroundSprite(overlay + RTO_Y, PALETTE_CRASH);
@@ -4171,13 +4180,13 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 			if (_game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation && HasDepotReservation(ti->tile)) {
 				switch (GetRailDepotDirection(ti->tile)) {
 					case DiagDirection::NE:
-						if (!IsInvisibilitySet(TO_BUILDINGS)) break;
+						if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
 						[[fallthrough]];
 					case DiagDirection::SW:
 						DrawGroundSprite(rti->base_sprites.single_x, PALETTE_CRASH);
 						break;
 					case DiagDirection::NW:
-						if (!IsInvisibilitySet(TO_BUILDINGS)) break;
+						if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
 						[[fallthrough]];
 					case DiagDirection::SE:
 						DrawGroundSprite(rti->base_sprites.single_y, PALETTE_CRASH);
@@ -4192,7 +4201,7 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 
 		if (HasRailCatenaryDrawn(GetRailType(ti->tile))) DrawRailCatenary(ti);
 
-		DrawRailTileSeq(ti, dts, TO_BUILDINGS, relocation, 0, pal);
+		DrawRailTileSeq(ti, dts, TransparencyOption::Buildings, relocation, 0, pal);
 	}
 	DrawBridgeMiddle(ti);
 }
@@ -4397,10 +4406,10 @@ static TrackStatus GetTileTrackStatus_Rail(TileIndex tile, TransportType mode, u
 			case TRACK_BIT_LEFT:  tb = TRACK_BIT_RIGHT; break;
 			case TRACK_BIT_RIGHT: tb = TRACK_BIT_LEFT;  break;
 		}
-		return CombineTrackStatus(TrackBitsToTrackdirBits(tb), TRACKDIR_BIT_NONE);
+		return {TrackBitsToTrackdirBits(tb), TRACKDIR_BIT_NONE};
 	}
 
-	if (mode != TRANSPORT_RAIL) return 0;
+	if (mode != TRANSPORT_RAIL) return {};
 
 	TrackBits trackbits = TRACK_BIT_NONE;
 	TrackdirBits red_signals = TRACKDIR_BIT_NONE;
@@ -4445,7 +4454,7 @@ static TrackStatus GetTileTrackStatus_Rail(TileIndex tile, TransportType mode, u
 		}
 	}
 
-	return CombineTrackStatus(TrackBitsToTrackdirBits(trackbits), red_signals);
+	return {TrackBitsToTrackdirBits(trackbits), red_signals};
 }
 
 /** @copydoc ClickTileProc */

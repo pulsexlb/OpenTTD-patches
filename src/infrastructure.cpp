@@ -390,13 +390,9 @@ void UpdateAllBlockSignals(Owner owner)
 		if (IsTileType(tile, TileType::Railway) && HasSignals(tile)) {
 			Owner track_owner = GetTileOwner(tile);
 			if (check_owner(track_owner)) continue;
-			TrackBits bits = GetTrackBits(tile);
-			do {
-				Track track = RemoveFirstTrack(&bits);
-				if (HasSignalOnTrack(tile, track)) {
-					AddTrackToSignalBuffer(tile, track, track_owner);
-				}
-			} while (bits != TRACK_BIT_NONE);
+			for (Track track : SetTrackBitIterator(GetTrackBits(tile))) {
+				if (IsSignalPresent(tile, SignalOnTrack(track))) AddTrackToSignalBuffer(tile, track, track_owner);
+			}
 		} else if (IsLevelCrossingTile(tile) && (owner == INVALID_OWNER || GetTileOwner(tile) == owner)) {
 			UpdateLevelCrossing(tile);
 		} else if (IsTunnelBridgeWithSignalSimulation(tile)) {

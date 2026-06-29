@@ -520,7 +520,7 @@ TrackStatus GetTileTrackStatus(TileIndex tile, TransportType mode, uint sub_mode
 	if (proc != nullptr) {
 		return proc(tile, mode, sub_mode, side);
 	} else {
-		return 0;
+		return {};
 	}
 }
 

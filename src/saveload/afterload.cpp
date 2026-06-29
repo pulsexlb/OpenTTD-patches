@@ -512,8 +512,8 @@ static void FixOwnerOfRailTrack(TileIndex t)
 	/* try to find any connected rail */
 	for (DiagDirection dd = DiagDirection::Begin; dd < DiagDirection::End; dd++) {
 		TileIndex tt = t + TileOffsByDiagDir(dd);
-		if (GetTileTrackStatus(t, TRANSPORT_RAIL, 0, dd) != 0 &&
-				GetTileTrackStatus(tt, TRANSPORT_RAIL, 0, ReverseDiagDir(dd)) != 0 &&
+		if (GetTileTrackdirBits(t, TRANSPORT_RAIL, 0, dd) != TRACKDIR_BIT_NONE &&
+				GetTileTrackdirBits(tt, TRANSPORT_RAIL, 0, ReverseDiagDir(dd)) != TRACKDIR_BIT_NONE &&
 				Company::IsValidID(GetTileOwner(tt))) {
 			SetTileOwner(t, GetTileOwner(tt));
 			return;

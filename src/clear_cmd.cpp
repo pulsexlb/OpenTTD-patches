@@ -230,7 +230,7 @@ static void DrawTile_Clear(TileInfo *ti, DrawTileProcParams params)
 			NOT_REACHED();
 	}
 
-	if (unlikely(_tree_placer_preview_active) && ground != ClearGround::Fields && ground != ClearGround::Rocks && !IsInvisibilitySet(TO_TREES)) {
+	if (unlikely(_tree_placer_preview_active) && ground != ClearGround::Fields && ground != ClearGround::Rocks && !IsInvisibilitySet(TransparencyOption::Trees)) {
 		auto it = _tree_placer_memory.find(ti->tile);
 		if (it != _tree_placer_memory.end()) {
 			extern void DrawClearTileSimulatedTreeTileOverlay(TileInfo *ti, bool secondary_ground, TreeType tree_type, uint8_t count);

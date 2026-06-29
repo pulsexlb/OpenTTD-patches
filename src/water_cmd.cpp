@@ -905,12 +905,12 @@ static void DrawCanalWater(TileIndex tile)
 static void DrawWaterTileStruct(const TileInfo *ti, std::span<const DrawTileSeqStruct> seq, SpriteID base, uint offset, PaletteID palette, CanalFeature feature)
 {
 	/* Don't draw if buildings are invisible. */
-	if (IsInvisibilitySet(TO_BUILDINGS)) return;
+	if (IsInvisibilitySet(TransparencyOption::Buildings)) return;
 
 	for (const DrawTileSeqStruct &dtss : seq) {
 		uint tile_offs = offset + dtss.image.sprite;
 		if (feature < CF_END) tile_offs = GetCanalSpriteOffset(feature, ti->tile, tile_offs);
-		AddSortableSpriteToDraw(base + tile_offs, palette, *ti, dtss, IsTransparencySet(TO_BUILDINGS));
+		AddSortableSpriteToDraw(base + tile_offs, palette, *ti, dtss, IsTransparencySet(TransparencyOption::Buildings));
 	}
 }
 
@@ -1490,14 +1490,14 @@ static TrackStatus GetTileTrackStatus_Water(TileIndex tile, TransportType mode, 
 
 	TrackBits ts;
 
-	if (mode != TRANSPORT_WATER) return 0;
+	if (mode != TRANSPORT_WATER) return {};
 
 	switch (GetWaterTileType(tile)) {
 		case WaterTileType::Clear: ts = ((GetWaterClass(tile) < WaterClass::River) || IsTileFlat(tile)) ? TRACK_BIT_ALL : TRACK_BIT_NONE; break;
 		case WaterTileType::Coast: ts = coast_tracks[GetTileSlope(tile) & 0xF]; break;
 		case WaterTileType::Lock:  ts = DiagDirToDiagTrackBits(GetLockDirection(tile)); break;
 		case WaterTileType::Depot: ts = AxisToTrackBits(GetShipDepotAxis(tile)); break;
-		default: return 0;
+		default: return {};
 	}
 	if (TileX(tile) == 0) {
 		/* NE border: remove tracks that connects NE tile edge */
@@ -1507,7 +1507,7 @@ static TrackStatus GetTileTrackStatus_Water(TileIndex tile, TransportType mode, 
 		/* NW border: remove tracks that connects NW tile edge */
 		ts &= ~(TRACK_BIT_Y | TRACK_BIT_LEFT | TRACK_BIT_UPPER);
 	}
-	return CombineTrackStatus(TrackBitsToTrackdirBits(ts), TRACKDIR_BIT_NONE);
+	return {TrackBitsToTrackdirBits(ts), TRACKDIR_BIT_NONE};
 }
 
 /** @copydoc ClickTileProc */

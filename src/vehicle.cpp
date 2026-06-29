@@ -420,7 +420,7 @@ uint Vehicle::Crash(bool)
 void Vehicle::UpdateIsDrawn()
 {
 	bool drawn = !(HasBit(this->subtype, GVSF_VIRTUAL)) && (!this->vehstatus.Test(VehState::Hidden) ||
-			(IsTransparencySet(TO_TUNNELS) &&
+			(IsTransparencySet(TransparencyOption::Tunnels) &&
 				((this->type == VehicleType::Train && Train::From(this)->track == TRACK_BIT_WORMHOLE) ||
 				(this->type == VehicleType::Road && RoadVehicle::From(this)->state == RVSB_WORMHOLE))));
 
@@ -1915,7 +1915,7 @@ static void DoDrawVehicle(const Vehicle *v)
 		/* Check whether the vehicle shall be transparent/invisible due to GUI settings.
 		 * However, transparent smoke and bubbles look weird, so always hide them. */
 		TransparencyOption to = EffectVehicle::From(v)->GetTransparencyOption();
-		if (to != TO_INVALID && (IsTransparencySet(to) || IsInvisibilitySet(to))) return;
+		if (to != TransparencyOption::Invalid && (IsTransparencySet(to) || IsInvisibilitySet(to))) return;
 	}
 
 	{

@@ -301,17 +301,17 @@ protected:
 	 * Decides which sprite to display for a given page element.
 	 * @param pe The page element.
 	 * @return The SpriteID of the sprite to display.
-	 * @pre pe.type must be SPET_GOAL or SPET_LOCATION.
+	 * @pre pe.type must be StoryPageElementType::Goal or StoryPageElementType::Location.
 	 */
 	SpriteID GetPageElementSprite(const StoryPageElement &pe) const
 	{
 		switch (pe.type) {
-			case SPET_GOAL: {
+			case StoryPageElementType::Goal: {
 				Goal *g = Goal::Get((GoalID) pe.referenced_id);
 				if (g == nullptr) return SPR_IMG_GOAL_BROKEN_REF;
 				return g->completed ? SPR_IMG_GOAL_COMPLETED : SPR_IMG_GOAL;
 			}
-			case SPET_LOCATION:
+			case StoryPageElementType::Location:
 				return SPR_IMG_VIEW_LOCATION;
 			default:
 				NOT_REACHED();
@@ -327,18 +327,18 @@ protected:
 	uint GetPageElementHeight(const StoryPageElement &pe, int max_width) const
 	{
 		switch (pe.type) {
-			case SPET_TEXT:
+			case StoryPageElementType::Text:
 				return GetStringHeight(pe.text.GetDecodedString(), max_width);
 
-			case SPET_GOAL:
-			case SPET_LOCATION: {
+			case StoryPageElementType::Goal:
+			case StoryPageElementType::Location: {
 				Dimension sprite_dim = GetSpriteSize(GetPageElementSprite(pe));
 				return sprite_dim.height;
 			}
 
-			case SPET_BUTTON_PUSH:
-			case SPET_BUTTON_TILE:
-			case SPET_BUTTON_VEHICLE: {
+			case StoryPageElementType::ButtonPush:
+			case StoryPageElementType::ButtonTile:
+			case StoryPageElementType::ButtonVehicle: {
 				Dimension dim = GetStringBoundingBox(pe.text.GetDecodedString(), FontSize::Normal);
 				return dim.height + WidgetDimensions::scaled.framerect.Vertical() + WidgetDimensions::scaled.frametext.Vertical();
 			}
@@ -357,12 +357,12 @@ protected:
 	ElementFloat GetPageElementFloat(const StoryPageElement &pe) const
 	{
 		switch (pe.type) {
-			case SPET_BUTTON_PUSH:
-			case SPET_BUTTON_TILE:
-			case SPET_BUTTON_VEHICLE: {
+			case StoryPageElementType::ButtonPush:
+			case StoryPageElementType::ButtonTile:
+			case StoryPageElementType::ButtonVehicle: {
 				StoryPageButtonFlags flags = StoryPageButtonData{ pe.referenced_id }.GetFlags();
-				if (flags & SPBF_FLOAT_LEFT) return ElementFloat::Left;
-				if (flags & SPBF_FLOAT_RIGHT) return ElementFloat::Right;
+				if (flags.Test(StoryPageButtonFlag::FloatLeft)) return ElementFloat::Left;
+				if (flags.Test(StoryPageButtonFlag::FloatRight)) return ElementFloat::Right;
 				return ElementFloat::None;
 			}
 
@@ -379,9 +379,9 @@ protected:
 	int GetPageElementFloatWidth(const StoryPageElement &pe) const
 	{
 		switch (pe.type) {
-			case SPET_BUTTON_PUSH:
-			case SPET_BUTTON_TILE:
-			case SPET_BUTTON_VEHICLE: {
+			case StoryPageElementType::ButtonPush:
+			case StoryPageElementType::ButtonTile:
+			case StoryPageElementType::ButtonVehicle: {
 				Dimension dim = GetStringBoundingBox(pe.text.GetDecodedString(), FontSize::Normal);
 				return dim.width + WidgetDimensions::scaled.framerect.Vertical() + WidgetDimensions::scaled.frametext.Vertical();
 			}
@@ -444,9 +444,9 @@ protected:
 				/* Check for button that needs extra margin */
 				if (left_offset == 0 && right_offset == 0) {
 					switch (pe->type) {
-						case SPET_BUTTON_PUSH:
-						case SPET_BUTTON_TILE:
-						case SPET_BUTTON_VEHICLE:
+						case StoryPageElementType::ButtonPush:
+						case StoryPageElementType::ButtonTile:
+						case StoryPageElementType::ButtonVehicle:
 							left_offset = right_offset = available_width / 5;
 							break;
 						default:
@@ -538,11 +538,11 @@ protected:
 	void OnPageElementClick(const StoryPageElement &pe)
 	{
 		switch (pe.type) {
-			case SPET_TEXT:
+			case StoryPageElementType::Text:
 				/* Do nothing. */
 				break;
 
-			case SPET_LOCATION:
+			case StoryPageElementType::Location:
 				if (_ctrl_pressed) {
 					ShowExtraViewportWindow((TileIndex)pe.referenced_id);
 				} else {
@@ -550,11 +550,11 @@ protected:
 				}
 				break;
 
-			case SPET_GOAL:
+			case StoryPageElementType::Goal:
 				ShowGoalsList((CompanyID)this->window_number);
 				break;
 
-			case SPET_BUTTON_PUSH:
+			case StoryPageElementType::ButtonPush:
 				if (this->active_button_id != StoryPageElementID::Invalid()) ResetObjectToPlace();
 				this->active_button_id = pe.index;
 				this->SetTimeout();
@@ -563,7 +563,7 @@ protected:
 				Command<Commands::StoryPageButton>::Post(TileIndex{}, pe.index, VehicleID::Invalid());
 				break;
 
-			case SPET_BUTTON_TILE:
+			case StoryPageElementType::ButtonTile:
 				if (this->active_button_id == pe.index) {
 					ResetObjectToPlace();
 					this->active_button_id = StoryPageElementID::Invalid();
@@ -575,7 +575,7 @@ protected:
 				this->SetWidgetDirty(WID_SB_PAGE_PANEL);
 				break;
 
-			case SPET_BUTTON_VEHICLE:
+			case StoryPageElementType::ButtonVehicle:
 				if (this->active_button_id == pe.index) {
 					ResetObjectToPlace();
 					this->active_button_id = StoryPageElementID::Invalid();
@@ -718,26 +718,26 @@ public:
 			if (y_offset > fr.bottom) return;
 
 			switch (ce.pe->type) {
-				case SPET_TEXT:
+				case StoryPageElementType::Text:
 					DrawStringMultiLineWithClipping(ce.bounds.left, ce.bounds.right, ce.bounds.top - scrollpos, ce.bounds.bottom - scrollpos,
 						ce.pe->text.GetDecodedString(), TextColour::Black, SA_TOP | SA_LEFT);
 					break;
 
-				case SPET_GOAL: {
+				case StoryPageElementType::Goal: {
 					Goal *g = Goal::Get((GoalID) ce.pe->referenced_id);
 					DrawActionElement(y_offset, ce.bounds.right - ce.bounds.left, line_height, GetPageElementSprite(*ce.pe),
 						g == nullptr ? GetString(STR_STORY_BOOK_INVALID_GOAL_REF) : g->text.GetDecodedString());
 					break;
 				}
 
-				case SPET_LOCATION:
+				case StoryPageElementType::Location:
 					DrawActionElement(y_offset, ce.bounds.right - ce.bounds.left, line_height, GetPageElementSprite(*ce.pe),
 						ce.pe->text.GetDecodedString());
 					break;
 
-				case SPET_BUTTON_PUSH:
-				case SPET_BUTTON_TILE:
-				case SPET_BUTTON_VEHICLE: {
+				case StoryPageElementType::ButtonPush:
+				case StoryPageElementType::ButtonTile:
+				case StoryPageElementType::ButtonVehicle: {
 					const int tmargin = WidgetDimensions::scaled.bevel.top + WidgetDimensions::scaled.frametext.top;
 					const FrameFlags frame = this->active_button_id == ce.pe->index ? FrameFlag::Lowered : FrameFlags{};
 					const Colours bgcolour = StoryPageButtonData{ ce.pe->referenced_id }.GetColour();
@@ -898,7 +898,7 @@ public:
 	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override
 	{
 		const StoryPageElement *const pe = StoryPageElement::GetIfValid(this->active_button_id);
-		if (pe == nullptr || pe->type != SPET_BUTTON_TILE) {
+		if (pe == nullptr || pe->type != StoryPageElementType::ButtonTile) {
 			ResetObjectToPlace();
 			this->active_button_id = StoryPageElementID::Invalid();
 			this->SetWidgetDirty(WID_SB_PAGE_PANEL);
@@ -912,7 +912,7 @@ public:
 	bool OnVehicleSelect(const Vehicle *v) override
 	{
 		const StoryPageElement *const pe = StoryPageElement::GetIfValid(this->active_button_id);
-		if (pe == nullptr || pe->type != SPET_BUTTON_VEHICLE) {
+		if (pe == nullptr || pe->type != StoryPageElementType::ButtonVehicle) {
 			ResetObjectToPlace();
 			this->active_button_id = StoryPageElementID::Invalid();
 			this->SetWidgetDirty(WID_SB_PAGE_PANEL);
@@ -982,61 +982,61 @@ static WindowDesc _story_book_gs_desc(__FILE__, __LINE__,
 static CursorID TranslateStoryPageButtonCursor(StoryPageButtonCursor cursor)
 {
 	switch (cursor) {
-		case SPBC_MOUSE:          return SPR_CURSOR_MOUSE;
-		case SPBC_ZZZ:            return SPR_CURSOR_ZZZ;
-		case SPBC_BUOY:           return SPR_CURSOR_BUOY;
-		case SPBC_QUERY:          return SPR_CURSOR_QUERY;
-		case SPBC_HQ:             return SPR_CURSOR_HQ;
-		case SPBC_SHIP_DEPOT:     return SPR_CURSOR_SHIP_DEPOT;
-		case SPBC_SIGN:           return SPR_CURSOR_SIGN;
-		case SPBC_TREE:           return SPR_CURSOR_TREE;
-		case SPBC_BUY_LAND:       return SPR_CURSOR_BUY_LAND;
-		case SPBC_LEVEL_LAND:     return SPR_CURSOR_LEVEL_LAND;
-		case SPBC_TOWN:           return SPR_CURSOR_TOWN;
-		case SPBC_INDUSTRY:       return SPR_CURSOR_INDUSTRY;
-		case SPBC_ROCKY_AREA:     return SPR_CURSOR_ROCKY_AREA;
-		case SPBC_DESERT:         return SPR_CURSOR_DESERT;
-		case SPBC_TRANSMITTER:    return SPR_CURSOR_TRANSMITTER;
-		case SPBC_AIRPORT:        return SPR_CURSOR_AIRPORT;
-		case SPBC_DOCK:           return SPR_CURSOR_DOCK;
-		case SPBC_CANAL:          return SPR_CURSOR_CANAL;
-		case SPBC_LOCK:           return SPR_CURSOR_LOCK;
-		case SPBC_RIVER:          return SPR_CURSOR_RIVER;
-		case SPBC_AQUEDUCT:       return SPR_CURSOR_AQUEDUCT;
-		case SPBC_BRIDGE:         return SPR_CURSOR_BRIDGE;
-		case SPBC_RAIL_STATION:   return SPR_CURSOR_RAIL_STATION;
-		case SPBC_TUNNEL_RAIL:    return SPR_CURSOR_TUNNEL_RAIL;
-		case SPBC_TUNNEL_ELRAIL:  return SPR_CURSOR_TUNNEL_ELRAIL;
-		case SPBC_TUNNEL_MONO:    return SPR_CURSOR_TUNNEL_MONO;
-		case SPBC_TUNNEL_MAGLEV:  return SPR_CURSOR_TUNNEL_MAGLEV;
-		case SPBC_AUTORAIL:       return SPR_CURSOR_AUTORAIL;
-		case SPBC_AUTOELRAIL:     return SPR_CURSOR_AUTOELRAIL;
-		case SPBC_AUTOMONO:       return SPR_CURSOR_AUTOMONO;
-		case SPBC_AUTOMAGLEV:     return SPR_CURSOR_AUTOMAGLEV;
-		case SPBC_WAYPOINT:       return SPR_CURSOR_WAYPOINT;
-		case SPBC_RAIL_DEPOT:     return SPR_CURSOR_RAIL_DEPOT;
-		case SPBC_ELRAIL_DEPOT:   return SPR_CURSOR_ELRAIL_DEPOT;
-		case SPBC_MONO_DEPOT:     return SPR_CURSOR_MONO_DEPOT;
-		case SPBC_MAGLEV_DEPOT:   return SPR_CURSOR_MAGLEV_DEPOT;
-		case SPBC_CONVERT_RAIL:   return SPR_CURSOR_CONVERT_RAIL;
-		case SPBC_CONVERT_ELRAIL: return SPR_CURSOR_CONVERT_ELRAIL;
-		case SPBC_CONVERT_MONO:   return SPR_CURSOR_CONVERT_MONO;
-		case SPBC_CONVERT_MAGLEV: return SPR_CURSOR_CONVERT_MAGLEV;
-		case SPBC_AUTOROAD:       return SPR_CURSOR_AUTOROAD;
-		case SPBC_AUTOTRAM:       return SPR_CURSOR_AUTOTRAM;
-		case SPBC_ROAD_DEPOT:     return SPR_CURSOR_ROAD_DEPOT;
-		case SPBC_BUS_STATION:    return SPR_CURSOR_BUS_STATION;
-		case SPBC_TRUCK_STATION:  return SPR_CURSOR_TRUCK_STATION;
-		case SPBC_ROAD_TUNNEL:    return SPR_CURSOR_ROAD_TUNNEL;
-		case SPBC_CLONE_TRAIN:    return SPR_CURSOR_CLONE_TRAIN;
-		case SPBC_CLONE_ROADVEH:  return SPR_CURSOR_CLONE_ROADVEH;
-		case SPBC_CLONE_SHIP:     return SPR_CURSOR_CLONE_SHIP;
-		case SPBC_CLONE_AIRPLANE: return SPR_CURSOR_CLONE_AIRPLANE;
-		case SPBC_DEMOLISH:       return ANIMCURSOR_DEMOLISH;
-		case SPBC_LOWERLAND:      return ANIMCURSOR_LOWERLAND;
-		case SPBC_RAISELAND:      return ANIMCURSOR_RAISELAND;
-		case SPBC_PICKSTATION:    return ANIMCURSOR_PICKSTATION;
-		case SPBC_BUILDSIGNALS:   return ANIMCURSOR_BUILDSIGNALS;
+		case StoryPageButtonCursor::Mouse: return SPR_CURSOR_MOUSE;
+		case StoryPageButtonCursor::Zzz: return SPR_CURSOR_ZZZ;
+		case StoryPageButtonCursor::Buoy: return SPR_CURSOR_BUOY;
+		case StoryPageButtonCursor::Query: return SPR_CURSOR_QUERY;
+		case StoryPageButtonCursor::HQ: return SPR_CURSOR_HQ;
+		case StoryPageButtonCursor::ShipDepot: return SPR_CURSOR_SHIP_DEPOT;
+		case StoryPageButtonCursor::Sign: return SPR_CURSOR_SIGN;
+		case StoryPageButtonCursor::Tree: return SPR_CURSOR_TREE;
+		case StoryPageButtonCursor::BuyLand: return SPR_CURSOR_BUY_LAND;
+		case StoryPageButtonCursor::LevelLand: return SPR_CURSOR_LEVEL_LAND;
+		case StoryPageButtonCursor::Town: return SPR_CURSOR_TOWN;
+		case StoryPageButtonCursor::Industry: return SPR_CURSOR_INDUSTRY;
+		case StoryPageButtonCursor::RockyArea: return SPR_CURSOR_ROCKY_AREA;
+		case StoryPageButtonCursor::Desert: return SPR_CURSOR_DESERT;
+		case StoryPageButtonCursor::Transmitter: return SPR_CURSOR_TRANSMITTER;
+		case StoryPageButtonCursor::Airport: return SPR_CURSOR_AIRPORT;
+		case StoryPageButtonCursor::Dock: return SPR_CURSOR_DOCK;
+		case StoryPageButtonCursor::Canal: return SPR_CURSOR_CANAL;
+		case StoryPageButtonCursor::Lock: return SPR_CURSOR_LOCK;
+		case StoryPageButtonCursor::River: return SPR_CURSOR_RIVER;
+		case StoryPageButtonCursor::Aqueduct: return SPR_CURSOR_AQUEDUCT;
+		case StoryPageButtonCursor::Bridge: return SPR_CURSOR_BRIDGE;
+		case StoryPageButtonCursor::RailStation: return SPR_CURSOR_RAIL_STATION;
+		case StoryPageButtonCursor::TunnelRail: return SPR_CURSOR_TUNNEL_RAIL;
+		case StoryPageButtonCursor::TunnelElrail: return SPR_CURSOR_TUNNEL_ELRAIL;
+		case StoryPageButtonCursor::TunnelMono: return SPR_CURSOR_TUNNEL_MONO;
+		case StoryPageButtonCursor::TunnelMaglev: return SPR_CURSOR_TUNNEL_MAGLEV;
+		case StoryPageButtonCursor::AutoRail: return SPR_CURSOR_AUTORAIL;
+		case StoryPageButtonCursor::AutoElrail: return SPR_CURSOR_AUTOELRAIL;
+		case StoryPageButtonCursor::AutoMono: return SPR_CURSOR_AUTOMONO;
+		case StoryPageButtonCursor::AutoMaglev: return SPR_CURSOR_AUTOMAGLEV;
+		case StoryPageButtonCursor::Waypoint: return SPR_CURSOR_WAYPOINT;
+		case StoryPageButtonCursor::RailDepot: return SPR_CURSOR_RAIL_DEPOT;
+		case StoryPageButtonCursor::ElrailDepot: return SPR_CURSOR_ELRAIL_DEPOT;
+		case StoryPageButtonCursor::MonoDepot: return SPR_CURSOR_MONO_DEPOT;
+		case StoryPageButtonCursor::MaglevDepot: return SPR_CURSOR_MAGLEV_DEPOT;
+		case StoryPageButtonCursor::ConvertRail: return SPR_CURSOR_CONVERT_RAIL;
+		case StoryPageButtonCursor::ConvertElrail: return SPR_CURSOR_CONVERT_ELRAIL;
+		case StoryPageButtonCursor::ConvertMono: return SPR_CURSOR_CONVERT_MONO;
+		case StoryPageButtonCursor::ConvertMaglev: return SPR_CURSOR_CONVERT_MAGLEV;
+		case StoryPageButtonCursor::AutoRoad: return SPR_CURSOR_AUTOROAD;
+		case StoryPageButtonCursor::AutoTram: return SPR_CURSOR_AUTOTRAM;
+		case StoryPageButtonCursor::RoadDepot: return SPR_CURSOR_ROAD_DEPOT;
+		case StoryPageButtonCursor::BusStation: return SPR_CURSOR_BUS_STATION;
+		case StoryPageButtonCursor::TruckStation: return SPR_CURSOR_TRUCK_STATION;
+		case StoryPageButtonCursor::RoadTunnel: return SPR_CURSOR_ROAD_TUNNEL;
+		case StoryPageButtonCursor::CloneTrain: return SPR_CURSOR_CLONE_TRAIN;
+		case StoryPageButtonCursor::CloneRoadVeh: return SPR_CURSOR_CLONE_ROADVEH;
+		case StoryPageButtonCursor::CloneShip: return SPR_CURSOR_CLONE_SHIP;
+		case StoryPageButtonCursor::CloneAirplane: return SPR_CURSOR_CLONE_AIRPLANE;
+		case StoryPageButtonCursor::Demolish: return ANIMCURSOR_DEMOLISH;
+		case StoryPageButtonCursor::LowerLand: return ANIMCURSOR_LOWERLAND;
+		case StoryPageButtonCursor::RaiseLand: return ANIMCURSOR_RAISELAND;
+		case StoryPageButtonCursor::PickStation: return ANIMCURSOR_PICKSTATION;
+		case StoryPageButtonCursor::BuildSignals: return ANIMCURSOR_BUILDSIGNALS;
 		default: return SPR_CURSOR_QUERY;
 	}
 }

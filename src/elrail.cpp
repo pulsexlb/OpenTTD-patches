@@ -293,7 +293,7 @@ void DrawRailCatenaryOnTunnel(const TileInfo *ti)
 	SpriteID wire_base = GetWireBase(ti->tile, GetRailType(ti->tile));
 
 	const SortableSpriteStruct &sss = _rail_catenary_sprite_data_tunnel[dir];
-	AddSortableSpriteToDraw(wire_base + sss.image_offset, PAL_NONE, ti->x, ti->y, GetTilePixelZ(ti->tile), sss, IsTransparencySet(TO_CATENARY));
+	AddSortableSpriteToDraw(wire_base + sss.image_offset, PAL_NONE, ti->x, ti->y, GetTilePixelZ(ti->tile), sss, IsTransparencySet(TransparencyOption::Catenary));
 }
 
 /**
@@ -502,7 +502,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 					}
 
 					AddSortableSpriteToDraw(pylon_base + _pylon_sprites[temp], PAL_NONE, x, y, elevation,
-						{{-1, -1, 0}, {1, 1, BB_HEIGHT_UNDER_BRIDGE}, {1, 1, 0}}, IsTransparencySet(TO_CATENARY), nullptr, special_flags);
+						{{-1, -1, 0}, {1, 1, BB_HEIGHT_UNDER_BRIDGE}, {1, 1, 0}}, IsTransparencySet(TransparencyOption::Catenary), nullptr, special_flags);
 
 					break; // We already have drawn a pylon, bail out
 				}
@@ -514,7 +514,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 	if (IsTunnelTile(ti->tile)) return;
 
 	/* Don't draw a wire under a low bridge */
-	if (IsBridgeAbove(ti->tile) && !IsTransparencySet(TO_BRIDGES)) {
+	if (IsBridgeAbove(ti->tile) && !IsTransparencySet(TransparencyOption::Bridges)) {
 		int height = GetBridgeHeight(GetNorthernBridgeEnd(ti->tile));
 
 		if (height <= GetTileMaxZ(ti->tile) + 1) return;
@@ -584,7 +584,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 		 * down to the nearest full height change.
 		 */
 		int z = (GetSlopePixelZ(ti->x + sss.origin.x, ti->y + sss.origin.y, true) + 4) / 8 * 8;
-		AddSortableSpriteToDraw(wire_base + sss.image_offset, PAL_NONE, ti->x, ti->y, z, sss, IsTransparencySet(TO_CATENARY));
+		AddSortableSpriteToDraw(wire_base + sss.image_offset, PAL_NONE, ti->x, ti->y, z, sss, IsTransparencySet(TransparencyOption::Catenary));
 	}
 }
 
@@ -622,7 +622,7 @@ void DrawRailCatenaryOnBridge(const TileInfo *ti)
 
 	SpriteID wire_base = GetWireBase(end, GetRailType(end), TCX_ON_BRIDGE);
 
-	AddSortableSpriteToDraw(wire_base + sss->image_offset, PAL_NONE, ti->x, ti->y, height, *sss, IsTransparencySet(TO_CATENARY));
+	AddSortableSpriteToDraw(wire_base + sss->image_offset, PAL_NONE, ti->x, ti->y, height, *sss, IsTransparencySet(TransparencyOption::Catenary));
 
 	SpriteID pylon_base = GetPylonBase(end, GetRailType(end), TCX_ON_BRIDGE);
 
@@ -636,7 +636,7 @@ void DrawRailCatenaryOnBridge(const TileInfo *ti)
 		if (HasBit(tlg, (axis == Axis::X ? 0 : 1))) ppp_pos = ReverseDir(ppp_pos);
 		uint x = ti->x + _x_pcp_offsets[pcp_pos] + _x_ppp_offsets[ppp_pos];
 		uint y = ti->y + _y_pcp_offsets[pcp_pos] + _y_ppp_offsets[ppp_pos];
-		AddSortableSpriteToDraw(pylon_base + _pylon_sprites[ppp_pos], PAL_NONE, x, y, height, pylon_bounds, IsTransparencySet(TO_CATENARY));
+		AddSortableSpriteToDraw(pylon_base + _pylon_sprites[ppp_pos], PAL_NONE, x, y, height, pylon_bounds, IsTransparencySet(TransparencyOption::Catenary));
 	}
 
 	/* need a pylon on the southern end of the bridge */
@@ -646,7 +646,7 @@ void DrawRailCatenaryOnBridge(const TileInfo *ti)
 		if (HasBit(tlg, (axis == Axis::X ? 0 : 1))) ppp_pos = ReverseDir(ppp_pos);
 		uint x = ti->x + _x_pcp_offsets[pcp_pos] + _x_ppp_offsets[ppp_pos];
 		uint y = ti->y + _y_pcp_offsets[pcp_pos] + _y_ppp_offsets[ppp_pos];
-		AddSortableSpriteToDraw(pylon_base + _pylon_sprites[ppp_pos], PAL_NONE, x, y, height, pylon_bounds, IsTransparencySet(TO_CATENARY));
+		AddSortableSpriteToDraw(pylon_base + _pylon_sprites[ppp_pos], PAL_NONE, x, y, height, pylon_bounds, IsTransparencySet(TransparencyOption::Catenary));
 	}
 }
 
@@ -665,7 +665,7 @@ void DrawRailCatenary(const TileInfo *ti)
 				SpriteID wire_base = GetWireBase(ti->tile, GetRailType(ti->tile));
 
 				/* This wire is not visible with the default depot sprites */
-				AddSortableSpriteToDraw(wire_base + sss.image_offset, PAL_NONE, ti->x, ti->y, GetTileMaxPixelZ(ti->tile), sss, IsTransparencySet(TO_CATENARY));
+				AddSortableSpriteToDraw(wire_base + sss.image_offset, PAL_NONE, ti->x, ti->y, GetTileMaxPixelZ(ti->tile), sss, IsTransparencySet(TransparencyOption::Catenary));
 				return;
 			}
 			break;

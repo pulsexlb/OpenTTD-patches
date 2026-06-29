@@ -5827,8 +5827,8 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				TrackStatus ts = GetTileTrackStatus(gp.new_tile, TRANSPORT_RAIL, 0, (v->track & TRACK_BIT_WORMHOLE) ? DiagDirection::Invalid : ReverseDiagDir(enterdir));
 				TrackdirBits reachable_trackdirs = DiagdirReachesTrackdirs(enterdir);
 
-				TrackdirBits trackdirbits = TrackStatusToTrackdirBits(ts) & reachable_trackdirs;
-				TrackBits red_signals = TrackdirBitsToTrackBits(TrackStatusToRedSignals(ts) & reachable_trackdirs);
+				TrackdirBits trackdirbits = ts.trackdirs & reachable_trackdirs;
+				TrackBits red_signals = TrackdirBitsToTrackBits(ts.signals & reachable_trackdirs);
 
 				TrackBits bits = TrackdirBitsToTrackBits(trackdirbits);
 				if (Rail90DegTurnDisallowedTilesFromDiagDir(gp.old_tile, gp.new_tile, enterdir) && prev == nullptr) {
@@ -6770,8 +6770,8 @@ static bool TrainCheckIfLineEnds(Train *moving_front, bool reverse)
 	TrackStatus ts = GetTileTrackStatus(tile, TRANSPORT_RAIL, RoadTramType::Invalid, ReverseDiagDir(dir));
 	TrackdirBits reachable_trackdirs = DiagdirReachesTrackdirs(dir);
 
-	TrackdirBits trackdirbits = TrackStatusToTrackdirBits(ts) & reachable_trackdirs;
-	TrackdirBits red_signals = TrackStatusToRedSignals(ts) & reachable_trackdirs;
+	TrackdirBits trackdirbits = ts.trackdirs & reachable_trackdirs;
+	TrackdirBits red_signals = ts.signals & reachable_trackdirs;
 
 	/* We are sure the train is not entering a depot, it is detected above */
 
