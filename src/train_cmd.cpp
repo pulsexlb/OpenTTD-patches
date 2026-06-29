@@ -5069,8 +5069,8 @@ static void TrainEnterStation(Train *consist, StationID station)
 
 	/* check if a train ever visited this station before */
 	Station *st = Station::From(bst);
-	if (!(st->had_vehicle_of_type & HVOT_TRAIN)) {
-		st->had_vehicle_of_type |= HVOT_TRAIN;
+	if (!st->had_vehicle_of_type.Test(StationVehicleType::Train)) {
+		st->had_vehicle_of_type.Set(StationVehicleType::Train);
 		AddVehicleNewsItem(
 			GetEncodedString(STR_NEWS_FIRST_TRAIN_ARRIVAL, st->index),
 			consist->owner == _local_company ? NewsType::ArrivalCompany : NewsType::ArrivalOther,
