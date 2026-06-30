@@ -95,15 +95,20 @@ static void WriteCondition(Buffer &b, SignalCondition *c)
 	}
 }
 
+[[noreturn]] static void ProgSigSlErrorCorrupt(int line)
+{
+	SlErrorCorruptFmt("Progsig: Load error on line: {}", line);
+}
+
 static SignalCondition *ReadCondition(SignalReference this_sig)
 {
 	SignalConditionCode code = (SignalConditionCode) ReadVLI();
-	switch(code) {
+	switch (code) {
 		case PSC_NUM_GREEN:
 		case PSC_NUM_RED: {
 			SignalVariableCondition *c = new SignalVariableCondition(code);
 			c->comparator = (SignalComparator) ReadVLI();
-			if(c->comparator > SGC_LAST) NOT_REACHED();
+			if (c->comparator > SGC_LAST) ProgSigSlErrorCorrupt(__LINE__);
 			c->value = ReadVLI();
 			return c;
 		}
@@ -119,7 +124,7 @@ static SignalCondition *ReadCondition(SignalReference this_sig)
 			TraceRestrictSlotID slot_id = (TraceRestrictSlotID) ReadVLI();
 			SignalSlotCondition *c = new SignalSlotCondition(code, this_sig, slot_id);
 			c->comparator = (SignalComparator) ReadVLI();
-			if(c->comparator > SGC_LAST) NOT_REACHED();
+			if (c->comparator > SGC_LAST) ProgSigSlErrorCorrupt(__LINE__);
 			c->value = ReadVLI();
 			return c;
 			break;
@@ -129,7 +134,7 @@ static SignalCondition *ReadCondition(SignalReference this_sig)
 			TraceRestrictCounterID ctr_id = (TraceRestrictCounterID) ReadVLI();
 			SignalCounterCondition *c = new SignalCounterCondition(this_sig, ctr_id);
 			c->comparator = (SignalComparator) ReadVLI();
-			if(c->comparator > SGC_LAST) NOT_REACHED();
+			if(c->comparator > SGC_LAST) ProgSigSlErrorCorrupt(__LINE__);
 			c->value = ReadVLI();
 			return c;
 		}
@@ -241,14 +246,12 @@ static void DoFixups(FixupList &l, InstructionList &il)
 {
 	for (Fixup &i : l) {
 		uint id = (uint)reinterpret_cast<size_t>(*(i.ptr));
-		if (id >= il.size())
-			NOT_REACHED();
+		if (id >= il.size()) ProgSigSlErrorCorrupt(__LINE__);
 
 		*(i.ptr) = il[id];
 
 		if (i.type != PSO_INVALID && (*(i.ptr))->Opcode() != i.type) {
-			Debug(sl, 0, "Expected Id {} to be {}, but was in fact {}", id, i.type, (*(i.ptr))->Opcode());
-			NOT_REACHED();
+			SlErrorCorruptFmt("Progsig: Expected Id {} to be {}, but was in fact {}", id, i.type, (*(i.ptr))->Opcode());
 		}
 	}
 }
@@ -266,7 +269,7 @@ static void Load_SPRG()
 		SignalProgram *sp = new SignalProgram(tile, track, true);
 		_signal_programs[ref] = sp;
 
-		for(uint j = 0; j < instructions; j++) {
+		for (uint j = 0; j < instructions; j++) {
 			SignalOpcode op = (SignalOpcode) ReadVLI();
 			switch(op) {
 				case PSO_FIRST: {
@@ -306,11 +309,11 @@ static void Load_SPRG()
 					MakeFixup(l, s->GetPrevHandle(), ReadVLI());
 					MakeFixup(l, s->next, ReadVLI());
 					s->to_state = static_cast<SignalState>(ReadVLI());
-					if (s->to_state >= SignalState::End) NOT_REACHED();
+					if (s->to_state >= SignalState::End) ProgSigSlErrorCorrupt(__LINE__);
 					break;
 				}
 
-				default: NOT_REACHED();
+				default: ProgSigSlErrorCorrupt(__LINE__);
 			}
 		}
 
