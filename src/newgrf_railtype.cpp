@@ -203,11 +203,11 @@ static PalSpriteID GetRailTypeCustomSignalSprite(const RailTypeInfo *rti, TileIn
 		CustomSignalSpriteContext context, const TraceRestrictProgram *prog, uint z)
 {
 	if (rti->group[RailSpriteType::Signals] == nullptr) return { 0, PAL_NONE };
-	if (type == SIGTYPE_PROG && !rti->ctrl_flags.Test(RailTypeCtrlFlag::SigSpriteProgSig)) return { 0, PAL_NONE };
-	if (type == SIGTYPE_NO_ENTRY && !rti->ctrl_flags.Test(RailTypeCtrlFlag::SigSpriteNoEntry)) return { 0, PAL_NONE };
+	if (type == SignalType::Prog && !rti->ctrl_flags.Test(RailTypeCtrlFlag::SigSpriteProgSig)) return { 0, PAL_NONE };
+	if (type == SignalType::NoEntry && !rti->ctrl_flags.Test(RailTypeCtrlFlag::SigSpriteNoEntry)) return { 0, PAL_NONE };
 
 	uint32_t param1 = (context.ctx_mode == CSSC_GUI) ? 0x10 : 0x00;
-	uint32_t param2 = (type << 16) | (var << 8) | RemapAspect(aspect, rti->signal_extra_aspects, 0);
+	uint32_t param2 = (to_underlying(type) << 16) | (to_underlying(var) << 8) | RemapAspect(aspect, rti->signal_extra_aspects, 0);
 	if ((prog != nullptr) && rti->ctrl_flags.Test(RailTypeCtrlFlag::SigSpriteRestrictedSig)) SetBit(param2, 24);
 	RailTypeResolverObject object(rti, tile, TCX_NORMAL, RailSpriteType::Signals, param1, param2, context, prog, z);
 
@@ -240,13 +240,13 @@ CustomSignalSpriteResult GetCustomSignalSprite(const RailTypeInfo *rti, TileInde
 
 	for (const GRFFile *grf : _new_signals_grfs) {
 		if (style == 0) {
-			if (type == SIGTYPE_PROG && !HasBit(grf->new_signal_ctrl_flags, NSCF_PROGSIG)) continue;
-			if (type == SIGTYPE_NO_ENTRY && !HasBit(grf->new_signal_ctrl_flags, NSCF_NOENTRYSIG)) continue;
+			if (type == SignalType::Prog && !HasBit(grf->new_signal_ctrl_flags, NSCF_PROGSIG)) continue;
+			if (type == SignalType::NoEntry && !HasBit(grf->new_signal_ctrl_flags, NSCF_NOENTRYSIG)) continue;
 		}
 		if (!HasBit(grf->new_signal_style_mask, style)) continue;
 
 		uint32_t param1 = (context.ctx_mode == CSSC_GUI) ? 0x10 : 0x00;
-		uint32_t param2 = (type << 16) | (var << 8) | RemapAspect(aspect, grf->new_signal_extra_aspects, style);
+		uint32_t param2 = (to_underlying(type) << 16) | (to_underlying(var) << 8) | RemapAspect(aspect, grf->new_signal_extra_aspects, style);
 		if ((prog != nullptr) && HasBit(grf->new_signal_ctrl_flags, NSCF_RESTRICTEDSIG)) SetBit(param2, 24);
 		NewSignalsResolverObject object(grf, tile, TCX_NORMAL, param1, param2, context, style, prog, z);
 

@@ -456,7 +456,7 @@ inline bool IsTunnelBridgeSignalSimulationBidirectional(TileIndex t)
 inline SignalState GetTunnelBridgeEntranceSignalState(TileIndex t)
 {
 	assert_tile(IsTunnelBridgeSignalSimulationEntrance(t), t);
-	return HasBit(_me[t].m6, 0) ? SIGNAL_STATE_GREEN : SIGNAL_STATE_RED;
+	return HasBit(_me[t].m6, 0) ? SignalState::Green : SignalState::Red;
 }
 
 /**
@@ -468,7 +468,7 @@ inline SignalState GetTunnelBridgeEntranceSignalState(TileIndex t)
 inline SignalState GetTunnelBridgeExitSignalState(TileIndex t)
 {
 	assert_tile(IsTunnelBridgeSignalSimulationExit(t), t);
-	return HasBit(_me[t].m6, 7) ? SIGNAL_STATE_GREEN : SIGNAL_STATE_RED;
+	return HasBit(_me[t].m6, 7) ? SignalState::Green : SignalState::Red;
 }
 
 /**
@@ -480,7 +480,7 @@ inline SignalState GetTunnelBridgeExitSignalState(TileIndex t)
 inline void SetTunnelBridgeEntranceSignalState(TileIndex t, SignalState state)
 {
 	assert_tile(IsTunnelBridgeSignalSimulationEntrance(t), t);
-	AssignBit(_me[t].m6, 0, state == SIGNAL_STATE_GREEN);
+	AssignBit(_me[t].m6, 0, state == SignalState::Green);
 }
 
 /**
@@ -492,7 +492,7 @@ inline void SetTunnelBridgeEntranceSignalState(TileIndex t, SignalState state)
 inline void SetTunnelBridgeExitSignalState(TileIndex t, SignalState state)
 {
 	assert_tile(IsTunnelBridgeSignalSimulationExit(t), t);
-	AssignBit(_me[t].m6, 7, state == SIGNAL_STATE_GREEN);
+	AssignBit(_me[t].m6, 7, state == SignalState::Green);
 }
 
 inline bool IsTunnelBridgeSemaphore(TileIndex t)

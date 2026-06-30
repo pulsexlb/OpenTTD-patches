@@ -45,7 +45,7 @@ enum {
 inline SignalState GetBridgeEntranceSimulatedSignalState(TileIndex t, uint16_t signal)
 {
 	if (signal < BRIDGE_M2_SIGNAL_STATE_COUNT) {
-		return GB(_m[t].m2, signal + BRIDGE_M2_SIGNAL_STATE_OFFSET, 1) ? SIGNAL_STATE_RED : SIGNAL_STATE_GREEN;
+		return GB(_m[t].m2, signal + BRIDGE_M2_SIGNAL_STATE_OFFSET, 1) ? SignalState::Red : SignalState::Green;
 	} else {
 		return GetBridgeEntranceSimulatedSignalStateExtended(t, signal);
 	}
@@ -56,7 +56,7 @@ void SetBridgeEntranceSimulatedSignalStateExtended(TileIndex t, uint16_t signal,
 inline void SetBridgeEntranceSimulatedSignalState(TileIndex t, uint16_t signal, SignalState state)
 {
 	if (signal < BRIDGE_M2_SIGNAL_STATE_COUNT) {
-		AssignBit(_m[t].m2, signal + BRIDGE_M2_SIGNAL_STATE_OFFSET, state == SIGNAL_STATE_RED);
+		AssignBit(_m[t].m2, signal + BRIDGE_M2_SIGNAL_STATE_OFFSET, state == SignalState::Red);
 	} else {
 		SetBridgeEntranceSimulatedSignalStateExtended(t, signal, state);
 	}

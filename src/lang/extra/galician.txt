@@ -13,8 +13,6 @@ STR_CONFIG_SETTING_ZOOM_LVL_OUT_32X                             :32x
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_64X                             :64x
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_128X                            :128x
 
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_DEFAULT                    :Por defecto
-
 STR_ORDER_STOP_LOCATION_THROUGH                                 :{SPACE}[a través da carga]
 
 STR_CONFIG_SETTING_TOWN_GROWTH_EXTREME_SLOW                     :Extremadamente lento
@@ -500,9 +498,6 @@ STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION          :Duración prede
 STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION_HELPTEXT :Isto define a duración predeterminada para os novos horarios de despacho. O valor predeterminado é de 24 horas (1440 minutos). (Cando se planifica o tempo en días, o valor predeterminado é de 1 ano).
 STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION_VALUE    :{COMMA}{NBSP}minuto{P 0 "" s}
 STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION_DEFAULT  :Por defecto
-
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE                            :Estradas/Tranvías por defecto (despois de iniciar ou cargar un xogo): {STRING}
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_HELPTEXT                   :Estradas/Tranvías a seleccionar despois de comezar ou cargar un xogo. 'primeiro dispoñible' selecciona o tipo máis antigo de estrada/tranvía, 'último dispoñible' selecciona o tipo máis novo de estrada/tranvía, 'máis usado' seleccioan o tipo que actualmente ten máis uso, 'por defecto' selecciona o tipo por defecto.
 
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER                           :Habilitar a construción de ríos: {STRING}
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER_HELPTEXT                  :Habilitar a construción de ríos fora do editor de escenarios

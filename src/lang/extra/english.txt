@@ -39,10 +39,6 @@ STR_CONFIG_SETTING_ZOOM_LVL_OUT_32X                             :32x
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_64X                             :64x
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_128X                            :128x
 
-##after STR_CONFIG_SETTING_DEFAULT_RAIL_TYPE_MOST_USED
-##default-translation STR_COLOUR_DEFAULT
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_DEFAULT                    :Default
-
 ##after STR_ORDER_STOP_LOCATION_FAR_END
 STR_ORDER_STOP_LOCATION_THROUGH                                 :{SPACE}[through load]
 
@@ -556,9 +552,6 @@ STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION_VALUE    :{COMMA}{NBSP}mi
 ###setting-zero-is-special
 ##default-translation STR_COLOUR_DEFAULT
 STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION_DEFAULT  :Default
-
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE                            :Default road/tram types (after new game/game load): {STRING2}
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_HELPTEXT                   :Road/tram types to select after starting or loading a game. 'first available' selects the oldest type of road/tram, 'last available' selects the newest type of road/tram, 'most used' selects the type which is currently most in use, and 'default' selects the default type
 
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER                           :Enable building rivers: {STRING2}
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER_HELPTEXT                  :Enable building rivers outside of the scenario editor

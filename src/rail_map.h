@@ -324,7 +324,7 @@ inline SignalType GetSignalType(TileIndex t, Track track)
 {
 	dbg_assert_tile(GetRailTileType(t) == RailTileType::Signals, t);
 	uint8_t pos = (track == TRACK_LOWER || track == TRACK_RIGHT) ? 4 : 0;
-	return (SignalType)GB(_m[t].m2, pos, 3);
+	return static_cast<SignalType>(GB(_m[t].m2, pos, 3));
 }
 
 /**
@@ -338,8 +338,8 @@ inline void SetSignalType(TileIndex t, Track track, SignalType s)
 {
 	dbg_assert_tile(GetRailTileType(t) == RailTileType::Signals, t);
 	uint8_t pos = (track == TRACK_LOWER || track == TRACK_RIGHT) ? 4 : 0;
-	SB(_m[t].m2, pos, 3, s);
-	if (track == INVALID_TRACK) SB(_m[t].m2, 4, 3, s);
+	SB(_m[t].m2, pos, 3, to_underlying(s));
+	if (track == INVALID_TRACK) SB(_m[t].m2, 4, 3, to_underlying(s));
 }
 
 /**
@@ -420,7 +420,7 @@ inline void CycleSignalSide(TileIndex t, Track track)
 inline SignalVariant GetSignalVariant(TileIndex t, Track track)
 {
 	uint8_t pos = (track == TRACK_LOWER || track == TRACK_RIGHT) ? 7 : 3;
-	return (SignalVariant)GB(_m[t].m2, pos, 1);
+	return static_cast<SignalVariant>(GB(_m[t].m2, pos, 1));
 }
 
 /**
@@ -433,8 +433,8 @@ inline SignalVariant GetSignalVariant(TileIndex t, Track track)
 inline void SetSignalVariant(TileIndex t, Track track, SignalVariant v)
 {
 	uint8_t pos = (track == TRACK_LOWER || track == TRACK_RIGHT) ? 7 : 3;
-	SB(_m[t].m2, pos, 1, v);
-	if (track == INVALID_TRACK) SB(_m[t].m2, 7, 1, v);
+	SB(_m[t].m2, pos, 1, to_underlying(v));
+	if (track == INVALID_TRACK) SB(_m[t].m2, 7, 1, to_underlying(v));
 }
 
 inline uint8_t GetSignalAspect(TileIndex t, Track track)
@@ -538,7 +538,7 @@ inline uint GetSignalStates(TileIndex tile)
  */
 inline SignalState GetSingleSignalState(TileIndex t, uint8_t signalbit)
 {
-	return (SignalState)HasBit(GetSignalStates(t), signalbit);
+	return static_cast<SignalState>(HasBit(GetSignalStates(t), signalbit));
 }
 
 /**
@@ -615,7 +615,7 @@ inline SignalState GetSignalStateByTrackdir(TileIndex tile, Trackdir trackdir)
 	dbg_assert(IsValidTrackdir(trackdir));
 	dbg_assert_tile(HasSignalOnTrack(tile, TrackdirToTrack(trackdir)), tile);
 	return GetSignalStates(tile) & SignalAlongTrackdir(trackdir) ?
-		SIGNAL_STATE_GREEN : SIGNAL_STATE_RED;
+		SignalState::Green : SignalState::Red;
 }
 
 /**
@@ -626,7 +626,7 @@ inline SignalState GetSignalStateByTrackdir(TileIndex tile, Trackdir trackdir)
  */
 inline void SetSignalStateByTrackdir(TileIndex tile, Trackdir trackdir, SignalState state)
 {
-	if (state == SIGNAL_STATE_GREEN) { // set 1
+	if (state == SignalState::Green) { // set 1
 		SetSignalStates(tile, GetSignalStates(tile) | SignalAlongTrackdir(trackdir));
 	} else {
 		SetSignalStates(tile, GetSignalStates(tile) & ~SignalAlongTrackdir(trackdir));

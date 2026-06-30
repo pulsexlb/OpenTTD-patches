@@ -80,70 +80,70 @@ inline uint8_t SignalOnTrack(Track track)
 /// Is a given signal type a presignal entry signal?
 inline bool IsEntrySignal(SignalType type)
 {
-	return type == SIGTYPE_ENTRY || type == SIGTYPE_COMBO || type == SIGTYPE_PROG;
+	return type == SignalType::Entry || type == SignalType::Combo || type == SignalType::Prog;
 }
 
 /// Is a given signal type a presignal exit signal?
 inline bool IsExitSignal(SignalType type)
 {
-	return type == SIGTYPE_EXIT || type == SIGTYPE_COMBO || type == SIGTYPE_PROG;
+	return type == SignalType::Exit || type == SignalType::Combo || type == SignalType::Prog;
 }
 
 /// Is a given signal type a presignal combo signal?
 inline bool IsComboSignal(SignalType type)
 {
-	return type == SIGTYPE_COMBO || type == SIGTYPE_PROG;
+	return type == SignalType::Combo || type == SignalType::Prog;
 }
 
 /// Is a given signal type a PBS signal?
 inline bool IsPbsSignal(SignalType type)
 {
-	return _settings_game.vehicle.train_braking_model == TBM_REALISTIC || type == SIGTYPE_PBS || type == SIGTYPE_PBS_ONEWAY || type == SIGTYPE_NO_ENTRY;
+	return _settings_game.vehicle.train_braking_model == TBM_REALISTIC || type == SignalType::Path || type == SignalType::PathOneWay || type == SignalType::NoEntry;
 }
 
 /// Is a given signal type a PBS signal?
 inline bool IsPbsSignalNonExtended(SignalType type)
 {
-	return type == SIGTYPE_PBS || type == SIGTYPE_PBS_ONEWAY;
+	return type == SignalType::Path || type == SignalType::PathOneWay;
 }
 
 /// Is this a programmable pre-signal?
 inline bool IsProgrammableSignal(SignalType type)
 {
-	return type == SIGTYPE_PROG;
+	return type == SignalType::Prog;
 }
 
 /// Is this a programmable pre-signal?
 inline bool IsNoEntrySignal(SignalType type)
 {
-	return type == SIGTYPE_NO_ENTRY;
+	return type == SignalType::NoEntry;
 }
 
 /** One-way signals can't be passed the 'wrong' way. */
 inline bool IsOnewaySignal(SignalType type)
 {
-	return type != SIGTYPE_PBS && type != SIGTYPE_NO_ENTRY;
+	return type != SignalType::Path && type != SignalType::NoEntry;
 }
 
 /// Is this signal type unsuitable for realistic braking?
 inline bool IsSignalTypeUnsuitableForRealisticBraking(SignalType type)
 {
-	return type == SIGTYPE_ENTRY || type == SIGTYPE_EXIT || type == SIGTYPE_COMBO || type == SIGTYPE_PROG;
+	return type == SignalType::Entry || type == SignalType::Exit || type == SignalType::Combo || type == SignalType::Prog;
 }
 
 /// Does a given signal have a PBS sprite?
 inline bool IsSignalSpritePBS(SignalType type)
 {
-	return type >= SIGTYPE_FIRST_PBS_SPRITE;
+	return type >= SignalType::Path;
 }
 
 SignalType NextSignalType(SignalType cur, SignalCycleGroups which_signals);
 
 /** State of the signal segment */
-enum SigSegState : uint8_t {
-	SIGSEG_FREE,    ///< Free and has no pre-signal exits or at least one green exit
-	SIGSEG_FULL,    ///< Occupied by a train
-	SIGSEG_PBS,     ///< Segment is a PBS segment
+enum class SigSegState : uint8_t {
+	Free, ///< Free and has no pre-signal exits or at least one green exit
+	Full, ///< Occupied by a train
+	Path, ///< Segment is a path segment
 };
 
 /** Checks for any data attached to any signals, and removes it. Call when performing

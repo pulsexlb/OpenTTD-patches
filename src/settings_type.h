@@ -283,6 +283,13 @@ enum class OskActivation : uint8_t {
 	Immediately, ///< Focusing click already opens OSK.
 };
 
+/** How to select the default rail/road types */
+enum class DefaultRailRoadType : uint8_t {
+	FirstAvailable, ///< Use the first available to the player
+	LastAvailable, ///< Use the latest available to the player
+	MostUsed, ///< Use the most used by the company controlled by the player
+};
+
 enum class OrderStopLocation : uint8_t;
 
 /** Settings related to the GUI and other stuff that is not saved in the savegame. */
@@ -322,7 +329,7 @@ struct GUISettings : public TimeSettings {
 	bool        prefer_teamchat;                                 ///< choose the chat message target with \<ENTER\>, true=all clients, false=your team
 	uint8_t     advanced_vehicle_list;                           ///< use the "advanced" vehicle list
 	uint8_t     loading_indicators;                              ///< show loading indicators
-	uint8_t     default_rail_type;                               ///< the default rail type for the rail GUI
+	DefaultRailRoadType default_rail_road_type;                  ///< the default rail type for the rail/road/tram GUI
 	uint8_t     default_road_type;                               ///< the default road/tram types for the road/tram GUI
 	uint8_t     toolbar_pos;                                     ///< position of toolbars, 0=left, 1=center, 2=right
 	uint8_t     statusbar_pos;                                   ///< position of statusbar, 0=left, 1=center, 2=right

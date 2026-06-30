@@ -1786,10 +1786,10 @@ bool AfterLoadGame()
 						 * (see the code somewhere above) so don't use m4, use m2 instead. */
 
 						/* convert PBS signals to combo-signals */
-						if (HasBit(_m[t].m2, 2)) SB(_m[t].m2, 0, 2, SIGTYPE_COMBO);
+						if (HasBit(_m[t].m2, 2)) SB(_m[t].m2, 0, 2, to_underlying(SignalType::Combo));
 
 						/* move the signal variant back */
-						SB(_m[t].m2, 2, 1, HasBit(_m[t].m2, 3) ? SIG_SEMAPHORE : SIG_ELECTRIC);
+						SB(_m[t].m2, 2, 1, HasBit(_m[t].m2, 3) ? to_underlying(SignalVariant::Semaphore) : to_underlying(SignalVariant::Electric));
 						ClrBit(_m[t].m2, 3);
 					}
 
@@ -2488,8 +2488,8 @@ bool AfterLoadGame()
 				case TileType::Railway:
 					if (HasSignals(t)) {
 						/* move the signal variant */
-						SetSignalVariant(t, TRACK_UPPER, HasBit(_m[t].m2, 2) ? SIG_SEMAPHORE : SIG_ELECTRIC);
-						SetSignalVariant(t, TRACK_LOWER, HasBit(_m[t].m2, 6) ? SIG_SEMAPHORE : SIG_ELECTRIC);
+						SetSignalVariant(t, TRACK_UPPER, HasBit(_m[t].m2, 2) ? SignalVariant::Semaphore : SignalVariant::Electric);
+						SetSignalVariant(t, TRACK_LOWER, HasBit(_m[t].m2, 6) ? SignalVariant::Semaphore : SignalVariant::Electric);
 						ClrBit(_m[t].m2, 2);
 						ClrBit(_m[t].m2, 6);
 					}
@@ -3689,8 +3689,8 @@ bool AfterLoadGame()
 	if (SlXvIsFeaturePresent(XSLFI_JOKERPP)) {
 		for (TileIndex t(0); t < map_size; t++) {
 			if (IsTileType(t, TileType::Railway) && HasSignals(t)) {
-				if (GetSignalType(t, TRACK_LOWER) == SIGTYPE_PROG) SetSignalType(t, TRACK_LOWER, SIGTYPE_BLOCK);
-				if (GetSignalType(t, TRACK_UPPER) == SIGTYPE_PROG) SetSignalType(t, TRACK_UPPER, SIGTYPE_BLOCK);
+				if (GetSignalType(t, TRACK_LOWER) == SignalType::Prog) SetSignalType(t, TRACK_LOWER, SignalType::Block);
+				if (GetSignalType(t, TRACK_UPPER) == SignalType::Prog) SetSignalType(t, TRACK_UPPER, SignalType::Block);
 			}
 		}
 		for (Vehicle *v : Vehicle::Iterate()) {
@@ -3716,8 +3716,8 @@ bool AfterLoadGame()
 	if (SlXvIsFeaturePresent(XSLFI_CHILLPP, SL_CHILLPP_232)) {
 		for (TileIndex t(0); t < map_size; t++) {
 			if (IsTileType(t, TileType::Railway) && HasSignals(t)) {
-				if (GetSignalType(t, TRACK_LOWER) == 7) SetSignalType(t, TRACK_LOWER, SIGTYPE_BLOCK);
-				if (GetSignalType(t, TRACK_UPPER) == 7) SetSignalType(t, TRACK_UPPER, SIGTYPE_BLOCK);
+				if (GetSignalType(t, TRACK_LOWER) == static_cast<SignalType>(7)) SetSignalType(t, TRACK_LOWER, SignalType::Block);
+				if (GetSignalType(t, TRACK_UPPER) == static_cast<SignalType>(7)) SetSignalType(t, TRACK_UPPER, SignalType::Block);
 			}
 		}
 	}
@@ -3898,7 +3898,7 @@ bool AfterLoadGame()
 			if (IsTileType(t, TileType::TunnelBridge) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL && IsTunnelBridgeWithSignalSimulation(t)) {
 				if (HasBit(_m[t].m5, 5)) {
 					/* signalled tunnel entrance */
-					SignalState state = HasBit(_m[t].m5, 6) ? SIGNAL_STATE_RED : SIGNAL_STATE_GREEN;
+					SignalState state = HasBit(_m[t].m5, 6) ? SignalState::Red : SignalState::Green;
 					ClrBit(_m[t].m5, 6);
 					SetTunnelBridgeEntranceSignalState(t, state);
 				}
@@ -3919,7 +3919,7 @@ bool AfterLoadGame()
 		/* entrance and exit signal red/green states now have separate bits */
 		for (TileIndex t(0); t < map_size; t++) {
 			if (IsTileType(t, TileType::TunnelBridge) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL && IsTunnelBridgeSignalSimulationExit(t)) {
-				SetTunnelBridgeExitSignalState(t, HasBit(_me[t].m6, 0) ? SIGNAL_STATE_GREEN : SIGNAL_STATE_RED);
+				SetTunnelBridgeExitSignalState(t, HasBit(_me[t].m6, 0) ? SignalState::Green : SignalState::Red);
 			}
 		}
 	}
@@ -4577,7 +4577,7 @@ bool AfterLoadGame()
 		for (TileIndex t(0); t < map_size; t++) {
 			if (IsTileType(t, TileType::Railway) && HasSignals(t)) {
 				auto check_signal = [&](Track track) {
-					if (HasSignalOnTrack(t, track) && GetSignalType(t, track) == SIGTYPE_NO_ENTRY) {
+					if (HasSignalOnTrack(t, track) && GetSignalType(t, track) == SignalType::NoEntry) {
 						SetSignalStates(t, GetSignalStates(t) & ~SignalOnTrack(track));
 					}
 				};
@@ -4617,8 +4617,6 @@ bool AfterLoadGame()
 	 */
 	if (IsSavegameVersionBefore(SLV_164)) FixupTrainLengths();
 
-	InitializeRoadGUI();
-
 	/* This needs to be done after conversion. */
 	RebuildViewportKdtree();
 	ViewportMapBuildTunnelCache();
@@ -4631,6 +4629,7 @@ bool AfterLoadGame()
 	AfterLoadStoryBook();
 
 	InitializeRailGUI(); // Needs to be after AfterLoadCompanyStats
+	InitializeRoadGUI(); // "
 
 	AfterLoadVehiclesRemoveAnyFoundInvalid();
 

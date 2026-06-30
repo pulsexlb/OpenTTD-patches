@@ -1190,10 +1190,10 @@ static Trackdir RoadFindPathToDest(RoadVehicle *v, TileIndex tile, DiagDirection
 
 	TrackStatus ts = GetTileTrackStatus(tile, TRANSPORT_ROAD, ((v->roadtype + 1) << 8) | to_underlying(GetRoadTramType(v->roadtype)));
 
-	/* Replaces the given track with INVALID_TRACK when there is red signal for that track. */
-	auto FilterRedSignal = [&ts](auto track) {
-		if (HasBit(ts.signals, track)) return INVALID_TRACKDIR;
-		return static_cast<Trackdir>(track);
+	/* Replaces the given trackdir with INVALID_TRACKDIR when there is red signal for that trackdir. */
+	auto FilterRedSignal = [&ts](Trackdir trackdir) {
+		if (HasBit(ts.signals, trackdir)) return INVALID_TRACKDIR;
+		return trackdir;
 	};
 
 	if (IsTileType(tile, TileType::Road)) {
@@ -1258,7 +1258,7 @@ static Trackdir RoadFindPathToDest(RoadVehicle *v, TileIndex tile, DiagDirection
 
 	if (v->dest_tile == INVALID_TILE) {
 		/* We've got no destination, pick a random track */
-		return FilterRedSignal(PickRandomBit(ts.trackdirs));
+		return FilterRedSignal(static_cast<Trackdir>(PickRandomBit(ts.trackdirs)));
 	}
 
 	/* Only one track to choose between? */
@@ -1267,7 +1267,7 @@ static Trackdir RoadFindPathToDest(RoadVehicle *v, TileIndex tile, DiagDirection
 			/* Vehicle expected a choice here, invalidate its path. */
 			v->cached_path->clear();
 		}
-		return FilterRedSignal(FindFirstBit(ts.trackdirs));
+		return FilterRedSignal(static_cast<Trackdir>(FindFirstBit(ts.trackdirs)));
 	}
 
 	/* Path cache is out of date, clear it */

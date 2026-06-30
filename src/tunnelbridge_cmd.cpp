@@ -229,7 +229,7 @@ Foundation GetBridgeFoundation(Slope tileh, Axis axis)
 {
 	if (tileh == SLOPE_FLAT ||
 			((tileh == SLOPE_NE || tileh == SLOPE_SW) && axis == Axis::X) ||
-			((tileh == SLOPE_NW || tileh == SLOPE_SE) && axis == Axis::Y)) return FOUNDATION_NONE;
+			((tileh == SLOPE_NW || tileh == SLOPE_SE) && axis == Axis::Y)) return Foundation::None;
 
 	return (HasSlopeHighestCorner(tileh) ? InclinedFoundation(axis) : FlatteningFoundation(tileh));
 }
@@ -301,7 +301,7 @@ static CommandCost CheckBridgeSlope(BridgePieces bridge_piece, Axis axis, Slope 
 	}
 	if ((tileh != SLOPE_FLAT) && (tileh != valid_inclined)) return CMD_ERROR;
 
-	if (f == FOUNDATION_NONE) return CommandCost();
+	if (f == Foundation::None) return CommandCost();
 
 	return CommandCost(ExpensesType::Construction, _price[Price::BuildFoundation]);
 }
@@ -1845,7 +1845,7 @@ static void DrawTunnelBridgeRampSingleSignal(const TileInfo *ti, bool is_green, 
 	if (ti->tileh == SLOPE_FLAT && side != show_exit && dir == DiagDirection::SW) z += 2;
 
 	if (ti->tileh != SLOPE_FLAT && IsBridge(ti->tile)) z += 8; // sloped bridge head
-	SignalVariant variant = IsTunnelBridgeSemaphore(ti->tile) ? SIG_SEMAPHORE : SIG_ELECTRIC;
+	SignalVariant variant = IsTunnelBridgeSemaphore(ti->tile) ? SignalVariant::Semaphore : SignalVariant::Electric;
 	const RailTypeInfo *rti = GetRailTypeInfo(GetRailType(ti->tile));
 
 	uint8_t aspect = 0;
@@ -1867,13 +1867,13 @@ static void DrawTunnelBridgeRampSingleSignal(const TileInfo *ti, bool is_green, 
 	if (is_custom_sprite) {
 		sprite.sprite += position;
 	} else {
-		if (variant == SIG_ELECTRIC && type == SIGTYPE_BLOCK) {
+		if (variant == SignalVariant::Electric && type == SignalType::Block) {
 			/* Normal electric signals are picked from original sprites. */
 			sprite = { SPR_ORIGINAL_SIGNALS_BASE + ((position << 1) + is_green), PAL_NONE };
 			if (_settings_client.gui.show_all_signal_default == SSDM_ON) sprite.sprite += SPR_DUP_ORIGINAL_SIGNALS_BASE - SPR_ORIGINAL_SIGNALS_BASE;
 		} else {
 			/* All other signals are picked from add on sprites. */
-			sprite = { SPR_SIGNALS_BASE + ((type - 1) * 16 + variant * 64 + (position << 1) + is_green) + (IsSignalSpritePBS(type) ? 64 : 0), PAL_NONE };
+			sprite = { SPR_SIGNALS_BASE + ((to_underlying(type) - 1) * 16 + to_underlying(variant) * 64 + (position << 1) + is_green) + (IsSignalSpritePBS(type) ? 64 : 0), PAL_NONE };
 			if (_settings_client.gui.show_all_signal_default == SSDM_ON) sprite.sprite += SPR_DUP_SIGNALS_BASE - SPR_SIGNALS_BASE;
 		}
 		SpriteFile *file = GetOriginFile(sprite.sprite);
@@ -1881,14 +1881,14 @@ static void DrawTunnelBridgeRampSingleSignal(const TileInfo *ti, bool is_green, 
 	}
 
 	if (is_custom_sprite && show_restricted && style == 0 && _settings_client.gui.show_restricted_signal_recolour &&
-			_settings_client.gui.show_all_signal_default == SSDM_RESTRICTED_RECOLOUR && !result.restricted_valid && variant == SIG_ELECTRIC) {
+			_settings_client.gui.show_all_signal_default == SSDM_RESTRICTED_RECOLOUR && !result.restricted_valid && variant == SignalVariant::Electric) {
 		/* Use duplicate sprite block, instead of GRF-specified signals */
-		sprite = { (type == SIGTYPE_BLOCK && variant == SIG_ELECTRIC) ? SPR_DUP_ORIGINAL_SIGNALS_BASE : SPR_DUP_SIGNALS_BASE - 16, PAL_NONE };
-		sprite.sprite += type * 16 + variant * 64 + position * 2 + is_green + (IsSignalSpritePBS(type) ? 64 : 0);
+		sprite = { (type == SignalType::Block && variant == SignalVariant::Electric) ? SPR_DUP_ORIGINAL_SIGNALS_BASE : SPR_DUP_SIGNALS_BASE - 16, PAL_NONE };
+		sprite.sprite += to_underlying(type) * 16 + to_underlying(variant) * 64 + position * 2 + is_green + (IsSignalSpritePBS(type) ? 64 : 0);
 		is_custom_sprite = false;
 	}
 
-	if (!is_custom_sprite && show_restricted && variant == SIG_ELECTRIC && _settings_client.gui.show_restricted_signal_recolour) {
+	if (!is_custom_sprite && show_restricted && variant == SignalVariant::Electric && _settings_client.gui.show_restricted_signal_recolour) {
 		extern void DrawRestrictedSignal(SignalType type, SpriteID sprite, int x, int y, int z, uint8_t dz, int8_t bb_offset_z);
 		DrawRestrictedSignal(type, sprite.sprite, x, y, z, TILE_HEIGHT, BB_Z_SEPARATOR);
 	} else {
@@ -1898,11 +1898,11 @@ static void DrawTunnelBridgeRampSingleSignal(const TileInfo *ti, bool is_green, 
 
 SignalType GetTunnelBridgeDisplaySignalType(TileIndex tile)
 {
-	SignalType sig_type = SIGTYPE_BLOCK;
+	SignalType sig_type = SignalType::Block;
 	if (IsTunnelBridgeSignalSimulationBidirectional(tile)) {
-		sig_type = SIGTYPE_PBS;
+		sig_type = SignalType::Path;
 	} else if (IsTunnelBridgePBS(tile)) {
-		sig_type = SIGTYPE_PBS_ONEWAY;
+		sig_type = SignalType::PathOneWay;
 	}
 	return sig_type;
 }
@@ -1922,18 +1922,18 @@ static void DrawTunnelBridgeRampSignal(const TileInfo *ti)
 	}
 
 	if (IsTunnelBridgeSignalSimulationExit(ti->tile)) {
-		DrawTunnelBridgeRampSingleSignal(ti, (GetTunnelBridgeExitSignalState(ti->tile) == SIGNAL_STATE_GREEN), position ^ 1, GetTunnelBridgeDisplaySignalType(ti->tile), true);
+		DrawTunnelBridgeRampSingleSignal(ti, (GetTunnelBridgeExitSignalState(ti->tile) == SignalState::Green), position ^ 1, GetTunnelBridgeDisplaySignalType(ti->tile), true);
 	}
 	if (IsTunnelBridgeSignalSimulationEntrance(ti->tile)) {
 		SignalState state = GetTunnelBridgeEntranceSignalState(ti->tile);
-		if (state == SIGNAL_STATE_GREEN && IsTunnelBridgeSignalSimulationBidirectional(ti->tile) && _settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
+		if (state == SignalState::Green && IsTunnelBridgeSignalSimulationBidirectional(ti->tile) && _settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
 			/* Bidirectional tunnel/bridge in realistic braking mode: display green entrance signals as visually red
 			 * when entrance is not reserved, or exit signal is green. */
-			if (!HasAcrossTunnelBridgeReservation(ti->tile) || GetTunnelBridgeExitSignalState(ti->tile) == SIGNAL_STATE_GREEN) {
-				state = SIGNAL_STATE_RED;
+			if (!HasAcrossTunnelBridgeReservation(ti->tile) || GetTunnelBridgeExitSignalState(ti->tile) == SignalState::Green) {
+				state = SignalState::Red;
 			}
 		}
-		DrawTunnelBridgeRampSingleSignal(ti, (state == SIGNAL_STATE_GREEN), position, GetTunnelBridgeDisplaySignalType(ti->tile), false);
+		DrawTunnelBridgeRampSingleSignal(ti, (state == SignalState::Green), position, GetTunnelBridgeDisplaySignalType(ti->tile), false);
 	}
 }
 
@@ -1979,36 +1979,36 @@ static void DrawBridgeSignalOnMiddlePart(const TileInfo *ti, TileIndex bridge_st
 			uint position, x, y;
 			GetBridgeSignalXY(ti->tile, GetTunnelBridgeDirection(bridge_start_tile), HasBit(_signal_style_masks.signal_opposite_side, style), position, x, y);
 
-			SignalVariant variant = IsTunnelBridgeSemaphore(bridge_start_tile) ? SIG_SEMAPHORE : SIG_ELECTRIC;
+			SignalVariant variant = IsTunnelBridgeSemaphore(bridge_start_tile) ? SignalVariant::Semaphore : SignalVariant::Electric;
 			SignalState state = GetBridgeEntranceSimulatedSignalState(bridge_start_tile, m2_position);
-			if (state == SIGNAL_STATE_GREEN && IsTunnelBridgeSignalSimulationBidirectional(bridge_start_tile) && _settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
+			if (state == SignalState::Green && IsTunnelBridgeSignalSimulationBidirectional(bridge_start_tile) && _settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
 				/* Bidirectional tunnel/bridge in realistic braking mode: display green middle signals as visually red when
 				 * other end is reserved in incoming direction, or when both entrance signals are green and the entrance is not reserved. */
 				if (HasAcrossTunnelBridgeReservation(bridge_end_tile) &&
-						GetTunnelBridgeExitSignalState(bridge_end_tile) != SIGNAL_STATE_GREEN &&
-						GetTunnelBridgeEntranceSignalState(bridge_end_tile) == SIGNAL_STATE_GREEN) {
-					state = SIGNAL_STATE_RED;
+						GetTunnelBridgeExitSignalState(bridge_end_tile) != SignalState::Green &&
+						GetTunnelBridgeEntranceSignalState(bridge_end_tile) == SignalState::Green) {
+					state = SignalState::Red;
 				} else if (!HasAcrossTunnelBridgeReservation(bridge_start_tile) &&
-						GetTunnelBridgeEntranceSignalState(bridge_start_tile) == SIGNAL_STATE_GREEN &&
-						GetTunnelBridgeEntranceSignalState(bridge_end_tile) == SIGNAL_STATE_GREEN) {
-					state = SIGNAL_STATE_RED;
+						GetTunnelBridgeEntranceSignalState(bridge_start_tile) == SignalState::Green &&
+						GetTunnelBridgeEntranceSignalState(bridge_end_tile) == SignalState::Green) {
+					state = SignalState::Red;
 				}
 			}
 			uint8_t aspect = 0;
-			if (state == SIGNAL_STATE_GREEN) {
+			if (state == SignalState::Green) {
 				aspect = 1;
 				if (_extra_aspects > 0) {
 					const uint bridge_length = GetTunnelBridgeLength(bridge_start_tile, bridge_end_tile) + 1;
 					while (true) {
 						bridge_signal_position += simulated_wormhole_signals;
 						if (bridge_signal_position >= bridge_length) {
-							if (GetTunnelBridgeExitSignalState(bridge_end_tile) == SIGNAL_STATE_GREEN) {
+							if (GetTunnelBridgeExitSignalState(bridge_end_tile) == SignalState::Green) {
 								aspect += GetTunnelBridgeExitSignalAspectForInternalPropagation(bridge_end_tile);
 							}
 							break;
 						}
 						m2_position++;
-						if (GetBridgeEntranceSimulatedSignalState(bridge_start_tile, m2_position) != SIGNAL_STATE_GREEN) break;
+						if (GetBridgeEntranceSimulatedSignalState(bridge_start_tile, m2_position) != SignalState::Green) break;
 						aspect++;
 						if (aspect >= GetMaximumSignalAspect()) break;
 					}
@@ -2022,14 +2022,14 @@ static void DrawBridgeSignalOnMiddlePart(const TileInfo *ti, TileIndex bridge_st
 			if (sprite.sprite != 0) {
 				sprite.sprite += position;
 			} else {
-				bool is_green = (state == SIGNAL_STATE_GREEN);
-				if (variant == SIG_ELECTRIC && type == SIGTYPE_BLOCK) {
+				bool is_green = (state == SignalState::Green);
+				if (variant == SignalVariant::Electric && type == SignalType::Block) {
 					/* Normal electric signals are picked from original sprites. */
 					sprite = { SPR_ORIGINAL_SIGNALS_BASE + ((position << 1) + is_green), PAL_NONE };
 					if (_settings_client.gui.show_all_signal_default == SSDM_ON) sprite.sprite += SPR_DUP_ORIGINAL_SIGNALS_BASE - SPR_ORIGINAL_SIGNALS_BASE;
 				} else {
 					/* All other signals are picked from add on sprites. */
-					sprite = { SPR_SIGNALS_BASE + ((type - 1) * 16 + variant * 64 + (position << 1) + is_green) + (IsSignalSpritePBS(type) ? 64 : 0), PAL_NONE };
+					sprite = { SPR_SIGNALS_BASE + ((to_underlying(type) - 1) * 16 + to_underlying(variant) * 64 + (position << 1) + is_green) + (IsSignalSpritePBS(type) ? 64 : 0), PAL_NONE };
 					if (_settings_client.gui.show_all_signal_default == SSDM_ON) sprite.sprite += SPR_DUP_SIGNALS_BASE - SPR_SIGNALS_BASE;
 				}
 				sprite.pal = PAL_NONE;
@@ -2355,7 +2355,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 						SignalOffsets image, uint pos, SignalType type, SignalVariant variant, const TraceRestrictProgram *prog, CustomSignalSpriteContext context);
 
 				DiagDirection dir = GetTunnelBridgeDirection(ti->tile);
-				SignalVariant variant = IsTunnelBridgeSemaphore(ti->tile) ? SIG_SEMAPHORE : SIG_ELECTRIC;
+				SignalVariant variant = IsTunnelBridgeSemaphore(ti->tile) ? SignalVariant::Semaphore : SignalVariant::Electric;
 
 				Track t = FindFirstTrack(GetAcrossTunnelBridgeTrackBits(ti->tile));
 				auto draw_signals = [&](uint position, SignalOffsets image, DiagDirection towards) {
@@ -2367,12 +2367,12 @@ static void DrawTile_TunnelBridge(TileInfo *ti, DrawTileProcParams params)
 					const TraceRestrictProgram *prog = IsTunnelBridgeRestrictedSignal(ti->tile) ? GetExistingTraceRestrictProgram(ti->tile, t) : nullptr;
 					if (IsTunnelBridgeSignalSimulationEntrance(ti->tile)) {
 						CustomSignalSpriteContext ctx = { CSSC_TUNNEL_BRIDGE_ENTRANCE };
-						DrawSingleSignal(ti->tile, rti, t, GetTunnelBridgeEntranceSignalState(ti->tile), image, position, SIGTYPE_BLOCK, variant, prog, ctx);
+						DrawSingleSignal(ti->tile, rti, t, GetTunnelBridgeEntranceSignalState(ti->tile), image, position, SignalType::Block, variant, prog, ctx);
 					}
 					if (IsTunnelBridgeSignalSimulationExit(ti->tile)) {
-						SignalType type = SIGTYPE_BLOCK;
+						SignalType type = SignalType::Block;
 						if (IsTunnelBridgePBS(ti->tile)) {
-							type = IsTunnelBridgeSignalSimulationEntrance(ti->tile) ? SIGTYPE_PBS : SIGTYPE_PBS_ONEWAY;
+							type = IsTunnelBridgeSignalSimulationEntrance(ti->tile) ? SignalType::Path : SignalType::PathOneWay;
 						}
 						CustomSignalSpriteContext ctx = { CSSC_TUNNEL_BRIDGE_EXIT };
 						DrawSingleSignal(ti->tile, rti, t, GetTunnelBridgeExitSignalState(ti->tile), (SignalOffsets)(image ^ 1), position ^ 1, type, variant, prog, ctx);
@@ -2759,8 +2759,8 @@ static int GetSlopePixelZ_TunnelBridge(TileIndex tile, uint x, uint y, bool grou
 /** @copydoc GetFoundationProc */
 static Foundation GetFoundation_TunnelBridge(TileIndex tile, Slope tileh)
 {
-	if (IsCustomBridgeHeadTile(tile)) return FOUNDATION_LEVELED;
-	return IsTunnel(tile) ? FOUNDATION_NONE : GetBridgeFoundation(tileh, DiagDirToAxis(GetTunnelBridgeDirection(tile)));
+	if (IsCustomBridgeHeadTile(tile)) return Foundation::Leveled;
+	return IsTunnel(tile) ? Foundation::None : GetBridgeFoundation(tileh, DiagDirToAxis(GetTunnelBridgeDirection(tile)));
 }
 
 /** @copydoc GetTileDescProc */

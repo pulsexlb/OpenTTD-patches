@@ -13,8 +13,6 @@ STR_CONFIG_SETTING_ZOOM_LVL_OUT_32X                             :32 倍
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_64X                             :64 倍
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_128X                            :128 倍
 
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_DEFAULT                    :預設
-
 STR_ORDER_STOP_LOCATION_THROUGH                                 :［通過式裝載］
 
 STR_CONFIG_SETTING_TOWN_GROWTH_EXTREME_SLOW                     :極慢
@@ -510,9 +508,6 @@ STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION          :排程調度時
 STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION_HELPTEXT :本項設定新排程調度的預設時間。預設值為 24 小時（1440 分鐘）。在使用「日」作為計時單位時，預設時間為一年
 STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION_VALUE    :{COMMA}{NBSP}分
 STR_CONFIG_SETTING_SCHEDULED_DISPATCH_DEFAULT_DURATION_DEFAULT  :預設
-
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE                            :預設道路與電車軌道（開始新遊戲或載入遊戲後）：{STRING}
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_HELPTEXT                   :在開始或載入遊戲後選擇的道路與電車軌道。「最先可用」選擇最舊的道路與電車軌道，「最後可用」選擇最舊的道路與電車軌道，「最常使用」選擇目前使用最多的類型，「預設」選擇預設類型
 
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER                           :允許製作河流：{STRING}
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER_HELPTEXT                  :允許在場景編輯器外製作河流

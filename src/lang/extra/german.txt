@@ -11,8 +11,6 @@ STR_CONFIG_SETTING_ZOOM_LVL_OUT_32X                             :32x
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_64X                             :64x
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_128X                            :128x
 
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_DEFAULT                    :Standard
-
 STR_ORDER_STOP_LOCATION_THROUGH                                 :{SPACE}[durchgehendes Laden]
 
 STR_CONFIG_SETTING_TOWN_GROWTH_EXTREME_SLOW                     :Extrem langsam
@@ -355,9 +353,6 @@ STR_CONFIG_SETTING_TIMETABLE_AUTOFILL_ROUNDING_TICKS            :Runde automatis
 STR_CONFIG_SETTING_TIMETABLE_AUTOFILL_ROUNDING_TICKS_HELPTEXT   :Fahrplanzeiten, die durch automatische Fahrpläne angepasst wurden, werden nicht gerundet. Ein Tag im Spiel hat in einer Tageslänge von 1 eine Dauer von 74 Ticks.
 STR_CONFIG_SETTING_TIMETABLE_AUTOFILL_ROUNDING_TICKS_VALUE      :{COMMA}{NBSP}Tick{P 0 "" s}
 STR_CONFIG_SETTING_TIMETABLE_AUTOFILL_ROUNDING_TICKS_DEFAULT    :Standard
-
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE                            :Straßen(bahn)typ bei Spielbeginn/geladenem Spiel: {STRING}
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_HELPTEXT                   :Vorausgewählter Straßen(bahn)typ nach Spielstart. 'Erster verfügbarer' wählt den ältesten Straßen(bahn)typ, 'Letzter verfügbarer' den neuesten Straßen(bahn)typ, 'Meistbenutzter' denjenigen, der am meisten verbaut ist und 'Standard' den Standardtyp.
 
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER                           :Aktiviere das Bauen von Flüssen: {STRING}
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER_HELPTEXT                  :Aktiviere das Bauen von Flüssen außerhalb des Szenarioeditors

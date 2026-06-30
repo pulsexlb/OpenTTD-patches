@@ -90,7 +90,7 @@ bool TryReserveRailTrackdir(const Train *v, TileIndex tile, Trackdir td, bool tr
 {
 	bool success = TryReserveRailTrack(tile, TrackdirToTrack(td), trigger_stations);
 	if (success && HasPbsSignalOnTrackdir(tile, td)) {
-		SetSignalStateByTrackdir(tile, td, SIGNAL_STATE_GREEN);
+		SetSignalStateByTrackdir(tile, td, SignalState::Green);
 		MarkSingleSignalDirty(tile, td);
 		if (_extra_aspects > 0) {
 			SetSignalAspect(tile, TrackdirToTrack(td), 0);
@@ -192,7 +192,7 @@ bool TryReserveRailTrack(TileIndex tile, Track track, bool trigger_stations)
 void UnreserveRailTrackdir(TileIndex tile, Trackdir td)
 {
 	if (HasPbsSignalOnTrackdir(tile, td)) {
-		SetSignalStateByTrackdir(tile, td, SIGNAL_STATE_RED);
+		SetSignalStateByTrackdir(tile, td, SignalState::Red);
 		MarkSingleSignalDirty(tile, td);
 	}
 	UnreserveRailTrack(tile, TrackdirToTrack(td));
@@ -244,7 +244,7 @@ void UnreserveRailTrack(TileIndex tile, Track t)
 				}
 				if (IsTunnelBridgeSignalSimulationExit(tile) && IsTunnelBridgeEffectivelyPBS(tile) && IsTrackAcrossTunnelBridge(tile, t)) {
 					if (IsTunnelBridgePBS(tile)) {
-						SetTunnelBridgeExitSignalState(tile, SIGNAL_STATE_RED);
+						SetTunnelBridgeExitSignalState(tile, SignalState::Red);
 						if (_extra_aspects > 0) PropagateAspectChange(tile, GetTunnelBridgeExitTrackdir(tile), 0);
 					} else {
 						UpdateSignalsOnSegment(tile, DiagDirection::Invalid, GetTileOwner(tile));
@@ -492,7 +492,7 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 		if (IsTunnelBridgeWithSignalSimulation(tile) && TrackdirEntersTunnelBridge(tile, trackdir)) {
 			if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && IsTunnelBridgeSignalSimulationEntrance(tile)) {
 				TileIndex end = GetOtherTunnelBridgeEnd(tile);
-				if (HasAcrossTunnelBridgeReservation(end) && GetTunnelBridgeExitSignalState(end) == SIGNAL_STATE_GREEN &&
+				if (HasAcrossTunnelBridgeReservation(end) && GetTunnelBridgeExitSignalState(end) == SignalState::Green &&
 						((flags & FRF_TB_EXIT_FREE) || TunnelBridgeIsFree(tile, end, nullptr, TBIFM_ACROSS_ONLY).Succeeded())) {
 					/* skip far end */
 					if (lookahead != nullptr) {
@@ -514,7 +514,7 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 				}
 			}
 			if ((flags & FRF_IGNORE_ONEWAY) && _settings_game.vehicle.train_braking_model == TBM_REALISTIC && IsTunnelBridgeSignalSimulationExit(tile) &&
-					GetTunnelBridgeExitSignalState(tile) == SIGNAL_STATE_GREEN) {
+					GetTunnelBridgeExitSignalState(tile) == SignalState::Green) {
 				TileIndex end = GetOtherTunnelBridgeEnd(tile);
 				if (HasAcrossTunnelBridgeReservation(end) && TunnelBridgeIsFree(tile, end, nullptr, TBIFM_ACROSS_ONLY).Succeeded()) {
 					/* skip far end */
@@ -751,7 +751,7 @@ static void FollowReservationEnumerate(Owner o, RailTypes rts, TileIndex tile, T
 		if (IsTunnelBridgeWithSignalSimulation(tile) && TrackdirEntersTunnelBridge(tile, trackdir)) {
 			if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && IsTunnelBridgeSignalSimulationEntrance(tile)) {
 				TileIndex end = GetOtherTunnelBridgeEnd(tile);
-				if (HasAcrossTunnelBridgeReservation(end) && GetTunnelBridgeExitSignalState(end) == SIGNAL_STATE_GREEN &&
+				if (HasAcrossTunnelBridgeReservation(end) && GetTunnelBridgeExitSignalState(end) == SignalState::Green &&
 						((flags & FRF_TB_EXIT_FREE) || TunnelBridgeIsFree(tile, end, nullptr, TBIFM_ACROSS_ONLY).Succeeded())) {
 					/* skip far end */
 					Trackdir end_trackdir = GetTunnelBridgeExitTrackdir(end);
@@ -762,7 +762,7 @@ static void FollowReservationEnumerate(Owner o, RailTypes rts, TileIndex tile, T
 				}
 			}
 			if ((flags & FRF_IGNORE_ONEWAY) && _settings_game.vehicle.train_braking_model == TBM_REALISTIC && IsTunnelBridgeSignalSimulationExit(tile) &&
-					GetTunnelBridgeExitSignalState(tile) == SIGNAL_STATE_GREEN) {
+					GetTunnelBridgeExitSignalState(tile) == SignalState::Green) {
 				TileIndex end = GetOtherTunnelBridgeEnd(tile);
 				if (HasAcrossTunnelBridgeReservation(end) && TunnelBridgeIsFree(tile, end, nullptr, TBIFM_ACROSS_ONLY).Succeeded()) {
 					/* skip far end */
@@ -925,7 +925,7 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 		if (v->lookahead->flags.Test(TrainReservationLookAheadFlag::DepotEnd)) return PBSTileInfo(tile, trackdir, false);
 		if (v->lookahead->flags.Test(TrainReservationLookAheadFlag::TunnelBridgeExitFree)) {
 			TileIndex exit_tile = GetOtherTunnelBridgeEnd(tile);
-			if (IsTunnelBridgeSignalSimulationExit(exit_tile) && GetTunnelBridgeExitSignalState(exit_tile) == SIGNAL_STATE_GREEN && HasAcrossTunnelBridgeReservation(exit_tile)) {
+			if (IsTunnelBridgeSignalSimulationExit(exit_tile) && GetTunnelBridgeExitSignalState(exit_tile) == SignalState::Green && HasAcrossTunnelBridgeReservation(exit_tile)) {
 				tile = exit_tile;
 				trackdir = GetTunnelBridgeExitTrackdir(exit_tile);
 			}
@@ -1265,7 +1265,7 @@ void FillTrainReservationLookAhead(Train *v)
 				raw_free_tiles = GetAvailableFreeTilesInSignalledTunnelBridgeWithStartOffset(tile, end, lookahead->tunnel_bridge_reserved_tiles + 1);
 				ApplyAvailableFreeTunnelBridgeTiles(lookahead, raw_free_tiles, tile, end);
 			}
-			if (!(HasAcrossTunnelBridgeReservation(end) && GetTunnelBridgeExitSignalState(end) == SIGNAL_STATE_GREEN && raw_free_tiles == INT_MAX)) {
+			if (!(HasAcrossTunnelBridgeReservation(end) && GetTunnelBridgeExitSignalState(end) == SignalState::Green && raw_free_tiles == INT_MAX)) {
 				/* do not attempt to follow through a signalled tunnel/bridge if it is not empty or the far end is not reserved */
 				FlushDeferredDetermineCombineNormalShuntMode(v);
 				SetTrainReservationLookaheadEnd(v);
@@ -1300,7 +1300,7 @@ void FillTrainReservationLookAhead(Train *v)
 			/* Vehicle is not itself in this tunnel/bridge, scan how much is available */
 			TileIndex end = INVALID_TILE;
 			int free_tiles;
-			if (GetTunnelBridgeEntranceSignalState(res.tile) == SIGNAL_STATE_GREEN) {
+			if (GetTunnelBridgeEntranceSignalState(res.tile) == SignalState::Green) {
 				end = GetOtherTunnelBridgeEnd(res.tile);
 				free_tiles = GetAvailableFreeTilesInSignalledTunnelBridge(res.tile, end, res.tile);
 			} else {
@@ -1382,7 +1382,7 @@ Train *GetTrainForReservation(TileIndex tile, Track track)
 		if (IsTileType(ftoti.res.tile, TileType::TunnelBridge) && IsTrackAcrossTunnelBridge(ftoti.res.tile, TrackdirToTrack(ftoti.res.trackdir))) {
 			if (IsTunnelBridgeWithSignalSimulation(ftoti.res.tile)) {
 				/* Special case for signalled bridges/tunnels: find best train on bridge/tunnel if exit reserved. */
-				if (IsTunnelBridgeSignalSimulationExit(ftoti.res.tile) && !(IsTunnelBridgeEffectivelyPBS(ftoti.res.tile) && GetTunnelBridgeExitSignalState(ftoti.res.tile) == SIGNAL_STATE_RED)) {
+				if (IsTunnelBridgeSignalSimulationExit(ftoti.res.tile) && !(IsTunnelBridgeEffectivelyPBS(ftoti.res.tile) && GetTunnelBridgeExitSignalState(ftoti.res.tile) == SignalState::Red)) {
 					ftoti.best = GetTrainClosestToTunnelBridgeEnd(ftoti.res.tile, GetOtherTunnelBridgeEnd(ftoti.res.tile));
 				}
 			} else {
@@ -1544,7 +1544,7 @@ bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		/* PBS signal on next trackdir? Conditionally safe position. */
 		if (HasPbsSignalOnTrackdir(ft.new_tile, td)) {
 			const Track track = TrackdirToTrack(td);
-			if (GetSignalType(ft.new_tile, track) == SIGTYPE_NO_ENTRY) return include_line_end;
+			if (GetSignalType(ft.new_tile, track) == SignalType::NoEntry) return include_line_end;
 			if (GetSignalAlwaysReserveThrough(ft.new_tile, track)) return false;
 			if (GetSignalSpecialPropagationFlag(ft.new_tile, track)) {
 				const TraceRestrictProgram *prog = GetExistingTraceRestrictProgram(ft.new_tile, track);
@@ -1560,7 +1560,7 @@ bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		}
 		/* One-way PBS signal against us? Safe if end-of-line is allowed. */
 		if (IsTileType(ft.new_tile, TileType::Railway) && HasSignalOnTrackdir(ft.new_tile, ReverseTrackdir(td)) &&
-				GetSignalType(ft.new_tile, TrackdirToTrack(td)) == SIGTYPE_PBS_ONEWAY) {
+				GetSignalType(ft.new_tile, TrackdirToTrack(td)) == SignalType::PathOneWay) {
 			return include_line_end;
 		}
 		if (IsRailTunnelBridgeTile(ft.new_tile) &&
@@ -1648,7 +1648,7 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		bool free = pbs_res_end_wait_test(tile, trackdir, true);
 		if (free && IsTunnelBridgeSignalSimulationBidirectional(tile)) {
 			TileIndex other_end = GetOtherTunnelBridgeEnd(tile);
-			if (HasAcrossTunnelBridgeReservation(other_end) && GetTunnelBridgeExitSignalState(other_end) == SIGNAL_STATE_RED) return false;
+			if (HasAcrossTunnelBridgeReservation(other_end) && GetTunnelBridgeExitSignalState(other_end) == SignalState::Red) return false;
 			const Direction dir = DiagDirToDir(GetTunnelBridgeDirection(other_end));
 			for (const Train *u : VehiclesOnTile<VehicleType::Train>(other_end)) {
 				DirDiff diff = DirDifference(u->direction, dir);

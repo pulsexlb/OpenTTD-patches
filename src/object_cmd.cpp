@@ -584,18 +584,18 @@ static void DrawTile_Object(TileInfo *ti, DrawTileProcParams params)
 			Slope incline = InclinedSlope(edge);
 			Foundation foundation = GetFoundation_Object(ti->tile, ti->tileh);
 			switch (foundation) {
-				case FOUNDATION_NONE:
+				case Foundation::None:
 					if (flags & OBJECT_EF_FLAG_ADJUST_Z && ti->tileh & incline) {
 						/* The edge is elevated relative to the lowest tile height, adjust z */
 						building_z_offset = TILE_HEIGHT;
 					}
 					break;
 
-				case FOUNDATION_LEVELED:
+				case Foundation::Leveled:
 					break;
 
-				case FOUNDATION_INCLINED_X:
-				case FOUNDATION_INCLINED_Y:
+				case Foundation::InclinedX:
+				case Foundation::InclinedY:
 					if (flags & OBJECT_EF_FLAG_ADJUST_Z) {
 						/* The edge is elevated relative to the lowest tile height, adjust z */
 						building_z_offset = TILE_HEIGHT;
@@ -605,7 +605,7 @@ static void DrawTile_Object(TileInfo *ti, DrawTileProcParams params)
 				default:
 					NOT_REACHED();
 			}
-			if (foundation != FOUNDATION_NONE) DrawFoundation(ti, foundation);
+			if (foundation != Foundation::None) DrawFoundation(ti, foundation);
 		} else {
 			DrawFoundation(ti, GetFoundation_Object(ti->tile, ti->tileh));
 		}
@@ -666,19 +666,19 @@ static int GetSlopePixelZ_Object(TileIndex tile, uint x, uint y, [[maybe_unused]
 /** @copydoc GetFoundationProc */
 Foundation GetFoundation_Object(TileIndex tile, Slope tileh)
 {
-	if (tileh == SLOPE_FLAT) return FOUNDATION_NONE;
+	if (tileh == SLOPE_FLAT) return Foundation::None;
 	switch (GetObjectEffectiveFoundationType(tile)) {
 		case OEFT_NONE:
-			return FOUNDATION_NONE;
+			return Foundation::None;
 
 		case OEFT_FLAT:
-			return FOUNDATION_LEVELED;
+			return Foundation::Leveled;
 
 		case OEFT_INCLINE_X:
-			return FOUNDATION_INCLINED_X;
+			return Foundation::InclinedX;
 
 		case OEFT_INCLINE_Y:
-			return FOUNDATION_INCLINED_Y;
+			return Foundation::InclinedY;
 
 		default:
 			NOT_REACHED();

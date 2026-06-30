@@ -862,7 +862,7 @@ static CommandCost RemoveRoad(TileIndex tile, DoCommandFlags flags, RoadBits pie
 
 			CommandCost cost(ExpensesType::Construction, CountBits(pieces) * RoadClearCost(existing_rt));
 			/* If we build a foundation we have to pay for it. */
-			if (f == FOUNDATION_NONE && GetRoadFoundation(tileh, present) != FOUNDATION_NONE) cost.AddCost(_price[Price::BuildFoundation]);
+			if (f == Foundation::None && GetRoadFoundation(tileh, present) != Foundation::None) cost.AddCost(_price[Price::BuildFoundation]);
 
 			return cost;
 		}
@@ -978,7 +978,7 @@ static CommandCost CheckRoadSlope(Slope tileh, RoadBits *pieces, RoadBits existi
 				return CommandCost();
 			}
 		} else {
-			if (HasExactlyOneBit(existing) && GetRoadFoundation(tileh, existing) == FOUNDATION_NONE) return CommandCost(ExpensesType::Construction, _price[Price::BuildFoundation]);
+			if (HasExactlyOneBit(existing) && GetRoadFoundation(tileh, existing) == Foundation::None) return CommandCost(ExpensesType::Construction, _price[Price::BuildFoundation]);
 			return CommandCost();
 		}
 	}
@@ -1911,7 +1911,7 @@ struct DrawRoadTileStruct {
 Foundation GetRoadFoundation(Slope tileh, RoadBits bits)
 {
 	/* Flat land and land without a road doesn't require a foundation */
-	if (tileh == SLOPE_FLAT || bits.None()) return FOUNDATION_NONE;
+	if (tileh == SLOPE_FLAT || bits.None()) return Foundation::None;
 
 	/* Steep slopes behave the same as slopes with one corner raised. */
 	if (IsSteepSlope(tileh)) {
@@ -1919,15 +1919,15 @@ Foundation GetRoadFoundation(Slope tileh, RoadBits bits)
 	}
 
 	/* Leveled RoadBits on a slope */
-	if (!_invalid_tileh_slopes_road[0][tileh].Any(bits)) return FOUNDATION_LEVELED;
+	if (!_invalid_tileh_slopes_road[0][tileh].Any(bits)) return Foundation::Leveled;
 
 	/* Straight roads without foundation on a slope */
 	if (!IsSlopeWithOneCornerRaised(tileh) &&
 			!_invalid_tileh_slopes_road[1][tileh].Any(bits))
-		return FOUNDATION_NONE;
+		return Foundation::None;
 
 	/* Roads on steep Slopes or on Slopes with one corner raised */
-	return (bits == ROAD_X ? FOUNDATION_INCLINED_X : FOUNDATION_INCLINED_Y);
+	return (bits == ROAD_X ? Foundation::InclinedX : Foundation::InclinedY);
 }
 
 const uint8_t _road_sloped_sprites[14] = {
@@ -2234,7 +2234,7 @@ void DrawRoadBits(TileInfo *ti, RoadBits road, RoadBits tram, Roadside roadside,
 	const RoadTypeInfo *tram_rti = tram_rt == INVALID_ROADTYPE ? nullptr : GetRoadTypeInfo(tram_rt);
 
 	if (ti->tileh != SLOPE_FLAT) {
-		DrawFoundation(ti, !is_road_tile ? FOUNDATION_LEVELED : GetRoadFoundation(ti->tileh, road | tram));
+		DrawFoundation(ti, !is_road_tile ? Foundation::Leveled : GetRoadFoundation(ti->tileh, road | tram));
 		/* DrawFoundation() is_road_tile ti. */
 	}
 
@@ -2339,7 +2339,7 @@ static void DrawTile_Road(TileInfo *ti, DrawTileProcParams params)
 			break;
 
 		case RoadTileType::Crossing: {
-			if (ti->tileh != SLOPE_FLAT) DrawFoundation(ti, FOUNDATION_LEVELED);
+			if (ti->tileh != SLOPE_FLAT) DrawFoundation(ti, Foundation::Leveled);
 
 			Axis axis = GetCrossingRailAxis(ti->tile);
 
@@ -2475,7 +2475,7 @@ static void DrawTile_Road(TileInfo *ti, DrawTileProcParams params)
 
 		default:
 		case RoadTileType::Depot: {
-			if (ti->tileh != SLOPE_FLAT) DrawFoundation(ti, FOUNDATION_LEVELED);
+			if (ti->tileh != SLOPE_FLAT) DrawFoundation(ti, Foundation::Leveled);
 
 			PaletteID palette = GetCompanyPalette(GetTileOwner(ti->tile));
 

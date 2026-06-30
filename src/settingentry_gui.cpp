@@ -780,8 +780,7 @@ SettingsContainer &GetSettingsTree()
 			{
 				construction->Add(new SettingEntry("gui.link_terraform_toolbar"));
 				construction->Add(new SettingEntry("gui.persistent_buildingtools"));
-				construction->Add(new SettingEntry("gui.default_rail_type"));
-				construction->Add(new SettingEntry("gui.default_road_type"));
+				construction->Add(new SettingEntry("gui.default_rail_road_type"));
 				construction->Add(new SettingEntry("gui.demolish_confirm_mode"));
 				construction->Add(new SettingEntry("gui.show_rail_polyline_tool"));
 			}

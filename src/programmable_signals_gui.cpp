@@ -212,7 +212,7 @@ static void DrawInstructionString(const SignalInstruction *instruction, int y, b
 
 		case PSO_SET_SIGNAL: {
 			const SignalSet *set = static_cast<const SignalSet *>(instruction);
-			AppendStringInPlace(instruction_string, STR_PROGSIG_SET_SIGNAL, _program_sigstate[set->to_state]);
+			AppendStringInPlace(instruction_string, STR_PROGSIG_SET_SIGNAL, _program_sigstate[to_underlying(set->to_state)]);
 			break;
 		}
 
@@ -301,7 +301,7 @@ public:
 				if (si == nullptr || si->Opcode() != PSO_SET_SIGNAL) return;
 				SignalSet *ss = static_cast <SignalSet*>(si);
 
-				ShowDropDownMenu(this, _program_sigstate, ss->to_state, PROGRAM_WIDGET_SET_STATE, 0, 0, 0);
+				ShowDropDownMenu(this, _program_sigstate, to_underlying(ss->to_state), PROGRAM_WIDGET_SET_STATE, 0, 0, 0);
 				break;
 			}
 
@@ -433,7 +433,7 @@ public:
 			if (!(HasSignalOnTrackdir(tile1, td) || HasSignalOnTrackdir(tile1, tdr)))
 				return;
 
-			if (GetSignalType(tile1, track1) != SIGTYPE_PROG) {
+			if (GetSignalType(tile1, track1) != SignalType::Prog) {
 				ShowErrorMessage(GetEncodedString(STR_PROGSIG_ERROR_INVALID_SIGNAL), GetEncodedString(STR_PROGSIG_ERROR_NOT_AN_PROG_SIGNAL), WarningLevel::Info);
 				return;
 			}
@@ -490,7 +490,7 @@ public:
 			return;
 		}
 
-		if (!(GetSignalType(tile1, track1) == SIGTYPE_EXIT || GetSignalType(tile1, track1) == SIGTYPE_PROG)) {
+		if (!(GetSignalType(tile1, track1) == SignalType::Exit || GetSignalType(tile1, track1) == SignalType::Prog)) {
 			ShowErrorMessage(GetEncodedString(STR_PROGSIG_ERROR_INVALID_SIGNAL), GetEncodedString(STR_PROGSIG_ERROR_NOT_AN_EXIT_SIGNAL), WarningLevel::Info);
 			return;
 		}
@@ -913,7 +913,7 @@ private:
 				SignalSet *s = static_cast<SignalSet*>(insn);
 				left_sel->SetDisplayedPlane(DPL_SET_STATE);
 				this->SetWidgetDisabledState(PROGRAM_WIDGET_SET_STATE, false);
-				this->GetWidget<NWidgetCore>(PROGRAM_WIDGET_SET_STATE)->SetString(_program_sigstate[s->to_state]);
+				this->GetWidget<NWidgetCore>(PROGRAM_WIDGET_SET_STATE)->SetString(_program_sigstate[to_underlying(s->to_state)]);
 				break;
 			}
 

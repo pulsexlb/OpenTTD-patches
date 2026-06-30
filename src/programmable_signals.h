@@ -377,7 +377,7 @@ public:
 class SignalSet: public SignalInstruction {
 public:
 	/// Constructs the instruction and sets the state the signal is to be set to
-	SignalSet(SignalProgram *prog, SignalState = SIGNAL_STATE_RED);
+	SignalSet(SignalProgram *prog, SignalState = SignalState::Red);
 
 	void Evaluate(SignalVM &vm) override;
 	void Remove() override;

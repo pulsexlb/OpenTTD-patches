@@ -155,7 +155,9 @@ void SetLocalCompany(CompanyID new_company)
 
 		/* Update the default rail based on most used */
 		extern void SetDefaultRailGui();
+		extern void SetDefaultRoadGui();
 		SetDefaultRailGui();
+		SetDefaultRoadGui();
 	}
 
 	if (switching_company && Company::IsValidID(new_company)) {

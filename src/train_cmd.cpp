@@ -3239,7 +3239,7 @@ static void ReverseTrainDirection(Train *consist)
 	/* We are inside tunnel/bridge with signals, reversing will close the entrance. */
 	if (IsTunnelBridgeWithSignalSimulation(moving_front->tile) && IsTunnelBridgeSignalSimulationEntrance(moving_front->tile)) {
 		/* Flip signal on tunnel entrance tile red. */
-		SetTunnelBridgeEntranceSignalState(moving_front->tile, SIGNAL_STATE_RED);
+		SetTunnelBridgeEntranceSignalState(moving_front->tile, SignalState::Red);
 		if (_extra_aspects > 0) {
 			PropagateAspectChange(moving_front->tile, GetTunnelBridgeEntranceTrackdir(moving_front->tile), 0);
 		}
@@ -3256,7 +3256,7 @@ static void ReverseTrainDirection(Train *consist)
 	DiagDirection dir = VehicleExitDir(moving_front->GetMovingDirection(), moving_front->track);
 	if (IsRailDepotTile(moving_front->tile) || (IsTileType(moving_front->tile, TileType::TunnelBridge) && (moving_front->track & TRACK_BIT_WORMHOLE || dir == GetTunnelBridgeDirection(moving_front->tile)))) dir = DiagDirection::Invalid;
 
-	if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SIGSEG_PBS || _settings_game.pf.reserve_paths) {
+	if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SigSegState::Path || _settings_game.pf.reserve_paths) {
 		/* If we are currently on a tile with conventional signals, we can't treat the
 		 * current tile as a safe tile or we would enter a PBS block without a reservation. */
 		bool first_tile_okay = !HasBlockSignalOnTrackdir(moving_front->tile, moving_front->GetVehicleTrackdir());
@@ -3490,7 +3490,7 @@ static void CheckNextTrainTile(Train *moving_front)
 	Trackdir td = moving_front->GetVehicleTrackdir();
 
 	/* On a tile with a red non-pbs signal, don't look ahead. */
-	if (HasBlockSignalOnTrackdir(moving_front->tile, td) && GetSignalStateByTrackdir(moving_front->tile, td) == SIGNAL_STATE_RED) return;
+	if (HasBlockSignalOnTrackdir(moving_front->tile, td) && GetSignalStateByTrackdir(moving_front->tile, td) == SignalState::Red) return;
 
 	CFollowTrackRail ft(consist);
 	if (!ft.Follow(moving_front->tile, td)) return;
@@ -3561,13 +3561,13 @@ static bool CheckTrainStayInDepot(Train *v)
 
 		v->wait_counter = 0;
 
-		seg_state = _settings_game.pf.reserve_paths ? SIGSEG_PBS : UpdateSignalsOnSegment(v->tile, DiagDirection::Invalid, v->owner);
-		if (seg_state == SIGSEG_FULL || HasDepotReservation(v->tile)) {
+		seg_state = _settings_game.pf.reserve_paths ? SigSegState::Path : UpdateSignalsOnSegment(v->tile, DiagDirection::Invalid, v->owner);
+		if (seg_state == SigSegState::Full || HasDepotReservation(v->tile)) {
 			/* Full and no PBS signal in block or depot reserved, can't exit. */
 			exit_blocked = true;
 		}
 	} else {
-		seg_state = _settings_game.pf.reserve_paths ? SIGSEG_PBS : UpdateSignalsOnSegment(v->tile, DiagDirection::Invalid, v->owner);
+		seg_state = _settings_game.pf.reserve_paths ? SigSegState::Path : UpdateSignalsOnSegment(v->tile, DiagDirection::Invalid, v->owner);
 	}
 
 	/* We are leaving a depot, but have to go to the exact same one; re-enter. */
@@ -3644,7 +3644,7 @@ static bool CheckTrainStayInDepot(Train *v)
 	if (exit_blocked) return true;
 
 	/* Only leave when we can reserve a path to our destination. */
-	if (seg_state == SIGSEG_PBS && !TryPathReserve(v) && v->force_proceed == TFP_NONE) {
+	if (seg_state == SigSegState::Path && !TryPathReserve(v) && v->force_proceed == TFP_NONE) {
 		/* No path and no force proceed. */
 		MarkTrainAsStuck(v);
 		return true;
@@ -3717,8 +3717,8 @@ static void UpdateTunnelBridgeEntranceSignalAspect(TileIndex tile)
 
 static void SetTunnelBridgeEntranceSignalGreen(TileIndex tile)
 {
-	if (GetTunnelBridgeEntranceSignalState(tile) == SIGNAL_STATE_RED) {
-		SetTunnelBridgeEntranceSignalState(tile, SIGNAL_STATE_GREEN);
+	if (GetTunnelBridgeEntranceSignalState(tile) == SignalState::Red) {
+		SetTunnelBridgeEntranceSignalState(tile, SignalState::Green);
 		MarkTunnelBridgeSignalDirty(tile, false);
 		if (_extra_aspects > 0) {
 			SetTunnelBridgeEntranceSignalAspect(tile, 0);
@@ -3731,7 +3731,7 @@ static void SetTunnelBridgeEntranceSignalGreen(TileIndex tile)
 
 static void UpdateEntranceAspectFromMiddleSignalChange(TileIndex entrance, int signal_number)
 {
-	if (signal_number < _extra_aspects && GetTunnelBridgeEntranceSignalState(entrance) == SIGNAL_STATE_GREEN) {
+	if (signal_number < _extra_aspects && GetTunnelBridgeEntranceSignalState(entrance) == SignalState::Green) {
 		UpdateTunnelBridgeEntranceSignalAspect(entrance);
 	}
 }
@@ -3785,7 +3785,7 @@ static void UnreserveBridgeTunnelTile(TileIndex tile)
 	UnreserveAcrossRailTunnelBridge(tile);
 	if (IsTunnelBridgeSignalSimulationExit(tile) && IsTunnelBridgeEffectivelyPBS(tile)) {
 		if (IsTunnelBridgePBS(tile)) {
-			SetTunnelBridgeExitSignalState(tile, SIGNAL_STATE_RED);
+			SetTunnelBridgeExitSignalState(tile, SignalState::Red);
 			if (_extra_aspects > 0) PropagateAspectChange(tile, GetTunnelBridgeExitTrackdir(tile), 0);
 		} else {
 			UpdateSignalsOnSegment(tile, DiagDirection::Invalid, GetTileOwner(tile));
@@ -3923,15 +3923,15 @@ void FreeTrainTrackReservation(Train *consist, TileIndex origin, Trackdir orig_t
 				break;
 			}
 			if (HasPbsSignalOnTrackdir(tile, td)) {
-				if (GetSignalStateByTrackdir(tile, td) == SIGNAL_STATE_RED || IsNoEntrySignal(tile, TrackdirToTrack(td))) {
+				if (GetSignalStateByTrackdir(tile, td) == SignalState::Red || IsNoEntrySignal(tile, TrackdirToTrack(td))) {
 					/* Red PBS signal? Can't be our reservation, would be green then. */
 					break;
 				} else {
 					/* Turn the signal back to red. */
-					if (GetSignalType(tile, TrackdirToTrack(td)) == SIGTYPE_BLOCK) {
+					if (GetSignalType(tile, TrackdirToTrack(td)) == SignalType::Block) {
 						update_signal = true;
 					} else {
-						SetSignalStateByTrackdir(tile, td, SIGNAL_STATE_RED);
+						SetSignalStateByTrackdir(tile, td, SignalState::Red);
 					}
 					MarkSingleSignalDirty(tile, td);
 				}
@@ -4485,11 +4485,11 @@ static void TryLongReserveChooseTrainTrack(Train *v, TileIndex tile, Trackdir td
 				} else {
 					SetTunnelReservation(exit_tile, true);
 				}
-				if (orig_exit_state == SIGNAL_STATE_RED && _extra_aspects > 0) {
+				if (orig_exit_state == SignalState::Red && _extra_aspects > 0) {
 					SetTunnelBridgeExitSignalAspect(exit_tile, 0);
 					UpdateAspectDeferredWithVehicleTunnelBridgeExit(v, exit_tile, GetTunnelBridgeExitTrackdir(exit_tile));
 				}
-				SetTunnelBridgeExitSignalState(exit_tile, SIGNAL_STATE_GREEN);
+				SetTunnelBridgeExitSignalState(exit_tile, SignalState::Green);
 
 				ChooseTrainTrack(v, ft.new_tile, ft.exitdir, TrackdirBitsToTrackBits(ft.new_td_bits), CTTF_NO_LOOKAHEAD_VALIDATE | (force_res ? CTTF_FORCE_RES : CTTF_NONE), lookahead_state);
 				FlushDeferredDetermineCombineNormalShuntMode(v);
@@ -4503,7 +4503,7 @@ static void TryLongReserveChooseTrainTrack(Train *v, TileIndex tile, Trackdir td
 					}
 					SetTunnelBridgeExitSignalState(exit_tile, orig_exit_state);
 				} else {
-					if (orig_exit_state == SIGNAL_STATE_GREEN && _extra_aspects > 0) {
+					if (orig_exit_state == SignalState::Green && _extra_aspects > 0) {
 						SetTunnelBridgeExitSignalAspect(exit_tile, 0);
 						UpdateAspectDeferred(exit_tile, GetTunnelBridgeExitTrackdir(exit_tile));
 					}
@@ -4598,7 +4598,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 
 			do_track_reservation = true;
 			changed_signal = TrackEnterdirToTrackdir(track, enterdir);
-			SetSignalStateByTrackdir(tile, changed_signal, SIGNAL_STATE_GREEN);
+			SetSignalStateByTrackdir(tile, changed_signal, SignalState::Green);
 			if (_extra_aspects > 0) {
 				SetSignalAspect(tile, track, 0);
 				UpdateAspectDeferredWithVehicleRail(consist, tile, changed_signal);
@@ -4635,7 +4635,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 		if (res_dest.tile == INVALID_TILE) {
 			/* Reservation failed? */
 			if (mark_stuck) MarkTrainAsStuck(consist);
-			if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SIGNAL_STATE_RED);
+			if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SignalState::Red);
 			return { FindFirstTrack(tracks), result_flags };
 		}
 		if (res_dest.okay) {
@@ -5151,7 +5151,7 @@ static TrainMovedChangeSignalEnum TrainMovedChangeSignal(Train *consist, TileInd
 			GetRailTileType(tile) == RailTileType::Signals) {
 		TrackdirBits tracks = TrackBitsToTrackdirBits(GetTrackBits(tile)) & DiagdirReachesTrackdirs(dir);
 		Trackdir trackdir = FindFirstTrackdir(tracks);
-		if (UpdateSignalsOnSegment(tile,  TrackdirToExitdir(trackdir), GetTileOwner(tile)) == SIGSEG_PBS && HasSignalOnTrackdir(tile, trackdir)) {
+		if (UpdateSignalsOnSegment(tile,  TrackdirToExitdir(trackdir), GetTileOwner(tile)) == SigSegState::Path && HasSignalOnTrackdir(tile, trackdir)) {
 			/* A PBS block with a non-PBS signal facing us? */
 			if (!IsPbsSignal(GetSignalType(tile, TrackdirToTrack(trackdir)))) return CHANGED_NORMAL_TO_PBS_BLOCK;
 
@@ -5159,7 +5159,7 @@ static TrainMovedChangeSignalEnum TrainMovedChangeSignal(Train *consist, TileInd
 		}
 	}
 	if (IsTileType(tile, TileType::TunnelBridge) && IsTunnelBridgeSignalSimulationExit(tile) && GetTunnelBridgeDirection(tile) == ReverseDiagDir(dir)) {
-		if (UpdateSignalsOnSegment(tile, dir, GetTileOwner(tile)) == SIGSEG_PBS) {
+		if (UpdateSignalsOnSegment(tile, dir, GetTileOwner(tile)) == SigSegState::Path) {
 			return CHANGED_NORMAL_TO_PBS_BLOCK;
 		}
 	}
@@ -5505,7 +5505,7 @@ static bool CheckTrainStayInWormHolePathReserve(Train *consist, Train *moving_fr
 			TrainReservationLookAhead &lookahead = *(consist->lookahead);
 			if (lookahead.reservation_end_tile == moving_front->tile && lookahead.reservation_end_position - lookahead.current_position <= (int)TILE_SIZE && !lookahead.flags.Test(TrainReservationLookAheadFlag::TunnelBridgeExitFree)) return false;
 			SignalState exit_state = GetTunnelBridgeExitSignalState(tile);
-			SetTunnelBridgeExitSignalState(tile, SIGNAL_STATE_GREEN);
+			SetTunnelBridgeExitSignalState(tile, SignalState::Green);
 
 			/* Get tile margin before changing vehicle direction */
 			const int tile_margin = GetTileMarginInFrontOfTrain(moving_front);
@@ -5575,7 +5575,7 @@ static bool CheckTrainStayInWormHolePathReserve(Train *consist, Train *moving_fr
 	moving_front->track = veh_orig_track;
 	moving_front->direction = veh_orig_direction;
 	if (ok && IsTunnelBridgeEffectivelyPBS(tile)) {
-		SetTunnelBridgeExitSignalState(tile, SIGNAL_STATE_GREEN);
+		SetTunnelBridgeExitSignalState(tile, SignalState::Green);
 		if (_extra_aspects > 0) {
 			SetTunnelBridgeExitSignalAspect(tile, 0);
 			UpdateAspectDeferred(tile, GetTunnelBridgeExitTrackdir(tile));
@@ -5596,26 +5596,26 @@ static bool CheckTrainStayInWormHole(Train *moving_front, TileIndex tile)
 		consist->flags.Set(VehicleRailFlag::Reversing);
 		return true;
 	}
-	SigSegState seg_state = (_settings_game.pf.reserve_paths || IsTunnelBridgeEffectivelyPBS(tile)) ? SIGSEG_PBS : UpdateSignalsOnSegment(tile, DiagDirection::Invalid, moving_front->owner);
-	if (seg_state != SIGSEG_PBS) {
+	SigSegState seg_state = (_settings_game.pf.reserve_paths || IsTunnelBridgeEffectivelyPBS(tile)) ? SigSegState::Path : UpdateSignalsOnSegment(tile, DiagDirection::Invalid, moving_front->owner);
+	if (seg_state != SigSegState::Path) {
 		CFollowTrackRail ft(GetTileOwner(tile), consist->GetIndirectCompatibleRailTypes());
 		if (ft.Follow(tile, GetTunnelBridgeExitTrackdir(tile))) {
 			if (ft.new_td_bits != TRACKDIR_BIT_NONE && KillFirstBit(ft.new_td_bits) == TRACKDIR_BIT_NONE) {
 				Trackdir td = FindFirstTrackdir(ft.new_td_bits);
 				if (HasPbsSignalOnTrackdir(ft.new_tile, td)) {
 					/* immediately after the exit, there is a PBS signal, switch to PBS mode */
-					seg_state = SIGSEG_PBS;
+					seg_state = SigSegState::Path;
 				}
 			}
 		}
 	}
-	if (seg_state == SIGSEG_PBS) {
+	if (seg_state == SigSegState::Path) {
 		if (!CheckTrainStayInWormHolePathReserve(consist, moving_front, tile)) {
 			consist->vehstatus.Set(VehState::TrainSlowing);
 			return true;
 		}
 	} else {
-		if (GetTunnelBridgeExitSignalState(tile) == SIGNAL_STATE_RED) {
+		if (GetTunnelBridgeExitSignalState(tile) == SignalState::Red) {
 			consist->vehstatus.Set(VehState::TrainSlowing);
 			return true;
 		}
@@ -5643,7 +5643,7 @@ static void HandleSignalBehindTrain(Train *v, int signal_number)
 		/* Flip signal on ramp. */
 		SetTunnelBridgeEntranceSignalGreen(tile);
 	} else if (IsBridge(v->tile) && signal_number >= 0) {
-		SetBridgeEntranceSimulatedSignalState(v->tile, signal_number, SIGNAL_STATE_GREEN);
+		SetBridgeEntranceSimulatedSignalState(v->tile, signal_number, SignalState::Green);
 		MarkSingleBridgeSignalDirty(tile, v->tile);
 		if (_extra_aspects > 0) UpdateAspectFromBridgeMiddleSignalChange(v->tile, TileOffsByDiagDir(GetTunnelBridgeDirection(v->tile)) * simulated_wormhole_signals, signal_number);
 	} else if (IsTunnel(v->tile) && signal_number >= 0 && _extra_aspects > 0) {
@@ -5866,7 +5866,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						Trackdir dir = FindFirstTrackdir(trackdirbits);
 						if (HasSignalOnTrackdir(gp.new_tile, dir) ||
 								(HasSignalOnTrackdir(gp.new_tile, ReverseTrackdir(dir)) &&
-								GetSignalType(gp.new_tile, TrackdirToTrack(dir)) != SIGTYPE_PBS)) {
+								GetSignalType(gp.new_tile, TrackdirToTrack(dir)) != SignalType::Path)) {
 							/* However, we do not want to be stopped by PBS signals
 							 * entered via the back. */
 							first->force_proceed = (first->force_proceed == TFP_SIGNAL) ? TFP_STUCK : TFP_NONE;
@@ -5925,7 +5925,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						 * This does not apply if the reason for reversing is a one-way
 						 * signal blocking us, because a train would then be stuck forever. */
 						if (!_settings_game.pf.reverse_at_signals && !HasOnewaySignalBlockingTrackdir(gp.new_tile, i) &&
-								UpdateSignalsOnSegment(v->tile, enterdir, v->owner) == SIGSEG_PBS) {
+								UpdateSignalsOnSegment(v->tile, enterdir, v->owner) == SigSegState::Path) {
 							first->wait_counter = 0;
 							return false;
 						}
@@ -5943,7 +5943,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 								TrainControllerTraceRestrictFrontEvaluation(gp.new_tile, dir, first, TRPAUF_REVERSE_BEHIND, [&]() -> bool {
 									return !IsPbsSignal(GetSignalType(gp.new_tile, TrackdirToTrack(dir)));
 								}, [&](const TraceRestrictProgramResult &out) {
-									if (out.flags & TRPRF_REVERSE_BEHIND && GetSignalType(gp.new_tile, TrackdirToTrack(dir)) == SIGTYPE_PBS &&
+									if (out.flags & TRPRF_REVERSE_BEHIND && GetSignalType(gp.new_tile, TrackdirToTrack(dir)) == SignalType::Path &&
 											!HasSignalOnTrackdir(gp.new_tile, dir)) {
 										first->reverse_distance = first->gcache.cached_total_length + (IsDiagonalTrack(TrackdirToTrack(dir)) ? 16 : 8);
 										SetWindowDirty(WindowClass::VehicleView, first->index);
@@ -5997,7 +5997,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				if (!(v->track & TRACK_BIT_WORMHOLE) && IsTunnelBridgeWithSignalSimulation(gp.new_tile) && (GetAcrossTunnelBridgeTrackBits(gp.new_tile) & chosen_track)) {
 					/* If red signal stop. */
 					if (v->IsMovingFront() && first->force_proceed == 0) {
-						if (IsTunnelBridgeSignalSimulationEntrance(gp.new_tile) && GetTunnelBridgeEntranceSignalState(gp.new_tile) == SIGNAL_STATE_RED) {
+						if (IsTunnelBridgeSignalSimulationEntrance(gp.new_tile) && GetTunnelBridgeEntranceSignalState(gp.new_tile) == SignalState::Red) {
 							first->cur_speed = 0;
 							first->vehstatus.Set(VehState::TrainSlowing);
 							return false;
@@ -6008,7 +6008,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 							goto invalid_rail;
 						}
 						/* Flip signal on tunnel entrance tile red. */
-						SetTunnelBridgeEntranceSignalState(gp.new_tile, SIGNAL_STATE_RED);
+						SetTunnelBridgeEntranceSignalState(gp.new_tile, SignalState::Red);
 						if (_extra_aspects > 0) {
 							PropagateAspectChange(gp.new_tile, GetTunnelBridgeEntranceTrackdir(gp.new_tile), 0);
 						}
@@ -6016,7 +6016,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						if (IsTunnelBridgeSignalSimulationBidirectional(gp.new_tile)) {
 							/* Set incoming signals in other direction to red as well */
 							TileIndex other_end = GetOtherTunnelBridgeEnd(gp.new_tile);
-							SetTunnelBridgeEntranceSignalState(other_end, SIGNAL_STATE_RED);
+							SetTunnelBridgeEntranceSignalState(other_end, SignalState::Red);
 							if (_extra_aspects > 0) {
 								PropagateAspectChange(other_end, GetTunnelBridgeEntranceTrackdir(other_end), 0);
 							}
@@ -6034,7 +6034,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					Track track = FindFirstTrack(chosen_track);
 					Trackdir tdir = TrackDirectionToTrackdir(track, chosen_dir);
 					if (v->IsMovingFront() && HasPbsSignalOnTrackdir(gp.new_tile, tdir)) {
-						SetSignalStateByTrackdir(gp.new_tile, tdir, SIGNAL_STATE_RED);
+						SetSignalStateByTrackdir(gp.new_tile, tdir, SignalState::Red);
 						MarkSingleSignalDirty(gp.new_tile, tdir);
 					}
 
@@ -6148,7 +6148,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						}
 						/* flip signal in front to red on bridges*/
 						if (distance == 0 && IsBridge(v->tile) && IsTunnelBridgeSignalSimulationEntrance(v->tile)) {
-							SetBridgeEntranceSimulatedSignalState(v->tile, v->tunnel_bridge_signal_num, SIGNAL_STATE_RED);
+							SetBridgeEntranceSimulatedSignalState(v->tile, v->tunnel_bridge_signal_num, SignalState::Red);
 							MarkSingleBridgeSignalDirty(gp.new_tile, v->tile);
 						}
 						if (_settings_game.vehicle.train_speed_adaptation && distance == 0 && IsTunnelBridgeSignalSimulationEntrance(v->tile)) {
@@ -6248,7 +6248,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					UpdateSignalsOnSegment(gp.new_tile, DiagDirection::Invalid, v->owner);
 					update_signal_tunbridge_exit = false;
 					if (v->IsMovingFront() && IsTunnelBridgeSignalSimulationExit(gp.new_tile)) {
-						SetTunnelBridgeExitSignalState(gp.new_tile, SIGNAL_STATE_RED);
+						SetTunnelBridgeExitSignalState(gp.new_tile, SignalState::Red);
 						MarkTileDirtyByTile(gp.new_tile, VMDF_NOT_MAP_MODE);
 					}
 				}
@@ -6282,7 +6282,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 			UpdateSignalsOnSegment(gp.new_tile, DiagDirection::Invalid, v->owner);
 			update_signal_tunbridge_exit = false;
 			if (v->IsMovingFront() && IsTunnelBridgeSignalSimulationExit(gp.new_tile)) {
-				SetTunnelBridgeExitSignalState(gp.new_tile, SIGNAL_STATE_RED);
+				SetTunnelBridgeExitSignalState(gp.new_tile, SignalState::Red);
 				MarkTileDirtyByTile(gp.new_tile, VMDF_NOT_MAP_MODE);
 			}
 		}
@@ -6792,7 +6792,7 @@ static bool TrainCheckIfLineEnds(Train *moving_front, bool reverse)
 	/* approaching a rail/road crossing? then make it red */
 	if (IsLevelCrossingTile(tile)) MaybeBarCrossingWithSound(tile);
 
-	if (IsTunnelBridgeSignalSimulationEntranceTile(tile) && GetTunnelBridgeEntranceSignalState(tile) == SIGNAL_STATE_RED) {
+	if (IsTunnelBridgeSignalSimulationEntranceTile(tile) && GetTunnelBridgeEntranceSignalState(tile) == SignalState::Red) {
 		return TrainApproachingLineEnd(moving_front, true, reverse);
 	}
 
@@ -6857,7 +6857,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		DiagDirection dir = VehicleExitDir(moving_front->GetMovingDirection(), moving_front->track);
 		if (IsRailDepotTile(moving_front->tile) || IsTileType(moving_front->tile, TileType::TunnelBridge)) dir = DiagDirection::Invalid;
 
-		if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SIGSEG_PBS || _settings_game.pf.reserve_paths) {
+		if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SigSegState::Path || _settings_game.pf.reserve_paths) {
 			TryPathReserve(consist, true, true);
 		}
 		consist->flags.Reset(VehicleRailFlag::LeavingStation);

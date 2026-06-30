@@ -129,7 +129,7 @@ static ChangeInfoResult SignalsChangeInfo(uint first, uint last, int prop, const
 				if (MappedPropertyLengthMismatch(buf, 4, mapping_entry)) break;
 				uint32_t mask = buf.ReadDWord();
 				if (_cur_gps.grffile->current_new_signal_style != nullptr) {
-					_cur_gps.grffile->current_new_signal_style->semaphore_mask = (uint8_t)mask;
+					_cur_gps.grffile->current_new_signal_style->semaphore_mask = static_cast<SignalTypeMask>(mask);
 				}
 				break;
 			}
@@ -138,7 +138,7 @@ static ChangeInfoResult SignalsChangeInfo(uint first, uint last, int prop, const
 				if (MappedPropertyLengthMismatch(buf, 4, mapping_entry)) break;
 				uint32_t mask = buf.ReadDWord();
 				if (_cur_gps.grffile->current_new_signal_style != nullptr) {
-					_cur_gps.grffile->current_new_signal_style->electric_mask = (uint8_t)mask;
+					_cur_gps.grffile->current_new_signal_style->electric_mask = static_cast<SignalTypeMask>(mask);
 				}
 				break;
 			}

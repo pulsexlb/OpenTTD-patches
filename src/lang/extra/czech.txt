@@ -13,8 +13,6 @@ STR_CONFIG_SETTING_ZOOM_LVL_OUT_32X                             :32x
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_64X                             :64x
 STR_CONFIG_SETTING_ZOOM_LVL_OUT_128X                            :128x
 
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_DEFAULT                    :Výchozí
-
 STR_ORDER_STOP_LOCATION_THROUGH                                 :{SPACE}[postupná nakládka]
 
 STR_CONFIG_SETTING_TOWN_GROWTH_EXTREME_SLOW                     :extrémně pomalá
@@ -402,9 +400,6 @@ STR_CONFIG_SETTING_TIMETABLE_AUTOFILL_ROUNDING_TICKS            :Zaokrouhlit aut
 STR_CONFIG_SETTING_TIMETABLE_AUTOFILL_ROUNDING_TICKS_HELPTEXT   :Časy nastavené automatickým jízdním řádem nejsou zaokrouhlovány. Den s faktorem délky dne 1 odpovídá počtu 74 cyklů. {}Pokud je jízdní řád nastaven na minuty, použije se číslo z nastavení "Cyklů za minutu", jinak je dána výchozí hodnota 74 cyklů.
 STR_CONFIG_SETTING_TIMETABLE_AUTOFILL_ROUNDING_TICKS_VALUE      :{COMMA}{NBSP}cykl{P us y ů}
 STR_CONFIG_SETTING_TIMETABLE_AUTOFILL_ROUNDING_TICKS_DEFAULT    :výchozí
-
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE                            :Výchozí druh silnic a tramvajových tratí (v nové hře/po načtení hry): {STRING}
-STR_CONFIG_SETTING_DEFAULT_ROAD_TYPE_HELPTEXT                   :Typ silnic, resp. tramvajových tratí, který bude vybrán po započetí či nahrání hry. "První dostupný" zvolí nejstarší typ, "poslední dostupný" zvolí nejnovější typ, "nejvíce používaný" zvolí typ, který je v aktuální hře nejvíce používaný a "výchozí" zvolí výchozí typ.
 
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER                           :Povolit stavbu řek: {STRING}
 STR_CONFIG_SETTING_ENABLE_BUILD_RIVER_HELPTEXT                  :Povolí stavbu řek mimo editor scénáře

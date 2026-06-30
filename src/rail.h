@@ -146,6 +146,8 @@ public:
 		SpriteID bridge_deck;  ///< bridge deck sprites base
 	} base_sprites;
 
+	using SignalSprites = EnumIndexArray<EnumIndexArray<EnumIndexArray<PalSpriteID, SignalState, SignalState::End>, SignalVariant, SignalVariant::End>, SignalType, SignalType::End>;
+
 	/**
 	 * struct containing the sprites for the rail GUI. @note only sprites referred to
 	 * directly in the code are listed
@@ -159,7 +161,7 @@ public:
 		SpriteID build_depot;        ///< button for building depots
 		SpriteID build_tunnel;       ///< button for building a tunnel
 		SpriteID convert_rail;       ///< button for converting rail
-		PalSpriteID signals[SIGTYPE_END][2][2]; ///< signal GUI sprites (type, variant, state)
+		SignalSprites signals;       ///< signal GUI sprites (type, variant, state)
 	} gui_sprites;
 
 	struct {

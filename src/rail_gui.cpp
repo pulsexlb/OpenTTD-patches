@@ -255,7 +255,7 @@ static void PlaceRail_Station(TileIndex tile)
 static SignalType GetDefaultSignalType()
 {
 	SignalType sigtype = _settings_client.gui.default_signal_type;
-	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && IsSignalTypeUnsuitableForRealisticBraking(sigtype)) return SIGTYPE_PBS_ONEWAY;
+	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && IsSignalTypeUnsuitableForRealisticBraking(sigtype)) return SignalType::PathOneWay;
 	return sigtype;
 }
 
@@ -334,9 +334,9 @@ static void GenericPlaceSignals(TileIndex tile)
 		sigtype = _cur_signal_type;
 		if (_convert_signal_button) build_flags |= BuildSignalFlags::Convert;
 		signal_style = _cur_signal_style;
-		if (_cur_signal_type == SIGTYPE_NO_ENTRY) num_dir_cycle = 1; // reverse default signal direction
+		if (_cur_signal_type == SignalType::NoEntry) num_dir_cycle = 1; // reverse default signal direction
 	} else {
-		sigvar = CalTime::CurYear() < _settings_client.gui.semaphore_build_before ? SIG_SEMAPHORE : SIG_ELECTRIC;
+		sigvar = CalTime::CurYear() < _settings_client.gui.semaphore_build_before ? SignalVariant::Semaphore : SignalVariant::Electric;
 		sigtype = GetDefaultSignalType();
 	}
 
@@ -518,7 +518,7 @@ static void HandleAutoSignalPlacement()
 		sigtype = _cur_signal_type;
 		signal_style = _cur_signal_style;
 	} else {
-		sigvar = CalTime::CurYear() < _settings_client.gui.semaphore_build_before ? SIG_SEMAPHORE : SIG_ELECTRIC;
+		sigvar = CalTime::CurYear() < _settings_client.gui.semaphore_build_before ? SignalVariant::Semaphore : SignalVariant::Electric;
 		sigtype = GetDefaultSignalType();
 	}
 
@@ -1758,25 +1758,25 @@ private:
 	void SetDisableStates()
 	{
 		for (WidgetID widget = WID_BS_SEMAPHORE_NORM; widget <= WID_BS_SEMAPHORE_NO_ENTRY; widget++) {
-			this->SetWidgetDisabledState(widget, _cur_signal_style > 0 && !HasBit(_new_signal_styles[_cur_signal_style - 1].semaphore_mask, TypeForClick(widget - WID_BS_SEMAPHORE_NORM)));
+			this->SetWidgetDisabledState(widget, _cur_signal_style > 0 && !_new_signal_styles[_cur_signal_style - 1].semaphore_mask.Test(TypeForClick(widget - WID_BS_SEMAPHORE_NORM)));
 		}
 		for (WidgetID widget = WID_BS_ELECTRIC_NORM; widget <= WID_BS_ELECTRIC_NO_ENTRY; widget++) {
-			this->SetWidgetDisabledState(widget, _cur_signal_style > 0 && !HasBit(_new_signal_styles[_cur_signal_style - 1].electric_mask, TypeForClick(widget - WID_BS_ELECTRIC_NORM)));
+			this->SetWidgetDisabledState(widget, _cur_signal_style > 0 && !_new_signal_styles[_cur_signal_style - 1].electric_mask.Test(TypeForClick(widget - WID_BS_ELECTRIC_NORM)));
 		}
 		if (_cur_signal_style > 0) {
 			const NewSignalStyle &style = _new_signal_styles[_cur_signal_style - 1];
-			if (!HasBit(_cur_signal_variant == SIG_SEMAPHORE ? style.semaphore_mask : style.electric_mask, _cur_signal_type)) {
+			if (!(_cur_signal_variant == SignalVariant::Semaphore ? style.semaphore_mask : style.electric_mask).Test(_cur_signal_type)) {
 				/* Currently selected signal type isn't allowed, pick another */
-				this->RaiseWidget((_cur_signal_variant == SIG_ELECTRIC ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
+				this->RaiseWidget((_cur_signal_variant == SignalVariant::Electric ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
 
-				_cur_signal_variant = SIG_ELECTRIC;
+				_cur_signal_variant = SignalVariant::Electric;
 				_cur_signal_button = 0;
 
 				const uint type_count = (WID_BS_SEMAPHORE_NO_ENTRY + 1 - WID_BS_SEMAPHORE_NORM);
 				for (uint i = 0; i < type_count * 2; i++) {
-					SignalVariant var = (i < type_count) ? SIG_ELECTRIC : SIG_SEMAPHORE;
+					SignalVariant var = (i < type_count) ? SignalVariant::Electric : SignalVariant::Semaphore;
 					uint button = i % type_count;
-					if (HasBit(var == SIG_SEMAPHORE ? style.semaphore_mask : style.electric_mask, TypeForClick(button))) {
+					if ((var == SignalVariant::Semaphore ? style.semaphore_mask : style.electric_mask).Test(TypeForClick(button))) {
 						_cur_signal_variant = var;
 						_cur_signal_button = button;
 						break;
@@ -1784,7 +1784,7 @@ private:
 				}
 
 				_cur_signal_type = TypeForClick(_cur_signal_button);
-				this->LowerWidget((_cur_signal_variant == SIG_ELECTRIC ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
+				this->LowerWidget((_cur_signal_variant == SignalVariant::Electric ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
 			}
 		}
 	}
@@ -1862,12 +1862,12 @@ public:
 		this->sig_sprite_size.height = 0;
 		this->sig_sprite_bottom_offset = 0;
 
-		auto process_signals = [&](const PalSpriteID signals[SIGTYPE_END][2][2]) {
-			for (uint type = SIGTYPE_BLOCK; type < SIGTYPE_END; type++) {
-				for (uint variant = SIG_ELECTRIC; variant <= SIG_SEMAPHORE; variant++) {
-					for (uint lowered = 0; lowered < 2; lowered++) {
+		auto process_signals = [&](const RailTypeInfo::SignalSprites &signals) {
+			for (SignalType type = SignalType::Block; type < SignalType::End; type = static_cast<SignalType>(to_underlying(type) + 1)) {
+				for (SignalVariant variant : {SignalVariant::Electric, SignalVariant::Semaphore}) {
+					for (SignalState state : {SignalState::Red, SignalState::Green}) {
 						Point offset;
-						SpriteID spr = signals[type][variant][lowered].sprite;
+						SpriteID spr = signals[type][variant][state].sprite;
 						if (spr == 0) continue;
 						Dimension sprite_size = GetSpriteSize(spr, &offset);
 						this->sig_sprite_bottom_offset = std::max<int>(this->sig_sprite_bottom_offset, sprite_size.height);
@@ -1914,16 +1914,16 @@ public:
 	{
 		if (IsInsideMM(widget, WID_BS_SEMAPHORE_NORM, WID_BS_ELECTRIC_NO_ENTRY + 1)) {
 			/* Extract signal from widget number. */
-			SignalType type = TypeForClick((widget - WID_BS_SEMAPHORE_NORM) % SIGTYPE_END);
-			int var = SIG_SEMAPHORE - (widget - WID_BS_SEMAPHORE_NORM) / SIGTYPE_END; // SignalVariant order is reversed compared to the widgets.
+			SignalType type = TypeForClick((widget - WID_BS_SEMAPHORE_NORM) % to_underlying(SignalType::End));
+			SignalVariant var = static_cast<SignalVariant>(to_underlying(SignalVariant::Semaphore) - (widget - WID_BS_SEMAPHORE_NORM) / to_underlying(SignalType::End)); // SignalVariant order is reversed compared to the widgets.
 			PalSpriteID sprite = { 0, 0 };
 			if (_cur_signal_style > 0) {
 				const NewSignalStyle &style = _new_signal_styles[_cur_signal_style - 1];
-				if (!HasBit(var == SIG_SEMAPHORE ? style.semaphore_mask : style.electric_mask, type)) return;
-				sprite = style.signals[type][var][this->IsWidgetLowered(widget)];
+				if (!(var == SignalVariant::Semaphore ? style.semaphore_mask : style.electric_mask).Test(type)) return;
+				sprite = style.signals[type][var][static_cast<SignalState>(this->IsWidgetLowered(widget))];
 			}
 			if (sprite.sprite == 0) {
-				sprite = GetRailTypeInfo(_cur_railtype)->gui_sprites.signals[type][var][this->IsWidgetLowered(widget)];
+				sprite = GetRailTypeInfo(_cur_railtype)->gui_sprites.signals[type][var][static_cast<SignalState>(this->IsWidgetLowered(widget))];
 			}
 
 			this->DrawSignalSprite(r, sprite);
@@ -1933,31 +1933,31 @@ public:
 	static SignalType TypeForClick(uint id)
 	{
 		switch (id) {
-			case 0: return SIGTYPE_BLOCK;
-			case 1: return SIGTYPE_ENTRY;
-			case 2: return SIGTYPE_EXIT;
-			case 3: return SIGTYPE_COMBO;
-			case 4: return SIGTYPE_PROG;
-			case 5: return SIGTYPE_PBS;
-			case 6: return SIGTYPE_PBS_ONEWAY;
-			case 7: return SIGTYPE_NO_ENTRY;
+			case 0: return SignalType::Block;
+			case 1: return SignalType::Entry;
+			case 2: return SignalType::Exit;
+			case 3: return SignalType::Combo;
+			case 4: return SignalType::Prog;
+			case 5: return SignalType::Path;
+			case 6: return SignalType::PathOneWay;
+			case 7: return SignalType::NoEntry;
 			default:
 				assert(!"Bad signal type button ID");
-				return SIGTYPE_BLOCK;
+				return SignalType::Block;
 		}
 	}
 
 	static uint ClickForType(SignalType type)
 	{
 		switch (type) {
-			case SIGTYPE_BLOCK:      return 0;
-			case SIGTYPE_ENTRY:      return 1;
-			case SIGTYPE_EXIT:       return 2;
-			case SIGTYPE_COMBO:      return 3;
-			case SIGTYPE_PROG:       return 4;
-			case SIGTYPE_PBS:        return 5;
-			case SIGTYPE_PBS_ONEWAY: return 6;
-			case SIGTYPE_NO_ENTRY:   return 7;
+			case SignalType::Block:      return 0;
+			case SignalType::Entry:      return 1;
+			case SignalType::Exit:       return 2;
+			case SignalType::Combo:      return 3;
+			case SignalType::Prog:       return 4;
+			case SignalType::Path:       return 5;
+			case SignalType::PathOneWay: return 6;
+			case SignalType::NoEntry:    return 7;
 			default:
 				assert(!"Bad signal type");
 				return 0;
@@ -1983,14 +1983,14 @@ public:
 			case WID_BS_ELECTRIC_PBS:
 			case WID_BS_ELECTRIC_PBS_OWAY:
 			case WID_BS_ELECTRIC_NO_ENTRY:
-				this->RaiseWidget((_cur_signal_variant == SIG_ELECTRIC ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
+				this->RaiseWidget((_cur_signal_variant == SignalVariant::Electric ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
 
-				_cur_signal_button = (uint)((widget - WID_BS_SEMAPHORE_NORM) % (SIGTYPE_END));
+				_cur_signal_button = (uint)((widget - WID_BS_SEMAPHORE_NORM) % to_underlying(SignalType::End));
 				_cur_signal_type = TypeForClick(_cur_signal_button);
-				_cur_signal_variant = widget >= WID_BS_ELECTRIC_NORM ? SIG_ELECTRIC : SIG_SEMAPHORE;
+				_cur_signal_variant = widget >= WID_BS_ELECTRIC_NORM ? SignalVariant::Electric : SignalVariant::Semaphore;
 
 				/* Update default (last-used) signal type in config file. */
-				_settings_client.gui.default_signal_type = Clamp<SignalType>(_cur_signal_type, SIGTYPE_BLOCK, SIGTYPE_PBS_ONEWAY);
+				_settings_client.gui.default_signal_type = Clamp<SignalType>(_cur_signal_type, SignalType::Block, SignalType::PathOneWay);
 
 				/* If 'remove' button of rail build toolbar is active, disable it. */
 				ClearRemoveState();
@@ -2081,7 +2081,7 @@ public:
 	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
 	{
 		if (!gui_scope) return;
-		this->LowerWidget((_cur_signal_variant == SIG_ELECTRIC ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
+		this->LowerWidget((_cur_signal_variant == SignalVariant::Electric ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
 
 		this->SetWidgetLoweredState(WID_BS_CONVERT, _convert_signal_button);
 		this->SetWidgetLoweredState(WID_BS_TRACE_RESTRICT, _trace_restrict_button);
@@ -2461,8 +2461,8 @@ void SetDefaultRailGui()
 
 	extern RailType _last_built_railtype;
 	RailType rt;
-	switch (_settings_client.gui.default_rail_type) {
-		case 2: {
+	switch (_settings_client.gui.default_rail_road_type) {
+		case DefaultRailRoadType::MostUsed: {
 			/* Find the most used rail type for the company current company */
 			std::array<uint32_t, RAILTYPE_END> &rail_infra = Company::Get(_local_company)->infrastructure.rail;
 			rt = static_cast<RailType>(std::distance(std::begin(rail_infra), std::ranges::max_element(rail_infra)));
@@ -2471,14 +2471,14 @@ void SetDefaultRailGui()
 			/* No rail, just get the first available one */
 			[[fallthrough]];
 		}
-		case 0: {
+		case DefaultRailRoadType::FirstAvailable: {
 			/* Use first available type */
 			std::vector<RailType>::const_iterator it = std::find_if(_sorted_railtypes.begin(), _sorted_railtypes.end(),
 					[](RailType r) { return HasRailTypeAvail(_local_company, r); });
 			rt = it != _sorted_railtypes.end() ? *it : RAILTYPE_BEGIN;
 			break;
 		}
-		case 1: {
+		case DefaultRailRoadType::LastAvailable: {
 			/* Use last available type */
 			std::vector<RailType>::const_reverse_iterator it = std::find_if(_sorted_railtypes.rbegin(), _sorted_railtypes.rend(),
 					[](RailType r){ return HasRailTypeAvail(_local_company, r); });
@@ -2500,13 +2500,13 @@ void SetDefaultRailGui()
  */
 void ResetSignalVariant(int32_t new_value)
 {
-	SignalVariant new_variant = (CalTime::CurYear() < _settings_client.gui.semaphore_build_before ? SIG_SEMAPHORE : SIG_ELECTRIC);
+	SignalVariant new_variant = (CalTime::CurYear() < _settings_client.gui.semaphore_build_before ? SignalVariant::Semaphore : SignalVariant::Electric);
 
 	if (new_variant != _cur_signal_variant) {
 		Window *w = FindWindowById(WindowClass::BuildSignal, 0);
 		if (w != nullptr) {
 			w->SetDirty();
-			w->RaiseWidget((_cur_signal_variant == SIG_ELECTRIC ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
+			w->RaiseWidget((_cur_signal_variant == SignalVariant::Electric ? WID_BS_ELECTRIC_NORM : WID_BS_SEMAPHORE_NORM) + _cur_signal_button);
 		}
 		_cur_signal_variant = new_variant;
 	}
@@ -2523,12 +2523,24 @@ void InitializeRailGUI()
 	_convert_signal_button = false;
 	_trace_restrict_button = false;
 	_program_signal_button = false;
-	_cur_signal_type   = GetDefaultSignalType();
-	_cur_signal_button =
-		_cur_signal_type == SIGTYPE_PROG ? 4 :
-		_cur_signal_type == SIGTYPE_PBS ? 5 :
-		_cur_signal_type == SIGTYPE_PBS_ONEWAY ? 6 :
-		_cur_signal_type == SIGTYPE_NO_ENTRY ? 7 : _cur_signal_type;
+	_cur_signal_type = GetDefaultSignalType();
+	switch (_cur_signal_type) {
+		case SignalType::Prog:
+			_cur_signal_button = 4;
+			break;
+		case SignalType::Path:
+			_cur_signal_button = 5;
+			break;
+		case SignalType::PathOneWay:
+			_cur_signal_button = 6;
+			break;
+		case SignalType::NoEntry:
+			_cur_signal_button = 7;
+			break;
+		default:
+			_cur_signal_button = to_underlying(_cur_signal_type);
+			break;
+	}
 	ResetSignalVariant();
 }
 
@@ -2654,7 +2666,7 @@ static void OpenBuildSignalWindow(BuildRailToolbarWindow *w, SignalVariant varia
 		signal_window->OnClick(Point(), WID_BS_TOGGLE_SIZE, 1);
 	}
 
-	signal_window->OnClick(Point(), ((variant == SIG_SEMAPHORE) ? WID_BS_SEMAPHORE_NORM : WID_BS_ELECTRIC_NORM) + BuildSignalWindow::ClickForType(type), 1);
+	signal_window->OnClick(Point(), ((variant == SignalVariant::Semaphore) ? WID_BS_SEMAPHORE_NORM : WID_BS_ELECTRIC_NORM) + BuildSignalWindow::ClickForType(type), 1);
 }
 
 void ShowBuildRailToolbarWithPickTile(RailType railtype, TileIndex tile)
@@ -2679,7 +2691,7 @@ void ShowBuildRailToolbarWithPickTile(RailType railtype, TileIndex tile)
 			}
 			if (IsRailTunnelBridgeTile(tile) && IsTunnelBridgeWithSignalSimulation(tile) && HasTrack(GetTunnelBridgeTrackBits(tile), track)) {
 				extern SignalType GetTunnelBridgeDisplaySignalType(TileIndex tile);
-				OpenBuildSignalWindow(w, IsTunnelBridgeSemaphore(tile) ? SIG_SEMAPHORE : SIG_ELECTRIC, GetTunnelBridgeDisplaySignalType(tile), GetTunnelBridgeSignalStyle(tile));
+				OpenBuildSignalWindow(w, IsTunnelBridgeSemaphore(tile) ? SignalVariant::Semaphore : SignalVariant::Electric, GetTunnelBridgeDisplaySignalType(tile), GetTunnelBridgeSignalStyle(tile));
 			}
 		}
 	}

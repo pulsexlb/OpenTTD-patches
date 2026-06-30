@@ -289,6 +289,8 @@ struct IntSettingDesc : SettingDesc {
 	void FormatValue(struct format_target &buf, const void *object) const override;
 	virtual void FormatIntValue(struct format_target &buf, uint32_t value) const;
 	void ParseValue(const IniItem *item, void *object) const override;
+	static std::optional<int32_t> ParseSingleValue(std::string_view str, int32_t min, uint32_t max);
+
 	bool IsSameValue(const IniItem *item, void *object) const override;
 	bool IsDefaultValue(void *object) const override;
 	void ResetToDefault(void *object) const override;

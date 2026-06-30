@@ -401,7 +401,7 @@ void UpdateAllBlockSignals(Owner owner)
 			if (IsTunnelBridgeSignalSimulationExit(tile)) {
 				AddSideToSignalBuffer(tile, DiagDirection::Invalid, track_owner);
 			}
-			if (_extra_aspects > 0 && IsTunnelBridgeSignalSimulationEntrance(tile) && GetTunnelBridgeEntranceSignalState(tile) == SIGNAL_STATE_GREEN) {
+			if (_extra_aspects > 0 && IsTunnelBridgeSignalSimulationEntrance(tile) && GetTunnelBridgeEntranceSignalState(tile) == SignalState::Green) {
 				SetTunnelBridgeEntranceSignalAspect(tile, 0);
 				UpdateAspectDeferred(tile, GetTunnelBridgeEntranceTrackdir(tile));
 			}

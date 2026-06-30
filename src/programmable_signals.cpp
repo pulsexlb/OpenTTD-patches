@@ -323,7 +323,7 @@ void SignalStateCondition::SetSignal(TileIndex tile, Trackdir track)
 		return false;
 	}
 
-	return GetSignalStateByTrackdir(this->sig_tile, this->sig_track) == SIGNAL_STATE_GREEN;
+	return GetSignalStateByTrackdir(this->sig_tile, this->sig_track) == SignalState::Green;
 }
 
 // -- Instructions
@@ -503,7 +503,7 @@ SignalSet::SignalSet(SignalProgram *prog, SignalState state)
 
 /*virtual*/ void SignalSet::Evaluate(SignalVM &vm)
 {
-	Debug(misc, 7, "  Executing SetSignal, making {}", this->to_state? "green" : "red");
+	Debug(misc, 7, "  Executing SetSignal, making {}", this->to_state == SignalState::Green ? "green" : "red");
 	vm.state       = this->to_state;
 	vm.instruction = nullptr;
 }
@@ -561,18 +561,18 @@ void FreeSignalPrograms()
 SignalState RunSignalProgram(SignalReference ref, uint num_exits, uint num_green)
 {
 	SignalProgram *program = GetExistingSignalProgram(ref);
-	if (program == nullptr) return SIGNAL_STATE_RED;
+	if (program == nullptr) return SignalState::Red;
 	SignalVM vm;
 	vm.program = program;
 	vm.num_exits = num_exits;
 	vm.num_green = num_green;
 
 	vm.instruction = program->first_instruction;
-	vm.state = SIGNAL_STATE_RED;
+	vm.state = SignalState::Red;
 
 	Debug(misc, 7, "{} exits, of which {} green", vm.num_exits, vm.num_green);
 	vm.Execute();
-	Debug(misc, 7, "Returning {}", vm.state == SIGNAL_STATE_GREEN ? "green" : "red");
+	Debug(misc, 7, "Returning {}", vm.state == SignalState::Green ? "green" : "red");
 	return vm.state;
 }
 
@@ -699,7 +699,7 @@ CommandCost CmdProgPresigInsertInstruction(DoCommandFlags flags, TileIndex tile,
 		case PSO_SET_SIGNAL: {
 			if (!exec) return CommandCost();
 
-			SignalSet *set = new SignalSet(prog, SIGNAL_STATE_RED);
+			SignalSet *set = new SignalSet(prog, SignalState::Red);
 			set->Insert(insert_before);
 			break;
 		}
@@ -748,8 +748,8 @@ CommandCost CmdProgPresigModifyInstruction(DoCommandFlags flags, TileIndex tile,
 	switch (insn->Opcode()) {
 		case PSO_SET_SIGNAL: {
 			if (mode != PPMCT_SIGNAL_STATE) return CMD_ERROR;
-			SignalState state = (SignalState)value;
-			if (state > SIGNAL_STATE_MAX) {
+			SignalState state = static_cast<SignalState>(value);
+			if (state >= SignalState::End) {
 				return CommandCost(STR_ERR_PROGSIG_INVALID_SIGNAL_STATE);
 			}
 			if (!exec) return CommandCost();

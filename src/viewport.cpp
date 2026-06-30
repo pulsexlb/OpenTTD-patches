@@ -1594,10 +1594,10 @@ static HighLightStyle GetPartOfAutoLine(int px, int py, const Point &selstart, c
  * Draws autorail highlights.
  *
  * @param *ti TileInfo Tile that is being drawn
- * @param autorail_type \c HT_DIR_XXX, offset into _AutorailTilehSprite[][]
+ * @param highlight_style Highlight to draw
  * @param pal Palette to use, -1 to autodetect
  */
-static void DrawAutorailSelection(const TileInfo *ti, HighLightStyle autorail_type, PaletteID pal = -1)
+static void DrawAutorailSelection(const TileInfo *ti, HighLightStyle highlight_style, PaletteID pal = -1)
 {
 	SpriteID image;
 	FoundationPart foundation_part = FOUNDATION_PART_NORMAL;
@@ -1607,28 +1607,27 @@ static void DrawAutorailSelection(const TileInfo *ti, HighLightStyle autorail_ty
 	if (IsFlatRailBridgeHeadTile(ti->tile)) {
 		extern bool IsValidFlatRailBridgeHeadTrackBits(Slope normalised_slope, DiagDirection bridge_direction, TrackBits tracks);
 
-		offset = _AutorailTilehSprite[SLOPE_FLAT][autorail_type];
-		const Slope real_tileh = GetTileSlope(ti->tile);
-		const Slope normalised_tileh = IsSteepSlope(real_tileh) ? SlopeWithOneCornerRaised(GetHighestSlopeCorner(real_tileh)) : real_tileh;
-		if (!IsValidFlatRailBridgeHeadTrackBits(normalised_tileh, GetTunnelBridgeDirection(ti->tile), TrackToTrackBits((Track) autorail_type))) {
+		offset = _autorail_slope_sprite_offsets[SLOPE_FLAT][highlight_style & HT_DIR_MASK];
+		const Slope real_slope = GetTileSlope(ti->tile);
+		const Slope normalised_slope = IsSteepSlope(real_slope) ? SlopeWithOneCornerRaised(GetHighestSlopeCorner(real_slope)) : real_slope;
+		if (!IsValidFlatRailBridgeHeadTrackBits(normalised_slope, GetTunnelBridgeDirection(ti->tile), TrackToTrackBits(static_cast<Track>(highlight_style & HT_DIR_MASK)))) {
 			offset = -offset;
 		}
 		if (!IsRailCustomBridgeHead(ti->tile)) {
 			bridge_head_mode = true;
 		}
 	} else {
-		Slope autorail_tileh = RemoveHalftileSlope(ti->tileh);
+		Slope slope = RemoveHalftileSlope(ti->tileh);
 		if (IsHalftileSlope(ti->tileh)) {
 			static const HighLightStyle _lower_rail[CORNER_END] = { HT_DIR_VR, HT_DIR_HU, HT_DIR_VL, HT_DIR_HL }; // CORNER_W, CORNER_S, CORNER_E, CORNER_N
 			Corner halftile_corner = GetHalftileSlopeCorner(ti->tileh);
-			if (autorail_type != _lower_rail[halftile_corner]) {
+			if ((highlight_style & HT_DIR_MASK) != _lower_rail[halftile_corner]) {
 				foundation_part = FOUNDATION_PART_HALFTILE;
 				/* Here we draw the highlights of the "three-corners-raised"-slope. That looks ok to me. */
-				autorail_tileh = SlopeWithThreeCornersRaised(OppositeCorner(halftile_corner));
+				slope = SlopeWithThreeCornersRaised(OppositeCorner(halftile_corner));
 			}
 		}
-		assert(autorail_type < HT_DIR_END);
-		offset = _AutorailTilehSprite[autorail_tileh][autorail_type];
+		offset = _autorail_slope_sprite_offsets[slope][highlight_style & HT_DIR_MASK];
 	}
 
 	if (offset >= 0) {

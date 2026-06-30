@@ -1415,7 +1415,7 @@ void DumpTileSignalsInfo(TileIndex tile, NIExtraInfoOutput &output)
 		if (HasTrack(tile, TrackdirToTrack(td)) && HasSignalOnTrackdir(tile, td)) {
 			const SignalState state = GetSignalStateByTrackdir(tile, td);
 			output.buffer.format("  trackdir: {}, state: {}", td, state);
-			if (_extra_aspects > 0 && state == SIGNAL_STATE_GREEN) output.buffer.format(", aspect: {}", GetSignalAspect(tile, TrackdirToTrack(td)));
+			if (_extra_aspects > 0 && state == SignalState::Green) output.buffer.format(", aspect: {}", GetSignalAspect(tile, TrackdirToTrack(td)));
 			if (GetSignalAlwaysReserveThrough(tile, TrackdirToTrack(td))) output.buffer.append(", always reserve through");
 			if (GetSignalSpecialPropagationFlag(tile, TrackdirToTrack(td))) output.buffer.append(", special propagation flag");
 			output.FinishPrint();
@@ -1428,13 +1428,13 @@ void DumpTunnelBridgeSignalsInfo(TileIndex tile, NIExtraInfoOutput &output)
 	if (IsTunnelBridgeSignalSimulationEntrance(tile)) {
 		const SignalState state = GetTunnelBridgeEntranceSignalState(tile);
 		output.buffer.format("  Entrance: state: {}", state);
-		if (_extra_aspects > 0 && state == SIGNAL_STATE_GREEN) output.buffer.format(", aspect: {}", GetTunnelBridgeEntranceSignalAspect(tile));
+		if (_extra_aspects > 0 && state == SignalState::Green) output.buffer.format(", aspect: {}", GetTunnelBridgeEntranceSignalAspect(tile));
 		output.FinishPrint();
 	}
 	if (IsTunnelBridgeSignalSimulationExit(tile)) {
 		const SignalState state = GetTunnelBridgeExitSignalState(tile);
 		output.buffer.format("  Exit: state: {}", state);
-		if (_extra_aspects > 0 && state == SIGNAL_STATE_GREEN) output.buffer.format(", aspect: {}", GetTunnelBridgeExitSignalAspect(tile));
+		if (_extra_aspects > 0 && state == SignalState::Green) output.buffer.format(", aspect: {}", GetTunnelBridgeExitSignalAspect(tile));
 		output.FinishPrint();
 	}
 	if (GetTunnelBridgeSignalSpecialPropagationFlag(tile)) {

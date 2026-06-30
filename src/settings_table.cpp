@@ -543,7 +543,7 @@ static void TrainBrakingModelChanged(int32_t new_value)
 				TrackBits bits = GetTrackBits(t);
 				do {
 					Track track = RemoveFirstTrack(&bits);
-					if (HasSignalOnTrack(t, track) && GetSignalType(t, track) == SIGTYPE_BLOCK && HasBit(GetRailReservationTrackBits(t), track)) {
+					if (HasSignalOnTrack(t, track) && GetSignalType(t, track) == SignalType::Block && HasBit(GetRailReservationTrackBits(t), track)) {
 						if (EnsureNoTrainOnTrackBits(t, TrackToTrackBits(track)).Succeeded()) {
 							UnreserveTrack(t, track);
 						}

@@ -3511,7 +3511,7 @@ static bool DrawCustomStationFoundations(const StationSpec *statspec, BaseStatio
 	}
 
 	OffsetGroundSprite(0, -static_cast<int>(TILE_HEIGHT));
-	ti->z += ApplyPixelFoundationToSlope(FOUNDATION_LEVELED, ti->tileh);
+	ti->z += ApplyPixelFoundationToSlope(Foundation::Leveled, ti->tileh);
 
 	return true;
 }
@@ -3609,7 +3609,7 @@ static void DrawTile_Station(TileInfo *ti, DrawTileProcParams params)
 	/* don't show foundation for docks */
 	if (ti->tileh != SLOPE_FLAT && !IsDock(ti->tile)) {
 		if (!DrawCustomStationFoundations(statspec, st, ti, tile_layout)) {
-			DrawFoundation(ti, FOUNDATION_LEVELED);
+			DrawFoundation(ti, Foundation::Leveled);
 		}
 	}
 

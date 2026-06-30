@@ -357,7 +357,7 @@ public:
 			*no_pbs_back_penalty = false;
 			flags_to_check |= TRPAUF_NO_PBS_BACK_PENALTY;
 		}
-		if (GetSignalType(tile, TrackdirToTrack(trackdir)) == SIGTYPE_PBS && !HasSignalOnTrackdir(tile, trackdir)) {
+		if (GetSignalType(tile, TrackdirToTrack(trackdir)) == SignalType::Path && !HasSignalOnTrackdir(tile, trackdir)) {
 			flags_to_check |= TRPAUF_REVERSE_BEHIND;
 		}
 		if (prog != nullptr && prog->actions_used_flags & flags_to_check) {
@@ -422,7 +422,7 @@ public:
 
 					/* cache the look-ahead polynomial constant only if we didn't pass more signals than the look-ahead limit is */
 					int look_ahead_cost = (n.num_signals_passed < this->sig_look_ahead_costs.size()) ? this->sig_look_ahead_costs[n.num_signals_passed] : 0;
-					if (sig_state != SIGNAL_STATE_RED) {
+					if (sig_state != SignalState::Red) {
 						/* green signal */
 						n.flags_u.flags_s.last_signal_was_red = false;
 						/* negative look-ahead red-signal penalties would cause problems later, so use them as positive penalties for green signal */
@@ -452,11 +452,11 @@ public:
 						/* special signal penalties */
 						if (n.num_signals_passed == 0) {
 							switch (sig_type) {
-								case SIGTYPE_PROG:
-								case SIGTYPE_COMBO:
-								case SIGTYPE_EXIT:   cost += Yapf().PfGetSettings().rail_firstred_exit_penalty; break; // first signal is red pre-signal-exit
-								case SIGTYPE_BLOCK:
-								case SIGTYPE_ENTRY:  cost += Yapf().PfGetSettings().rail_firstred_penalty; break;
+								case SignalType::Prog:
+								case SignalType::Combo:
+								case SignalType::Exit:   cost += Yapf().PfGetSettings().rail_firstred_exit_penalty; break; // first signal is red pre-signal-exit
+								case SignalType::Block:
+								case SignalType::Entry:  cost += Yapf().PfGetSettings().rail_firstred_penalty; break;
 								default: break;
 							}
 						}
@@ -657,7 +657,7 @@ public:
 					if (segment.last_signal_tile != INVALID_TILE) {
 						dbg_assert_tile(HasSignalOnTrackdir(segment.last_signal_tile, segment.last_signal_td), segment.last_signal_tile);
 						SignalState sig_state = GetSignalStateByTrackdir(segment.last_signal_tile, segment.last_signal_td);
-						bool is_red = (sig_state == SIGNAL_STATE_RED);
+						bool is_red = (sig_state == SignalState::Red);
 						n.flags_u.flags_s.last_signal_was_red = is_red;
 						if (is_red) {
 							n.last_red_signal_type = GetSignalType(segment.last_signal_tile, TrackdirToTrack(segment.last_signal_td));
@@ -830,7 +830,7 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 						end_segment_reason.Set(EndSegmentReason::SafeTile);
 					}
 				} else if (likely(_settings_game.pf.back_of_one_way_pbs_waiting_point) && HasSignalOnTrackdir(next.tile, ReverseTrackdir(next.td)) &&
-						GetSignalType(next.tile, TrackdirToTrack(next.td)) == SIGTYPE_PBS_ONEWAY) {
+						GetSignalType(next.tile, TrackdirToTrack(next.td)) == SignalType::PathOneWay) {
 					/* Possible safe tile, but not so good as it's the back of a signal... */
 					end_segment_reason.Set({EndSegmentReason::SafeTile, EndSegmentReason::DeadEnd});
 					extra_cost += Yapf().PfGetSettings().rail_lastred_exit_penalty;
@@ -914,7 +914,7 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 			n.flags_u.flags_s.target_seen = true;
 			/* Last-red and last-red-exit penalties. */
 			if (n.flags_u.flags_s.last_signal_was_red) {
-				if (n.last_red_signal_type == SIGTYPE_EXIT) {
+				if (n.last_red_signal_type == SignalType::Exit) {
 					/* last signal was red pre-signal-exit */
 					extra_cost += Yapf().PfGetSettings().rail_lastred_exit_penalty;
 				} else if (!IsPbsSignal(n.last_red_signal_type)) {

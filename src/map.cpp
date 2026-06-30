@@ -581,8 +581,8 @@ void DumpMapStats(format_target &buffer)
 		if (IsTileType(t, TileType::Railway)) {
 			if (GetRailTileType(t) == RailTileType::Signals) {
 				if (IsRestrictedSignal(t)) restricted_signals++;
-				if (HasSignalOnTrack(t, TRACK_LOWER) && GetSignalType(t, TRACK_LOWER) == SIGTYPE_PROG) prog_signals++;
-				if (HasSignalOnTrack(t, TRACK_UPPER) && GetSignalType(t, TRACK_UPPER) == SIGTYPE_PROG) prog_signals++;
+				if (HasSignalOnTrack(t, TRACK_LOWER) && GetSignalType(t, TRACK_LOWER) == SignalType::Prog) prog_signals++;
+				if (HasSignalOnTrack(t, TRACK_UPPER) && GetSignalType(t, TRACK_UPPER) == SignalType::Prog) prog_signals++;
 			}
 		}
 

@@ -208,7 +208,7 @@ uint ApplyFoundationToSlope(Foundation f, Slope &s)
 		return dz;
 	}
 
-	if (f != FOUNDATION_STEEP_BOTH && IsNonContinuousFoundation(f)) {
+	if (f != Foundation::SteepBoth && IsNonContinuousFoundation(f)) {
 		s = HalftileSlope(s, GetHalftileFoundationCorner(f));
 		return 0;
 	}
@@ -222,19 +222,19 @@ uint ApplyFoundationToSlope(Foundation f, Slope &s)
 	Corner highest_corner = GetHighestSlopeCorner(s);
 
 	switch (f) {
-		case FOUNDATION_INCLINED_X:
+		case Foundation::InclinedX:
 			s = (((highest_corner == CORNER_W) || (highest_corner == CORNER_S)) ? SLOPE_SW : SLOPE_NE);
 			break;
 
-		case FOUNDATION_INCLINED_Y:
+		case Foundation::InclinedY:
 			s = (((highest_corner == CORNER_S) || (highest_corner == CORNER_E)) ? SLOPE_SE : SLOPE_NW);
 			break;
 
-		case FOUNDATION_STEEP_LOWER:
+		case Foundation::SteepLower:
 			s = SlopeWithOneCornerRaised(highest_corner);
 			break;
 
-		case FOUNDATION_STEEP_BOTH:
+		case Foundation::SteepBoth:
 			s = HalftileSlope(SlopeWithOneCornerRaised(highest_corner), highest_corner);
 			break;
 
@@ -393,7 +393,7 @@ void DrawFoundation(TileInfo *ti, Foundation f)
 	if (!IsFoundation(f)) return;
 
 	/* Two part foundations must be drawn separately */
-	assert(f != FOUNDATION_STEEP_BOTH);
+	assert(f != Foundation::SteepBoth);
 
 	uint sprite_block = 0;
 	auto [slope, z] = GetFoundationPixelSlope(ti->tile);
@@ -424,18 +424,18 @@ void DrawFoundation(TileInfo *ti, Foundation f)
 
 		if (IsInclinedFoundation(f)) {
 			/* inclined foundation */
-			uint8_t inclined = highest_corner * 2 + (f == FOUNDATION_INCLINED_Y ? 1 : 0);
+			uint8_t inclined = highest_corner * 2 + (f == Foundation::InclinedY ? 1 : 0);
 
 			SpriteBounds bounds{{}, {1, 1, TILE_HEIGHT}, {}};
-			if (f == FOUNDATION_INCLINED_X) bounds.extent.x = TILE_SIZE;
-			if (f == FOUNDATION_INCLINED_Y) bounds.extent.y = TILE_SIZE;
+			if (f == Foundation::InclinedX) bounds.extent.x = TILE_SIZE;
+			if (f == Foundation::InclinedY) bounds.extent.y = TILE_SIZE;
 			AddSortableSpriteToDraw(inclined_base + inclined, PAL_NONE, *ti, bounds);
 			OffsetGroundSprite(0, 0);
 		} else if (IsLeveledFoundation(f)) {
 			static constexpr SpriteBounds bounds{{0, 0, -(int)TILE_HEIGHT}, {TILE_SIZE, TILE_SIZE, TILE_HEIGHT - 1}, {}};
 			AddSortableSpriteToDraw(leveled_base + SlopeWithOneCornerRaised(highest_corner), PAL_NONE, *ti, bounds);
 			OffsetGroundSprite(0, -(int)TILE_HEIGHT);
-		} else if (f == FOUNDATION_STEEP_LOWER) {
+		} else if (f == Foundation::SteepLower) {
 			/* one corner raised */
 			OffsetGroundSprite(0, -(int)TILE_HEIGHT);
 		} else {
@@ -483,11 +483,11 @@ void DrawFoundation(TileInfo *ti, Foundation f)
 			OffsetGroundSprite(0, 0);
 		} else {
 			/* inclined foundation */
-			uint8_t inclined = GetHighestSlopeCorner(ti->tileh) * 2 + (f == FOUNDATION_INCLINED_Y ? 1 : 0);
+			uint8_t inclined = GetHighestSlopeCorner(ti->tileh) * 2 + (f == Foundation::InclinedY ? 1 : 0);
 
 			SpriteBounds bounds{{}, {1, 1, TILE_HEIGHT}, {}};
-			if (f == FOUNDATION_INCLINED_X) bounds.extent.x = TILE_SIZE;
-			if (f == FOUNDATION_INCLINED_Y) bounds.extent.y = TILE_SIZE;
+			if (f == Foundation::InclinedX) bounds.extent.x = TILE_SIZE;
+			if (f == Foundation::InclinedY) bounds.extent.y = TILE_SIZE;
 			AddSortableSpriteToDraw(inclined_base + inclined, PAL_NONE, *ti, bounds);
 			OffsetGroundSprite(0, 0);
 		}

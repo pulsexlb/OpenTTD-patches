@@ -1860,9 +1860,8 @@ void InitializeRoadGui()
 	_waypoint_gui.sel_type = 0;
 }
 
-
 /** Set the initial (default) road and tram types to use */
-static void SetDefaultRoadGui()
+void SetDefaultRoadGui()
 {
 	extern RoadType _last_built_roadtype;
 	extern RoadType _last_built_tramtype;
@@ -1871,7 +1870,11 @@ static void SetDefaultRoadGui()
 	_last_built_roadtype = ROADTYPE_ROAD;
 	_last_built_tramtype = ROADTYPE_TRAM;
 
-	if (_local_company == COMPANY_SPECTATOR || !Company::IsValidID(_local_company)) return;
+	DefaultRailRoadType default_mode = _settings_client.gui.default_rail_road_type;
+
+	if (default_mode == DefaultRailRoadType::MostUsed && (_local_company == COMPANY_SPECTATOR || !Company::IsValidID(_local_company))) {
+		default_mode = DefaultRailRoadType::FirstAvailable;
+	}
 
 	auto get_first_road_type = [](RoadTramType rtt, RoadType &out) {
 		auto it = std::find_if(_sorted_roadtypes.begin(), _sorted_roadtypes.end(),
@@ -1884,46 +1887,32 @@ static void SetDefaultRoadGui()
 		if (it != _sorted_roadtypes.rend()) out = *it;
 	};
 
-	switch (_settings_client.gui.default_road_type) {
-		case 3: {
-			/* Use defaults above */
-			break;
-		}
-		case 2: {
+	switch (default_mode) {
+		case DefaultRailRoadType::MostUsed: {
 			/* Find the most used types */
-			std::array<uint, ROADTYPE_END> road_count = {};
-			std::array<uint, ROADTYPE_END> tram_count = {};
-			for (TileIndex t(0); t < Map::Size(); t++) {
-				if (MayHaveRoad(t)) {
-					if (IsTileType(t, TileType::Station) && !IsAnyRoadStop(t)) continue;
-					RoadType road_type = GetRoadTypeRoad(t);
-					if (road_type != INVALID_ROADTYPE) road_count[road_type]++;
-					RoadType tram_type = GetRoadTypeTram(t);
-					if (tram_type != INVALID_ROADTYPE) tram_count[tram_type]++;
-				}
-			}
-
-			auto get_best_road_type = [&](RoadTramType rtt, RoadType &out, const std::array<uint, ROADTYPE_END> &count) {
+			const Company *c = Company::Get(_local_company);
+			auto get_best_road_type = [&](RoadTramType rtt, RoadType &out) {
 				uint highest = 0;
-				for (RoadType rt = ROADTYPE_BEGIN; rt != ROADTYPE_END; rt++) {
-					if (count[rt] > highest && HasRoadTypeAvail(_local_company, rt)) {
+				for (RoadType rt : GetMaskForRoadTramType(rtt).IterateSetBits()) {
+					const auto count = c->infrastructure.road[rt];
+					if (count > highest && HasRoadTypeAvail(_local_company, rt)) {
 						out = rt;
-						highest = count[rt];
+						highest = count;
 					}
 				}
 				if (highest == 0) get_first_road_type(rtt, out);
 			};
-			get_best_road_type(RoadTramType::Road, _last_built_roadtype, road_count);
-			get_best_road_type(RoadTramType::Tram, _last_built_tramtype, tram_count);
+			get_best_road_type(RoadTramType::Road, _last_built_roadtype);
+			get_best_road_type(RoadTramType::Tram, _last_built_tramtype);
 			break;
 		}
-		case 0: {
+		case DefaultRailRoadType::FirstAvailable: {
 			/* Use first available types */
 			get_first_road_type(RoadTramType::Road, _last_built_roadtype);
 			get_first_road_type(RoadTramType::Tram, _last_built_tramtype);
 			break;
 		}
-		case 1: {
+		case DefaultRailRoadType::LastAvailable: {
 			/* Use last available type */
 			get_last_road_type(RoadTramType::Road, _last_built_roadtype);
 			get_last_road_type(RoadTramType::Tram, _last_built_tramtype);

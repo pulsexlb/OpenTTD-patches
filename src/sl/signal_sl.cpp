@@ -198,7 +198,7 @@ static void Save_SPRG()
 				case PSO_SET_SIGNAL: {
 					SignalSet *s = static_cast<SignalSet*>(insn);
 					WriteVLI(b, s->next->Id());
-					WriteVLI(b, s->to_state ? 1 : 0);
+					WriteVLI(b, to_underlying(s->to_state));
 					break;
 				}
 
@@ -305,8 +305,8 @@ static void Load_SPRG()
 					SignalSet *s = new SignalSet(sp);
 					MakeFixup(l, s->GetPrevHandle(), ReadVLI());
 					MakeFixup(l, s->next, ReadVLI());
-					s->to_state = (SignalState) ReadVLI();
-					if(s->to_state > SIGNAL_STATE_MAX) NOT_REACHED();
+					s->to_state = static_cast<SignalState>(ReadVLI());
+					if (s->to_state >= SignalState::End) NOT_REACHED();
 					break;
 				}
 

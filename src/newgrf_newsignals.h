@@ -12,6 +12,7 @@
 
 #include "newgrf_commons.h"
 #include "newgrf_spritegroup.h"
+#include "rail.h"
 #include "tunnel_map.h"
 #include "gfx_type.h"
 
@@ -44,10 +45,10 @@ struct NewSignalStyle {
 	uint8_t grf_local_id;
 	uint8_t style_flags;
 	uint8_t lookahead_extra_aspects;
-	uint8_t semaphore_mask;
-	uint8_t electric_mask;
+	SignalTypeMask semaphore_mask;
+	SignalTypeMask electric_mask;
 
-	PalSpriteID signals[SIGTYPE_END][2][2];
+	RailTypeInfo::SignalSprites signals;
 };
 extern std::array<NewSignalStyle, MAX_NEW_SIGNAL_STYLES> _new_signal_styles;
 extern uint8_t _default_signal_style_lookahead_extra_aspects;

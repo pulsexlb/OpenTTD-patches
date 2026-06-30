@@ -94,10 +94,10 @@ SignalState GetBridgeEntranceSimulatedSignalStateExtended(TileIndex t, uint16_t 
 		uint16_t offset = signal - BRIDGE_M2_SIGNAL_STATE_COUNT;
 		uint16_t slot = offset >> 6;
 		uint16_t bit = offset & 0x3F;
-		if (slot >= lbss.signal_red_bits.size()) return SIGNAL_STATE_GREEN;
-		return GB(lbss.signal_red_bits[slot], bit, 1) ? SIGNAL_STATE_RED : SIGNAL_STATE_GREEN;
+		if (slot >= lbss.signal_red_bits.size()) return SignalState::Green;
+		return GB(lbss.signal_red_bits[slot], bit, 1) ? SignalState::Red : SignalState::Green;
 	} else {
-		return SIGNAL_STATE_GREEN;
+		return SignalState::Green;
 	}
 }
 
@@ -108,7 +108,7 @@ void SetBridgeEntranceSimulatedSignalStateExtended(TileIndex t, uint16_t signal,
 	uint16_t slot = offset >> 6;
 	uint16_t bit = offset & 0x3F;
 	if (slot >= lbss.signal_red_bits.size()) lbss.signal_red_bits.resize(slot + 1);
-	AssignBit(lbss.signal_red_bits[slot], bit, state == SIGNAL_STATE_RED);
+	AssignBit(lbss.signal_red_bits[slot], bit, state == SignalState::Red);
 	_m[t].m2 |= BRIDGE_M2_SIGNAL_STATE_EXT_FLAG;
 }
 
