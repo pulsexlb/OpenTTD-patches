@@ -451,7 +451,8 @@ ScriptLogTypes::LogData &ScriptInstance::GetLogData()
 			return true;
 		}
 
-		case OT_INSTANCE:{
+		case OT_INSTANCE: {
+			SlWriteByte(SQSL_INSTANCE);
 			SQInteger top = sq_gettop(vm);
 			try {
 				ScriptObject *obj = static_cast<ScriptObject *>(Squirrel::GetRealInstance(vm, -1, "Object"));
