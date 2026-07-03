@@ -21,10 +21,11 @@ enum class PoolType : uint8_t {
 	Normal, ///< Normal pool containing game objects.
 	NetworkClient, ///< Network client pools.
 	NetworkAdmin, ///< Network admin pool.
+	NetworkSchedule, ///< Network schedule API pool.
 	Data, ///< NewGRF or other data, that is not reset together with normal pools.
 };
 using PoolTypes = EnumBitSet<PoolType, uint8_t>;
-static constexpr PoolTypes PT_ALL = {PoolType::Normal, PoolType::NetworkClient, PoolType::NetworkAdmin, PoolType::Data};
+static constexpr PoolTypes PT_ALL = {PoolType::Normal, PoolType::NetworkClient, PoolType::NetworkAdmin, PoolType::NetworkSchedule, PoolType::Data};
 
 typedef std::vector<struct PoolBase *> PoolVector; ///< Vector of pointers to PoolBase
 

@@ -386,7 +386,7 @@ static nlohmann::ordered_json OrderToJSON(const Order &o, VehicleType vt)
 	return json;
 }
 
-static nlohmann::ordered_json DispatchScheduleToJSON(const DispatchSchedule &sd)
+nlohmann::ordered_json DispatchScheduleToJSON(const DispatchSchedule &sd)
 {
 	using SFName = OrderSerialisationFieldNames::Schedules;
 

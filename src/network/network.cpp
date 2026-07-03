@@ -14,6 +14,7 @@
 #include "../command_func.h"
 #include "../date_func.h"
 #include "network_admin.h"
+#include "core/tcp_schedule.h"
 #include "network_client.h"
 #include "network_query.h"
 #include "network_server.h"
@@ -710,6 +711,7 @@ static void InitializeNetworkPools(bool close_admins = true)
 {
 	PoolTypes to_clean{PoolType::NetworkClient};
 	if (close_admins) to_clean.Set(PoolType::NetworkAdmin);
+	if (close_admins) to_clean.Set(PoolType::NetworkSchedule);
 	PoolBase::Clean(to_clean);
 }
 
@@ -724,6 +726,9 @@ void NetworkClose(bool close_admins)
 			for (ServerNetworkAdminSocketHandler *as : ServerNetworkAdminSocketHandler::Iterate()) {
 				as->CloseConnection(true);
 			}
+			for (ServerNetworkScheduleSocketHandler *as : ServerNetworkScheduleSocketHandler::Iterate()) {
+				as->CloseConnection(true);
+			}
 		}
 
 		for (NetworkClientSocket *cs : NetworkClientSocket::Iterate()) {
@@ -731,6 +736,7 @@ void NetworkClose(bool close_admins)
 		}
 		ServerNetworkGameSocketHandler::CloseListeners();
 		ServerNetworkAdminSocketHandler::CloseListeners();
+		ServerNetworkScheduleSocketHandler::CloseListeners();
 
 		_network_coordinator_client.CloseConnection();
 	} else {
@@ -1059,6 +1065,13 @@ bool NetworkServerStart()
 		if (!ServerNetworkAdminSocketHandler::Listen(_settings_client.network.server_admin_port)) return false;
 	}
 
+	/* Start the schedule API listener. */
+	if (_settings_client.network.schedule_api_port > 0) {
+		Debug(net, 5, "Starting listeners for schedule API");
+		ServerNetworkScheduleSocketHandler::Listen(_settings_client.network.schedule_api_port);
+		NetworkScheduleInitToken();
+	}
+
 	/* Try to start UDP-server */
 	Debug(net, 5, "Starting listeners for incoming server queries");
 	NetworkUDPServerListen();
@@ -1209,6 +1222,7 @@ static bool NetworkReceive()
 	bool result;
 	if (_network_server) {
 		ServerNetworkAdminSocketHandler::Receive();
+		ServerNetworkScheduleSocketHandler::Receive();
 		result = ServerNetworkGameSocketHandler::Receive();
 	} else {
 		result = ClientNetworkGameSocketHandler::Receive();
@@ -1222,6 +1236,7 @@ static void NetworkSend()
 {
 	if (_network_server) {
 		ServerNetworkAdminSocketHandler::Send();
+		ServerNetworkScheduleSocketHandler::Send();
 		ServerNetworkGameSocketHandler::Send();
 	} else {
 		ClientNetworkGameSocketHandler::Send();
@@ -1476,6 +1491,9 @@ void NetworkGameLoop()
 		const size_t total_sync_records = _network_sync_records.size();
 		_network_sync_records.push_back({ _frame_counter, _random.state[0], _state_checksum.state });
 		_record_sync_records = true;
+
+		/* Process any pending schedule API requests. */
+		ServerNetworkScheduleSocketHandler::ProcessRequests();
 
 		NetworkExecuteLocalCommandQueue();
 

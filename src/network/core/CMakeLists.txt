@@ -19,6 +19,8 @@ add_files(
     tcp_admin.cpp
     tcp_admin.h
     tcp_connect.cpp
+    tcp_schedule.cpp
+    tcp_schedule.h
     tcp_content.cpp
     tcp_content.h
     tcp_content_type.h

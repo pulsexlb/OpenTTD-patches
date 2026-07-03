@@ -566,6 +566,8 @@ struct NetworkSettings {
 	bool        pause_on_join;                            ///< pause the game when people join
 	uint16_t      server_port;                            ///< port the server listens on
 	uint16_t      server_admin_port;                      ///< port the server listens on for the admin network
+	uint16_t      schedule_api_port;                      ///< port the server listens on for the schedule API
+	std::string schedule_api_token;                       ///< token for authenticating schedule API clients
 	bool        server_admin_chat;                        ///< allow private chat for the server to be distributed to the admin network
 	ServerGameType server_game_type;                      ///< Server type: local / public / invite-only.
 	std::string server_invite_code;                       ///< Invite code to use when registering as server.

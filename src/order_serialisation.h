@@ -14,6 +14,8 @@
 #include "vehicle_type.h"
 #include "gfx_type.h"
 
+#include "3rdparty/nlohmann/json.hpp"
+
 #include "3rdparty/robin_hood/robin_hood.h"
 
 #include <string_view>
@@ -38,8 +40,11 @@ struct OrderImportErrors {
 	bool HasErrors() const;
 };
 
+struct DispatchSchedule;
+
 OrderImportErrors ImportJsonOrderList(const Vehicle *veh, std::string_view json_str, VehicleOrderID insert_index = INVALID_VEH_ORDER_ID, bool reverse_orders = false);
 std::string OrderListToJSONString(const OrderList *ol);
+nlohmann::ordered_json DispatchScheduleToJSON(const DispatchSchedule &sd);
 
 Colours OrderErrorTypeToColour(JsonOrderImportErrorType error_type);
 void ShowOrderListImportErrorsWindow(const Vehicle *v, OrderImportErrors &&errors);
