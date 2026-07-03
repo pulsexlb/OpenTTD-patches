@@ -42,7 +42,7 @@ struct OrderImportErrors {
 
 struct DispatchSchedule;
 
-OrderImportErrors ImportJsonOrderList(const Vehicle *veh, std::string_view json_str, VehicleOrderID insert_index = INVALID_VEH_ORDER_ID, bool reverse_orders = false);
+OrderImportErrors ImportJsonOrderList(const Vehicle *veh, std::string_view json_str, VehicleOrderID insert_index = INVALID_VEH_ORDER_ID, bool reverse_orders = false, bool silent = false);
 std::string OrderListToJSONString(const OrderList *ol);
 nlohmann::ordered_json DispatchScheduleToJSON(const DispatchSchedule &sd);
 

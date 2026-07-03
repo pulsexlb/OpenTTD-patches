@@ -16,7 +16,13 @@
 #include "../../vehicle_base.h"
 #include "../../waypoint_base.h"
 #include "../../order_base.h"
+#include "../../order_enums_to_json.h"
 #include "../../order_serialisation.h"
+#include "../../order_cmd.h"
+#include "../../command_func.h"
+#include "../../command_type.h"
+#include "../../company_func.h"
+#include "../../timetable.h"
 #include "../../map_func.h"
 #include "../../core/pool_func.hpp"
 #include "tcp_schedule.h"
@@ -89,8 +95,6 @@ void ServerNetworkScheduleSocketHandler::CloseConnection(bool error)
 	this->CloseSocket();
 	delete this;
 }
-
-/* ========== Static API ========== */
 
 /**
  * Start listening on the given port.
@@ -537,7 +541,6 @@ static std::string BuildJSONResponse(const std::string &req_id, std::string_view
 			ServerNetworkScheduleSocketHandler::EnqueueResponse(req.client, std::move(resp));
 		};
 
-		/* ---- ListStations ---- */
 		if (msg_type == "ListStations") {
 			nlohmann::json stations = nlohmann::json::array();
 			for (const Station *st : Station::Iterate()) {
@@ -556,7 +559,6 @@ static std::string BuildJSONResponse(const std::string &req_id, std::string_view
 			continue;
 		}
 
-		/* ---- ListWaypoints ---- */
 		if (msg_type == "ListWaypoints") {
 			nlohmann::json waypoints = nlohmann::json::array();
 			for (const Waypoint *wp : Waypoint::Iterate()) {
@@ -574,7 +576,6 @@ static std::string BuildJSONResponse(const std::string &req_id, std::string_view
 			continue;
 		}
 
-		/* ---- ListVehicles ---- */
 		if (msg_type == "ListVehicles") {
 			nlohmann::json vehicles = nlohmann::json::array();
 			for (const Vehicle *v : Vehicle::Iterate()) {
@@ -594,7 +595,6 @@ static std::string BuildJSONResponse(const std::string &req_id, std::string_view
 			continue;
 		}
 
-		/* ---- GetTimetable ---- */
 		if (msg_type == "GetTimetable") {
 			try {
 				auto &body = j.at("body");
@@ -624,7 +624,6 @@ static std::string BuildJSONResponse(const std::string &req_id, std::string_view
 			continue;
 		}
 
-		/* ---- GetDispatchSchedules ---- */
 		if (msg_type == "GetDispatchSchedules") {
 			try {
 				auto &body = j.at("body");
@@ -650,6 +649,221 @@ static std::string BuildJSONResponse(const std::string &req_id, std::string_view
 				send_ok(resp_body.dump());
 			} catch (const nlohmann::json::exception &) {
 				send_error("missing or invalid vehicle_id");
+			}
+			continue;
+		}
+
+		if (msg_type == "DeleteOrder") {
+			try {
+				auto &body = j.at("body");
+				int veh_id_int = body.at("vehicle_id").get<int>();
+				int order_idx = body.at("order_index").get<int>();
+				VehicleID veh_id{ static_cast<uint16_t>(veh_id_int) };
+				VehicleOrderID order_index{ static_cast<uint16_t>(order_idx) };
+				Vehicle *v = Vehicle::GetIfValid(veh_id);
+				if (v == nullptr || v->type != VehicleType::Train || !v->IsPrimaryVehicle()) {
+					send_error("vehicle not found");
+					continue;
+				}
+				if (v->orders == nullptr || order_index >= v->GetNumOrders()) {
+					send_error("invalid order index");
+					continue;
+				}
+				CompanyID old_company = _current_company;
+				_current_company = v->owner;
+				bool ok = Command<Commands::DeleteOrder>::Post(STR_EMPTY, TileIndex{0}, veh_id, order_index);
+				_current_company = old_company;
+				if (ok) {
+					send_ok("{}");
+				} else {
+					send_error("delete order failed");
+				}
+			} catch (const nlohmann::json::exception &) {
+				send_error("missing or invalid vehicle_id or order_index");
+			}
+			continue;
+		}
+
+		if (msg_type == "InsertOrder") {
+			try {
+				auto &body = j.at("body");
+				int veh_id_int = body.at("vehicle_id").get<int>();
+				VehicleID veh_id{ static_cast<uint16_t>(veh_id_int) };
+				Vehicle *v = Vehicle::GetIfValid(veh_id);
+				if (v == nullptr || v->type != VehicleType::Train || !v->IsPrimaryVehicle()) {
+					send_error("vehicle not found");
+					continue;
+				}
+				/* order_index: -1 = append, otherwise insert at that position */
+				int order_idx_int = body.value("order_index", -1);
+				VehicleOrderID insert_idx = (order_idx_int < 0) ? INVALID_VEH_ORDER_ID : static_cast<VehicleOrderID>(order_idx_int);
+				auto &order_json = body.at("order");
+
+				/* Build a minimal timetable JSON: { "vehicle-type": "train", "orders": [ order ] } */
+				nlohmann::json wrapper;
+				wrapper["vehicle-type"] = VehicleType::Train;
+				wrapper["orders"] = nlohmann::json::array();
+				wrapper["orders"].push_back(order_json);
+				std::string json_str = wrapper.dump();
+
+				CompanyID old_company = _current_company;
+				_current_company = v->owner;
+				OrderImportErrors errors = ImportJsonOrderList(v, json_str, insert_idx, false, true);
+				_current_company = old_company;
+
+				nlohmann::json resp_body;
+				resp_body["has_errors"] = errors.HasErrors();
+				if (errors.HasErrors()) {
+					nlohmann::json global_errs = nlohmann::json::array();
+					for (auto &e : errors.global) {
+						nlohmann::json err_obj;
+						err_obj["msg"] = e.msg;
+						err_obj["type"] = static_cast<int>(e.type);
+						global_errs.push_back(std::move(err_obj));
+					}
+					resp_body["global_errors"] = std::move(global_errs);
+				}
+				send_ok(resp_body.dump());
+			} catch (const nlohmann::json::exception &) {
+				send_error("missing or invalid vehicle_id or order");
+			}
+			continue;
+		}
+
+		if (msg_type == "SetOrder") {
+			try {
+				auto &body = j.at("body");
+				int veh_id_int = body.at("vehicle_id").get<int>();
+				int order_idx = body.at("order_index").get<int>();
+				VehicleID veh_id{ static_cast<uint16_t>(veh_id_int) };
+				VehicleOrderID order_index{ static_cast<uint16_t>(order_idx) };
+				Vehicle *v = Vehicle::GetIfValid(veh_id);
+				if (v == nullptr || v->type != VehicleType::Train || !v->IsPrimaryVehicle()) {
+					send_error("vehicle not found");
+					continue;
+				}
+				if (v->orders == nullptr || order_index >= v->GetNumOrders()) {
+					send_error("invalid order index");
+					continue;
+				}
+				auto &order_json = body.at("order");
+
+				CompanyID old_company = _current_company;
+				_current_company = v->owner;
+
+				bool deleted = Command<Commands::DeleteOrder>::Post(STR_EMPTY, TileIndex{0}, veh_id, order_index);
+				if (!deleted) {
+					_current_company = old_company;
+					send_error("delete order failed");
+					continue;
+				}
+
+				nlohmann::json wrapper;
+				wrapper["vehicle-type"] = VehicleType::Train;
+				wrapper["orders"] = nlohmann::json::array();
+				wrapper["orders"].push_back(order_json);
+				std::string json_str = wrapper.dump();
+
+				OrderImportErrors errors = ImportJsonOrderList(v, json_str, order_index, false, true);
+				_current_company = old_company;
+
+				nlohmann::json resp_body;
+				resp_body["has_errors"] = errors.HasErrors();
+				if (errors.HasErrors()) {
+					nlohmann::json global_errs = nlohmann::json::array();
+					for (auto &e : errors.global) {
+						nlohmann::json err_obj;
+						err_obj["msg"] = e.msg;
+						err_obj["type"] = static_cast<int>(e.type);
+						global_errs.push_back(std::move(err_obj));
+					}
+					resp_body["global_errors"] = std::move(global_errs);
+				}
+				send_ok(resp_body.dump());
+			} catch (const nlohmann::json::exception &) {
+				send_error("missing or invalid vehicle_id or order");
+			}
+			continue;
+		}
+
+		if (msg_type == "SetFullDispatch") {
+			try {
+				auto &body = j.at("body");
+				int veh_id_int = body.at("vehicle_id").get<int>();
+				VehicleID veh_id{ static_cast<uint16_t>(veh_id_int) };
+				Vehicle *v = Vehicle::GetIfValid(veh_id);
+				if (v == nullptr || v->type != VehicleType::Train || !v->IsPrimaryVehicle()) {
+					send_error("vehicle not found");
+					continue;
+				}
+
+				CompanyID old_company = _current_company;
+				_current_company = v->owner;
+
+				/* Ensure the vehicle has an order list and enable scheduled dispatch. */
+				if (v->orders == nullptr) {
+					v->orders = OrderList::Create(nullptr, v);
+				}
+				v->vehicle_flags.Set(VehicleFlag::ScheduledDispatch);
+
+				/* Replace the dispatch schedule set. */
+				auto &scheds = v->orders->GetScheduledDispatchScheduleSet();
+				scheds.clear();
+
+				auto &schedules_json = body.at("schedules");
+				for (auto &sched_json : schedules_json) {
+					scheds.emplace_back();
+					DispatchSchedule &ds = scheds.back();
+
+					/* Set duration. */
+					uint32_t duration = sched_json.value("duration", 0u);
+					ds.SetScheduledDispatchDuration(duration);
+
+					/* Set start tick. */
+					if (sched_json.contains("absolute-start-time")) {
+						ds.SetScheduledDispatchStartTick(StateTicks{ sched_json.at("absolute-start-time").get<int32_t>() });
+					} else if (sched_json.contains("relative-start-time")) {
+						/* Compute absolute start from relative. For simplicity, use 0 as base. */
+						ds.SetScheduledDispatchStartTick(StateTicks{ sched_json.at("relative-start-time").get<int32_t>() });
+					} else {
+						ds.SetScheduledDispatchStartTick(StateTicks{-1});
+					}
+
+					/* Set max delay. */
+					if (sched_json.contains("max-delay")) {
+						ds.SetScheduledDispatchDelay(sched_json.at("max-delay").get<int32_t>());
+					}
+
+					/* Add slots. */
+					auto &slots_json = sched_json.at("slots");
+					for (auto &slot_json : slots_json) {
+						uint32_t offset = 0;
+						uint16_t slot_flags = 0;
+						DispatchSlotRouteID route_id = 0;
+
+						if (slot_json.is_number()) {
+							offset = slot_json.get<uint32_t>();
+						} else if (slot_json.is_object()) {
+							offset = slot_json.value("offset", 0u);
+							slot_flags = slot_json.value("flags", static_cast<uint16_t>(0));
+							route_id = slot_json.value("route", static_cast<DispatchSlotRouteID>(0));
+						}
+
+						ds.AddScheduledDispatch(offset, slot_flags, route_id);
+					}
+
+					ds.ResortDispatchOffsets();
+					ds.UpdateScheduledDispatch(nullptr);
+				}
+
+				SetTimetableWindowsDirty(v, STWDF_SCHEDULED_DISPATCH);
+				_current_company = old_company;
+
+				nlohmann::json resp_body;
+				resp_body["schedule_count"] = scheds.size();
+				send_ok(resp_body.dump());
+			} catch (const nlohmann::json::exception &) {
+				send_error("missing or invalid body");
 			}
 			continue;
 		}

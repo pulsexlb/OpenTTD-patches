@@ -1303,7 +1303,7 @@ static void ImportJsonDispatchSchedule(JSONToVehicleCommandParser<JSONToVehicleM
 	}
 }
 
-OrderImportErrors ImportJsonOrderList(const Vehicle *veh, std::string_view json_str, VehicleOrderID insert_index, bool reverse_orders)
+OrderImportErrors ImportJsonOrderList(const Vehicle *veh, std::string_view json_str, VehicleOrderID insert_index, bool reverse_orders, bool silent)
 {
 	using FName = OrderSerialisationFieldNames;
 
@@ -1315,18 +1315,18 @@ OrderImportErrors ImportJsonOrderList(const Vehicle *veh, std::string_view json_
 	try {
 		json = nlohmann::json::parse(json_str);
 	} catch (const nlohmann::json::parse_error &) {
-		ShowErrorMessage(GetEncodedString(STR_ERROR_JSON), GetEncodedString(STR_ERROR_ORDERLIST_MALFORMED_JSON), WarningLevel::Error);
+		if (!silent) ShowErrorMessage(GetEncodedString(STR_ERROR_JSON), GetEncodedString(STR_ERROR_ORDERLIST_MALFORMED_JSON), WarningLevel::Error);
 		return errors;
 	}
 
 	if (json.contains(FName::Orders::OBJKEY) && !json[FName::Orders::OBJKEY].is_array()) {
-		ShowErrorMessage(GetEncodedString(STR_ERROR_JSON), GetEncodedString(STR_ERROR_ORDERLIST_JSON_NEEDS_ORDERS), WarningLevel::Error);
+		if (!silent) ShowErrorMessage(GetEncodedString(STR_ERROR_JSON), GetEncodedString(STR_ERROR_ORDERLIST_JSON_NEEDS_ORDERS), WarningLevel::Error);
 		return errors;
 	}
 
 	/* Checking if the vehicle type matches */
 	if (!json.contains(FName::VEHICLE_TYPE)) {
-		ShowErrorMessage(GetEncodedString(STR_ERROR_JSON), GetEncodedString(STR_ERROR_ORDERLIST_JSON_VEHICLE_TYPE_MISSING), WarningLevel::Error);
+		if (!silent) ShowErrorMessage(GetEncodedString(STR_ERROR_JSON), GetEncodedString(STR_ERROR_ORDERLIST_JSON_VEHICLE_TYPE_MISSING), WarningLevel::Error);
 		return errors;
 	}
 
@@ -1338,7 +1338,7 @@ OrderImportErrors ImportJsonOrderList(const Vehicle *veh, std::string_view json_
 	}
 
 	if (vt != veh->type) {
-		ShowErrorMessage(GetEncodedString(STR_ERROR_JSON), GetEncodedString(STR_ERROR_ORDERLIST_JSON_VEHICLE_TYPE_DOES_NOT_MATCH), WarningLevel::Error);
+		if (!silent) ShowErrorMessage(GetEncodedString(STR_ERROR_JSON), GetEncodedString(STR_ERROR_ORDERLIST_JSON_VEHICLE_TYPE_DOES_NOT_MATCH), WarningLevel::Error);
 		return errors;
 	}
 
