@@ -58,11 +58,13 @@ std::map<VehicleID, VehicleOrderID> StationCrossingTracker::_vehicle_prev_order;
 		StationCrossingRecording &rec = _vehicle_recording[v->index];
 
 		if (advanced && n > 0) {
-			/* Commit the just-finished segment under its from_order key. */
-			if (rec.from_order != INVALID_VEH_ORDER_ID && !rec.buf.empty()) {
+			/* Commit the just-finished segment under its from_order key. The full
+			 * crossing set for this traversal replaces any previous recording for the
+			 * same segment, so re-running the loop updates the record instead of
+			 * duplicating it (per from_order, each station keeps only its latest). */
+			if (rec.from_order != INVALID_VEH_ORDER_ID) {
 				CrossingMap &cm = _vehicle_crossings[v->index];
-				auto &target = cm[rec.from_order];
-				target.insert(target.end(), rec.buf.begin(), rec.buf.end());
+				cm[rec.from_order] = std::move(rec.buf);
 			}
 			OpenSegment(v, cur);
 		} else if (rec.from_order == INVALID_VEH_ORDER_ID && n > 0) {
@@ -213,18 +215,14 @@ static void ShiftSegmentsUp(std::map<VehicleID, CrossingMap> &map, VehicleID vid
 /* static */ std::vector<std::tuple<VehicleOrderID, StationID, StationCrossingEntry>> StationCrossingTracker::GetVehicleCrossings(VehicleID vid)
 {
 	std::vector<std::tuple<VehicleOrderID, StationID, StationCrossingEntry>> result;
+	/* Only the committed segments are returned; the in-progress recording for the
+	 * current order segment is intentionally excluded until the train advances. */
 	auto it = _vehicle_crossings.find(vid);
 	if (it != _vehicle_crossings.end()) {
 		for (auto &seg : it->second) {
 			for (auto &p : seg.second) {
 				result.emplace_back(seg.first, p.first, p.second);
 			}
-		}
-	}
-	auto rit = _vehicle_recording.find(vid);
-	if (rit != _vehicle_recording.end() && rit->second.from_order != INVALID_VEH_ORDER_ID) {
-		for (auto &p : rit->second.buf) {
-			result.emplace_back(rit->second.from_order, p.first, p.second);
 		}
 	}
 	return result;
