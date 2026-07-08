@@ -24,6 +24,7 @@
 #include "../../company_func.h"
 #include "../../timetable.h"
 #include "../../map_func.h"
+#include "../../station_crossing.h"
 #include "../../core/pool_func.hpp"
 #include "tcp_schedule.h"
 
@@ -509,6 +510,14 @@ static std::string BuildJSONResponse(const std::string &req_id, std::string_view
  * Process pending schedule API requests on the main game thread.
  * This has full access to game state and can call DoCommandP etc.
  */
+/* static */ bool ServerNetworkScheduleSocketHandler::HasActiveClients()
+{
+	for (auto *handler : ServerNetworkScheduleSocketHandler::Iterate()) {
+		if (handler->status == SCHEDULE_STATUS_ACTIVE) return true;
+	}
+	return false;
+}
+
 /* static */ void ServerNetworkScheduleSocketHandler::ProcessRequests()
 {
 	/* Snapshot the request queue. */
@@ -646,6 +655,52 @@ static std::string BuildJSONResponse(const std::string &req_id, std::string_view
 				}
 				nlohmann::json resp_body;
 				resp_body["schedules"] = std::move(schedules);
+				send_ok(resp_body.dump());
+			} catch (const nlohmann::json::exception &) {
+				send_error("missing or invalid vehicle_id");
+			}
+			continue;
+		}
+
+		if (msg_type == "GetStationCrossings") {
+			try {
+				auto &body = j.at("body");
+				int veh_id_int = body.at("vehicle_id").get<int>();
+				VehicleID veh_id{ static_cast<uint16_t>(veh_id_int) };
+
+				/* Reference tick for computing offsets: prefer the first dispatch
+				 * schedule's start tick, else the vehicle's timetable_start. */
+				Vehicle *v = Vehicle::GetIfValid(veh_id);
+				StateTicks ref = StateTicks{0};
+				if (v != nullptr) {
+					if (v->orders != nullptr) {
+						const auto &scheds = v->orders->GetScheduledDispatchScheduleSet();
+						if (!scheds.empty()) ref = scheds.front().GetScheduledDispatchStartTick();
+						else if (v->timetable_start != StateTicks{0}) ref = v->timetable_start;
+					} else if (v->timetable_start != StateTicks{0}) {
+						ref = v->timetable_start;
+					}
+				}
+
+				auto records = StationCrossingTracker::GetVehicleCrossings(veh_id);
+
+				nlohmann::json crossings = nlohmann::json::array();
+				for (auto &kv : records) {
+					StationID st_id = kv.first;
+					const StationCrossingEntry &e = kv.second;
+					nlohmann::json o;
+					o["station_id"] = st_id.base();
+					o["tick"] = e.tick.base();
+					o["offset"] = static_cast<int64_t>((e.tick - ref).AsTicks());
+					o["tile_x"] = TileX(e.tile);
+					o["tile_y"] = TileY(e.tile);
+					crossings.push_back(std::move(o));
+				}
+
+				nlohmann::json resp_body;
+				resp_body["vehicle_id"] = veh_id.base();
+				resp_body["reference_tick"] = ref.base();
+				resp_body["crossings"] = std::move(crossings);
 				send_ok(resp_body.dump());
 			} catch (const nlohmann::json::exception &) {
 				send_error("missing or invalid vehicle_id");

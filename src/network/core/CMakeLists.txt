@@ -21,6 +21,8 @@ add_files(
     tcp_connect.cpp
     tcp_schedule.cpp
     tcp_schedule.h
+    ../../station_crossing.cpp
+    ../../station_crossing.h
     tcp_content.cpp
     tcp_content.h
     tcp_content_type.h

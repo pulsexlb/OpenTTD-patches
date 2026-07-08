@@ -32,6 +32,7 @@
 #include "autoreplace_func.h"
 #include "autoreplace_gui.h"
 #include "station_base.h"
+#include "station_crossing.h"
 #include "ai/ai.hpp"
 #include "depot_func.h"
 #include "network/network.h"
@@ -1245,6 +1246,9 @@ Vehicle::~Vehicle()
 	}
 
 	if (this->index == VehicleID::Invalid()) return; // Temporary instances which were never added to the pool
+
+	/* Purge station-crossing tracker state for this vehicle. */
+	StationCrossingTracker::OnVehicleRemoved(this->index);
 
 	if (this->type != VehicleType::Effect) InvalidateVehicleTickCaches();
 

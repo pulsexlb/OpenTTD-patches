@@ -15,6 +15,7 @@
 #include "../date_func.h"
 #include "network_admin.h"
 #include "core/tcp_schedule.h"
+#include "../station_crossing.h"
 #include "network_client.h"
 #include "network_query.h"
 #include "network_server.h"
@@ -1494,6 +1495,11 @@ void NetworkGameLoop()
 
 		/* Process any pending schedule API requests. */
 		ServerNetworkScheduleSocketHandler::ProcessRequests();
+
+		/* Tick the station crossing tracker (only when a schedule client is connected). */
+		if (ServerNetworkScheduleSocketHandler::HasActiveClients()) {
+			StationCrossingTracker::Tick();
+		}
 
 		NetworkExecuteLocalCommandQueue();
 

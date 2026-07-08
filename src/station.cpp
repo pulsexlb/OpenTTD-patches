@@ -23,6 +23,7 @@
 #include "core/pool_func.hpp"
 #include "station_base.h"
 #include "station_kdtree.h"
+#include "station_crossing.h"
 #include "roadstop_base.h"
 #include "industry.h"
 #include "town.h"
@@ -102,6 +103,9 @@ Station::~Station()
 		}
 		return;
 	}
+
+	/* Purge station-crossing tracker records for this station. */
+	StationCrossingTracker::OnStationRemoved(this->index);
 
 	while (!this->loading_vehicles.empty()) {
 		this->loading_vehicles.front()->LeaveStation();

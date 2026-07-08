@@ -160,6 +160,12 @@ public:
 	static void ProcessRequests();
 
 	/**
+	 * Check if any schedule API client is currently authenticated and active.
+	 * @return true if at least one active client exists.
+	 */
+	static bool HasActiveClients();
+
+	/**
 	 * Enqueue a JSON response to be sent back to the client.
 	 * Thread-safe: can be called from the main thread.
 	 */
