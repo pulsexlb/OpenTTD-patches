@@ -44,6 +44,8 @@
 #include "timetable_cmd.h"
 #include "train_cmd.h"
 
+
+#include "station_crossing.h"
 #include "table/strings.h"
 
 #include <limits>
@@ -1428,6 +1430,7 @@ void InsertOrder(Vehicle *v, Order &&new_o, VehicleOrderID sel_ord)
 	} else {
 		v->orders->InsertOrderAt(std::move(new_o), sel_ord);
 	}
+	StationCrossingTracker::OnOrderInserted(v->index, sel_ord);
 
 	Vehicle *u = v->FirstShared();
 	DeleteOrderWarnings(u);
@@ -1588,6 +1591,7 @@ static void CancelLoadingDueToDeletedOrder(Vehicle *v)
 void DeleteOrder(Vehicle *v, VehicleOrderID sel_ord)
 {
 	v->orders->DeleteOrderAt(sel_ord);
+	StationCrossingTracker::OnOrderDeleted(v->index, sel_ord);
 
 	Vehicle *u = v->FirstShared();
 	DeleteOrderWarnings(u);
@@ -1727,6 +1731,7 @@ CommandCost CmdMoveOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID mov
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		v->orders->MoveOrders(moving_order, target_order, count);
+		StationCrossingTracker::OnOrderMoved(v->index, moving_order, target_order);
 
 		/* Update shared list */
 		Vehicle *u = v->FirstShared();

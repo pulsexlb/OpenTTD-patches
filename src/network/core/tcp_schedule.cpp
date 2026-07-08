@@ -685,13 +685,15 @@ static std::string BuildJSONResponse(const std::string &req_id, std::string_view
 				auto records = StationCrossingTracker::GetVehicleCrossings(veh_id);
 
 				nlohmann::json crossings = nlohmann::json::array();
-				for (auto &kv : records) {
-					StationID st_id = kv.first;
-					const StationCrossingEntry &e = kv.second;
+				for (auto &tup : records) {
+					VehicleOrderID order_idx = std::get<0>(tup);
+					StationID st_id = std::get<1>(tup);
+					const StationCrossingEntry &e = std::get<2>(tup);
 					nlohmann::json o;
+					o["order_index"] = order_idx;
 					o["station_id"] = st_id.base();
 					o["tick"] = e.tick.base();
-					o["offset"] = static_cast<int64_t>((e.tick - ref).AsTicks());
+					o["travel_time"] = static_cast<int64_t>(e.travel_time);
 					o["tile_x"] = TileX(e.tile);
 					o["tile_y"] = TileY(e.tile);
 					crossings.push_back(std::move(o));

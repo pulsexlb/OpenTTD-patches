@@ -103,6 +103,7 @@
 #include "core/string_consumer.hpp"
 
 #include "linkgraph/linkgraphschedule.h"
+#include "station_crossing.h"
 
 #include "3rdparty/cpp-btree/btree_set.h"
 
@@ -1355,6 +1356,12 @@ void SwitchToMode(SwitchMode new_mode)
 
 	/* When we change mode, reset the autosave. */
 	if (new_mode != SwitchMode::SaveGame) ChangeAutosaveFrequency(true);
+	/* When changing to a new game or leaving to the menu, clear all station
+	 * crossing records (they are per-game, tied to vehicle/order indices). */
+	if (new_mode == SwitchMode::NewGame || new_mode == SwitchMode::RestartGame ||
+			new_mode == SwitchMode::LoadGame || new_mode == SwitchMode::Menu) {
+		StationCrossingTracker::Clear();
+	}
 
 	/* Transmit the survey if we were in normal-mode and not saving. It always means we leaving the current game. */
 	if (_game_mode == GameMode::Normal && new_mode != SwitchMode::SaveGame) _survey.Transmit(NetworkSurveyHandler::Reason::Leave);
