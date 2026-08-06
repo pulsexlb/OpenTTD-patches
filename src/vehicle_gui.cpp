@@ -4109,6 +4109,19 @@ public:
 		}
 	}
 
+	/** The anchor (schedule owner) when the shown consist is in a couple ride:
+	 * the window shows the physical head, but its identity and schedule belong
+	 * to the anchor. */
+	const Vehicle *GetScheduleVehicle() const
+	{
+		const Vehicle *v = Vehicle::Get(this->window_number);
+		if (v->type == VehicleType::Train) {
+			const Train *t = Train::From(v);
+			if (t->IsFrontEngine() && t->HasRide()) return t->GetRideDriver();
+		}
+		return v;
+	}
+
 	void UpdateDepotButton()
 	{
 		/* Lower the Send To Depot button when clicking it would cause the
@@ -4169,7 +4182,7 @@ public:
 	{
 		if (widget != WID_VV_CAPTION) return this->Window::GetWidgetString(widget, stringid);
 
-		const Vehicle *v = Vehicle::Get(this->window_number);
+		const Vehicle *v = this->GetScheduleVehicle();
 		format_buffer buf;
 		AppendStringInPlace(buf, STR_VEHICLE_VIEW_CAPTION, v->index);
 
@@ -4508,18 +4521,18 @@ public:
 				break;
 			case WID_VV_SHOW_ORDERS: // show orders
 				if (_ctrl_pressed) {
-					ShowTimetableWindow(v);
+					ShowTimetableWindow(this->GetScheduleVehicle());
 				} else if (_shift_pressed) {
-					ShowSchdispatchWindow(v);
+					ShowSchdispatchWindow(this->GetScheduleVehicle());
 				} else {
-					ShowOrdersWindow(v);
+					ShowOrdersWindow(this->GetScheduleVehicle());
 				}
 				break;
 			case WID_VV_SHOW_DETAILS: // show details
 				if (_ctrl_pressed) {
 					ShowCompanyGroupForVehicle(v);
 				} else {
-					ShowVehicleDetailsWindow(v);
+					ShowVehicleDetailsWindow(this->GetScheduleVehicle());
 				}
 				break;
 			case WID_VV_CLONE: // clone vehicle
@@ -4695,6 +4708,9 @@ public:
 	void UpdatePlanes()
 	{
 		const Vehicle *v = Vehicle::Get(this->window_number);
+		if (v->type == VehicleType::Train) {
+			Debug(misc, 0, "VVUpdate: win {} v {} first {}", this->window_number, v->index, v->First() != nullptr ? v->First()->index.base() : 0xFFFF);
+		}
 		bool veh_stopped = v->IsStoppedInDepot();
 
 		/* Widget WID_VV_GOTO_DEPOT must be hidden if the vehicle is already stopped in depot.
@@ -4785,6 +4801,9 @@ static WindowDesc _train_view_desc(__FILE__, __LINE__,
  */
 void ShowVehicleViewWindow(const Vehicle *v)
 {
+	if (v->type == VehicleType::Train) {
+		Debug(misc, 0, "VVOpen: v {} first {}", v->index, v->First() != nullptr ? v->First()->index.base() : 0xFFFF);
+	}
 	AllocateWindowDescFront<VehicleViewWindow>((v->type == VehicleType::Train) ? _train_view_desc : _vehicle_view_desc, v->index);
 }
 

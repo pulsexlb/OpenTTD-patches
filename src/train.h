@@ -19,8 +19,10 @@
 #include "rail_map.h"
 #include "ground_vehicle.hpp"
 #include "pbs.h"
+#include "order_type.h"
 
 struct Train;
+struct OrderList;
 enum ClientID : uint32_t;
 
 /** Rail vehicle flags. */
@@ -192,6 +194,10 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	uint16_t signal_speed_restriction = 0;
 	uint16_t crash_anim_pos = 0; ///< Crash animation counter, also used for realistic braking train brake overheating
 
+	/** Position of the coupler's couple order at merge time, restored on
+	 *  decouple (the coupler's own order list is never modified during a ride). */
+	VehicleOrderID couple_index_backup = 0;
+
 	/** Create new Train object. @copydoc GroundVehicle::GroundVehicle */
 	Train(VehicleID index) : GroundVehicleBase(index) {}
 	/** We want to 'destruct' the right class. */
@@ -210,7 +216,8 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	 * The head vehicle carries no marker when it is itself the driver (no ride);
 	 * during a ride the driver unit's head carries #VehicleRailFlag::RideDriver.
 	 * @pre this is the chain head (First()).
-	 * @return the vehicle whose orders/current_order drive the consist.
+	 * @return the vehicle whose orders/current_order drive the consist
+	 *         (the chain head itself if there is no ride).
 	 */
 	inline Train *GetRideDriver() const
 	{

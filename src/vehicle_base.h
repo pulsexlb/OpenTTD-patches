@@ -656,14 +656,21 @@ public:
 	 */
 	bool IsStoppedInDepot() const
 	{
-		assert(this == this->First());
+		const Vehicle *chain_head = this->First();
+		if (this != chain_head) {
+			/* During a couple ride mid-consist vehicles can be reached through
+			 * shared order lists (e.g. link graph refresh); the physical chain
+			 * head carries the depot state. */
+			return chain_head->IsStoppedInDepot();
+		}
 		/* Free wagons have no VehState::Stopped state */
 		if (this->IsPrimaryVehicle() && !this->vehstatus.Test(VehState::Stopped)) return false;
 		return this->IsChainInDepot();
 	}
 
 	bool IsWaitingInDepot() const {
-		assert(this == this->First());
+		const Vehicle *chain_head = this->First();
+		if (this != chain_head) return chain_head->IsWaitingInDepot();
 		return this->current_order.IsType(OT_WAITING) && this->IsChainInDepot();
 	}
 

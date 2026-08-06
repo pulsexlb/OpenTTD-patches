@@ -1221,6 +1221,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("speed_restriction",        SLE_CONDVAR_X(Train, speed_restriction,         SLE_UINT16,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_SPEED_RESTRICTION))),
 		NSL("signal_speed_restriction", SLE_CONDVAR_X(Train, signal_speed_restriction,  SLE_UINT16,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_SPEED_ADAPTATION))),
 		NSL("critical_breakdown_count", SLE_CONDVAR_X(Train, critical_breakdown_count,  SLE_UINT8,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_IMPROVED_BREAKDOWNS, 2))),
+		NSL("couple_index_backup",    SLE_CONDVAR_X(Train, couple_index_backup,    SLE_UINT16,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_COUPLE))),
 
 		NSLT_STRUCT<TrainLookaheadStateStructHandler>("lookahead"),
 	};
