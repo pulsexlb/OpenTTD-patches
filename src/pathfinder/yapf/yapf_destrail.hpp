@@ -222,4 +222,56 @@ public:
 	}
 };
 
+template <class Types>
+class CYapfDestinationTrainRailT : public CYapfDestinationRailBase {
+public:
+	typedef typename Types::Tpf Tpf; ///< the pathfinder class (derived from THIS class)
+	typedef typename Types::NodeList::Item Node; ///< this will be our node type
+	typedef typename Node::Key Key; ///< key to hash tables
+
+protected:
+	const Train *target; ///< the train to couple with
+
+	/** @copydoc CYapfBaseT::Yapf */
+	Tpf &Yapf()
+	{
+		return *static_cast<Tpf *>(this);
+	}
+
+public:
+	void SetDestination(const Train *v, const Train *target)
+	{
+		this->target = target;
+		this->CYapfDestinationRailBase::SetDestination(v);
+	}
+
+	/** @copydoc CYapfBaseT::PfDetectDestinationFunc */
+	inline bool PfDetectDestination(Node &n)
+	{
+		return this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir());
+	}
+
+	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
+	inline bool PfDetectDestination(TileIndex tile, [[maybe_unused]] Trackdir td)
+	{
+		/* The track follower jumps over a platform segment in one step, so the
+		 * node may sit at the far end of the platform while the anchor train
+		 * is stopped mid-platform: match the station, not the exact tile. */
+		if (!IsRailStationTile(tile)) return false;
+		return GetStationIndex(tile) == GetStationIndex(this->target->tile) && this->target->cur_speed == 0;
+	}
+
+	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */
+	inline bool PfCalcEstimate(Node &n)
+	{
+		n.estimate = n.cost;
+		return true;
+	}
+
+	inline int TeleportCost(TileIndex cur_tile, TileIndex prev_tile)
+	{
+		return 0;
+	}
+};
+
 #endif /* YAPF_DESTRAIL_HPP */

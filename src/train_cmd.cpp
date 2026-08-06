@@ -2589,6 +2589,10 @@ static bool TryCoupleOnCollision(Train *v, Train *moving_front)
 	 * anchor's head, then merge as [coupler][anchor].  The flip is forced: a
 	 * back-up would leave the coupler's head facing the anchor. */
 	bool attach_ahead = DetermineCoupleDirection(anchor, coupler);
+	Debug(misc, 0, "TCCollide: coupler {} anchor {} attach {} mfTile {}x{} aTile {}x{}",
+		coupler->index, anchor->index, attach_ahead,
+		TileX(coupler->GetMovingFront()->tile), TileY(coupler->GetMovingFront()->tile),
+		TileX(anchor->tile), TileY(anchor->tile));
 	if (attach_ahead) {
 		coupler->force_proceed = TFP_NONE;
 		coupler->cur_speed = 0;
@@ -2643,100 +2647,16 @@ void CancelTrainRide(Train *head, StringID reason = INVALID_STRING_ID)
  */
 /**
  * Check whether the coupler is being held by the signal protecting the target
- * station.  The track ahead is followed along the coupler's own pathfinding
- * (ChooseTrainTrack at junctions); the scan fails on a dead end or on a
- * further signal (i.e. the coupler is stopped at a non-target signal), and
- * succeeds when the anchor's consist is reached.
+ * station.  The pathfinder explores all junctions (so a turnout between the
+ * signal and the station is handled correctly); the scan fails when the path
+ * crosses a second signal facing the coupler (i.e. the coupler is stopped at
+ * a non-target signal), and succeeds when the anchor's consist is reached.
  */
 static bool IsBlockedByTargetStation(const Train *b, const Train *a)
 {
-	const Train *mf = b->GetMovingFront();
-	TileIndex tile = mf->tile;
-	Trackdir td = mf->GetVehicleTrackdir();
-	if (td == INVALID_TRACKDIR) return false;
-
-	/* A signal on the coupler's own tile (it stopped just before the signal
-	 * protecting the platform) counts as the signal it is stopped at. */
-	bool seen_signal = HasSignalOnTrackdir(tile, td);
-	Debug(misc, 0, "BlockedScan: b {} a {} startTile {}x{} td {} sig {}",
-		b->index, a->index, TileX(tile), TileY(tile), td, seen_signal);
-
-	CFollowTrackRail ft(b);
-	for (int i = 0; i < 512; i++) {
-		if (!ft.Follow(tile, td)) {
-			Debug(misc, 0, "BlockedScan: follow fail at {}x{} (dead end)", TileX(tile), TileY(tile));
-			return false; /* dead end */
-		}
-
-		tile = ft.new_tile;
-
-		/* Follow jumps over platform segments in one step; check the skipped
-		 * tiles for the anchor's consist. */
-		if (ft.tiles_skipped > 0 && !ft.is_bridge && !ft.is_tunnel) {
-			const TileIndexDiff diff = TileOffsByDiagDir(ft.exitdir);
-			for (TileIndex t = tile - diff * ft.tiles_skipped; t != tile; t += diff) {
-				if (IsTileType(t, TileType::Station)) {
-					for (const Train *tv : VehiclesOnTile<VehicleType::Train>(t)) {
-						if (tv->First() == a) {
-							Debug(misc, 0, "BlockedScan: anchor found on skipped tile {}x{}", TileX(t), TileY(t));
-							return true;
-						}
-					}
-				}
-			}
-		}
-
-		TrackdirBits tdb = ft.new_td_bits;
-		if (tdb == TRACKDIR_BIT_NONE) {
-			Debug(misc, 0, "BlockedScan: no trackdirs at {}x{}", TileX(tile), TileY(tile));
-			return false;
-		}
-		if (HasExactlyOneBit(tdb)) {
-			td = FindFirstTrackdir(tdb);
-		} else {
-			/* Exclude the reverse trackdir (heading back on the same track);
-			 * only a real junction (multiple forward tracks) needs the
-			 * coupler's own pathfinding. */
-			TrackdirBits fwd = tdb & ~TrackdirToTrackdirBits(ReverseTrackdir(td));
-			if (HasExactlyOneBit(fwd)) {
-				td = FindFirstTrackdir(fwd);
-			} else if (fwd != TRACKDIR_BIT_NONE) {
-				/* Real junction: follow the coupler's own pathfinding. */
-				DiagDirection enterdir = TrackdirToExitdir(ReverseTrackdir(td));
-				ChooseTrainTrackResult ctt = ChooseTrainTrack(const_cast<Train *>(b), tile, enterdir, TrackdirBitsToTrackBits(fwd), CTTF_NONE);
-				if (ctt.track == INVALID_TRACK) {
-					Debug(misc, 0, "BlockedScan: junction no path at {}x{}", TileX(tile), TileY(tile));
-					return false;
-				}
-				td = TrackExitdirToTrackdir(ctt.track, enterdir);
-			} else {
-				Debug(misc, 0, "BlockedScan: only reverse at {}x{}", TileX(tile), TileY(tile));
-				return false; /* only the reverse direction is available */
-			}
-		}
-
-		/* Only signals facing the coupler's travel direction can stop it;
-		 * signals on the same track facing the other way do not block.
-		 * The first facing signal is the one the coupler is stopped at;
-		 * a further facing signal means it is not the target-station signal. */
-		if (HasSignalOnTrackdir(tile, td)) {
-			if (seen_signal) {
-				Debug(misc, 0, "BlockedScan: 2nd facing signal at {}x{}", TileX(tile), TileY(tile));
-				return false;
-			}
-			seen_signal = true;
-			Debug(misc, 0, "BlockedScan: 1st facing signal at {}x{}", TileX(tile), TileY(tile));
-			continue;
-		}
-
-		/* Reached the anchor's consist? */
-		if (IsTileType(tile, TileType::Station)) {
-			for (const Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
-				if (t->First() == a) return true;
-			}
-		}
-	}
-	return false;
+	Debug(misc, 0, "BlockedScan: b {} a {} mfTile {}x{}", b->index, a->index,
+		TileX(b->GetMovingFront()->tile), TileY(b->GetMovingFront()->tile));
+	return YapfTrainCoupleTrack(b, a);
 }
 
 /**
@@ -6596,11 +6516,15 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 							 * entered via the back. */
 							first->force_proceed = (first->force_proceed == TFP_SIGNAL) ? TFP_STUCK : TFP_NONE;
 							InvalidateWindowData(WindowClass::VehicleView, first->index);
+							Debug(misc, 0, "TCSig: v {} tile {}x{} fp {}->{}", first->index, TileX(gp.new_tile), TileY(gp.new_tile),
+								first->force_proceed == TFP_STUCK ? TFP_SIGNAL : TFP_STUCK, first->force_proceed);
 						}
 					}
 
 					/* Check if it's a red signal and that force proceed is not clicked. */
 					if ((red_signals & chosen_track) && first->force_proceed == TFP_NONE) {
+						Debug(misc, 0, "TCStop: v {} tile {}x{} chosen {} red {} fp {} enter {}", first->index, TileX(gp.new_tile), TileY(gp.new_tile),
+							chosen_track, red_signals, first->force_proceed, enterdir);
 						/* In front of a red signal */
 						Trackdir i = FindFirstTrackdir(trackdirbits);
 
@@ -7621,6 +7545,15 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	{
 		const Order *curo = nullptr;
 		if (!consist->HasRide()) curo = consist->GetOrder(consist->cur_implicit_order_index);
+		/* Once the coupler is moving again the debounce flag is released. */
+		if (consist->cur_speed > 0) consist->flags.Reset(VehicleRailFlag::CouplerFlipped);
+		Debug(misc, 0, "CTEntry: b {} hasRide {} curo {} curOrder {} speed {} fp {} tile {}x{} dest {}x{} stuck {} wait {} rev {}",
+			consist->index, consist->HasRide(),
+			curo != nullptr ? (int)curo->GetType() : -1,
+			consist->current_order.GetType(), consist->cur_speed, consist->force_proceed,
+			TileX(consist->GetMovingFront()->tile), TileY(consist->GetMovingFront()->tile),
+			TileX(consist->dest_tile), TileY(consist->dest_tile),
+			consist->flags.Test(VehicleRailFlag::Stuck), consist->wait_counter, consist->reverse_distance);
 		if (curo != nullptr && curo->IsType(OT_COUPLE) && consist->current_order.IsType(OT_COUPLE)) {
 			const StationID station = consist->current_order.GetDestination().ToStationID();
 			Train *anchor = Train::GetIfValid(curo->GetCoupleTarget());
@@ -7643,12 +7576,22 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 				 * into the anchor (TryCoupleOnCollision).  Slow down when
 				 * close so the bump is gentle. */
 				const Train *mf2 = consist->GetMovingFront();
-				const bool attach_ahead = DetermineCoupleDirection(a, consist);
-				const Train *contact = attach_ahead ? a : a->Last();
-				int diff = std::max(abs(mf2->x_pos - contact->x_pos), abs(mf2->y_pos - contact->y_pos));
-				int expected = CalcCoupleSpacing(mf2, contact);
-				if (diff <= expected + 16) {
-					if (consist->cur_speed > 5) consist->cur_speed = 5;
+				/* Slow down when close to either end of the anchor (the merge
+				 * direction may not be decidable yet at one-tile distance, so
+				 * use whichever end is nearer). */
+				{
+					const Train *a_head = a;
+					const Train *a_tail = a->Last();
+					const int d_head = std::max(abs(mf2->x_pos - a_head->x_pos), abs(mf2->y_pos - a_head->y_pos));
+					const int d_tail = std::max(abs(mf2->x_pos - a_tail->x_pos), abs(mf2->y_pos - a_tail->y_pos));
+					const Train *contact = (d_head <= d_tail) ? a_head : a_tail;
+					const int diff = std::min(d_head, d_tail);
+					const int expected = CalcCoupleSpacing(mf2, contact);
+					Debug(misc, 0, "CTCreep: b {} contact {} diff {} exp {} creep {}",
+						consist->index, contact->index.base(), diff, expected, diff <= expected + 16);
+					if (diff <= expected + 16) {
+						if (consist->cur_speed > 5) consist->cur_speed = 5;
+					}
 				}
 
 				/* If the coupler is held (stopped) near the target station -
@@ -7659,6 +7602,41 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 				 * protecting the target station (the track ahead, following
 				 * its own pathfinding, leads directly to the anchor). */
 				const bool blocked = IsBlockedByTargetStation(consist, a);
+				Debug(misc, 0, "TCBlocked: b {} blocked {} speed {} curOrder {}",
+					consist->index, blocked, consist->cur_speed, consist->current_order.GetType());
+				if (!blocked && consist->cur_speed == 0 && !consist->flags.Test(VehicleRailFlag::CouplerFlipped)) {
+					/* The coupler may be pointing away from the station (e.g. it
+					 * stopped on the station anchor tile heading away from the
+					 * platform): turn it around so its pathfinding faces the
+					 * anchor.  Debounced by CouplerFlipped. */
+					const Train *mf3 = consist->GetMovingFront();
+					Trackdir td3 = mf3->GetVehicleTrackdir();
+					if (td3 != INVALID_TRACKDIR) {
+						DiagDirection exitdir = TrackdirToExitdir(td3);
+						int dx = (int)TileX(a->tile) - (int)TileX(mf3->tile);
+						int dy = (int)TileY(a->tile) - (int)TileY(mf3->tile);
+						int ex = 0, ey = 0;
+						switch (exitdir) {
+							case DiagDirection::NE: ex = 1; ey = -1; break;
+							case DiagDirection::SE: ex = 1; ey = 1; break;
+							case DiagDirection::SW: ex = -1; ey = 1; break;
+							case DiagDirection::NW: ex = -1; ey = -1; break;
+							default: break;
+						}
+						const bool x_ok = (dx >= 0 && ex >= 0) || (dx <= 0 && ex <= 0);
+						const bool y_ok = (dy >= 0 && ey >= 0) || (dy <= 0 && ey <= 0);
+						if (!x_ok || !y_ok) {
+							Debug(misc, 0, "CTFlip: b {} turn around at {}x{} exitdir {} dx {} dy {}",
+								consist->index, TileX(mf3->tile), TileY(mf3->tile), (int)exitdir, dx, dy);
+							consist->flags.Set(VehicleRailFlag::CouplerFlipped);
+							consist->flags.Reset(VehicleRailFlag::Stuck);
+							consist->wait_counter = 0;
+							ReverseTrainDirection(consist, true);
+							ProcessOrders(consist->GetRideDriver());
+							return true;
+						}
+					}
+				}
 				if (blocked) {
 					/* The coupler is held just before the occupied platform:
 					 * entering the platform tile may be impossible for the
@@ -7669,6 +7647,9 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 					const bool attach_ahead = DetermineCoupleDirection(a, consist);
 					const Train *contact = attach_ahead ? a : a->Last();
 					const int d = std::max(abs(mf2->x_pos - contact->x_pos), abs(mf2->y_pos - contact->y_pos));
+					Debug(misc, 0, "CTAdjacent: b {} attach {} contact {} d {} exp {} adj {}",
+						consist->index, attach_ahead, contact->index.base(), d,
+						CalcCoupleSpacing(mf2, contact), d <= CalcCoupleSpacing(mf2, contact) + 2);
 					if (d <= CalcCoupleSpacing(mf2, contact) + 2) {
 						Train *coupler = consist;
 						if (attach_ahead) {
@@ -7687,6 +7668,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 						consist->flags.Reset(VehicleRailFlag::Stuck);
 						consist->cur_speed = 20;
 						SetWindowWidgetDirty(WindowClass::VehicleView, consist->index, WID_VV_START_STOP);
+						Debug(misc, 0, "TCForce: b {} fp->TFP_SIGNAL speed 20 tile {}x{}", consist->index, TileX(consist->GetMovingFront()->tile), TileY(consist->GetMovingFront()->tile));
 					}
 				}
 			}
@@ -7902,6 +7884,13 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		/* Loop until the train has finished moving. */
 		for (;;) {
 			j -= adv_spd;
+			if (consist->current_order.IsType(OT_COUPLE)) {
+				Debug(misc, 0, "TCMove: b {} speed {} fp {} tile {}x{} dest {}x{} rev {}",
+					consist->index, consist->cur_speed, consist->force_proceed,
+					TileX(moving_front->tile), TileY(moving_front->tile),
+					TileX(consist->dest_tile), TileY(consist->dest_tile),
+					consist->reverse_distance);
+			}
 			TrainController(moving_front, nullptr);
 			moving_front = moving_front->GetMovingFront();
 			/* Don't continue to move if the train crashed. */

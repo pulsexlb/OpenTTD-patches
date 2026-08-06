@@ -795,6 +795,57 @@ struct CYapfAnyDepotRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfAnyDepotRailN
 struct CYapfAnySafeTileRail     : CYapfRailBase<CYapfRail_TypesT<CYapfAnySafeTileRail    , CFollowTrackFreeRail    , CYapfDestinationAnySafeTileRailT , CYapfFollowAnySafeTileRailT>> {};
 struct CYapfAnySafeTileRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfAnySafeTileRailNo90, CFollowTrackFreeRailNo90, CYapfDestinationAnySafeTileRailT , CYapfFollowAnySafeTileRailT>> {};
 
+struct CYapfCoupleRail     : CYapfRailBase<CYapfRail_TypesT<CYapfCoupleRail    , CFollowTrackRail    , CYapfDestinationTrainRailT, CYapfFollowRailT>> {};
+struct CYapfCoupleRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfCoupleRailNo90, CFollowTrackRailNo90, CYapfDestinationTrainRailT, CYapfFollowRailT>> {};
+
+/**
+ * Pathfind from the coupler to the anchor train (which is stopped at the
+ * target station).  The pathfinder explores all junctions, so a turnout
+ * between the signal and the station is handled correctly.
+ * @param v     the coupler.
+ * @param target the anchor train (chain head).
+ * @return true if the anchor is reachable from the coupler.
+ */
+template <class Tpf>
+static bool FindCoupleTrain(const Train *v, const Train *target)
+{
+	const Train *mf = v->GetMovingFront();
+	Trackdir td = mf->GetVehicleTrackdir();
+	Debug(misc, 0, "CPFind: v {} target {} mfTile {}x{} td {} dest {}x{}", v->index, target->index,
+		TileX(mf->tile), TileY(mf->tile), td, TileX(v->dest_tile), TileY(v->dest_tile));
+	if (td == INVALID_TRACKDIR) return false;
+
+	Tpf pf;
+	pf.SetOrigin(mf->tile, td, INVALID_TILE, INVALID_TRACKDIR, 1);
+	pf.SetDestination(v, target);
+	const bool path_found = pf.FindPath(v);
+	const auto *best = pf.GetBestNode();
+	Debug(misc, 0, "CPFind: path_found {} best {} bestTile {}x{}", path_found, best != nullptr,
+		best != nullptr ? TileX(best->GetLastTile()) : 0, best != nullptr ? TileY(best->GetLastTile()) : 0);
+	if (!path_found) return false;
+
+	/* Count the signals facing the coupler's travel direction on the found
+	 * path: the first one is the signal the coupler is stopped at; a second
+	 * one means it is not the target-station signal. */
+	int signals = 0;
+	for (const auto *node = best; node != nullptr; node = node->parent) {
+		if (HasSignalOnTrackdir(node->GetLastTile(), node->GetLastTrackdir())) {
+			signals++;
+			Debug(misc, 0, "CPFind: signal {} at {}x{} td {}", signals, TileX(node->GetLastTile()), TileY(node->GetLastTile()), node->GetLastTrackdir());
+			if (signals > 1) return false;
+		}
+	}
+	Debug(misc, 0, "CPFind: OK signals {}", signals);
+	return true;
+}
+
+bool YapfTrainCoupleTrack(const Train *v, const Train *target)
+{
+	return _settings_game.pf.forbid_90_deg
+		? FindCoupleTrain<CYapfCoupleRailNo90>(v, target)
+		: FindCoupleTrain<CYapfCoupleRail>(v, target);
+}
+
 
 Track YapfTrainChooseTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
 {

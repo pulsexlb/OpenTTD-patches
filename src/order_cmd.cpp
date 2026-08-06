@@ -4105,7 +4105,15 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 
 		case OT_COUPLE: {
 			StationID station = ResolveCoupleDestination(*order);
-			if (station != StationID::Invalid()) v->SetDestTile(v->GetOrderStationLocation(station));
+			if (station != StationID::Invalid()) {
+				/* Head for the platform itself, not the station anchor tile:
+				 * the anchor is stopped on the platform, and the coupler must
+				 * enter the platform for the coupling logic to kick in. */
+				const Station *st = Station::Get(station);
+				if (st->facilities.Test(StationFacility::Train) && st->train_station.tile != INVALID_TILE) {
+					v->SetDestTile(st->train_station.tile);
+				}
+			}
 			return true;
 		}
 
