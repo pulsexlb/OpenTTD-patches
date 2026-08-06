@@ -2312,6 +2312,7 @@ static bool DoCouple(Train *a, Train *b)
 	/* B is a sub-unit; its head carries the seam marker. A remains the driver. */
 	b->flags.Set(VehicleRailFlag::UnitSeam);
 	a->flags.Reset(VehicleRailFlag::RideDriver);
+	a->flags.Set(VehicleRailFlag::CoupledAtCurrentStation);
 
 	NormaliseTrainHead(dst_head, CCF_ARRANGE_NO_DEPOT);
 
@@ -2656,8 +2657,9 @@ static bool CoupleWaitFlagHolds(Train *consist)
 	Train *driver = TrainGetOrderFront(consist);
 	const Order *order = driver->GetOrder(driver->cur_implicit_order_index);
 	if (order == nullptr || !order->IsType(OT_GOTO_STATION) || !order->GetCoupleWait()) return false;
-	/* A ride established during this stop satisfies the wait. */
-	return !consist->HasRide();
+	/* The wait-for-couple flag means: wait for a new coupler to couple at this
+	 * station (an already established ride does not satisfy the wait). */
+	return !consist->flags.Test(VehicleRailFlag::CoupledAtCurrentStation);
 }
 
 CommandCost CmdMoveVirtualRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleID dest_veh, MoveRailVehicleFlags move_flags)
@@ -5541,6 +5543,10 @@ static bool HandlePossibleBreakdowns(Train *v)
 static void TrainEnterStation(Train *consist, StationID station)
 {
 	consist->last_station_visited = station;
+
+	/* A new station stop: reset the "coupled at this station" marker, so a
+	 * wait-for-couple order waits for a coupler to couple during this stop. */
+	consist->flags.Reset(VehicleRailFlag::CoupledAtCurrentStation);
 
 	/* A coupler reaching its target station couples with the anchor if it is
 	 * already there; otherwise it stops and waits for it. */

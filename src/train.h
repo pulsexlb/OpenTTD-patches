@@ -51,6 +51,7 @@ enum class VehicleRailFlag : uint8_t {
 	RideDriver                = 24, ///< This vehicle is the driver (schedule owner) of a coupled consist during a ride.
 	WaitForCoupleDepart       = 25, ///< After a decouple, wait for the released unit to leave the station before departing.
 	JustDecoupled             = 26, ///< Just decoupled; collision is exempted with the partner until separated.
+	CoupledAtCurrentStation   = 27, ///< A coupler coupled with this train during the current station stop.
 };
 using VehicleRailFlags = EnumBitSet<VehicleRailFlag, uint32_t>;
 
