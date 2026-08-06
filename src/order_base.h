@@ -283,6 +283,39 @@ public:
 	void MakeReleaseSlotGroup();
 	void MakeChangeCounter();
 	void MakeLabel(OrderLabelSubType subtype);
+	void MakeCoupleOrder(VehicleID target, VehicleOrderID start_idx, VehicleOrderID end_idx);
+
+	/**
+	 * Get the target vehicle of a couple order.
+	 * @pre IsType(OT_COUPLE).
+	 * @return the target vehicle being ridden.
+	 */
+	inline VehicleID GetCoupleTarget() const { return (VehicleID)this->GetXData(); }
+	/** Set the target vehicle of a couple order. */
+	inline void SetCoupleTarget(VehicleID target) { this->GetXDataRef() = target.base(); }
+	/**
+	 * Get the start order index (of the target) at which to start riding.
+	 * @pre IsType(OT_COUPLE).
+	 */
+	inline VehicleOrderID GetCoupleStart() const { return this->GetXData2Low(); }
+	/** Set the start order index of a couple order. */
+	inline void SetCoupleStart(VehicleOrderID start_idx) { this->SetXData2Low(start_idx); }
+	/**
+	 * Get the end order index (of the target) at which to end/decouple the ride.
+	 * @pre IsType(OT_COUPLE).
+	 */
+	inline VehicleOrderID GetCoupleEnd() const { return this->GetXData2High(); }
+	/** Set the end order index of a couple order. */
+	inline void SetCoupleEnd(VehicleOrderID end_idx) { this->SetXData2High(end_idx); }
+
+	/**
+	 * Is this a station order with the "wait for couple" flag set?
+	 * When set, the driver train waits at this station for any coupler before departing.
+	 * @pre IsType(OT_GOTO_STATION). (Station orders leave flags bits 8+ unused.)
+	 */
+	inline bool GetCoupleWait() const { return HasBit(this->flags, 8); }
+	/** Set/clear the "wait for couple" flag on a station order. */
+	inline void SetCoupleWait(bool set) { AssignBit(this->flags, 8, set); }
 
 	/**
 	 * Is this a 'goto' order with a real destination?

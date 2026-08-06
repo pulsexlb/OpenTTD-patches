@@ -47,8 +47,20 @@ enum class VehicleRailFlag : uint8_t {
 	ConsistSpeedReduction     = 20, ///< One or more vehicles in this consist may be in a depot or on a bridge (may be false positive but not false negative).
 	PendingSpeedRestriction   = 21, ///< This vehicle has one or more pending speed restriction changes.
 	SpeedAdaptationExempt     = 22, ///< This vehicle is exempt from train speed adaptation.
+	UnitSeam                  = 23, ///< This vehicle is the head of an attached sub-train (coupling seam).
+	RideDriver                = 24, ///< This vehicle is the driver (schedule owner) of a coupled consist during a ride.
+	WaitForCoupleDepart       = 25, ///< After a decouple, wait for the released unit to leave the station before departing.
+	JustDecoupled             = 26, ///< Just decoupled; collision is exempted with the partner until separated.
 };
 using VehicleRailFlags = EnumBitSet<VehicleRailFlag, uint32_t>;
+
+/**
+ * Terminate all couple rides in the given consist, detaching every riding unit
+ * as an independent train.  Used when the anchor is sold, crashed or enters a depot.
+ * @param head   the chain head.
+ * @param reason news string to show (or StringID::Invalid() to skip).
+ */
+void CancelTrainRide(Train *head, StringID reason);
 
 static constexpr VehicleRailFlags VehicleRailFlagsIsBroken{VehicleRailFlag::BreakdownPower, VehicleRailFlag::BreakdownSpeed, VehicleRailFlag::BreakdownStopped}; ///< Bitmask of all flags that indicate a broken train (braking is not included)
 
@@ -73,6 +85,7 @@ static constexpr ConsistChangeFlags CCF_LOADUNLOAD{}; ///< Valid changes while v
 static constexpr ConsistChangeFlags CCF_AUTOREFIT{ConsistChangeFlag::Capacity}; ///< Valid changes for autorefitting in stations.
 static constexpr ConsistChangeFlags CCF_REFIT{ConsistChangeFlag::Length, ConsistChangeFlag::Capacity}; ///< Valid changes for refitting in a depot.
 static constexpr ConsistChangeFlags CCF_ARRANGE{ConsistChangeFlag::Length, ConsistChangeFlag::Capacity, ConsistChangeFlag::DepotDirection}; ///< Valid changes for arranging the consist in a depot.
+static constexpr ConsistChangeFlags CCF_ARRANGE_NO_DEPOT{ConsistChangeFlag::Length, ConsistChangeFlag::Capacity}; ///< Valid changes for arranging a consist outside a depot (no direction normalisation).
 static constexpr ConsistChangeFlags CCF_SAVELOAD{ConsistChangeFlag::Length}; ///< Valid changes when loading a savegame. (Everything that is not stored in the save.)
 
 enum RealisticBrakingConstants {
@@ -190,6 +203,39 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	ExpensesType GetExpenseType(bool income) const override { return income ? ExpensesType::TrainRevenue : ExpensesType::TrainRun; }
 	void PlayLeaveStationSound(bool force = false) const override;
 	bool IsPrimaryVehicle() const override { return this->IsFrontEngine(); }
+
+	/**
+	 * Get the schedule owner ("driver") of this consist during a couple ride.
+	 * The head vehicle carries no marker when it is itself the driver (no ride);
+	 * during a ride the driver unit's head carries #VehicleRailFlag::RideDriver.
+	 * @pre this is the chain head (First()).
+	 * @return the vehicle whose orders/current_order drive the consist.
+	 */
+	inline Train *GetRideDriver() const
+	{
+		for (const Train *u = this; u != nullptr; u = u->Next()) {
+			if (u->flags.Test(VehicleRailFlag::RideDriver)) return const_cast<Train *>(u);
+		}
+		return const_cast<Train *>(this);
+	}
+
+	/**
+	 * Is this consist currently in a couple ride (multi-unit coupled train)?
+	 * @pre this is the chain head (First()).
+	 */
+	inline bool HasRide() const
+	{
+		for (const Train *u = this; u != nullptr; u = u->Next()) {
+			if (u->flags.Test(VehicleRailFlag::UnitSeam)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Does this consist have a pending ride (either in a ride, or a coupler
+	 * waiting/sub-unit attached)? Alias of HasRide for readability.
+	 */
+	inline bool IsCoupledConsist() const { return this->HasRide(); }
 	void GetImage(Direction direction, EngineImageType image_type, VehicleSpriteSeq *result) const override;
 	int GetDisplaySpeed() const override { return this->gcache.last_speed; }
 	int GetDisplayMaxSpeed() const override { return this->vcache.cached_max_speed; }

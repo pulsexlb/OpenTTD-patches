@@ -2691,6 +2691,9 @@ void VehicleEnterDepot(Vehicle *v)
 	switch (v->type) {
 		case VehicleType::Train: {
 			Train *t = Train::From(v);
+			/* A coupled/ride consist entering a depot terminates the ride,
+			 * detaching every riding unit inside the depot. */
+			if (t->HasRide()) CancelTrainRide(t, STR_NEWS_ORDER_RIDE_TERMINATED);
 			/* Clear path reservation */
 			SetDepotReservation(t->tile, false);
 			if (_settings_client.gui.show_track_reservation) MarkTileDirtyByTile(t->tile, VMDF_NOT_MAP_MODE);

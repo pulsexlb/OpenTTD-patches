@@ -4291,6 +4291,16 @@ public:
 			} else {
 				append(STR_VEHICLE_STATUS_TRAIN_REVERSING, v->GetDisplaySpeed());
 			}
+		} else if (v->type == VehicleType::Train && Train::From(v)->current_order.IsType(OT_COUPLE) &&
+				v->GetNumOrders() > 0 && v->cur_implicit_order_index < v->GetNumOrders() &&
+				v->GetOrder(v->cur_implicit_order_index)->IsType(OT_COUPLE)) {
+			const Train *mf = Train::From(v)->GetMovingFront();
+			if (IsTileType(mf->tile, TileType::Station) && GetStationIndex(mf->tile) == v->current_order.GetDestination().ToStationID()) {
+				append(STR_VEHICLE_STATUS_WAITING_FOR_COUPLE);
+			} else {
+				append(v->vehicle_flags.Test(VehicleFlag::PathfinderLost) ? STR_VEHICLE_STATUS_CANNOT_REACH_STATION_VEL : STR_VEHICLE_STATUS_HEADING_FOR_STATION_VEL,
+						v->current_order.GetDestination().ToStationID(), PackVelocity(v->GetDisplaySpeed(), v->type));
+			}
 		} else if (v->type == VehicleType::Aircraft && Aircraft::From(v)->flags.Test(VehicleAirFlag::DestinationTooFar) && !v->current_order.IsType(OT_LOADING)) {
 			append(STR_VEHICLE_STATUS_AIRCRAFT_TOO_FAR);
 		} else { // vehicle is in a "normal" state, show current order

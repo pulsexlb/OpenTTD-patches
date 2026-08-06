@@ -941,6 +941,20 @@ STR_NEWS_AIRCRAFT_DEST_TOO_FAR                                  :{WHITE}{VEHICLE
 
 STR_NEWS_ORDER_REFIT_FAILED                                     :{WHITE}{VEHICLE} stopped because an ordered refit failed
 STR_NEWS_VEHICLE_AUTORENEW_FAILED                               :{WHITE}Autorenew failed on {VEHICLE}{}{STRING1}
+STR_NEWS_ORDER_COUPLE_FAILED                                    :{WHITE}{VEHICLE} failed to couple with the target train
+STR_NEWS_ORDER_COUPLE_FAILED_NOT_ADJACENT                       :{WHITE}{VEHICLE} cannot couple: the trains are not positioned correctly (stop the coupler directly behind the target train)
+STR_NEWS_ORDER_COUPLED                                          :{WHITE}{VEHICLE} has coupled with the target train
+STR_NEWS_ORDER_DECOUPLE_FAILED_MIDDLE                           :{WHITE}{VEHICLE} cannot decouple: the train is in the middle of the consist, only the front and rear trains can decouple
+STR_NEWS_ORDER_RIDE_TERMINATED                                  :{WHITE}{VEHICLE} ride terminated
+STR_VEHICLE_STATUS_WAITING_FOR_COUPLE                           :Waiting for a train to couple
+STR_VEHICLE_STATUS_NO_POWER                                     :No power, waiting for a locomotive
+STR_ORDER_COUPLE                                                :Couple with {VEHICLE} (orders {NUM} to {NUM})
+STR_ORDER_WAIT_FOR_COUPLE                                       :Waiting for couple
+STR_ORDER_ADD_COUPLE                                            :Couple with selected train…
+STR_ORDER_COUPLE_START_DEC                                      :Couple start earlier
+STR_ORDER_COUPLE_START_INC                                      :Couple start later
+STR_ORDER_COUPLE_END_DEC                                        :Couple end earlier
+STR_ORDER_COUPLE_END_INC                                        :Couple end later
 
 STR_NEWS_NEW_VEHICLE_NOW_AVAILABLE                              :{BIG_FONT}{BLACK}New {STRING} now available!
 STR_NEWS_NEW_VEHICLE_TYPE                                       :{BIG_FONT}{BLACK}{ENGINE}
@@ -5268,6 +5282,7 @@ STR_ERROR_AIRCRAFT_MUST_BE_STOPPED_INSIDE_HANGAR                :must be stopped
 
 STR_ERROR_TRAINS_CAN_ONLY_BE_ALTERED_INSIDE_A_DEPOT             :trains can only be altered when stopped inside a depot
 STR_ERROR_TRAIN_TOO_LONG                                        :train is too long
+STR_ERROR_CANT_DO_WHILE_RIDING                                  :can't do that while the train is coupled in a ride
 STR_ERROR_CAN_T_REVERSE_DIRECTION_RAIL_VEHICLE                  :Can't reverse direction of vehicle...
 STR_ERROR_CAN_T_REVERSE_DIRECTION_RAIL_VEHICLE_MULTIPLE_UNITS   :consists of multiple units
 STR_ERROR_INCOMPATIBLE_RAIL_TYPES                               :incompatible rail types

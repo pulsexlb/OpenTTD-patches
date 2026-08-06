@@ -12,6 +12,7 @@
 #include "viewport_func.h"
 #include "depot_map.h"
 #include "roadveh.h"
+#include "train.h"
 #include "timetable.h"
 #include "strings_func.h"
 #include "company_func.h"
@@ -870,6 +871,10 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 	format_buffer line;
 
 	switch (order->GetType()) {
+		case OT_COUPLE:
+			AppendStringInPlace(line, STR_ORDER_COUPLE, order->GetCoupleTarget(), order->GetCoupleStart() + 1, order->GetCoupleEnd() + 1);
+			break;
+
 		case OT_DUMMY:
 			AppendStringInPlace(line, STR_INVALID_ORDER);
 			break;
@@ -1564,6 +1569,7 @@ private:
 		OPOS_COND_STATION,
 		OPOS_CONDITIONAL_RETARGET,
 		OPOS_DEPARTURE_VIA,
+		OPOS_COUPLE,
 		OPOS_END,
 	};
 
@@ -1751,6 +1757,7 @@ private:
 			HT_RECT,              // OPOS_COND_STATION
 			HT_NONE,              // OPOS_CONDITIONAL_RETARGET
 			HT_RECT,              // OPOS_DEPARTURE_VIA
+			HT_VEHICLE,           // OPOS_COUPLE
 		};
 		SetObjectToPlaceWnd(ANIMCURSOR_PICKSTATION, PAL_NONE, goto_place_style[type - 1], this);
 		this->goto_type = type;
@@ -3117,9 +3124,27 @@ public:
 					add_colour(Colours::Pink);
 				}
 
+				if (this->vehicle->type == VehicleType::Train && order->IsType(OT_GOTO_STATION)) {
+					list.push_back(MakeDropDownListDividerItem());
+					list.push_back(MakeDropDownListCheckedItem(order->GetCoupleWait(), STR_ORDER_WAIT_FOR_COUPLE, 0x500, false));
+				}
+
+				if (this->vehicle->type == VehicleType::Train && order->IsType(OT_COUPLE)) {
+					/* Adjust the couple window on the target's schedule. */
+					list.push_back(MakeDropDownListDividerItem());
+					list.push_back(MakeDropDownListStringItem(STR_ORDER_COUPLE_START_DEC, 0x510, false));
+					list.push_back(MakeDropDownListStringItem(STR_ORDER_COUPLE_START_INC, 0x511, false));
+					list.push_back(MakeDropDownListStringItem(STR_ORDER_COUPLE_END_DEC, 0x512, false));
+					list.push_back(MakeDropDownListStringItem(STR_ORDER_COUPLE_END_INC, 0x513, false));
+				}
+
 				list.push_back(MakeDropDownListDividerItem());
 				list.push_back(MakeDropDownListStringItem(STR_ORDER_IMPORT_ORDER_LIST_INSERT, 0x400, false));
 				list.push_back(MakeDropDownListStringItem(STR_ORDER_IMPORT_ORDER_LIST_INSERT_REVERSED, 0x401, false));
+				if (this->vehicle->type == VehicleType::Train) {
+					list.push_back(MakeDropDownListDividerItem());
+					list.push_back(MakeDropDownListStringItem(STR_ORDER_ADD_COUPLE, 0x501, false));
+				}
 
 				ShowDropDownList(this, std::move(list), -1, widget, 0, DropDownOptions{}, DDSF_SHARED);
 				break;
@@ -3935,6 +3960,21 @@ public:
 					this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRAVEL_DIR, index & 0xFF);
 					break;
 				}
+				if (index == 0x500) {
+					this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_WAIT, 0);
+					break;
+				}
+				if (index >= 0x510 && index <= 0x513) {
+					const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
+					if (o != nullptr && o->IsType(OT_COUPLE)) {
+						ModifyOrderFlags mof = (index & 1) ? MOF_COUPLE_START : MOF_COUPLE_END;
+						VehicleOrderID val = (mof == MOF_COUPLE_START) ? o->GetCoupleStart() : o->GetCoupleEnd();
+						val = (index >= 0x512) ? val + 1 : (val > 0 ? val - 1 : val);
+						if (mof == MOF_COUPLE_START) val = std::min(val, o->GetCoupleEnd());
+						this->ModifyOrder(this->OrderGetSel(), mof, val);
+					}
+					break;
+				}
 				switch (index) {
 					case 0:
 						Command<Commands::DuplicateOrder>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, this->vehicle->tile, this->vehicle->index, this->OrderGetSel());
@@ -3950,6 +3990,10 @@ public:
 
 					case 0x401:
 						ShowSaveLoadDialog(AbstractFileType::Orderlist, SaveLoadOperation::Load, FiosOrderListInfo(this->GetVehicle(), this->OrderGetSel(), true));
+						break;
+
+					case 0x501:
+						this->OrderClick_Goto(OPOS_COUPLE);
 						break;
 
 					default:
@@ -4069,6 +4113,18 @@ public:
 
 	bool OnVehicleSelect(const Vehicle *v) override
 	{
+		if (this->goto_type == OPOS_COUPLE) {
+			if (this->vehicle->type == VehicleType::Train && v->type == VehicleType::Train && v->index != this->vehicle->index) {
+				const Train *target = Train::From(v)->First();
+				Order order;
+				VehicleOrderID end_idx = (target->orders != nullptr && target->orders->GetNumManualOrders() > 0) ? target->orders->GetNumManualOrders() - 1 : 0;
+				order.MakeCoupleOrder(target->index, 0, end_idx);
+				if (this->InsertNewOrder(order)) {
+					ResetObjectToPlace();
+				}
+			}
+			return true;
+		}
 		if (this->goto_type == OPOS_INSERT_FROM_VEHICLE) {
 			if (Command<Commands::InsertOrdersFromVeh>::Post(STR_ERROR_CAN_T_COPY_ORDER_LIST, CommandCallback::InsertOrdersFromVehicle, this->vehicle->tile, this->vehicle->index, v->index, this->OrderGetSel())) {
 				this->selected_order = -1;

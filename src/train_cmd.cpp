@@ -1125,6 +1125,9 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 
 	if (this->current_order.IsType(OT_LOADING_ADVANCE)) max_speed = std::min<int>(max_speed, _settings_game.vehicle.through_load_speed_limit);
 
+	/* Couplers approach their target at reduced speed. */
+	if (this->current_order.IsType(OT_COUPLE)) max_speed = std::min<int>(max_speed, 40);
+
 	/* If the train is going backwards, without a leading cab, restrict its speed. */
 	if (this->tcache.cached_tflags & TCF_NO_DRIVING_CAB) {
 		constexpr int BACKWARDS_NO_CAB_SPEED_LIMIT = 32;
@@ -2161,13 +2164,13 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
  * we have changed and update all kinds of variables.
  * @param head the train to update.
  */
-static void NormaliseTrainHead(Train *head)
+static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes = CCF_ARRANGE)
 {
 	/* Not much to do! */
 	if (head == nullptr) return;
 
 	/* Tell the 'world' the train changed. */
-	head->ConsistChanged(CCF_ARRANGE);
+	head->ConsistChanged(allowed_changes);
 	UpdateTrainGroupID(head);
 	head->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 
@@ -2181,6 +2184,458 @@ static void NormaliseTrainHead(Train *head)
 	/* If we don't have a unit number yet, set one. */
 	if (head->unitnumber != 0 || HasBit(head->subtype, GVSF_VIRTUAL)) return;
 	head->unitnumber = Company::Get(head->owner)->freeunits[head->type].UseID(GetFreeUnitNumber(VehicleType::Train));
+}
+
+static void ReverseTrainDirection(Train *consist);
+
+/* =====================================================================
+ * Train couple/decouple feature
+ *
+ * A consist may be composed of several "units", each of which is itself a
+ * legal train.  The head of every non-front unit carries the UnitSeam flag.
+ * A "ride" is the situation where a coupler unit rides along with an anchor
+ * unit following the anchor's schedule; the anchor's head carries the
+ * RideDriver flag when it is not the chain head.
+ * ===================================================================== */
+
+/**
+ * Collect the heads of all units making up this consist.
+ * The chain head itself has no seam mark; every subsequent unit head carries UnitSeam.
+ * @param head the chain head.
+ * @return the list of unit heads, in chain order.
+ */
+static std::vector<Train *> GetConsistUnits(Train *head)
+{
+	std::vector<Train *> units;
+	for (Train *u = head; u != nullptr; u = u->Next()) {
+		if (u == head || u->flags.Test(VehicleRailFlag::UnitSeam)) units.push_back(u);
+	}
+	return units;
+}
+
+/**
+ * Get the last vehicle of a unit.
+ * @param unit_head the head of the unit.
+ * @return the unit's last (tail) vehicle.
+ */
+static Train *GetUnitTail(Train *unit_head)
+{
+	Train *u = unit_head;
+	while (u->Next() != nullptr && !u->Next()->flags.Test(VehicleRailFlag::UnitSeam)) u = u->Next();
+	return u;
+}
+
+/**
+ * Is the given unit an end unit of the consist (i.e. may it decouple)?
+ * @param head      the chain head of the consist.
+ * @param unit_head the head of the unit to test.
+ * @return true if the unit is the first or the last unit.
+ */
+static bool IsEndUnit(Train *head, Train *unit_head)
+{
+	return unit_head == head || GetUnitTail(unit_head)->Next() == nullptr;
+}
+
+/**
+ * Determine whether the coupler B can be merged behind the anchor A ([A][B]).
+ * The coupler must face the same way as the anchor and be reasonably close
+ * behind it; any remaining gap is closed by AdvanceWagonsAfterCouple.
+ * @param a the anchor (schedule owner / driver).
+ * @param b the coupler (rides along with A).
+ * @return true if B can be attached behind A.
+ */
+/**
+ * The exact spacing between two adjacent vehicles, using the same rounding
+ * rules as Train::CalcNextVehicleOffset (rounding = 0, not driving backwards).
+ */
+static int CalcCoupleSpacing(const Train *a, const Train *b)
+{
+	return (a->gcache.cached_veh_length) / 2 + (b->gcache.cached_veh_length + 1) / 2;
+}
+
+/**
+ * Debug helper: assert that the given consist is a physically consistent chain
+ * (exact vehicle spacing, coherent first/previous pointers).
+ * @param head the chain head.
+ */
+static void DebugAssertConsistConsistent(const Train *head)
+{
+	dbg_assert(head != nullptr);
+	dbg_assert(head->Previous() == nullptr);
+	for (const Train *u = head; u != nullptr; u = u->Next()) {
+		dbg_assert(u->First() == head);
+		if (u->Next() != nullptr) {
+			int diff = std::max(abs(u->x_pos - u->Next()->x_pos), abs(u->y_pos - u->Next()->y_pos));
+			dbg_assert(diff == u->CalcNextVehicleOffset());
+		}
+	}
+}
+
+static bool DoCouple(Train *a, Train *b)
+{
+	TrainList original_a;
+	TrainList original_b;
+	MakeTrainBackup(original_a, a);
+	MakeTrainBackup(original_b, b);
+
+	Train *original_dst_head = a;
+	Train *original_src_head = b;
+	Train *a_tail = a->Last();
+
+	/* [A][B]: move B's whole chain after A's tail. */
+	Train *dst_head = a;
+	Train *src_head = b;
+	ArrangeTrains(&dst_head, a_tail, &src_head, b, true);
+
+	Debug(misc, 0, "DoCouple merged: a {} dir {} track {} tile {} | b {} dir {} track {} tile {} gap {}",
+		a->index, to_underlying(a->direction), to_underlying(a->track), a->tile,
+		b->index, to_underlying(b->direction), to_underlying(b->track), b->tile,
+		std::max(abs(a_tail->x_pos - b->x_pos), abs(a_tail->y_pos - b->y_pos)));
+
+	CommandCost ret = ValidateTrains(original_dst_head, dst_head, original_src_head, src_head, true);
+	if (ret.Failed()) {
+		RestoreTrainBackup(original_a);
+		RestoreTrainBackup(original_b);
+		a->ConsistChanged(CCF_ARRANGE_NO_DEPOT);
+		b->ConsistChanged(CCF_ARRANGE_NO_DEPOT);
+		AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, a->index), a->index);
+		return false;
+	}
+
+	/* Remove the coupler head from the front-engine group statistics. */
+	GroupStatistics::CountVehicle(b, -1);
+
+	/* The merged consist is no longer force-proceeding. */
+	dst_head->force_proceed = TFP_NONE;
+
+	/* The coupler's head is now a mid-consist vehicle: it must never be ticked
+	 * as a front engine again (its caches are zeroed by ConsistChanged). */
+	NormaliseSubtypes(dst_head);
+	b->ClearFrontEngine();
+	b->ClearFreeWagon();
+
+	/* B is a sub-unit; its head carries the seam marker. A remains the driver. */
+	b->flags.Set(VehicleRailFlag::UnitSeam);
+	a->flags.Reset(VehicleRailFlag::RideDriver);
+
+	NormaliseTrainHead(dst_head, CCF_ARRANGE_NO_DEPOT);
+
+	/* Close the coupler's own windows, it is no longer an independent train. */
+	CloseWindowById(WindowClass::VehicleView, b->index);
+	CloseWindowById(WindowClass::VehicleOrders, b->index);
+	CloseWindowById(WindowClass::VehicleDetails, b->index);
+	CloseWindowById(WindowClass::VehicleTimetable, b->index);
+	DebugAssertConsistConsistent(dst_head);
+
+	InvalidateWindowClassesData(WindowClass::TrainList);
+
+	return true;
+}
+
+/**
+ * Decouple the given unit from the consist and restore it as an independent train.
+ * @param head      the chain head of the consist.
+ * @param unit_head the head of the unit to decouple; must be an end unit.
+ * @return true on success.
+ */
+static bool DoDecouple(Train *head, Train *unit_head)
+{
+	if (!IsEndUnit(head, unit_head)) return false;
+
+	TrainList original_src;
+	MakeTrainBackup(original_src, head);
+
+	Train *unit_tail = GetUnitTail(unit_head);
+	Train *unit_head_new;    /* head of the decoupled unit as an independent train */
+	Train *remaining_head;   /* head of the part that stays */
+
+	if (unit_head == head) {
+		/* Decouple the front unit: move the rest of the consist to a new train. */
+		Train *next = unit_tail->Next();
+		if (next == nullptr) return false; /* cannot decouple the whole consist */
+		Train *dst_head = nullptr;
+		Train *src_head = next;
+		ArrangeTrains(&dst_head, nullptr, &src_head, next, true);
+		unit_head_new = head;
+		remaining_head = next;
+	} else {
+		/* Decouple the tail unit: detach its chain from the consist. */
+		RemoveFromConsist(unit_head, true);
+		unit_head_new = unit_head;
+		remaining_head = head;
+	}
+
+	CommandCost ret = CheckTrainAttachment(remaining_head);
+	CommandCost ret2 = CheckTrainAttachment(unit_head_new);
+	if (ret.Failed() || ret2.Failed()) {
+		RestoreTrainBackup(original_src);
+		remaining_head->ConsistChanged(CCF_ARRANGE_NO_DEPOT);
+		unit_head_new->ConsistChanged(CCF_ARRANGE_NO_DEPOT);
+		return false;
+	}
+
+	NormaliseSubtypes(remaining_head);
+	NormaliseSubtypes(unit_head_new);
+
+	/* The new chain head is now its own driver; clear the markers. */
+	unit_head_new->flags.Reset(VehicleRailFlag::UnitSeam);
+	unit_head_new->flags.Reset(VehicleRailFlag::RideDriver);
+	remaining_head->flags.Reset(VehicleRailFlag::UnitSeam);
+	remaining_head->flags.Reset(VehicleRailFlag::RideDriver);
+
+	GroupStatistics::CountVehicle(unit_head_new, 1);
+
+	NormaliseTrainHead(remaining_head, CCF_ARRANGE_NO_DEPOT);
+	NormaliseTrainHead(unit_head_new, CCF_ARRANGE_NO_DEPOT);
+
+	InvalidateWindowClassesData(WindowClass::TrainList);
+
+	/* The decoupled unit resumes its own schedule; it was parked in the couple order. */
+	Train *driver = unit_head_new;
+	driver->IncrementImplicitOrderIndex();
+	driver->UpdateRealOrderIndex();
+	driver->current_order.MakeDummy();
+	driver->force_proceed = TFP_NONE;
+	driver->flags.Reset(VehicleRailFlag::Stuck);
+	/* The decoupled unit is turned around to face away from the anchor (the
+	 * two trains depart in opposite directions) and both trains are exempted
+	 * from colliding with each other until they have separated. */
+	driver->flags.Set(VehicleRailFlag::JustDecoupled);
+	remaining_head->flags.Set(VehicleRailFlag::JustDecoupled);
+	ReverseTrainDirection(driver);
+	ProcessOrders(driver);
+
+	Debug(misc, 0, "DoDecouple done: head {} unit {} unit_track {} unit_tile {} unit_dir {} unit_prev {} unit_next {}",
+		head->index, unit_head_new->index, unit_head_new->track, unit_head_new->tile,
+		to_underlying(unit_head_new->direction),
+		unit_head_new->Previous() != nullptr ? static_cast<int>(unit_head_new->Previous()->index.base()) : -1,
+		unit_head_new->Next() != nullptr ? static_cast<int>(unit_head_new->Next()->index.base()) : -1);
+
+	return true;
+}
+
+/**
+ * A coupler train (with an active OT_COUPLE order) that bumps into its anchor
+ * couples instead of crashing.  The anchor must be at the window-start order
+ * index.  v1 requires the coupler to be behind the anchor and facing the same way.
+ * @param v       one of the two colliding trains (any vehicle).
+ * @param moving_front the front vehicle of the other colliding train.
+ * @return true if the pair coupled.
+ */
+static bool TryCoupleOnCollision(Train *v, Train *moving_front)
+{
+	Train *v_first = v->First();
+	Train *mf_first = moving_front->First();
+	if (v_first->index == mf_first->index) return false;
+
+	/* Newly decoupled trains (a coupler just released at a station) must not
+	 * crash into each other while separating: exempt the pair, and clear the
+	 * exemption once they are well apart. */
+	if (v_first->flags.Test(VehicleRailFlag::JustDecoupled) && mf_first->flags.Test(VehicleRailFlag::JustDecoupled)) {
+		int dx = abs(v_first->x_pos - mf_first->x_pos);
+		int dy = abs(v_first->y_pos - mf_first->y_pos);
+		if (std::max(dx, dy) > 32) {
+			v_first->flags.Reset(VehicleRailFlag::JustDecoupled);
+			mf_first->flags.Reset(VehicleRailFlag::JustDecoupled);
+		}
+		return 0;
+	}
+
+	Train *coupler = nullptr;
+	Train *anchor = nullptr;
+
+	auto is_coupler_for = [](Train *t, Train *target) -> bool {
+		if (t->GetNumOrders() == 0 || t->cur_implicit_order_index >= t->GetNumOrders()) return false;
+		const Order *o = t->GetOrder(t->cur_implicit_order_index);
+		return o != nullptr && o->IsType(OT_COUPLE) && Train::GetIfValid(o->GetCoupleTarget()) == target
+			&& target->cur_implicit_order_index == o->GetCoupleStart();
+	};
+
+	if (is_coupler_for(mf_first, v_first)) {
+		coupler = mf_first;
+		anchor = v_first;
+	} else if (is_coupler_for(v_first, mf_first)) {
+		coupler = v_first;
+		anchor = mf_first;
+	} else {
+		return false;
+	}
+
+	/* The anchor must be stopped. */
+	if (anchor->cur_speed != 0) return false;
+	if (coupler->owner != anchor->owner) return false;
+
+	if (DoCouple(anchor, coupler)) {
+		if (anchor->owner == _local_company) {
+			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLED, anchor->index), anchor->index);
+		}
+		return true;
+	}
+	/* The couple failed (e.g. wrong direction): do not crash.  Stop the coupler
+	 * so the player can sort out the arrangement. */
+	coupler->force_proceed = TFP_NONE;
+	coupler->cur_speed = 0;
+	coupler->subspeed = 0;
+	return true;
+}
+
+/**
+ * Terminate all rides in the given consist, detaching every riding unit as an
+ * independent train.  Used when the anchor is sold, crashed or enters a depot.
+ * @param head the chain head.
+ * @param reason news string describing the reason (may be INVALID_STRING_ID to skip).
+ */
+void CancelTrainRide(Train *head, StringID reason = INVALID_STRING_ID)
+{
+	/* Decouple every riding unit; the driver's own unit stays. */
+	std::vector<Train *> units = GetConsistUnits(head);
+	for (Train *u : units) {
+		if (u == head) continue;
+		if (u->flags.Test(VehicleRailFlag::RideDriver)) continue; /* the driver unit, keep it attached */
+		DoDecouple(head, u);
+	}
+
+	if (reason != INVALID_STRING_ID && head->owner == _local_company) {
+		AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(reason, head->index), head->index);
+	}
+}
+
+/**
+ * Get the schedule owner ("driver") of a consist during a couple ride.
+ * @param consist the chain head.
+ */
+static Train *TrainGetOrderFront(Train *consist)
+{
+	return consist->GetRideDriver();
+}
+
+/**
+ * Called once the driver has finished loading at a station: decouple any end unit
+ * whose ride window ends at the driver's current order index.
+ * @param consist the driver's consist.
+ */
+/**
+ * Check whether any other (company) train occupies the track ahead of the given
+ * consist, up to max_tiles tiles forward.  Used after a decouple to wait until
+ * the released unit has left the station.
+ * @param head the consist head.
+ * @param max_tiles how many tiles to look ahead.
+ * @return true if another train is blocking the way ahead.
+ */
+/**
+ * Check whether the coupler is being held by the signal protecting the target
+ * station.  The track ahead is followed along the coupler's own pathfinding
+ * (ChooseTrainTrack at junctions); the scan fails on a dead end or on a
+ * further signal (i.e. the coupler is stopped at a non-target signal), and
+ * succeeds when the anchor's consist is reached.
+ */
+static bool IsBlockedByTargetStation(const Train *b, const Train *a)
+{
+	const Train *mf = b->GetMovingFront();
+	TileIndex tile = mf->tile;
+	Trackdir td = mf->GetVehicleTrackdir();
+	if (td == INVALID_TRACKDIR) return false;
+
+	/* A signal on the coupler's own tile (it stopped just before the signal
+	 * protecting the platform) counts as the signal it is stopped at. */
+	bool seen_signal = HasSignalOnTrack(tile, TrackdirToTrack(td));
+
+	CFollowTrackRail ft(b);
+	for (int i = 0; i < 512; i++) {
+		if (!ft.Follow(tile, td)) return false; /* dead end */
+
+		tile = ft.new_tile;
+		TrackdirBits tdb = ft.new_td_bits;
+		if (tdb == TRACKDIR_BIT_NONE) return false;
+		if (HasExactlyOneBit(tdb)) {
+			td = FindFirstTrackdir(tdb);
+		} else {
+			/* Junction: follow the coupler's own pathfinding. */
+			DiagDirection enterdir = TrackdirToExitdir(ReverseTrackdir(td));
+			ChooseTrainTrackResult ctt = ChooseTrainTrack(const_cast<Train *>(b), tile, enterdir, TrackdirBitsToTrackBits(tdb), CTTF_NONE);
+			if (ctt.track == INVALID_TRACK) return false;
+			td = TrackExitdirToTrackdir(ctt.track, enterdir);
+		}
+
+		/* A further signal means this is not the target-station signal. */
+		if (HasSignalOnTrack(tile, TrackdirToTrack(td))) {
+			if (seen_signal) return false;
+			seen_signal = true;
+			continue;
+		}
+
+		/* Reached the anchor's consist (stopped at the target station)? */
+		if (IsTileType(tile, TileType::Station)) {
+			for (const Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
+				if (t->First() == a) return true;
+			}
+		}
+	}
+	return false;
+}
+
+static bool TrainBlockingAhead(const Train *head, int max_tiles)
+{
+	const Train *mf = head->GetMovingFront();
+	TileIndex tile = mf->tile;
+	Trackdir td = mf->GetVehicleTrackdir();
+	DiagDirection exitdir = TrackdirToExitdir(td);
+	for (int i = 0; i < max_tiles; i++) {
+		tile += TileOffsByDiagDir(exitdir);
+		if (!IsValidTile(tile)) return false;
+		if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Railway)) {
+			for (const Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
+				if (t->First() != head->First() && t->owner == head->owner) return true;
+			}
+		}
+	}
+	return false;
+}
+
+static void TrainDecoupleHandler(Train *consist)
+{
+	if (!consist->HasRide()) return; /* no ride going on */
+
+	Train *driver = TrainGetOrderFront(consist);
+	VehicleOrderID idx = driver->cur_implicit_order_index;
+
+	std::vector<Train *> units = GetConsistUnits(consist);
+	for (Train *unit : units) {
+		if (unit == consist) continue;
+		if (unit->flags.Test(VehicleRailFlag::RideDriver)) continue; /* the driver unit stays */
+
+		const Order *o = unit->GetOrder(unit->cur_implicit_order_index);
+		if (o == nullptr || !o->IsType(OT_COUPLE)) continue;
+		if (o->GetCoupleEnd() != idx) continue;
+
+		if (IsEndUnit(consist, unit)) {
+			if (DoDecouple(consist, unit)) {
+				/* Wait for the released unit to leave the station before
+				 * departing, so the two trains cannot bump into each other. */
+				consist->flags.Set(VehicleRailFlag::WaitForCoupleDepart);
+			}
+		} else {
+			/* Middle units cannot decouple (rule 6). */
+			if (consist->owner == _local_company) {
+				AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED_MIDDLE, consist->index), consist->index);
+			}
+		}
+	}
+}
+
+/**
+ * Is the driver forced to wait at this station for a coupler (wait-for-couple flag)?
+ * If so and no ride has been established yet, the driver holds position.
+ * @param consist the driver's consist.
+ * @return true if the train must keep waiting.
+ */
+static bool CoupleWaitFlagHolds(Train *consist)
+{
+	Train *driver = TrainGetOrderFront(consist);
+	const Order *order = driver->GetOrder(driver->cur_implicit_order_index);
+	if (order == nullptr || !order->IsType(OT_GOTO_STATION) || !order->GetCoupleWait()) return false;
+	/* A ride established during this stop satisfies the wait. */
+	return !consist->HasRide();
 }
 
 CommandCost CmdMoveVirtualRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleID dest_veh, MoveRailVehicleFlags move_flags)
@@ -2213,6 +2668,9 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 
 	/* Do not allow moving crashed vehicles inside the depot, it is likely to cause asserts later */
 	if (src->vehstatus.Test(VehState::Crashed)) return CMD_ERROR;
+
+	/* Do not allow re-arranging a consist that is in a couple ride. */
+	if (src->First()->HasRide()) return CommandCost(STR_ERROR_CANT_DO_WHILE_RIDING);
 
 	if (src->IsVirtual() != HasFlag(move_flags, MoveRailVehicleFlags::Virtual)) return CMD_ERROR;
 
@@ -2452,6 +2910,10 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 	Train *first = v->First();
 
 	if (v->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
+
+	/* Selling vehicles of a coupled/ride consist: terminate the ride first,
+	 * detaching every riding unit as an independent train. */
+	if (first->HasRide()) CancelTrainRide(first, STR_NEWS_ORDER_RIDE_TERMINATED);
 
 	/* First make a backup of the order of the train. That way we can do
 	 * whatever we want with the order and later on easily revert. */
@@ -5024,7 +5486,8 @@ int Train::UpdateSpeed(MaxSpeedInfo max_speed_info)
 					max_speed_info.strict_max_speed, max_speed_info.advisory_max_speed, this->UsingRealisticBraking());
 
 		case AM_REALISTIC:
-			return this->DoUpdateSpeed(this->GetAcceleration(), accel_status == AS_BRAKE ? 0 : 2,
+			/* A train without any engine power must not creep forward (min_speed 0). */
+			return this->DoUpdateSpeed(this->GetAcceleration(), (accel_status == AS_BRAKE || this->gcache.cached_power == 0) ? 0 : 2,
 					max_speed_info.strict_max_speed, max_speed_info.advisory_max_speed, this->UsingRealisticBraking());
 	}
 }
@@ -5056,6 +5519,30 @@ static bool HandlePossibleBreakdowns(Train *v)
 static void TrainEnterStation(Train *consist, StationID station)
 {
 	consist->last_station_visited = station;
+
+	/* A coupler reaching its target station couples with the anchor if it is
+	 * already there; otherwise it stops and waits for it. */
+	const Order *curo = consist->GetOrder(consist->cur_implicit_order_index);
+	if (curo != nullptr && curo->IsType(OT_COUPLE) && consist->current_order.GetDestination().ToStationID() == station) {
+		bool anchor_present = false;
+		Train *anchor = Train::GetIfValid(curo->GetCoupleTarget());
+		if (anchor != nullptr) {
+			const Train *a = anchor->First();
+			if (IsTileType(a->tile, TileType::Station) && GetStationIndex(a->tile) == station && a->cur_speed == 0) {
+				anchor_present = true;
+			}
+		}
+		if (!anchor_present) {
+			consist->force_proceed = TFP_NONE;
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+			SetWindowDirty(WindowClass::VehicleView, consist->index);
+		} else {
+			/* The anchor is here; keep creeping forward and bump into it to couple. */
+			consist->force_proceed = TFP_SIGNAL;
+		}
+		return;
+	}
 
 	BaseStation *bst = BaseStation::Get(station);
 
@@ -5205,9 +5692,29 @@ void Train::ReserveTrackUnderConsist() const
  */
 uint Train::Crash(bool flooded)
 {
+	Debug(misc, 0, "CrashEnter: veh {} tile {} track {} dir {} flooded {}", this->index, TileX(this->tile), to_underlying(this->track), to_underlying(this->direction), flooded);
+	/* Diagnostic: report the state of the crashing vehicle before the
+	 * reservation-cleanup assertions fire (track/tile mismatch debugging). */
+	{
+		const Train *mf = this->GetMovingFront();
+		TrackBits tb = (mf->track == TRACK_BIT_DEPOT || mf->track == TRACK_BIT_WORMHOLE) ? TRACK_BIT_NONE : GetTrackBits(mf->tile);
+		Debug(misc, 0, "TrainCrash: veh {} mf {} tile {} ({}x{}) track {} tile_trackbits {} dir {} pos ({},{}) prev {} next {} first {} last {}",
+			this->index, mf->index, mf->tile, TileX(mf->tile), TileY(mf->tile), mf->track, tb,
+			to_underlying(mf->direction), mf->x_pos, mf->y_pos,
+			mf->Previous() != nullptr ? static_cast<int>(mf->Previous()->index.base()) : -1,
+			mf->Next() != nullptr ? static_cast<int>(mf->Next()->index.base()) : -1,
+			mf->First() != nullptr ? static_cast<int>(mf->First()->index.base()) : -1,
+			mf->Last() != nullptr ? static_cast<int>(mf->Last()->index.base()) : -1);
+	}
+
 	uint victims = 0;
 	if (this->IsFrontEngine()) {
 		victims += 2; // driver
+
+		/* Drop the couple/ride structure; the whole consist is crashed. */
+		for (Train *v = this; v != nullptr; v = v->Next()) {
+			v->flags.Reset({VehicleRailFlag::UnitSeam, VehicleRailFlag::RideDriver});
+		}
 
 		/* Remove the reserved path in front of the train if it is not stuck.
 		 * Also clear all reserved tracks the train is currently on. */
@@ -5241,6 +5748,7 @@ uint Train::Crash(bool flooded)
  */
 static uint TrainCrashed(Train *v)
 {
+	Debug(misc, 0, "TrainCrashed: veh {} tile {} track {} dir {}", v->index, TileX(v->tile), to_underlying(v->track), to_underlying(v->direction));
 	uint victims = 0;
 
 	/* do not crash train twice */
@@ -5266,6 +5774,9 @@ static uint TrainCrashed(Train *v)
  */
 static uint CheckTrainCollision(Train *v, Train *moving_front)
 {
+	// Debug(misc, 0, "CollisionCheck: v {} v_first {} mf {} mf_first {} v_tile {} mf_tile {} v_track {} mf_track {}",
+	// 	v->index, v->First()->index, moving_front->index, moving_front->First()->index,
+	// 	TileX(v->tile), TileX(moving_front->tile), to_underlying(v->track), to_underlying(moving_front->track));
 	/* not in depot */
 	if (v->track == TRACK_BIT_DEPOT) return 0;
 
@@ -5283,6 +5794,9 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 		 * If enabled, only skip immediate neighbors. */
 		if (!_settings_game.vehicle.train_self_collision || v == moving_front->Next() || v == moving_front->Previous()) return 0;
 	}
+
+	/* A coupler bumping into its anchor couples instead of crashing. */
+	if (TryCoupleOnCollision(v, moving_front)) return 0;
 
 	int x_diff = v->x_pos - moving_front->x_pos;
 	int y_diff = v->y_pos - moving_front->y_pos;
@@ -5984,6 +6498,11 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 							{TRACK_BIT_RIGHT, TRACK_BIT_NONE,  TRACK_BIT_LOWER, TRACK_BIT_Y    }
 						}}};
 						DiagDirection exitdir = DiagdirBetweenTiles(gp.new_tile, TileVirtXY(prev->x_pos, prev->y_pos));
+						if (exitdir == DiagDirection::Invalid) {
+							/* Diagonal layout: approximate with the reverse of the
+							 * entry direction (defensive). */
+							exitdir = ReverseDiagDir(enterdir);
+						}
 						dbg_assert(IsValidDiagDirection(exitdir));
 						chosen_track = _connecting_track[enterdir][exitdir];
 					}
@@ -6045,6 +6564,18 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 					/* Clear any track reservation when the last vehicle leaves the tile */
 					if (v->GetMovingNext() == nullptr && !(v->track & TRACK_BIT_WORMHOLE)) ClearPathReservation(v, v->tile, v->GetVehicleTrackdir(), true);
+
+					/* Defensive: a wagon may be misaligned by one tile after a
+					 * couple merge; fall back to the tile's reachable track so the
+					 * vehicle never ends up with an invalid (NONE) track. */
+					if (chosen_track == TRACK_BIT_NONE) {
+						Debug(misc, 0, "ChosenTrack NONE: v {} tile {} dir {} pos ({},{}) first {} prev {} prev_dir {} prev_tile {} prev_track {} bits {}",
+							v->index, v->tile, to_underlying(v->direction), v->x_pos, v->y_pos,
+							first != nullptr ? static_cast<int>(first->index.base()) : -1,
+							prev != nullptr ? static_cast<int>(prev->index.base()) : -1,
+							prev != nullptr ? to_underlying(prev->direction) : -1, prev != nullptr ? TileX(prev->tile) : 0,
+							prev != nullptr ? to_underlying(prev->track) : 0, to_underlying(bits));
+					}
 
 					v->tile = gp.new_tile;
 					v->track = chosen_track;
@@ -6823,6 +7354,11 @@ Money Train::CalculateCurrentOverallValue() const
  */
 static bool TrainLocoHandler(Train *consist, bool mode)
 {
+	/* Defensive: the consist must still be the chain head.  It may have been
+	 * merged into another consist (couple) earlier in this tick, in which case
+	 * its caches are invalid and it must not be processed. */
+	if (consist->First() != consist) return true;
+
 	/* train has crashed? */
 	if (consist->vehstatus.Test(VehState::Crashed)) {
 		return mode ? true : HandleCrashedTrain(consist); // 'this' can be deleted here
@@ -6846,6 +7382,61 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	/* exit if train is stopped */
 	if (consist->vehstatus.Test(VehState::Stopped) && consist->cur_speed == 0) return true;
 
+	/* A newly decoupled train clears the collision exemption once it has left
+	 * the station area. */
+	if (consist->flags.Test(VehicleRailFlag::JustDecoupled)) {
+		const Train *mf2 = consist->GetMovingFront();
+		if (!IsTileType(mf2->tile, TileType::Station)) {
+			consist->flags.Reset(VehicleRailFlag::JustDecoupled);
+		}
+	}
+
+	/* A coupler whose anchor is stopped at the target station drives up to it:
+	 * when the coupler is being held (stopped) near the target station, the
+	 * signal/occupancy hold is ignored (force-proceed) and the coupler drives
+	 * into the platform (leaving its depot if necessary), coupling when close
+	 * enough.  When the anchor has not arrived yet the coupler is left alone. */
+	{
+		const Order *curo = consist->GetOrder(consist->cur_implicit_order_index);
+		if (curo != nullptr && curo->IsType(OT_COUPLE) && consist->current_order.IsType(OT_COUPLE)) {
+			const StationID station = consist->current_order.GetDestination().ToStationID();
+			Train *anchor = Train::GetIfValid(curo->GetCoupleTarget());
+			const Train *a = (anchor != nullptr) ? anchor->First() : nullptr;
+			const bool anchor_ready = a != nullptr && IsTileType(a->tile, TileType::Station) && GetStationIndex(a->tile) == station
+				&& a->cur_speed == 0 && a->cur_implicit_order_index == curo->GetCoupleStart();
+
+			if (anchor_ready) {
+				/* The coupler drives into the platform (force-proceeding past
+				 * the signal/occupancy) and the merge happens when it bumps
+				 * into the anchor (TryCoupleOnCollision).  Slow down when
+				 * close so the bump is gentle. */
+				const Train *a_end = a->Last();
+				const Train *mf2 = consist->GetMovingFront();
+				int diff = std::max(abs(mf2->x_pos - a_end->x_pos), abs(mf2->y_pos - a_end->y_pos));
+				int expected = CalcCoupleSpacing(a_end, consist);
+				if (diff <= expected + 16) {
+					if (consist->cur_speed > 5) consist->cur_speed = 5;
+				}
+
+				/* If the coupler is held (stopped) near the target station -
+				 * e.g. by a signal protecting the occupied platform, or in a
+				 * depot with the way blocked - ignore the hold and drive into
+				 * the platform to the anchor. */
+				/* Only force-proceed when the coupler is held by the signal
+				 * protecting the target station (the track ahead, following
+				 * its own pathfinding, leads directly to the anchor). */
+				if (consist->cur_speed == 0 && IsBlockedByTargetStation(consist, a)) {
+					consist->force_proceed = TFP_SIGNAL;
+					consist->flags.Reset(VehicleRailFlag::Stuck);
+					consist->cur_speed = 20;
+					SetWindowWidgetDirty(WindowClass::VehicleView, consist->index, WID_VV_START_STOP);
+				}
+			}
+			/* Anchor not ready: the coupler is left alone and remains fully
+			 * player-controllable. */
+		}
+	}
+
 	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL);
 	if (ProcessOrders(consist) && CheckReverseTrain(consist)) {
 		consist->wait_counter = 0;
@@ -6868,9 +7459,32 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		consist->flags.Reset(VehicleRailFlag::LeavingStation);
 	}
 
+	/* Before the loading completes / the train departs: decouple end units whose
+	 * ride window ends at this station, and honour the "wait for couple" flag. */
+	if (consist->current_order.IsAnyLoadingType() && consist->vehicle_flags.Test(VehicleFlag::LoadingFinished)) {
+		TrainDecoupleHandler(consist);
+		if (CoupleWaitFlagHolds(consist)) {
+			/* Hold at the station until a coupler establishes a ride. */
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+			return true;
+		}
+	}
+
 	consist->HandleLoading(mode);
 
 	if (consist->current_order.IsType(OT_LOADING)) return true;
+
+	/* After a decouple, wait until the released unit has left the station
+	 * before departing, so the two trains cannot bump into each other. */
+	if (consist->flags.Test(VehicleRailFlag::WaitForCoupleDepart)) {
+		if (TrainBlockingAhead(consist, 8)) {
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+			return true;
+		}
+		consist->flags.Reset(VehicleRailFlag::WaitForCoupleDepart);
+	}
 
 	if (CheckTrainStayInDepot(consist)) return true;
 
@@ -6985,6 +7599,14 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			moving_front = moving_front->GetMovingFront();
 			/* Don't continue to move if the train crashed. */
 			if (CheckTrainCollision(moving_front)) break;
+			/* If the train just coupled, it is no longer an independent consist
+			 * (its caches are invalid); stop processing it this tick. */
+			if (moving_front->First() != consist) {
+				consist->cur_speed = 0;
+				consist->subspeed = 0;
+				consist->force_proceed = TFP_NONE;
+				return true;
+			}
 			/* Determine distance to next map position */
 			adv_spd = moving_front->GetAdvanceDistance();
 
@@ -7058,6 +7680,13 @@ bool Train::Tick()
 	DEBUG_UPDATESTATECHECKSUM("Train::Tick: v: {}, x: {}, y: {}, track: {}", this->index, this->x_pos, this->y_pos, this->track);
 	UpdateStateChecksum((((uint64_t) this->x_pos) << 32) | (this->y_pos << 16) | this->track);
 	if (this->IsFrontEngine()) {
+		/* Defensive: a front-engine flag on a mid-consist vehicle (e.g. right
+		 * after a couple merge this tick) must never be processed; its caches
+		 * are invalid. */
+		if (this->First() != this) {
+			this->ClearFrontEngine();
+			return true;
+		}
 		if (!(this->vehstatus.Test(VehState::Stopped) || this->IsWaitingInDepot()) || this->cur_speed > 0) this->running_ticks++;
 
 		this->current_order_time++;

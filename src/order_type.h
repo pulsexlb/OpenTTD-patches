@@ -88,6 +88,7 @@ enum OrderType : uint8_t {
 	OT_COUNTER       = 12,
 	OT_LABEL         = 13,
 	OT_SLOT_GROUP    = 14,
+	OT_COUPLE        = 15, ///< Couple with another train and ride its schedule.
 	OT_END
 };
 
@@ -297,6 +298,10 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_COLOUR,          ///< Change the colour value
 	MOF_LABEL_TEXT,      ///< Change the label text value
 	MOF_DEPARTURES_SUBTYPE, ///< Change the label departures subtype
+	MOF_COUPLE_TARGET,   ///< Change the couple target vehicle
+	MOF_COUPLE_START,    ///< Change the couple start order index (of the target)
+	MOF_COUPLE_END,      ///< Change the couple end order index (of the target)
+	MOF_COUPLE_WAIT,     ///< Toggle the "wait for couple" flag on a station order.
 	MOF_END
 };
 

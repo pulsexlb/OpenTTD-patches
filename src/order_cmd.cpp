@@ -80,6 +80,8 @@ using CmdInsertOrderIntlFlags = EnumBitSet<CmdInsertOrderIntlFlag, uint8_t>;
 
 static CommandCost CmdInsertOrderIntl(DoCommandFlags flags, Vehicle *v, VehicleOrderID sel_ord, const Order &new_order, CmdInsertOrderIntlFlags insert_flags);
 
+static StationID ResolveCoupleDestination(const Order &order);
+
 void IntialiseOrderDestinationRefcountMap()
 {
 	ClearOrderDestinationRefcountMap();
@@ -287,6 +289,20 @@ void Order::MakeLabel(OrderLabelSubType subtype)
 {
 	this->type = OT_LABEL;
 	this->flags = subtype;
+}
+
+/**
+ * Make this order a couple order, riding along with the target vehicle.
+ * @param target    the vehicle (train) whose schedule is being ridden.
+ * @param start_idx the target's order index at which the ride starts.
+ * @param end_idx   the target's order index at which the ride/decouple ends.
+ */
+void Order::MakeCoupleOrder(VehicleID target, VehicleOrderID start_idx, VehicleOrderID end_idx)
+{
+	this->type = OT_COUPLE;
+	this->SetCoupleTarget(target);
+	this->SetCoupleStart(start_idx);
+	this->SetCoupleEnd(end_idx);
 }
 
 /**
@@ -1387,6 +1403,19 @@ static CommandCost PreInsertOrderCheck(Vehicle *v, const Order &new_order, CmdIn
 			break;
 		}
 
+		case OT_COUPLE: {
+			/* Only trains can couple, and the target must be another company-owned train. */
+			if (v->type != VehicleType::Train) return CMD_ERROR;
+			Train *target = Train::GetIfValid(new_order.GetCoupleTarget());
+			if (target == nullptr) return CMD_ERROR;
+			CommandCost ret = CheckOwnership(target->owner);
+			if (ret.Failed()) return ret;
+			if (new_order.GetCoupleStart() > new_order.GetCoupleEnd()) return CMD_ERROR;
+			/* A train that is itself riding may not start another ride (no nesting). */
+			if (Train::From(v)->HasRide()) return CommandCost(STR_ERROR_CANT_DO_WHILE_RIDING);
+			break;
+		}
+
 		default: return CMD_ERROR;
 	}
 
@@ -1967,7 +1996,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 	} else {
 		switch (order->GetType()) {
 			case OT_GOTO_STATION:
-				if (mof != MOF_NON_STOP && mof != MOF_STOP_LOCATION && mof != MOF_UNLOAD && mof != MOF_LOAD && mof != MOF_CARGO_TYPE_UNLOAD && mof != MOF_CARGO_TYPE_LOAD && mof != MOF_RV_TRAVEL_DIR) return CMD_ERROR;
+				if (mof != MOF_NON_STOP && mof != MOF_STOP_LOCATION && mof != MOF_UNLOAD && mof != MOF_LOAD && mof != MOF_CARGO_TYPE_UNLOAD && mof != MOF_CARGO_TYPE_LOAD && mof != MOF_RV_TRAVEL_DIR && mof != MOF_COUPLE_WAIT) return CMD_ERROR;
 				break;
 
 			case OT_GOTO_DEPOT:
@@ -2002,6 +2031,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				} else {
 					return CMD_ERROR;
 				}
+				break;
+
+			case OT_COUPLE:
+				if (mof != MOF_COUPLE_TARGET && mof != MOF_COUPLE_START && mof != MOF_COUPLE_END) return CMD_ERROR;
 				break;
 
 			default:
@@ -2327,6 +2360,25 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 			if (!IsDeparturesOrderLabelSubType(static_cast<OrderLabelSubType>(data))) {
 				return CMD_ERROR;
 			}
+			break;
+
+		case MOF_COUPLE_WAIT:
+			if (v->type != VehicleType::Train || !order->IsType(OT_GOTO_STATION)) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_TARGET: {
+			if (v->type != VehicleType::Train || !order->IsType(OT_COUPLE)) return CMD_ERROR;
+			Train *target = Train::GetIfValid((VehicleID)data);
+			if (target == nullptr) return CMD_ERROR;
+			CommandCost ret = CheckOwnership(target->owner);
+			if (ret.Failed()) return ret;
+			break;
+		}
+
+		case MOF_COUPLE_START:
+		case MOF_COUPLE_END:
+			if (v->type != VehicleType::Train || !order->IsType(OT_COUPLE)) return CMD_ERROR;
+			if (data >= MAX_VEH_ORDER_ID) return CMD_ERROR;
 			break;
 	}
 
@@ -2657,6 +2709,22 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				order->SetLabelSubType(static_cast<OrderLabelSubType>(data));
 				break;
 
+			case MOF_COUPLE_WAIT:
+				order->SetCoupleWait(!order->GetCoupleWait());
+				break;
+
+			case MOF_COUPLE_TARGET:
+				order->SetCoupleTarget((VehicleID)data);
+				break;
+
+			case MOF_COUPLE_START:
+				order->SetCoupleStart((VehicleOrderID)data);
+				break;
+
+			case MOF_COUPLE_END:
+				order->SetCoupleEnd((VehicleOrderID)data);
+				break;
+
 			default: NOT_REACHED();
 		}
 
@@ -2680,6 +2748,9 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				}
 				if (u->current_order.GetUnloadType() != order->GetUnloadType()) {
 					u->current_order.SetUnloadType(order->GetUnloadType());
+				}
+				if (u->current_order.GetCoupleWait() != order->GetCoupleWait()) {
+					u->current_order.SetCoupleWait(order->GetCoupleWait());
 				}
 				switch (mof) {
 					case MOF_CARGO_TYPE_UNLOAD:
@@ -4032,6 +4103,12 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			v->SetDestTile(v->GetOrderStationLocation(order->GetDestination().ToStationID()));
 			return true;
 
+		case OT_COUPLE: {
+			StationID station = ResolveCoupleDestination(*order);
+			if (station != StationID::Invalid()) v->SetDestTile(v->GetOrderStationLocation(station));
+			return true;
+		}
+
 		case OT_GOTO_DEPOT:
 			if (order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service) && !v->NeedsServicing()) {
 				assert(!pbs_look_ahead);
@@ -4197,6 +4274,21 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 }
 
 /**
+ * Resolve the destination station of a couple order at execution time, based on the
+ * target vehicle's schedule (the order at the couple order's start index).
+ * @param order the couple order.
+ * @return the resolved station, or StationID::Invalid() if it cannot be resolved.
+ */
+static StationID ResolveCoupleDestination(const Order &order)
+{
+	Train *target = Train::GetIfValid(order.GetCoupleTarget());
+	if (target == nullptr) return StationID::Invalid();
+	const Order *to = target->GetOrder(order.GetCoupleStart());
+	if (to == nullptr || !to->IsType(OT_GOTO_STATION)) return StationID::Invalid();
+	return to->GetDestination().ToStationID();
+}
+
+/**
  * Handle the orders of a vehicle and determine the next place
  * to go to if needed.
  * @param v the vehicle to do this for.
@@ -4278,13 +4370,18 @@ bool ProcessOrders(Vehicle *v)
 	}
 
 	/* If it is unchanged, keep it. */
-	if (order->Equals(v->current_order) && (v->type == VehicleType::Aircraft || v->dest_tile != INVALID_TILE) &&
+	if (!order->IsType(OT_COUPLE) && order->Equals(v->current_order) && (v->type == VehicleType::Aircraft || v->dest_tile != INVALID_TILE) &&
 			(v->type != VehicleType::Ship || !order->IsType(OT_GOTO_STATION) || Station::Get(order->GetDestination().ToStationID())->facilities.Test(StationFacility::Dock))) {
 		return false;
 	}
 
 	/* Otherwise set it, and determine the destination tile. */
 	v->current_order = *order;
+
+	/* Couple orders have a dynamic destination resolved from the target's schedule. */
+	if (v->current_order.IsType(OT_COUPLE)) {
+		v->current_order.SetDestination(DestinationID(ResolveCoupleDestination(v->current_order)));
+	}
 
 	InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);
 	switch (v->type) {
@@ -4301,7 +4398,7 @@ bool ProcessOrders(Vehicle *v)
 			break;
 	}
 
-	return UpdateOrderDest(v, order) && may_reverse;
+	return UpdateOrderDest(v, v->current_order.IsType(OT_COUPLE) ? &v->current_order : order) && may_reverse;
 }
 
 bool Order::UseOccupancyValueForAverage() const
@@ -4329,7 +4426,7 @@ bool Order::ShouldStopAtStation(StationID last_station_visited, StationID statio
 {
 	if (waypoint) return this->IsType(OT_GOTO_WAYPOINT) && this->dest == station && this->IsWaitTimetabled();
 	if (this->IsType(OT_LOADING_ADVANCE) && this->dest == station) return true;
-	bool is_dest_station = this->IsType(OT_GOTO_STATION) && this->dest == station;
+	bool is_dest_station = (this->IsType(OT_GOTO_STATION) || this->IsType(OT_COUPLE)) && this->dest == station;
 
 	return (!this->IsType(OT_GOTO_DEPOT) || this->GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders)) &&
 			(last_station_visited != station) && // Do stop only when we've not just been there
@@ -4430,6 +4527,7 @@ const char *GetOrderTypeName(OrderType order_type)
 		"OT_COUNTER",
 		"OT_LABEL",
 		"OT_SLOT_GROUP",
+		"OT_COUPLE",
 	};
 	static_assert(lengthof(names) == OT_END);
 	if (order_type < OT_END) return names[order_type];
