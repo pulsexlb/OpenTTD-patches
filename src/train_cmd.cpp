@@ -1125,8 +1125,7 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 
 	if (this->current_order.IsType(OT_LOADING_ADVANCE)) max_speed = std::min<int>(max_speed, _settings_game.vehicle.through_load_speed_limit);
 
-	/* Couplers approach their target at reduced speed. */
-	if (this->current_order.IsType(OT_COUPLE)) max_speed = std::min<int>(max_speed, 40);
+
 
 	/* If the train is going backwards, without a leading cab, restrict its speed. */
 	if (this->tcache.cached_tflags & TCF_NO_DRIVING_CAB) {
@@ -2287,10 +2286,6 @@ static bool DoCouple(Train *a, Train *b)
 	Train *src_head = b;
 	ArrangeTrains(&dst_head, a_tail, &src_head, b, true);
 
-	Debug(misc, 0, "DoCouple merged: a {} dir {} track {} tile {} | b {} dir {} track {} tile {} gap {}",
-		a->index, to_underlying(a->direction), to_underlying(a->track), a->tile,
-		b->index, to_underlying(b->direction), to_underlying(b->track), b->tile,
-		std::max(abs(a_tail->x_pos - b->x_pos), abs(a_tail->y_pos - b->y_pos)));
 
 	CommandCost ret = ValidateTrains(original_dst_head, dst_head, original_src_head, src_head, true);
 	if (ret.Failed()) {
@@ -2405,11 +2400,6 @@ static bool DoDecouple(Train *head, Train *unit_head)
 	ReverseTrainDirection(driver);
 	ProcessOrders(driver);
 
-	Debug(misc, 0, "DoDecouple done: head {} unit {} unit_track {} unit_tile {} unit_dir {} unit_prev {} unit_next {}",
-		head->index, unit_head_new->index, unit_head_new->track, unit_head_new->tile,
-		to_underlying(unit_head_new->direction),
-		unit_head_new->Previous() != nullptr ? static_cast<int>(unit_head_new->Previous()->index.base()) : -1,
-		unit_head_new->Next() != nullptr ? static_cast<int>(unit_head_new->Next()->index.base()) : -1);
 
 	return true;
 }
@@ -2545,26 +2535,51 @@ static bool IsBlockedByTargetStation(const Train *b, const Train *a)
 		if (!ft.Follow(tile, td)) return false; /* dead end */
 
 		tile = ft.new_tile;
+
+		/* Follow jumps over platform segments in one step; check the skipped
+		 * tiles for the anchor's consist. */
+		if (ft.tiles_skipped > 0 && !ft.is_bridge && !ft.is_tunnel) {
+			const TileIndexDiff diff = TileOffsByDiagDir(ft.exitdir);
+			for (TileIndex t = tile - diff * ft.tiles_skipped; t != tile; t += diff) {
+				if (IsTileType(t, TileType::Station)) {
+					for (const Train *tv : VehiclesOnTile<VehicleType::Train>(t)) {
+						if (tv->First() == a) return true;
+					}
+				}
+			}
+		}
+
 		TrackdirBits tdb = ft.new_td_bits;
 		if (tdb == TRACKDIR_BIT_NONE) return false;
 		if (HasExactlyOneBit(tdb)) {
 			td = FindFirstTrackdir(tdb);
 		} else {
-			/* Junction: follow the coupler's own pathfinding. */
-			DiagDirection enterdir = TrackdirToExitdir(ReverseTrackdir(td));
-			ChooseTrainTrackResult ctt = ChooseTrainTrack(const_cast<Train *>(b), tile, enterdir, TrackdirBitsToTrackBits(tdb), CTTF_NONE);
-			if (ctt.track == INVALID_TRACK) return false;
-			td = TrackExitdirToTrackdir(ctt.track, enterdir);
+			/* Exclude the reverse trackdir (heading back on the same track);
+			 * only a real junction (multiple forward tracks) needs the
+			 * coupler's own pathfinding. */
+			TrackdirBits fwd = tdb & ~TrackdirToTrackdirBits(ReverseTrackdir(td));
+			if (HasExactlyOneBit(fwd)) {
+				td = FindFirstTrackdir(fwd);
+			} else if (fwd != TRACKDIR_BIT_NONE) {
+				/* Real junction: follow the coupler's own pathfinding. */
+				DiagDirection enterdir = TrackdirToExitdir(ReverseTrackdir(td));
+				ChooseTrainTrackResult ctt = ChooseTrainTrack(const_cast<Train *>(b), tile, enterdir, TrackdirBitsToTrackBits(fwd), CTTF_NONE);
+				if (ctt.track == INVALID_TRACK) return false;
+				td = TrackExitdirToTrackdir(ctt.track, enterdir);
+			} else {
+				return false; /* only the reverse direction is available */
+			}
 		}
 
-		/* A further signal means this is not the target-station signal. */
+		/* A signal after the one the coupler is stopped at means it is not
+		 * the target-station signal. */
 		if (HasSignalOnTrack(tile, TrackdirToTrack(td))) {
 			if (seen_signal) return false;
 			seen_signal = true;
 			continue;
 		}
 
-		/* Reached the anchor's consist (stopped at the target station)? */
+		/* Reached the anchor's consist? */
 		if (IsTileType(tile, TileType::Station)) {
 			for (const Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
 				if (t->First() == a) return true;
@@ -2574,6 +2589,13 @@ static bool IsBlockedByTargetStation(const Train *b, const Train *a)
 	return false;
 }
 
+/**
+ * Check whether any other (company) train occupies the track ahead of the given
+ * consist, up to max_tiles tiles in its travel direction.
+ * @param head the consist (chain head).
+ * @param max_tiles maximum number of tiles to scan.
+ * @return true if another train occupies the track ahead.
+ */
 static bool TrainBlockingAhead(const Train *head, int max_tiles)
 {
 	const Train *mf = head->GetMovingFront();
@@ -5692,21 +5714,6 @@ void Train::ReserveTrackUnderConsist() const
  */
 uint Train::Crash(bool flooded)
 {
-	Debug(misc, 0, "CrashEnter: veh {} tile {} track {} dir {} flooded {}", this->index, TileX(this->tile), to_underlying(this->track), to_underlying(this->direction), flooded);
-	/* Diagnostic: report the state of the crashing vehicle before the
-	 * reservation-cleanup assertions fire (track/tile mismatch debugging). */
-	{
-		const Train *mf = this->GetMovingFront();
-		TrackBits tb = (mf->track == TRACK_BIT_DEPOT || mf->track == TRACK_BIT_WORMHOLE) ? TRACK_BIT_NONE : GetTrackBits(mf->tile);
-		Debug(misc, 0, "TrainCrash: veh {} mf {} tile {} ({}x{}) track {} tile_trackbits {} dir {} pos ({},{}) prev {} next {} first {} last {}",
-			this->index, mf->index, mf->tile, TileX(mf->tile), TileY(mf->tile), mf->track, tb,
-			to_underlying(mf->direction), mf->x_pos, mf->y_pos,
-			mf->Previous() != nullptr ? static_cast<int>(mf->Previous()->index.base()) : -1,
-			mf->Next() != nullptr ? static_cast<int>(mf->Next()->index.base()) : -1,
-			mf->First() != nullptr ? static_cast<int>(mf->First()->index.base()) : -1,
-			mf->Last() != nullptr ? static_cast<int>(mf->Last()->index.base()) : -1);
-	}
-
 	uint victims = 0;
 	if (this->IsFrontEngine()) {
 		victims += 2; // driver
@@ -5748,22 +5755,21 @@ uint Train::Crash(bool flooded)
  */
 static uint TrainCrashed(Train *v)
 {
-	Debug(misc, 0, "TrainCrashed: veh {} tile {} track {} dir {}", v->index, TileX(v->tile), to_underlying(v->track), to_underlying(v->direction));
-	uint victims = 0;
-
-	/* do not crash train twice */
+	uint num = 0;
 	if (!v->vehstatus.Test(VehState::Crashed)) {
-		victims = v->Crash();
-		TileIndex tile = v->GetMovingFront()->tile;
-		AI::NewEvent(v->owner, new ScriptEventVehicleCrashed(v->index, tile, ScriptEventVehicleCrashed::CRASH_TRAIN, victims, v->owner));
-		Game::NewEvent(new ScriptEventVehicleCrashed(v->index, tile, ScriptEventVehicleCrashed::CRASH_TRAIN, victims, v->owner));
+		/* Do not crash twice! */
+		num = v->Crash(false);
 	}
 
 	/* Try to re-reserve track under already crashed train too.
 	 * Crash() clears the reservation! */
 	v->ReserveTrackUnderConsist();
 
-	return victims;
+	TileIndex tile = v->GetMovingFront()->tile;
+	AI::NewEvent(v->owner, new ScriptEventVehicleCrashed(v->index, tile, ScriptEventVehicleCrashed::CRASH_TRAIN, num, v->owner));
+	Game::NewEvent(new ScriptEventVehicleCrashed(v->index, tile, ScriptEventVehicleCrashed::CRASH_TRAIN, num, v->owner));
+
+	return num;
 }
 
 /**
@@ -5774,9 +5780,6 @@ static uint TrainCrashed(Train *v)
  */
 static uint CheckTrainCollision(Train *v, Train *moving_front)
 {
-	// Debug(misc, 0, "CollisionCheck: v {} v_first {} mf {} mf_first {} v_tile {} mf_tile {} v_track {} mf_track {}",
-	// 	v->index, v->First()->index, moving_front->index, moving_front->First()->index,
-	// 	TileX(v->tile), TileX(moving_front->tile), to_underlying(v->track), to_underlying(moving_front->track));
 	/* not in depot */
 	if (v->track == TRACK_BIT_DEPOT) return 0;
 
@@ -6569,12 +6572,6 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					 * couple merge; fall back to the tile's reachable track so the
 					 * vehicle never ends up with an invalid (NONE) track. */
 					if (chosen_track == TRACK_BIT_NONE) {
-						Debug(misc, 0, "ChosenTrack NONE: v {} tile {} dir {} pos ({},{}) first {} prev {} prev_dir {} prev_tile {} prev_track {} bits {}",
-							v->index, v->tile, to_underlying(v->direction), v->x_pos, v->y_pos,
-							first != nullptr ? static_cast<int>(first->index.base()) : -1,
-							prev != nullptr ? static_cast<int>(prev->index.base()) : -1,
-							prev != nullptr ? to_underlying(prev->direction) : -1, prev != nullptr ? TileX(prev->tile) : 0,
-							prev != nullptr ? to_underlying(prev->track) : 0, to_underlying(bits));
 					}
 
 					v->tile = gp.new_tile;
@@ -7404,6 +7401,10 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			const Train *a = (anchor != nullptr) ? anchor->First() : nullptr;
 			const bool anchor_ready = a != nullptr && IsTileType(a->tile, TileType::Station) && GetStationIndex(a->tile) == station
 				&& a->cur_speed == 0 && a->cur_implicit_order_index == curo->GetCoupleStart();
+			static bool prev_fp = false;
+			if (consist->cur_speed == 0 || consist->force_proceed != TFP_NONE || !prev_fp) {
+			}
+			prev_fp = consist->force_proceed != TFP_NONE;
 
 			if (anchor_ready) {
 				/* The coupler drives into the platform (force-proceeding past
