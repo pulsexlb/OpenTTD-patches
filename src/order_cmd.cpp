@@ -80,7 +80,7 @@ using CmdInsertOrderIntlFlags = EnumBitSet<CmdInsertOrderIntlFlag, uint8_t>;
 
 static CommandCost CmdInsertOrderIntl(DoCommandFlags flags, Vehicle *v, VehicleOrderID sel_ord, const Order &new_order, CmdInsertOrderIntlFlags insert_flags);
 
-static StationID ResolveCoupleDestination(const Order &order);
+static DestinationID ResolveCoupleDestination(const Order &order);
 
 void IntialiseOrderDestinationRefcountMap()
 {
@@ -4104,15 +4104,26 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			return true;
 
 		case OT_COUPLE: {
-			StationID station = ResolveCoupleDestination(*order);
-			if (station != StationID::Invalid()) {
-				/* Couple orders behave like ordinary station orders: the
-				 * coupler arrives at the station's entry tile, stops there
-				 * (TrainEnterStation holds it when the anchor is not there
-				 * yet) and the order stays active for the coupling logic. */
-				Debug(misc, 0, "UOD-Couple: v {} sta {} dest {}x{}",
-					v->index, station, TileX(v->GetOrderStationLocation(station)), TileY(v->GetOrderStationLocation(station)));
-				v->SetDestTile(v->GetOrderStationLocation(station));
+			DestinationID dest = ResolveCoupleDestination(*order);
+			if (dest != (DestinationID)DepotID::Invalid()) {
+				/* Couple orders behave like their target order: the coupler
+				 * drives to the station or depot of the anchor's couple-start
+				 * order, stops there (TrainEnterStation / the depot stay
+				 * logic hold it when the anchor is not there yet) and the
+				 * order stays active for the coupling logic. */
+				Train *target = Train::GetIfValid(order->GetCoupleTarget());
+				const Order *to = target != nullptr ? target->GetOrder(order->GetCoupleStart()) : nullptr;
+				if (to != nullptr && to->IsType(OT_GOTO_STATION)) {
+					const StationID station = to->GetDestination().ToStationID();
+					Debug(misc, 0, "UOD-Couple: v {} sta {} dest {}x{}",
+						v->index, station, TileX(v->GetOrderStationLocation(station)), TileY(v->GetOrderStationLocation(station)));
+					v->SetDestTile(v->GetOrderStationLocation(station));
+				} else if (to != nullptr && to->IsType(OT_GOTO_DEPOT)) {
+					const DepotID depot = to->GetDestination().ToDepotID();
+					Debug(misc, 0, "UOD-Couple: v {} depot {} dest {}x{}",
+						v->index, depot, TileX(Depot::Get(depot)->xy), TileY(Depot::Get(depot)->xy));
+					v->SetDestTile(Depot::Get(depot)->xy);
+				}
 			}
 			return true;
 		}
@@ -4287,13 +4298,14 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
  * @param order the couple order.
  * @return the resolved station, or StationID::Invalid() if it cannot be resolved.
  */
-static StationID ResolveCoupleDestination(const Order &order)
+static DestinationID ResolveCoupleDestination(const Order &order)
 {
 	Train *target = Train::GetIfValid(order.GetCoupleTarget());
-	if (target == nullptr) return StationID::Invalid();
+	if (target == nullptr) return (DestinationID)DepotID::Invalid();
 	const Order *to = target->GetOrder(order.GetCoupleStart());
-	if (to == nullptr || !to->IsType(OT_GOTO_STATION)) return StationID::Invalid();
-	return to->GetDestination().ToStationID();
+	if (to == nullptr) return (DestinationID)DepotID::Invalid();
+	if (!to->IsType(OT_GOTO_STATION) && !to->IsType(OT_GOTO_DEPOT)) return (DestinationID)DepotID::Invalid();
+	return to->GetDestination();
 }
 
 /**
@@ -4396,11 +4408,11 @@ bool ProcessOrders(Vehicle *v)
 
 	/* Couple orders have a dynamic destination resolved from the target's schedule. */
 	if (v->current_order.IsType(OT_COUPLE)) {
-		const StationID cd = ResolveCoupleDestination(v->current_order);
+		const DestinationID cd = ResolveCoupleDestination(v->current_order);
 		Debug(misc, 0, "PO-Couple: v {} idx {} target {} dest {} tile {}x{}", v->index,
 			v->cur_implicit_order_index, v->current_order.GetCoupleTarget(), cd,
 			TileX(v->dest_tile), TileY(v->dest_tile));
-		v->current_order.SetDestination(DestinationID(cd));
+		v->current_order.SetDestination(cd);
 	}
 
 	InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);

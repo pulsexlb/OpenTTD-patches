@@ -47,6 +47,8 @@
 #include "train_settings.h"
 #include "train_speed_adaptation.h"
 #include "event_logs.h"
+#include "depot_base.h"
+#include "depot_map.h"
 #include "misc_cmd.h"
 #include "tile_cmd.h"
 #include "train_cmd.h"
@@ -4154,12 +4156,16 @@ static bool CheckTrainStayInDepot(Train *v)
 {
 	/* bail out if not all wagons are in the same depot or not in a depot at all */
 	for (const Train *u = v; u != nullptr; u = u->Next()) {
-		if (u->track != TRACK_BIT_DEPOT || u->tile != v->tile) return false;
+		if (u->track != TRACK_BIT_DEPOT || u->tile != v->tile) {
+			Debug(misc, 0, "CTDepotExit: v {} NOT-all-in-depot u {} track {} tile {}x{} vTile {}x{}",
+				v->index, u->index, (int)u->track, TileX(u->tile), TileY(u->tile), TileX(v->tile), TileY(v->tile));
+			return false;
+		}
 	}
-	Debug(misc, 0, "CTDepot: v {} cur {} wait {} coupled {} power {} stopped {} idx {}",
+	Debug(misc, 0, "CTDepot: v {} cur {} wait {} coupled {} power {} stopped {} idx {} real {}",
 		v->index, v->current_order.GetType(), v->current_order.GetCoupleWait(),
 		v->flags.Test(VehicleRailFlag::CoupledAtCurrentStation), v->gcache.cached_power,
-		v->vehstatus.Test(VehState::Stopped), v->cur_implicit_order_index);
+		v->vehstatus.Test(VehState::Stopped), v->cur_implicit_order_index, v->cur_real_order_index);
 
 
 	/* (Engine-less trains are legal: they keep their running state and
@@ -4171,6 +4177,19 @@ static bool CheckTrainStayInDepot(Train *v)
 	if (v->flags.Test(VehicleRailFlag::CoupleWaitInDepot) && !v->flags.Test(VehicleRailFlag::CoupledAtCurrentStation)) {
 		SetWindowDirty(WindowClass::VehicleDepot, v->tile.base());
 		return true;
+	}
+
+	/* A coupler whose couple-order destination (resolved to the anchor's
+	 * couple-start order) is this very depot stays here until the anchor
+	 * starts (depot coupling): the couple order must not drive it out of
+	 * the depot.  If the destination is elsewhere (another depot or a
+	 * station) the coupler drives out normally. */
+	if (v->current_order.IsType(OT_COUPLE)) {
+		const Order *co = v->GetOrder(v->cur_implicit_order_index);
+		if (co != nullptr && co->IsType(OT_COUPLE) && v->dest_tile == v->tile) {
+			Debug(misc, 0, "CTDepotCoupleWait: b {} tile {}x{}", v->index, TileX(v->tile), TileY(v->tile));
+			return true;
+		}
 	}
 
 	if (v->current_order.IsWaitTimetabled()) {
@@ -4211,11 +4230,15 @@ static bool CheckTrainStayInDepot(Train *v)
 
 	/* We are leaving a depot, but have to go to the exact same one; re-enter. */
 	if (v->current_order.IsType(OT_GOTO_DEPOT) && v->tile == v->dest_tile) {
+		Debug(misc, 0, "CTDepotReenter: v {} tile {}x{} dest {}x{} exitBlocked {}",
+			v->index, TileX(v->tile), TileY(v->tile), TileX(v->dest_tile), TileY(v->dest_tile), exit_blocked);
 		if (exit_blocked) return true;
 		/* Service when depot has no reservation. */
 		if (!HasDepotReservation(v->tile)) VehicleEnterDepot(v);
 		return true;
 	}
+	Debug(misc, 0, "CTDepotLeave: v {} cur {} tile {}x{} dest {}x{}", v->index,
+		(int)v->current_order.GetType(), TileX(v->tile), TileY(v->tile), TileX(v->dest_tile), TileY(v->dest_tile));
 
 	if (_settings_game.vehicle.drive_through_train_depot) {
 		const TileIndex depot_tile = v->tile;
@@ -7634,13 +7657,60 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 				Train *anchor = Train::GetIfValid(curo->GetCoupleTarget());
 				if (anchor != nullptr) {
 					Train *a = anchor->First();
-					if (a != consist && a->tile == consist->GetMovingFront()->tile && a->cur_speed == 0) {
+					/* Only couple with an anchor that is actually running: a
+					 * stopped (disabled) anchor must not be taken along. */
+					if (a != consist && a->tile == consist->GetMovingFront()->tile && a->cur_speed == 0
+							&& !a->vehstatus.Test(VehState::Stopped)) {
+						Debug(misc, 0, "DepotCouplePre: b {} a {} aIdx {} aCur {} aWait {} aCoupled {} bIdx {} bCur {}",
+							consist->index, a->index, a->cur_implicit_order_index, a->current_order.GetType(),
+							a->flags.Test(VehicleRailFlag::CoupleWaitInDepot), a->flags.Test(VehicleRailFlag::CoupledAtCurrentStation),
+							consist->cur_implicit_order_index, consist->current_order.GetType());
 						Debug(misc, 0, "DepotCouple: b {} a {} tile {}x{}", consist->index, a->index, TileX(a->tile), TileY(a->tile));
 						consist->cur_speed = 0;
 						consist->subspeed = 0;
 						if (DoCouple(a, consist, false)) {
+							/* Start the ride: advance the anchor's order progress to
+							 * the couple window start, so the merged consist drives
+							 * out of the depot (its depot order would otherwise
+							 * hold it inside and the ride never begins). */
+							a->cur_implicit_order_index = curo->GetCoupleStart();
+							const Order *start_order = a->GetOrder(curo->GetCoupleStart());
+							if (start_order != nullptr) {
+								a->current_order = *start_order;
+								if (start_order->IsType(OT_GOTO_STATION)) {
+									a->SetDestTile(a->GetOrderStationLocation(start_order->GetDestination().ToStationID()));
+								} else if (start_order->IsType(OT_GOTO_DEPOT)) {
+									a->SetDestTile(Depot::Get(start_order->GetDestination().ToDepotID())->xy);
+								}
+							}
+							/* When the anchor starts first, its depot order is
+							 * completed by VehicleEnterDepot (PartOfOrders
+							 * handling) before the coupler arrives; when the
+							 * coupler starts first the merge pre-empts that
+							 * handling, so complete it here: if the anchor's
+							 * real order progress is still at the depot order,
+							 * advance it, then activate the next order --
+							 * otherwise ProcessOrders keeps pulling the
+							 * current order back to the depot and the ride
+							 * never begins. */
+							const Order *real_order = a->GetOrder(a->cur_real_order_index);
+							if (real_order != nullptr && real_order->IsType(OT_GOTO_DEPOT)) {
+								a->IncrementRealOrderIndex();
+							}
+							ProcessOrders(a);
+							Debug(misc, 0, "DepotCouplePost: a {} aIdx {} aCur {} aWait {} aCoupled {} aReal {} aStart {}",
+								a->index, a->cur_implicit_order_index, a->current_order.GetType(),
+								a->flags.Test(VehicleRailFlag::CoupleWaitInDepot), a->flags.Test(VehicleRailFlag::CoupledAtCurrentStation),
+								a->cur_real_order_index, curo->GetCoupleStart());
 							return true;
 						}
+						/* The couple failed: stop the coupler and do not keep
+						 * retrying it every tick (the failed attempt already
+						 * restored the coupler's chain). */
+						consist->force_proceed = TFP_NONE;
+						consist->cur_speed = 0;
+						consist->subspeed = 0;
+						return true;
 					}
 				}
 			}
