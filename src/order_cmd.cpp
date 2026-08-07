@@ -2000,7 +2000,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				break;
 
 			case OT_GOTO_DEPOT:
-				if (mof != MOF_NON_STOP && mof != MOF_DEPOT_ACTION) return CMD_ERROR;
+				if (mof != MOF_NON_STOP && mof != MOF_DEPOT_ACTION && mof != MOF_COUPLE_WAIT) return CMD_ERROR;
 				break;
 
 			case OT_GOTO_WAYPOINT:
@@ -2363,7 +2363,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 			break;
 
 		case MOF_COUPLE_WAIT:
-			if (v->type != VehicleType::Train || !order->IsType(OT_GOTO_STATION)) return CMD_ERROR;
+			if (v->type != VehicleType::Train || (!order->IsType(OT_GOTO_STATION) && !order->IsType(OT_GOTO_DEPOT))) return CMD_ERROR;
 			break;
 
 		case MOF_COUPLE_TARGET: {

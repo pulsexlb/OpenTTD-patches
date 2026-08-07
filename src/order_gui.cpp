@@ -3124,7 +3124,7 @@ public:
 					add_colour(Colours::Pink);
 				}
 
-				if (this->vehicle->type == VehicleType::Train && order->IsType(OT_GOTO_STATION)) {
+				if (this->vehicle->type == VehicleType::Train && (order->IsType(OT_GOTO_STATION) || order->IsType(OT_GOTO_DEPOT))) {
 					list.push_back(MakeDropDownListDividerItem());
 					list.push_back(MakeDropDownListCheckedItem(order->GetCoupleWait(), STR_ORDER_WAIT_FOR_COUPLE, 0x500, false));
 				}
@@ -4114,12 +4114,20 @@ public:
 	bool OnVehicleSelect(const Vehicle *v) override
 	{
 		if (this->goto_type == OPOS_COUPLE) {
+			Debug(misc, 0, "CoupleSelect: this {} v {} vFirst {} vType {} thisType {}", this->vehicle->index, v->index, v->First()->index, v->type, this->vehicle->type);
 			if (this->vehicle->type == VehicleType::Train && v->type == VehicleType::Train && v->index != this->vehicle->index) {
 				const Train *target = Train::From(v)->First();
-				Order order;
 				VehicleOrderID end_idx = (target->orders != nullptr && target->orders->GetNumManualOrders() > 0) ? target->orders->GetNumManualOrders() - 1 : 0;
-				order.MakeCoupleOrder(target->index, 0, end_idx);
+				/* Insert the couple order with default parameters, then set the
+				 * target/start/end via ModifyOrder: the command Order transfer
+				 * only serialises type/flags/dest, so xdata (the couple target)
+				 * would be lost if passed through InsertNewOrder. */
+				Order order;
+				order.MakeCoupleOrder(VehicleID::Invalid(), 0, end_idx);
+				VehicleOrderID sel_ord = this->OrderGetSel();
 				if (this->InsertNewOrder(order)) {
+					::ModifyOrder(this->vehicle, sel_ord, MOF_COUPLE_TARGET, target->index.base());
+					::ModifyOrder(this->vehicle, sel_ord, MOF_COUPLE_END, end_idx);
 					ResetObjectToPlace();
 				}
 			}

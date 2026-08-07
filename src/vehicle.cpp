@@ -2694,6 +2694,14 @@ void VehicleEnterDepot(Vehicle *v)
 			/* A coupled/ride consist entering a depot terminates the ride,
 			 * detaching every riding unit inside the depot. */
 			if (t->HasRide()) CancelTrainRide(t, STR_NEWS_ORDER_RIDE_TERMINATED);
+			/* A depot order with wait-for-couple keeps the train in the depot
+			 * until a coupler has coupled (the order itself is consumed when
+			 * entering the depot, so record the flag here). */
+			if (t->current_order.IsType(OT_GOTO_DEPOT) && t->current_order.GetCoupleWait()) {
+				t->flags.Set(VehicleRailFlag::CoupleWaitInDepot);
+			} else {
+				t->flags.Reset(VehicleRailFlag::CoupleWaitInDepot);
+			}
 			/* Clear path reservation */
 			SetDepotReservation(t->tile, false);
 			if (_settings_client.gui.show_track_reservation) MarkTileDirtyByTile(t->tile, VMDF_NOT_MAP_MODE);

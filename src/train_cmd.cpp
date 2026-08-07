@@ -114,6 +114,7 @@ static TileIndex TrainApproachingCrossingTile(const Train *v);
 static void CheckIfTrainNeedsService(Train *v);
 static void CheckNextTrainTile(Train *moving_front);
 extern TileIndex VehiclePosTraceRestrictPreviousSignalCallback(const Train *v, const void *, TraceRestrictPBSEntrySignalAuxField mode);
+static void NormaliseSubtypes(Train *chain);
 static void TrainEnterStation(Train *v, StationID station);
 static void UnreserveBridgeTunnelTile(TileIndex tile);
 static bool CheckTrainStayInWormHolePathReserve(Train *consist, Train *moving_front, TileIndex tile);
@@ -286,7 +287,7 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon());
 
 	const RailVehicleInfo *rvi_v = RailVehInfo(this->engine_type);
-	EngineID first_engine = this->IsFrontEngine() ? this->engine_type : EngineID::Invalid();
+	EngineID first_engine = this->IsFrontEngine() && this->IsEngine() ? this->engine_type : EngineID::Invalid();
 	this->gcache.cached_total_length = 0;
 	this->compatible_railtypes = {};
 	this->tcache.cached_num_engines = 0;
@@ -1586,13 +1587,15 @@ static CommandCost CmdBuildRailWagon(TileIndex tile, DoCommandFlags flags, const
 		v->z_pos = GetSlopePixelZ(x, y, true);
 		v->owner = _current_company;
 		v->track = TRACK_BIT_DEPOT;
-		v->vehstatus = {VehState::Hidden, VehState::DefaultPalette};
+		v->vehstatus = {VehState::Hidden, VehState::Stopped, VehState::DefaultPalette};
 		v->reverse_distance = 0;
 		v->speed_restriction = 0;
 		v->signal_speed_restriction = 0;
 
 		v->SetWagon();
 
+		/* A wagon can be the head of a legal engine-less train: it is stopped
+		 * by default (like any newly bought vehicle) and kept in the depot. */
 		v->SetFreeWagon();
 		InvalidateWindowData(WindowClass::VehicleDepot, v->tile.base());
 
@@ -1616,6 +1619,7 @@ static CommandCost CmdBuildRailWagon(TileIndex tile, DoCommandFlags flags, const
 		AddArticulatedParts(v);
 
 		v->UpdatePosition();
+		NormaliseSubtypes(v->First());
 		v->First()->ConsistChanged(CCF_ARRANGE);
 		UpdateTrainGroupID(v->First());
 
@@ -1945,9 +1949,12 @@ static void NormaliseSubtypes(Train *chain)
 	/* We must be the first in the chain. */
 	assert(chain->Previous() == nullptr);
 
-	/* Set the appropriate bits for the first in the chain. */
+	/* Set the appropriate bits for the first in the chain.  A wagon can be
+	 * the head of a legal engine-less train: it is ticked and scheduled like
+	 * a front engine, but has no engine and thus no power (it cannot move
+	 * by itself). */
 	if (chain->IsWagon()) {
-		chain->SetFreeWagon();
+		chain->SetFrontEngine();
 	} else {
 		assert(chain->IsEngine());
 		chain->SetFrontEngine();
@@ -2186,7 +2193,12 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes =
 
 	/* If we don't have a unit number yet, set one. */
 	if (head->unitnumber != 0 || HasBit(head->subtype, GVSF_VIRTUAL)) return;
-	head->unitnumber = Company::Get(head->owner)->freeunits[head->type].UseID(GetFreeUnitNumber(VehicleType::Train));
+	/* Use the owner's company for the unit number (this may run outside a
+	 * command context, where _current_company is not meaningful) */
+	auto &units = Company::Get(head->owner)->freeunits[head->type];
+	const UnitID nid = units.NextID();
+	Debug(misc, 0, "UnitAlloc: head {} owner {} next {} cur {} tcc {}", head->index, head->owner, nid, head->unitnumber, _current_company);
+	head->unitnumber = units.UseID(nid);
 }
 
 static void ReverseTrainDirection(Train *consist, bool force_flip = false);
@@ -2500,6 +2512,10 @@ static bool DoDecouple(Train *head, Train *unit_head)
 	 * from colliding with each other until they have separated. */
 	driver->flags.Set(VehicleRailFlag::JustDecoupled);
 	remaining_head->flags.Set(VehicleRailFlag::JustDecoupled);
+	/* Both parts resume running after the decouple (an engine-less part simply
+	 * stays at 0 km/h, like any train without power) */
+	driver->vehstatus.Reset(VehState::Stopped);
+	remaining_head->vehstatus.Reset(VehState::Stopped);
 	ReverseTrainDirection(driver);
 	ProcessOrders(driver);
 
@@ -4113,10 +4129,19 @@ static bool CheckTrainStayInDepot(Train *v)
 	for (const Train *u = v; u != nullptr; u = u->Next()) {
 		if (u->track != TRACK_BIT_DEPOT || u->tile != v->tile) return false;
 	}
+	Debug(misc, 0, "CTDepot: v {} cur {} wait {} coupled {} power {} stopped {} idx {}",
+		v->index, v->current_order.GetType(), v->current_order.GetCoupleWait(),
+		v->flags.Test(VehicleRailFlag::CoupledAtCurrentStation), v->gcache.cached_power,
+		v->vehstatus.Test(VehState::Stopped), v->cur_implicit_order_index);
 
-	/* if the train got no power, then keep it in the depot */
-	if (v->gcache.cached_power == 0) {
-		v->vehstatus.Set(VehState::Stopped);
+
+	/* (Engine-less trains are legal: they keep their running state and
+	 * simply stay at 0 km/h, so no power check forces them to stop.) */
+
+	/* A depot order with the wait-for-couple flag keeps the train in the
+	 * depot until a coupler has coupled (mirror of the station behaviour:
+	 * the train simply stays, it is not stopped/disabled). */
+	if (v->flags.Test(VehicleRailFlag::CoupleWaitInDepot) && !v->flags.Test(VehicleRailFlag::CoupledAtCurrentStation)) {
 		SetWindowDirty(WindowClass::VehicleDepot, v->tile.base());
 		return true;
 	}
@@ -5838,7 +5863,7 @@ void Train::ReserveTrackUnderConsist() const
 uint Train::Crash(bool flooded)
 {
 	uint victims = 0;
-	if (this->IsFrontEngine()) {
+	if (this->IsFrontEngine() && this->IsEngine()) {
 		victims += 2; // driver
 
 		/* Drop the couple/ride structure; the whole consist is crashed. */
@@ -7555,6 +7580,23 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			TileX(consist->dest_tile), TileY(consist->dest_tile),
 			consist->flags.Test(VehicleRailFlag::Stuck), consist->wait_counter, consist->reverse_distance);
 		if (curo != nullptr && curo->IsType(OT_COUPLE) && consist->current_order.IsType(OT_COUPLE)) {
+			/* Coupler in a depot: couple directly with the anchor if it is in
+			 * the same depot (no direction handling; the coupler is simply
+			 * appended behind the anchor). */
+			if (IsRailDepotTile(consist->GetMovingFront()->tile)) {
+				Train *anchor = Train::GetIfValid(curo->GetCoupleTarget());
+				if (anchor != nullptr) {
+					Train *a = anchor->First();
+					if (a != consist && a->tile == consist->GetMovingFront()->tile && a->cur_speed == 0) {
+						Debug(misc, 0, "DepotCouple: b {} a {} tile {}x{}", consist->index, a->index, TileX(a->tile), TileY(a->tile));
+						consist->cur_speed = 0;
+						consist->subspeed = 0;
+						if (DoCouple(a, consist, false)) {
+							return true;
+						}
+					}
+				}
+			}
 			const StationID station = consist->current_order.GetDestination().ToStationID();
 			Train *anchor = Train::GetIfValid(curo->GetCoupleTarget());
 			const Train *a = (anchor != nullptr) ? anchor->First() : nullptr;

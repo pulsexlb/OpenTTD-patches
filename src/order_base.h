@@ -313,9 +313,21 @@ public:
 	 * When set, the driver train waits at this station for any coupler before departing.
 	 * @pre IsType(OT_GOTO_STATION). (Station orders leave flags bits 8+ unused.)
 	 */
-	inline bool GetCoupleWait() const { return HasBit(this->flags, 8); }
+	inline bool GetCoupleWait() const
+	{
+		/* Depot orders store it in xdata2 (flags bits 8-15 are depot extra flags). */
+		if (this->IsType(OT_GOTO_DEPOT)) return HasBit(this->GetXData2(), 0);
+		return HasBit(this->flags, 8);
+	}
 	/** Set/clear the "wait for couple" flag on a station order. */
-	inline void SetCoupleWait(bool set) { AssignBit(this->flags, 8, set); }
+	inline void SetCoupleWait(bool set)
+	{
+		if (this->IsType(OT_GOTO_DEPOT)) {
+			AssignBit(this->GetXData2Ref(), 0, set);
+		} else {
+			AssignBit(this->flags, 8, set);
+		}
+	}
 
 	/**
 	 * Is this a 'goto' order with a real destination?

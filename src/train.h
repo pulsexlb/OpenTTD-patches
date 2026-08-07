@@ -54,6 +54,7 @@ enum class VehicleRailFlag : uint8_t {
 	WaitForCoupleDepart       = 25, ///< After a decouple, wait for the released unit to leave the station before departing.
 	JustDecoupled             = 26, ///< Just decoupled; collision is exempted with the partner until separated.
 	CoupledAtCurrentStation   = 27, ///< A coupler coupled with this train during the current station stop.
+	CoupleWaitInDepot         = 28, ///< A depot order with wait-for-couple keeps the train in the depot.
 	CouplerFlipped            = 28, ///< The coupler was auto-reversed to face the anchor (debounce).
 };
 using VehicleRailFlags = EnumBitSet<VehicleRailFlag, uint32_t>;
