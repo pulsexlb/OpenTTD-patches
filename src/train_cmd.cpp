@@ -2732,6 +2732,17 @@ static void TrainDecoupleHandler(Train *consist)
 				o != nullptr ? (int)o->GetType() : -1, o != nullptr ? o->GetCoupleEnd() : 0xFFFF, idx);
 			if (o == nullptr || !o->IsType(OT_COUPLE)) continue;
 			if (o->GetCoupleEnd() != idx) continue;
+			/* The decouple must happen at the actual end point (the station
+			 * or depot of the end order): otherwise a driver whose order
+			 * progress was advanced while still inside a depot would match
+			 * the end index early and decouple prematurely. */
+			const Order *end_order = driver->GetOrder(idx);
+			if (end_order != nullptr && end_order->IsType(OT_GOTO_STATION)
+					&& !IsTileType(driver->tile, TileType::Station)) continue;
+			if (end_order != nullptr && end_order->IsType(OT_GOTO_DEPOT)
+					&& !IsRailDepotTile(driver->tile)) continue;
+			Debug(misc, 0, "DECOUPLE-MATCH: unit {} end {} idx {} inDepot {}", unit->index,
+				o->GetCoupleEnd(), idx, IsRailDepotTile(unit->GetMovingFront()->tile));
 			Train *remaining = GetUnitTail(unit)->Next(); /* the part that stays */
 			if (DoDecouple(consist, unit) && remaining != nullptr) {
 				/* Wait for the released unit to leave the station before
@@ -2746,6 +2757,19 @@ static void TrainDecoupleHandler(Train *consist)
 			o != nullptr ? (int)o->GetType() : -1, o != nullptr ? o->GetCoupleEnd() : 0xFFFF, idx);
 		if (o == nullptr || !o->IsType(OT_COUPLE)) continue;
 		if (o->GetCoupleEnd() != idx) continue;
+		/* The decouple must happen at the actual end point (the station
+		 * or depot of the end order): otherwise a driver whose order
+		 * progress was advanced while still inside a depot would match
+		 * the end index early and decouple prematurely. */
+		{
+			const Order *end_order = driver->GetOrder(idx);
+			if (end_order != nullptr && end_order->IsType(OT_GOTO_STATION)
+					&& !IsTileType(driver->tile, TileType::Station)) continue;
+			if (end_order != nullptr && end_order->IsType(OT_GOTO_DEPOT)
+					&& !IsRailDepotTile(driver->tile)) continue;
+		}
+		Debug(misc, 0, "DECOUPLE-MATCH: unit {} end {} idx {} inDepot {}", unit->index,
+			o->GetCoupleEnd(), idx, IsRailDepotTile(unit->GetMovingFront()->tile));
 
 		if (IsEndUnit(consist, unit)) {
 			if (DoDecouple(consist, unit)) {
@@ -2774,8 +2798,10 @@ static bool CoupleWaitFlagHolds(Train *consist)
 	const Order *order = driver->GetOrder(driver->cur_implicit_order_index);
 	if (order == nullptr || !order->IsType(OT_GOTO_STATION) || !order->GetCoupleWait()) return false;
 	/* The wait-for-couple flag means: wait for a new coupler to couple at this
-	 * station (an already established ride does not satisfy the wait). */
-	return !consist->flags.Test(VehicleRailFlag::CoupledAtCurrentStation);
+	 * station.  An already established ride does not satisfy the wait: the
+	 * coupler is already attached, so the anchor must not hold here (it has
+	 * to keep driving so the ride can end at its destination). */
+	return !consist->HasRide() && !consist->flags.Test(VehicleRailFlag::CoupledAtCurrentStation);
 }
 
 /**
@@ -4167,6 +4193,11 @@ static bool CheckTrainStayInDepot(Train *v)
 		v->flags.Test(VehicleRailFlag::CoupledAtCurrentStation), v->gcache.cached_power,
 		v->vehstatus.Test(VehState::Stopped), v->cur_implicit_order_index, v->cur_real_order_index);
 
+	/* A ride whose window ends in this depot must be decoupled here: the
+	 * station-side decouple handler only runs on loading-finished, which
+	 * never happens inside a depot. */
+	TrainDecoupleHandler(v);
+
 
 	/* (Engine-less trains are legal: they keep their running state and
 	 * simply stay at 0 km/h, so no power check forces them to stop.) */
@@ -4237,8 +4268,10 @@ static bool CheckTrainStayInDepot(Train *v)
 		if (!HasDepotReservation(v->tile)) VehicleEnterDepot(v);
 		return true;
 	}
-	Debug(misc, 0, "CTDepotLeave: v {} cur {} tile {}x{} dest {}x{}", v->index,
-		(int)v->current_order.GetType(), TileX(v->tile), TileY(v->tile), TileX(v->dest_tile), TileY(v->dest_tile));
+	Debug(misc, 0, "CTDepotLeave: v {} cur {} tile {}x{} dest {}x{} waitCounter {} segState {} depotRes {}",
+		v->index, (int)v->current_order.GetType(), TileX(v->tile), TileY(v->tile), TileX(v->dest_tile), TileY(v->dest_tile),
+		v->wait_counter, (int)(_settings_game.pf.reserve_paths ? SigSegState::Path : UpdateSignalsOnSegment(v->tile, DiagDirection::Invalid, v->owner)),
+		HasDepotReservation(v->tile));
 
 	if (_settings_game.vehicle.drive_through_train_depot) {
 		const TileIndex depot_tile = v->tile;
@@ -7652,8 +7685,11 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			 * what identifies it as a coupler. */
 			/* Coupler in a depot: couple directly with the anchor if it is in
 			 * the same depot (no direction handling; the coupler is simply
-			 * appended behind the anchor). */
-			if (IsRailDepotTile(consist->GetMovingFront()->tile)) {
+			 * appended behind the anchor).  Only when the coupler is still
+			 * an independent train: once merged into the anchor's consist
+			 * (its First() is the anchor) it must not be coupled again,
+			 * or the ride window state gets clobbered. */
+			if (IsRailDepotTile(consist->GetMovingFront()->tile) && consist->First() == consist) {
 				Train *anchor = Train::GetIfValid(curo->GetCoupleTarget());
 				if (anchor != nullptr) {
 					Train *a = anchor->First();

@@ -4404,6 +4404,12 @@ bool ProcessOrders(Vehicle *v)
 	}
 
 	/* Otherwise set it, and determine the destination tile. */
+	if (v->type == VehicleType::Train && Train::From(v)->HasRide()) {
+		Debug(misc, 0, "PO-Ride: v {} idx {} real {} curOrder {} newOrder {} dest {}x{}",
+			v->index, v->cur_implicit_order_index, v->cur_real_order_index,
+			v->current_order.GetType(), order->GetType(),
+			TileX(order->GetLocation(v, order)), TileY(order->GetLocation(v, order)));
+	}
 	v->current_order = *order;
 
 	/* Couple orders have a dynamic destination resolved from the target's schedule. */
