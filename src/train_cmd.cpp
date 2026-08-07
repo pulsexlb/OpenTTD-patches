@@ -7700,9 +7700,17 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 				Train *anchor = Train::GetIfValid(curo->GetCoupleTarget());
 				if (anchor != nullptr) {
 					Train *a = anchor->First();
+					/* Only couple inside the depot when the couple order's
+					 * start order (the anchor order where the ride begins) is
+					 * a depot order at this very depot.  A station (or other
+					 * depot) target drives the coupler out of the depot to
+					 * couple there. */
+					const Order *to = anchor->GetOrder(curo->GetCoupleStart());
+					const bool couple_in_depot = to != nullptr && to->IsType(OT_GOTO_DEPOT)
+							&& IsRailDepotTile(a->tile) && Depot::Get(to->GetDestination().ToDepotID())->xy == a->tile;
 					/* Only couple with an anchor that is actually running: a
 					 * stopped (disabled) anchor must not be taken along. */
-					if (a != consist && a->tile == consist->GetMovingFront()->tile && a->cur_speed == 0
+					if (couple_in_depot && a != consist && a->tile == consist->GetMovingFront()->tile && a->cur_speed == 0
 							&& !a->vehstatus.Test(VehState::Stopped)) {
 						Debug(misc, 0, "DepotCouplePre: b {} a {} aIdx {} aCur {} aWait {} aCoupled {} bIdx {} bCur {}",
 							consist->index, a->index, a->cur_implicit_order_index, a->current_order.GetType(),
