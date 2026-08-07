@@ -4106,13 +4106,13 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 		case OT_COUPLE: {
 			StationID station = ResolveCoupleDestination(*order);
 			if (station != StationID::Invalid()) {
-				/* Head for the platform itself, not the station anchor tile:
-				 * the anchor is stopped on the platform, and the coupler must
-				 * enter the platform for the coupling logic to kick in. */
-				const Station *st = Station::Get(station);
-				if (st->facilities.Test(StationFacility::Train) && st->train_station.tile != INVALID_TILE) {
-					v->SetDestTile(st->train_station.tile);
-				}
+				/* Couple orders behave like ordinary station orders: the
+				 * coupler arrives at the station's entry tile, stops there
+				 * (TrainEnterStation holds it when the anchor is not there
+				 * yet) and the order stays active for the coupling logic. */
+				Debug(misc, 0, "UOD-Couple: v {} sta {} dest {}x{}",
+					v->index, station, TileX(v->GetOrderStationLocation(station)), TileY(v->GetOrderStationLocation(station)));
+				v->SetDestTile(v->GetOrderStationLocation(station));
 			}
 			return true;
 		}
@@ -4383,12 +4383,24 @@ bool ProcessOrders(Vehicle *v)
 		return false;
 	}
 
+	/* A coupler that has entered the target station (TrainEnterStation set
+	 * the loading state) must keep that state: overwriting it with the
+	 * couple order would drive the train on past the platform. */
+	if (v->current_order.IsType(OT_LOADING) && order->IsType(OT_COUPLE)
+			&& v->current_order.GetDestination() == order->GetDestination()) {
+		return false;
+	}
+
 	/* Otherwise set it, and determine the destination tile. */
 	v->current_order = *order;
 
 	/* Couple orders have a dynamic destination resolved from the target's schedule. */
 	if (v->current_order.IsType(OT_COUPLE)) {
-		v->current_order.SetDestination(DestinationID(ResolveCoupleDestination(v->current_order)));
+		const StationID cd = ResolveCoupleDestination(v->current_order);
+		Debug(misc, 0, "PO-Couple: v {} idx {} target {} dest {} tile {}x{}", v->index,
+			v->cur_implicit_order_index, v->current_order.GetCoupleTarget(), cd,
+			TileX(v->dest_tile), TileY(v->dest_tile));
+		v->current_order.SetDestination(DestinationID(cd));
 	}
 
 	InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);

@@ -566,6 +566,11 @@ int GetTrainStopLocation(StationID station_id, TileIndex tile, Train *v, bool up
 		osl = OrderStopLocation::Through;
 	} else if (front->current_order.IsType(OT_GOTO_WAYPOINT) && front->current_order.GetDestination() == station_id) {
 		osl = OrderStopLocation::FarEnd;
+	} else if (front->cur_implicit_order_index < front->GetNumOrders()) {
+		/* A coupler waiting at the target platform pulls fully into the
+		 * platform and stops at the near end (front) by default. */
+		const Order *o = front->GetOrder(front->cur_implicit_order_index);
+		if (o != nullptr && o->IsType(OT_COUPLE)) osl = OrderStopLocation::FarEnd;
 	}
 	int overhang = front->gcache.cached_total_length - *station_length;
 	int adjust = 0;
@@ -2771,6 +2776,21 @@ static bool CoupleWaitFlagHolds(Train *consist)
 	return !consist->flags.Test(VehicleRailFlag::CoupledAtCurrentStation);
 }
 
+/**
+ * Is this a coupler that has arrived at its target station and must wait
+ * there for the anchor (which has not established the ride yet)?
+ * If so the loading-finished handling must not drive it off again.
+ * @param consist the consist (the physical chain head).
+ * @return true if the train must keep waiting for the anchor.
+ */
+static bool CouplerWaitsAtStation(const Train *consist)
+{
+	if (consist->HasRide()) return false;
+	const Order *order = consist->GetOrder(consist->cur_implicit_order_index);
+	if (order == nullptr || !order->IsType(OT_COUPLE)) return false;
+	return Train::GetIfValid(order->GetCoupleTarget()) != nullptr;
+}
+
 CommandCost CmdMoveVirtualRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleID dest_veh, MoveRailVehicleFlags move_flags)
 {
 	Train *src = Train::GetIfValid(src_veh);
@@ -3189,6 +3209,13 @@ void Train::UpdateDeltaXY()
  */
 static void MarkTrainAsStuck(Train *consist, bool waiting_restriction = false)
 {
+	if (consist->current_order.IsType(OT_COUPLE) || (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetCoupleWait())) {
+		Debug(misc, 0, "MarkStuck: v {} curOrder {} tile {}x{} dest {}x{} target {}",
+			consist->index, (int)consist->current_order.GetType(),
+			TileX(consist->tile), TileY(consist->tile),
+			TileX(consist->dest_tile), TileY(consist->dest_tile),
+			consist->current_order.IsType(OT_COUPLE) ? consist->current_order.GetCoupleTarget().base() : -1);
+	}
 	if (!consist->flags.Test(VehicleRailFlag::Stuck)) {
 		/* It is the first time the problem occurred, set the "train stuck" flag. */
 		consist->flags.Set(VehicleRailFlag::Stuck);
@@ -5692,10 +5719,20 @@ static void TrainEnterStation(Train *consist, StationID station)
 				anchor_present = true;
 			}
 		}
+		Debug(misc, 0, "TEnterCouple: b {} curo {} curOrder {} curDest {} sta {} hasRide {} anchor {} aTile {}x{} anchorPresent {} -> {}",
+			consist->index, consist->cur_implicit_order_index, (int)consist->current_order.GetType(),
+			consist->current_order.GetDestination().ToStationID(), station, consist->HasRide(),
+			anchor != nullptr ? anchor->index.base() : 0xFFFF,
+			anchor != nullptr ? TileX(anchor->First()->tile) : 0, anchor != nullptr ? TileY(anchor->First()->tile) : 0,
+			anchor_present, anchor_present ? "creep" : "STOP-WAIT");
 		if (!anchor_present) {
+			/* The anchor has not arrived yet: enter the normal station flow
+			 * (loading state) so the coupler pulls fully into the platform and
+			 * stops at the default stop location, then waits there.  The
+			 * implicit order index is NOT advanced: the couple order must stay
+			 * active for the coupler logic to recognise this train. */
 			consist->force_proceed = TFP_NONE;
-			consist->cur_speed = 0;
-			consist->subspeed = 0;
+			consist->current_order.MakeLoading(true);
 			SetWindowDirty(WindowClass::VehicleView, consist->index);
 		} else {
 			/* The anchor is here; keep creeping forward and bump into it to couple. */
@@ -6479,6 +6516,12 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					}
 					if (vets.Test(VehicleEnterTileState::EnteredStation)) {
 						/* The new position is the end of the platform */
+						if (first->current_order.IsType(OT_COUPLE) || (first->current_order.IsType(OT_GOTO_STATION) && first->current_order.GetCoupleWait())) {
+							Debug(misc, 0, "TEnterCheck: v {} newTile {}x{} sta {} curOrder {} curDest {} idx {} hasRide {}",
+								first->index, TileX(gp.new_tile), TileY(gp.new_tile), GetStationIndex(gp.new_tile),
+								(int)first->current_order.GetType(), first->current_order.GetDestination().ToStationID(),
+								first->cur_implicit_order_index, first->HasRide());
+						}
 						TrainEnterStation(first, GetStationIndex(gp.new_tile));
 					}
 					if (old_direction != v->direction) notify_direction_changed(old_direction, v->direction);
@@ -7579,7 +7622,11 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			TileX(consist->GetMovingFront()->tile), TileY(consist->GetMovingFront()->tile),
 			TileX(consist->dest_tile), TileY(consist->dest_tile),
 			consist->flags.Test(VehicleRailFlag::Stuck), consist->wait_counter, consist->reverse_distance);
-		if (curo != nullptr && curo->IsType(OT_COUPLE) && consist->current_order.IsType(OT_COUPLE)) {
+		if (curo != nullptr && curo->IsType(OT_COUPLE)) {
+			/* Note: the coupler's current_order is OT_LOADING while it is
+			 * stopped (and waiting) at the target platform (see
+			 * TrainEnterStation); the couple order at its current index is
+			 * what identifies it as a coupler. */
 			/* Coupler in a depot: couple directly with the anchor if it is in
 			 * the same depot (no direction handling; the coupler is simply
 			 * appended behind the anchor). */
@@ -7714,8 +7761,112 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 					}
 				}
 			}
-			/* Anchor not ready: the coupler is left alone and remains fully
-			 * player-controllable. */
+			/* Anchor not ready: the coupler waits at the target station for
+			 * the anchor.  The normal station flow has pulled it into the
+			 * platform; once it is fully stopped it must stay put: the
+			 * loading-finished handling would otherwise advance the order and
+			 * drive it off again.  While it is still moving it is left alone
+			 * so the platform stop logic can finish. */
+			if (!anchor_ready) {
+				const Train *mf_wait = consist->GetMovingFront();
+				if (IsTileType(mf_wait->tile, TileType::Station) && GetStationIndex(mf_wait->tile) == station && consist->cur_speed == 0) {
+					consist->force_proceed = TFP_NONE;
+					/* Stay stopped: skip the loading-finished / order
+					 * advancement and the acceleration logic this tick. */
+					Debug(misc, 0, "TCHold: b {} curOrder {} idx {} curo {} tile {}x{} speed {} dest {}x{}",
+						consist->index, (int)consist->current_order.GetType(), consist->cur_implicit_order_index,
+						curo != nullptr ? (int)curo->GetType() : -1,
+						TileX(mf_wait->tile), TileY(mf_wait->tile), consist->cur_speed,
+						TileX(consist->dest_tile), TileY(consist->dest_tile));
+					return true;
+				}
+				Debug(misc, 0, "TCHoldBreak: b {} curOrder {} idx {} curo {} tile {}x{} isSta {} sta {} target {} speed {} fp {}",
+					consist->index, (int)consist->current_order.GetType(), consist->cur_implicit_order_index,
+					curo != nullptr ? (int)curo->GetType() : -1,
+					TileX(mf_wait->tile), TileY(mf_wait->tile),
+					IsTileType(mf_wait->tile, TileType::Station),
+					IsTileType(mf_wait->tile, TileType::Station) ? GetStationIndex(mf_wait->tile).base() : 0xFFFF,
+					station, consist->cur_speed, consist->force_proceed);
+				/* The coupler is left alone and remains fully
+				 * player-controllable. */
+			}
+		}
+
+		/* The anchor (wait-for-couple holder) arrives at its target station
+		 * while the coupler is already waiting there (it arrived first and is
+		 * holding the station): the anchor is blocked from entering, so it
+		 * force-proceeds into the platform and stops right next to the waiting
+		 * coupler, then couples directly (mirroring the coupler-side CTAdjacent
+		 * path).  Once the anchor has entered the station its order is loading
+		 * and the coupler side (anchor_ready above) takes over. */
+		if (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetCoupleWait()
+				&& !consist->flags.Test(VehicleRailFlag::CoupledAtCurrentStation) && !consist->HasRide()) {
+			const StationID station = consist->current_order.GetDestination().ToStationID();
+			Train *waiting = nullptr;
+			for (Train *u : Train::IterateFrontOnly()) {
+				if (u == consist || u->owner != consist->owner) continue;
+				if (u->GetNumOrders() == 0 || u->cur_implicit_order_index >= u->GetNumOrders()) continue;
+				const Order *co = u->GetOrder(u->cur_implicit_order_index);
+				if (co == nullptr || !co->IsType(OT_COUPLE)) continue;
+				Train *t = Train::GetIfValid(co->GetCoupleTarget());
+				if (t == nullptr || t->First() != consist) continue;
+				if (u->cur_speed != 0 || !IsTileType(u->tile, TileType::Station) || GetStationIndex(u->tile) != station) continue;
+				if (consist->cur_implicit_order_index != co->GetCoupleStart()) continue;
+				waiting = u;
+				break;
+			}
+			if (waiting != nullptr) {
+				/* Creep: slow down when close to either end of the waiting
+				 * coupler, and stop right at the contact point. */
+				const Train *mf2 = consist->GetMovingFront();
+				const Train *w_head = waiting;
+				const Train *w_tail = waiting->Last();
+				const int d_head = std::max(abs(mf2->x_pos - w_head->x_pos), abs(mf2->y_pos - w_head->y_pos));
+				const int d_tail = std::max(abs(mf2->x_pos - w_tail->x_pos), abs(mf2->y_pos - w_tail->y_pos));
+				const Train *contact = (d_head <= d_tail) ? w_head : w_tail;
+				const int diff = std::min(d_head, d_tail);
+				const int expected = CalcCoupleSpacing(mf2, contact);
+				const bool blocked = IsBlockedByTargetStation(consist, waiting);
+				Debug(misc, 0, "TCAWait: a {} waiting {} blocked {} speed {} diff {} exp {} tile {}x{}",
+					consist->index, waiting->index, blocked, consist->cur_speed,
+					diff, expected, TileX(mf2->tile), TileY(mf2->tile));
+				if (diff <= expected + 2) {
+					/* Right next to the waiting coupler: stop and couple directly. */
+					consist->cur_speed = 0;
+					consist->subspeed = 0;
+					consist->force_proceed = TFP_NONE;
+					const bool attach_ahead = DetermineCoupleDirection(consist, waiting);
+					Train *coupler = waiting;
+					if (attach_ahead) {
+						coupler->force_proceed = TFP_NONE;
+						coupler->cur_speed = 0;
+						coupler->subspeed = 0;
+						ReverseTrainDirection(coupler, true);
+						coupler = coupler->First();
+					}
+					if (DoCouple(consist, coupler, attach_ahead)) {
+						if (consist->owner == _local_company) {
+							AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLED, consist->index), consist->index);
+						}
+						return true;
+					}
+					/* The couple failed: stop both so the player can sort it out. */
+					coupler->force_proceed = TFP_NONE;
+					coupler->cur_speed = 0;
+					coupler->subspeed = 0;
+				} else if (diff <= expected + 16) {
+					if (consist->cur_speed > 5) consist->cur_speed = 5;
+				} else if (consist->cur_speed == 0 && blocked) {
+					/* Blocked from entering (the coupler holds the station):
+					 * force-proceed into the platform. */
+					consist->force_proceed = TFP_SIGNAL;
+					consist->flags.Reset(VehicleRailFlag::Stuck);
+					consist->cur_speed = 20;
+					SetWindowWidgetDirty(WindowClass::VehicleView, consist->index, WID_VV_START_STOP);
+					Debug(misc, 0, "TCForceA: a {} fp->TFP_SIGNAL speed 20 tile {}x{}",
+						consist->index, TileX(consist->GetMovingFront()->tile), TileY(consist->GetMovingFront()->tile));
+				}
+			}
 		}
 	}
 
@@ -7755,8 +7906,9 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	 * ride window ends at this station, and honour the "wait for couple" flag. */
 	if (consist->current_order.IsAnyLoadingType() && consist->vehicle_flags.Test(VehicleFlag::LoadingFinished)) {
 		TrainDecoupleHandler(consist);
-		if (CoupleWaitFlagHolds(consist)) {
-			/* Hold at the station until a coupler establishes a ride. */
+		if (CoupleWaitFlagHolds(consist) || CouplerWaitsAtStation(consist)) {
+			/* Hold at the station until a coupler establishes a ride (or,
+			 * for the coupler itself, until the anchor arrives). */
 			consist->cur_speed = 0;
 			consist->subspeed = 0;
 			return true;
