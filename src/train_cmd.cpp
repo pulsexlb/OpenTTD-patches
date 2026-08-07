@@ -570,7 +570,7 @@ int GetTrainStopLocation(StationID station_id, TileIndex tile, Train *v, bool up
 		/* A coupler waiting at the target platform pulls fully into the
 		 * platform and stops at the near end (front) by default. */
 		const Order *o = front->GetOrder(front->cur_implicit_order_index);
-		if (o != nullptr && o->IsType(OT_COUPLE)) osl = OrderStopLocation::FarEnd;
+		if (o != nullptr && o->IsType(OT_COUPLE)) osl = OrderStopLocation::Middle;
 	}
 	int overhang = front->gcache.cached_total_length - *station_length;
 	int adjust = 0;
@@ -7794,12 +7794,13 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 
 		/* The anchor (wait-for-couple holder) arrives at its target station
 		 * while the coupler is already waiting there (it arrived first and is
-		 * holding the station): the anchor is blocked from entering, so it
-		 * force-proceeds into the platform and stops right next to the waiting
-		 * coupler, then couples directly (mirroring the coupler-side CTAdjacent
-		 * path).  Once the anchor has entered the station its order is loading
-		 * and the coupler side (anchor_ready above) takes over. */
-		if (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetCoupleWait()
+		 * holding the station): the anchor drives up to it (force-proceeding
+		 * past the block) and couples directly (mirroring the coupler-side
+		 * CTAdjacent path).  This also applies once the anchor has already
+		 * stopped at the platform (loading state): the waiting coupler must
+		 * not be left behind - re-arm the station order and drive up to it. */
+		if ((consist->current_order.IsType(OT_GOTO_STATION) || (consist->current_order.IsType(OT_LOADING) && consist->vehicle_flags.Test(VehicleFlag::LoadingFinished)))
+				&& consist->current_order.GetCoupleWait()
 				&& !consist->flags.Test(VehicleRailFlag::CoupledAtCurrentStation) && !consist->HasRide()) {
 			const StationID station = consist->current_order.GetDestination().ToStationID();
 			Train *waiting = nullptr;
@@ -7816,26 +7817,54 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 				break;
 			}
 			if (waiting != nullptr) {
-				/* Creep: slow down when close to either end of the waiting
-				 * coupler, and stop right at the contact point. */
+				/* The anchor has already stopped at the platform (loading
+				 * state): re-arm the station order so it drives up to the
+				 * waiting coupler.  Remove it from the station's loading
+				 * list first, or the station tick will assert on the
+				 * non-loading order. */
+				if (consist->current_order.IsType(OT_LOADING)) {
+					Station *bst = Station::Get(station);
+					if (bst != nullptr) {
+						auto &lv = bst->loading_vehicles;
+						lv.erase(std::remove(lv.begin(), lv.end(), consist), lv.end());
+					}
+					consist->vehicle_flags.Reset(VehicleFlag::LoadingFinished);
+					consist->current_order.MakeGoToStation(station);
+					consist->SetDestTile(consist->GetOrderStationLocation(station));
+					Debug(misc, 0, "TCAReArm: a {} re-arm GOTO_STATION {}x{}", consist->index, TileX(consist->dest_tile), TileY(consist->dest_tile));
+				}
+				/* Creep: slow down when close to either physical end of the
+				 * waiting coupler (its head and tail; the moving front is
+				 * unreliable here because an engine-less coupler may be
+				 * flagged as driving backwards, making GetMovingFront()
+				 * return its tail).  The end the anchor bumps into decides
+				 * the merge direction: the tail -> the coupler is reversed
+				 * to lead ([B][A], the anchor joins behind its new tail);
+				 * the head -> it trails ([A][B]). */
 				const Train *mf2 = consist->GetMovingFront();
-				const Train *w_head = waiting;
+				const Train *w_head = waiting->First();
 				const Train *w_tail = waiting->Last();
 				const int d_head = std::max(abs(mf2->x_pos - w_head->x_pos), abs(mf2->y_pos - w_head->y_pos));
 				const int d_tail = std::max(abs(mf2->x_pos - w_tail->x_pos), abs(mf2->y_pos - w_tail->y_pos));
-				const Train *contact = (d_head <= d_tail) ? w_head : w_tail;
+				const bool attach_ahead = d_tail < d_head;
+				const Train *contact = attach_ahead ? w_tail : w_head;
 				const int diff = std::min(d_head, d_tail);
 				const int expected = CalcCoupleSpacing(mf2, contact);
 				const bool blocked = IsBlockedByTargetStation(consist, waiting);
-				Debug(misc, 0, "TCAWait: a {} waiting {} blocked {} speed {} diff {} exp {} tile {}x{}",
+				Debug(misc, 0, "TCAWait: a {} waiting {} blocked {} speed {} diff {} exp {} attach {} tile {}x{}",
 					consist->index, waiting->index, blocked, consist->cur_speed,
-					diff, expected, TileX(mf2->tile), TileY(mf2->tile));
+					diff, expected, attach_ahead, TileX(mf2->tile), TileY(mf2->tile));
 				if (diff <= expected + 2) {
 					/* Right next to the waiting coupler: stop and couple directly. */
 					consist->cur_speed = 0;
 					consist->subspeed = 0;
 					consist->force_proceed = TFP_NONE;
-					const bool attach_ahead = DetermineCoupleDirection(consist, waiting);
+					const Train *amf = consist->GetMovingFront();
+					const Train *bmf = waiting->GetMovingFront();
+					Debug(misc, 0, "TCACouplePre: aMF {} tile {}x{} track {} dir {} x {} y {} | bMF {} tile {}x{} track {} dir {} x {} y {}",
+						amf->index, TileX(amf->tile), TileY(amf->tile), (int)amf->track, (int)amf->direction, amf->x_pos, amf->y_pos,
+						bmf->index, TileX(bmf->tile), TileY(bmf->tile), (int)bmf->track, (int)bmf->direction, bmf->x_pos, bmf->y_pos);
+					const bool attach_ahead = d_tail < d_head;
 					Train *coupler = waiting;
 					if (attach_ahead) {
 						coupler->force_proceed = TFP_NONE;
@@ -7848,6 +7877,31 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 						if (consist->owner == _local_company) {
 							AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLED, consist->index), consist->index);
 						}
+						/* Debug: dump every vehicle of the merged consist
+						 * (track/direction/tile) to spot invalid state after
+						 * the merge. */
+						{
+							int vi = 0;
+							for (const Train *u = consist->First(); u != nullptr; u = u->Next(), vi++) {
+								Debug(misc, 0, "TCAMerge: v{} veh {} tile {}x{} track {} dir {} x {} y {} idx {}",
+									vi, u->index, TileX(u->tile), TileY(u->tile),
+									(int)u->track, (int)u->direction, u->x_pos, u->y_pos, u->cur_implicit_order_index);
+							}
+						}
+						/* The re-armed station order (GOTO_STATION) was only a
+						 * means to drive up to the waiting coupler: the station
+						 * stop is complete now, so advance the order and leave
+						 * the station normally. */
+						consist->IncrementImplicitOrderIndex();
+						consist->current_order.MakeLeaveStation();
+						Train *merged_head = consist->First();
+						merged_head->cur_implicit_order_index = consist->cur_implicit_order_index;
+						merged_head->current_order = consist->current_order;
+						merged_head->SetDestTile(consist->dest_tile);
+						Debug(misc, 0, "TCALeave: merged {} idx {} curOrder {} tile {}x{}",
+							merged_head->index, merged_head->cur_implicit_order_index,
+							(int)merged_head->current_order.GetType(),
+							TileX(merged_head->GetMovingFront()->tile), TileY(merged_head->GetMovingFront()->tile));
 						return true;
 					}
 					/* The couple failed: stop both so the player can sort it out. */
