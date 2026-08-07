@@ -3807,6 +3807,11 @@ static bool ShouldVehicleContinueWaiting(Vehicle *v)
  */
 void Vehicle::HandleLoading(bool mode)
 {
+	/* While riding (a RideDriver schedules the consist) the order progress
+	 * must advance both the implicit and the real index in lockstep,
+	 * otherwise the ride index drifts away from the real order and the
+	 * consist stalls (e.g. stopped before a waypoint). */
+	const bool in_ride = (this->type == VehicleType::Train) && Train::From(this)->HasRide();
 	switch (this->current_order.GetType()) {
 		case OT_LOADING: {
 			TimetableTicks wait_time = std::max<int>(this->current_order.GetTimetabledWait() - this->lateness_counter, 0);
@@ -3827,11 +3832,15 @@ void Vehicle::HandleLoading(bool mode)
 
 			this->LeaveStation();
 
-			/* Only advance to next order if we just loaded at the current one */
+			/* Only advance to next order if we just loaded at the current one.
+			 * While riding (a RideDriver schedules the consist) the consist may
+			 * pass waypoints or loop tracks without visiting the order's
+			 * station: do not require the destination match in that case, or
+			 * the ride index stalls. */
 			const Order *order = this->GetOrder(this->cur_implicit_order_index);
 			if (order == nullptr ||
 					(!order->IsType(OT_IMPLICIT) && !order->IsType(OT_GOTO_STATION)) ||
-					order->GetDestination() != this->last_station_visited) {
+					(!in_ride && order->GetDestination() != this->last_station_visited)) {
 				return;
 			}
 			break;
@@ -3843,6 +3852,12 @@ void Vehicle::HandleLoading(bool mode)
 	}
 
 	this->IncrementImplicitOrderIndex();
+	/* IncrementImplicitOrderIndex already advanced the real index in
+	 * lockstep when the two were equal; UpdateRealOrderIndex only aligns
+	 * the real index (skipping implicit orders) and must not advance the
+	 * ride index a second time, or the next order (e.g. a station) is
+	 * skipped. */
+	if (in_ride) this->UpdateRealOrderIndex();
 }
 
 /**

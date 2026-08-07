@@ -2352,6 +2352,10 @@ static bool DoCouple(Train *a, Train *b, bool attach_ahead)
 		 * owner (a ride is going on), it keeps the marker; otherwise the
 		 * anchor itself becomes the schedule owner. */
 		if (a->GetRideDriver() == a) a->flags.Set(VehicleRailFlag::RideDriver);
+		/* The anchor (schedule owner) has coupled too: it must not keep waiting
+		 * for a coupler (its wait-for-couple depot/station logic reads this
+		 * flag), or it would hold the consist inside the depot. */
+		a->flags.Set(VehicleRailFlag::CoupledAtCurrentStation);
 		Debug(misc, 0, "DoCouple: attach_ahead a {} b {} aRide {} aIdx {} bIdx {} aCur {} bCur {}",
 			a->index, b->index, a->flags.Test(VehicleRailFlag::RideDriver),
 			a->cur_implicit_order_index, b->couple_index_backup,
@@ -4204,8 +4208,11 @@ static bool CheckTrainStayInDepot(Train *v)
 
 	/* A depot order with the wait-for-couple flag keeps the train in the
 	 * depot until a coupler has coupled (mirror of the station behaviour:
-	 * the train simply stays, it is not stopped/disabled). */
-	if (v->flags.Test(VehicleRailFlag::CoupleWaitInDepot) && !v->flags.Test(VehicleRailFlag::CoupledAtCurrentStation)) {
+	 * the train simply stays, it is not stopped/disabled).  In a [B][A]
+	 * merge the chain head is the coupler whose wait flag is a mirror
+	 * artefact; the wait/couple state belongs to the schedule owner. */
+	Train *couple_driver = v->GetRideDriver();
+	if (couple_driver->flags.Test(VehicleRailFlag::CoupleWaitInDepot) && !couple_driver->flags.Test(VehicleRailFlag::CoupledAtCurrentStation)) {
 		SetWindowDirty(WindowClass::VehicleDepot, v->tile.base());
 		return true;
 	}
@@ -7710,6 +7717,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 							 * out of the depot (its depot order would otherwise
 							 * hold it inside and the ride never begins). */
 							a->cur_implicit_order_index = curo->GetCoupleStart();
+							a->cur_real_order_index = curo->GetCoupleStart();
 							const Order *start_order = a->GetOrder(curo->GetCoupleStart());
 							if (start_order != nullptr) {
 								a->current_order = *start_order;
@@ -7731,7 +7739,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 							 * never begins. */
 							const Order *real_order = a->GetOrder(a->cur_real_order_index);
 							if (real_order != nullptr && real_order->IsType(OT_GOTO_DEPOT)) {
-								a->IncrementRealOrderIndex();
+								a->IncrementImplicitOrderIndex();
 							}
 							ProcessOrders(a);
 							Debug(misc, 0, "DepotCouplePost: a {} aIdx {} aCur {} aWait {} aCoupled {} aReal {} aStart {}",
@@ -7997,17 +8005,22 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 						/* The re-armed station order (GOTO_STATION) was only a
 						 * means to drive up to the waiting coupler: the station
 						 * stop is complete now, so advance the order and leave
-						 * the station normally. */
+						 * the station normally.  IncrementImplicitOrderIndex
+						 * already advances the real index in lockstep when they
+						 * are equal; do not call IncrementRealOrderIndex again
+						 * (it would double-advance and wrap the ride index to 0,
+						 * breaking the end-of-ride decouple match). */
 						consist->IncrementImplicitOrderIndex();
 						consist->current_order.MakeLeaveStation();
 						Train *merged_head = consist->First();
 						merged_head->cur_implicit_order_index = consist->cur_implicit_order_index;
 						merged_head->current_order = consist->current_order;
 						merged_head->SetDestTile(consist->dest_tile);
-						Debug(misc, 0, "TCALeave: merged {} idx {} curOrder {} tile {}x{}",
+						Debug(misc, 0, "TCALeave: merged {} idx {} curOrder {} tile {}x{} real {}",
 							merged_head->index, merged_head->cur_implicit_order_index,
 							(int)merged_head->current_order.GetType(),
-							TileX(merged_head->GetMovingFront()->tile), TileY(merged_head->GetMovingFront()->tile));
+							TileX(merged_head->GetMovingFront()->tile), TileY(merged_head->GetMovingFront()->tile),
+							merged_head->cur_real_order_index);
 						return true;
 					}
 					/* The couple failed: stop both so the player can sort it out. */
