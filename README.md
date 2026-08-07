@@ -1,3 +1,7 @@
+## IMPORTANT
+此分支Fork自`JGRPP`版本，旨在实现openttd的挂载与解挂功能。
+目前，本分支的代码完全由AI Vibe编写，目前多数功能均无法正常运行（包括寻路等），仅供技术验证。
+
 ## JGR's Patchpack version 0.73.0
 
 This is a collection of features and other modifications applied to [OpenTTD](http://www.openttd.org/).  
