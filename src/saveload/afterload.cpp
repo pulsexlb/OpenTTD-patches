@@ -4119,28 +4119,6 @@ bool AfterLoadGame()
 		for (Station *st : Station::Iterate()) UpdateStationAcceptance(st, false);
 	}
 	
-	if (IsSavegameVersionBefore(SLV_200)) {
-		for (Vehicle *v : Vehicle::Iterate()) {
-			Order *o;
-			int num_order = 1;
-			FOR_VEHICLE_ORDERS(v, o) {
-				if (o->IsType(OT_GOTO_STATION) && o->GetDecouple() == ODF_DECOUPLE) {
-					if (o->next != nullptr && !o->next->IsType(OT_DECOUPLE)) {
-						if (Order::CanAllocateItem()) {
-							Order *new_order = new Order();
-							new_order->MakeDecouple();
-							new_order->SetDecoupleFirstOrdersType(ODOF_KEEP_ORDERS_NO_LOAD);
-							new_order->SetDecoupleSecondOrdersType(ODOF_INHERIT_ORDERS);
-							new_order->SetNumDecouple(o->GetNumDecouple());
-							InsertOrder(v, new_order, num_order);
-							o->SetNumDecouple(0);
-						}
-					}
-				}
-				num_order++;
-			}
-		}
-	}
 
 	// setting moved from game settings to company settings
 	if (SlXvIsFeaturePresent(XSLFI_ORDER_OCCUPANCY, 1, 1)) {

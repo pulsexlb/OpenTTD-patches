@@ -404,26 +404,10 @@ struct GroundVehicle : public SpecializedVehicle<T, Type, BaseGroundVehicle> {
 	inline void ClearMultiheaded() { ClrBit(this->subtype, GVSF_MULTIHEADED); }
 
 	/**
-	 * Set a vehicle as the first wagon of a consist without a front engine.
-	 */
-	inline void SetFrontWagon() { SetBit(this->subtype, GVSF_FRONT_WAGON); }
-
-	/**
-	 * Clear front wagon property.
-	 */
-	inline void ClearFrontWagon() { ClrBit(this->subtype, GVSF_FRONT_WAGON); }
-
-	/**
 	 * Check if the vehicle is a free wagon (got no engine in front of it).
 	 * @return Returns true if the vehicle is a free wagon.
 	 */
 	inline bool IsFreeWagon() const { return HasBit(this->subtype, GVSF_FREE_WAGON); }
-	
-	/**
-	 * Check if the vehicle is a first wagon (got no engine in front of it).
-	 * @return Returns true if the vehicle is a first wagon.
-	 */
-	inline bool IsFrontWagon() const { return HasBit(this->subtype, GVSF_FRONT_WAGON); }
 
 	/**
 	 * Check if the vehicle is the first wagon of a consist without a front engine.
