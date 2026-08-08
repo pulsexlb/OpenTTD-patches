@@ -15,6 +15,7 @@
 #include "../../vehicle_type.h"
 #include "../../ship.h"
 #include "../../roadveh.h"
+#include "../../vehicle_func.h"
 #include "../pathfinder_type.h"
 
 /**
@@ -60,6 +61,8 @@ Trackdir YapfRoadVehicleChooseTrack(const RoadVehicle *v, TileIndex tile, DiagDi
  * @return         the best track for next turn
  */
 Track YapfTrainChooseTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, struct PBSTileInfo *target, TileIndex *dest);
+Track YapfTrainCoupleTrack(const Train *v, bool dont_reserve);
+
 Track YapfTrainCoupleTrack(const Train *v, bool dont_reserve);
 
 /**

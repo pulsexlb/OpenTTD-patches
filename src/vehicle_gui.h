@@ -20,7 +20,12 @@
 #include <bitset>
 #include <vector>
 
+<<<<<<< HEAD
 void ShowVehicleRefitWindow(const Vehicle *v, VehicleOrderID order, Window *parent, bool auto_refit = false, bool is_virtual_train = false);
+=======
+void ShowVehicleRefitWindow(const Vehicle *v, VehicleOrderID order, Window *parent, bool auto_refit = false);
+void ShowVehicleCargoTypesWindow(const Vehicle *v, VehicleOrderID order, Window *parent);
+>>>>>>> decouple
 
 /** The tabs in the train details window */
 enum TrainDetailsWindowTabs : uint8_t {
@@ -93,6 +98,8 @@ struct VehicleCellSize {
 };
 
 VehicleCellSize GetVehicleImageCellSize(VehicleType type, EngineImageType image_type);
+
+void ShowVehicleCargoTypesWindow(const Vehicle *v, VehicleOrderID order, Window *parent);
 
 /**
  * Get WindowClass for vehicle list of given vehicle type

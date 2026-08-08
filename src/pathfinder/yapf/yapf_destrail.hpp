@@ -306,4 +306,84 @@ public:
 	}
 };
 
+template <class Types>
+class CYapfDestinationTrainRailT : public CYapfDestinationRailBase {
+public:
+	typedef typename Types::Tpf Tpf;              ///< the pathfinder class (derived from THIS class)
+	typedef typename Types::NodeList::Titem Node; ///< this will be our node type
+	typedef typename Node::Key Key;               ///< key to hash tables
+
+protected:
+	Order dest_order;
+	
+public:	
+	/** to access inherited path finder */
+	Tpf& Yapf()
+	{
+		return *static_cast<Tpf *>(this);
+	}
+	
+	void SetDestination(const Train *v)
+	{
+		dest_order.AssignOrder(v->current_order);
+		CYapfDestinationRailBase::SetDestination(v);
+	}
+
+	/** Called by YAPF to detect if node ends in the desired destination */
+	inline bool PfDetectDestination(Node &n)
+	{
+		return PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir());
+	}
+	
+	bool CheckOrderLoad(Train *t)
+	{
+		switch (dest_order.GetCoupleLoad()) {
+			case ODC_ANY: return true;
+			case ODC_IS_EMPTY: return t->cargo.StoredCount() == 0;
+			case ODC_IS_FULL: return t->cargo.StoredCount() == t->cargo_cap;
+			default: NOT_REACHED();
+		}
+	}
+	
+	bool CheckOrderCargoType(Train *t)
+	{
+		if (!dest_order.HasCoupleCargoType()) return true;
+		CargoID cargo_type = dest_order.GetCoupleCargoType();
+		for (Train *v = t; v != nullptr; v = v->Next()) {
+			if (v->cargo_type == cargo_type) return true;
+		}
+		return false;
+	}
+	
+	bool CheckNumberOfWagons(Train *t)
+	{
+		if (dest_order.GetNumCouple() == 0) return true;
+		return (dest_order.GetNumCouple() == CountVehiclesInVehicles(t));
+	}
+
+	/** Called by YAPF to detect if node ends in the desired destination */
+	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
+	{
+		TrackdirBits tdb = TrackdirToTrackdirBits(td);
+		if (!HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb))) return false;
+		if (!IsRailStationTile(tile)) return false;
+		Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
+		if (t == nullptr) return false;
+		if (t->current_order.IsType(OT_WAIT_COUPLE)) {
+			if (TrainFitStation(t) && CheckOrderLoad(t) && CheckOrderCargoType(t) && CheckNumberOfWagons(t)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Called by YAPF to calculate cost estimate. Calculates distance to the destination
+	 *  adds it to the actual cost from origin and stores the sum to the Node::m_estimate.
+	 */
+	inline bool PfCalcEstimate(Node &n)
+	{
+		n.m_estimate = n.m_cost;
+		return true;
+	}
+};
+
 #endif /* YAPF_DESTRAIL_HPP */
