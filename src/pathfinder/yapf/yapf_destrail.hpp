@@ -11,6 +11,8 @@
 #define YAPF_DESTRAIL_HPP
 
 #include "../../train.h"
+#include "../../pbs.h"
+#include "../../vehicle_func.h"
 #include "../pathfinder_func.h"
 #include "../pathfinder_type.h"
 
@@ -219,6 +221,88 @@ public:
 			return dmin * YAPF_TILE_CORNER_LENGTH + (dxy - 1) * (YAPF_TILE_LENGTH / 2);
 		};
 		return std::max<int>(0, calculate_distance_cost(prev_tile, 8) - calculate_distance_cost(cur_tile, 0));
+	}
+};
+
+template <class Types>
+class CYapfDestinationTrainRailT : public CYapfDestinationRailBase {
+public:
+	typedef typename Types::Tpf Tpf;              ///< the pathfinder class (derived from THIS class)
+	typedef typename Types::NodeList::Item Node; ///< this will be our node type
+	typedef typename Node::Key Key;               ///< key to hash tables
+
+protected:
+	Order dest_order;
+
+public:
+	/** @copydoc CYapfBaseT::Yapf */
+	Tpf &Yapf()
+	{
+		return *static_cast<Tpf *>(this);
+	}
+
+	void SetDestination(const Train *v)
+	{
+		dest_order.AssignOrder(v->current_order);
+		this->CYapfDestinationRailBase::SetDestination(v);
+	}
+
+	/** @copydoc CYapfBaseT::PfDetectDestinationFunc */
+	inline bool PfDetectDestination(Node &n)
+	{
+		return this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir());
+	}
+
+	bool CheckOrderLoad(const Train *t) const
+	{
+		switch (dest_order.GetCoupleLoad()) {
+			case ODC_ANY: return true;
+			case ODC_IS_EMPTY: return t->cargo.StoredCount() == 0;
+			case ODC_IS_FULL: return t->cargo.StoredCount() == t->cargo_cap;
+			default: NOT_REACHED();
+		}
+	}
+
+	bool CheckOrderCargoType(const Train *t) const
+	{
+		if (!dest_order.HasCoupleCargoType()) return true;
+		CargoType cargo_type = dest_order.GetCoupleCargoType();
+		for (const Train *v = t; v != nullptr; v = v->Next()) {
+			if (v->cargo_type == cargo_type) return true;
+		}
+		return false;
+	}
+
+	bool CheckNumberOfWagons(const Train *t) const
+	{
+		if (dest_order.GetNumCouple() == 0) return true;
+		return (dest_order.GetNumCouple() == CountVehiclesInChain(t));
+	}
+
+	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
+	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
+	{
+		TrackdirBits tdb = TrackdirToTrackdirBits(td);
+		if (!HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb))) return false;
+		if (!IsRailStationTile(tile)) return false;
+		Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
+		if (t == nullptr) return false;
+		if (t->current_order.IsType(OT_WAIT_COUPLE)) {
+			if (TrainFitStation(t) && CheckOrderLoad(t) && CheckOrderCargoType(t) && CheckNumberOfWagons(t)) return true;
+		}
+		return false;
+	}
+
+	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */
+	inline bool PfCalcEstimate(Node &n)
+	{
+		n.estimate = n.cost;
+		return true;
+	}
+
+	inline int TeleportCost(TileIndex cur_tile, TileIndex prev_tile)
+	{
+		return 0;
 	}
 };
 

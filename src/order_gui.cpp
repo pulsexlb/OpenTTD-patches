@@ -590,6 +590,8 @@ enum OrderDropDownID {
 	ODDI_CHANGE_COUNTER,
 	ODDI_LABEL_TEXT,
 	ODDI_LABEL_DEPARTURES_VIA,
+	ODDI_WAIT_FOR_COUPLE,
+	ODDI_GO_TO_COUPLE,
 };
 
 static const StringID _order_manage_list_dropdown[] = {
@@ -913,6 +915,10 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 					if (!_settings_client.gui.hide_default_stop_location || order->GetStopLocation() != _settings_client.gui.stop_location) {
 						AppendStringInPlace(line, STR_ORDER_STOP_LOCATION_NEAR_END + to_underlying(order->GetStopLocation()));
 					}
+				}
+				if (order->GetDecouple() == ODF_DECOUPLE) {
+					line.push_back(' ');
+					AppendStringInPlace(line, STR_ORDER_DECOUPLE);
 				}
 				if (v->type == VehicleType::Road && order->GetRoadVehTravelDirection() != DiagDirection::Invalid) {
 					line.push_back(' ');
@@ -1366,6 +1372,31 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			break;
 		}
 
+		case OT_GOTO_COUPLE: {
+			if (order->HasCoupleCargoType()) {
+				AppendStringInPlace(line, STR_ORDER_GO_TO_COUPLE_CARGO, STR_ORDER_COUPLE_ANY + to_underlying(order->GetCoupleLoad()), CargoSpec::Get(order->GetCoupleCargoType())->name);
+			} else {
+				AppendStringInPlace(line, STR_ORDER_GO_TO_COUPLE, STR_ORDER_COUPLE_ANY + to_underlying(order->GetCoupleLoad()));
+			}
+			uint num_c = order->GetNumCouple();
+			if (num_c > 0) {
+				AppendStringInPlace(line, STR_ORDER_COUPLE_UNITS, num_c);
+			}
+			break;
+		}
+
+		case OT_WAIT_COUPLE:
+			AppendStringInPlace(line, STR_ORDER_WAIT_FOR_COUPLE);
+			break;
+
+		case OT_DECOUPLE: {
+			uint num_d = order->GetNumDecouple();
+			AppendStringInPlace(line, num_d == 0 ? STR_ORDER_DECOUPLE_DETAILS_AUTO : STR_ORDER_DECOUPLE_DETAILS, num_d,
+					STR_ORDER_DECOUPLE_KEEP_ORDERS + to_underlying(order->GetDecoupleFirstOrdersType()),
+					STR_ORDER_DECOUPLE_KEEP_ORDERS + to_underlying(order->GetDecoupleSecondOrdersType()));
+			break;
+		}
+
 		default: NOT_REACHED();
 	}
 
@@ -1758,6 +1789,20 @@ private:
 		this->SetWidgetDirty(WID_O_COND_AUX_VIA);
 		this->SetWidgetDirty(WID_O_COND_AUX_STATION);
 		this->SetWidgetDirty(WID_O_MGMT_BTN);
+	}
+
+	void OrderClick_WaitForCouple()
+	{
+		Order order;
+		order.MakeWaitCouple();
+		DoCommandP<Commands::InsertOrder>(this->vehicle->tile, InsertOrderCmdData(this->vehicle->index, this->OrderGetSel(), order), STR_ERROR_CAN_T_INSERT_NEW_ORDER, CommandCallback::InsertOrder);
+	}
+
+	void OrderClick_Couple()
+	{
+		Order order;
+		order.MakeGoToCouple();
+		DoCommandP<Commands::InsertOrder>(this->vehicle->tile, InsertOrderCmdData(this->vehicle->index, this->OrderGetSel(), order), STR_ERROR_CAN_T_INSERT_NEW_ORDER, CommandCallback::InsertOrder);
 	}
 
 	/**
@@ -3179,6 +3224,10 @@ public:
 					}
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_TEXT_BUTTON, ODDI_LABEL_TEXT, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_DEPARTURES_VIA_BUTTON, ODDI_LABEL_DEPARTURES_VIA, false));
+					if (this->vehicle->type == VehicleType::Train) {
+						list.push_back(MakeDropDownListStringItem(STR_ORDER_WAIT_FOR_COUPLE, ODDI_WAIT_FOR_COUPLE, false));
+						list.push_back(MakeDropDownListStringItem(STR_ORDERS_GO_TO_COUPLE, ODDI_GO_TO_COUPLE, false));
+					}
 
 					ShowDropDownList(this, std::move(list), sel, WID_O_GOTO, 0, DropDownOptions{}, DDSF_SHARED);
 				}
@@ -3736,6 +3785,8 @@ public:
 					case ODDI_CHANGE_COUNTER:       this->OrderClick_ChangeCounter(); break;
 					case ODDI_LABEL_TEXT:           this->OrderClick_TextLabel(); break;
 					case ODDI_LABEL_DEPARTURES_VIA: this->OrderClick_Goto(OPOS_DEPARTURE_VIA); break;
+					case ODDI_WAIT_FOR_COUPLE:       this->OrderClick_WaitForCouple(); break;
+					case ODDI_GO_TO_COUPLE:          this->OrderClick_Couple(); break;
 					default: NOT_REACHED();
 				}
 				break;

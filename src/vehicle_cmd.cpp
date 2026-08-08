@@ -638,7 +638,7 @@ CommandCost CmdStartStopVehicle(DoCommandFlags flags, VehicleID veh_id, bool eva
 
 	switch (v->type) {
 		case VehicleType::Train:
-			if (v->vehstatus.Test(VehState::Stopped) && Train::From(v)->gcache.cached_power == 0) return CommandCost(STR_ERROR_TRAIN_START_NO_POWER);
+			if (v->vehstatus.Test(VehState::Stopped) && Train::From(v)->gcache.cached_power == 0 && !Train::From(v)->IsFrontWagon()) return CommandCost(STR_ERROR_TRAIN_START_NO_POWER);
 			break;
 
 		case VehicleType::Ship:

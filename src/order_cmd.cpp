@@ -213,6 +213,33 @@ void Order::MakeLeaveStation()
 }
 
 /**
+ * Makes this order a Decouple order.
+ */
+void Order::MakeDecouple()
+{
+	this->type = OT_DECOUPLE;
+	this->flags = 0;
+}
+
+/**
+ * Makes this order a Go To Couple order.
+ */
+void Order::MakeGoToCouple()
+{
+	this->type = OT_GOTO_COUPLE;
+	this->flags = 0;
+}
+
+/**
+ * Makes this order a waiting for couple order.
+ */
+void Order::MakeWaitCouple()
+{
+	this->type = OT_WAIT_COUPLE;
+	this->flags = 0;
+}
+
+/**
  * Makes this order a Dummy order.
  */
 void Order::MakeDummy()
@@ -438,6 +465,7 @@ void Order::AssignOrder(const Order &other)
 	this->dest  = other.dest;
 
 	this->refit_cargo   = other.refit_cargo;
+	this->decouple_flags = other.decouple_flags;
 
 	this->wait_time   = other.wait_time;
 
@@ -1967,7 +1995,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 	} else {
 		switch (order->GetType()) {
 			case OT_GOTO_STATION:
-				if (mof != MOF_NON_STOP && mof != MOF_STOP_LOCATION && mof != MOF_UNLOAD && mof != MOF_LOAD && mof != MOF_CARGO_TYPE_UNLOAD && mof != MOF_CARGO_TYPE_LOAD && mof != MOF_RV_TRAVEL_DIR) return CMD_ERROR;
+				if (mof != MOF_NON_STOP && mof != MOF_STOP_LOCATION && mof != MOF_UNLOAD && mof != MOF_LOAD && mof != MOF_CARGO_TYPE_UNLOAD && mof != MOF_CARGO_TYPE_LOAD && mof != MOF_RV_TRAVEL_DIR && mof != MOF_DECOUPLE) return CMD_ERROR;
 				break;
 
 			case OT_GOTO_DEPOT:
@@ -1980,6 +2008,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 
 			case OT_CONDITIONAL:
 				if (mof != MOF_COND_VARIABLE && mof != MOF_COND_COMPARATOR && mof != MOF_COND_VALUE && mof != MOF_COND_VALUE_2 && mof != MOF_COND_VALUE_3 && mof != MOF_COND_VALUE_4 && mof != MOF_COND_DESTINATION && mof != MOF_COND_STATION_ID) return CMD_ERROR;
+				break;
+
+			case OT_GOTO_COUPLE:
+				if (mof != MOF_COUPLE_LOAD && mof != MOF_COUPLE_CARGO && mof != MOF_COUPLE_VALUE) return CMD_ERROR;
+				break;
+
+			case OT_DECOUPLE:
+				if (mof != MOF_FIRST_ORDERS && mof != MOF_SECOND_ORDERS && mof != MOF_DECOUPLE_VALUE) return CMD_ERROR;
 				break;
 
 			case OT_SLOT:
@@ -2270,6 +2306,33 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 
 		case MOF_COND_DESTINATION:
 			if (data >= v->GetNumOrders() || data == sel_ord) return CMD_ERROR;
+			break;
+
+		case MOF_SECOND_ORDERS:
+		case MOF_FIRST_ORDERS:
+			if (v->type != VehicleType::Train) return CMD_ERROR;
+			if (data >= ODOF_END) return CMD_ERROR;
+			break;
+
+		case MOF_DECOUPLE:
+			if (v->type != VehicleType::Train) return CMD_ERROR;
+			if (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) return CMD_ERROR;
+			break;
+
+		case MOF_DECOUPLE_VALUE:
+			if (data > 127) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_LOAD:
+			if (data >= ODC_END) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_CARGO:
+			if (cargo_id >= NUM_CARGO && cargo_id != CARGO_NO_REFIT) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_VALUE:
+			if (data > 127) return CMD_ERROR;
 			break;
 
 		case MOF_WAYPOINT_FLAGS:
@@ -2621,6 +2684,46 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 
 			case MOF_COND_DESTINATION:
 				order->SetConditionSkipToOrder(data);
+				break;
+
+			case MOF_DECOUPLE_VALUE:
+				order->SetNumDecouple(data);
+				break;
+
+			case MOF_DECOUPLE: {
+				OrderDecoupleFlags decouple_flags = order->GetDecouple();
+				order->SetDecouple(data);
+				if (decouple_flags == ODF_DECOUPLE && order->GetDecouple() == ODF_NOTHING) {
+					Command<Commands::DeleteOrder>::Do(flags, v->index, sel_ord + 1);
+				}
+				if (decouple_flags == ODF_NOTHING && order->GetDecouple() == ODF_DECOUPLE) {
+					Order new_order;
+					new_order.MakeDecouple();
+					new_order.SetDecoupleFirstOrdersType(ODOF_KEEP_ORDERS_NO_LOAD);
+					new_order.SetDecoupleSecondOrdersType(ODOF_INHERIT_ORDERS);
+					CmdInsertOrder(flags, InsertOrderCmdData(v->index, sel_ord + 1, new_order));
+				}
+				break;
+			}
+
+			case MOF_COUPLE_LOAD:
+				order->SetCoupleLoad((OrderCoupleFlags)data);
+				break;
+
+			case MOF_COUPLE_CARGO:
+				order->SetCoupleCargoType(cargo_id);
+				break;
+
+			case MOF_COUPLE_VALUE:
+				order->SetNumCouple(data);
+				break;
+
+			case MOF_FIRST_ORDERS:
+				order->SetDecoupleFirstOrdersType((OrderDecoupleOrdersFlags)data);
+				break;
+
+			case MOF_SECOND_ORDERS:
+				order->SetDecoupleSecondOrdersType((OrderDecoupleOrdersFlags)data);
 				break;
 
 			case MOF_WAYPOINT_FLAGS:
@@ -4430,6 +4533,9 @@ const char *GetOrderTypeName(OrderType order_type)
 		"OT_COUNTER",
 		"OT_LABEL",
 		"OT_SLOT_GROUP",
+		"OT_GOTO_COUPLE",
+		"OT_WAIT_COUPLE",
+		"OT_DECOUPLE",
 	};
 	static_assert(lengthof(names) == OT_END);
 	if (order_type < OT_END) return names[order_type];

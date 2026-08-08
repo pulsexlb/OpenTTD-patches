@@ -27,6 +27,7 @@
 #include "network/network.h"
 #include "core/random_func.hpp"
 #include "company_base.h"
+#include "group.h"
 #include "newgrf.h"
 #include "infrastructure_func.h"
 #include "order_backup.h"
@@ -278,11 +279,45 @@ uint16_t GetTrainVehicleMaxSpeed(const Train *u, const RailVehicleInfo &rvi_u, c
  * Note: this needs to be called too for 'wagon chains' (in the depot, without an engine)
  * @param allowed_changes Stuff that is allowed to change.
  */
+	bool Train::CanConsistChange(ConsistChangeFlags allowed_changes) const
+{
+	for (const Train *u = this; u != nullptr; u = u->Next()) {
+		const Engine *e_u = u->GetEngine();
+		const RailVehicleInfo *rvi_u = RailVehInfo(u->engine_type);
+
+		if (!allowed_changes.Test(ConsistChangeFlag::Capacity)) {
+			/* Verify capacity hasn't changed. */
+			if (e_u->DetermineCapacity(u) != u->cargo_cap) return false;
+		}
+
+		if (!allowed_changes.Test(ConsistChangeFlag::Length)) {
+			/* Verify length hasn't changed. */
+			uint16_t veh_len = CALLBACK_FAILED;
+			if (e_u->GetGRF() != nullptr && e_u->GetGRF()->grf_version >= 8) {
+				/* Use callback 36 */
+				veh_len = GetVehicleProperty(u, PROP_TRAIN_SHORTEN_FACTOR, CALLBACK_FAILED);
+
+				if (veh_len != CALLBACK_FAILED && veh_len >= VEHICLE_LENGTH) {
+					ErrorUnknownCallbackResult(e_u->GetGRFID(), CBID_VEHICLE_LENGTH, veh_len);
+				}
+			} else if (e_u->info.callback_mask.Test(VehicleCallbackMask::Length)) {
+				/* Use callback 11 */
+				veh_len = GetVehicleCallback(CBID_VEHICLE_LENGTH, 0, 0, u->engine_type, u);
+			}
+			if (veh_len == CALLBACK_FAILED) veh_len = rvi_u->shorten_factor;
+			veh_len = VEHICLE_LENGTH - Clamp(veh_len, 0, VEHICLE_LENGTH - 1);
+
+			if (veh_len != u->gcache.cached_veh_length) return false;
+		}
+	}
+	return true;
+}
+
 void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 {
 	uint16_t max_speed = UINT16_MAX;
 
-	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon());
+	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon() || this->IsFrontWagon());
 
 	const RailVehicleInfo *rvi_v = RailVehInfo(this->engine_type);
 	EngineID first_engine = this->IsFrontEngine() ? this->engine_type : EngineID::Invalid();
@@ -1238,7 +1273,14 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 int Train::GetCurrentMaxSpeed() const
 {
 	MaxSpeedInfo info = this->GetCurrentMaxSpeedInfo();
-	return std::min(info.strict_max_speed, info.advisory_max_speed);
+	int max_speed = std::min(info.strict_max_speed, info.advisory_max_speed);
+
+	/* Trains going to couple should approach slowly. */
+	if (this->current_order.IsType(OT_GOTO_COUPLE)) max_speed = std::min(max_speed, 40);
+	/* Unpowered front wagons should not drive too fast. */
+	if (this->IsFrontWagon() && !this->flags.Test(VehicleRailFlag::PoweredWagon)) max_speed = std::min(max_speed, 50);
+
+	return max_speed;
 }
 
 uint32_t Train::CalculateOverallZPos() const
@@ -1941,7 +1983,7 @@ static void NormaliseSubtypes(Train *chain)
 
 	/* Set the appropriate bits for the first in the chain. */
 	if (chain->IsWagon()) {
-		chain->SetFreeWagon();
+		if (!chain->IsFrontWagon()) chain->SetFreeWagon();
 	} else {
 		assert(chain->IsEngine());
 		chain->SetFrontEngine();
@@ -1951,6 +1993,7 @@ static void NormaliseSubtypes(Train *chain)
 	for (Train *t = chain->Next(); t != nullptr; t = t->Next()) {
 		t->ClearFreeWagon();
 		t->ClearFrontEngine();
+		t->ClearFrontWagon();
 	}
 }
 
@@ -1968,10 +2011,10 @@ static CommandCost CheckNewTrain(Train *original_dst, Train *dst, Train *origina
 	/* Just add 'new' engines and subtract the original ones.
 	 * If that's less than or equal to 0 we can be sure we did
 	 * not add any engines (read: trains) along the way. */
-	if ((src          != nullptr && src->IsEngine()          ? 1 : 0) +
-			(dst          != nullptr && dst->IsEngine()          ? 1 : 0) -
-			(original_src != nullptr && original_src->IsEngine() ? 1 : 0) -
-			(original_dst != nullptr && original_dst->IsEngine() ? 1 : 0) <= 0) {
+	if ((src          != nullptr && src->unitnumber          ? 1 : 0) +
+			(dst          != nullptr && dst->unitnumber          ? 1 : 0) -
+			(original_src != nullptr && original_src->unitnumber ? 1 : 0) -
+			(original_dst != nullptr && original_dst->unitnumber ? 1 : 0) <= 0) {
 		return CommandCost();
 	}
 
@@ -1990,7 +2033,7 @@ static CommandCost CheckNewTrain(Train *original_dst, Train *dst, Train *origina
 static CommandCost CheckTrainAttachment(Train *t)
 {
 	/* No multi-part train, no need to check. */
-	if (t == nullptr || t->Next() == nullptr) return CommandCost();
+	if (t == nullptr || t->Next() == nullptr || (!t->IsEngine() && t->IsStoppedInDepot())) return CommandCost();
 
 	/* The maximum length for a train. For each part we decrease this by one
 	 * and if the result is negative the train is simply too long. */
@@ -2161,18 +2204,18 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
  * we have changed and update all kinds of variables.
  * @param head the train to update.
  */
-static void NormaliseTrainHead(Train *head)
+static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 {
 	/* Not much to do! */
 	if (head == nullptr) return;
 
 	/* Tell the 'world' the train changed. */
-	head->ConsistChanged(CCF_ARRANGE);
+	head->ConsistChanged(allowed_changes);
 	UpdateTrainGroupID(head);
 	head->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 
 	/* Not a front engine, i.e. a free wagon chain. No need to do more. */
-	if (!head->IsFrontEngine()) return;
+	if (!head->IsPrimaryVehicle()) return;
 
 	/* Update the refit button and window */
 	InvalidateWindowData(WindowClass::VehicleRefit, head->index, VIWD_CONSIST_CHANGED);
@@ -2301,8 +2344,8 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 	/* We want this information from before the rearrangement, but execute this after the validation.
 	 * original_src_head can't be nullptr; src is by definition != nullptr, so src_head can't be nullptr as
 	 * src->GetFirst() always yields non-nullptr, so eventually original_src_head != nullptr as well. */
-	bool original_src_head_front_engine = original_src_head->IsFrontEngine();
-	bool original_dst_head_front_engine = original_dst_head != nullptr && original_dst_head->IsFrontEngine();
+	bool original_src_head_front_engine = original_src_head->IsPrimaryVehicle();
+	bool original_dst_head_front_engine = original_dst_head != nullptr && original_dst_head->IsPrimaryVehicle();
 
 	/* (Re)arrange the trains in the wanted arrangement. */
 	ArrangeTrains(&dst_head, dst, &src_head, src, move_chain);
@@ -2350,7 +2393,7 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		 *  6) non front engine gets moved within a train / to another train, nothing happens
 		 *  7) wagon gets moved, nothing happens
 		 */
-		if (src == original_src_head && src->IsEngine() && (!src->IsFrontEngine() || new_head)) {
+		if (src == original_src_head && original_src_head_front_engine && (!src->IsPrimaryVehicle() || new_head)) {
 			/* Cases #2 and #3: the front engine gets trashed. */
 			CloseWindowById(WindowClass::VehicleView, src->index);
 			CloseWindowById(WindowClass::VehicleOrders, src->index);
@@ -2392,13 +2435,13 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		}
 
 		/* Handle 'new engine' part of cases #1b, #2b, #3b, #4b and #5 in NormaliseTrainHead. */
-		NormaliseTrainHead(src_head);
-		NormaliseTrainHead(dst_head);
+		NormaliseTrainHead(src_head, CCF_ARRANGE);
+		NormaliseTrainHead(dst_head, CCF_ARRANGE);
 
 		/* Add new heads to statistics.
 		 * This should be done after NormaliseTrainHead due to engine total limit checks in GetFreeUnitNumber. */
-		if (src_head != nullptr && src_head->IsFrontEngine()) GroupStatistics::CountVehicle(src_head, 1);
-		if (dst_head != nullptr && dst_head->IsFrontEngine()) GroupStatistics::CountVehicle(dst_head, 1);
+		if (src_head != nullptr && src_head->IsPrimaryVehicle()) GroupStatistics::CountVehicle(src_head, 1);
+		if (dst_head != nullptr && dst_head->IsPrimaryVehicle()) GroupStatistics::CountVehicle(dst_head, 1);
 
 		if (!flags.Test(DoCommandFlag::NoCargoCapacityCheck)) {
 			CheckCargoCapacity(src_head);
@@ -2506,7 +2549,7 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 		}
 
 		/* We need to update the information about the train. */
-		NormaliseTrainHead(new_head);
+		NormaliseTrainHead(new_head, CCF_ARRANGE);
 
 		/* We are undoubtedly changing something in the depot and train list. */
 		/* Unless its a virtual train */
@@ -3841,7 +3884,9 @@ static void ClearPathReservation(const Train *v, TileIndex tile, Trackdir track_
 		/* If the new tile is not a further tile of the same station, we
 		 * clear the reservation for the whole platform. */
 		if (!IsCompatibleTrainStationTile(new_tile, tile)) {
-			SetRailStationPlatformReservation(tile, ReverseDiagDir(dir), false);
+			if (IsRailStationPlatformFree(v, tile, ReverseDiagDir(dir))) {
+				SetRailStationPlatformReservation(tile, ReverseDiagDir(dir), false);
+			}
 		}
 	} else {
 		/* Any other tile */
@@ -3857,7 +3902,7 @@ static void ClearPathReservation(const Train *v, TileIndex tile, Trackdir track_
  */
 void FreeTrainTrackReservation(Train *consist, TileIndex origin, Trackdir orig_td)
 {
-	assert(consist->IsFrontEngine());
+	assert(consist->IsPrimaryVehicle());
 
 	if (origin == INVALID_TILE) consist->lookahead.reset();
 
@@ -3979,6 +4024,17 @@ static Track DoTrainPathfind(const Train *v, TileIndex tile, DiagDirection enter
 {
 	if (final_dest != nullptr) *final_dest = INVALID_TILE;
 	return YapfTrainChooseTrack(v, tile, enterdir, tracks, path_found, do_track_reservation, dest, final_dest);
+}
+
+/**
+ * Find the track to take when going to couple with another train.
+ * @param v The train.
+ * @param do_track_reservation Whether to reserve the path.
+ * @return The track to take, or #INVALID_TRACK if no path was found.
+ */
+static Track DoTrainCouplePathfind(const Train *v, bool do_track_reservation)
+{
+	return YapfTrainCoupleTrack(v, !do_track_reservation);
 }
 
 /**
@@ -4575,6 +4631,19 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 
 	bool mark_stuck = (flags & CTTF_MARK_STUCK);
 
+	/* When going to couple with another train, use the couple pathfinder to
+	 * follow the waiting train's reservation. */
+	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
+		Track path_found = DoTrainCouplePathfind(consist, do_track_reservation);
+		if (path_found != INVALID_TRACK) {
+			return { path_found, CTTRF_RESERVATION_MADE };
+		}
+		/* Couple pathfinding failed, wait at the current position. */
+		if (mark_stuck) MarkTrainAsStuck(consist);
+		FreeTrainTrackReservation(consist);
+		return { FindFirstTrack(tracks), result_flags };
+	}
+
 	/* Quick return in case only one possible track is available */
 	if (KillFirstBit(tracks) == TRACK_BIT_NONE) {
 		Track track = FindFirstTrack(tracks);
@@ -4832,7 +4901,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
  */
 TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mark_as_stuck, bool first_tile_okay)
 {
-	dbg_assert(consist->IsFrontEngine());
+	dbg_assert(consist->IsPrimaryVehicle());
 
 	ClearLookAheadIfInvalid(consist);
 
@@ -4894,9 +4963,12 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 	 * block signals or when changing tracks and/or signals.
 	 * Exit here as doing any further reservations will probably just
 	 * make matters worse. */
-	if (other_train != nullptr && other_train->index != consist->index) {
-		if (mark_as_stuck) MarkTrainAsStuck(consist);
-		return TPRRF_NONE;
+	if (other_train != nullptr && other_train->index != consist->index && other_train->tile != consist->tile) {
+		/* If we are both at the station, we probably just decoupled and we can continue */
+		if (!IsRailStationTile(consist->tile) || !IsRailStationTile(other_train->tile)) {
+			if (mark_as_stuck) MarkTrainAsStuck(consist);
+			return TPRRF_NONE;
+		}
 	}
 	/* If we have a reserved path and the path ends at a safe tile, we are finished already. */
 	if (origin.okay && (moving_front->tile != origin.tile || first_tile_okay)) {
@@ -4971,6 +5043,409 @@ static bool CheckReverseTrain(const Train *consist)
 }
 
 /**
+ * Advance the wagons of the consist after coupling, so that they are positioned
+ * correctly on the track.
+ */
+static void AdvanceWagonsAfterCouple(Train *v)
+{
+	int difference = v->CalcNextVehicleOffset();
+	int diff_x = abs(v->x_pos - v->Next()->x_pos);
+	int diff_y = abs(v->y_pos - v->Next()->y_pos);
+	int real_diff = std::max(diff_x, diff_y) - difference;
+
+	assert(real_diff >= 0);
+
+	for (int i = 0; i < real_diff; i++) TrainController(v->Next(), nullptr);
+}
+
+/**
+ * Check whether the whole train fits into the station.
+ */
+bool TrainFitStation(const Train *v)
+{
+	if (!IsRailStationTile(v->tile)) return false;
+	if (!IsRailStationTile(v->Last()->tile)) return false;
+	StationID sid = GetStationIndex(v->tile);
+	const Station *st = Station::Get(sid);
+	int station_length = st->GetPlatformLength(v->tile, DirToDiagDir(ReverseDir(v->direction))) * TILE_SIZE;
+	/* vehicle position is in the middle, half vehicle size overlap is fine and solves corner case */
+	return v->gcache.cached_total_length - (v->gcache.cached_veh_length + 1) / 2 - v->Last()->gcache.cached_veh_length / 2 <= station_length;
+}
+
+/**
+ * Check if the train can decouple at its current position.
+ */
+static bool CanDecouple(Train *v)
+{
+	if (!TrainFitStation(v)) return false;
+	if (CountVehiclesInChain(v) < 2) return false;
+	if (v->GetNextUnit() == nullptr) return false;
+	return true;
+}
+
+/**
+ * Automatically determine how many vehicles to decouple.
+ */
+static uint GetDecoupleVehicleAuto(Train *v)
+{
+	uint engines_front = 0;
+	uint engines_back = 0;
+	uint pos = 1;
+	bool has_wagons = false;
+	bool multihead_front = false;
+	for (Train *t = v; t != nullptr; t = t->GetNextVehicle(), pos++) {
+		if (t->IsEngine()) {
+			if (t->IsMultiheaded()) {
+				if (multihead_front) {
+					return pos;
+				}
+				multihead_front = true;
+			}
+			if (has_wagons) {
+				engines_back++;
+			} else {
+				engines_front++;
+			}
+		} else {
+			has_wagons = true;
+		}
+	}
+	if (engines_front > 0 && has_wagons) return engines_front;
+	if (engines_back > 0 && has_wagons) return CountVehiclesInChain(v) - engines_back;
+	return 1;
+}
+
+/**
+ * Find the vehicle where the consist should be split.
+ */
+static Train *GetDecoupleVehicle(Train *v)
+{
+	Order *decouple_order = v->orders->GetOrderAt(v->cur_implicit_order_index + 1);
+	uint num_decouple = decouple_order->GetNumDecouple();
+	if (num_decouple == 0) num_decouple = GetDecoupleVehicleAuto(v);
+	Train *ret = v->GetNextVehicle();
+	bool multihead_front = v->IsMultiheaded();
+
+	for (uint i = 1; i < num_decouple && ret->GetNextVehicle() != nullptr; i++) {
+		if (multihead_front) {
+			if (ret->IsRearDualheaded()) multihead_front = false;
+		} else {
+			if (ret->IsMultiheaded()) multihead_front = true;
+		}
+		ret = ret->GetNextVehicle();
+	}
+	if (multihead_front) return nullptr;
+	return ret;
+}
+
+/**
+ * Try to split off the rear part of the consist.
+ */
+static bool TryTrainDecouple(Train *v, Train *u)
+{
+	TrainList original_src;
+
+	MakeTrainBackup(original_src, v);
+
+	Train *first_param = nullptr;
+
+	ArrangeTrains(&first_param, nullptr, &v, u, true);
+
+	bool ok = true;
+	CommandCost ret = ValidateTrains(nullptr, u, v, v, true);
+	ok &= !ret.Failed();
+
+	ok &= u->CanConsistChange(CCF_ARRANGE_CHECK);
+	ok &= v->CanConsistChange(CCF_ARRANGE_CHECK);
+
+	if (!ok) {
+		/* Restore the train we had. */
+		RestoreTrainBackup(original_src);
+		v->ConsistChanged(CCF_ARRANGE_STATION);
+		return false;
+	}
+	return true;
+}
+
+/** Which parts of the consist should load after decoupling. */
+static constexpr uint8_t DECOUPLE_NO_LOAD     = 0; ///< Neither part loads.
+static constexpr uint8_t DECOUPLE_LOAD_FIRST  = 1; ///< Load the first part.
+static constexpr uint8_t DECOUPLE_LOAD_SECOND = 2; ///< Load the second part.
+
+/**
+ * Copy the orders to the new rear part of the consist, so it can wait for
+ * a couple at the next station.
+ */
+static void InheritWaitForCoupleOrders(Train *v, Train *u)
+{
+	if (!OrderList::CanAllocateItem()) return;
+
+	Order station_order;
+	Order station_decouple_order;
+	Order wait_for_couple_order;
+	Order *copy_destination = nullptr;
+
+	station_order.AssignOrder(v->current_order);
+	station_decouple_order.AssignOrder(*v->orders->GetOrderAt(v->cur_implicit_order_index + 1));
+	wait_for_couple_order.MakeWaitCouple();
+
+	CargoMaskedStationIDVector next_station = v->orders->GetNextStoppingStation(v, ALL_CARGOTYPES);
+	if (!next_station.station.empty()) {
+		copy_destination = new Order();
+		copy_destination->MakeGoToStation(next_station.station.front());
+		copy_destination->SetDecouple(ODF_NOTHING);
+	}
+	if (v == u) DeleteVehicleOrders(v, false, true);
+
+	if (u->orders == nullptr && !OrderList::CanAllocateItem()) return;
+
+	InsertOrder(u, std::move(station_order), 0);
+	InsertOrder(u, std::move(station_decouple_order), 1);
+	InsertOrder(u, std::move(wait_for_couple_order), 2);
+	if (copy_destination != nullptr) InsertOrder(u, std::move(*copy_destination), 3);
+	delete copy_destination;
+}
+
+/**
+ * Create a wait-for-couple order at the start of the order list.
+ */
+static void CreateWaitForCoupleOrder(Train *v)
+{
+	if (v->orders == nullptr && !OrderList::CanAllocateItem()) return;
+
+	Order wait_for_couple_order;
+	wait_for_couple_order.MakeWaitCouple();
+	InsertOrder(v, std::move(wait_for_couple_order), 0);
+}
+
+/**
+ * Split the orders between the two parts of the consist after decoupling.
+ * @param load_trains Whether the first/second part should load.
+ */
+static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
+{
+	Order *after_decouple_flags = v->orders->GetOrderAt(v->cur_implicit_order_index + 1);
+	assert(after_decouple_flags->GetType() == OT_DECOUPLE);
+
+	if (v != u) {
+		switch (after_decouple_flags->GetDecoupleSecondOrdersType()) {
+			case ODOF_KEEP_ORDERS:
+				load_trains |= DECOUPLE_LOAD_SECOND;
+				u->orders = v->orders;
+				u->AddToShared(v);
+				u->cur_real_order_index = v->cur_real_order_index;
+				u->cur_implicit_order_index = v->cur_implicit_order_index;
+				u->current_order = v->current_order;
+				break;
+			case ODOF_KEEP_ORDERS_NO_LOAD:
+				u->orders = v->orders;
+				u->AddToShared(v);
+				u->cur_real_order_index = v->cur_real_order_index;
+				u->cur_implicit_order_index = v->cur_implicit_order_index;
+				u->current_order = v->current_order;
+				u->IncrementImplicitOrderIndex();
+				break;
+			case ODOF_INHERIT_ORDERS:
+				load_trains |= DECOUPLE_LOAD_SECOND;
+				InheritWaitForCoupleOrders(v, u);
+				break;
+			case ODOF_WAIT_FOR_COUPLE:
+				CreateWaitForCoupleOrder(u);
+				break;
+			default: NOT_REACHED();
+		}
+		ProcessOrders(u);
+	}
+
+	switch (after_decouple_flags->GetDecoupleFirstOrdersType()) {
+		case ODOF_KEEP_ORDERS:
+			load_trains |= DECOUPLE_LOAD_FIRST;
+			break;
+		case ODOF_KEEP_ORDERS_NO_LOAD:
+			v->IncrementImplicitOrderIndex();
+			break;
+		case ODOF_INHERIT_ORDERS:
+			load_trains |= DECOUPLE_LOAD_FIRST;
+			InheritWaitForCoupleOrders(v, v);
+			break;
+		case ODOF_WAIT_FOR_COUPLE:
+			DeleteVehicleOrders(v, false, true);
+			CreateWaitForCoupleOrder(v);
+			break;
+		default: NOT_REACHED();
+	}
+	ProcessOrders(v);
+}
+
+/**
+ * Decouple the rear part of the consist at the current station.
+ * @return The new front of the decoupled part, or \c v if decoupling failed.
+ */
+static Train *DecoupleTrain(Train *v)
+{
+	if (!CanDecouple(v)) return v;
+
+	Train *u = GetDecoupleVehicle(v);
+	if (u == nullptr) return v;
+
+	if (!TryTrainDecouple(v, u)) return v;
+
+	if (u->IsEngine()) {
+		u->SetFrontEngine();
+		u->vehstatus.Reset(VehState::Stopped);
+	} else {
+		u->SetFrontWagon();
+	}
+	SetTrainGroupID(u, DEFAULT_GROUP);
+	GroupStatistics::CountVehicle(v, -1);
+
+	GroupStatistics::CountVehicle(v, 1);
+	GroupStatistics::CountVehicle(u, 1);
+
+	NormaliseTrainHead(u, CCF_ARRANGE_STATION);
+	NormaliseTrainHead(v, CCF_ARRANGE_STATION);
+
+	InvalidateWindowClassesData(WindowClass::TrainList);
+	return u;
+}
+
+/**
+ * Try to couple the two consists together.
+ */
+static bool TryTrainCouple(Train *v, Train *u)
+{
+	TrainList original_src;
+	TrainList original_dst;
+
+	MakeTrainBackup(original_src, v);
+	MakeTrainBackup(original_dst, u);
+
+	Train *u_head = u;
+	Train *v_last = v->Last();
+
+	ArrangeTrains(&v, v_last, &u_head, u, true);
+
+	CommandCost ret = CheckTrainAttachment(v);
+	bool ok = v->CanConsistChange(CCF_ARRANGE_CHECK);
+
+	if (ret.Failed() || !ok) {
+		/* Restore the train we had. */
+		RestoreTrainBackup(original_src);
+		RestoreTrainBackup(original_dst);
+
+		v->ConsistChanged(CCF_ARRANGE_STATION);
+		u->ConsistChanged(CCF_ARRANGE_STATION);
+		return false;
+	}
+	return true;
+}
+
+/**
+ * Couple the train \a u onto the train \a v.
+ */
+static void Couple(Train *v, Train *u, bool train_u_reversed)
+{
+	if (train_u_reversed) {
+		ReverseTrainDirection(u);
+		/* Reverse swap first and last vehicle */
+		u = u->First();
+	}
+	v->IncrementImplicitOrderIndex();
+	ProcessOrders(v);
+	ReverseTrainDirection(v);
+	v = v->First();
+
+	Train *v_last = v->Last();
+
+	if (!TryTrainCouple(v, u)) {
+		if (v->owner == _local_company) {
+			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
+		}
+		return;
+	}
+
+	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
+
+	CloseWindowById(WindowClass::VehicleView, u->index);
+	CloseWindowById(WindowClass::VehicleOrders, u->index);
+	CloseWindowById(WindowClass::VehicleRefit, u->index);
+	CloseWindowById(WindowClass::VehicleDetails, u->index);
+	CloseWindowById(WindowClass::VehicleTimetable, u->index);
+	DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
+	SetWindowDirty(WindowClass::Company, _current_company);
+
+	DeleteVehicleOrders(u);
+	u->ReleaseUnitNumber();
+	GroupStatistics::CountVehicle(u, -1);
+
+	v->profit_this_year += u->profit_this_year;
+	v->profit_last_year += u->profit_last_year;
+
+	u->profit_last_year = 0;
+	u->profit_this_year = 0;
+
+	u->ClearFrontWagon();
+	u->ClearFrontEngine();
+
+	NormaliseTrainHead(v, CCF_ARRANGE_STATION);
+
+	AdvanceWagonsAfterCouple(v_last);
+	InvalidateWindowClassesData(WindowClass::TrainList);
+	if (CheckReverseTrain(v)) v->flags.Set(VehicleRailFlag::Reversing);
+}
+
+/**
+ * Find the train waiting to be coupled with, at the current position.
+ */
+static Train *GetCouplePosition(Train *v, bool &reverse)
+{
+	Vehicle *other_vehicle = nullptr;
+	FollowTrainReservation(v, &other_vehicle);
+
+	if (other_vehicle == nullptr) return nullptr;
+	if (other_vehicle->First()->index == v->index) return nullptr;
+	if (!other_vehicle->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
+	Train *u = Train::From(other_vehicle)->First();
+	if (!TrainFitStation(u)) return nullptr;
+
+	DirDiff dir_diff = DirDifference(v->direction, u->direction);
+	reverse = dir_diff == DirDiff::Same || dir_diff == DirDiff::Right45 || dir_diff == DirDiff::Left45;
+
+	Train *z;
+	if (reverse) {
+		z = u->Last();
+	} else {
+		z = u;
+	}
+	int x_diff = abs(v->x_pos - z->x_pos);
+	int y_diff = abs(v->y_pos - z->y_pos);
+
+	int diff = std::max(x_diff, y_diff);
+
+	uint8_t v_length = v->gcache.cached_veh_length;
+	uint8_t u_length = reverse ? u->Last()->gcache.cached_veh_length : u->gcache.cached_veh_length;
+
+	if (diff == ((v_length + 1) / 2 + (u_length + 1) / 2)) {
+		return u;
+	}
+
+	return nullptr;
+}
+
+/**
+ * Handle coupling with another train at the current position.
+ * @return true if the train was coupled with another train.
+ */
+static bool TrainCoupleHandler(Train *v)
+{
+	bool reverse;
+	Train *u = GetCouplePosition(v, reverse);
+	if (u == nullptr) return false;
+	Couple(v, u, reverse);
+	return true;
+}
+
+/**
  * Get the location of the next station to visit.
  * @param station Next station to visit.
  * @return Location of the new station.
@@ -5023,9 +5498,12 @@ int Train::UpdateSpeed(MaxSpeedInfo max_speed_info)
 			return this->DoUpdateSpeed({ this->acceleration * (accel_status == AS_BRAKE ? -4 : 2), this->acceleration * -4 }, 0,
 					max_speed_info.strict_max_speed, max_speed_info.advisory_max_speed, this->UsingRealisticBraking());
 
-		case AM_REALISTIC:
-			return this->DoUpdateSpeed(this->GetAcceleration(), accel_status == AS_BRAKE ? 0 : 2,
+		case AM_REALISTIC: {
+			int min_speed = accel_status == AS_BRAKE ? 0 : 2;
+			if (this->IsFrontWagon()) min_speed = 0;
+			return this->DoUpdateSpeed(this->GetAcceleration(), min_speed,
 					max_speed_info.strict_max_speed, max_speed_info.advisory_max_speed, this->UsingRealisticBraking());
+		}
 	}
 }
 /**
@@ -5072,6 +5550,19 @@ static void TrainEnterStation(Train *consist, StationID station)
 		return;
 	}
 
+	Train *u = nullptr;
+	uint8_t load_trains = DECOUPLE_NO_LOAD;
+	if (consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE) {
+		u = DecoupleTrain(consist);
+		SplitOrders(consist, u, load_trains);
+		u->last_station_visited = station;
+		if (u == consist && consist->owner == _local_company) {
+			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED, consist->index), consist->index);
+		}
+	} else {
+		load_trains = DECOUPLE_LOAD_FIRST;
+	}
+
 	/* check if a train ever visited this station before */
 	Station *st = Station::From(bst);
 	if (!st->had_vehicle_of_type.Test(StationVehicleType::Train)) {
@@ -5086,14 +5577,26 @@ static void TrainEnterStation(Train *consist, StationID station)
 		Game::NewEvent(new ScriptEventStationFirstVehicle(st->index, consist->index));
 	}
 
-	consist->force_proceed = TFP_NONE;
-	InvalidateWindowData(WindowClass::VehicleView, consist->index);
+	if (load_trains & DECOUPLE_LOAD_FIRST) {
+		consist->force_proceed = TFP_NONE;
+		InvalidateWindowData(WindowClass::VehicleView, consist->index);
+		consist->BeginLoading();
+	}
+	if (u != nullptr && u != consist && (load_trains & DECOUPLE_LOAD_SECOND)) {
+		u->force_proceed = TFP_NONE;
+		InvalidateWindowData(WindowClass::VehicleView, u->index);
+		u->BeginLoading();
+	}
 
-	consist->BeginLoading();
+	if (load_trains != DECOUPLE_NO_LOAD) {
+		TileIndex station_tile = consist->GetStationLoadingVehicle()->tile;
+		TriggerStationRandomisation(st, station_tile, StationRandomTrigger::VehicleArrives);
+		TriggerStationAnimation(st, station_tile, StationAnimationTrigger::VehicleArrives);
+	}
 
-	TileIndex station_tile = consist->GetStationLoadingVehicle()->tile;
-	TriggerStationRandomisation(st, station_tile, StationRandomTrigger::VehicleArrives);
-	TriggerStationAnimation(st, station_tile, StationAnimationTrigger::VehicleArrives);
+	if (u != nullptr && u != consist && (load_trains & DECOUPLE_LOAD_SECOND) == 0) {
+		ReverseTrainDirection(u);
+	}
 }
 
 /**
@@ -5206,7 +5709,7 @@ void Train::ReserveTrackUnderConsist() const
 uint Train::Crash(bool flooded)
 {
 	uint victims = 0;
-	if (this->IsFrontEngine()) {
+	if (this->IsPrimaryVehicle()) {
 		victims += 2; // driver
 
 		/* Remove the reserved path in front of the train if it is not stuck.
@@ -6872,6 +7375,14 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 
 	if (consist->current_order.IsType(OT_LOADING)) return true;
 
+	if (consist->current_order.IsType(OT_WAIT_COUPLE)) {
+		if (consist->cur_speed > 0) {
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+		}
+		return true;
+	}
+
 	if (CheckTrainStayInDepot(consist)) return true;
 
 	if (consist->current_order.IsType(OT_WAITING) && consist->reverse_distance == 0) {
@@ -6983,6 +7494,14 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			j -= adv_spd;
 			TrainController(moving_front, nullptr);
 			moving_front = moving_front->GetMovingFront();
+			/* Couple now? */
+			if (moving_front->current_order.IsType(OT_GOTO_COUPLE)) {
+				if (TrainCoupleHandler(moving_front)) {
+					moving_front->cur_speed = 0;
+					moving_front->progress = 0;
+					break;
+				}
+			}
 			/* Don't continue to move if the train crashed. */
 			if (CheckTrainCollision(moving_front)) break;
 			/* Determine distance to next map position */
@@ -7057,12 +7576,15 @@ bool Train::Tick()
 {
 	DEBUG_UPDATESTATECHECKSUM("Train::Tick: v: {}, x: {}, y: {}, track: {}", this->index, this->x_pos, this->y_pos, this->track);
 	UpdateStateChecksum((((uint64_t) this->x_pos) << 32) | (this->y_pos << 16) | this->track);
-	if (this->IsFrontEngine()) {
+	if (this->IsPrimaryVehicle()) {
 		if (!(this->vehstatus.Test(VehState::Stopped) || this->IsWaitingInDepot()) || this->cur_speed > 0) this->running_ticks++;
 
 		this->current_order_time++;
 
 		if (!TrainLocoHandler(this, false)) return false;
+
+		/* We might change chain order during coupling or reversing */
+		if (!this->IsPrimaryVehicle()) return true;
 
 		return TrainLocoHandler(this, true);
 	} else if (this->IsFreeWagon() && this->vehstatus.Test(VehState::Crashed)) {
@@ -7132,7 +7654,7 @@ void Train::OnNewDay()
 
 void Train::OnPeriodic()
 {
-	if (this->IsFrontEngine()) {
+	if (this->IsPrimaryVehicle()) {
 		CheckIfTrainNeedsService(this);
 
 		CheckOrders(this);

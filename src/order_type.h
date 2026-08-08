@@ -88,10 +88,36 @@ enum OrderType : uint8_t {
 	OT_COUNTER       = 12,
 	OT_LABEL         = 13,
 	OT_SLOT_GROUP    = 14,
+	OT_GOTO_COUPLE,  ///< Go to the station where the train will couple with another train.
+	OT_WAIT_COUPLE,  ///< Wait for another train to couple with this one.
+	OT_DECOUPLE,     ///< Decouple some of the wagons from the train.
 	OT_END
 };
 
-using OrderTypeMask = uint16_t;
+using OrderTypeMask = uint32_t;
+
+/** Decouple order flags. */
+enum OrderDecoupleFlags : uint8_t {
+	ODF_NOTHING  = 0, ///< No decoupling.
+	ODF_DECOUPLE = 1, ///< Decouple.
+};
+
+/** Couple order flags. */
+enum OrderCoupleFlags : uint8_t {
+	ODC_ANY      = 0, ///< Couple any train.
+	ODC_IS_EMPTY = 1, ///< Only couple an empty train.
+	ODC_IS_FULL  = 2, ///< Only couple a full train.
+	ODC_END      = 3,
+};
+
+/** Orders for the two parts after decoupling. */
+enum OrderDecoupleOrdersFlags : uint8_t {
+	ODOF_KEEP_ORDERS         = 0, ///< Keep the orders.
+	ODOF_KEEP_ORDERS_NO_LOAD = 1, ///< Keep the orders, but do not load.
+	ODOF_INHERIT_ORDERS      = 2, ///< Inherit the orders of the other part.
+	ODOF_WAIT_FOR_COUPLE     = 3, ///< Wait for a couple.
+	ODOF_END                 = 4,
+};
 
 enum OrderSlotSubType : uint8_t {
 	OSST_RELEASE               = 0,
@@ -297,6 +323,13 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_COLOUR,          ///< Change the colour value
 	MOF_LABEL_TEXT,      ///< Change the label text value
 	MOF_DEPARTURES_SUBTYPE, ///< Change the label departures subtype
+	MOF_DECOUPLE,        ///< Change decouple option.
+	MOF_DECOUPLE_VALUE,  ///< Change number of decoupled units.
+	MOF_COUPLE_LOAD,     ///< Change load parameters of desired train.
+	MOF_COUPLE_CARGO,    ///< Change cargo parameter for desired train.
+	MOF_COUPLE_VALUE,    ///< Change number of coupled units.
+	MOF_FIRST_ORDERS,    ///< Change orders of first part of train after decoupling.
+	MOF_SECOND_ORDERS,   ///< Change orders of second part of train after decoupling.
 	MOF_END
 };
 

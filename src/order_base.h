@@ -42,15 +42,15 @@ static const StationID ORDER_NO_VIA_STATION{0xFFFE};
 inline uint32_t OrderDestinationRefcountMapKey(DestinationID dest, CompanyID cid, OrderType order_type, VehicleType veh_type)
 {
 	static_assert(sizeof(dest) == 2);
-	static_assert(OT_END <= 16);
-	return (((uint32_t) dest.base()) << 16) | (((uint32_t) cid.base()) << 8) | (((uint32_t) order_type) << 4) | ((uint32_t) veh_type);
+	static_assert(OT_END <= 32);
+	return (((uint32_t) dest.base()) << 16) | (((uint32_t) cid.base()) << 8) | (((uint32_t) order_type) << 3) | (uint8_t) ((uint32_t) veh_type);
 }
 
 template <typename F> void IterateOrderRefcountMapForDestinationID(DestinationID dest, F handler)
 {
 	for (auto lb = _order_destination_refcount_map.lower_bound(OrderDestinationRefcountMapKey(dest, (CompanyID) 0, (OrderType) 0, (VehicleType) 0)); lb != _order_destination_refcount_map.end(); ++lb) {
 		if (GB(lb->first, 16, 16) != dest) return;
-		if (lb->second && !handler((CompanyID) GB(lb->first, 8, 8), (OrderType) GB(lb->first, 4, 4), (VehicleType) GB(lb->first, 0, 4), lb->second)) return;
+		if (lb->second && !handler((CompanyID) GB(lb->first, 8, 8), (OrderType) GB(lb->first, 3, 5), (VehicleType) GB(lb->first, 0, 3), lb->second)) return;
 	}
 }
 
@@ -133,6 +133,7 @@ private:
 	DestinationID dest{};          ///< The destination of the order.
 	uint8_t type{};                ///< The type of order + non-stop flags
 	CargoType refit_cargo{};       ///< Refit CargoType
+	uint8_t decouple_flags{};      ///< Couple/decouple types and count.
 	uint8_t occupancy{};           ///< Estimate of vehicle occupancy on departure, for the current order, 0 indicates invalid, 1 - 101 indicate 0 - 100%
 
 	TimetableTicks wait_time{};    ///< How long in ticks to wait at the destination.
@@ -273,6 +274,9 @@ public:
 	void MakeGoToWaypoint(StationID destination);
 	void MakeLoading(bool ordered);
 	void MakeLeaveStation();
+	void MakeDecouple();
+	void MakeGoToCouple();
+	void MakeWaitCouple();
 	void MakeDummy();
 	void MakeConditional(VehicleOrderID order);
 	void MakeImplicit(StationID destination);
@@ -338,6 +342,26 @@ public:
 	inline CargoType GetRefitCargo() const { return this->refit_cargo; }
 
 	void SetRefit(CargoType cargo);
+
+	/**
+	 * Does the couple order have a specific cargo type?
+	 * @pre IsType(OT_GOTO_COUPLE)
+	 * @return true if a specific cargo type is set.
+	 */
+	inline bool HasCoupleCargoType() const { return this->refit_cargo < NUM_CARGO; }
+
+	/**
+	 * Get the cargo type to couple with.
+	 * @pre IsType(OT_GOTO_COUPLE)
+	 * @return the cargo type.
+	 */
+	inline CargoType GetCoupleCargoType() const { return this->refit_cargo; }
+
+	/**
+	 * Set the cargo type to couple with.
+	 * @pre IsType(OT_GOTO_COUPLE)
+	 */
+	inline void SetCoupleCargoType(CargoType cargo) { this->refit_cargo = cargo; }
 
 	/**
 	 * Update the jump_counter of this order.
@@ -488,6 +512,18 @@ public:
 	 * @return The value to compare the variable against.
 	 */
 	inline uint16_t GetConditionValue() const { return GB(this->dest.value, 0, 11); }
+	/** Are we going to decouple? */
+	inline OrderDecoupleFlags GetDecouple() const { return (OrderDecoupleFlags)GB(this->decouple_flags, 0, 1); }
+	/** How many wagons are we keeping */
+	inline uint8_t GetNumDecouple() const { return GB(this->decouple_flags, 1, 7); }
+	/** What kind of train are we looking for */
+	inline OrderCoupleFlags GetCoupleLoad() const { return (OrderCoupleFlags)GB(this->flags, 0, 3); }
+	/** How many wagons are we taking */
+	inline uint8_t GetNumCouple() const { return GB(this->decouple_flags, 1, 7); }
+	/** What orders should first part get */
+	inline OrderDecoupleOrdersFlags GetDecoupleFirstOrdersType() const { return (OrderDecoupleOrdersFlags)GB(this->flags, 0, 3); }
+	/** What orders should second part get */
+	inline OrderDecoupleOrdersFlags GetDecoupleSecondOrdersType() const { return (OrderDecoupleOrdersFlags)GB(this->flags, 4, 3); }
 	/** Get counter for the 'jump xx% of times' option */
 	inline int8_t GetJumpCounter() const { return GB(this->GetXData(), 0, 8); }
 	/** Get counter operation */
@@ -593,6 +629,18 @@ public:
 	 * @param value The new value to compare against.
 	 */
 	inline void SetConditionValue(uint16_t value) { SB(this->dest.value, 0, 11, value); }
+	/** Set whether we must decouple or not */
+	inline void SetDecouple(uint8_t value) { SB(this->decouple_flags, 0, 1, value); }
+	/** Set how many units to keep */
+	inline void SetNumDecouple(uint8_t value) { SB(this->decouple_flags, 1, 7, value); }
+	/** Set for how full train we should look for */
+	inline void SetCoupleLoad(OrderCoupleFlags load_type) { SB(this->flags, 0, 3, to_underlying(load_type)); }
+	/** Set how many units to take */
+	inline void SetNumCouple(uint8_t value) { SB(this->decouple_flags, 1, 7, value); }
+	/** Set what orders first part should get */
+	inline void SetDecoupleFirstOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 0, 3, to_underlying(orders_type)); }
+	/** Set what orders second part should get */
+	inline void SetDecoupleSecondOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 4, 3, to_underlying(orders_type)); }
 	/** Set counter for the 'jump xx% of times' option */
 	inline void SetJumpCounter(int8_t jump_counter) { SB(this->GetXDataRef(), 0, 8, jump_counter); }
 	/** Set counter operation */

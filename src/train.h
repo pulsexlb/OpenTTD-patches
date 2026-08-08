@@ -64,6 +64,8 @@ enum class ConsistChangeFlag : uint8_t {
 	Length, ///< Allow vehicles to change length.
 	Capacity, ///< Allow vehicles to change capacity.
 	DepotDirection, ///< Normalise depot direction.
+	CheckOnly, ///< Only check whether the changes are possible, do not apply them.
+	Immutable, ///< Allow changes to immutable properties (e.g. parent properties).
 };
 /** Bitset of the %ConsistChangeFlag elements. */
 using ConsistChangeFlags = EnumBitSet<ConsistChangeFlag, uint8_t>;
@@ -74,6 +76,8 @@ static constexpr ConsistChangeFlags CCF_AUTOREFIT{ConsistChangeFlag::Capacity}; 
 static constexpr ConsistChangeFlags CCF_REFIT{ConsistChangeFlag::Length, ConsistChangeFlag::Capacity}; ///< Valid changes for refitting in a depot.
 static constexpr ConsistChangeFlags CCF_ARRANGE{ConsistChangeFlag::Length, ConsistChangeFlag::Capacity, ConsistChangeFlag::DepotDirection}; ///< Valid changes for arranging the consist in a depot.
 static constexpr ConsistChangeFlags CCF_SAVELOAD{ConsistChangeFlag::Length}; ///< Valid changes when loading a savegame. (Everything that is not stored in the save.)
+static constexpr ConsistChangeFlags CCF_ARRANGE_STATION{ConsistChangeFlag::Capacity}; ///< Valid changes for arranging the consist in a station.
+static constexpr ConsistChangeFlags CCF_ARRANGE_CHECK{ConsistChangeFlag::Capacity, ConsistChangeFlag::CheckOnly}; ///< Check whether arranging the consist in a station would be possible.
 
 enum RealisticBrakingConstants {
 	RBC_BRAKE_FORCE_PER_LENGTH      = 2400,      ///< Additional force-based brake force per unit of train length
@@ -105,6 +109,7 @@ void DeleteVisibleTrain(Train *v);
 
 void CheckBreakdownFlags(Train *v);
 void GetTrainSpriteSize(EngineID engine, uint &width, uint &height, int &xoffs, int &yoffs, EngineImageType image_type);
+bool TrainFitStation(const Train *v);
 
 bool TrainOnCrossing(TileIndex tile);
 void NormalizeTrainVehInDepot(const Train *u);
@@ -189,7 +194,7 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	void UpdateDeltaXY() override;
 	ExpensesType GetExpenseType(bool income) const override { return income ? ExpensesType::TrainRevenue : ExpensesType::TrainRun; }
 	void PlayLeaveStationSound(bool force = false) const override;
-	bool IsPrimaryVehicle() const override { return this->IsFrontEngine(); }
+	bool IsPrimaryVehicle() const override { return this->IsFrontEngine() || this->IsFrontWagon(); }
 	void GetImage(Direction direction, EngineImageType image_type, VehicleSpriteSeq *result) const override;
 	int GetDisplaySpeed() const override { return this->gcache.last_speed; }
 	int GetDisplayMaxSpeed() const override { return this->vcache.cached_max_speed; }
@@ -211,6 +216,16 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	uint16_t GetCurveSpeedLimit() const;
 
 	void ConsistChanged(ConsistChangeFlags allowed_changes);
+
+	/**
+	 * Check whether the consist changes described by #allowed_changes would be possible,
+	 * without actually applying any of them. Used e.g. to verify a consist can be
+	 * (re)arranged before coupling trains.
+	 * @param allowed_changes Which changes are allowed; only #ConsistChangeFlag::Length and
+	 *                        #ConsistChangeFlag::Capacity are considered.
+	 * @return true if none of the not-allowed properties would change.
+	 */
+	bool CanConsistChange(ConsistChangeFlags allowed_changes) const;
 
 	struct MaxSpeedInfo {
 		int strict_max_speed;

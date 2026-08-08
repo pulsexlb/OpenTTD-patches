@@ -486,7 +486,7 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 		switch (v->type) {
 			case VehicleType::Train: {
 				Train *t = Train::From(v);
-				if (t->IsFrontEngine() || t->IsFreeWagon()) {
+				if (t->IsFrontEngine() || t->IsFreeWagon() || t->IsFrontWagon()) {
 					t->gcache.last_speed = t->cur_speed; // update displayed train speed
 					t->ConsistChanged(CCF_SAVELOAD);
 				}
@@ -1108,6 +1108,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("current_order.travel_time",SLE_CONDVAR_X(Vehicle, current_order.travel_time, SLE_FILE_U16 | SLE_VAR_U32, SLV_67, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA, 0, 5))),
 		NSL("current_order.travel_time",SLE_CONDVAR_X(Vehicle, current_order.travel_time, SLE_UINT32,                 SLV_67, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA, 6))),
 		NSL("current_order.max_speed",    SLE_CONDVAR(Vehicle, current_order.max_speed,   SLE_UINT16,                 SLV_174, SL_MAX_VERSION)),
+		NSL("current_order.decouple_flags", SLE_CONDVAR(Vehicle, current_order.decouple_flags, SLE_UINT8,             SLV_ORDER_DECOUPLE, SL_MAX_VERSION)),
 
 		NSLT_STRUCT<VehicleOrderExtraDataStructHandler>("current_order.extra"),
 

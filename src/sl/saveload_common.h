@@ -434,6 +434,7 @@ enum SaveLoadVersion : uint16_t {
 
 	SLV_DRIVE_BACKWARDS,                    ///< 365  PR#15379 Trains can drive backwards.
 	SLV_DEPOTS_UNDER_BRIDGES,               ///< 366  PR#15836 Allow depots under bridges.
+	SLV_ORDER_DECOUPLE,                     ///< 367  Couple/decouple train orders.
 
 	SL_MAX_VERSION,                         ///< Highest possible saveload version
 

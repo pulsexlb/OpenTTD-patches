@@ -405,7 +405,7 @@ struct DepotWindow : Window {
 			Rect flag = r.WithWidth(this->flag_size.width, rtl).WithHeight(this->flag_size.height).Translate(0, diff_y);
 			DrawSpriteIgnorePadding((v->vehstatus.Test(VehState::Stopped)) ? SPR_FLAG_VEH_STOPPED : SPR_FLAG_VEH_RUNNING, PAL_NONE, flag, SA_CENTER);
 
-			DrawString(text, GetString(STR_JUST_COMMA, v->unitnumber), (v->max_age - DAYS_IN_LEAP_YEAR) >= v->age ? TextColour::Black : TextColour::Red);
+			DrawString(text, GetString(STR_JUST_COMMA, v->unitnumber), (v->max_age - DAYS_IN_LEAP_YEAR) >= v->age || (v->type == VehicleType::Train && Train::From(v)->IsFrontWagon()) ? TextColour::Black : TextColour::Red);
 		}
 	}
 
@@ -1119,7 +1119,7 @@ struct DepotWindow : Window {
 						} else if (result.wagon == nullptr || result.wagon->index != sel) {
 							this->vehicle_over = VehicleID::Invalid();
 							TrainDepotMoveVehicle(result.wagon, sel, result.vehicle);
-						} else if (result.vehicle != nullptr && result.vehicle->IsFrontEngine()) {
+						} else if (result.vehicle != nullptr && result.vehicle->IsPrimaryVehicle()) {
 							ShowVehicleViewWindow(result.vehicle);
 						}
 					}

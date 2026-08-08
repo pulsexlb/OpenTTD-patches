@@ -379,6 +379,8 @@ bool Vehicle::NeedsAutomaticServicing() const
 	if (this->HasDepotOrder()) return false;
 	if (this->current_order.IsType(OT_LOADING)) return false;
 	if (this->current_order.IsType(OT_LOADING_ADVANCE)) return false;
+	if (this->current_order.IsType(OT_WAIT_COUPLE)) return false;
+	if (this->current_order.IsType(OT_GOTO_COUPLE)) return false;
 	if (this->current_order.IsType(OT_GOTO_DEPOT) && !this->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) return false;
 	return NeedsServicing();
 }
@@ -3830,6 +3832,10 @@ void Vehicle::HandleLoading(bool mode)
 
 		default: return;
 	}
+
+	/* Skip decouple orders when advancing (they are handled at the station). */
+	const Order *decouple_order = this->GetOrder(this->cur_implicit_order_index);
+	if (decouple_order != nullptr && decouple_order->IsType(OT_DECOUPLE)) this->IncrementImplicitOrderIndex();
 
 	this->IncrementImplicitOrderIndex();
 }

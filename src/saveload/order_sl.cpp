@@ -36,6 +36,7 @@ SaveLoadTable GetOrderDescription()
 		 SLE_CONDVAR(Order, wait_time,      SLE_FILE_U16 | SLE_VAR_U32,  SLV_67, SL_MAX_VERSION),
 		 SLE_CONDVAR(Order, travel_time,    SLE_FILE_U16 | SLE_VAR_U32,  SLV_67, SL_MAX_VERSION),
 		 SLE_CONDVAR(Order, max_speed,      SLE_UINT16, SLV_172, SL_MAX_VERSION),
+		 SLE_CONDVAR(Order, decouple_flags, SLE_UINT8,  SLV_ORDER_DECOUPLE, SL_MAX_VERSION),
 	};
 
 	return _order_desc;
