@@ -104,11 +104,11 @@ public:
 		/* This next line is for version 4 and prior compatibility.. it temporarily reads
 		type and flags (which were both 4 bits) into type. Later on this is
 		converted correctly */
-		SLE_CONDVAR(Vehicle, current_order.type,    SLE_UINT8,                    SL_MIN_VERSION,   SLV_5),
+		SLE_CONDVAR(Vehicle, current_order.type,    SLE_UINT16,                   SL_MIN_VERSION,   SLV_5),
 		SLE_CONDVAR(Vehicle, current_order.dest,    SLE_FILE_U8  | SLE_VAR_U16,   SL_MIN_VERSION,   SLV_5),
 
 		/* Orders for version 5 and on */
-		SLE_CONDVAR(Vehicle, current_order.type,    SLE_UINT8,                    SLV_5, SL_MAX_VERSION),
+		SLE_CONDVAR(Vehicle, current_order.type,    SLE_UINT16,                   SLV_5, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, current_order.flags,   SLE_FILE_U8 | SLE_VAR_U16,    SLV_5, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, current_order.dest,    SLE_UINT16,                   SLV_5, SL_MAX_VERSION),
 
@@ -119,6 +119,7 @@ public:
 		SLE_CONDVAR(Vehicle, current_order.wait_time,     SLE_FILE_U16 | SLE_VAR_U32, SLV_67, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, current_order.travel_time,   SLE_FILE_U16 | SLE_VAR_U32, SLV_67, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, current_order.max_speed,     SLE_UINT16,           SLV_174, SL_MAX_VERSION),
+		SLE_CONDVAR(Vehicle, current_order.decouple_flags, SLE_UINT8,           SL_MIN_VERSION, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, timetable_start,       SLE_FILE_I32 | SLE_VAR_I64, SLV_129, SLV_TIMETABLE_START_TICKS),
 		SLE_CONDVAR(Vehicle, timetable_start,       SLE_FILE_U64 | SLE_VAR_I64, SLV_TIMETABLE_START_TICKS, SL_MAX_VERSION),
 

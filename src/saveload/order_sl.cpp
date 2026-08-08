@@ -10,6 +10,7 @@
 #include "../stdafx.h"
 
 #include "saveload.h"
+#include "../sl/extended_ver_sl.h"
 #include "compat/order_sl_compat.h"
 
 #include "../order_backup.h"
@@ -28,7 +29,7 @@ static uint32_t _order_item_ref;
 SaveLoadTable GetOrderDescription()
 {
 	static const SaveLoad _order_desc[] = {
-		     SLE_VAR(Order, type,           SLE_UINT8),
+		     SLE_VAR(Order, type,           SLE_UINT16),
 		     SLE_VAR(Order, flags,          SLE_FILE_U8 | SLE_VAR_U16),
 		     SLE_VAR(Order, dest,           SLE_UINT16),
 		    SLEG_VAR("next", _order_item_ref, SLE_UINT32),
@@ -36,7 +37,7 @@ SaveLoadTable GetOrderDescription()
 		 SLE_CONDVAR(Order, wait_time,      SLE_FILE_U16 | SLE_VAR_U32,  SLV_67, SL_MAX_VERSION),
 		 SLE_CONDVAR(Order, travel_time,    SLE_FILE_U16 | SLE_VAR_U32,  SLV_67, SL_MAX_VERSION),
 		 SLE_CONDVAR(Order, max_speed,      SLE_UINT16, SLV_172, SL_MAX_VERSION),
-		 SLE_CONDVAR(Order, decouple_flags, SLE_UINT8,  SLV_ORDER_DECOUPLE, SL_MAX_VERSION),
+		 SLE_CONDVAR(Order, decouple_flags, SLE_UINT8,  SL_MIN_VERSION, SL_MAX_VERSION),
 	};
 
 	return _order_desc;
@@ -72,7 +73,8 @@ template <typename T>
 class SlOrders : public VectorSaveLoadHandler<SlOrders<T>, T, Order> {
 public:
 	static inline const SaveLoad description[] = {
-		SLE_VAR(Order, type,        SLE_UINT8),
+		SLE_VAR(Order, type,        SLE_UINT16),
+		SLE_CONDVAR(Order, decouple_flags, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION),
 		SLE_VAR(Order, flags,       SLE_FILE_U8 | SLE_VAR_U16),
 		SLE_VAR(Order, dest,        SLE_UINT16),
 		SLE_VAR(Order, refit_cargo, SLE_UINT8),

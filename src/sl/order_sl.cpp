@@ -172,7 +172,8 @@ struct OrderExtraDataStructHandler final : public TypedSaveLoadStructHandler<Ord
 NamedSaveLoadTable GetOrderDescription()
 {
 	static const NamedSaveLoad _order_desc[] = {
-		NSL("type",                SLE_VAR(Order, type,               SLE_UINT8)),
+		NSL("type",                SLE_VAR(Order, type,               SLE_UINT16)),
+		NSL("decouple_flags",      SLE_CONDVAR(Order, decouple_flags,    SLE_UINT8,  SL_MIN_VERSION, SL_MAX_VERSION)),
 		NSL("flags",         SLE_CONDVAR_X(Order, flags,              SLE_FILE_U8 | SLE_VAR_U16,    SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 0, 0))),
 		NSL("flags",         SLE_CONDVAR_X(Order, flags,              SLE_UINT16,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 1))),
 		NSL("",             SLE_CONDNULL_X(1,                                                       SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP))),

@@ -283,9 +283,13 @@ public:
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
 		TrackdirBits tdb = TrackdirToTrackdirBits(td);
-		if (!HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb))) return false;
-		if (!IsRailStationTile(tile)) return false;
+		bool has_res = HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb));
+		bool is_station = IsRailStationTile(tile);
+		Debug(desync, 1, "CoupleDest: tile=({},{}) td={} res={} station={}", TileX(tile), TileY(tile), td, has_res, is_station);
+		if (!has_res) return false;
+		if (!is_station) return false;
 		Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
+		Debug(desync, 1, "CoupleDest: tile=({},{}) train={} order={}", TileX(tile), TileY(tile), t != nullptr ? t->index.base() : -1, t != nullptr ? (int)t->current_order.GetType() : -1);
 		if (t == nullptr) return false;
 		if (t->current_order.IsType(OT_WAIT_COUPLE)) {
 			if (TrainFitStation(t) && CheckOrderLoad(t) && CheckOrderCargoType(t) && CheckNumberOfWagons(t)) return true;

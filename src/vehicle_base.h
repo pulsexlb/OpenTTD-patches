@@ -995,7 +995,7 @@ private:
 			do {
 				this->cur_real_order_index++;
 				if (this->cur_real_order_index >= this->GetNumOrders()) this->cur_real_order_index = 0;
-			} while (this->GetOrder(this->cur_real_order_index)->IsType(OT_IMPLICIT));
+			} while (this->GetOrder(this->cur_real_order_index)->IsType(OT_IMPLICIT) || this->GetOrder(this->cur_real_order_index)->IsType(OT_DECOUPLE));
 			this->cur_timetable_order_index = this->cur_real_order_index;
 		} else {
 			this->cur_real_order_index = 0;

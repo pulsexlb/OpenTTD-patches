@@ -12,6 +12,7 @@
 
 #include "gfx_type.h"
 #include "direction_type.h"
+#include "company_type.h"
 #include "command_type_fwd_declare.h"
 #include "vehicle_type.h"
 #include "engine_type.h"
@@ -83,7 +84,7 @@ void CheckVehicleBreakdown(Vehicle *v);
 void EconomyAgeVehicle(Vehicle *v);
 void AgeVehicle(Vehicle *v);
 
-UnitID GetFreeUnitNumber(VehicleType type);
+UnitID GetFreeUnitNumber(VehicleType type, Owner owner = INVALID_OWNER);
 
 void VehicleEnterDepot(Vehicle *v);
 

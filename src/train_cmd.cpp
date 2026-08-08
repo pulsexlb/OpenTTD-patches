@@ -2223,7 +2223,7 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 
 	/* If we don't have a unit number yet, set one. */
 	if (head->unitnumber != 0 || HasBit(head->subtype, GVSF_VIRTUAL)) return;
-	head->unitnumber = Company::Get(head->owner)->freeunits[head->type].UseID(GetFreeUnitNumber(VehicleType::Train));
+	head->unitnumber = Company::Get(head->owner)->freeunits[head->type].UseID(GetFreeUnitNumber(VehicleType::Train, head->owner));
 }
 
 CommandCost CmdMoveVirtualRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleID dest_veh, MoveRailVehicleFlags move_flags)
@@ -4622,6 +4622,8 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 
 	dbg_assert((tracks & ~TRACK_BIT_MASK) == 0);
 
+	TrackBits origin_tracks = tracks;
+
 	ChooseTrainTrackResultFlags result_flags = CTTRF_NONE;
 
 	/* Don't use tracks here as the setting to forbid 90 deg turns might have been switched between reservation and now. */
@@ -4630,19 +4632,6 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 	if (res_tracks != TRACK_BIT_NONE) return { FindFirstTrack(res_tracks), result_flags };
 
 	bool mark_stuck = (flags & CTTF_MARK_STUCK);
-
-	/* When going to couple with another train, use the couple pathfinder to
-	 * follow the waiting train's reservation. */
-	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
-		Track path_found = DoTrainCouplePathfind(consist, do_track_reservation);
-		if (path_found != INVALID_TRACK) {
-			return { path_found, CTTRF_RESERVATION_MADE };
-		}
-		/* Couple pathfinding failed, wait at the current position. */
-		if (mark_stuck) MarkTrainAsStuck(consist);
-		FreeTrainTrackReservation(consist);
-		return { FindFirstTrack(tracks), result_flags };
-	}
 
 	/* Quick return in case only one possible track is available */
 	if (KillFirstBit(tracks) == TRACK_BIT_NONE) {
@@ -4706,7 +4695,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 	DiagDirection dest_enterdir = enterdir;
 	if (do_track_reservation) {
 		res_dest = ExtendTrainReservation(consist, origin, &tracks, &dest_enterdir, temporary_slot_state);
-		if (res_dest.tile == INVALID_TILE) {
+		if (res_dest.tile == INVALID_TILE && !consist->current_order.IsType(OT_GOTO_COUPLE)) {
 			/* Reservation failed? */
 			if (mark_stuck) MarkTrainAsStuck(consist);
 			if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SignalState::Red);
@@ -4753,6 +4742,25 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 		orders.AdvanceOrdersFromVehiclePosition(lookahead_state);
 	}
 	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC) orders.AdvanceOrdersFromLookahead(lookahead_state);
+
+	/* When going to couple with another train, use the couple pathfinder to
+	 * follow the waiting train's reservation. Only takes over once the
+	 * reservation has been extended as far as possible (res_dest.tile == tile). */
+	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
+		Track path_found = DoTrainCouplePathfind(consist, do_track_reservation);
+		Debug(desync, 1, "CoupleTrack: veh={} tile=({},{}) path={} resdest=({},{}) eq={}", consist->index, TileX(tile), TileY(tile), path_found, TileX(res_dest.tile), TileY(res_dest.tile), res_dest.tile == tile);
+		if (path_found != INVALID_TRACK && res_dest.tile == tile) {
+			best_track = path_found;
+		}
+		if (path_found == INVALID_TRACK) {
+			if (mark_stuck) MarkTrainAsStuck(consist);
+			FreeTrainTrackReservation(consist);
+			if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SignalState::Red);
+			return { FindFirstTrack(origin_tracks), result_flags };
+		}
+		result_flags |= CTTRF_RESERVATION_MADE;
+		return { best_track, result_flags };
+	}
 
 	if (res_dest.tile != INVALID_TILE && !res_dest.okay) {
 		/* Pathfinders are able to tell that route was only 'guessed'. */
@@ -5077,9 +5085,18 @@ bool TrainFitStation(const Train *v)
  */
 static bool CanDecouple(Train *v)
 {
-	if (!TrainFitStation(v)) return false;
-	if (CountVehiclesInChain(v) < 2) return false;
-	if (v->GetNextUnit() == nullptr) return false;
+	if (!TrainFitStation(v)) {
+		Debug(desync, 1, "CanDecouple: veh={} fail fitstation tile=({},{}) last=({},{})", v->index, TileX(v->tile), TileY(v->tile), TileX(v->Last()->tile), TileY(v->Last()->tile));
+		return false;
+	}
+	if (CountVehiclesInChain(v) < 2) {
+		Debug(desync, 1, "CanDecouple: veh={} fail count={}", v->index, CountVehiclesInChain(v));
+		return false;
+	}
+	if (v->GetNextUnit() == nullptr) {
+		Debug(desync, 1, "CanDecouple: veh={} fail no next unit", v->index);
+		return false;
+	}
 	return true;
 }
 
@@ -5189,10 +5206,10 @@ static void InheritWaitForCoupleOrders(Train *v, Train *u)
 	station_decouple_order.AssignOrder(*v->orders->GetOrderAt(v->cur_implicit_order_index + 1));
 	wait_for_couple_order.MakeWaitCouple();
 
-	CargoMaskedStationIDVector next_station = v->orders->GetNextStoppingStation(v, ALL_CARGOTYPES);
-	if (!next_station.station.empty()) {
+	std::vector<const Order *> next_station = v->orders->GetNextStoppingOrder(v);
+	if (!next_station.empty()) {
 		copy_destination = new Order();
-		copy_destination->MakeGoToStation(next_station.station.front());
+		copy_destination->AssignOrder(*next_station.front());
 		copy_destination->SetDecouple(ODF_NOTHING);
 	}
 	if (v == u) DeleteVehicleOrders(v, false, true);
@@ -5283,9 +5300,13 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
  */
 static Train *DecoupleTrain(Train *v)
 {
-	if (!CanDecouple(v)) return v;
+	if (!CanDecouple(v)) {
+		Debug(desync, 1, "DecoupleTrain: veh={} CANNOT decouple tile=({},{})", v->index, TileX(v->tile), TileY(v->tile));
+		return v;
+	}
 
 	Train *u = GetDecoupleVehicle(v);
+	Debug(desync, 1, "DecoupleTrain: veh={} split u={} num={}", v->index, u != nullptr ? u->index.base() : -1, v->orders != nullptr ? v->orders->GetOrderAt(v->cur_implicit_order_index + 1)->GetNumDecouple() : -1);
 	if (u == nullptr) return v;
 
 	if (!TryTrainDecouple(v, u)) return v;
@@ -5341,18 +5362,73 @@ static bool TryTrainCouple(Train *v, Train *u)
 }
 
 /**
+ * Swap the roles of articulated engine parts when reversing for a couple.
+ */
+static void ReverseTrainArticulated(Train *v)
+{
+	for (Train *t = v; t != nullptr; t = t->GetNextVehicle()) {
+		if (t->HasArticulatedPart()) {
+			Train *a = t->GetLastEnginePart();
+			a->ClearArticulatedPart();
+			t->SetArticulatedPart();
+			if (t->IsEngine()) {
+				t->ClearEngine();
+				if (!t->IsPrimaryVehicle()) t->vehstatus.Reset(VehState::Stopped);
+				a->SetEngine();
+				a->vehstatus.Set(VehState::Stopped);
+			}
+			if (t->IsWagon()) {
+				t->ClearWagon();
+				a->SetWagon();
+			}
+			std::swap(t->value, a->value);
+			std::swap(t->max_age, a->max_age);
+			t = a;
+		}
+	}
+}
+
+/**
+ * Swap the roles of multiheaded engine parts when reversing for a couple.
+ */
+static void ReverseTrainMultiheaded(Train *v)
+{
+	for (Train *t = v; t != nullptr; t = t->Next()) {
+		if (t->IsMultiheaded()) {
+			if (t->IsEngine()) {
+				t->ClearEngine();
+				std::swap(t->spritenum, t->other_multiheaded_part->spritenum);
+			} else {
+				t->SetEngine();
+			}
+		}
+	}
+}
+
+/**
+ * Reverse a train for coupling: swap articulated/multiheaded roles first,
+ * then swap the vehicles (mirrors decouple's visual reversing for couples).
+ */
+static void ReverseTrainForCouple(Train *v)
+{
+	ReverseTrainArticulated(v);
+	ReverseTrainMultiheaded(v);
+	ReverseTrainSwapVehicles(v);
+}
+
+/**
  * Couple the train \a u onto the train \a v.
  */
 static void Couple(Train *v, Train *u, bool train_u_reversed)
 {
 	if (train_u_reversed) {
-		ReverseTrainDirection(u);
+		ReverseTrainForCouple(u);
 		/* Reverse swap first and last vehicle */
 		u = u->First();
 	}
 	v->IncrementImplicitOrderIndex();
 	ProcessOrders(v);
-	ReverseTrainDirection(v);
+	ReverseTrainForCouple(v);
 	v = v->First();
 
 	Train *v_last = v->Last();
@@ -5552,8 +5628,11 @@ static void TrainEnterStation(Train *consist, StationID station)
 
 	Train *u = nullptr;
 	uint8_t load_trains = DECOUPLE_NO_LOAD;
-	if (consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE) {
+	bool want_decouple = consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE;
+	Debug(desync, 1, "TrainEnterStation: veh={} st={} tile=({},{}) want_decouple={} ordertype={}", consist->index, station, TileX(consist->tile), TileY(consist->tile), want_decouple, (int)consist->current_order.GetType());
+	if (want_decouple) {
 		u = DecoupleTrain(consist);
+		Debug(desync, 1, "TrainEnterStation: veh={} decoupled u={}", consist->index, u != nullptr ? u->index.base() : -1);
 		SplitOrders(consist, u, load_trains);
 		u->last_station_visited = station;
 		if (u == consist && consist->owner == _local_company) {

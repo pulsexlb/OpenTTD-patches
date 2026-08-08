@@ -131,7 +131,7 @@ private:
 
 	uint16_t flags{};              ///< Load/unload types, depot order/action types.
 	DestinationID dest{};          ///< The destination of the order.
-	uint8_t type{};                ///< The type of order + non-stop flags
+	uint16_t type{};                ///< The type of order + non-stop flags
 	CargoType refit_cargo{};       ///< Refit CargoType
 	uint8_t decouple_flags{};      ///< Couple/decouple types and count.
 	uint8_t occupancy{};           ///< Estimate of vehicle occupancy on departure, for the current order, 0 indicates invalid, 1 - 101 indicate 0 - 100%
@@ -228,7 +228,7 @@ public:
 	}
 
 	Order() : flags(0), refit_cargo(CARGO_NO_REFIT), max_speed(UINT16_MAX) {}
-	Order(uint8_t type, uint16_t flags, DestinationID dest) : flags(flags), dest(dest), type(type), refit_cargo(CARGO_NO_REFIT), occupancy(0), wait_time(0), travel_time(0), max_speed(UINT16_MAX) {}
+	Order(uint16_t type, uint16_t flags, DestinationID dest) : flags(flags), dest(dest), type(type), refit_cargo(CARGO_NO_REFIT), occupancy(0), wait_time(0), travel_time(0), max_speed(UINT16_MAX) {}
 	~Order() {}
 
 	Order(const Order& other)
@@ -264,7 +264,7 @@ public:
 	 * Get the type of order of this order.
 	 * @return the order type.
 	 */
-	inline OrderType GetType() const { return (OrderType)GB(this->type, 0, 4); }
+	inline OrderType GetType() const { return (OrderType)GB(this->type, 0, 5); }
 
 	void InvalidateGuiOnRemove();
 	void Free();
@@ -468,12 +468,12 @@ public:
 	 * At which stations must we stop?
 	 * @return Which stations to stop at.
 	 */
-	inline OrderNonStopFlags GetNonStopType() const { return (OrderNonStopFlags)GB(this->type, 6, 2); }
+	inline OrderNonStopFlags GetNonStopType() const { return (OrderNonStopFlags)GB(this->type, 7, 2); }
 	/**
 	 * Where must we stop at the platform?
 	 * @return Where at the platform to stop.
 	 */
-	inline OrderStopLocation GetStopLocation() const { return static_cast<OrderStopLocation>(GB(this->type, 4, 2)); }
+	inline OrderStopLocation GetStopLocation() const { return static_cast<OrderStopLocation>(GB(this->type, 5, 2)); }
 	/**
 	 * What caused us going to the depot?
 	 * @return The reason to go to the depot.
@@ -499,7 +499,7 @@ public:
 	 * What is the comparator to use?
 	 * @return The comparator for the comparison.
 	 */
-	inline OrderConditionComparator GetConditionComparator() const { return static_cast<OrderConditionComparator>(GB(this->type, 5, 3)); }
+	inline OrderConditionComparator GetConditionComparator() const { return static_cast<OrderConditionComparator>(GB(this->type, 9, 3)); }
 
 	/**
 	 * Get the order to skip to.
@@ -585,12 +585,12 @@ public:
 	 * Set whether we must stop at stations or not.
 	 * @param non_stop_type The new non stop type, i.e. where to stop.
 	 */
-	inline void SetNonStopType(OrderNonStopFlags non_stop_type) { SB(this->type, 6, 2, non_stop_type); }
+	inline void SetNonStopType(OrderNonStopFlags non_stop_type) { SB(this->type, 7, 2, non_stop_type); }
 	/**
 	 * Set where we must stop at the platform.
 	 * @param stop_location The location to stop at.
 	 */
-	inline void SetStopLocation(OrderStopLocation stop_location) { SB(this->type, 4, 2, to_underlying(stop_location)); }
+	inline void SetStopLocation(OrderStopLocation stop_location) { SB(this->type, 5, 2, to_underlying(stop_location)); }
 	/**
 	 * Set the cause to go to the depot.
 	 * @param depot_order_type The reason to go to the depot.
@@ -616,7 +616,7 @@ public:
 	 * Set the comparator to use.
 	 * @param condition_comparator The new comparator to compare with.
 	 */
-	inline void SetConditionComparator(OrderConditionComparator condition_comparator) { SB(this->type, 5, 3, to_underlying(condition_comparator)); }
+	inline void SetConditionComparator(OrderConditionComparator condition_comparator) { SB(this->type, 9, 3, to_underlying(condition_comparator)); }
 
 	/**
 	 * Get the order to skip to.
@@ -1393,6 +1393,7 @@ public:
 	inline VehicleOrderID GetNumManualOrders() const { return this->num_manual_orders; }
 
 	CargoMaskedStationIDVector GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first = nullptr, uint hops = 0) const;
+	std::vector<const Order *> GetNextStoppingOrder(const Vehicle *v, const Order *first = nullptr, uint hops = 0) const;
 	const Order *GetNextDecisionNode(const Order *next, uint hops, CargoTypes &cargo_mask) const;
 
 	void InsertOrderAt(Order &&new_order, VehicleOrderID index);

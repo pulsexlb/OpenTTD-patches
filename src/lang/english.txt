@@ -943,6 +943,7 @@ STR_NEWS_ORDER_REFIT_FAILED                                     :{WHITE}{VEHICLE
 STR_NEWS_ORDER_DECOUPLE_FAILED                                  :{WHITE}Failed to decouple {VEHICLE}
 STR_NEWS_ORDER_COUPLE_FAILED                                    :{WHITE}Failed to couple {VEHICLE} and {VEHICLE}
 STR_VEHICLE_STATUS_HEADING_FOR_COUPLE_VEL                       :{LTBLUE}Heading for couple, {VELOCITY}
+STR_VEHICLE_STATUS_DECOUPLING                                    :{LTBLUE}Decoupling
 STR_VEHICLE_STATUS_WAITING_FOR_COUPLE                           :{LTBLUE}Waiting for locomotive
 STR_VEHICLE_STATUS_WAITING_FOR_COUPLE_WRONG                     :{RED}Can't couple outside the station
 STR_ORDER_TOGGLE_COUPLE_LOAD                                    :{BLACK}Couple empty
@@ -4763,6 +4764,9 @@ STR_ORDER_TOOLTIP_UNLOAD                                        :{BLACK}Change t
 
 STR_ORDER_REFIT                                                 :{BLACK}Refit
 STR_ORDER_REFIT_TOOLTIP                                         :{BLACK}Select what cargo type to refit to in this order. Ctrl+Click to remove refit instruction
+STR_ORDER_CARGO_TYPE_BUTTON                                       :{BLACK}Cargo type
+STR_CARGO_CAPTION                                                 :{WHITE}{VEHICLE} (Cargos)
+STR_TRAIN_CARGOS_CONFIRM                                          :{BLACK}Set Cargo
 STR_ORDER_REFIT_AUTO                                            :{BLACK}Refit at station
 STR_ORDER_REFIT_AUTO_TOOLTIP                                    :{BLACK}Select what cargo type to refit to in this order. Ctrl+Click to remove refit instruction. Refitting at stations will only be done if the vehicle allows it
 STR_ORDER_DROP_REFIT_AUTO                                       :Fixed cargo

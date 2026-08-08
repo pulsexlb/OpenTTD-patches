@@ -594,6 +594,21 @@ enum OrderDropDownID {
 	ODDI_GO_TO_COUPLE,
 };
 
+static const StringID _order_couple_load_drowdown[] = {
+	STR_ORDERS_COUPLE_LOAD_ANY,
+	STR_ORDERS_COUPLE_LOAD_EMPTY,
+	STR_ORDERS_COUPLE_LOAD_FULL,
+	INVALID_STRING_ID
+};
+
+static const StringID _order_decouple_orders_drowdown[] = {
+	STR_ORDERS_DECOUPLE_KEEP_ORDERS,
+	STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD,
+	STR_ORDERS_DECOUPLE_INHERIT_ORDERS,
+	STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE,
+	INVALID_STRING_ID
+};
+
 static const StringID _order_manage_list_dropdown[] = {
 	STR_ORDER_REVERSE_ORDER_LIST,
 	STR_ORDER_APPEND_REVERSED_ORDER_LIST,
@@ -1608,6 +1623,8 @@ private:
 		DP_GROUNDVEHICLE_ROW_TEXT_LABEL  = 4, ///< Display the row for text label orders in the top row of the train/rv order window.
 		DP_GROUNDVEHICLE_ROW_DEPARTURES  = 5, ///< Display the row for departure via label orders in the top row of the train/rv order window.
 		DP_GROUNDVEHICLE_ROW_EMPTY       = 6, ///< Display the row for no buttons in the top row of the train/rv order window.
+		DP_GROUNDVEHICLE_ROW_COUPLE      = 7, ///< Display the row for couple orders in the top row of the train order window.
+		DP_GROUNDVEHICLE_ROW_DECOUPLE    = 8, ///< Display the row for decouple options of a decouple flagged order in the train order window.
 
 		/* WID_O_SEL_TOP_LEFT */
 		DP_LEFT_LOAD       = 0, ///< Display 'load' in the left button of the top row of the train/rv order window.
@@ -1803,6 +1820,37 @@ private:
 		Order order;
 		order.MakeGoToCouple();
 		DoCommandP<Commands::InsertOrder>(this->vehicle->tile, InsertOrderCmdData(this->vehicle->index, this->OrderGetSel(), order), STR_ERROR_CAN_T_INSERT_NEW_ORDER, CommandCallback::InsertOrder);
+	}
+
+	void OrderClick_CoupleLoad(int load_type)
+	{
+		VehicleOrderID sel_ord = this->OrderGetSel();
+		const Order *order = this->vehicle->GetOrder(sel_ord);
+		if (load_type < 0) {
+			load_type = order->GetCoupleLoad() == ODC_IS_EMPTY ? ODC_ANY : ODC_IS_EMPTY;
+		}
+		this->ModifyOrder(sel_ord, MOF_COUPLE_LOAD, load_type);
+	}
+
+	void OrderClick_CoupleCargo()
+	{
+		VehicleOrderID sel_ord = this->OrderGetSel();
+		const Order *order = this->vehicle->GetOrder(sel_ord);
+		if (order->HasCoupleCargoType()) {
+			this->ModifyOrder(sel_ord, MOF_COUPLE_CARGO, CARGO_NO_REFIT);
+		} else {
+			ShowVehicleCargoTypesWindow(this->vehicle, sel_ord, this);
+		}
+	}
+
+	void OrderClick_OrdersFirst(int orders_type)
+	{
+		this->ModifyOrder(this->OrderGetSel(), MOF_FIRST_ORDERS, orders_type);
+	}
+
+	void OrderClick_OrdersSecond(int orders_type)
+	{
+		this->ModifyOrder(this->OrderGetSel(), MOF_SECOND_ORDERS, orders_type);
 	}
 
 	/**
@@ -2608,6 +2656,21 @@ public:
 					break;
 				}
 
+				case OT_GOTO_COUPLE: {
+					assert(this->vehicle->type == VehicleType::Train);
+					train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_COUPLE);
+					this->SetWidgetLoweredState(WID_O_COUPLE_LOAD, order->GetCoupleLoad() == ODC_IS_EMPTY);
+					this->SetWidgetLoweredState(WID_O_COUPLE_CARGO, order->HasCoupleCargoType());
+					break;
+				}
+
+				case OT_DECOUPLE: {
+					assert(this->vehicle->type == VehicleType::Train);
+					train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_DECOUPLE);
+					this->DisableWidget(WID_O_DELETE);
+					break;
+				}
+
 				default: // every other order
 					if (row_sel != nullptr) {
 						row_sel->SetDisplayedPlane(DP_ROW_LOAD);
@@ -3134,6 +3197,7 @@ public:
 						}
 						list.push_back(MakeDropDownListCheckedItem(osl == OrderStopLocation::Through, STR_ORDER_STOP_LOCATION_THROUGH, 0x200 + to_underlying(OrderStopLocation::Through), !allowed));
 					}
+					list.push_back(MakeDropDownListCheckedItem(order->GetDecouple() == ODF_DECOUPLE, STR_ORDERS_DECOUPLE_DROP, 0x500, false));
 				}
 
 				if (this->vehicle->type == VehicleType::Road && (order->IsType(OT_GOTO_STATION) || order->IsType(OT_GOTO_WAYPOINT))) {
@@ -3639,6 +3703,48 @@ public:
 				ShowDropDownList(this, std::move(list), selected, WID_O_DEPARTURE_VIA_TYPE, 0, DropDownOptions{}, DDSF_SHARED);
 				break;
 			}
+
+			case WID_O_COUPLE_LOAD:
+				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
+					this->OrderClick_CoupleLoad(-1);
+				} else {
+					ShowDropDownMenu(this, _order_couple_load_drowdown, 0, WID_O_COUPLE_LOAD, 0, 0);
+				}
+				break;
+
+			case WID_O_COUPLE_CARGO:
+				this->OrderClick_CoupleCargo();
+				break;
+
+			case WID_O_COUPLE_VALUE: {
+				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
+				this->query_text_widget = widget;
+				ShowQueryString(GetString(STR_JUST_INT, order->GetNumCouple()), STR_ORDER_DECOUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
+				break;
+			}
+
+			case WID_O_DECOUPLE_VALUE: {
+				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
+				this->query_text_widget = widget;
+				ShowQueryString(GetString(STR_JUST_INT, order->GetNumDecouple()), STR_ORDER_DECOUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
+				break;
+			}
+
+			case WID_O_ORDERS_FIRST:
+				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
+					this->OrderClick_OrdersFirst(0);
+				} else {
+					ShowDropDownMenu(this, _order_decouple_orders_drowdown, 0, WID_O_ORDERS_FIRST, 0, 0);
+				}
+				break;
+
+			case WID_O_ORDERS_SECOND:
+				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
+					this->OrderClick_OrdersSecond(0);
+				} else {
+					ShowDropDownMenu(this, _order_decouple_orders_drowdown, 0, WID_O_ORDERS_SECOND, 0, 0);
+				}
+				break;
 		}
 	}
 
@@ -3697,6 +3803,18 @@ public:
 			VehicleOrderID sel = this->OrderGetSel();
 			uint value = Clamp<uint>(*try_value, 0, 0xFFFF);
 			this->ModifyOrder(sel, MOF_COUNTER_VALUE, value);
+		}
+
+		if (this->query_text_widget == WID_O_COUPLE_VALUE && str.has_value() && !str->empty()) {
+			auto try_value = ParseInteger<uint>(*str);
+			if (!try_value.has_value()) return;
+			this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_VALUE, Clamp<uint>(*try_value, 0, 127));
+		}
+
+		if (this->query_text_widget == WID_O_DECOUPLE_VALUE && str.has_value() && !str->empty()) {
+			auto try_value = ParseInteger<uint>(*str);
+			if (!try_value.has_value()) return;
+			this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_VALUE, Clamp<uint>(*try_value, 0, 127));
 		}
 
 		if (this->query_text_widget == WID_O_ADD_VEH_GROUP) {
@@ -3789,6 +3907,18 @@ public:
 					case ODDI_GO_TO_COUPLE:          this->OrderClick_Couple(); break;
 					default: NOT_REACHED();
 				}
+				break;
+
+			case WID_O_COUPLE_LOAD:
+				this->OrderClick_CoupleLoad(index);
+				break;
+
+			case WID_O_ORDERS_FIRST:
+				this->OrderClick_OrdersFirst(index);
+				break;
+
+			case WID_O_ORDERS_SECOND:
+				this->OrderClick_OrdersSecond(index);
 				break;
 
 			case WID_O_DEPOT_ACTION:
@@ -4001,6 +4131,10 @@ public:
 
 					case 0x401:
 						ShowSaveLoadDialog(AbstractFileType::Orderlist, SaveLoadOperation::Load, FiosOrderListInfo(this->GetVehicle(), this->OrderGetSel(), true));
+						break;
+
+					case 0x500:
+						this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE, this->vehicle->GetOrder(this->OrderGetSel())->GetDecouple() == ODF_DECOUPLE ? ODF_NOTHING : ODF_DECOUPLE);
 						break;
 
 					default:
@@ -4404,6 +4538,22 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 														SetToolTip(STR_ORDER_LABEL_DEPARTURES_VIA_TYPE_TOOLTIP), SetResize(1, 0),
 			EndContainer(),
 			NWidget(WWT_PANEL, Colours::Grey), SetFill(1, 0), SetResize(1, 0), EndContainer(),
+			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
+				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_COUPLE_LOAD), SetMinimalSize(124, 12), SetFill(1, 0),
+														SetStringTip(STR_ORDER_TOGGLE_COUPLE_LOAD, STR_ORDER_CONDITIONAL_VARIABLE_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_O_COUPLE_CARGO), SetMinimalSize(124, 12), SetFill(1, 0),
+														SetStringTip(STR_ORDER_CARGO_TYPE_BUTTON, STR_ORDER_CONDITIONAL_COMPARATOR_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_VALUE), SetMinimalSize(124, 12), SetFill(1, 0),
+														SetStringTip(STR_ORDERS_COUPLE_VALUE_BUTTON, STR_ORDER_CONDITIONAL_VALUE_TOOLTIP), SetResize(1, 0),
+			EndContainer(),
+			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
+				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_ORDERS_FIRST), SetMinimalSize(124, 12), SetFill(1, 0),
+														SetStringTip(STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON, STR_ORDER_CONDITIONAL_VARIABLE_TOOLTIP), SetResize(1, 0),
+				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_ORDERS_SECOND), SetMinimalSize(124, 12), SetFill(1, 0),
+														SetStringTip(STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON, STR_ORDER_CONDITIONAL_COMPARATOR_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_DECOUPLE_VALUE), SetMinimalSize(124, 12), SetFill(1, 0),
+														SetStringTip(STR_ORDERS_DECOUPLE_VALUE_BUTTON, STR_ORDER_CONDITIONAL_VALUE_TOOLTIP), SetResize(1, 0),
+			EndContainer(),
 		EndContainer(),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_SHARED),
 			NWidget(WWT_PUSHIMGBTN, Colours::Grey, WID_O_SHARED_ORDER_LIST), SetAspect(1), SetSpriteTip(SPR_SHARED_ORDERS_ICON, STR_ORDERS_VEH_WITH_SHARED_ORDERS_LIST_TOOLTIP),

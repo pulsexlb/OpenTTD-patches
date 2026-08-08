@@ -740,6 +740,67 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 }
 
 /**
+ * Get the next order at which the vehicle will stop (loading/unloading),
+ * resolving conditional orders by estimation. No cargo filter is applied.
+ * @param v The vehicle to find the next stopping order for.
+ * @param first The first order to consider, or nullptr to start at the current order.
+ * @param hops Number of hops already made (to prevent endless recursion).
+ * @return The next stopping order(s), or an empty vector if none.
+ */
+std::vector<const Order *> OrderList::GetNextStoppingOrder(const Vehicle *v, const Order *first, uint hops) const
+{
+	CargoTypes cargo_mask{}; // No cargo filter (all cargoes).
+
+	const Order *next = first;
+	if (first == nullptr) {
+		next = this->GetOrderAt(v->cur_implicit_order_index);
+		if (next == nullptr) {
+			next = this->GetFirstOrder();
+			if (next == nullptr) return {};
+		} else {
+			/* GetNext never returns nullptr if there is a valid station in the list.
+			 * As the given "next" is already valid and a station in the list, we
+			 * don't have to check for nullptr here. */
+			next = this->GetNext(next);
+			assert(next != nullptr);
+		}
+	}
+
+	do {
+		next = this->GetNextDecisionNode(next, ++hops, cargo_mask);
+
+		/* Resolve possibly nested conditionals by estimation. */
+		while (next != nullptr && next->IsType(OT_CONDITIONAL)) {
+			/* We return both options of conditional orders. */
+			const Order *skip_to = this->GetNextDecisionNode(
+					this->GetOrderAt(next->GetConditionSkipToOrder()), hops, cargo_mask);
+			const Order *advance = this->GetNextDecisionNode(
+					this->GetNext(next), hops, cargo_mask);
+			if (advance == nullptr || advance == first || skip_to == advance) {
+				next = (skip_to == first) ? nullptr : skip_to;
+			} else if (skip_to == nullptr || skip_to == first) {
+				next = (advance == first) ? nullptr : advance;
+			} else {
+				std::vector<const Order *> or1 = this->GetNextStoppingOrder(v, skip_to, hops);
+				std::vector<const Order *> or2 = this->GetNextStoppingOrder(v, advance, hops);
+				or1.insert(or1.end(), or2.rbegin(), or2.rend());
+				return or1;
+			}
+			++hops;
+		}
+
+		/* Don't return a next stop if the vehicle has to unload everything. */
+		if (next == nullptr || ((next->IsType(OT_GOTO_STATION) || next->IsType(OT_IMPLICIT)) &&
+				next->GetDestination() == v->last_station_visited &&
+				(next->GetUnloadType() == OrderUnloadType::Unload || next->GetUnloadType() == OrderUnloadType::Transfer))) {
+			return {};
+		}
+	} while (next->IsType(OT_GOTO_DEPOT) || next->GetDestination() == v->last_station_visited);
+
+	return { next };
+}
+
+/**
  * Insert a new order into the order chain.
  * @param ins_order is the order to insert into the chain.
  * @param index is the position where the order is supposed to be inserted.
@@ -1415,6 +1476,12 @@ static CommandCost PreInsertOrderCheck(Vehicle *v, const Order &new_order, CmdIn
 			break;
 		}
 
+		case OT_GOTO_COUPLE:
+		case OT_WAIT_COUPLE:
+		case OT_DECOUPLE:
+			/* Couple/decouple orders have no destination or flags validation. */
+			break;
+
 		default: return CMD_ERROR;
 	}
 
@@ -1427,6 +1494,11 @@ static CommandCost CmdInsertOrderIntl(DoCommandFlags flags, Vehicle *v, VehicleO
 	if (ret.Failed()) return ret;
 
 	if (sel_ord == INVALID_VEH_ORDER_ID) sel_ord = v->GetNumOrders(); // Append to end of list
+
+	if (sel_ord < v->GetNumOrders()) {
+		Order *selected_order = v->GetOrder(sel_ord);
+		if (selected_order->GetType() == OT_DECOUPLE) sel_ord--;
+	}
 
 	if (sel_ord > v->GetNumOrders()) return CMD_ERROR;
 
@@ -1582,6 +1654,12 @@ CommandCost CmdDeleteOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 
 	if (v->GetOrder(sel_ord) == nullptr) return CMD_ERROR;
 
+	/* If the next order is a decouple order, it must be deleted together with this one. */
+	Order *next_order = v->GetOrder(sel_ord + 1);
+	if (next_order != nullptr && next_order->IsType(OT_DECOUPLE)) {
+		CmdDeleteOrder(flags, v->index, sel_ord + 1);
+	}
+
 	if (flags.Test(DoCommandFlag::Execute)) {
 		DeleteOrder(v, sel_ord);
 	}
@@ -1690,6 +1768,12 @@ CommandCost CmdSkipToOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 {
 	Vehicle *v = Vehicle::GetIfValid(veh_id);
 
+	if (v != nullptr) {
+		/* Skip decouple orders when skipping to an order. */
+		Order *order = v->GetOrder(sel_ord);
+		if (order != nullptr && order->GetType() == OT_DECOUPLE) sel_ord = (sel_ord + 1) % v->GetNumOrders();
+	}
+
 	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle() || sel_ord == v->cur_implicit_order_index || sel_ord >= v->GetNumOrders() || v->GetNumOrders() < 2) return CMD_ERROR;
 
 	CommandCost ret = CheckOwnership(v->owner);
@@ -1752,6 +1836,14 @@ CommandCost CmdMoveOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID mov
 	} else {
 		if (moving_order + count > order_count) return CMD_ERROR;
 	}
+
+	/* Decouple orders are bound to the order before them, so they cannot be moved. */
+	const Order *moving_one = v->GetOrder(moving_order);
+	if (moving_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
+	const Order *after_moving_one = v->GetOrder(moving_order + 1);
+	if (after_moving_one != nullptr && after_moving_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
+	const Order *target_one = v->GetOrder(moving_order > target_order ? target_order : target_order + 1);
+	if (target_one != nullptr && target_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		v->orders->MoveOrders(moving_order, target_order, count);
@@ -2812,6 +2904,17 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 			if (mof == MOF_RV_TRAVEL_DIR && sel_ord == u->cur_real_order_index &&
 					(u->current_order.IsType(OT_GOTO_STATION) || u->current_order.IsType(OT_GOTO_WAYPOINT))) {
 				u->current_order.SetRoadVehTravelDirection((DiagDirection)data);
+			}
+
+			/* Keep the current order of the vehicle in sync with the modified order. */
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_GOTO_STATION)) {
+				u->current_order.SetDecouple(order->GetDecouple());
+				u->current_order.SetNumDecouple(order->GetNumDecouple());
+			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_GOTO_COUPLE)) {
+				u->current_order.SetCoupleLoad(order->GetCoupleLoad());
+				u->current_order.SetCoupleCargoType(order->GetCoupleCargoType());
+				u->current_order.SetNumCouple(order->GetNumCouple());
 			}
 
 			/* Unbunching data is no longer valid. */
@@ -4337,7 +4440,7 @@ bool ProcessOrders(Vehicle *v)
 	 * will be reset to nothing. (That also happens if no order, but in that case
 	 * it won't hit the point in code where may_reverse is checked)
 	 */
-	bool may_reverse = v->current_order.IsType(OT_NOTHING);
+	bool may_reverse = v->current_order.IsType(OT_NOTHING) || v->current_order.IsType(OT_GOTO_COUPLE);
 	Vehicle *moving_front = v->GetMovingFront();
 
 	v->vehicle_flags.Reset(VehicleFlag::ConditionalOrderWait);
@@ -4435,6 +4538,7 @@ bool Order::ShouldStopAtStation(StationID last_station_visited, StationID statio
 	bool is_dest_station = this->IsType(OT_GOTO_STATION) && this->dest == station;
 
 	return (!this->IsType(OT_GOTO_DEPOT) || this->GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders)) &&
+			!this->IsType(OT_GOTO_COUPLE) &&
 			(last_station_visited != station) && // Do stop only when we've not just been there
 			/* Finally do stop when there is no non-stop flag set for this type of station. */
 			!(this->GetNonStopType() & (is_dest_station ? ONSF_NO_STOP_AT_DESTINATION_STATION : ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS));

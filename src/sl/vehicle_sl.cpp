@@ -1089,11 +1089,11 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		/* This next line is for version 4 and prior compatibility.. it temporarily reads
 		 type and flags (which were both 4 bits) into type. Later on this is
 		 converted correctly */
-		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_UINT8,                  SL_MIN_VERSION, SLV_5)),
+		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_UINT16,                  SL_MIN_VERSION, SLV_5)),
 		NSL("current_order.dest",         SLE_CONDVAR(Vehicle, current_order.dest,        SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 
 		/* Orders for version 5 and on */
-		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_UINT8,                  SLV_5, SL_MAX_VERSION)),
+		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_UINT16,                  SLV_5, SL_MAX_VERSION)),
 		NSL("current_order.flags",      SLE_CONDVAR_X(Vehicle, current_order.flags,       SLE_FILE_U8 | SLE_VAR_U16,  SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 0, 0))),
 		NSL("current_order.flags",      SLE_CONDVAR_X(Vehicle, current_order.flags,       SLE_UINT16,                 SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 1))),
 		NSL("current_order.dest",         SLE_CONDVAR(Vehicle, current_order.dest,        SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),
@@ -1108,7 +1108,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("current_order.travel_time",SLE_CONDVAR_X(Vehicle, current_order.travel_time, SLE_FILE_U16 | SLE_VAR_U32, SLV_67, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA, 0, 5))),
 		NSL("current_order.travel_time",SLE_CONDVAR_X(Vehicle, current_order.travel_time, SLE_UINT32,                 SLV_67, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA, 6))),
 		NSL("current_order.max_speed",    SLE_CONDVAR(Vehicle, current_order.max_speed,   SLE_UINT16,                 SLV_174, SL_MAX_VERSION)),
-		NSL("current_order.decouple_flags", SLE_CONDVAR(Vehicle, current_order.decouple_flags, SLE_UINT8,             SLV_ORDER_DECOUPLE, SL_MAX_VERSION)),
+		NSL("current_order.decouple_flags", SLE_CONDVAR(Vehicle, current_order.decouple_flags, SLE_UINT8,             SL_MIN_VERSION, SL_MAX_VERSION)),
 
 		NSLT_STRUCT<VehicleOrderExtraDataStructHandler>("current_order.extra"),
 

@@ -131,7 +131,7 @@ private:
 				/* look behind station too */
 				Vehicle *other_train = nullptr;
 				FollowTrainReservation(best, &other_train);
-				if (other_train != nullptr) return false;
+				if (other_train != nullptr && other_train != best) return false;
 			}
 		} else if (GetReservedTrackbits(tile) != TRACK_BIT_NONE) {
 			if (!TryReserveRailTrack(tile, TrackdirToTrack(td))) return false;
@@ -476,16 +476,19 @@ public:
 
 	Trackdir FindNearestCoupleTrain(const Train *v, bool dont_reserve)
 	{
-		PBSTileInfo origin = FollowTrainReservation(v);
+		PBSTileInfo origin = FollowTrainReservation(v, nullptr, FollowTrainReservationFlag::IgnoreLookahead);
+		Debug(desync, 1, "CoupleFind: veh={} origin=({},{}) td={}", v->index, TileX(origin.tile), TileY(origin.tile), origin.trackdir);
 		/* Set origin and destination. */
 		Yapf().SetOrigin(origin.tile, origin.trackdir);
 		Yapf().SetDestination(v);
 
 		bool path_found = Yapf().FindPath(v);
+		Debug(desync, 1, "CoupleFind: veh={} path_found={}", v->index, path_found);
 		if (!path_found) return INVALID_TRACKDIR;
 
 		/* Found a destination, set as reservation target. */
 		Node *pNode = Yapf().GetBestNode();
+		Debug(desync, 1, "CoupleFind: veh={} best=({},{}) td={}", v->index, TileX(pNode->GetLastTile()), TileY(pNode->GetLastTile()), pNode->GetLastTrackdir());
 		this->SetReservationTarget(pNode, pNode->GetLastTile(), pNode->GetLastTrackdir());
 
 		/* Walk through the path back to the origin. */
@@ -495,12 +498,17 @@ public:
 			pPrev = pNode;
 			pNode = pNode->parent;
 
-			if (!this->CheckSafePositionOnNode(pPrev)) return INVALID_TRACKDIR;
+			if (!this->CheckSafePositionOnNode(pPrev)) {
+				Debug(desync, 1, "CoupleFind: veh={} CheckSafePos FAIL at ({},{}) td={}", v->index, TileX(pPrev->GetLastTile()), TileY(pPrev->GetLastTile()), pPrev->GetLastTrackdir());
+				return INVALID_TRACKDIR;
+			}
 		}
 
 		next_trackdir = pPrev->GetTrackdir();
 		if (!dont_reserve) {
-			return this->TryReservePath(nullptr, pNode->GetLastTile(), true) ? next_trackdir : INVALID_TRACKDIR;
+			bool reserved = this->TryReservePath(nullptr, pNode->GetLastTile(), true);
+			Debug(desync, 1, "CoupleFind: veh={} reserve={} next_td={}", v->index, reserved, next_trackdir);
+			return reserved ? next_trackdir : INVALID_TRACKDIR;
 		}
 
 		return next_trackdir;
