@@ -3342,6 +3342,9 @@ CommandCost CmdReverseTrainDirection(DoCommandFlags flags, VehicleID veh_id, boo
 	CommandCost ret = CheckOwnership(v->owner);
 	if (ret.Failed()) return ret;
 
+	/* The front has just decoupled, reversing could crash into the decoupled part. */
+	if (v->flags.Test(VehicleRailFlag::JustDecoupled) && !reverse_single_veh) return CMD_ERROR;
+
 	if (reverse_single_veh) {
 		/* turn a single unit around */
 
@@ -5039,6 +5042,9 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
  */
 static bool CheckReverseTrain(const Train *consist)
 {
+	/* The front has just decoupled, reversing could crash into the decoupled part. */
+	if (consist->flags.Test(VehicleRailFlag::JustDecoupled)) return false;
+
 	const Train *moving_front = consist->GetMovingFront();
 	if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::EndOfLineOnly ||
 			moving_front->track == TRACK_BIT_DEPOT) {
@@ -5633,6 +5639,14 @@ static void TrainEnterStation(Train *consist, StationID station)
 	if (want_decouple) {
 		u = DecoupleTrain(consist);
 		Debug(desync, 1, "TrainEnterStation: veh={} decoupled u={}", consist->index, u != nullptr ? u->index.base() : -1);
+		/* If the front was driving backwards, the decoupled part is in front of it.
+		 * Reverse it now so it drives away from the decoupled part, then forbid
+		 * reversing until it has left the station. */
+		if (consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards)) {
+			ReverseTrainDirection(consist);
+			consist = consist->First();
+		}
+		consist->flags.Set(VehicleRailFlag::JustDecoupled);
 		SplitOrders(consist, u, load_trains);
 		u->last_station_visited = station;
 		if (u == consist && consist->owner == _local_company) {
@@ -7405,6 +7419,11 @@ Money Train::CalculateCurrentOverallValue() const
  */
 static bool TrainLocoHandler(Train *consist, bool mode)
 {
+	/* The front has left the station after decoupling, normal reversing is allowed again. */
+	if (consist->flags.Test(VehicleRailFlag::JustDecoupled) && !IsRailStationTile(consist->tile)) {
+		consist->flags.Reset(VehicleRailFlag::JustDecoupled);
+	}
+
 	/* train has crashed? */
 	if (consist->vehstatus.Test(VehState::Crashed)) {
 		return mode ? true : HandleCrashedTrain(consist); // 'this' can be deleted here

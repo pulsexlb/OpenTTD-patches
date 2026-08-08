@@ -40,6 +40,7 @@ enum class VehicleRailFlag : uint8_t {
 	BreakdownSpeed            = 12, ///< Train has a reduced maximum speed because of a breakdown.
 	BreakdownStopped          = 13, ///< Train is stopped because of a breakdown.
 	NeedRepair                = 14, ///< Train has a reduced maximum speed because of a critical breakdown.
+	JustDecoupled             = 15, ///< Train has just decoupled, reversing is forbidden until it leaves the station.
 	BeyondPlatformEnd         = 16,
 	NotYetInPlatform          = 17,
 	AdvanceInPlatform         = 18,
