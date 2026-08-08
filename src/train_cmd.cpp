@@ -5647,6 +5647,16 @@ static void TrainEnterStation(Train *consist, StationID station)
 			consist = consist->First();
 		}
 		consist->flags.Set(VehicleRailFlag::JustDecoupled);
+		/* For the decoupled part, do the opposite: if it is driving forward (towards
+		 * the front part), reverse it now so it drives away from the front part, then
+		 * forbid reversing until it leaves the station. */
+		if (u != nullptr && u != consist) {
+			if (!u->vehicle_flags.Test(VehicleFlag::DrivingBackwards)) {
+				ReverseTrainDirection(u);
+				u = u->First();
+			}
+			u->flags.Set(VehicleRailFlag::JustDecoupled);
+		}
 		SplitOrders(consist, u, load_trains);
 		u->last_station_visited = station;
 		if (u == consist && consist->owner == _local_company) {
@@ -5685,10 +5695,6 @@ static void TrainEnterStation(Train *consist, StationID station)
 		TileIndex station_tile = consist->GetStationLoadingVehicle()->tile;
 		TriggerStationRandomisation(st, station_tile, StationRandomTrigger::VehicleArrives);
 		TriggerStationAnimation(st, station_tile, StationAnimationTrigger::VehicleArrives);
-	}
-
-	if (u != nullptr && u != consist && (load_trains & DECOUPLE_LOAD_SECOND) == 0) {
-		ReverseTrainDirection(u);
 	}
 }
 
