@@ -219,6 +219,15 @@ if(NOT OPTION_DEDICATED)
     link_package(Fontconfig TARGET Fontconfig::Fontconfig)
     link_package(ICU_lx)
     link_package(ICU_i18n)
+    if(NOT APPLE AND ICU_i18n_FOUND)
+        # ICU's C++ ABI is split over the i18n, uc and data libraries; the
+        # ICU_i18n lookup above only resolves the first, so add the other two.
+        find_library(ICU_UC_LIBRARY NAMES icuuc libicuuc)
+        find_library(ICU_DATA_LIBRARY NAMES icudata libicudata)
+        if(ICU_UC_LIBRARY)
+            target_link_libraries(openttd ${ICU_UC_LIBRARY} ${ICU_DATA_LIBRARY})
+        endif()
+    endif()
 endif()
 
 if(APPLE)
