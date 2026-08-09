@@ -1201,9 +1201,21 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 		}
 	}
 
-	if (this->flags.Test(VehicleRailFlag::ConsistSpeedReduction)) {
-		const_cast<Train *>(this)->flags.Reset(VehicleRailFlag::ConsistSpeedReduction);
+	/* [DEBUG-depot] Report when a consist is in a depot/wormhole but the CSR flag is unset (index-phased). */
+	if (!this->flags.Test(VehicleRailFlag::ConsistSpeedReduction) && (_state_ticks.base() & 0x3F) == (this->index.base() & 0x3F)) {
 		for (const Train *u = this; u != nullptr; u = u->Next()) {
+			if (u->track == TRACK_BIT_DEPOT || (u->track & TRACK_BIT_WORMHOLE && !u->vehstatus.Test(VehState::Hidden))) {
+				Debug(desync, 1, "DepotDbg: v={} CSR-incorrectly-unset inVeh={} tile=({},{}) order={} idx={}/{} stopped={} stuck={} revDist={}",
+					this->index, u->index.base(), TileX(u->tile), TileY(u->tile), (int)this->current_order.GetType(),
+					this->cur_implicit_order_index, this->GetNumOrders(),
+					this->vehstatus.Test(VehState::Stopped), this->flags.Test(VehicleRailFlag::Stuck), this->reverse_distance);
+				break;
+			}
+		}
+	}
+
+	if (this->flags.Test(VehicleRailFlag::ConsistSpeedReduction)) {
+		const_cast<Train *>(this)->flags.Reset(VehicleRailFlag::ConsistSpeedReduction);		for (const Train *u = this; u != nullptr; u = u->Next()) {
 			if (u->track == TRACK_BIT_DEPOT) {
 				const_cast<Train *>(this)->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 				if (_settings_game.vehicle.train_acceleration_model == AM_REALISTIC) {
@@ -2638,6 +2650,10 @@ void Train::UpdateDeltaXY()
 static void MarkTrainAsStuck(Train *consist, bool waiting_restriction = false)
 {
 	if (!consist->flags.Test(VehicleRailFlag::Stuck)) {
+		Debug(desync, 1, "DepotDbg: v={} MarkTrainAsStuck tile=({},{}) inDepot={} order={} dest={} idx={}/{} CSR={}",
+			consist->index, TileX(consist->tile), TileY(consist->tile), IsRailDepotTile(consist->tile),
+			(int)consist->current_order.GetType(), consist->dest_tile.base(), consist->cur_implicit_order_index, consist->GetNumOrders(),
+			consist->flags.Test(VehicleRailFlag::ConsistSpeedReduction));
 		/* It is the first time the problem occurred, set the "train stuck" flag. */
 		consist->flags.Set(VehicleRailFlag::Stuck);
 		consist->flags.Set(VehicleRailFlag::WaitingRestriction, waiting_restriction);
@@ -3098,6 +3114,19 @@ static bool IsWholeTrainInsideDepot(const Train *v)
  */
 static void ReverseTrainDirection(Train *consist)
 {
+	/* [DEBUG-couple] Every actual train turnaround is logged (head + per-vehicle). */
+	Debug(desync, 1, "DepotDbg: revTurn head={} tile=({},{}) dir={} moving={} len={} curSpeed={} bw={} rev={} order={} dest={}",
+		consist->index, TileX(consist->tile), TileY(consist->tile), (int)consist->direction, (int)consist->GetMovingDirection(),
+		CountVehiclesInChain(consist), consist->cur_speed,
+		consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards), consist->flags.Test(VehicleRailFlag::Reversed),
+		(int)consist->current_order.GetType(), consist->dest_tile.base());
+	for (const Train *t = consist; t != nullptr; t = t->Next()) {
+		Debug(desync, 1, "DepotDbg: revTurnVeh veh={} tile=({},{}) dir={} bw={} rev={} hidden={} speed={}",
+			t->index.base(), TileX(t->tile), TileY(t->tile), (int)t->direction,
+			t->vehicle_flags.Test(VehicleFlag::DrivingBackwards), t->flags.Test(VehicleRailFlag::Reversed),
+			t->vehstatus.Test(VehState::Hidden), t->cur_speed);
+	}
+
 	Train *moving_front = consist->GetMovingFront();
 	if (IsRailDepotTile(moving_front->tile)) {
 		if (IsWholeTrainInsideDepot(consist)) return;
@@ -3581,6 +3610,15 @@ static bool CheckTrainStayInDepot(Train *v)
 		if (u->track != TRACK_BIT_DEPOT || u->tile != v->tile) return false;
 	}
 
+	/* [DEBUG-depot] Report the state of a train sitting in a depot (index-phased). */
+	if ((_state_ticks.base() & 0x3F) == (v->index.base() & 0x3F)) {
+		Debug(desync, 1, "DepotDbg: inDepot v={} order={} dest={} tile=({},{}) idx={}/{} wait={} forceProc={} stopped={} power={} revDist={} stuck={} cSR={}",
+			v->index, (int)v->current_order.GetType(), v->dest_tile.base(), TileX(v->tile), TileY(v->tile),
+			v->cur_implicit_order_index, v->GetNumOrders(), v->wait_counter, v->force_proceed != TFP_NONE,
+			v->vehstatus.Test(VehState::Stopped), v->gcache.cached_power, v->reverse_distance,
+			v->flags.Test(VehicleRailFlag::Stuck), v->flags.Test(VehicleRailFlag::ConsistSpeedReduction));
+	}
+
 	/* if the train got no power, then keep it in the depot */
 	if (v->gcache.cached_power == 0) {
 		v->vehstatus.Set(VehState::Stopped);
@@ -3626,6 +3664,10 @@ static bool CheckTrainStayInDepot(Train *v)
 
 	/* We are leaving a depot, but have to go to the exact same one; re-enter. */
 	if (v->current_order.IsType(OT_GOTO_DEPOT) && v->tile == v->dest_tile) {
+		if ((_state_ticks.base() & 0x3F) == (v->index.base() & 0x3F)) {
+			Debug(desync, 1, "DepotDbg: v={} stay reEnterGotoDepot exitBlocked={} reserved={} idx={}/{}",
+				v->index, exit_blocked, HasDepotReservation(v->tile), v->cur_implicit_order_index, v->GetNumOrders());
+		}
 		if (exit_blocked) return true;
 		/* Service when depot has no reservation. */
 		if (!HasDepotReservation(v->tile)) VehicleEnterDepot(v);
@@ -3695,14 +3737,25 @@ static bool CheckTrainStayInDepot(Train *v)
 		}
 	}
 
-	if (exit_blocked) return true;
+	if (exit_blocked) {
+		if ((_state_ticks.base() & 0x3F) == (v->index.base() & 0x3F)) {
+			Debug(desync, 1, "DepotDbg: v={} stay exitBlocked order={} dest={} segState={}",
+				v->index, (int)v->current_order.GetType(), v->dest_tile.base(), (int)seg_state);
+		}
+		return true;
+	}
 
 	/* Only leave when we can reserve a path to our destination. */
 	if (seg_state == SigSegState::Path && !TryPathReserve(v) && v->force_proceed == TFP_NONE) {
 		/* No path and no force proceed. */
+		Debug(desync, 1, "DepotDbg: v={} stay noPath dest={} order={} idx={}/{}",
+			v->index, v->dest_tile.base(), (int)v->current_order.GetType(), v->cur_implicit_order_index, v->GetNumOrders());
 		MarkTrainAsStuck(v);
 		return true;
 	}
+
+	Debug(desync, 1, "DepotDbg: v={} LEAVE order={} dest={} idx={}/{}",
+		v->index, (int)v->current_order.GetType(), v->dest_tile.base(), v->cur_implicit_order_index, v->GetNumOrders());
 
 	SetDepotReservation(v->tile, true);
 	if (_settings_client.gui.show_track_reservation) MarkTileDirtyByTile(v->tile, VMDF_NOT_MAP_MODE);
@@ -5426,9 +5479,23 @@ static void ReverseTrainMultiheaded(Train *v)
  */
 static void ReverseTrainForCouple(Train *v)
 {
+	/* [DEBUG-couple] Pre-swap per-vehicle state of the chain about to be reversed for a couple. */
+	for (const Train *t = v; t != nullptr; t = t->Next()) {
+		Debug(desync, 1, "DepotDbg: coupleRevPre chain={} veh={} tile=({},{}) dir={} bw={} rev={} hidden={} speed={}",
+			v->index, t->index.base(), TileX(t->tile), TileY(t->tile), (int)t->direction,
+			t->vehicle_flags.Test(VehicleFlag::DrivingBackwards), t->flags.Test(VehicleRailFlag::Reversed),
+			t->vehstatus.Test(VehState::Hidden), t->cur_speed);
+	}
 	ReverseTrainArticulated(v);
 	ReverseTrainMultiheaded(v);
 	ReverseTrainSwapVehicles(v);
+	/* [DEBUG-couple] Post-swap per-vehicle layout. */
+	for (const Train *t = v; t != nullptr; t = t->Next()) {
+		Debug(desync, 1, "DepotDbg: coupleRevPost chain={} head={} len={} tile=({},{}) dir={} bw={} rev={} hidden={} speed={}",
+			v->index, t->index.base(), CountVehiclesInChain(v), TileX(t->tile), TileY(t->tile), (int)t->direction,
+			t->vehicle_flags.Test(VehicleFlag::DrivingBackwards), t->flags.Test(VehicleRailFlag::Reversed),
+			t->vehstatus.Test(VehState::Hidden), t->cur_speed);
+	}
 }
 
 /**
@@ -5436,14 +5503,43 @@ static void ReverseTrainForCouple(Train *v)
  */
 static void Couple(Train *v, Train *u, bool train_u_reversed)
 {
-	if (train_u_reversed) {
+	/* [DEBUG] Probe: state of both parts at the couple. */
+	if ((_state_ticks.base() & 0x3F) == (v->index.base() & 0x3F) || train_u_reversed) {
+		Debug(desync, 1, "DepotDbg: Couple entry v={} chain={} u={} chain={} rev={} vOrder={} vIdx={}/{} vDest={} uOrder={} uIdx={}/{} uDest={}",
+			v->index, CountVehiclesInChain(v), u->index, CountVehiclesInChain(u), train_u_reversed,
+			(int)v->current_order.GetType(), v->cur_implicit_order_index, v->GetNumOrders(), v->dest_tile.base(),
+			(int)u->current_order.GetType(), u->cur_implicit_order_index, u->GetNumOrders(), u->dest_tile.base());
+	}
+
+	/*
+	 * Orientation phase: v will stay the front of the merged consist
+	 * (ClearFrontWagon/ClearFrontEngine + NormaliseTrainHead below), so both
+	 * trains must face the same way BEFORE the merge. All reversals here are
+	 * full physical flips (direction + position + tile, via
+	 * ReverseTrainForCouple); no direction adjustments happen after this
+	 * point.
+	 */
+
+	/* Which end of v reaches the joint: v is the moving train and u is
+	 * stationary, so v's own driving state decides it. If v is driving
+	 * backwards its tail meets u (no flip needed); otherwise its head meets
+	 * u, so v must be turned around and approach tail-first. */
+	if (!v->IsDrivingBackwards()) {
+		Debug(desync, 1, "DepotDbg: Reverse !!!vvvvvv");
+		ReverseTrainForCouple(v);
+		v = v->First();
+	}
+
+	/* u must face the (possibly reversed) v within 45 degrees to couple as-is. */
+	DirDiff dir_diff = DirDifference(v->direction, u->direction);
+	if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
+		Debug(desync, 1, "DepotDbg: Reverse !!!u");
 		ReverseTrainForCouple(u);
-		/* Reverse swap first and last vehicle */
 		u = u->First();
 	}
+
 	v->IncrementImplicitOrderIndex();
 	ProcessOrders(v);
-	ReverseTrainForCouple(v);
 	v = v->First();
 
 	Train *v_last = v->Last();
@@ -5480,8 +5576,46 @@ static void Couple(Train *v, Train *u, bool train_u_reversed)
 
 	NormaliseTrainHead(v, CCF_ARRANGE_STATION);
 
+	/* [DEBUG-couple] Physical layout of the merged consist: chain order vs tile order. */
+	for (const Train *t = v; t != nullptr; t = t->Next()) {
+		Debug(desync, 1, "DepotDbg: coupleLayout head={} veh={} tile=({},{}) dir={} bw={} rev={} hidden={} speed={}",
+			v->index, t->index.base(), TileX(t->tile), TileY(t->tile), (int)t->direction,
+			t->vehicle_flags.Test(VehicleFlag::DrivingBackwards), t->flags.Test(VehicleRailFlag::Reversed),
+			t->vehstatus.Test(VehState::Hidden), t->cur_speed);
+	}
+
+	/* [DEBUG-dep] Post-couple state of the merged front. */
+	Debug(desync, 1, "DepotDbg: postCouple mergedFront={} chain={} vOrder={} vIdx={}/{} vDest={} revIdx={} reversing={} reversed={}",
+		v->index, CountVehiclesInChain(v), (int)v->current_order.GetType(), v->cur_implicit_order_index, v->GetNumOrders(), v->dest_tile.base(),
+		v->cur_real_order_index, v->flags.Test(VehicleRailFlag::Reversing), v->flags.Test(VehicleRailFlag::Reversed));
+
+	/* [FIX-couple] Post-couple flag cleanup. Direction is NOT touched here: it
+	 * is maintained by the standard movement pipeline (AdvanceWagonsAfterCouple
+	 * -> TrainController recomputes per-vehicle direction from the track every
+	 * tick), so any manual override (e.g. forcing u->direction to a quantized
+	 * travel axis) desyncs direction from the vehicle's pixels and produces the
+	 * 45-degree visual skew seen before. Only clear stale flags that would make
+	 * the next tick trigger an unrequested auto-reversal. */
+	{
+		for (Train *u = v; u != nullptr; u = u->Next()) {
+			u->flags.Reset(VehicleRailFlag::Reversed);
+		}
+		v->flags.Reset(VehicleRailFlag::Reversing);
+
+		Debug(desync, 1, "DepotDbg: coupleCanon head={} chain={} headTile=({},{}) dir={} bw={} rev={} revU={}",
+			v->index, CountVehiclesInChain(v),
+			TileX(v->tile), TileY(v->tile), (int)v->direction,
+			v->vehicle_flags.Test(VehicleFlag::DrivingBackwards), v->flags.Test(VehicleRailFlag::Reversed),
+			v->Next() != nullptr ? v->Next()->flags.Test(VehicleRailFlag::Reversed) : false);
+	}
+
 	AdvanceWagonsAfterCouple(v_last);
 	InvalidateWindowClassesData(WindowClass::TrainList);
+	/* The physical chain order is now correct (orientation is fixed before
+	 * the merge), so give the consist the usual chance to reverse in the
+	 * station, e.g. when its next order points the other way. CheckReverseTrain
+	 * only sets Reversing; the actual turnaround still happens at the usual
+	 * spot in the movement handler (speed zero + Reversing flag). */
 	if (CheckReverseTrain(v)) v->flags.Set(VehicleRailFlag::Reversing);
 }
 
@@ -5666,35 +5800,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 			}
 			u->flags.Set(VehicleRailFlag::JustDecoupled);
 		}
-		/* [DEBUG-decouple] Dump the real decouple order + flags BEFORE SplitOrders advances the index. */
-		const Order *decouple_order = consist->orders != nullptr ? consist->orders->GetOrderAt(consist->cur_implicit_order_index + 1) : nullptr;
-		Debug(desync, 1, "DecoupleDebug: decoupleOrder idx={} type={} num={} firstOrders={} secondOrders={}",
-			consist->cur_implicit_order_index + 1,
-			decouple_order != nullptr ? (int)decouple_order->GetType() : -1,
-			decouple_order != nullptr ? decouple_order->GetNumDecouple() : -1,
-			decouple_order != nullptr ? (int)decouple_order->GetDecoupleFirstOrdersType() : -1,
-			decouple_order != nullptr ? (int)decouple_order->GetDecoupleSecondOrdersType() : -1);
 		SplitOrders(consist, u, load_trains);
-		Debug(desync, 1, "DecoupleDebug: afterSplit v={} u={} vIdx={}/{} uIdx={}/{} vCur={} uCur={} uStop={} uSpeed={} load={} shared={}",
-			consist->index, u != nullptr ? u->index.base() : -1,
-			consist->cur_implicit_order_index, consist->GetNumOrders(),
-			u != nullptr ? u->cur_implicit_order_index : -1, u != nullptr ? u->GetNumOrders() : 0,
-			(int)consist->current_order.GetType(), u != nullptr ? (int)u->current_order.GetType() : -1,
-			u != nullptr ? u->vehstatus.Test(VehState::Stopped) : false,
-			u != nullptr ? u->IsDrivingBackwards() : false, load_trains,
-			u != nullptr ? (u->orders == consist->orders) : false);
-		/* [DEBUG-decouple] Dump both parts' order lists after the split. */
-		uint8_t order_dump_no = 0;
-		for (Train *part : {consist, u}) {
-			if (part == nullptr || part->orders == nullptr) continue;
-			order_dump_no++;
-			Debug(desync, 1, "DecoupleDebug: orderDump part={} v={} cnt={}", order_dump_no == 1 ? "v" : "u", part->index.base(), part->orders->GetNumOrders());
-			for (uint i = 0; i < part->orders->GetNumOrders(); i++) {
-				const Order *o = part->orders->GetOrderAt(i);
-				Debug(desync, 1, "DecoupleDebug: orderDump part={} v={} idx={} type={} dest={}",
-					order_dump_no == 1 ? "v" : "u", part->index.base(), i, (int)o->GetType(), o->GetDestination().base());
-			}
-		}
 		u->last_station_visited = station;
 		if (u == consist && consist->owner == _local_company) {
 			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED, consist->index), consist->index);
@@ -7467,23 +7573,6 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		consist->flags.Reset(VehicleRailFlag::JustDecoupled);
 	}
 
-	/* [DEBUG-decouple] Report the state of any stopped train periodically (index-phased), to find out
-	 * why a decoupled part stays at 0 km/h while running a normal order. */
-	if (consist->cur_speed == 0 && (_state_ticks.base() & 0x3F) == (consist->index.base() & 0x3F)) {
-		Debug(desync, 1, "DecoupleDebug: idle v={} order={} dest={} idx={}/{} stopped={} reversing={} stuck={} justdec={} back={} fronteng={} frontwag={} power={} loading={} depotstop={} wait={}",
-			consist->index, (int)consist->current_order.GetType(), consist->dest_tile.base(),
-			consist->cur_implicit_order_index, consist->GetNumOrders(),
-			consist->vehstatus.Test(VehState::Stopped),
-			consist->flags.Test(VehicleRailFlag::Reversing),
-			consist->flags.Test(VehicleRailFlag::Stuck),
-			consist->flags.Test(VehicleRailFlag::JustDecoupled),
-			consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards),
-			consist->IsFrontEngine(), consist->IsFrontWagon(),
-			consist->gcache.cached_power,
-			consist->current_order.IsAnyLoadingType(),
-			consist->IsStoppedInDepot(), consist->wait_counter);
-	}
-
 	/* train has crashed? */
 	if (consist->vehstatus.Test(VehState::Crashed)) {
 		return mode ? true : HandleCrashedTrain(consist); // 'this' can be deleted here
@@ -7501,15 +7590,11 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	if (consist->flags.Test(VehicleRailFlag::ConsistBreakdown) && HandlePossibleBreakdowns(consist)) return true;
 
 	if (consist->flags.Test(VehicleRailFlag::Reversing) && consist->cur_speed == 0) {
-		Debug(desync, 1, "DecoupleDebug: v={} branch=Reversing", consist->index);
 		ReverseTrainDirection(consist);
 	}
 
 	/* exit if train is stopped */
-	if (consist->vehstatus.Test(VehState::Stopped) && consist->cur_speed == 0) {
-		Debug(desync, 1, "DecoupleDebug: v={} branch=Stopped", consist->index);
-		return true;
-	}
+	if (consist->vehstatus.Test(VehState::Stopped) && consist->cur_speed == 0) return true;
 
 	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL);
 	if (ProcessOrders(consist) && CheckReverseTrain(consist)) {
@@ -7535,13 +7620,9 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 
 	consist->HandleLoading(mode);
 
-	if (consist->current_order.IsType(OT_LOADING)) {
-		Debug(desync, 1, "DecoupleDebug: v={} branch=Loading dest={} idx={}/{}", consist->index, consist->current_order.GetDestination().base(), consist->cur_implicit_order_index, consist->GetNumOrders());
-		return true;
-	}
+	if (consist->current_order.IsType(OT_LOADING)) return true;
 
 	if (consist->current_order.IsType(OT_WAIT_COUPLE)) {
-		Debug(desync, 1, "DecoupleDebug: v={} branch=WaitCouple idx={}/{}", consist->index, consist->cur_implicit_order_index, consist->GetNumOrders());
 		if (consist->cur_speed > 0) {
 			consist->cur_speed = 0;
 			consist->subspeed = 0;
@@ -7577,14 +7658,6 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	/* Handle stuck trains. */
 	if (!mode && consist->flags.Test(VehicleRailFlag::Stuck)) {
 		++consist->wait_counter;
-
-		/* [DEBUG-decouple] report the stuck state (index-phased to avoid spam). */
-		if ((_state_ticks.base() & 0x3F) == (consist->index.base() & 0x3F)) {
-			Debug(desync, 1, "DecoupleDebug: v={} stuck wait={} turnAround={} order={} dest={} tile=({},{})",
-				consist->index, consist->wait_counter,
-				consist->wait_counter % (_settings_game.pf.wait_for_pbs_path * DAY_TICKS) == 0 && _settings_game.pf.reverse_at_signals,
-				(int)consist->current_order.GetType(), consist->dest_tile.base(), TileX(consist->tile), TileY(consist->tile));
-		}
 
 		/* Should we try reversing this tick if still stuck? */
 		bool turn_around = consist->wait_counter % (_settings_game.pf.wait_for_pbs_path * DAY_TICKS) == 0 && _settings_game.pf.reverse_at_signals;
