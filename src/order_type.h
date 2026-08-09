@@ -265,6 +265,7 @@ enum class OrderConditionVariable : uint8_t {
 	CargoWaitingAmountPercentage = 20, ///< Skip based on the amount of a specific cargo waiting at station, relative to the vehicle capacity
 	VehicleInSlotGroup           = 21, ///< Test if vehicle is in slot group
 	DrivingBackwards             = 22, ///< Skip when the train is driving backwards, upstream value = 8
+	DecouplePart                 = 23, ///< Skip based on which part of a decoupled train this train is
 	End, ///< End marker.
 };
 

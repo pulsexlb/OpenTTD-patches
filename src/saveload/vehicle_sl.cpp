@@ -207,6 +207,7 @@ public:
 		 SLE_CONDVAR(Train, flags,               SLE_FILE_U16 | SLE_VAR_U32, SLV_100, SL_MAX_VERSION),
 		 SLE_CONDVAR(Train, wait_counter,        SLE_UINT16,                 SLV_136, SL_MAX_VERSION),
 		 SLE_CONDVAR(Train, gv_flags,            SLE_UINT16,                 SLV_139, SL_MAX_VERSION),
+		 SLE_CONDVAR(Train, decouple_part,       SLE_UINT8,          SL_MIN_VERSION, SL_MAX_VERSION),
 	};
 	static inline const SaveLoadCompatTable compat_description = _vehicle_train_sl_compat;
 

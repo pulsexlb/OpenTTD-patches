@@ -642,6 +642,7 @@ static const OrderConditionVariable _order_conditional_variable[] = {
 	OrderConditionVariable::DispatchSlot,
 	OrderConditionVariable::Percent,
 	OrderConditionVariable::DrivingBackwards,
+	OrderConditionVariable::DecouplePart,
 	OrderConditionVariable::Unconditionally,
 };
 
@@ -828,7 +829,8 @@ StringID OrderStringForVariable(const Vehicle *v, OrderConditionVariable ocv)
 		STR_ORDER_CONDITIONAL_DISPATCH_SLOT,
 		STR_ORDER_CONDITIONAL_CARGO_WAITING_AMOUNT_PERCENTAGE,
 		STR_ORDER_CONDITIONAL_TRAIN_IN_SLOT_GROUP,
-		STR_ORDER_CONDITIONAL_DRIVING_BACKWARDS
+		STR_ORDER_CONDITIONAL_DRIVING_BACKWARDS,
+		STR_ORDER_CONDITIONAL_DECOUPLE_PART
 	};
 	return ocv_names[to_underlying(ocv)];
 }
@@ -1252,6 +1254,11 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 						value,
 						STR_ORDER_CONDITIONAL_COMPARATOR_HAS + to_underlying(order->GetConditionComparator()) - to_underlying(OrderConditionComparator::IsTrue),
 						CargoSpec::Get(order->GetConditionValue())->name);
+			} else if (ocv == OrderConditionVariable::DecouplePart) {
+				AppendStringInPlace(line, STR_ORDER_CONDITIONAL_DECOUPLE_PART_DISPLAY,
+						order->GetConditionSkipToOrder() + 1,
+						STR_ORDER_CONDITIONAL_COMPARATOR_EQUALS + to_underlying(order->GetConditionComparator()),
+						STR_ORDER_CONDITIONAL_DECOUPLE_PART_NONE + order->GetConditionValue());
 			} else {
 				OrderConditionComparator occ = order->GetConditionComparator();
 				uint value = order->GetConditionValue();
@@ -2207,7 +2214,7 @@ public:
 			case WID_O_COND_VARIABLE: {
 				Dimension d = {0, 0};
 				for (const auto &ocv : _order_conditional_variable) {
-					if (this->vehicle->type != VehicleType::Train && ocv == OrderConditionVariable::FreePlatforms) {
+					if (this->vehicle->type != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DecouplePart)) {
 						continue;
 					}
 					d = maxdim(d, GetStringBoundingBox(OrderStringForVariable(this->vehicle, ocv)));
@@ -2849,6 +2856,9 @@ public:
 				const Order *order = this->vehicle->GetOrder(sel);
 
 				if (order != nullptr && order->IsType(OT_CONDITIONAL)) {
+					if (order->GetConditionVariable() == OrderConditionVariable::DecouplePart) {
+						return GetString(STR_ORDER_CONDITIONAL_DECOUPLE_PART_NONE + order->GetConditionValue());
+					}
 					uint value;
 					switch (order->GetConditionVariable()) {
 						case OrderConditionVariable::CargoLoadPercentage:
@@ -3502,7 +3512,7 @@ public:
 				const OrderConditionVariable current_ocv = this->vehicle->GetOrder(this->OrderGetSel())->GetConditionVariable();
 				DropDownList list;
 				for (const auto &ocv : _order_conditional_variable) {
-					if (this->vehicle->type != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DrivingBackwards)) {
+					if (this->vehicle->type != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DrivingBackwards || ocv == OrderConditionVariable::DecouplePart)) {
 						continue;
 					}
 					if (current_ocv != ocv) {
@@ -3577,6 +3587,10 @@ public:
 						mask = 0x3F;
 						break;
 
+					case OrderConditionVariable::DecouplePart:
+						mask = 0xFC;
+						break;
+
 					case OrderConditionVariable::VehicleInSlot:
 					case OrderConditionVariable::SlotOccupancy:
 						mask = 0x3C;
@@ -3596,6 +3610,15 @@ public:
 
 			case WID_O_COND_VALUE: {
 				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
+				if (order != nullptr && order->IsType(OT_CONDITIONAL) && order->GetConditionVariable() == OrderConditionVariable::DecouplePart) {
+					/* Pick one of the three decouple-part values from a dropdown. */
+					DropDownList list;
+					list.push_back(MakeDropDownListStringItem(STR_ORDER_CONDITIONAL_DECOUPLE_PART_NONE, 0, false));
+					list.push_back(MakeDropDownListStringItem(STR_ORDER_CONDITIONAL_DECOUPLE_PART_FIRST, 1, false));
+					list.push_back(MakeDropDownListStringItem(STR_ORDER_CONDITIONAL_DECOUPLE_PART_SECOND, 2, false));
+					ShowDropDownList(this, std::move(list), order->GetConditionValue(), WID_O_COND_VALUE, 0, DropDownOptions{}, DDSF_SHARED);
+					break;
+				}
 				uint value;
 				CharSetFilter charset_filter = CS_NUMERAL;
 				switch (order->GetConditionVariable()) {
@@ -3979,6 +4002,10 @@ public:
 			}
 
 			case WID_O_COND_CARGO:
+				this->ModifyOrder(this->OrderGetSel(), MOF_COND_VALUE, index);
+				break;
+
+			case WID_O_COND_VALUE:
 				this->ModifyOrder(this->OrderGetSel(), MOF_COND_VALUE, index);
 				break;
 

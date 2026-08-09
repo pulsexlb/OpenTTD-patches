@@ -1375,6 +1375,12 @@ static CommandCost PreInsertOrderCheck(Vehicle *v, const Order &new_order, CmdIn
 					if (occ == OrderConditionComparator::IsTrue || occ == OrderConditionComparator::IsFalse) return CMD_ERROR;
 					break;
 
+				case OrderConditionVariable::DecouplePart:
+					if (v->type != VehicleType::Train) return CMD_ERROR;
+					if (occ != OrderConditionComparator::Equal && occ != OrderConditionComparator::NotEqual) return CMD_ERROR;
+					if (new_order.GetConditionValue() > 2) return CMD_ERROR;
+					break;
+
 				case OrderConditionVariable::DispatchSlot: {
 					if (occ != OrderConditionComparator::IsTrue && occ != OrderConditionComparator::IsFalse) return CMD_ERROR;
 					uint submode = GB(new_order.GetConditionValue(), ODCB_SRC_START, ODCB_SRC_COUNT);
@@ -2209,7 +2215,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 		case MOF_COND_VARIABLE: {
 			OrderConditionVariable cond_variable = static_cast<OrderConditionVariable>(data);
 			if (cond_variable >= OrderConditionVariable::End) return CMD_ERROR;
-			if ((cond_variable == OrderConditionVariable::FreePlatforms || cond_variable == OrderConditionVariable::DrivingBackwards) && v->type != VehicleType::Train) return CMD_ERROR;
+			if ((cond_variable == OrderConditionVariable::FreePlatforms || cond_variable == OrderConditionVariable::DrivingBackwards || cond_variable == OrderConditionVariable::DecouplePart) && v->type != VehicleType::Train) return CMD_ERROR;
 			break;
 		}
 
@@ -2227,6 +2233,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				case OrderConditionVariable::DispatchSlot:
 				case OrderConditionVariable::DrivingBackwards:
 					if (occ != OrderConditionComparator::IsTrue && occ != OrderConditionComparator::IsFalse) return CMD_ERROR;
+					break;
+
+				case OrderConditionVariable::DecouplePart:
+					if (occ != OrderConditionComparator::Equal && occ != OrderConditionComparator::NotEqual) return CMD_ERROR;
 					break;
 
 				case OrderConditionVariable::SlotOccupancy:
@@ -2264,6 +2274,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				case OrderConditionVariable::RequiresService:
 				case OrderConditionVariable::DrivingBackwards:
 					return CMD_ERROR;
+
+				case OrderConditionVariable::DecouplePart:
+					if (data > 2) return CMD_ERROR;
+					break;
 
 				case OrderConditionVariable::LoadPercentage:
 				case OrderConditionVariable::Reliability:
@@ -2656,6 +2670,11 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 					case OrderConditionVariable::RequiresService:
 					case OrderConditionVariable::DrivingBackwards:
 						if (occ != OrderConditionComparator::IsTrue && occ != OrderConditionComparator::IsFalse) order->SetConditionComparator(OrderConditionComparator::IsTrue);
+						order->SetConditionValue(0);
+						break;
+
+					case OrderConditionVariable::DecouplePart:
+						if (occ != OrderConditionComparator::Equal && occ != OrderConditionComparator::NotEqual) order->SetConditionComparator(OrderConditionComparator::Equal);
 						order->SetConditionValue(0);
 						break;
 					case OrderConditionVariable::DispatchSlot:
@@ -3933,6 +3952,13 @@ VehicleOrderID ProcessConditionalOrder(const Order *order, const Vehicle *v, Pro
 		case OrderConditionVariable::RequiresService:     skip_order = OrderConditionCompare(occ, v->NeedsServicing(),               value); break;
 		case OrderConditionVariable::RemainingLifetime:   skip_order = OrderConditionCompare(occ, std::max(DateDeltaToYearDelta(v->max_age - v->age + DAYS_IN_LEAP_YEAR - 1).base(), 0), value); break;
 		case OrderConditionVariable::DrivingBackwards:    skip_order = OrderConditionCompare(occ, v->IsDrivingBackwards(), value); break;
+		case OrderConditionVariable::DecouplePart: {
+			/* Only the front engine carries the decoupled-part marker; any other vehicle type is "not a part". */
+			uint8_t part = 0;
+			if (v->type == VehicleType::Train) part = Train::From(v)->decouple_part;
+			skip_order = OrderConditionCompare(occ, part, value);
+			break;
+		}
 		case OrderConditionVariable::Unconditionally:     skip_order = true; break;
 		case OrderConditionVariable::CargoWaiting: {
 			StationID next_station = order->GetConditionStationID();

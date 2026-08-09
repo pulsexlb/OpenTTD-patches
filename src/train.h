@@ -179,7 +179,13 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	uint16_t tunnel_bridge_signal_num = 0;
 	static constexpr uint8_t TBS_INVALID_DISTANCE = 0xFF;
 	uint8_t tunnel_bridge_tile_ctr = 0;
-	// 1 byte gap
+
+	/**
+	 * Which part of a decoupled train this vehicle belongs to.
+	 * Only meaningful on the front engine of a train.
+	 * 0 = not a decoupled part, 1 = first part (stays at the station), 2 = second part (the decoupled tail).
+	 */
+	uint8_t decouple_part = 0;
 	uint16_t speed_restriction = 0;
 	uint16_t signal_speed_restriction = 0;
 	uint16_t crash_anim_pos = 0; ///< Crash animation counter, also used for realistic braking train brake overheating

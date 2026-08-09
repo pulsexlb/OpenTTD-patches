@@ -5329,6 +5329,11 @@ static Train *DecoupleTrain(Train *v)
 
 	if (!TryTrainDecouple(v, u)) return v;
 
+	/* This train stays at the station and keeps on running the original orders. */
+	v->decouple_part = 1;
+	/* The decoupled tail now runs a separate schedule: mark it as the second part. */
+	u->decouple_part = 2;
+
 	if (u->IsEngine()) {
 		u->SetFrontEngine();
 		u->vehstatus.Reset(VehState::Stopped);
@@ -5504,6 +5509,9 @@ static void Couple(Train *v, Train *u)
 	u->ClearFrontEngine();
 
 	NormaliseTrainHead(v, CCF_ARRANGE_STATION);
+
+	/* The train is now one consist again: it is no longer a decoupled part. */
+	v->First()->decouple_part = 0;
 
 	/* [FIX-couple] Post-couple flag cleanup. Direction is NOT touched here: it
 	 * is maintained by the standard movement pipeline (AdvanceWagonsAfterCouple
