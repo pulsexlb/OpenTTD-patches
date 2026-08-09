@@ -641,11 +641,16 @@ void Win32SetCurrentLocaleName(std::string iso_code)
 	MultiByteToWideChar(CP_UTF8, 0, iso_code.data(), static_cast<int>(iso_code.size()), _cur_iso_locale, static_cast<int>(std::size(_cur_iso_locale)));
 }
 
+static LibraryLoader::Function GetKernel32Function(const std::string &symbol_name)
+{
+	static LibraryLoader _kernel32("Kernel32.dll");
+	return _kernel32.GetFunction(symbol_name);
+}
+
 int OTTDStringCompare(std::string_view s1, std::string_view s2)
 {
 	typedef int (WINAPI *PFNCOMPARESTRINGEX)(LPCWSTR, DWORD, LPCWCH, int, LPCWCH, int, LPVOID, LPVOID, LPARAM);
-	static PFNCOMPARESTRINGEX _CompareStringEx = nullptr;
-	static bool first_time = true;
+	static const PFNCOMPARESTRINGEX _CompareStringEx = GetKernel32Function("CompareStringEx");
 
 #ifndef SORT_DIGITSASNUMBERS
 #	define SORT_DIGITSASNUMBERS 0x00000008  /**< Use digits as numbers sort method. */
@@ -653,12 +658,6 @@ int OTTDStringCompare(std::string_view s1, std::string_view s2)
 #ifndef LINGUISTIC_IGNORECASE
 #	define LINGUISTIC_IGNORECASE 0x00000010 /**< Linguistically appropriate 'ignore case'. */
 #endif
-
-	if (first_time) {
-		static LibraryLoader _kernel32("Kernel32.dll");
-		_CompareStringEx = _kernel32.GetFunction("CompareStringEx");
-		first_time = false;
-	}
 
 	int len_s1 = MultiByteToWideChar(CP_UTF8, 0, s1.data(), (int)s1.size(), nullptr, 0);
 	int len_s2 = MultiByteToWideChar(CP_UTF8, 0, s2.data(), (int)s2.size(), nullptr, 0);
@@ -681,15 +680,7 @@ int OTTDStringCompare(std::string_view s1, std::string_view s2)
 typedef int (WINAPI *PFNFINDNLSSTRINGEX)(LPCWSTR, DWORD, LPCWSTR, int, LPCWSTR, int, LPINT, LPNLSVERSIONINFO, LPVOID, LPARAM);
 static PFNFINDNLSSTRINGEX GetFindNLSStringEx()
 {
-	static PFNFINDNLSSTRINGEX _FindNLSStringEx = nullptr;
-	static bool first_time = true;
-
-	if (first_time) {
-		static LibraryLoader _kernel32("Kernel32.dll");
-		_FindNLSStringEx = _kernel32.GetFunction("FindNLSStringEx");
-		first_time = false;
-	}
-
+	static const PFNFINDNLSSTRINGEX _FindNLSStringEx = GetKernel32Function("FindNLSStringEx");
 	return _FindNLSStringEx;
 }
 
@@ -776,8 +767,7 @@ void PerThreadSetup(bool non_main_thread)
 
 void PerThreadSetupInit()
 {
-	static LibraryLoader _kernel32("Kernel32.dll");
-	_SetThreadStackGuarantee = _kernel32.GetFunction("SetThreadStackGuarantee");
+	_SetThreadStackGuarantee = GetKernel32Function("SetThreadStackGuarantee");
 }
 
 bool IsMainThread()
@@ -818,41 +808,17 @@ void GetCurrentThreadName(format_target &buffer)
 	}
 }
 
-#ifdef _MSC_VER
-/* Based on code from MSDN: https://msdn.microsoft.com/en-us/library/xcb2z8hs.aspx */
-const DWORD MS_VC_EXCEPTION = 0x406D1388;
-
-PACK_N(struct THREADNAME_INFO {
-	DWORD dwType;     ///< Must be 0x1000.
-	LPCSTR szName;    ///< Pointer to name (in user addr space).
-	DWORD dwThreadID; ///< Thread ID (-1=caller thread).
-	DWORD dwFlags;    ///< Reserved for future use, must be zero.
-}, 8);
-
-/**
- * Signal thread name to any attached debuggers.
- */
-void SetCurrentThreadName(const std::string &thread_name)
+void SetCurrentThreadName(const std::string &name)
 {
-	Win32SetThreadName(GetCurrentThreadId(), thread_name);
+	Win32SetThreadName(GetCurrentThreadId(), name);
 
-	THREADNAME_INFO info;
-	info.dwType = 0x1000;
-	info.szName = thread_name.c_str();
-	info.dwThreadID = -1;
-	info.dwFlags = 0;
-
-#pragma warning(push)
-#pragma warning(disable: 6320 6322)
-	__try {
-		RaiseException(MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(ULONG_PTR), (ULONG_PTR*)&info);
-	} __except (EXCEPTION_EXECUTE_HANDLER) {
-	}
-#pragma warning(pop)
+	using SetThreadDescriptionProc = HRESULT(WINAPI *)(HANDLE, PCWSTR);
+	static const SetThreadDescriptionProc std_proc = GetKernel32Function("SetThreadDescription");
+	if (std_proc != nullptr) std_proc(GetCurrentThread(), OTTD2FS(name).c_str());
 }
-#else
-void SetCurrentThreadName(const std::string &threadName)
+
+void ClearCurrentThreadName()
 {
-	Win32SetThreadName(GetCurrentThreadId(), threadName);
+	std::lock_guard<std::mutex> lock(_thread_name_map_mutex);
+	_thread_name_map.erase(GetCurrentThreadId());
 }
-#endif
