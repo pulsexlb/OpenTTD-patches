@@ -1201,19 +1201,6 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 		}
 	}
 
-	/* [DEBUG-depot] Report when a consist is in a depot/wormhole but the CSR flag is unset (index-phased). */
-	if (!this->flags.Test(VehicleRailFlag::ConsistSpeedReduction) && (_state_ticks.base() & 0x3F) == (this->index.base() & 0x3F)) {
-		for (const Train *u = this; u != nullptr; u = u->Next()) {
-			if (u->track == TRACK_BIT_DEPOT || (u->track & TRACK_BIT_WORMHOLE && !u->vehstatus.Test(VehState::Hidden))) {
-				Debug(desync, 1, "DepotDbg: v={} CSR-incorrectly-unset inVeh={} tile=({},{}) order={} idx={}/{} stopped={} stuck={} revDist={}",
-					this->index, u->index.base(), TileX(u->tile), TileY(u->tile), (int)this->current_order.GetType(),
-					this->cur_implicit_order_index, this->GetNumOrders(),
-					this->vehstatus.Test(VehState::Stopped), this->flags.Test(VehicleRailFlag::Stuck), this->reverse_distance);
-				break;
-			}
-		}
-	}
-
 	if (this->flags.Test(VehicleRailFlag::ConsistSpeedReduction)) {
 		const_cast<Train *>(this)->flags.Reset(VehicleRailFlag::ConsistSpeedReduction);		for (const Train *u = this; u != nullptr; u = u->Next()) {
 			if (u->track == TRACK_BIT_DEPOT) {
@@ -2650,10 +2637,6 @@ void Train::UpdateDeltaXY()
 static void MarkTrainAsStuck(Train *consist, bool waiting_restriction = false)
 {
 	if (!consist->flags.Test(VehicleRailFlag::Stuck)) {
-		Debug(desync, 1, "DepotDbg: v={} MarkTrainAsStuck tile=({},{}) inDepot={} order={} dest={} idx={}/{} CSR={}",
-			consist->index, TileX(consist->tile), TileY(consist->tile), IsRailDepotTile(consist->tile),
-			(int)consist->current_order.GetType(), consist->dest_tile.base(), consist->cur_implicit_order_index, consist->GetNumOrders(),
-			consist->flags.Test(VehicleRailFlag::ConsistSpeedReduction));
 		/* It is the first time the problem occurred, set the "train stuck" flag. */
 		consist->flags.Set(VehicleRailFlag::Stuck);
 		consist->flags.Set(VehicleRailFlag::WaitingRestriction, waiting_restriction);
@@ -3114,19 +3097,6 @@ static bool IsWholeTrainInsideDepot(const Train *v)
  */
 static void ReverseTrainDirection(Train *consist)
 {
-	/* [DEBUG-couple] Every actual train turnaround is logged (head + per-vehicle). */
-	Debug(desync, 1, "DepotDbg: revTurn head={} tile=({},{}) dir={} moving={} len={} curSpeed={} bw={} rev={} order={} dest={}",
-		consist->index, TileX(consist->tile), TileY(consist->tile), (int)consist->direction, (int)consist->GetMovingDirection(),
-		CountVehiclesInChain(consist), consist->cur_speed,
-		consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards), consist->flags.Test(VehicleRailFlag::Reversed),
-		(int)consist->current_order.GetType(), consist->dest_tile.base());
-	for (const Train *t = consist; t != nullptr; t = t->Next()) {
-		Debug(desync, 1, "DepotDbg: revTurnVeh veh={} tile=({},{}) dir={} bw={} rev={} hidden={} speed={}",
-			t->index.base(), TileX(t->tile), TileY(t->tile), (int)t->direction,
-			t->vehicle_flags.Test(VehicleFlag::DrivingBackwards), t->flags.Test(VehicleRailFlag::Reversed),
-			t->vehstatus.Test(VehState::Hidden), t->cur_speed);
-	}
-
 	Train *moving_front = consist->GetMovingFront();
 	if (IsRailDepotTile(moving_front->tile)) {
 		if (IsWholeTrainInsideDepot(consist)) return;
@@ -3610,15 +3580,6 @@ static bool CheckTrainStayInDepot(Train *v)
 		if (u->track != TRACK_BIT_DEPOT || u->tile != v->tile) return false;
 	}
 
-	/* [DEBUG-depot] Report the state of a train sitting in a depot (index-phased). */
-	if ((_state_ticks.base() & 0x3F) == (v->index.base() & 0x3F)) {
-		Debug(desync, 1, "DepotDbg: inDepot v={} order={} dest={} tile=({},{}) idx={}/{} wait={} forceProc={} stopped={} power={} revDist={} stuck={} cSR={}",
-			v->index, (int)v->current_order.GetType(), v->dest_tile.base(), TileX(v->tile), TileY(v->tile),
-			v->cur_implicit_order_index, v->GetNumOrders(), v->wait_counter, v->force_proceed != TFP_NONE,
-			v->vehstatus.Test(VehState::Stopped), v->gcache.cached_power, v->reverse_distance,
-			v->flags.Test(VehicleRailFlag::Stuck), v->flags.Test(VehicleRailFlag::ConsistSpeedReduction));
-	}
-
 	/* if the train got no power, then keep it in the depot */
 	if (v->gcache.cached_power == 0) {
 		v->vehstatus.Set(VehState::Stopped);
@@ -3664,10 +3625,6 @@ static bool CheckTrainStayInDepot(Train *v)
 
 	/* We are leaving a depot, but have to go to the exact same one; re-enter. */
 	if (v->current_order.IsType(OT_GOTO_DEPOT) && v->tile == v->dest_tile) {
-		if ((_state_ticks.base() & 0x3F) == (v->index.base() & 0x3F)) {
-			Debug(desync, 1, "DepotDbg: v={} stay reEnterGotoDepot exitBlocked={} reserved={} idx={}/{}",
-				v->index, exit_blocked, HasDepotReservation(v->tile), v->cur_implicit_order_index, v->GetNumOrders());
-		}
 		if (exit_blocked) return true;
 		/* Service when depot has no reservation. */
 		if (!HasDepotReservation(v->tile)) VehicleEnterDepot(v);
@@ -3738,24 +3695,15 @@ static bool CheckTrainStayInDepot(Train *v)
 	}
 
 	if (exit_blocked) {
-		if ((_state_ticks.base() & 0x3F) == (v->index.base() & 0x3F)) {
-			Debug(desync, 1, "DepotDbg: v={} stay exitBlocked order={} dest={} segState={}",
-				v->index, (int)v->current_order.GetType(), v->dest_tile.base(), (int)seg_state);
-		}
 		return true;
 	}
 
 	/* Only leave when we can reserve a path to our destination. */
 	if (seg_state == SigSegState::Path && !TryPathReserve(v) && v->force_proceed == TFP_NONE) {
 		/* No path and no force proceed. */
-		Debug(desync, 1, "DepotDbg: v={} stay noPath dest={} order={} idx={}/{}",
-			v->index, v->dest_tile.base(), (int)v->current_order.GetType(), v->cur_implicit_order_index, v->GetNumOrders());
 		MarkTrainAsStuck(v);
 		return true;
 	}
-
-	Debug(desync, 1, "DepotDbg: v={} LEAVE order={} dest={} idx={}/{}",
-		v->index, (int)v->current_order.GetType(), v->dest_tile.base(), v->cur_implicit_order_index, v->GetNumOrders());
 
 	SetDepotReservation(v->tile, true);
 	if (_settings_client.gui.show_track_reservation) MarkTileDirtyByTile(v->tile, VMDF_NOT_MAP_MODE);
@@ -5123,9 +5071,14 @@ static void AdvanceWagonsAfterCouple(Train *v)
 	int diff_y = abs(v->y_pos - v->Next()->y_pos);
 	int real_diff = std::max(diff_x, diff_y) - difference;
 
-	assert(real_diff >= 0);
-
-	for (int i = 0; i < real_diff; i++) TrainController(v->Next(), nullptr);
+	/* Crash-exemption couples can meet with the wagons already a pixel or two
+	 * overlapped (the approach distance check was skipped by a too-large step).
+	 * real_diff < 0 means the coupled chain is too close, not too far: do not
+	 * push it anywhere, the regular movement loop fixes the spacing as soon as
+	 * the consist starts moving. */
+	if (real_diff > 0) {
+		for (int i = 0; i < real_diff; i++) TrainController(v->Next(), nullptr);
+	}
 }
 
 /**
@@ -5479,38 +5432,16 @@ static void ReverseTrainMultiheaded(Train *v)
  */
 static void ReverseTrainForCouple(Train *v)
 {
-	/* [DEBUG-couple] Pre-swap per-vehicle state of the chain about to be reversed for a couple. */
-	for (const Train *t = v; t != nullptr; t = t->Next()) {
-		Debug(desync, 1, "DepotDbg: coupleRevPre chain={} veh={} tile=({},{}) dir={} bw={} rev={} hidden={} speed={}",
-			v->index, t->index.base(), TileX(t->tile), TileY(t->tile), (int)t->direction,
-			t->vehicle_flags.Test(VehicleFlag::DrivingBackwards), t->flags.Test(VehicleRailFlag::Reversed),
-			t->vehstatus.Test(VehState::Hidden), t->cur_speed);
-	}
 	ReverseTrainArticulated(v);
 	ReverseTrainMultiheaded(v);
 	ReverseTrainSwapVehicles(v);
-	/* [DEBUG-couple] Post-swap per-vehicle layout. */
-	for (const Train *t = v; t != nullptr; t = t->Next()) {
-		Debug(desync, 1, "DepotDbg: coupleRevPost chain={} head={} len={} tile=({},{}) dir={} bw={} rev={} hidden={} speed={}",
-			v->index, t->index.base(), CountVehiclesInChain(v), TileX(t->tile), TileY(t->tile), (int)t->direction,
-			t->vehicle_flags.Test(VehicleFlag::DrivingBackwards), t->flags.Test(VehicleRailFlag::Reversed),
-			t->vehstatus.Test(VehState::Hidden), t->cur_speed);
-	}
 }
 
 /**
  * Couple the train \a u onto the train \a v.
  */
-static void Couple(Train *v, Train *u, bool train_u_reversed)
+static void Couple(Train *v, Train *u)
 {
-	/* [DEBUG] Probe: state of both parts at the couple. */
-	if ((_state_ticks.base() & 0x3F) == (v->index.base() & 0x3F) || train_u_reversed) {
-		Debug(desync, 1, "DepotDbg: Couple entry v={} chain={} u={} chain={} rev={} vOrder={} vIdx={}/{} vDest={} uOrder={} uIdx={}/{} uDest={}",
-			v->index, CountVehiclesInChain(v), u->index, CountVehiclesInChain(u), train_u_reversed,
-			(int)v->current_order.GetType(), v->cur_implicit_order_index, v->GetNumOrders(), v->dest_tile.base(),
-			(int)u->current_order.GetType(), u->cur_implicit_order_index, u->GetNumOrders(), u->dest_tile.base());
-	}
-
 	/*
 	 * Orientation phase: v will stay the front of the merged consist
 	 * (ClearFrontWagon/ClearFrontEngine + NormaliseTrainHead below), so both
@@ -5525,7 +5456,6 @@ static void Couple(Train *v, Train *u, bool train_u_reversed)
 	 * backwards its tail meets u (no flip needed); otherwise its head meets
 	 * u, so v must be turned around and approach tail-first. */
 	if (!v->IsDrivingBackwards()) {
-		Debug(desync, 1, "DepotDbg: Reverse !!!vvvvvv");
 		ReverseTrainForCouple(v);
 		v = v->First();
 	}
@@ -5533,7 +5463,6 @@ static void Couple(Train *v, Train *u, bool train_u_reversed)
 	/* u must face the (possibly reversed) v within 45 degrees to couple as-is. */
 	DirDiff dir_diff = DirDifference(v->direction, u->direction);
 	if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
-		Debug(desync, 1, "DepotDbg: Reverse !!!u");
 		ReverseTrainForCouple(u);
 		u = u->First();
 	}
@@ -5576,19 +5505,6 @@ static void Couple(Train *v, Train *u, bool train_u_reversed)
 
 	NormaliseTrainHead(v, CCF_ARRANGE_STATION);
 
-	/* [DEBUG-couple] Physical layout of the merged consist: chain order vs tile order. */
-	for (const Train *t = v; t != nullptr; t = t->Next()) {
-		Debug(desync, 1, "DepotDbg: coupleLayout head={} veh={} tile=({},{}) dir={} bw={} rev={} hidden={} speed={}",
-			v->index, t->index.base(), TileX(t->tile), TileY(t->tile), (int)t->direction,
-			t->vehicle_flags.Test(VehicleFlag::DrivingBackwards), t->flags.Test(VehicleRailFlag::Reversed),
-			t->vehstatus.Test(VehState::Hidden), t->cur_speed);
-	}
-
-	/* [DEBUG-dep] Post-couple state of the merged front. */
-	Debug(desync, 1, "DepotDbg: postCouple mergedFront={} chain={} vOrder={} vIdx={}/{} vDest={} revIdx={} reversing={} reversed={}",
-		v->index, CountVehiclesInChain(v), (int)v->current_order.GetType(), v->cur_implicit_order_index, v->GetNumOrders(), v->dest_tile.base(),
-		v->cur_real_order_index, v->flags.Test(VehicleRailFlag::Reversing), v->flags.Test(VehicleRailFlag::Reversed));
-
 	/* [FIX-couple] Post-couple flag cleanup. Direction is NOT touched here: it
 	 * is maintained by the standard movement pipeline (AdvanceWagonsAfterCouple
 	 * -> TrainController recomputes per-vehicle direction from the track every
@@ -5596,18 +5512,10 @@ static void Couple(Train *v, Train *u, bool train_u_reversed)
 	 * travel axis) desyncs direction from the vehicle's pixels and produces the
 	 * 45-degree visual skew seen before. Only clear stale flags that would make
 	 * the next tick trigger an unrequested auto-reversal. */
-	{
-		for (Train *u = v; u != nullptr; u = u->Next()) {
-			u->flags.Reset(VehicleRailFlag::Reversed);
-		}
-		v->flags.Reset(VehicleRailFlag::Reversing);
-
-		Debug(desync, 1, "DepotDbg: coupleCanon head={} chain={} headTile=({},{}) dir={} bw={} rev={} revU={}",
-			v->index, CountVehiclesInChain(v),
-			TileX(v->tile), TileY(v->tile), (int)v->direction,
-			v->vehicle_flags.Test(VehicleFlag::DrivingBackwards), v->flags.Test(VehicleRailFlag::Reversed),
-			v->Next() != nullptr ? v->Next()->flags.Test(VehicleRailFlag::Reversed) : false);
+	for (Train *u = v; u != nullptr; u = u->Next()) {
+		u->flags.Reset(VehicleRailFlag::Reversed);
 	}
+	v->flags.Reset(VehicleRailFlag::Reversing);
 
 	AdvanceWagonsAfterCouple(v_last);
 	InvalidateWindowClassesData(WindowClass::TrainList);
@@ -5649,8 +5557,9 @@ static Train *GetCouplePosition(Train *v, bool &reverse)
 
 	uint8_t v_length = v->gcache.cached_veh_length;
 	uint8_t u_length = reverse ? u->Last()->gcache.cached_veh_length : u->gcache.cached_veh_length;
+	int expected = (v_length + 1) / 2 + (u_length + 1) / 2;
 
-	if (diff == ((v_length + 1) / 2 + (u_length + 1) / 2)) {
+	if (diff == expected) {
 		return u;
 	}
 
@@ -5666,7 +5575,7 @@ static bool TrainCoupleHandler(Train *v)
 	bool reverse;
 	Train *u = GetCouplePosition(v, reverse);
 	if (u == nullptr) return false;
-	Couple(v, u, reverse);
+	Couple(v, u);
 	return true;
 }
 
@@ -6045,6 +5954,18 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 
 	/* Happens when there is a train under bridge next to bridge head */
 	if (abs(v->z_pos - moving_front->z_pos) > 5) return 0;
+
+	/* A train homing onto its coupling partner touches it: treat the contact
+	 * as a couple instead of a crash. The moving train (OT_GOTO_COUPLE) is the
+	 * survivor, the waiting train (OT_WAIT_COUPLE) is being merged in. Stop
+	 * the moving train afterwards, the same way the caller stops it after a
+	 * regular successful couple. */
+	if (moving_front->current_order.IsType(OT_GOTO_COUPLE) && v->First()->current_order.IsType(OT_WAIT_COUPLE)) {
+		Couple(moving_front, v->First());
+		moving_front->cur_speed = 0;
+		moving_front->progress = 0;
+		return 0;
+	}
 
 	/* Crash both trains. Two statements required to guarantee execution
 	 * order because RandomRange() is involved. */

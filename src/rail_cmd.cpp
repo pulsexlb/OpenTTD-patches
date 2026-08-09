@@ -4826,11 +4826,6 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 
 	/* Make sure a train is not entering the tile from behind. */
 	if (_fractcoords_behind[dir] == fract_coord) {
-		Debug(desync, 1, "DepotDbg: gateReject v={} front={} tile=({},{}) frac=({},{}) ddir={} moving={} bw={} rev={} speed={} order={}",
-			v->index, (int)(v->index.base() == v->First()->index.base()), TileX(tile), TileY(tile), fract_coord.x, fract_coord.y,
-			static_cast<int>(dir), (int)v->GetMovingDirection(),
-			v->vehicle_flags.Test(VehicleFlag::DrivingBackwards), v->flags.Test(VehicleRailFlag::Reversed),
-			v->cur_speed, (int)v->First()->current_order.GetType());
 		return VehicleEnterTileState::CannotEnter;
 	}
 
@@ -4853,23 +4848,6 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 		}
 	} else if (_fractcoords_enter[dir] == fract_coord) {
 		/* Entering depot. */
-		Debug(desync, 1, "DepotDbg: gateEnter v={} front={} frac=({},{}) ddir={} moving={} bw={} rev={} speed={} order={}",
-			v->index, (int)(v->index.base() == v->First()->index.base()), fract_coord.x, fract_coord.y,
-			static_cast<int>(dir), (int)v->GetMovingDirection(),
-			v->vehicle_flags.Test(VehicleFlag::DrivingBackwards), v->flags.Test(VehicleRailFlag::Reversed),
-			v->cur_speed, (int)v->First()->current_order.GetType());
-		if (v->index.base() != v->First()->index.base()) {
-			/* Backup entry: a non-front vehicle enters the depot first. */
-			Train *front = v->First();
-			Debug(desync, 1, "DepotDbg: railEntry backVeh={} chainFront={} moveFront={} dir={} moving={} tile=({},{}) frontTile=({},{}) speed={} order={} dest={} idx={}/{} bw={} frontBw={} rev={} frontRev={} frontDir={} frontSpeed={} csrSet={}",
-				v->index, front->index.base(), v->GetMovingFront() != nullptr ? v->GetMovingFront()->index.base() : -1,
-				(int)v->direction, (int)v->GetMovingDirection(), TileX(v->tile), TileY(v->tile), TileX(front->tile), TileY(front->tile),
-				v->cur_speed, (int)front->current_order.GetType(), front->dest_tile.base(), front->cur_implicit_order_index, front->GetNumOrders(),
-				v->vehicle_flags.Test(VehicleFlag::DrivingBackwards), front->vehicle_flags.Test(VehicleFlag::DrivingBackwards),
-				v->flags.Test(VehicleRailFlag::Reversed), front->flags.Test(VehicleRailFlag::Reversed),
-				(int)front->direction, front->cur_speed,
-				front->flags.Test(VehicleRailFlag::ConsistSpeedReduction));
-		}
 		if (v->GetMovingPrev() == nullptr) {
 			Train *consist = v->First();
 			if (consist->current_order.IsType(OT_LOADING_ADVANCE)) {
