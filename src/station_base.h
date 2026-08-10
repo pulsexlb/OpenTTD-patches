@@ -749,7 +749,7 @@ struct Airport : public TileArea {
 
 	PersistentStorage *psa = nullptr; ///< Persistent storage for NewGRF airports.
 
-	CatchmentArea AirportCatchmentRadius() const;
+	uint AirportCatchmentRadius() const;
 
 	/**
 	 * Get the AirportSpec that from the airport type of this airport. If there

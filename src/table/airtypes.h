@@ -13,7 +13,7 @@
 #ifndef AIRTYPES_H
 #define AIRTYPES_H
 
-#include "air.h"
+#include "../air.h"
 
 #include "sprites.h"
 #include "table/strings.h"

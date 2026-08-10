@@ -46,12 +46,12 @@ enum TTDPAirportType : uint8_t {
 struct AirportTileTable {
 	AirportTileType type;                       // Use this tile will have (apron, tracks,...).
 	ApronType apron_type{APRON_INVALID};        // Subtype of apron.
-	DiagDirection dir{INVALID_DIAGDIR};         // Direction of runway or exit direction of hangars.
+	DiagDirection dir{DiagDirection::Invalid};         // Direction of runway or exit direction of hangars.
 	TrackBits trackbits{TRACK_BIT_NONE};        // Tracks for this tile.
-	Direction runway_directions{INVALID_DIR};   // Directions of the runways present on this tile.
+	Direction runway_directions{Direction::Invalid};   // Directions of the runways present on this tile.
 												// Maps a direction into the diagonal directions of the runways.
 	AirportTiles at_gfx{ATTG_DEFAULT_GFX};      // Sprite for this tile as provided by an airtype.
-	AirportTiles gfx[DIAGDIR_END] {             // Sprites for this tile.
+	AirportTiles gfx[static_cast<size_t>(DiagDirection::End)] {             // Sprites for this tile.
 		INVALID_AIRPORTTILE,
 		INVALID_AIRPORTTILE,
 		INVALID_AIRPORTTILE,
@@ -59,7 +59,7 @@ struct AirportTileTable {
 	};
 
 	void SetGfx(AirportTiles gfx) {
-		this->gfx[DIAGDIR_BEGIN] = gfx;
+		this->gfx[static_cast<size_t>(DiagDirection::Begin)] = gfx;
 	}
 
 	/* Description for simple track tiles. */
@@ -108,7 +108,7 @@ struct AirportTileTable {
 	}
 
 	/* Description for infrastructure. */
-	AirportTileTable(AirportTileType att, AirportTiles at_gfx, DiagDirection rotation = DIAGDIR_NE,
+	AirportTileTable(AirportTileType att, AirportTiles at_gfx, DiagDirection rotation = DiagDirection::NE,
 			AirportTiles gfx = INVALID_AIRPORTTILE) :
 		type(att),
 		dir(rotation),

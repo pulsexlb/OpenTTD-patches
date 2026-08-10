@@ -2,25 +2,29 @@
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
  * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <http://www.gnu.org/licenses/>.
  */
 
 /** @file newgrf_airport.cpp NewGRF handling of airports. */
 
 #include "stdafx.h"
 #include "debug.h"
-#include "date_func.h"
-#include "newgrf_badge.h"
+#include "timer/timer_game_calendar.h"
 #include "newgrf_spritegroup.h"
 #include "newgrf_text.h"
 #include "station_base.h"
-#include "town.h"
-
-#include "table/strings.h"
-
 #include "newgrf_class_func.h"
+#include "town.h"
+#include "air.h"
+#include "table/airport_defaults.h"
 
 #include "safeguards.h"
+
+uint8_t AirportSpec::GetAirportNoise(AirType airtype) const
+{
+	const AirTypeInfo *ati = GetAirTypeInfo(airtype);
+	return this->num_aprons + this->num_helipads + this->num_heliports + this->num_runways * ati->runway_noise_level + ati->base_noise_level;
+}
 
 /**
  * Reset airport classes to their default state.
@@ -34,6 +38,7 @@ template <>
 	AirportClass::Get(AirportClass::Allocate('LARG'))->name = STR_AIRPORT_CLASS_LARGE;
 	AirportClass::Get(AirportClass::Allocate('HUB_'))->name = STR_AIRPORT_CLASS_HUB;
 	AirportClass::Get(AirportClass::Allocate('HELI'))->name = STR_AIRPORT_CLASS_HELIPORTS;
+	AirportClass::Get(AirportClass::Allocate('CUST'))->name = STR_AIRPORT_CLASS_CUSTOMIZED;
 }
 
 template <>
@@ -43,7 +48,7 @@ bool AirportClass::IsUIAvailable(uint) const
 }
 
 /* Instantiate AirportClass. */
-template class NewGRFClass<AirportSpec, AirportClassID>;
+template class NewGRFClass<AirportSpec, AirportClassID, APC_MAX>;
 
 
 AirportOverrideManager _airport_mngr(NEW_AIRPORT_OFFSET, NUM_AIRPORTS, AT_INVALID);
@@ -66,7 +71,7 @@ AirportSpec AirportSpec::specs[NUM_AIRPORTS]; ///< Airport specifications.
 		if (subst_id == AT_INVALID) return as;
 		as = &AirportSpec::specs[subst_id];
 	}
-	if (as->grf_prop.override_id != AT_INVALID) return &AirportSpec::specs[as->grf_prop.override_id];
+	if (as->grf_prop.override != AT_INVALID) return &AirportSpec::specs[as->grf_prop.override];
 	return as;
 }
 
@@ -84,29 +89,52 @@ AirportSpec AirportSpec::specs[NUM_AIRPORTS]; ///< Airport specifications.
 
 /**
  * Check whether this airport is available to build.
- * @return \c true iff the airport is available.
+ * @param airtype the airtype to check for, or INVALID_AIRTYPE
+ *                to check against default airtype for this airport spec
+ * @return whether this airport spec is available.
  */
-bool AirportSpec::IsAvailable() const
+bool AirportSpec::IsAvailable(AirType air_type) const
 {
 	if (!this->enabled) return false;
-	if (CalTime::CurYear() < this->min_year) return false;
+	if (CalTime::year < this->min_year) return false;
+
+	if (air_type != INVALID_AIRTYPE) {
+		const AirTypeInfo *ati = GetAirTypeInfo(air_type);
+		assert(ati != nullptr);
+		if (ati->max_num_runways < this->num_runways) return false;
+		if (this->num_runways > 0 && ati->min_runway_length > this->min_runway_length) return false;
+
+		if (!GetAirTypeInfo(air_type)->heliport_availability) {
+			/* Check at least one layout doesn't have any heliport. */
+			bool all_have_heliport = true;
+			for (uint layout_num = 0; all_have_heliport && layout_num < this->layouts.size(); layout_num++) {
+				bool has_heliport = false;
+				uint num_tiles = this->layouts[layout_num].size_x * this->layouts[layout_num].size_y;
+				for (uint tile_num = 0; (tile_num < num_tiles) && !has_heliport; tile_num++) {
+					if (this->layouts[layout_num].tiles[tile_num].type == ATT_APRON_HELIPORT) has_heliport = true;
+				}
+				if (!has_heliport) all_have_heliport = false;
+			}
+			if (all_have_heliport) return false;
+		}
+	}
+
 	if (_settings_game.station.never_expire_airports) return true;
-	return CalTime::CurYear() <= this->max_year;
+	return CalTime::year <= this->max_year;
 }
 
 /**
  * Check if the airport would be within the map bounds at the given tile.
- * @param table Selected layout table. This affects airport rotation, and therefore dimensions.
+ * @param rotation Selected rotation. This affects airport rotation, and therefore dimensions.
  * @param tile Top corner of the airport.
  * @return true iff the airport would be within the map bounds at the given tile.
  */
-bool AirportSpec::IsWithinMapBounds(uint8_t table, TileIndex tile) const
+bool AirportSpec::IsWithinMapBounds(uint8_t rotation, TileIndex tile, uint8_t layout) const
 {
-	if (table >= this->layouts.size()) return false;
+	uint8_t w = this->layouts[layout].size_x;
+	uint8_t h = this->layouts[layout].size_y;
 
-	uint8_t w = this->size_x;
-	uint8_t h = this->size_y;
-	if (this->layouts[table].rotation == Direction::E || this->layouts[table].rotation == Direction::W) std::swap(w, h);
+	if (rotation % 2 != 0) Swap(w, h);
 
 	return TileX(tile) + w < Map::SizeX() &&
 		TileY(tile) + h < Map::SizeY();
@@ -137,40 +165,38 @@ void BindAirportSpecs()
 }
 
 
-void AirportOverrideManager::SetEntitySpec(AirportSpec &&as)
+void AirportOverrideManager::SetEntitySpec(AirportSpec *as)
 {
-	uint8_t airport_id = this->AddEntityID(as.grf_prop.local_id, as.grf_prop.grfid, as.grf_prop.subst_id);
+	uint8_t airport_id = this->AddEntityID(as->grf_prop.local_id, as->grf_prop.grffile->grfid, as->grf_prop.subst_id);
 
 	if (airport_id == this->invalid_id) {
 		GrfMsg(1, "Airport.SetEntitySpec: Too many airports allocated. Ignoring.");
 		return;
 	}
 
-	AirportSpec::specs[airport_id] = std::move(as);
+	*AirportSpec::GetWithoutOverride(airport_id) = *as;
 
 	/* Now add the overrides. */
 	for (int i = 0; i < this->max_offset; i++) {
 		AirportSpec *overridden_as = AirportSpec::GetWithoutOverride(i);
 
-		if (this->entity_overrides[i] != AirportSpec::specs[airport_id].grf_prop.local_id || this->grfid_overrides[i] != AirportSpec::specs[airport_id].grf_prop.grfid) continue;
+		if (this->entity_overrides[i] != as->grf_prop.local_id || this->grfid_overrides[i] != as->grf_prop.grffile->grfid) continue;
 
-		overridden_as->grf_prop.override_id = airport_id;
+		overridden_as->grf_prop.override = airport_id;
 		overridden_as->enabled = false;
 		this->entity_overrides[i] = this->invalid_id;
 		this->grfid_overrides[i] = 0;
 	}
 }
 
-/* virtual */ uint32_t AirportScopeResolver::GetVariable(uint16_t variable, uint32_t parameter, GetVariableExtra &extra) const
+/* virtual */ uint32_t AirportScopeResolver::GetVariable(uint8_t variable, [[maybe_unused]] uint32_t parameter, bool &available) const
 {
 	switch (variable) {
 		case 0x40: return this->layout;
-
-		case 0x7A: return GetBadgeVariableResult(*this->ro.grffile, this->spec->badges, parameter);
 	}
 
 	if (this->st == nullptr) {
-		extra.available = false;
+		available = false;
 		return UINT_MAX;
 	}
 
@@ -178,16 +204,16 @@ void AirportOverrideManager::SetEntitySpec(AirportSpec &&as)
 		/* Get a variable from the persistent storage */
 		case 0x7C: return (this->st->airport.psa != nullptr) ? this->st->airport.psa->GetValue(parameter) : 0;
 
-		case 0xF0: return this->st->facilities.base();
-		case 0xFA: return ClampTo<uint16_t>((this->st->build_date - CalTime::DAYS_TILL_ORIGINAL_BASE_YEAR).base());
+		case 0xF0: return this->st->facilities;
+		case 0xFA: return ClampTo<uint16_t>(this->st->build_date - CalTime::DAYS_TILL_ORIGINAL_BASE_YEAR);
 	}
 
-	return this->st->GetNewGRFVariable(this->ro, variable, parameter, extra.available);
+	return this->st->GetNewGRFVariable(this->ro, variable, parameter, available);
 }
 
 GrfSpecFeature AirportResolverObject::GetFeature() const
 {
-	return GrfSpecFeature::Airports;
+	return GSF_AIRPORTS;
 }
 
 uint32_t AirportResolverObject::GetDebugID() const
@@ -216,7 +242,7 @@ uint32_t AirportResolverObject::GetDebugID() const
 		/* Create storage on first modification. */
 		uint32_t grfid = (this->ro.grffile != nullptr) ? this->ro.grffile->grfid : 0;
 		assert(PersistentStorage::CanAllocateItem());
-		this->st->airport.psa = PersistentStorage::Create(grfid, GrfSpecFeature::Airports, this->st->airport.tile);
+		this->st->airport.psa = new PersistentStorage(grfid, GSF_AIRPORTS, this->st->airport.tile);
 	}
 	this->st->airport.psa->StoreValue(pos, value);
 }
@@ -255,16 +281,16 @@ AirportResolverObject::AirportResolverObject(TileIndex tile, Station *st, const 
 		CallbackID callback, uint32_t param1, uint32_t param2)
 	: ResolverObject(spec->grf_prop.grffile, callback, param1, param2), airport_scope(*this, tile, st, spec, layout)
 {
-	this->root_spritegroup = spec->grf_prop.GetSpriteGroup(st != nullptr);
+	this->root_spritegroup = spec->grf_prop.spritegroup[0];
 }
 
 SpriteID GetCustomAirportSprite(const AirportSpec *as, uint8_t layout)
 {
 	AirportResolverObject object(INVALID_TILE, nullptr, as, layout);
-	const ResultSpriteGroup *group = object.Resolve<ResultSpriteGroup>();
-	if (group == nullptr || group->num_sprites == 0) return as->preview_sprite;
+	const SpriteGroup *group = object.Resolve();
+	if (group == nullptr) return as->preview_sprite;
 
-	return group->sprite;
+	return group->GetResult();
 }
 
 uint16_t GetAirportCallback(CallbackID callback, uint32_t param1, uint32_t param2, Station *st, TileIndex tile)
@@ -285,13 +311,13 @@ StringID GetAirportTextCallback(const AirportSpec *as, uint8_t layout, uint16_t 
 	AirportResolverObject object(INVALID_TILE, nullptr, as, layout, (CallbackID)callback);
 	uint16_t cb_res = object.ResolveCallback();
 	if (cb_res == CALLBACK_FAILED || cb_res == 0x400) return STR_UNDEFINED;
-	if (cb_res == 0x40F) {
-		return GetGRFStringID(as->grf_prop.grffile, static_cast<GRFStringID>(GetRegister(0x100)));
-	}
+
+	// Old GRF files that provided airport layouts, provided now unneeded rotated layouts.
+	if (callback == CBID_AIRPORT_LAYOUT_NAME && as->grf_prop.grffile->grf_version <= 8) return STR_UNDEFINED;
 	if (cb_res > 0x400) {
-		ErrorUnknownCallbackResult(as->grf_prop.grfid, callback, cb_res);
+		ErrorUnknownCallbackResult(as->grf_prop.grffile->grfid, callback, cb_res);
 		return STR_UNDEFINED;
 	}
 
-	return GetGRFStringID(as->grf_prop.grffile, GRFSTR_MISC_GRF_TEXT + cb_res);
+	return GetGRFStringID(as->grf_prop.grffile->grfid, 0xD000 + cb_res);
 }

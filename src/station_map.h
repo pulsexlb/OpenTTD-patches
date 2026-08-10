@@ -186,6 +186,41 @@ static inline bool IsHangar(Tile t)
 }
 
 /**
+ * Is a given tile an apron (apron, heliport, helipad, built-in heliport)?
+ * @param t Tile to check.
+ * @return Whether the tile is an apron.
+ * @pre IsAirportTile
+ */
+static inline bool IsApron(Tile t)
+{
+	assert(IsValidTile(t));
+	assert(IsTileType(t, TileType::Station));
+	assert(IsAirport(t));
+
+	return GB(t.m5(), 8 - ATT_APRON_LAYOUT_NUM_BITS, ATT_APRON_LAYOUT_NUM_BITS) == ATT_APRON_LAYOUT_BITS;
+}
+
+/**
+ * Get the type of apron.
+ * @param t Tile to get the type of.
+ * @return The type of apron.
+ * @pre IsApron
+ */
+static inline ApronType GetApronType(Tile t)
+{
+	assert(IsValidTile(t));
+	assert(IsTileType(t, TileType::Station));
+	assert(IsAirport(t));
+	assert(IsApron(t));
+
+	ApronType type = (ApronType)GB(t.m5(), 4, 2);
+
+	assert(type < APRON_END);
+
+	return type;
+}
+
+/**
  * Is the station at \a t a truck stop?
  * @param t Tile to check
  * @pre IsTileType(t, TileType::Station)

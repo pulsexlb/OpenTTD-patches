@@ -55,7 +55,9 @@ add_files(
     aircraft.h
     aircraft_cmd.cpp
     aircraft_gui.cpp
+    air.cpp
     airport.cpp
+    airport_cmd.cpp
     airport.h
     airport_gui.cpp
     animated_tile.cpp
@@ -298,6 +300,7 @@ add_files(
     newgrf.h
     newgrf_act5.h
     newgrf_airport.cpp
+    newgrf_airtype.cpp
     newgrf_airport.h
     newgrf_airporttiles.cpp
     newgrf_airporttiles.h

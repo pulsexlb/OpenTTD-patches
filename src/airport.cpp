@@ -400,7 +400,7 @@ uint RotatedAirportSpecPosition(const TileIndex tile, const TileArea tile_area, 
  */
 TrackBits RotateTrackBits(TrackBits track_bits, DiagDirection dir)
 {
-	static const TrackBits rotation_table[DIAGDIR_END][TRACK_END] = {
+	static const TrackBits rotation_table[DiagDirection::End][TRACK_END] = {
 		{ TRACK_BIT_X, TRACK_BIT_Y, TRACK_BIT_UPPER, TRACK_BIT_LOWER, TRACK_BIT_LEFT,  TRACK_BIT_RIGHT },
 		{ TRACK_BIT_Y, TRACK_BIT_X, TRACK_BIT_RIGHT, TRACK_BIT_LEFT,  TRACK_BIT_UPPER, TRACK_BIT_LOWER },
 		{ TRACK_BIT_X, TRACK_BIT_Y, TRACK_BIT_LOWER, TRACK_BIT_UPPER, TRACK_BIT_RIGHT, TRACK_BIT_LEFT  },
@@ -442,7 +442,7 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 		switch (GetAirportTileType(t)) {
 			case ATT_INFRASTRUCTURE_WITH_CATCH:
 			case ATT_INFRASTRUCTURE_NO_CATCH:
-				SetAirportTileRotation(t, (DiagDirection)((rotation + airport_tile_desc->dir) % DIAGDIR_END));
+				SetAirportTileRotation(t, (DiagDirection)((rotation + airport_tile_desc->dir) % DiagDirection::End));
 				if (!airtype_gfx) SetAirportGfxForAirtype(t, airport_tile_desc->at_gfx);
 				break;
 
@@ -457,7 +457,7 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 			case ATT_APRON_HELIPAD:
 			case ATT_APRON_HELIPORT:
 			case ATT_APRON_BUILTIN_HELIPORT:
-				SetAirportTileRotation(t, (DiagDirection)((rotation + airport_tile_desc->dir) % DIAGDIR_END));
+				SetAirportTileRotation(t, (DiagDirection)((rotation + airport_tile_desc->dir) % DiagDirection::End));
 				break;
 
 			case ATT_RUNWAY_MIDDLE:
@@ -616,7 +616,7 @@ TrackBits GetAllowedTracks(TileIndex tile)
 				~(TRACK_BIT_UPPER | TRACK_BIT_LEFT),
 			};
 
-			for (Direction dir = DIR_BEGIN; dir < DIR_END; dir++) {
+			for (Direction dir = Direction::Begin; dir < Direction::End; dir++) {
 				TileIndex t = TileAddByDir(tile, dir);
 				if (!IsValidTile(t) || !IsAirportTile(t) ||
 					GetStationIndex(t) != GetStationIndex(tile) || !MayHaveAirTracks(t)) {

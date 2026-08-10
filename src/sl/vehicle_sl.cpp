@@ -181,7 +181,7 @@ void UpdateOldAircraft()
 {
 	/* set airport_flags to 0 for all airports just to be sure */
 	for (Station *st : Station::Iterate()) {
-		st->airport.blocks = {}; // reset airport
+		st->airport.flags = 0; // reset airport
 	}
 
 	for (Aircraft *a : Aircraft::Iterate()) {
@@ -190,7 +190,7 @@ void UpdateOldAircraft()
 		if (a->IsNormalAircraft()) {
 			/* airplane in terminal stopped doesn't hurt anyone, so goto next */
 			if (a->vehstatus.Test(VehState::Stopped) && a->state == 0) {
-				a->state = HANGAR;
+				a->state = 1;
 				continue;
 			}
 
@@ -202,7 +202,7 @@ void UpdateOldAircraft()
 				/* reset current order so aircraft doesn't have invalid "station-only" order */
 				a->current_order.MakeDummy();
 			}
-			a->state = FLYING;
+			a->state = 14;
 			AircraftNextAirportPos_and_Order(a); // move it to the entry point of the airport
 			GetNewVehiclePosResult gp = GetNewVehiclePos(a);
 			a->tile = TileIndex{0}; // aircraft in air is tile=0

@@ -2935,8 +2935,8 @@ bool AfterLoadGame()
 	if (IsSavegameVersionBefore(SLV_140)) {
 		for (Station *st : Station::Iterate()) {
 			if (st->airport.tile != INVALID_TILE) {
-				st->airport.w = st->airport.GetSpec()->size_x;
-				st->airport.h = st->airport.GetSpec()->size_y;
+				st->airport.w = st->airport.GetSpec()->layouts[0].size_x;
+				st->airport.h = st->airport.GetSpec()->layouts[0].size_y;
 			}
 		}
 	}
@@ -2991,8 +2991,8 @@ bool AfterLoadGame()
 		for (Aircraft *v : Aircraft::Iterate()) {
 			if (!v->IsNormalAircraft()) continue;
 			Station *st = GetTargetAirportIfValid(v);
-			if (st == nullptr && v->state != FLYING) {
-				v->state = FLYING;
+			if (st == nullptr && v->state != 14) {
+				v->state = 14;
 				UpdateAircraftCache(v);
 				AircraftNextAirportPos_and_Order(v);
 				/* get aircraft back on running altitude */

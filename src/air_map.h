@@ -29,7 +29,7 @@ extern bool _show_airport_tracks;
 static inline void SetAirType(Tile t, AirType type)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(type < AIRTYPE_END);
 	SB(t.m3(), 0, 4, type);
@@ -44,7 +44,7 @@ static inline void SetAirType(Tile t, AirType type)
 static inline AirType GetAirType(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	AirType type = (AirType)GB(t.m3(), 0, 4);
 	assert(type < AIRTYPE_END);
@@ -60,7 +60,7 @@ static inline AirType GetAirType(Tile t)
 static inline void SetAirportTileType(Tile t, AirportTileType type)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(type < ATT_END);
 	SB(t.m5(), 4, ATT_NUM_BITS, type);
@@ -75,7 +75,7 @@ static inline void SetAirportTileType(Tile t, AirportTileType type)
 static inline AirportTileType GetAirportTileType(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	AirportTileType type = (AirportTileType)(GB(t.m5(), 4, ATT_NUM_BITS));
 	assert(type < ATT_END);
@@ -91,7 +91,7 @@ static inline AirportTileType GetAirportTileType(Tile t)
 static inline bool IsSimpleTrack(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
 	return GetAirportTileType(t) == ATT_SIMPLE_TRACK;
@@ -106,7 +106,7 @@ static inline bool IsSimpleTrack(TileIndex t)
 static inline bool IsInfrastructure(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
 	return GB(t.m5(), 8 - ATT_INFRA_LAYOUT_NUM_BITS, ATT_INFRA_LAYOUT_NUM_BITS) == ATT_INFRA_LAYOUT_BITS;
@@ -121,7 +121,7 @@ static inline bool IsInfrastructure(Tile t)
 static inline bool MayHaveAirTracks(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
 	return !IsInfrastructure(t);
@@ -136,7 +136,7 @@ static inline bool MayHaveAirTracks(TileIndex t)
 static inline void SetCatchmentAirportType(Tile t, bool catchment)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsInfrastructure(t));
 
@@ -152,7 +152,7 @@ static inline void SetCatchmentAirportType(Tile t, bool catchment)
 static inline bool GetCatchmentAirportType(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsInfrastructure(t));
 
@@ -168,7 +168,7 @@ static inline bool GetCatchmentAirportType(Tile t)
 static inline void SetApronType(Tile t, ApronType type)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
 	assert(IsApron(t));
@@ -187,7 +187,7 @@ static inline void SetApronType(Tile t, ApronType type)
 static inline bool IsPlaneApron(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsApron(t));
 
@@ -201,7 +201,7 @@ static inline bool IsPlaneApron(TileIndex t)
  */
 static inline bool IsPlaneApronTile(TileIndex t)
 {
-	return IsTileType(t, MP_STATION) &&
+	return IsTileType(t, TileType::Station) &&
 			IsAirport(t) &&
 			IsApron(t) &&
 			IsPlaneApron(t);
@@ -216,7 +216,7 @@ static inline bool IsPlaneApronTile(TileIndex t)
 static inline bool IsHeliport(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsApron(t));
 
@@ -234,7 +234,7 @@ static inline bool IsHeliportTile(TileIndex t)
 {
 	assert(IsValidTile(t));
 
-	return IsTileType(t, MP_STATION) &&
+	return IsTileType(t, TileType::Station) &&
 			IsAirport(t) &&
 			IsApron(t) &&
 			IsHeliport(t);
@@ -249,7 +249,7 @@ static inline bool IsHeliportTile(TileIndex t)
 static inline bool IsHelipad(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsApron(t));
 
@@ -263,7 +263,7 @@ static inline bool IsHelipad(TileIndex t)
  */
 static inline bool IsHelipadTile(TileIndex t)
 {
-	return IsTileType(t, MP_STATION) &&
+	return IsTileType(t, TileType::Station) &&
 			IsAirport(t) &&
 			IsApron(t) &&
 			IsHelipad(t);
@@ -276,7 +276,7 @@ static inline bool IsHelipadTile(TileIndex t)
  */
 static inline int GetLandingHeight(TileIndex t)
 {
-	assert(IsTileType(t, MP_STATION) && IsAirport(t));
+	assert(IsTileType(t, TileType::Station) && IsAirport(t));
 
 	if (!IsApron(t)) return 0;
 
@@ -339,7 +339,7 @@ static inline DiagDirection GetAirportTileRotation(Tile t)
 static inline bool IsRunway(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
 	return GB(t.m5(), 8 - ATT_RUNWAY_LAYOUT_NUM_BITS, ATT_RUNWAY_LAYOUT_NUM_BITS) == ATT_RUNWAY_LAYOUT_BITS;
@@ -354,7 +354,7 @@ static inline bool IsRunway(Tile t)
 static inline bool IsRunwayExtreme(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
 	return IsRunway(t) && GetAirportTileType(t) != ATT_RUNWAY_MIDDLE;
@@ -369,7 +369,7 @@ static inline bool IsRunwayExtreme(TileIndex t)
 static inline bool IsRunwayStart(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
 	return GB(t.m5(), 8 - ATT_RUNWAY_START_LAYOUT_NUM_BITS, ATT_RUNWAY_START_LAYOUT_NUM_BITS) == ATT_RUNWAY_START_LAYOUT_BITS;
@@ -384,7 +384,7 @@ static inline bool IsRunwayStart(Tile t)
 static inline bool IsRunwayEnd(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
 	return GetAirportTileType(t) == ATT_RUNWAY_END;
@@ -399,7 +399,7 @@ static inline bool IsRunwayEnd(TileIndex t)
 static inline bool IsPlainRunway(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
 	return IsRunway(t) && GetAirportTileType(t) == ATT_RUNWAY_MIDDLE;
@@ -414,7 +414,7 @@ static inline bool IsPlainRunway(TileIndex t)
 static inline void SetReservationAsRunway(Tile t, bool reserve)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsRunway(t));
 
@@ -430,7 +430,7 @@ static inline void SetReservationAsRunway(Tile t, bool reserve)
 static inline bool GetReservationAsRunway(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsRunway(t));
 
@@ -446,7 +446,7 @@ static inline bool GetReservationAsRunway(Tile t)
 static inline void SetLandingType(Tile t, bool landing)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsRunwayExtreme(t));
 
@@ -462,7 +462,7 @@ static inline void SetLandingType(Tile t, bool landing)
 static inline bool IsLandingTypeTile(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsRunwayExtreme(t));
 
@@ -479,7 +479,7 @@ static inline bool IsLandingTypeTile(Tile t)
 static inline DiagDirection GetRunwayExtremeDirection(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsRunwayExtreme(t));
 
@@ -495,7 +495,7 @@ static inline DiagDirection GetRunwayExtremeDirection(Tile t)
 static inline Direction GetPlainRunwayDirections(Tile t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsPlainRunway(t));
 
@@ -511,7 +511,7 @@ static inline Direction GetPlainRunwayDirections(Tile t)
 static inline TrackdirBits GetRunwayTrackdirs(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsRunway(t));
 
@@ -538,7 +538,7 @@ static inline TrackdirBits GetRunwayTrackdirs(TileIndex t)
 static inline TrackBits GetRunwayTracks(TileIndex t)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsRunway(t));
 
@@ -556,7 +556,7 @@ static inline TrackBits GetRunwayTracks(TileIndex t)
 static inline void SetRunwayExtremeDirection(Tile t, DiagDirection dir)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsRunwayExtreme(t));
 
@@ -572,7 +572,7 @@ static inline void SetRunwayExtremeDirection(Tile t, DiagDirection dir)
 static inline void AddPlainRunwayDirections(Tile t, DiagDirection dir, bool first)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsPlainRunway(t));
 
@@ -586,8 +586,8 @@ static inline void AddPlainRunwayDirections(Tile t, DiagDirection dir, bool firs
 		assert(((uint)DirToDiagDir(pre_dir) + (uint)DirToDiagDir(add_dir)) % 2 == 1);
 		if (add_dir + 2 == pre_dir) {
 			SB(t.m8(), 12, 3, add_dir + 1);
-		} else if (pre_dir == DIR_NW && add_dir == DIR_NE) {
-			SB(t.m8(), 12, 3, DIR_N);
+		} else if (pre_dir == Direction::NW && add_dir == Direction::NE) {
+			SB(t.m8(), 12, 3, Direction::N);
 		} else {
 			NOT_REACHED();
 		}
@@ -604,7 +604,7 @@ static inline void AddPlainRunwayDirections(Tile t, DiagDirection dir, bool firs
 static inline bool RemovePlainRunwayDirections(Tile t, DiagDirection dir)
 {
 	assert(IsValidTile(t));
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(IsPlainRunway(t));
 
@@ -615,11 +615,11 @@ static inline bool RemovePlainRunwayDirections(Tile t, DiagDirection dir)
 		SB(t.m8(), 12, 4, 0);
 		SetAirportTileType(t, ATT_SIMPLE_TRACK);
 		return true;
-	} else if ((cur_dir + 1) % DIR_END == remove_dir) {
-		SB(t.m8(), 12, 3, (cur_dir - 1) & (DIR_END - 1));
+	} else if ((cur_dir + 1) % Direction::End == remove_dir) {
+		SB(t.m8(), 12, 3, (cur_dir - 1) & (Direction::End - 1));
 		return false;
-	} else if (cur_dir == (remove_dir + 1) % DIR_END) {
-		SB(t.m8(), 12, 3, (cur_dir + 1) % DIR_END);
+	} else if (cur_dir == (remove_dir + 1) % Direction::End) {
+		SB(t.m8(), 12, 3, (cur_dir + 1) % Direction::End);
 		return false;
 	}
 
@@ -771,7 +771,7 @@ static inline bool HasAirportTileTrack(TileIndex t, Track track)
  */
 static inline TrackBits GetReservedAirportTracks(Tile t)
 {
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(MayHaveAirTracks(t));
 
@@ -787,7 +787,7 @@ static inline TrackBits GetReservedAirportTracks(Tile t)
  */
 static inline bool HasAirportTrackReserved(TileIndex t, Track track)
 {
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(MayHaveAirTracks(t));
 
@@ -802,7 +802,7 @@ static inline bool HasAirportTrackReserved(TileIndex t, Track track)
  */
 static inline bool HasAirportTrackReserved(TileIndex t)
 {
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(MayHaveAirTracks(t));
 
@@ -830,7 +830,7 @@ static inline bool HasAirportTracksReserved(TileIndex t, TrackBits tracks)
  */
 static inline bool SetAirportTracksReservation(Tile t, TrackBits tracks)
 {
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(MayHaveAirTracks(t));
 
@@ -853,7 +853,7 @@ static inline bool SetAirportTracksReservation(Tile t, TrackBits tracks)
  */
 static inline void SetAirportTrackReservation(TileIndex t, Track track)
 {
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(MayHaveAirTracks(t));
 
@@ -869,7 +869,7 @@ static inline void SetAirportTrackReservation(TileIndex t, Track track)
  */
 static inline bool RemoveAirportTrackReservation(Tile t, Track track)
 {
-	assert(IsTileType(t, MP_STATION));
+	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 	assert(MayHaveAirTracks(t));
 

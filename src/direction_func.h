@@ -327,4 +327,27 @@ inline DiagDirection DirToDiagDirAlongAxis(Direction dir, Axis axis)
 	return (DiagDirection)((((static_cast<uint>(dir) - static_cast<uint>(axis)) & 4) >> 1) | to_underlying(axis));
 }
 
+
+/**
+ * Rotate a direction with a given number of right angles clockwise.
+ * @param dir The direction to rotate.
+ * @param rotate The number of right angles to rotate.
+ * @return The rotated direction.
+ */
+static inline Direction RotateDirection(Direction dir, DiagDirection rotate)
+{
+	return static_cast<Direction>((static_cast<uint>(dir) + 2 * static_cast<uint>(rotate)) % static_cast<uint>(Direction::End));
+}
+
+/**
+ * Rotate a diagonal direction with a given number of right angles clockwise.
+ * @param dir The direction to rotate.
+ * @param rotate The number of right angles to rotate.
+ * @return The rotated direction.
+ */
+static inline DiagDirection RotateDiagDir(DiagDirection dir, DiagDirection rotate)
+{
+	return static_cast<DiagDirection>((static_cast<uint>(dir) + static_cast<uint>(rotate)) % static_cast<uint>(DiagDirection::End));
+}
+
 #endif /* DIRECTION_FUNC_H */
