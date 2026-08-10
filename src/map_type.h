@@ -11,30 +11,10 @@
 #define MAP_TYPE_H
 
 /**
- * Data that is stored per tile. Also used TileExtended for this.
+ * The per-tile data structures (Tile::TileBase and Tile::TileExtended)
+ * are defined in map_func.h as part of the Tile wrapper class.
  * Look at docs/landscape.html for the exact meaning of the members.
  */
-struct Tile {
-	uint8_t   type;     ///< The type (bits 4..7), bridges (2..3), rainforest/desert (0..1)
-	uint8_t   height;   ///< The height of the northern corner.
-	uint16_t  m2;       ///< Primarily used for indices to towns, industries and stations
-	uint8_t   m1;       ///< Primarily used for ownership information
-	uint8_t   m3;       ///< General purpose
-	uint8_t   m4;       ///< General purpose
-	uint8_t   m5;       ///< General purpose
-};
-
-static_assert(sizeof(Tile) == 8);
-
-/**
- * Data that is stored per tile. Also used Tile for this.
- * Look at docs/landscape.html for the exact meaning of the members.
- */
-struct TileExtended {
-	uint8_t  m6; ///< General purpose
-	uint8_t  m7; ///< Primarily used for newgrf support
-	uint16_t m8; ///< General purpose
-};
 
 /**
  * A pair-construct of a TileIndexDiff.

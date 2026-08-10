@@ -15,7 +15,7 @@
 
 #include "air.h"
 
-#include "table/sprites.h"
+#include "sprites.h"
 #include "table/strings.h"
 
 /**

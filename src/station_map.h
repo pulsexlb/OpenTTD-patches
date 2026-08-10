@@ -16,6 +16,7 @@
 #include "station_func.h"
 #include "rail.h"
 #include "road.h"
+#include "air_type.h"
 
 typedef uint8_t StationGfx; ///< Index of station graphics. @see _station_display_datas
 
@@ -169,7 +170,20 @@ inline bool IsAirportTile(TileIndex t)
 	return IsTileType(t, TileType::Station) && IsAirport(t);
 }
 
-bool IsHangar(TileIndex t);
+/**
+ * Is a given tile a hangar?
+ * @param t Tile to check.
+ * @return True if it is a hangar.
+ * @pre IsAirportTile
+ */
+static inline bool IsHangar(Tile t)
+{
+	assert(IsValidTile(t));
+	assert(IsTileType(t, TileType::Station));
+	assert(IsAirport(t));
+
+	return GB(t.m5(), 8 - ATT_HANGAR_LAYOUT_NUM_BITS, ATT_HANGAR_LAYOUT_NUM_BITS) == ATT_HANGAR_LAYOUT_BITS;
+}
 
 /**
  * Is the station at \a t a truck stop?
