@@ -8,3 +8,8 @@ docs/source/*
 /out
 /vcpkg_installed
 *.tmp
+
+# Local build tooling
+.deps/
+grfcodec/
+openttd.new
