@@ -4041,7 +4041,8 @@ static Track DoTrainPathfind(const Train *v, TileIndex tile, DiagDirection enter
  */
 static Track DoTrainCouplePathfind(const Train *v, bool do_track_reservation)
 {
-	return YapfTrainCoupleTrack(v, !do_track_reservation);
+	Track ret = YapfTrainCoupleTrack(v, !do_track_reservation);
+	return ret;
 }
 
 /**
@@ -4755,7 +4756,6 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 	 * reservation has been extended as far as possible (res_dest.tile == tile). */
 	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
 		Track path_found = DoTrainCouplePathfind(consist, do_track_reservation);
-		Debug(desync, 1, "CoupleTrack: veh={} tile=({},{}) path={} resdest=({},{}) eq={}", consist->index, TileX(tile), TileY(tile), path_found, TileX(res_dest.tile), TileY(res_dest.tile), res_dest.tile == tile);
 		if (path_found != INVALID_TRACK && res_dest.tile == tile) {
 			best_track = path_found;
 		}

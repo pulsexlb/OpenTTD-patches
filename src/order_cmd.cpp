@@ -474,9 +474,7 @@ void Order::AssignOrder(const Order &other)
 
 	this->occupancy = other.occupancy;
 
-	if (other.extra != nullptr && (this->GetUnloadType() == OrderUnloadType::CargoTypeUnload || this->GetLoadType() == OrderLoadType::CargoTypeLoad
-			|| (this->IsType(OT_LABEL) && this->GetLabelSubType() == OLST_TEXT)
-			|| other.extra->xdata != 0 || other.extra->xdata2 != 0 || other.extra->xflags != 0 || other.extra->dispatch_index != 0 || other.extra->colour != 0)) {
+	if (other.extra != nullptr) {
 		this->AllocExtraInfo();
 		*(this->extra) = *(other.extra);
 	} else {
@@ -2109,7 +2107,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				break;
 
 			case OT_GOTO_COUPLE:
-				if (mof != MOF_COUPLE_LOAD && mof != MOF_COUPLE_CARGO && mof != MOF_COUPLE_VALUE) return CMD_ERROR;
+				if (mof != MOF_COUPLE_LOAD && mof != MOF_COUPLE_CARGO && mof != MOF_COUPLE_VALUE && mof != MOF_COUPLE_SLOT) return CMD_ERROR;
 				break;
 
 			case OT_DECOUPLE:
@@ -2439,6 +2437,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 
 		case MOF_COUPLE_VALUE:
 			if (data > 127) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_SLOT:
+			if (data != INVALID_TRACE_RESTRICT_SLOT_ID) {
+				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(data);
+				if (slot == nullptr || slot->vehicle_type != v->type) return CMD_ERROR;
+				if (!slot->IsUsableByOwner(v->owner)) return CMD_ERROR;
+			}
 			break;
 
 		case MOF_WAYPOINT_FLAGS:
@@ -2829,6 +2835,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				order->SetNumCouple(data);
 				break;
 
+			case MOF_COUPLE_SLOT:
+				order->SetCoupleSlot(TraceRestrictSlotID{(uint16_t)data});
+				break;
+
 			case MOF_FIRST_ORDERS:
 				order->SetDecoupleFirstOrdersType((OrderDecoupleOrdersFlags)data);
 				break;
@@ -2934,6 +2944,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				u->current_order.SetCoupleLoad(order->GetCoupleLoad());
 				u->current_order.SetCoupleCargoType(order->GetCoupleCargoType());
 				u->current_order.SetNumCouple(order->GetNumCouple());
+				u->current_order.SetCoupleSlot(order->GetCoupleSlot());
 			}
 
 			/* Unbunching data is no longer valid. */

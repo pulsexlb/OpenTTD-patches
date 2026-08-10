@@ -12,6 +12,7 @@
 
 #include "../../train.h"
 #include "../../pbs.h"
+#include "../../tracerestrict.h"
 #include "../../vehicle_func.h"
 #include "../pathfinder_func.h"
 #include "../pathfinder_type.h"
@@ -268,7 +269,7 @@ public:
 		if (!dest_order.HasCoupleCargoType()) return true;
 		CargoType cargo_type = dest_order.GetCoupleCargoType();
 		for (const Train *v = t; v != nullptr; v = v->Next()) {
-			if (v->cargo_type == cargo_type) return true;
+			if (v->cargo_type == cargo_type && v->cargo_cap > 0) return true;
 		}
 		return false;
 	}
@@ -279,20 +280,32 @@ public:
 		return (dest_order.GetNumCouple() == CountVehiclesInChain(t));
 	}
 
+	bool CheckOrderSlot(const Train *t) const
+	{
+		TraceRestrictSlotID slot = dest_order.GetCoupleSlot();
+		if (slot == TraceRestrictSlotID::Invalid()) return true;
+		const TraceRestrictSlot *s = TraceRestrictSlot::GetIfValid(slot);
+		if (s == nullptr) return false;
+		return s->IsOccupant(t->index);
+	}
+
 	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
 		TrackdirBits tdb = TrackdirToTrackdirBits(td);
 		bool has_res = HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb));
 		bool is_station = IsRailStationTile(tile);
-		Debug(desync, 1, "CoupleDest: tile=({},{}) td={} res={} station={}", TileX(tile), TileY(tile), td, has_res, is_station);
 		if (!has_res) return false;
 		if (!is_station) return false;
 		Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
-		Debug(desync, 1, "CoupleDest: tile=({},{}) train={} order={}", TileX(tile), TileY(tile), t != nullptr ? t->index.base() : -1, t != nullptr ? (int)t->current_order.GetType() : -1);
 		if (t == nullptr) return false;
 		if (t->current_order.IsType(OT_WAIT_COUPLE)) {
-			if (TrainFitStation(t) && CheckOrderLoad(t) && CheckOrderCargoType(t) && CheckNumberOfWagons(t)) return true;
+			bool chk_load = CheckOrderLoad(t);
+			bool chk_cargo = CheckOrderCargoType(t);
+			bool chk_wag = CheckNumberOfWagons(t);
+			bool chk_slot = CheckOrderSlot(t);
+			bool chk_fit = TrainFitStation(t);
+			if (chk_fit && chk_load && chk_cargo && chk_wag && chk_slot) return true;
 		}
 		return false;
 	}

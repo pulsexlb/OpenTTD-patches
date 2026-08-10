@@ -78,6 +78,7 @@ void ClearOrderDestinationRefcountMap();
  * OrderConditionVariable::CargoLoadPercentage: Cargo percentage comparison value
  * OrderConditionVariable::DispatchSlot: Bits 0-15: Dispatch schedule ID
  * OrderConditionVariable::Percent: Bits 0-7: Jump counter
+ * OT_GOTO_COUPLE: Bits 0-15: Trace restrict slot ID to couple with (0xFFFF = any)
  */
 /*
  * xdata2 users:
@@ -362,6 +363,31 @@ public:
 	 * @pre IsType(OT_GOTO_COUPLE)
 	 */
 	inline void SetCoupleCargoType(CargoType cargo) { this->refit_cargo = cargo; }
+
+	/**
+	 * Does the couple order restrict coupling to a specific trace restrict slot?
+	 * @pre IsType(OT_GOTO_COUPLE)
+	 * @return true if a specific slot is set.
+	 */
+	inline bool HasCoupleSlot() const { return this->GetCoupleSlot() != TraceRestrictSlotID::Invalid(); }
+
+	/**
+	 * Get the trace restrict slot the train must couple with.
+	 * @pre IsType(OT_GOTO_COUPLE)
+	 * @return the slot, or #TraceRestrictSlotID::Invalid() if unrestricted.
+	 */
+	inline TraceRestrictSlotID GetCoupleSlot() const
+	{
+		if (this->extra == nullptr) return TraceRestrictSlotID::Invalid();
+		return TraceRestrictSlotID((uint16_t)GB(this->extra->xdata, 0, 16));
+	}
+
+	/**
+	 * Set the trace restrict slot the train must couple with.
+	 * @pre IsType(OT_GOTO_COUPLE)
+	 * @param slot the slot, or #TraceRestrictSlotID::Invalid() for any slot.
+	 */
+	inline void SetCoupleSlot(TraceRestrictSlotID slot) { SB(this->GetXDataRef(), 0, 16, slot.base()); }
 
 	/**
 	 * Update the jump_counter of this order.

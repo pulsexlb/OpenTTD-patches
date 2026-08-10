@@ -329,6 +329,7 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_COUPLE_LOAD,     ///< Change load parameters of desired train.
 	MOF_COUPLE_CARGO,    ///< Change cargo parameter for desired train.
 	MOF_COUPLE_VALUE,    ///< Change number of coupled units.
+	MOF_COUPLE_SLOT,    ///< Change trace restrict slot to couple with.
 	MOF_FIRST_ORDERS,    ///< Change orders of first part of train after decoupling.
 	MOF_SECOND_ORDERS,   ///< Change orders of second part of train after decoupling.
 	MOF_END

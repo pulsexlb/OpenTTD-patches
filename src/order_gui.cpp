@@ -1404,6 +1404,9 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			if (num_c > 0) {
 				AppendStringInPlace(line, STR_ORDER_COUPLE_UNITS, num_c);
 			}
+			if (order->HasCoupleSlot()) {
+				AppendStringInPlace(line, STR_ORDER_COUPLE_SLOT, STR_TRACE_RESTRICT_SLOT_NAME, order->GetCoupleSlot().base());
+			}
 			break;
 		}
 
@@ -3017,6 +3020,15 @@ public:
 				return {};
 			}
 
+			case WID_O_COUPLE_SLOT: {
+				VehicleOrderID sel = this->OrderGetSel();
+				const Order *order = this->vehicle->GetOrder(sel);
+				if (order != nullptr && order->IsType(OT_GOTO_COUPLE) && order->HasCoupleSlot()) {
+					return GetString(STR_TRACE_RESTRICT_SLOT_NAME, order->GetCoupleSlot().base());
+				}
+				return GetString(STR_ORDER_COUPLE_ANY_SLOT);
+			}
+
 			case WID_O_COUNTER_OP: {
 				VehicleOrderID sel = this->OrderGetSel();
 				const Order *order = this->vehicle->GetOrder(sel);
@@ -3739,6 +3751,18 @@ public:
 				this->OrderClick_CoupleCargo();
 				break;
 
+			case WID_O_COUPLE_SLOT: {
+				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
+				int selected = (order != nullptr && order->IsType(OT_GOTO_COUPLE) && order->HasCoupleSlot()) ? (int)order->GetCoupleSlot().base() : (int)INVALID_TRACE_RESTRICT_SLOT_ID.base();
+				DropDownList list;
+				list.push_back(MakeDropDownListStringItem(STR_ORDER_COUPLE_ANY_SLOT, (int)INVALID_TRACE_RESTRICT_SLOT_ID.base(), false));
+				int slot_selected = (order != nullptr && order->IsType(OT_GOTO_COUPLE) && order->HasCoupleSlot()) ? (int)order->GetCoupleSlot().base() : -1;
+				DropDownList slot_list = GetSlotDropDownList(this->vehicle->owner, TraceRestrictSlotID{(uint16_t)slot_selected}, slot_selected, this->vehicle->type, false);
+				list.insert(list.end(), std::make_move_iterator(slot_list.begin()), std::make_move_iterator(slot_list.end()));
+				ShowDropDownList(this, std::move(list), selected, WID_O_COUPLE_SLOT, 0, DropDownOptions{}, DDSF_SHARED);
+				break;
+			}
+
 			case WID_O_COUPLE_VALUE: {
 				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
 				this->query_text_widget = widget;
@@ -3887,6 +3911,10 @@ public:
 
 			case WID_O_SLOT:
 				create_slot_counter(MOF_SLOT, false);
+				break;
+
+			case WID_O_COUPLE_SLOT:
+				create_slot_counter(MOF_COUPLE_SLOT, false);
 				break;
 
 			case WID_O_CHANGE_COUNTER:
@@ -4093,6 +4121,23 @@ public:
 				}
 				TraceRestrictRecordRecentSlot(TraceRestrictSlotID(index));
 				this->ModifyOrder(this->OrderGetSel(), MOF_SLOT, index);
+				break;
+			}
+
+			case WID_O_COUPLE_SLOT: {
+				const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
+				if (o == nullptr) return;
+				if (index == NEW_TRACE_RESTRICT_SLOT_ID) {
+					this->query_text_widget = widget;
+					ShowSlotCreationQueryString(*this);
+					break;
+				}
+				if (index == (int)INVALID_TRACE_RESTRICT_SLOT_ID.base()) {
+					this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_SLOT, INVALID_TRACE_RESTRICT_SLOT_ID.base());
+					break;
+				}
+				TraceRestrictRecordRecentSlot(TraceRestrictSlotID(index));
+				this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_SLOT, index);
 				break;
 			}
 
@@ -4569,7 +4614,9 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_COUPLE_LOAD), SetMinimalSize(124, 12), SetFill(1, 0),
 														SetStringTip(STR_ORDER_TOGGLE_COUPLE_LOAD, STR_ORDER_CONDITIONAL_VARIABLE_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_TEXTBTN, Colours::Grey, WID_O_COUPLE_CARGO), SetMinimalSize(124, 12), SetFill(1, 0),
-														SetStringTip(STR_ORDER_CARGO_TYPE_BUTTON, STR_ORDER_CONDITIONAL_COMPARATOR_TOOLTIP), SetResize(1, 0),
+												SetStringTip(STR_ORDER_CARGO_TYPE_BUTTON, STR_ORDER_CONDITIONAL_COMPARATOR_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_COUPLE_SLOT), SetMinimalSize(124, 12), SetFill(1, 0),
+												SetStringTip(STR_ORDER_COUPLE_SLOT_BUTTON, STR_ORDER_COUPLE_SLOT_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_VALUE), SetMinimalSize(124, 12), SetFill(1, 0),
 														SetStringTip(STR_ORDERS_COUPLE_VALUE_BUTTON, STR_ORDER_CONDITIONAL_VALUE_TOOLTIP), SetResize(1, 0),
 			EndContainer(),
