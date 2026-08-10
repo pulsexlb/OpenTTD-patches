@@ -100,6 +100,8 @@ enum AirportTiles : uint8_t {
 	ATTG_NO_CATCH_PIER,
 	ATTG_NO_CATCH_EMPTY,
 	ATTG_END,
+
+	INVALID_AIRPORTTILE = 255
 };
 
 #endif /* AIRPORTTILE_IDS_H */

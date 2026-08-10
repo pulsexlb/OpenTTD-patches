@@ -3055,6 +3055,7 @@ STR_AIRPORT_INTERCONTINENTAL                                    :Intercontinenta
 STR_AIRPORT_HELIPORT                                            :Heliport
 STR_AIRPORT_HELIDEPOT                                           :Helidepot
 STR_AIRPORT_HELISTATION                                         :Helistation
+STR_AIRPORT_CUSTOM                                           :Custom
 
 STR_AIRPORT_CLASS_SMALL                                         :Small airports
 STR_AIRPORT_CLASS_LARGE                                         :Large airports
