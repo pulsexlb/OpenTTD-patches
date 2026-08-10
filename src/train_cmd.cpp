@@ -5520,10 +5520,20 @@ static void Couple(Train *v, Train *u)
 	 * travel axis) desyncs direction from the vehicle's pixels and produces the
 	 * 45-degree visual skew seen before. Only clear stale flags that would make
 	 * the next tick trigger an unrequested auto-reversal. */
-	for (Train *u = v; u != nullptr; u = u->Next()) {
-		u->flags.Reset(VehicleRailFlag::Reversed);
+	for (Train *w = v; w != nullptr; w = w->Next()) {
+		w->flags.Reset(VehicleRailFlag::Reversed);
 	}
 	v->flags.Reset(VehicleRailFlag::Reversing);
+
+	/* The coupled train's front (u) becomes a non-primary wagon of the merged
+	 * consist, so any trace restrict slot it held must be transferred to the
+	 * survivor front, otherwise the slot ends up pointing at a non-primary
+	 * vehicle. Same convention as autoreplace. */
+	if (u->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
+		TraceRestrictTransferVehicleOccupantInAllSlots(u->index, v->First()->index);
+		u->vehicle_flags.Reset(VehicleFlag::HaveSlot);
+		v->First()->vehicle_flags.Set(VehicleFlag::HaveSlot);
+	}
 
 	AdvanceWagonsAfterCouple(v_last);
 	InvalidateWindowClassesData(WindowClass::TrainList);
