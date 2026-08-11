@@ -24,9 +24,9 @@
  * @param airtype requested AirType
  * @return true if company has requested AirType available
  */
-bool HasAirTypeAvail(const CompanyID company, const AirType airtype)
+bool HasAirTypeAvail([[maybe_unused]] const CompanyID company, const AirType airtype)
 {
-	return !HasBit(_airtypes_hidden_mask, to_underlying(airtype)) && HasBit(Company::Get(company)->avail_airtypes, to_underlying(airtype));
+	return !HasBit(_airtypes_hidden_mask, to_underlying(airtype));
 }
 
 /**

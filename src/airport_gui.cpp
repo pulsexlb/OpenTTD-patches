@@ -1694,20 +1694,6 @@ static void SetDefaultAirGui()
  */
 DropDownList GetAirTypeDropDownList(bool for_replacement, bool all_option)
 {
-	AirTypes used_airtypes;
-	AirTypes avail_airtypes;
-
-	const Company *c = Company::Get(_local_company);
-
-	/* Find the used airtypes. */
-	if (for_replacement) {
-		avail_airtypes = GetCompanyAirTypes(c->index, false);
-		used_airtypes  = GetAirTypes(false);
-	} else {
-		avail_airtypes = c->avail_airtypes;
-		used_airtypes  = GetAirTypes(true);
-	}
-
 	DropDownList list;
 
 	if (all_option) {
@@ -1718,24 +1704,21 @@ DropDownList GetAirTypeDropDownList(bool for_replacement, bool all_option)
 	/* Get largest icon size, to ensure text is aligned on each menu item. */
 	if (!for_replacement) {
 		for (const auto &at : _sorted_airtypes) {
-			if (!HasBit(used_airtypes, at)) continue;
 			const AirTypeInfo *ati = GetAirTypeInfo(at);
 			d = maxdim(d, GetSpriteSize(ati->gui_sprites.build_helipad));
 		}
 	}
 
 	for (const auto &at : _sorted_airtypes) {
-		/* If it's not used ever, don't show it to the user. */
-		if (!HasBit(used_airtypes, at)) continue;
-
 		const AirTypeInfo *ati = GetAirTypeInfo(at);
 
 		if (for_replacement) {
-			list.push_back(MakeDropDownListStringItem(ati->strings.replace_text, at, !HasBit(avail_airtypes, at)));
+			list.push_back(MakeDropDownListStringItem(ati->strings.replace_text, at, false));
 		} else {
-			StringID str = ati->max_speed > 0 ? STR_TOOLBAR_RAILTYPE_VELOCITY : STR_JUST_STRING;
-			auto iconitem = MakeDropDownListIconItem(d, ati->gui_sprites.build_helipad, PAL_NONE, str, at, !HasBit(avail_airtypes, at));
-			list.push_back(std::move(iconitem));
+			std::string str = ati->max_speed > 0
+				? GetString(STR_TOOLBAR_RAILTYPE_VELOCITY, ati->strings.menu_text, ati->max_speed)
+				: GetString(ati->strings.menu_text);
+			list.push_back(MakeDropDownListIconItem(d, ati->gui_sprites.build_helipad, PAL_NONE, std::move(str), at, false));
 		}
 	}
 

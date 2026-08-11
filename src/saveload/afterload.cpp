@@ -37,6 +37,7 @@
 #include "../elrail_func.h"
 #include "../signs_func.h"
 #include "../aircraft.h"
+#include "../air.h"
 #include "../air_map.h"
 #include "../airport_gui.h"
 #include "../object_map.h"
@@ -1841,6 +1842,7 @@ bool AfterLoadGame()
 	for (Company *c : Company::Iterate()) {
 		c->avail_railtypes = GetCompanyRailTypes(c->index);
 		c->avail_roadtypes = GetCompanyRoadTypes(c->index);
+		c->avail_airtypes = GetCompanyAirTypes(c->index);
 	}
 
 	AfterLoadStations();
