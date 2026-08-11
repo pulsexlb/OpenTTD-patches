@@ -2990,7 +2990,7 @@ bool AfterLoadGame()
 		}
 	}
 
-	if (IsSavegameVersionBefore(SLV_MULTITILE_AIRPORTS)) {
+	if (IsSavegameVersionBefore(SLV_CUSTOM_SUBSIDY_DURATION)) {
 		/* Delete already crashed zeppelins. */
 		DeleteCrashedZeppelins();
 
@@ -3043,7 +3043,7 @@ bool AfterLoadGame()
 		InitializeAirportGui();
 	}
 
-	if (IsSavegameVersionBefore(SLV_MULTITILE_AIRPORTS)) {
+	if (IsSavegameVersionBefore(SLV_CUSTOM_SUBSIDY_DURATION)) {
 		/* Update go to hangar orders so they store the DepotID instead of StationID. */
 		for (Aircraft *a : Aircraft::Iterate()) {
 			if (!a->IsNormalAircraft()) continue;

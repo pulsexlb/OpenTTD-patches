@@ -398,27 +398,27 @@ class SlVehicleAircraft : public DefaultSaveLoadHandler<SlVehicleAircraft, Vehic
 public:
 	static inline const SaveLoad description[] = {
 		 SLEG_STRUCT("common", SlVehicleCommon),
-		 SLE_CONDVAR(Aircraft, trackdir,              SLE_UINT8,                    SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION),
-		 SLE_CONDVAR(Aircraft, state,                 SLE_UINT8,                    SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION),
-		 SLE_CONDVAR(Aircraft, next_trackdir,         SLE_UINT8,                    SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION),
-		 SLE_CONDVAR(Aircraft, next_pos.x,            SLE_UINT32,                   SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION),
-		 SLE_CONDVAR(Aircraft, next_pos.y,            SLE_UINT32,                   SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION),
-		 SLE_CONDVAR(Aircraft, next_pos.pos,          SLE_UINT8,                    SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, trackdir,              SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, state,                 SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, next_trackdir,         SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, next_pos.x,            SLE_UINT32,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, next_pos.y,            SLE_UINT32,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, next_pos.pos,          SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
 		     SLE_VAR(Aircraft, crashed_counter,       SLE_UINT16),
-		SLEG_CONDVAR("aircraft_pos", _pos,            SLE_UINT8,                    SL_MIN_VERSION, SLV_MULTITILE_AIRPORTS),
+		SLEG_CONDVAR("aircraft_pos", _pos,            SLE_UINT8,                    SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION),
 
 		 SLE_CONDVAR(Aircraft, targetairport,         SLE_FILE_U8  | SLE_VAR_U16,   SL_MIN_VERSION, SLV_5),
 		 SLE_CONDVAR(Aircraft, targetairport,         SLE_UINT16,                   SLV_5, SL_MAX_VERSION),
 
-		SLEG_CONDVAR("old_state", _old_state,         SLE_UINT8,                    SL_MIN_VERSION, SLV_MULTITILE_AIRPORTS),
-		SLEG_CONDVAR("previous_pos", _pos,            SLE_UINT8,                    SLV_2, SLV_MULTITILE_AIRPORTS),
+		SLEG_CONDVAR("old_state", _old_state,         SLE_UINT8,                    SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION),
+		SLEG_CONDVAR("previous_pos", _pos,            SLE_UINT8,                    SLV_2, SLV_CUSTOM_SUBSIDY_DURATION),
 		 SLE_CONDVAR(Aircraft, last_direction,        SLE_UINT8,                    SLV_2, SL_MAX_VERSION),
 		 SLE_CONDVAR(Aircraft, number_consecutive_turns, SLE_UINT8,                 SLV_2, SL_MAX_VERSION),
 
 		 SLE_CONDVAR(Aircraft, turn_counter,          SLE_UINT8,                  SLV_136, SL_MAX_VERSION),
 		 SLE_CONDVAR(Aircraft, flags,                 SLE_UINT8,                  SLV_167, SL_MAX_VERSION),
-	   SLE_CONDRING(Aircraft, path.td,                SLE_UINT8,                    SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION),
-	   SLE_CONDRING(Aircraft, path.tile,              SLE_UINT32,                   SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION),
+	   SLE_CONDRING(Aircraft, path.td,                SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+	   SLE_CONDRING(Aircraft, path.tile,              SLE_UINT32,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
 	};
 	static inline const SaveLoadCompatTable compat_description = _vehicle_aircraft_sl_compat;
 

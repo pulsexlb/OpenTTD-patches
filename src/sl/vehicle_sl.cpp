@@ -1002,7 +1002,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("progress",                       SLE_VAR(Vehicle, progress,                  SLE_UINT8)),
 
 		NSL("vehstatus",                      SLE_VAR(Vehicle, vehstatus,                 SLE_UINT8)),
-		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION)),
+		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),
 		NSL("last_loading_station",     SLE_CONDVAR_X(Vehicle, last_loading_station,      SLE_UINT16,                 SLV_182, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_CHILLPP, SL_CHILLPP_232))),
@@ -1219,16 +1219,16 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("", SLE_INCLUDE(IncludeBaseVehicleDescription)),
 		NSLT_STRUCT<VehicleCommonStructHandler>("common"),
 
-		NSL("next_pos.y",                SLE_CONDVAR(Aircraft, next_pos.y,             SLE_UINT32,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION)),
-		NSL("next_pos.pos",              SLE_CONDVAR(Aircraft, next_pos.pos,           SLE_UINT8,                   SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION)),
+		NSL("next_pos.y",                SLE_CONDVAR(Aircraft, next_pos.y,             SLE_UINT32,                  SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
+		NSL("next_pos.pos",              SLE_CONDVAR(Aircraft, next_pos.pos,           SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("crashed_counter",           SLE_VAR(Aircraft, crashed_counter,            SLE_UINT16)),
-		NSL("aircraft_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SL_MIN_VERSION, SLV_MULTITILE_AIRPORTS)),
+		NSL("aircraft_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION)),
 
 		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,          SLE_FILE_U8  | SLE_VAR_U16,  SL_MIN_VERSION, SLV_5)),
 		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,          SLE_UINT16,                  SLV_5, SL_MAX_VERSION)),
 
-		NSL("old_state",                 SLEG_CONDVAR(_old_state,                      SLE_UINT8,                   SL_MIN_VERSION, SLV_MULTITILE_AIRPORTS)),
-		NSL("previous_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SLV_2, SLV_MULTITILE_AIRPORTS)),
+		NSL("old_state",                 SLEG_CONDVAR(_old_state,                      SLE_UINT8,                   SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION)),
+		NSL("previous_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SLV_2, SLV_CUSTOM_SUBSIDY_DURATION)),
 		NSL("last_direction",            SLE_CONDVAR(Aircraft, last_direction,         SLE_UINT8,                   SLV_2, SL_MAX_VERSION)),
 		NSL("number_consecutive_turns",  SLE_CONDVAR(Aircraft, number_consecutive_turns, SLE_UINT8,                SLV_2, SL_MAX_VERSION)),
 		NSL("",                       SLE_CONDNULL_X(2,                                                              SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP))),
@@ -1236,8 +1236,8 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 
 		NSL("turn_counter",              SLE_CONDVAR(Aircraft, turn_counter,           SLE_UINT8,                   SLV_136, SL_MAX_VERSION)),
 		NSL("flags",                     SLE_CONDVAR(Aircraft, flags,                  SLE_UINT8,                   SLV_167, SL_MAX_VERSION)),
-		NSL("path.td",                   SLE_CONDRING(Aircraft, path.td,               SLE_UINT8,                   SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION)),
-		NSL("path.tile",                 SLE_CONDRING(Aircraft, path.tile,             SLE_UINT32,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION)),
+		NSL("path.td",                   SLE_CONDRING(Aircraft, path.td,               SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
+		NSL("path.tile",                 SLE_CONDRING(Aircraft, path.tile,             SLE_UINT32,                  SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 
 		NSL("",                         SLE_CONDNULL(13,                                                             SLV_2, SLV_144)), // old reserved space
 	};

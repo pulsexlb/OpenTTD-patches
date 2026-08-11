@@ -1025,6 +1025,7 @@ SettingsContainer &GetSettingsTree()
 			limitations->Add(new SettingEntry("construction.max_tunnel_length"));
 			limitations->Add(new SettingEntry("construction.chunnel"));
 			limitations->Add(new SettingEntry("station.never_expire_airports"));
+			limitations->Add(new SettingEntry("station.allow_modify_airports"));
 			limitations->Add(new SettingEntry("vehicle.never_expire_vehicles"));
 			limitations->Add(new SettingEntry("vehicle.vehicle_intro_randomisation"));
 			limitations->Add(new SettingEntry("vehicle.no_expire_vehicles_after"));
