@@ -3041,6 +3041,9 @@ static CommandCost RemoveDock(TileIndex tile, DoCommandFlags flags)
 }
 
 #include "table/station_land.h"
+#include "table/clear_land.h"
+#include "table/autorail.h"
+#define _AutorailTilehSprite _autorail_slope_sprite_offsets
 
 /**
  * Get station tile layout for a station type and its station gfx.
@@ -3188,9 +3191,285 @@ static bool DrawCustomStationFoundations(const StationSpec *statspec, BaseStatio
 	return true;
 }
 
+/**
+ * Draw the reserved airport tracks of a tile if setting show reserved tracks is enabled.
+ */
+void DrawAirportTracks(const TileInfo *ti)
+{
+	assert(IsAirportTile(ti->tile));
+
+	if (!MayHaveAirTracks(ti->tile)) return;
+
+	if (IsRunwayStart(ti->tile))
+	{
+		PaletteID palette = IsLandingTypeTile(ti->tile) ? PALETTE_SEL_TILE_BLUE : PALETTE_SEL_TILE_RED;
+		extern const uint8_t _slope_to_sprite_offset[32];
+		DrawSelectionSprite(SPR_SELECT_TILE + _slope_to_sprite_offset[ti->tileh], palette, ti,
+				7, FOUNDATION_PART_NORMAL);
+	}
+
+	TrackBits trackbits = GetAirportTileTracks(ti->tile);
+	TrackBits reserved = GetReservedAirportTracks(ti->tile);
+	TrackBits runway_tracks = (IsRunway(ti->tile) && GetReservationAsRunway(ti->tile)) ?
+			GetRunwayTracks(ti->tile) : TRACK_BIT_NONE;
+	Slope autorail_tileh = RemoveHalftileSlope(ti->tileh);
+
+	/* No tracks: return */
+	if ((trackbits | runway_tracks) == TRACK_BIT_NONE) return;
+
+	/* Draw unreserved normal tracks. */
+	for (Track track : SetTrackBitIterator(trackbits)) {
+		TrackBits tracks = TrackToTrackBits(track);
+		if (((reserved | runway_tracks) & tracks) != 0) continue;
+
+		int offset = abs(_AutorailTilehSprite[autorail_tileh][track]);
+		DrawGroundSpriteAt(SPR_AUTORAIL_BASE + offset, PALETTE_CRASH, 0, 0, TILE_HEIGHT);
+	}
+
+	/* Draw reserved tracks and runways. */
+	for (Track track : SetTrackBitIterator(reserved | runway_tracks)) {
+		TrackBits tracks = TrackToTrackBits(track);
+		int offset = abs(_AutorailTilehSprite[autorail_tileh][track]);
+		PaletteID palette = (runway_tracks & tracks) != 0 ? PALETTE_SEL_TILE_RED : PALETTE_SEL_TILE_BLUE;
+		DrawGroundSpriteAt(SPR_AUTORAIL_BASE + offset, palette, 0, 0, TILE_HEIGHT);
+	}
+}
+
+static void DrawAirportFences(TileInfo *ti)
+{
+	assert(IsAirportTile(ti->tile));
+	StationID st_id = GetStationIndex(ti->tile);
+
+	static const SpriteBounds fence_bounds[2] = {
+		{{0,  1, 0}, {16, 1, 4}, {}},
+		{{1,  0, 0}, { 1, 16, 4}, {}},
+	};
+
+	PaletteID palette = GetCompanyPalette(GetTileOwner(ti->tile));
+	for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
+		TileIndex neighbour = TileAddByDiagDir(ti->tile, dir);
+		if (IsValidTile(neighbour) && (IsAirportTileOfStation(neighbour, st_id) || IsTileType(neighbour, TileType::Object))) continue;
+		AddSortableSpriteToDraw(SPR_TRACK_FENCE_FLAT_Y - (to_underlying(dir) % 2), palette,
+			ti->x, ti->y, ti->z, fence_bounds[to_underlying(dir) % 2]);
+	}
+}
+
+uint8_t GetAirOffset(TileIndex tile)
+{
+	assert(IsAirportTile(tile));
+
+	AirportTileType att = GetAirportTileType(tile);
+	switch (att) {
+		default:
+			NOT_REACHED();
+		case ATT_RUNWAY_MIDDLE: {
+			return static_cast<uint8_t>(GetPlainRunwayDirections(tile));
+		}
+		case ATT_RUNWAY_END:
+		case ATT_RUNWAY_START_NO_LANDING:
+		case ATT_RUNWAY_START_ALLOW_LANDING: {
+			uint8_t offset = AIRPORT_SPRITES_OFFSET_RUNWAYS_START;
+			if (att == ATT_RUNWAY_END) offset = AIRPORT_SPRITES_OFFSET_RUNWAYS_END;
+			if (att == ATT_RUNWAY_START_NO_LANDING) offset += AIRPORT_SPRITES_OFFSET_RUNWAYS_DONT_ALLOW_LANDING;
+			return offset + static_cast<uint8_t>(GetRunwayExtremeDirection(tile));
+		}
+		case ATT_APRON_NORMAL:
+		case ATT_APRON_HELIPAD:
+		case ATT_APRON_HELIPORT:
+		case ATT_APRON_BUILTIN_HELIPORT:
+			return GetApronType(tile);
+	}
+}
+
+static inline void DrawAirportGround(TileInfo *ti, const AirTypeInfo *ati, PaletteID palette)
+{
+	if (IsTileOnWater(ti->tile)) {
+		DrawWaterClassGround(ti);
+		return;
+	}
+
+	switch (GetAirportGround(ti->tile)) {
+		case AG_GRASS:
+			DrawClearLandTile(ti, GetAirportGroundDensity(ti->tile));
+			break;
+		case AG_DESERT:
+		case AG_SNOW:
+			DrawGroundSprite(_clear_land_sprites_snow_desert[GetAirportGroundDensity(ti->tile)] + SlopeToSpriteOffset(ti->tileh), PAL_NONE);
+			break;
+		case AG_AIRTYPE: {
+			SpriteID image = ati->base_sprites.ground[0];
+			DrawGroundSprite(image, GroundSpritePaletteTransform(image, PAL_NONE, palette));
+			break;
+		}
+	}
+}
+
+/**
+ * Draw an airport tile.
+ * @param ti TileInfo of the tile to draw.
+ */
+static void DrawTile_Airport(TileInfo *ti)
+{
+	assert(IsAirportTile(ti->tile));
+
+	const AirTypeInfo *ati = GetAirTypeInfo(GetAirType(ti->tile));
+	const DrawTileSprites *t = nullptr;
+	int32_t total_offset = 0;
+	Owner owner = GetTileOwner(ti->tile);
+	PaletteID palette = Company::IsValidID(owner) ? GetCompanyPalette(owner) : PALETTE_TO_GREY;
+
+	if (ti->tileh != SLOPE_FLAT) DrawFoundation(ti, Foundation::Leveled);
+	DrawAirportGround(ti, ati, palette);
+
+	SpriteID image = 0;
+	if (IsRunway(ti->tile)) image = ati->base_sprites.runways[GetAirOffset(ti->tile)];
+	if (IsSimpleTrack(ti->tile)) {
+		uint8_t index = GetTileAirportGfx(ti->tile);
+		assert(index <= 21);
+		if (index == 0) {
+			if (GetAirportGround(ti->tile) != AG_AIRTYPE) {
+				TrackBits tracks = GetAirportTileTracks(ti->tile);
+				if ((tracks & TRACK_BIT_CROSS) != TRACK_BIT_NONE ||
+						(tracks & TRACK_BIT_HORZ) == TRACK_BIT_HORZ ||
+						(tracks & TRACK_BIT_VERT) == TRACK_BIT_VERT) {
+					image = ati->base_sprites.ground[0];
+				} else {
+					if (tracks & TRACK_BIT_LEFT) {
+						image = ati->base_sprites.ground[1];
+						DrawGroundSprite(image, GroundSpritePaletteTransform(image, PAL_NONE, palette));
+					}
+					if (tracks & TRACK_BIT_RIGHT) {
+						image = ati->base_sprites.ground[2];
+						DrawGroundSprite(image, GroundSpritePaletteTransform(image, PAL_NONE, palette));
+					}
+					if (tracks & TRACK_BIT_UPPER) {
+						image = ati->base_sprites.ground[3];
+						DrawGroundSprite(image, GroundSpritePaletteTransform(image, PAL_NONE, palette));
+					}
+					if (tracks & TRACK_BIT_LOWER) {
+						image = ati->base_sprites.ground[4];
+						DrawGroundSprite(image, GroundSpritePaletteTransform(image, PAL_NONE, palette));
+					}
+					image = 0;
+				}
+			}
+		} else {
+			image = ati->base_sprites.ground[index - 1];
+		}
+	}
+
+	/* Draw ground. */
+	if (image != 0) DrawGroundSprite(image, GroundSpritePaletteTransform(image, PAL_NONE, palette));
+
+	/* Get the data of the sprites to draw, if any. */
+	AirportTileType att = GetAirportTileType(ti->tile);
+	switch (att) {
+		case ATT_SIMPLE_TRACK:
+		case ATT_RUNWAY_MIDDLE:
+		case ATT_RUNWAY_START_ALLOW_LANDING:
+		case ATT_RUNWAY_START_NO_LANDING:
+		case ATT_RUNWAY_END:
+			t = nullptr;
+			break;
+
+		case ATT_HANGAR_EXTENDED:
+		case ATT_HANGAR_STANDARD: {
+			total_offset = ati->base_sprites.ground[0];
+			uint tile_sprites_offset = to_underlying(GetHangarDirection(ti->tile));
+			t = &_airtype_display_datas_hangars[tile_sprites_offset + (HasAirportGroundSnow(ti->tile) ? 4 : 0)];
+			break;
+		}
+
+		case ATT_APRON_NORMAL:
+		case ATT_APRON_HELIPAD: {
+			total_offset = ati->base_sprites.ground[0];
+			t = &_airtype_display_datas_aprons[to_underlying(GetApronType(ti->tile))];
+			break;
+		}
+
+		case ATT_APRON_HELIPORT: {
+			total_offset = ati->base_sprites.ground[0] + to_underlying(GetAirportTileRotation(ti->tile)) + (HasAirportGroundSnow(ti->tile) ? 4 : 0);
+			t = &_airtype_display_datas_aprons[to_underlying(GetApronType(ti->tile))];
+			break;
+		}
+
+		case ATT_INFRASTRUCTURE_NO_CATCH: {
+			total_offset = 0;
+			AirportTiles at = GetTileAirportGfx(ti->tile);
+			DiagDirection dir = GetAirportTileRotation(ti->tile);
+			switch (at) {
+				case ATTG_NO_CATCH_FLAG:
+					t = &_airtype_display_datas_flags[to_underlying(dir)][GetAnimationFrame(ti->tile)];
+					break;
+				case ATTG_NO_CATCH_RADAR:
+					t = &_airtype_display_datas_radar[GetAnimationFrame(ti->tile)];
+					break;
+				case ATTG_NO_CATCH_TOWER:
+					total_offset = ati->base_sprites.ground[0] + (HasAirportGroundSnow(ti->tile) ? 4 : 0);
+					t = &_airtype_display_datas_tower[to_underlying(dir)];
+					break;
+				case ATTG_NO_CATCH_TRANSMITTER:
+					total_offset = ati->base_sprites.ground[0] + (HasAirportGroundSnow(ti->tile) ? 4 : 0);
+					t = &_airtype_display_datas_transmitter[to_underlying(dir)];
+					break;
+
+				case ATTG_NO_CATCH_EMPTY:
+				case ATTG_NO_CATCH_PIER:
+					total_offset = ati->base_sprites.ground[0];
+					t = &_airtype_display_datas[at * 4 + to_underlying(dir)];
+					break;
+				default:
+					NOT_REACHED();
+			}
+			break;
+		}
+
+		case ATT_INFRASTRUCTURE_WITH_CATCH: {
+			total_offset = ati->base_sprites.ground[0];
+			AirportTiles at = GetTileAirportGfx(ti->tile);
+			DiagDirection dir = GetAirportTileRotation(ti->tile);
+			switch (at) {
+				default:
+					NOT_REACHED();
+				case ATTG_WITH_CATCH_BUILDING_1:
+				case ATTG_WITH_CATCH_BUILDING_2:
+				case ATTG_WITH_CATCH_BUILDING_3:
+				case ATTG_WITH_CATCH_BUILDING_FLAT:
+				case ATTG_WITH_CATCH_BUILDING_TERMINAL:
+					if (HasAirportGroundSnow(ti->tile)) total_offset += 20;
+					t = &_airtype_display_datas[at * 4 + to_underlying(dir)];
+					break;
+			}
+			break;
+		}
+
+		case ATT_WAITING_POINT:
+			NOT_REACHED();
+		case ATT_APRON_BUILTIN_HELIPORT:
+			t = nullptr;
+			break;
+
+		default:
+			NOT_REACHED();
+	}
+
+	if (t != nullptr) DrawRailTileSeq(ti, t, TransparencyOption::Buildings, total_offset, 0, palette);
+
+	if (_show_airport_tracks) DrawAirportTracks(ti);
+
+	if (IsApron(ti->tile) && IsBuiltInHeliportTile(ti->tile)) return;
+
+	DrawAirportFences(ti);
+}
+
 /** @copydoc DrawTileProc */
 static void DrawTile_Station(TileInfo *ti, DrawTileProcParams params)
 {
+	if (IsAirportTile(ti->tile) && HasAirtypeGfx(ti->tile)) {
+		DrawTile_Airport(ti);
+		return;
+	}
+
 	const NewGRFSpriteLayout *layout = nullptr;
 	SpriteLayoutProcessor processor; // owns heap, borrowed by tmp_layout and t
 	DrawTileSpriteSpan tmp_layout;

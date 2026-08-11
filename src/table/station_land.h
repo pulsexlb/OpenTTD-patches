@@ -1456,6 +1456,22 @@ extern const DrawTileSpriteSpan _airport_infra_with_catchment[] = {
 	TILE_SPRITE_LINE(0,                     _airtype_display_heliport)
 };
 
+extern const DrawTileSpriteSpan _airtype_display_datas_aprons[] = {
+	TILE_SPRITE_LINE(0,              _airtype_display_apron) // plane apron
+	TILE_SPRITE_LINE(0,              _airtype_display_heliport) // heliport
+};
+
+extern const DrawTileSpriteSpan _airtype_display_datas_hangars[] = {
+	TILE_SPRITE_LINE(0,              _airtype_display_hangar_ne) // DEPOT_NE
+	TILE_SPRITE_LINE(0,              _airtype_display_hangar_se) // DEPOT_SE
+	TILE_SPRITE_LINE(0,              _airtype_display_hangar_sw) // DEPOT_SW
+	TILE_SPRITE_LINE(0,              _airtype_display_hangar_nw) // DEPOT_NW
+	TILE_SPRITE_LINE(0,              _airtype_display_hangar_ne_snow) // DEPOT_NE snow
+	TILE_SPRITE_LINE(0,              _airtype_display_hangar_se_snow) // DEPOT_SE snow
+	TILE_SPRITE_LINE(0,              _airtype_display_hangar_sw_snow) // DEPOT_SW snow
+	TILE_SPRITE_LINE(0,              _airtype_display_hangar_nw_snow) // DEPOT_NW snow
+};
+
 extern const DrawTileSpriteSpan _airtype_display_datas[] = {
 	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_ne) // building 1
 	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_se) //

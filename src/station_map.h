@@ -915,4 +915,17 @@ inline void MakeOilrig(TileIndex t, StationID sid, WaterClass wc)
 	MakeStation(t, OWNER_NONE, sid, StationType::Oilrig, 0, wc);
 }
 
+/**
+ * Is this tile a built-in heliport?
+ * @param t the tile to get the information from.
+ * @return true if and only if the tile is a built-in heliport.
+ */
+static inline bool IsBuiltInHeliportTile(TileIndex t)
+{
+	return IsTileType(t, TileType::Station) &&
+		IsAirport(t) &&
+		IsApron(t) &&
+		GetApronType(t) == APRON_BUILTIN_HELIPORT;
+}
+
 #endif /* STATION_MAP_H */
