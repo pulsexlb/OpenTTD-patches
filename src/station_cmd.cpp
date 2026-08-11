@@ -4081,7 +4081,7 @@ static VehicleEnterTileStates VehicleEnterTile_Station(Vehicle *v, TileIndex til
 			}
 		}
 		if (t->flags.Test(VehicleRailFlag::BeyondPlatformEnd)) return {};
-		if (!consist->IsFrontEngine()) return {};
+		if (!consist->IsPrimaryVehicle()) return {};
 		{
 			const Train *prev = t->GetMovingPrev();
 			if (!(prev == nullptr || prev->flags.Test(VehicleRailFlag::BeyondPlatformEnd))) return {};

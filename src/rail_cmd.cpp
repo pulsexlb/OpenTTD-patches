@@ -4825,7 +4825,9 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 		static_cast<uint8_t>(y & TILE_UNIT_MASK)};
 
 	/* Make sure a train is not entering the tile from behind. */
-	if (_fractcoords_behind[dir] == fract_coord) return VehicleEnterTileState::CannotEnter;
+	if (_fractcoords_behind[dir] == fract_coord) {
+		return VehicleEnterTileState::CannotEnter;
+	}
 
 	/* Leaving depot? */
 	if (v->GetMovingDirection() == DiagDirToDir(dir)) {

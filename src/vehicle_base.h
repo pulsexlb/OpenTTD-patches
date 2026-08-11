@@ -81,6 +81,7 @@ enum GroundVehicleSubtypeFlags : uint8_t {
 	GVSF_FREE_WAGON       = 4, ///< First in a wagon chain (in depot) (not used for road vehicles).
 	GVSF_MULTIHEADED      = 5, ///< Engine is multiheaded (not used for road vehicles).
 	GVSF_VIRTUAL          = 6, ///< Used for virtual trains during template design, it is needed to skip checks for tile or depot status
+	GVSF_FRONT_WAGON      = 7, ///< First wagon of a consist without a front engine (used for train coupling/decoupling)
 };
 
 /**
@@ -995,7 +996,7 @@ private:
 			do {
 				this->cur_real_order_index++;
 				if (this->cur_real_order_index >= this->GetNumOrders()) this->cur_real_order_index = 0;
-			} while (this->GetOrder(this->cur_real_order_index)->IsType(OT_IMPLICIT));
+			} while (this->GetOrder(this->cur_real_order_index)->IsType(OT_IMPLICIT) || this->GetOrder(this->cur_real_order_index)->IsType(OT_DECOUPLE));
 			this->cur_timetable_order_index = this->cur_real_order_index;
 		} else {
 			this->cur_real_order_index = 0;

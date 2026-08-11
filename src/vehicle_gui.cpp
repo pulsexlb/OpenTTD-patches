@@ -1523,6 +1523,167 @@ static constexpr std::initializer_list<NWidgetPart> _nested_vehicle_refit_widget
 	EndContainer(),
 };
 
+/**
+ * Draw the cargo type list in the cargo types window.
+ * @param sel The currently selected cargo type.
+ * @param pos The position of the first row to draw.
+ * @param rows The number of rows to draw.
+ * @param delta The height of each row.
+ * @param r The area to draw within.
+ */
+static void DrawVehicleCargoTypeWindow(CargoType sel, uint pos, uint rows, uint delta, const Rect &r)
+{
+	Rect ir = r.Shrink(WidgetDimensions::scaled.matrix);
+	uint y = ir.top;
+
+	uint i = 0;
+	for (const CargoSpec *cs : CargoSpec::Iterate()) {
+		if (i < pos) {
+			i++;
+			continue;
+		}
+		if (i >= pos + rows) break;
+		DrawString(ir.left, ir.right, y, GetString(STR_JUST_STRING, cs->name), cs->Index() == sel ? TextColour::White : TextColour::Black);
+		y += delta;
+		i++;
+	}
+}
+
+/** Window for selecting a cargo type for a couple order. */
+struct CargoTypesWindow : public Window {
+	CargoType sel;               ///< Currently selected cargo type.
+	Scrollbar *vscroll;          ///< The main scrollbar.
+	VehicleOrderID order;        ///< The order to modify.
+
+	CargoTypesWindow(WindowDesc *desc, const Vehicle *v, VehicleOrderID order) : Window(*desc)
+	{
+		this->sel = CARGO_NO_REFIT;
+		this->order = order;
+		this->CreateNestedTree();
+
+		this->vscroll = this->GetScrollbar(WID_VCT_SCROLLBAR);
+		NWidgetCore *nwi = this->GetWidget<NWidgetCore>(WID_VCT_SET);
+		nwi->SetStringTip(STR_TRAIN_CARGOS_CONFIRM + to_underlying(v->type), STR_REFIT_TRAIN_REFIT_TOOLTIP + to_underlying(v->type));
+
+		this->FinishInitNested(v->index);
+		this->owner = v->owner;
+
+		this->SetWidgetDisabledState(WID_VCT_SET, this->sel == CARGO_NO_REFIT);
+	}
+
+	void OnInit() override
+	{
+		this->SetWidgetDisabledState(WID_VCT_SET, this->sel == CARGO_NO_REFIT);
+		this->RefreshScrollbar();
+	}
+
+	void OnClick(Point pt, WidgetID widget, int click_count) override
+	{
+		switch (widget) {
+			case WID_VCT_MATRIX: { // listbox
+				this->SetSelection(this->vscroll->GetScrolledRowFromWidget(pt.y, this, WID_VCT_MATRIX));
+				this->SetWidgetDisabledState(WID_VCT_SET, this->sel == CARGO_NO_REFIT);
+				this->RefreshScrollbar();
+				this->InvalidateData();
+
+				if (click_count == 1) break;
+				[[fallthrough]];
+			}
+
+			case WID_VCT_SET: // set button
+				if (this->sel != CARGO_NO_REFIT) {
+					const Vehicle *v = Vehicle::Get(this->window_number);
+					if (Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, this->order, MOF_COUPLE_CARGO, {}, this->sel, {})) this->Close();
+				}
+				break;
+		}
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		switch (widget) {
+			case WID_VCT_MATRIX:
+				DrawVehicleCargoTypeWindow(this->sel, this->vscroll->GetPosition(), this->vscroll->GetCapacity(), this->resize.step_height, r);
+				break;
+		}
+	}
+
+	void SetSelection(uint click_row)
+	{
+		uint row = 0;
+		for (const CargoSpec *cs : CargoSpec::Iterate()) {
+			if (row == click_row) {
+				this->sel = cs->Index();
+				return;
+			}
+			row++;
+		}
+		this->sel = CARGO_NO_REFIT;
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacityFromWidget(this, WID_VCT_MATRIX);
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
+	{
+		switch (widget) {
+			case WID_VCT_MATRIX:
+				fill.height = resize.height = GetCharacterHeight(FontSize::Normal) + padding.height;
+				size.height = resize.height * 8;
+				break;
+		}
+	}
+
+	void RefreshScrollbar()
+	{
+		uint row = 0;
+		for (const CargoSpec *cs : CargoSpec::Iterate()) {
+			row++;
+			(void)cs;
+		}
+		this->vscroll->SetCount(row);
+	}
+
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		if (widget == WID_VCT_CAPTION) return GetString(STR_CARGO_CAPTION, Vehicle::Get(this->window_number)->index);
+		return this->Window::GetWidgetString(widget, stringid);
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_vehicle_cargotype_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_CLOSEBOX, Colours::Grey),
+		NWidget(WWT_CAPTION, Colours::Grey, WID_VCT_CAPTION), SetStringTip(STR_CARGO_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
+		NWidget(WWT_DEFSIZEBOX, Colours::Grey),
+	EndContainer(),
+	/* Matrix + scrollbar. */
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_MATRIX, Colours::Grey, WID_VCT_MATRIX), SetMinimalSize(228, 112), SetResize(1, 14), SetFill(1, 1), SetMatrixDataTip(1, 0, STR_NULL), SetScrollbar(WID_VCT_SCROLLBAR),
+		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_VCT_SCROLLBAR),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_VCT_SET), SetFill(1, 0), SetResize(1, 0),
+		NWidget(WWT_RESIZEBOX, Colours::Grey),
+	EndContainer(),
+};
+
+static WindowDesc _vehicle_cargotype_desc(__FILE__, __LINE__,
+	WindowPosition::Automatic, "view_vehicle_cargotype", 240, 174,
+	WindowClass::VehicleCargoTypes, WindowClass::VehicleView,
+	WindowDefaultFlag::Construction,
+	_nested_vehicle_cargotype_widgets
+);
+
+void ShowVehicleCargoTypesWindow(const Vehicle *v, VehicleOrderID order, Window *parent)
+{
+	CloseWindowById(WindowClass::VehicleCargoTypes, v->index);
+	CargoTypesWindow *w = new CargoTypesWindow(&_vehicle_cargotype_desc, v, order);
+	w->parent = parent;
+}
+
 static WindowDesc _vehicle_refit_desc(__FILE__, __LINE__,
 	WindowPosition::Automatic, "view_vehicle_refit", 240, 174,
 	WindowClass::VehicleRefit, WindowClass::VehicleView,
@@ -4343,6 +4504,25 @@ public:
 							v->current_order.GetDestination().ToStationID(), PackVelocity(v->GetDisplaySpeed(), v->type));
 					break;
 				}
+
+				case OT_GOTO_COUPLE:
+					text_colour = TextColour::LightBlue;
+					append(STR_VEHICLE_STATUS_HEADING_FOR_COUPLE_VEL, PackVelocity(v->GetDisplaySpeed(), v->type));
+					break;
+
+				case OT_WAIT_COUPLE:
+					text_colour = TextColour::LightBlue;
+					if (v->type == VehicleType::Train && TrainFitStation(Train::From(v))) {
+						append(STR_VEHICLE_STATUS_WAITING_FOR_COUPLE);
+					} else {
+						append(STR_VEHICLE_STATUS_WAITING_FOR_COUPLE_WRONG);
+					}
+					break;
+
+				case OT_DECOUPLE:
+					text_colour = TextColour::LightBlue;
+					append(STR_VEHICLE_STATUS_DECOUPLING);
+					break;
 
 				case OT_WAITING: {
 					append(STR_VEHICLE_STATUS_TRAIN_WAITING_TIMETABLE);

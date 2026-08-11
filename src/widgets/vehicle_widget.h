@@ -47,6 +47,14 @@ enum VehicleRefitWidgets : WidgetID {
 	WID_VR_REFIT,                 ///< Perform the refit.
 };
 
+/** Widgets of the #CargoTypesWindow class. */
+enum VehicleCargoTypesWidgets {
+	WID_VCT_CAPTION,               ///< Caption of window.
+	WID_VCT_MATRIX,                ///< List of cargos.
+	WID_VCT_SCROLLBAR,             ///< Scrollbar for the cargos options.
+	WID_VCT_SET,                   ///< Set the cargo type.
+};
+
 /** Widgets of the #VehicleDetailsWindow class. */
 enum VehicleDetailsWidgets : WidgetID {
 	WID_VD_CAPTION,                     ///< Caption of window.

@@ -234,6 +234,12 @@ enum class WindowClass : uint16_t {
 	VehicleRefit,
 
 	/**
+	 * Vehicle cargo types; %Window numbers:
+	 *   - #VehicleID = #VehicleCargoTypesWidgets
+	 */
+	VehicleCargoTypes,
+
+	/**
 	 * Vehicle orders; %Window numbers:
 	 *   - #VehicleID = #OrderWidgets
 	 */

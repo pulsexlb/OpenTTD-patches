@@ -233,6 +233,33 @@ void Order::MakeLeaveStation()
 }
 
 /**
+ * Makes this order a Decouple order.
+ */
+void Order::MakeDecouple()
+{
+	this->type = OT_DECOUPLE;
+	this->flags = 0;
+}
+
+/**
+ * Makes this order a Go To Couple order.
+ */
+void Order::MakeGoToCouple()
+{
+	this->type = OT_GOTO_COUPLE;
+	this->flags = 0;
+}
+
+/**
+ * Makes this order a waiting for couple order.
+ */
+void Order::MakeWaitCouple()
+{
+	this->type = OT_WAIT_COUPLE;
+	this->flags = 0;
+}
+
+/**
  * Makes this order a Dummy order.
  */
 void Order::MakeDummy()
@@ -458,6 +485,7 @@ void Order::AssignOrder(const Order &other)
 	this->dest  = other.dest;
 
 	this->refit_cargo   = other.refit_cargo;
+	this->decouple_flags = other.decouple_flags;
 
 	this->wait_time   = other.wait_time;
 
@@ -466,9 +494,7 @@ void Order::AssignOrder(const Order &other)
 
 	this->occupancy = other.occupancy;
 
-	if (other.extra != nullptr && (this->GetUnloadType() == OrderUnloadType::CargoTypeUnload || this->GetLoadType() == OrderLoadType::CargoTypeLoad
-			|| (this->IsType(OT_LABEL) && this->GetLabelSubType() == OLST_TEXT)
-			|| other.extra->xdata != 0 || other.extra->xdata2 != 0 || other.extra->xflags != 0 || other.extra->dispatch_index != 0 || other.extra->colour != 0)) {
+	if (other.extra != nullptr) {
 		this->AllocExtraInfo();
 		*(this->extra) = *(other.extra);
 	} else {
@@ -729,6 +755,67 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 			|| (next->IsBaseStationOrder() && next->GetDestination() == v->last_station_visited));
 
 	return CargoMaskedStationIDVector(cargo_mask, { next->GetDestination().ToStationID() });
+}
+
+/**
+ * Get the next order at which the vehicle will stop (loading/unloading),
+ * resolving conditional orders by estimation. No cargo filter is applied.
+ * @param v The vehicle to find the next stopping order for.
+ * @param first The first order to consider, or nullptr to start at the current order.
+ * @param hops Number of hops already made (to prevent endless recursion).
+ * @return The next stopping order(s), or an empty vector if none.
+ */
+std::vector<const Order *> OrderList::GetNextStoppingOrder(const Vehicle *v, const Order *first, uint hops) const
+{
+	CargoTypes cargo_mask{}; // No cargo filter (all cargoes).
+
+	const Order *next = first;
+	if (first == nullptr) {
+		next = this->GetOrderAt(v->cur_implicit_order_index);
+		if (next == nullptr) {
+			next = this->GetFirstOrder();
+			if (next == nullptr) return {};
+		} else {
+			/* GetNext never returns nullptr if there is a valid station in the list.
+			 * As the given "next" is already valid and a station in the list, we
+			 * don't have to check for nullptr here. */
+			next = this->GetNext(next);
+			assert(next != nullptr);
+		}
+	}
+
+	do {
+		next = this->GetNextDecisionNode(next, ++hops, cargo_mask);
+
+		/* Resolve possibly nested conditionals by estimation. */
+		while (next != nullptr && next->IsType(OT_CONDITIONAL)) {
+			/* We return both options of conditional orders. */
+			const Order *skip_to = this->GetNextDecisionNode(
+					this->GetOrderAt(next->GetConditionSkipToOrder()), hops, cargo_mask);
+			const Order *advance = this->GetNextDecisionNode(
+					this->GetNext(next), hops, cargo_mask);
+			if (advance == nullptr || advance == first || skip_to == advance) {
+				next = (skip_to == first) ? nullptr : skip_to;
+			} else if (skip_to == nullptr || skip_to == first) {
+				next = (advance == first) ? nullptr : advance;
+			} else {
+				std::vector<const Order *> or1 = this->GetNextStoppingOrder(v, skip_to, hops);
+				std::vector<const Order *> or2 = this->GetNextStoppingOrder(v, advance, hops);
+				or1.insert(or1.end(), or2.rbegin(), or2.rend());
+				return or1;
+			}
+			++hops;
+		}
+
+		/* Don't return a next stop if the vehicle has to unload everything. */
+		if (next == nullptr || ((next->IsType(OT_GOTO_STATION) || next->IsType(OT_IMPLICIT)) &&
+				next->GetDestination() == v->last_station_visited &&
+				(next->GetUnloadType() == OrderUnloadType::Unload || next->GetUnloadType() == OrderUnloadType::Transfer))) {
+			return {};
+		}
+	} while (next->IsType(OT_GOTO_DEPOT) || next->GetDestination() == v->last_station_visited);
+
+	return { next };
 }
 
 /**
@@ -1306,6 +1393,12 @@ static CommandCost PreInsertOrderCheck(Vehicle *v, const Order &new_order, CmdIn
 					if (occ == OrderConditionComparator::IsTrue || occ == OrderConditionComparator::IsFalse) return CMD_ERROR;
 					break;
 
+				case OrderConditionVariable::DecouplePart:
+					if (v->type != VehicleType::Train) return CMD_ERROR;
+					if (occ != OrderConditionComparator::Equal && occ != OrderConditionComparator::NotEqual) return CMD_ERROR;
+					if (new_order.GetConditionValue() > 2) return CMD_ERROR;
+					break;
+
 				case OrderConditionVariable::DispatchSlot: {
 					if (occ != OrderConditionComparator::IsTrue && occ != OrderConditionComparator::IsFalse) return CMD_ERROR;
 					uint submode = GB(new_order.GetConditionValue(), ODCB_SRC_START, ODCB_SRC_COUNT);
@@ -1407,6 +1500,12 @@ static CommandCost PreInsertOrderCheck(Vehicle *v, const Order &new_order, CmdIn
 			break;
 		}
 
+		case OT_GOTO_COUPLE:
+		case OT_WAIT_COUPLE:
+		case OT_DECOUPLE:
+			/* Couple/decouple orders have no destination or flags validation. */
+			break;
+
 		default: return CMD_ERROR;
 	}
 
@@ -1419,6 +1518,11 @@ static CommandCost CmdInsertOrderIntl(DoCommandFlags flags, Vehicle *v, VehicleO
 	if (ret.Failed()) return ret;
 
 	if (sel_ord == INVALID_VEH_ORDER_ID) sel_ord = v->GetNumOrders(); // Append to end of list
+
+	if (sel_ord < v->GetNumOrders()) {
+		Order *selected_order = v->GetOrder(sel_ord);
+		if (selected_order->GetType() == OT_DECOUPLE) sel_ord--;
+	}
 
 	if (sel_ord > v->GetNumOrders()) return CMD_ERROR;
 
@@ -1574,6 +1678,12 @@ CommandCost CmdDeleteOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 
 	if (v->GetOrder(sel_ord) == nullptr) return CMD_ERROR;
 
+	/* If the next order is a decouple order, it must be deleted together with this one. */
+	Order *next_order = v->GetOrder(sel_ord + 1);
+	if (next_order != nullptr && next_order->IsType(OT_DECOUPLE)) {
+		CmdDeleteOrder(flags, v->index, sel_ord + 1);
+	}
+
 	if (flags.Test(DoCommandFlag::Execute)) {
 		DeleteOrder(v, sel_ord);
 	}
@@ -1682,6 +1792,12 @@ CommandCost CmdSkipToOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 {
 	Vehicle *v = Vehicle::GetIfValid(veh_id);
 
+	if (v != nullptr) {
+		/* Skip decouple orders when skipping to an order. */
+		Order *order = v->GetOrder(sel_ord);
+		if (order != nullptr && order->GetType() == OT_DECOUPLE) sel_ord = (sel_ord + 1) % v->GetNumOrders();
+	}
+
 	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle() || sel_ord == v->cur_implicit_order_index || sel_ord >= v->GetNumOrders() || v->GetNumOrders() < 2) return CMD_ERROR;
 
 	CommandCost ret = CheckOwnership(v->owner);
@@ -1744,6 +1860,14 @@ CommandCost CmdMoveOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID mov
 	} else {
 		if (moving_order + count > order_count) return CMD_ERROR;
 	}
+
+	/* Decouple orders are bound to the order before them, so they cannot be moved. */
+	const Order *moving_one = v->GetOrder(moving_order);
+	if (moving_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
+	const Order *after_moving_one = v->GetOrder(moving_order + 1);
+	if (after_moving_one != nullptr && after_moving_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
+	const Order *target_one = v->GetOrder(moving_order > target_order ? target_order : target_order + 1);
+	if (target_one != nullptr && target_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		v->orders->MoveOrders(moving_order, target_order, count);
@@ -1987,7 +2111,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 	} else {
 		switch (order->GetType()) {
 			case OT_GOTO_STATION:
-				if (mof != MOF_NON_STOP && mof != MOF_STOP_LOCATION && mof != MOF_UNLOAD && mof != MOF_LOAD && mof != MOF_CARGO_TYPE_UNLOAD && mof != MOF_CARGO_TYPE_LOAD && mof != MOF_RV_TRAVEL_DIR) return CMD_ERROR;
+				if (mof != MOF_NON_STOP && mof != MOF_STOP_LOCATION && mof != MOF_UNLOAD && mof != MOF_LOAD && mof != MOF_CARGO_TYPE_UNLOAD && mof != MOF_CARGO_TYPE_LOAD && mof != MOF_RV_TRAVEL_DIR && mof != MOF_DECOUPLE) return CMD_ERROR;
 				break;
 
 			case OT_GOTO_DEPOT:
@@ -2000,6 +2124,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 
 			case OT_CONDITIONAL:
 				if (mof != MOF_COND_VARIABLE && mof != MOF_COND_COMPARATOR && mof != MOF_COND_VALUE && mof != MOF_COND_VALUE_2 && mof != MOF_COND_VALUE_3 && mof != MOF_COND_VALUE_4 && mof != MOF_COND_DESTINATION && mof != MOF_COND_STATION_ID) return CMD_ERROR;
+				break;
+
+			case OT_GOTO_COUPLE:
+				if (mof != MOF_COUPLE_LOAD && mof != MOF_COUPLE_CARGO && mof != MOF_COUPLE_VALUE && mof != MOF_COUPLE_SLOT) return CMD_ERROR;
+				break;
+
+			case OT_DECOUPLE:
+				if (mof != MOF_FIRST_ORDERS && mof != MOF_SECOND_ORDERS && mof != MOF_DECOUPLE_VALUE) return CMD_ERROR;
 				break;
 
 			case OT_SLOT:
@@ -2101,7 +2233,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 		case MOF_COND_VARIABLE: {
 			OrderConditionVariable cond_variable = static_cast<OrderConditionVariable>(data);
 			if (cond_variable >= OrderConditionVariable::End) return CMD_ERROR;
-			if ((cond_variable == OrderConditionVariable::FreePlatforms || cond_variable == OrderConditionVariable::DrivingBackwards) && v->type != VehicleType::Train) return CMD_ERROR;
+			if ((cond_variable == OrderConditionVariable::FreePlatforms || cond_variable == OrderConditionVariable::DrivingBackwards || cond_variable == OrderConditionVariable::DecouplePart) && v->type != VehicleType::Train) return CMD_ERROR;
 			break;
 		}
 
@@ -2119,6 +2251,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				case OrderConditionVariable::DispatchSlot:
 				case OrderConditionVariable::DrivingBackwards:
 					if (occ != OrderConditionComparator::IsTrue && occ != OrderConditionComparator::IsFalse) return CMD_ERROR;
+					break;
+
+				case OrderConditionVariable::DecouplePart:
+					if (occ != OrderConditionComparator::Equal && occ != OrderConditionComparator::NotEqual) return CMD_ERROR;
 					break;
 
 				case OrderConditionVariable::SlotOccupancy:
@@ -2156,6 +2292,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				case OrderConditionVariable::RequiresService:
 				case OrderConditionVariable::DrivingBackwards:
 					return CMD_ERROR;
+
+				case OrderConditionVariable::DecouplePart:
+					if (data > 2) return CMD_ERROR;
+					break;
 
 				case OrderConditionVariable::LoadPercentage:
 				case OrderConditionVariable::Reliability:
@@ -2290,6 +2430,41 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 
 		case MOF_COND_DESTINATION:
 			if (data >= v->GetNumOrders() || data == sel_ord) return CMD_ERROR;
+			break;
+
+		case MOF_SECOND_ORDERS:
+		case MOF_FIRST_ORDERS:
+			if (v->type != VehicleType::Train) return CMD_ERROR;
+			if (data >= ODOF_END) return CMD_ERROR;
+			break;
+
+		case MOF_DECOUPLE:
+			if (v->type != VehicleType::Train) return CMD_ERROR;
+			if (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) return CMD_ERROR;
+			break;
+
+		case MOF_DECOUPLE_VALUE:
+			if (data > 127) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_LOAD:
+			if (data >= ODC_END) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_CARGO:
+			if (cargo_id >= NUM_CARGO && cargo_id != CARGO_NO_REFIT) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_VALUE:
+			if (data > 127) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_SLOT:
+			if (data != INVALID_TRACE_RESTRICT_SLOT_ID) {
+				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(data);
+				if (slot == nullptr || slot->vehicle_type != v->type) return CMD_ERROR;
+				if (!slot->IsUsableByOwner(v->owner)) return CMD_ERROR;
+			}
 			break;
 
 		case MOF_WAYPOINT_FLAGS:
@@ -2523,6 +2698,11 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 						if (occ != OrderConditionComparator::IsTrue && occ != OrderConditionComparator::IsFalse) order->SetConditionComparator(OrderConditionComparator::IsTrue);
 						order->SetConditionValue(0);
 						break;
+
+					case OrderConditionVariable::DecouplePart:
+						if (occ != OrderConditionComparator::Equal && occ != OrderConditionComparator::NotEqual) order->SetConditionComparator(OrderConditionComparator::Equal);
+						order->SetConditionValue(0);
+						break;
 					case OrderConditionVariable::DispatchSlot:
 						if (occ != OrderConditionComparator::IsTrue && occ != OrderConditionComparator::IsFalse) order->SetConditionComparator(OrderConditionComparator::IsTrue);
 						order->SetConditionValue(ODCS_VEH << ODCB_SRC_START);
@@ -2643,6 +2823,50 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				order->SetConditionSkipToOrder(data);
 				break;
 
+			case MOF_DECOUPLE_VALUE:
+				order->SetNumDecouple(data);
+				break;
+
+			case MOF_DECOUPLE: {
+				OrderDecoupleFlags decouple_flags = order->GetDecouple();
+				order->SetDecouple(data);
+				if (decouple_flags == ODF_DECOUPLE && order->GetDecouple() == ODF_NOTHING) {
+					Command<Commands::DeleteOrder>::Do(flags, v->index, sel_ord + 1);
+				}
+				if (decouple_flags == ODF_NOTHING && order->GetDecouple() == ODF_DECOUPLE) {
+					Order new_order;
+					new_order.MakeDecouple();
+					new_order.SetDecoupleFirstOrdersType(ODOF_KEEP_ORDERS_NO_LOAD);
+					new_order.SetDecoupleSecondOrdersType(ODOF_INHERIT_ORDERS);
+					CmdInsertOrder(flags, InsertOrderCmdData(v->index, sel_ord + 1, new_order));
+				}
+				break;
+			}
+
+			case MOF_COUPLE_LOAD:
+				order->SetCoupleLoad((OrderCoupleFlags)data);
+				break;
+
+			case MOF_COUPLE_CARGO:
+				order->SetCoupleCargoType(cargo_id);
+				break;
+
+			case MOF_COUPLE_VALUE:
+				order->SetNumCouple(data);
+				break;
+
+			case MOF_COUPLE_SLOT:
+				order->SetCoupleSlot(TraceRestrictSlotID{(uint16_t)data});
+				break;
+
+			case MOF_FIRST_ORDERS:
+				order->SetDecoupleFirstOrdersType((OrderDecoupleOrdersFlags)data);
+				break;
+
+			case MOF_SECOND_ORDERS:
+				order->SetDecoupleSecondOrdersType((OrderDecoupleOrdersFlags)data);
+				break;
+
 			case MOF_WAYPOINT_FLAGS:
 				order->SetWaypointFlags(static_cast<OrderWaypointFlags>(data));
 				break;
@@ -2729,6 +2953,18 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 			if (mof == MOF_RV_TRAVEL_DIR && sel_ord == u->cur_real_order_index &&
 					(u->current_order.IsType(OT_GOTO_STATION) || u->current_order.IsType(OT_GOTO_WAYPOINT))) {
 				u->current_order.SetRoadVehTravelDirection((DiagDirection)data);
+			}
+
+			/* Keep the current order of the vehicle in sync with the modified order. */
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_GOTO_STATION)) {
+				u->current_order.SetDecouple(order->GetDecouple());
+				u->current_order.SetNumDecouple(order->GetNumDecouple());
+			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_GOTO_COUPLE)) {
+				u->current_order.SetCoupleLoad(order->GetCoupleLoad());
+				u->current_order.SetCoupleCargoType(order->GetCoupleCargoType());
+				u->current_order.SetNumCouple(order->GetNumCouple());
+				u->current_order.SetCoupleSlot(order->GetCoupleSlot());
 			}
 
 			/* Unbunching data is no longer valid. */
@@ -3747,6 +3983,13 @@ VehicleOrderID ProcessConditionalOrder(const Order *order, const Vehicle *v, Pro
 		case OrderConditionVariable::RequiresService:     skip_order = OrderConditionCompare(occ, v->NeedsServicing(),               value); break;
 		case OrderConditionVariable::RemainingLifetime:   skip_order = OrderConditionCompare(occ, std::max(DateDeltaToYearDelta(v->max_age - v->age + DAYS_IN_LEAP_YEAR - 1).base(), 0), value); break;
 		case OrderConditionVariable::DrivingBackwards:    skip_order = OrderConditionCompare(occ, v->IsDrivingBackwards(), value); break;
+		case OrderConditionVariable::DecouplePart: {
+			/* Only the front engine carries the decoupled-part marker; any other vehicle type is "not a part". */
+			uint8_t part = 0;
+			if (v->type == VehicleType::Train) part = Train::From(v)->decouple_part;
+			skip_order = OrderConditionCompare(occ, part, value);
+			break;
+		}
 		case OrderConditionVariable::Unconditionally:     skip_order = true; break;
 		case OrderConditionVariable::CargoWaiting: {
 			StationID next_station = order->GetConditionStationID();
@@ -4248,7 +4491,7 @@ bool ProcessOrders(Vehicle *v)
 	 * will be reset to nothing. (That also happens if no order, but in that case
 	 * it won't hit the point in code where may_reverse is checked)
 	 */
-	bool may_reverse = v->current_order.IsType(OT_NOTHING);
+	bool may_reverse = v->current_order.IsType(OT_NOTHING) || v->current_order.IsType(OT_GOTO_COUPLE);
 	Vehicle *moving_front = v->GetMovingFront();
 
 	v->vehicle_flags.Reset(VehicleFlag::ConditionalOrderWait);
@@ -4346,6 +4589,7 @@ bool Order::ShouldStopAtStation(StationID last_station_visited, StationID statio
 	bool is_dest_station = this->IsType(OT_GOTO_STATION) && this->dest == station;
 
 	return (!this->IsType(OT_GOTO_DEPOT) || this->GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders)) &&
+			!this->IsType(OT_GOTO_COUPLE) &&
 			(last_station_visited != station) && // Do stop only when we've not just been there
 			/* Finally do stop when there is no non-stop flag set for this type of station. */
 			!(this->GetNonStopType() & (is_dest_station ? ONSF_NO_STOP_AT_DESTINATION_STATION : ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS));
@@ -4444,6 +4688,9 @@ const char *GetOrderTypeName(OrderType order_type)
 		"OT_COUNTER",
 		"OT_LABEL",
 		"OT_SLOT_GROUP",
+		"OT_GOTO_COUPLE",
+		"OT_WAIT_COUPLE",
+		"OT_DECOUPLE",
 	};
 	static_assert(lengthof(names) == OT_END);
 	if (order_type < OT_END) return names[order_type];

@@ -381,6 +381,8 @@ bool Vehicle::NeedsAutomaticServicing() const
 	if (this->HasDepotOrder()) return false;
 	if (this->current_order.IsType(OT_LOADING)) return false;
 	if (this->current_order.IsType(OT_LOADING_ADVANCE)) return false;
+	if (this->current_order.IsType(OT_WAIT_COUPLE)) return false;
+	if (this->current_order.IsType(OT_GOTO_COUPLE)) return false;
 	if (this->current_order.IsType(OT_GOTO_DEPOT) && !this->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) return false;
 	return NeedsServicing();
 }
@@ -3073,7 +3075,7 @@ void FreeUnitIDGenerator::ReleaseID(UnitID index)
  * @param type Type of vehicle
  * @return A unused unit number for the given type of vehicle if it is allowed to build one, else \c UINT16_MAX.
  */
-UnitID GetFreeUnitNumber(VehicleType type)
+UnitID GetFreeUnitNumber(VehicleType type, Owner owner)
 {
 	/* Check whether it is allowed to build another vehicle. */
 	uint max_veh;
@@ -3085,7 +3087,9 @@ UnitID GetFreeUnitNumber(VehicleType type)
 		default: NOT_REACHED();
 	}
 
-	const Company *c = Company::Get(_current_company);
+	owner = owner == INVALID_OWNER ? _current_company : owner;
+
+	const Company *c = Company::Get(owner);
 	if (c->group_all[type].num_vehicle >= max_veh) return UINT16_MAX; // Currently already at the limit, no room to make a new one.
 
 	return c->freeunits[type].NextID();
@@ -3852,6 +3856,10 @@ void Vehicle::HandleLoading(bool mode)
 
 		default: return;
 	}
+
+	/* Skip decouple orders when advancing (they are handled at the station). */
+	const Order *decouple_order = this->GetOrder(this->cur_implicit_order_index);
+	if (decouple_order != nullptr && decouple_order->IsType(OT_DECOUPLE)) this->IncrementImplicitOrderIndex();
 
 	this->IncrementImplicitOrderIndex();
 }

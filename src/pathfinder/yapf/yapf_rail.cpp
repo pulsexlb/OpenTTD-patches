@@ -99,6 +99,47 @@ private:
 		return true;
 	}
 
+	bool FindSafeCouplePositionProc(TileIndex tile, Trackdir td)
+	{
+		if (IsRailDepotTile(tile)) return false;
+		TrackdirBits tdb = TrackdirToTrackdirBits(td);
+		TrackBits tracks = TrackdirBitsToTrackBits(tdb);
+		if (HasReservedTracks(tile, tracks)) {
+			Train *best = nullptr;
+			Train *second_best = nullptr;
+			auto check_train_on_tile = [&](TileIndex t) {
+				for (Train *tr : VehiclesOnTile<VehicleType::Train>(t)) {
+					if (tr->vehstatus.Test(VehState::Crashed)) continue;
+					if (tr->track == TRACK_BIT_WORMHOLE || HasBit((TrackBits)tr->track, TrackdirToTrack(td))) {
+						Train *head = tr->First();
+						if (best != nullptr && head->index != best->index) second_best = head;
+						/* ALWAYS take the lowest ID (anti-desync!) */
+						if (best == nullptr || head->index < best->index) best = head;
+					}
+				}
+			};
+			if (IsRailStationTile(tile)) {
+				TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
+				for (TileIndex st_tile = tile + diff; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
+					check_train_on_tile(st_tile);
+				}
+			}
+			check_train_on_tile(tile);
+			if (best != nullptr) {
+				if (!best->current_order.IsType(OT_WAIT_COUPLE)) return false;
+				if (second_best != nullptr) return false;
+				/* look behind station too */
+				Vehicle *other_train = nullptr;
+				FollowTrainReservation(best, &other_train);
+				if (other_train != nullptr && other_train != best) return false;
+			}
+		} else if (GetReservedTrackbits(tile) != TRACK_BIT_NONE) {
+			if (!TryReserveRailTrack(tile, TrackdirToTrack(td))) return false;
+			UnreserveRailTrack(tile, TrackdirToTrack(td));
+		}
+		return true;
+	}
+
 	/**
 	 * Reserve a railway platform. Tile contains the failed tile on abort.
 	 * @param tile The start tile.
@@ -216,13 +257,23 @@ public:
 		}
 	}
 
+	inline bool CheckSafePositionOnNode(Node *node)
+	{
+		dbg_assert(node->parent != nullptr);
+
+		if (!node->IterateTiles(Yapf().GetVehicle(), Yapf(), *this, &CYapfReserveTrack<Types>::FindSafeCouplePositionProc)) {
+			return false;
+		}
+		return true;
+	}
+
 	/**
 	 * Try to reserve the path till the reservation target.
 	 * @param target End location of the reservation.
 	 * @param origin Start location of the reservation.
 	 * @return \c true iff the path could be reserved.
 	 */
-	bool TryReservePath(PBSTileInfo *target, TileIndex origin)
+	bool TryReservePath(PBSTileInfo *target, TileIndex origin, bool unsafe_pos = false)
 	{
 		this->res_fail_tile = INVALID_TILE;
 		this->origin_tile = origin;
@@ -236,7 +287,7 @@ public:
 		/* Don't bother if the target is reserved. */
 		PBSWaitingPositionRestrictedSignalState restricted_signal_state;
 		restricted_signal_state.defer_test_if_slot_conditional = true;
-		if (!IsWaitingPositionFree(Yapf().GetVehicle(), this->res_dest_tile, this->res_dest_td, false, &restricted_signal_state)) return false;
+		if (!unsafe_pos && !IsWaitingPositionFree(Yapf().GetVehicle(), this->res_dest_tile, this->res_dest_td, false, &restricted_signal_state)) return false;
 
 		/* The temporary slot state only needs to be pushed to the stack (i.e. activated) on first use */
 		static TraceRestrictSlotTemporaryState temporary_slot_state;
@@ -276,7 +327,7 @@ public:
 
 				return this->ReserveSingleTrack(tile, td);
 			});
-			if (this->res_fail_tile != INVALID_TILE) {
+			if (!unsafe_pos && this->res_fail_tile != INVALID_TILE) {
 				/* Reservation failed, undo. */
 				Node *fail_node = this->res_dest_node;
 				TileIndex stop_tile = this->res_fail_tile;
@@ -377,6 +428,85 @@ public:
 			DumpState(pf1, pf2);
 			return;
 		}
+	}
+};
+
+template <class Types>
+class CYapfFollowCoupleRailT : public CYapfReserveTrack<Types> {
+public:
+	typedef typename Types::Tpf Tpf;                     ///< the pathfinder class (derived from THIS class)
+	typedef typename Types::TrackFollower TrackFollower;
+	typedef typename Types::NodeList::Item Node;        ///< this will be our node type
+	typedef typename Node::Key Key;                      ///< key to hash tables
+
+protected:
+	/** @copydoc CYapfBaseT::Yapf */
+	inline Tpf &Yapf()
+	{
+		return *static_cast<Tpf *>(this);
+	}
+
+public:
+	/**
+	 * Called by YAPF to move from the given node to the next tile. For each
+	 *  reachable trackdir on the new tile creates new node, initializes it
+	 *  and adds it to the open list by calling Yapf().AddNewNode(n)
+	 */
+	inline void PfFollowNode(Node &old_node)
+	{
+		TrackFollower F(Yapf().GetVehicle(), Yapf().GetCompatibleRailTypes());
+		if (F.Follow(old_node.GetLastTile(), old_node.GetLastTrackdir())) {
+			Yapf().AddMultipleNodes(&old_node, F);
+		}
+	}
+
+	/** Return debug report character to identify the transportation type */
+	inline char TransportTypeChar() const
+	{
+		return 't';
+	}
+
+	static Trackdir stFindNearestCoupleTrain(const Train *v, bool dont_reserve)
+	{
+		/* Create pathfinder instance */
+		Tpf pf1;
+		pf1.DisableCache(true);
+		return pf1.FindNearestCoupleTrain(v, dont_reserve);
+	}
+
+	Trackdir FindNearestCoupleTrain(const Train *v, bool dont_reserve)
+	{
+		PBSTileInfo origin = FollowTrainReservation(v, nullptr, FollowTrainReservationFlag::IgnoreLookahead);
+		/* Set origin and destination. */
+		Yapf().SetOrigin(origin.tile, origin.trackdir);
+		Yapf().SetDestination(v);
+
+		bool path_found = Yapf().FindPath(v);
+		if (!path_found) return INVALID_TRACKDIR;
+
+		/* Found a destination, set as reservation target. */
+		Node *pNode = Yapf().GetBestNode();
+		this->SetReservationTarget(pNode, pNode->GetLastTile(), pNode->GetLastTrackdir());
+
+		/* Walk through the path back to the origin. */
+		Trackdir next_trackdir = INVALID_TRACKDIR;
+		Node *pPrev = nullptr;
+		while (pNode->parent != nullptr) {
+			pPrev = pNode;
+			pNode = pNode->parent;
+
+			if (!this->CheckSafePositionOnNode(pPrev)) {
+				return INVALID_TRACKDIR;
+			}
+		}
+
+		next_trackdir = pPrev->GetTrackdir();
+		if (!dont_reserve) {
+			bool reserved = this->TryReservePath(nullptr, pNode->GetLastTile(), true);
+			return reserved ? next_trackdir : INVALID_TRACKDIR;
+		}
+
+		return next_trackdir;
 	}
 };
 
@@ -803,6 +933,24 @@ Track YapfTrainChooseTrack(const Train *v, TileIndex tile, DiagDirection enterdi
 		: CYapfRail::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
 
 	return (td_ret != INVALID_TRACKDIR) ? TrackdirToTrack(td_ret) : FindFirstTrack(tracks);
+}
+
+struct CYapfCoupleRail     : CYapfRailBase<CYapfRail_TypesT<CYapfCoupleRail,     CFollowTrackRail,     CYapfDestinationTrainRailT, CYapfFollowCoupleRailT>> {};
+struct CYapfCoupleRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfCoupleRailNo90, CFollowTrackRailNo90, CYapfDestinationTrainRailT, CYapfFollowCoupleRailT>> {};
+
+/**
+ * Find the track to take when approaching another train to couple with.
+ * @param v The train to find a track for.
+ * @param dont_reserve Whether to skip making a reservation.
+ * @return The track to take, or #INVALID_TRACK if no path was found.
+ */
+Track YapfTrainCoupleTrack(const Train *v, bool dont_reserve)
+{
+	Trackdir ret = _settings_game.pf.forbid_90_deg
+		? CYapfCoupleRailNo90::stFindNearestCoupleTrain(v, dont_reserve)
+		: CYapfCoupleRail::stFindNearestCoupleTrain(v, dont_reserve);
+
+	return (ret != INVALID_TRACKDIR) ? TrackdirToTrack(ret) : INVALID_TRACK;
 }
 
 static bool YapfTrainCheckReverse(const Train *v, TileIndex tile, Trackdir td, TileIndex tile_rev, Trackdir td_rev, int reverse_penalty)
