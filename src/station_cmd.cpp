@@ -3240,9 +3240,11 @@ static void DrawAirportFences(TileInfo *ti)
 	assert(IsAirportTile(ti->tile));
 	StationID st_id = GetStationIndex(ti->tile);
 
-	static const SpriteBounds fence_bounds[2] = {
-		{{0,  1, 0}, {16, 1, 4}, {}},
-		{{1,  0, 0}, { 1, 16, 4}, {}},
+	static const SpriteBounds fence_bounds[4] = {
+		{{0,  0, 0}, {16, 1, 4}, {}}, // NE
+		{{0, 15, 0}, {1, 16, 4}, {}}, // SE
+		{{15,  0, 0}, {1, 16, 4}, {}}, // SW
+		{{0, 0, 0}, {1, 16, 4}, {}}, // NW
 	};
 
 	PaletteID palette = GetCompanyPalette(GetTileOwner(ti->tile));
@@ -3250,7 +3252,7 @@ static void DrawAirportFences(TileInfo *ti)
 		TileIndex neighbour = TileAddByDiagDir(ti->tile, dir);
 		if (IsValidTile(neighbour) && (IsAirportTileOfStation(neighbour, st_id) || IsTileType(neighbour, TileType::Object))) continue;
 		AddSortableSpriteToDraw(SPR_TRACK_FENCE_FLAT_Y - (to_underlying(dir) % 2), palette,
-			ti->x, ti->y, ti->z, fence_bounds[to_underlying(dir) % 2]);
+			ti->x, ti->y, ti->z, fence_bounds[to_underlying(dir)]);
 	}
 }
 
