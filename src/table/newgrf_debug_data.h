@@ -7,6 +7,8 @@
 
 /** @file newgrf_debug_data.h Data 'tables' for NewGRF debugging. */
 
+#include "../air_map.h"
+
 #include "../newgrf_house.h"
 #include "../newgrf_engine.h"
 #include "../newgrf_roadtype.h"
@@ -450,9 +452,8 @@ class NIHVehicle : public NIHelper {
 		}
 		if (v->type == VehicleType::Aircraft) {
 			const Aircraft *a = Aircraft::From(v);
-			output.buffer.format("  Pos: {}, prev pos: {}, state: {}",
-					a->pos, a->previous_pos, a->state);
-			if (a->IsPrimaryVehicle()) output.buffer.format(" ({})", AirportMovementStateToString(a->state));
+			output.buffer.format("  state: {}", static_cast<uint>(a->state));
+			if (a->IsPrimaryVehicle()) output.buffer.format(" ({})", static_cast<uint>(a->state));
 			output.buffer.format(", flags: 0x{:X}", a->flags);
 			output.FinishPrint();
 			if (BaseStation::IsValidID(a->targetairport)) {

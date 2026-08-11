@@ -39,8 +39,11 @@ uint _map_digits_x;  ///< Number of base-10 digits for _map_size_x
 uint _map_digits_y;  ///< Number of base-10 digits for _map_size_y
 uint _map_initial_land_count; ///< Initial number of land tiles on the map.
 
-MapTilePtr<Tile> _m{nullptr};          ///< Tiles of the map
-MapTilePtr<TileExtended> _me{nullptr}; ///< Extended Tiles of the map
+MapTilePtr<Tile::TileBase> _m{nullptr};          ///< Tiles of the map
+MapTilePtr<Tile::TileExtended> _me{nullptr}; ///< Extended Tiles of the map
+
+Tile::TileBase *Tile::base_tiles;         ///< Pointer to the tile-array.
+Tile::TileExtended *Tile::extended_tiles; ///< Pointer to the extended tile-array.
 
 #if defined(__linux__) && defined(MADV_HUGEPAGE)
 static size_t _munmap_size = 0;
@@ -104,7 +107,7 @@ void AllocateMap(uint size_x, uint size_y)
 
 	DeallocateMapStorage();
 
-	const size_t total_size = (sizeof(Tile) + sizeof(TileExtended)) * _map_size;
+	const size_t total_size = (sizeof(Tile::TileBase) + sizeof(Tile::TileExtended)) * _map_size;
 
 	uint8_t *buf = nullptr;
 #if defined(__linux__) && defined(MADV_HUGEPAGE)
@@ -140,8 +143,10 @@ void AllocateMap(uint size_x, uint size_y)
 
 	if (buf == nullptr) buf = CallocT<uint8_t>(total_size);
 
-	_m.tile_data = reinterpret_cast<Tile *>(buf);
-	_me.tile_data = reinterpret_cast<TileExtended *>(buf + (_map_size * sizeof(Tile)));
+	_m.tile_data = reinterpret_cast<Tile::TileBase *>(buf);
+	_me.tile_data = reinterpret_cast<Tile::TileExtended *>(buf + (_map_size * sizeof(Tile::TileBase)));
+	Tile::base_tiles = _m.tile_data;
+	Tile::extended_tiles = _me.tile_data;
 
 	InitializeWaterRegions();
 }
@@ -161,6 +166,8 @@ void DeallocateMap()
 	_map_digits_y = {};
 	_m.tile_data = nullptr;
 	_me.tile_data = nullptr;
+	Tile::base_tiles = nullptr;
+	Tile::extended_tiles = nullptr;
 
 	InitializeWaterRegions();
 }

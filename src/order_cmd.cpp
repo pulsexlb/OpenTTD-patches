@@ -52,6 +52,26 @@
 
 #include "safeguards.h"
 
+
+DestinationID GetTargetDestination(const Order &o, bool is_aircraft)
+{
+	DestinationID destination_id = o.GetDestination();
+	switch (o.GetType()) {
+		case OT_GOTO_STATION:
+			return destination_id;
+		case OT_GOTO_DEPOT:
+			assert(Depot::IsValidID(destination_id.ToDepotID()));
+			if (is_aircraft) {
+				Depot *dep = Depot::Get(destination_id.ToDepotID());
+				destination_id = GetStationIndex(dep->xy);
+				assert(Station::IsValidID(destination_id.ToStationID()));
+			}
+			return destination_id;
+		default:
+			return DestinationID{StationID::Invalid()};
+	}
+}
+
 /* DestinationID must be at least as large as every these below, because it can
  * be any of them
  */
@@ -3201,7 +3221,7 @@ void CheckOrders(const Vehicle *v)
 					message = STR_NEWS_VEHICLE_HAS_INVALID_ENTRY;
 				} else if (v->type == VehicleType::Aircraft &&
 							(AircraftVehInfo(v->engine_type)->subtype & AIR_FAST) &&
-							st->airport.GetFTA()->flags.Test(AirportFTAClass::Flag::ShortStrip) &&
+							st->airport.GetSpec()->min_runway_length < 6 &&
 							!_cheats.no_jetcrash.value &&
 							message == INVALID_STRING_ID) {
 					message = STR_NEWS_PLANE_USES_TOO_SHORT_RUNWAY;
@@ -4058,13 +4078,6 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 					/* If there is no depot in front, reverse automatically (trains only) */
 					if (v->type == VehicleType::Train && closest_depot.reverse) Command<Commands::ReverseTrainDirection>::Do(DoCommandFlag::Execute, v->index, false);
 
-					if (v->type == VehicleType::Aircraft) {
-						Aircraft *a = Aircraft::From(v);
-						if (a->state == FLYING && a->targetairport != closest_depot.destination) {
-							/* The aircraft is now heading for a different hangar than the next in the orders */
-							AircraftNextAirportPos_and_Order(a);
-						}
-					}
 					return true;
 				}
 
@@ -4075,13 +4088,14 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 				v->IncrementRealOrderIndex();
 			} else {
 				if (v->type != VehicleType::Aircraft) {
-					v->SetDestTile(Depot::Get(order->GetDestination().ToStationID())->xy);
+					v->SetDestTile(Depot::Get(order->GetDestination().ToDepotID())->xy);
 				} else {
 					Aircraft *a = Aircraft::From(v);
-					DestinationID destination = a->current_order.GetDestination();
-					if (a->targetairport != destination) {
+					Depot *dep = Depot::Get(a->current_order.GetDestination().ToDepotID());
+					StationID station_id = GetStationIndex(dep->xy);
+					if (a->targetairport != station_id) {
 						/* The aircraft is now heading for a different hangar than the next in the orders */
-						a->SetDestTile(a->GetOrderStationLocation(destination.ToStationID()));
+						a->SetDestTile(a->GetOrderStationLocation(station_id));
 					}
 				}
 				return true;

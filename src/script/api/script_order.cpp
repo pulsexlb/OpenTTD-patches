@@ -17,6 +17,7 @@
 #include "../../roadstop_base.h"
 #include "../../depot_base.h"
 #include "../../order_cmd.h"
+#include "../../airport_cmd.h"
 #include "../../station_base.h"
 #include "../../waypoint_base.h"
 #include "../../settings_type.h"
@@ -266,8 +267,8 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 			if (v->type != VehicleType::Aircraft) return ::Depot::Get(order->GetDestination().ToDepotID())->xy;
 			/* Aircraft's hangars are referenced by StationID, not DepotID */
 			const Station *st = ::Station::Get(order->GetDestination().ToStationID());
-			if (!st->airport.HasHangar()) return INVALID_TILE;
-			return st->airport.GetHangarTile(0);
+			if (st->airport.hangar == nullptr) return INVALID_TILE;
+			return st->airport.hangar->xy;
 		}
 
 		case OT_GOTO_STATION: {

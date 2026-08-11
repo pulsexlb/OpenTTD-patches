@@ -17,6 +17,182 @@
 
 extern uint _map_tile_mask;
 
+/**
+ * A tile is a wrapper around a TileIndex that allows the direct access to the
+ * map data of that tile.
+ *
+ * The wrapper is expected to be fully optimized away by the compiler, even
+ * with low optimization levels except when completely disabling it.
+ */
+class Tile {
+private:
+	friend struct Map;
+	/**
+	 * Data that is stored per tile. Also used TileExtended for this.
+	 * Look at docs/landscape.html for the exact meaning of the members.
+	 */
+public:
+	struct TileBase {
+		uint8_t   type;   ///< The type (bits 4..7), bridges (2..3), rainforest/desert (0..1)
+		uint8_t   height; ///< The height of the northern corner.
+		uint16_t m2;     ///< Primarily used for indices to towns, industries and stations
+		uint8_t   m1;     ///< Primarily used for ownership information
+		uint8_t   m3;     ///< General purpose
+		uint8_t   m4;     ///< General purpose
+		uint8_t   m5;     ///< General purpose
+	};
+
+	static_assert(sizeof(TileBase) == 8);
+
+	/**
+	 * Data that is stored per tile. Also used TileBase for this.
+	 * Look at docs/landscape.html for the exact meaning of the members.
+	 */
+	struct TileExtended {
+		uint8_t m6;   ///< General purpose
+		uint8_t m7;   ///< Primarily used for newgrf support
+		uint16_t m8; ///< General purpose
+	};
+
+	static TileBase *base_tiles;         ///< Pointer to the tile-array.
+	static TileExtended *extended_tiles; ///< Pointer to the extended tile-array.
+
+	TileIndex tile; ///< The tile to access the map data for.
+
+public:
+	/**
+	 * Create the tile wrapper for the given tile.
+	 * @param tile The tile to access the map for.
+	 */
+	debug_inline Tile(TileIndex tile) : tile(tile) {}
+
+	/**
+	 * Create the tile wrapper for the given tile.
+	 * @param tile The tile to access the map for.
+	 */
+	Tile(uint tile) : tile(tile) {}
+
+	/**
+	 * Implicit conversion to the TileIndex.
+	 */
+	debug_inline constexpr operator TileIndex() const { return tile; }
+
+	/**
+	 * Implicit conversion to the uint for bounds checking.
+	 */
+	debug_inline constexpr operator uint() const { return tile.base(); }
+
+	/**
+	 * The type (bits 4..7), bridges (2..3), rainforest/desert (0..1)
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the byte holding the data.
+	 */
+	debug_inline uint8_t &type()
+	{
+		return base_tiles[tile.base()].type;
+	}
+
+	/**
+	 * The height of the northern corner
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the byte holding the height.
+	 */
+	debug_inline uint8_t &height()
+	{
+		return base_tiles[tile.base()].height;
+	}
+
+	/**
+	 * Primarily used for ownership information
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the byte holding the data.
+	 */
+	debug_inline uint8_t &m1()
+	{
+		return base_tiles[tile.base()].m1;
+	}
+
+	/**
+	 * Primarily used for indices to towns, industries and stations
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the uint16_t holding the data.
+	 */
+	debug_inline uint16_t &m2()
+	{
+		return base_tiles[tile.base()].m2;
+	}
+
+	/**
+	 * General purpose
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the byte holding the data.
+	 */
+	debug_inline uint8_t &m3()
+	{
+		return base_tiles[tile.base()].m3;
+	}
+
+	/**
+	 * General purpose
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the byte holding the data.
+	 */
+	debug_inline uint8_t &m4()
+	{
+		return base_tiles[tile.base()].m4;
+	}
+
+	/**
+	 * General purpose
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the byte holding the data.
+	 */
+	debug_inline uint8_t &m5()
+	{
+		return base_tiles[tile.base()].m5;
+	}
+
+	/**
+	 * General purpose
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the byte holding the data.
+	 */
+	debug_inline uint8_t &m6()
+	{
+		return extended_tiles[tile.base()].m6;
+	}
+
+	/**
+	 * Primarily used for newgrf support
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the byte holding the data.
+	 */
+	debug_inline uint8_t &m7()
+	{
+		return extended_tiles[tile.base()].m7;
+	}
+
+	/**
+	 * General purpose
+	 *
+	 * Look at docs/landscape.html for the exact meaning of the data.
+	 * @return reference to the uint16_t holding the data.
+	 */
+	debug_inline uint16_t &m8()
+	{
+		return extended_tiles[tile.base()].m8;
+	}
+};
+
 struct Map {
 	/**
 	 * Logarithm of the map size along the X side.
@@ -182,7 +358,7 @@ struct MapTilePtr {
  * This variable points to the tile-array which contains the tiles of
  * the map.
  */
-extern MapTilePtr<Tile> _m;
+extern MapTilePtr<Tile::TileBase> _m;
 
 /**
  * Pointer to the extended tile-array.
@@ -190,7 +366,7 @@ extern MapTilePtr<Tile> _m;
  * This variable points to the extended tile-array which contains the tiles
  * of the map.
  */
-extern MapTilePtr<TileExtended> _me;
+extern MapTilePtr<Tile::TileExtended> _me;
 
 bool ValidateMapSize(uint size_x, uint size_y);
 void AllocateMap(uint size_x, uint size_y);

@@ -25,6 +25,7 @@
 #include "dropdown_func.h"
 #include "station_base.h"
 #include "station_cmd.h"
+#include "airport_cmd.h"
 #include "waypoint_base.h"
 #include "tilehighlight_func.h"
 #include "company_base.h"
@@ -1613,7 +1614,7 @@ struct StationViewWindow : public Window {
 		this->SetWidgetDisabledState(WID_SV_SHIPS,    !st->facilities.Test(StationFacility::Dock) && !have_veh_types.Test(VehicleType::Ship));
 		this->SetWidgetDisabledState(WID_SV_PLANES,   !st->facilities.Test(StationFacility::Airport) && !have_veh_types.Test(VehicleType::Aircraft));
 		this->SetWidgetDisabledState(WID_SV_CLOSE_AIRPORT, !st->facilities.Test(StationFacility::Airport) || st->owner != _local_company || st->owner == OWNER_NONE); // Also consider SE, where _local_company == OWNER_NONE
-		this->SetWidgetLoweredState(WID_SV_CLOSE_AIRPORT, st->facilities.Test(StationFacility::Airport) && st->airport.blocks.Test(AirportBlock::AirportClosed));
+		this->SetWidgetLoweredState(WID_SV_CLOSE_AIRPORT, st->facilities.Test(StationFacility::Airport) && st->airport.IsClosed());
 
 		extern const Station *_viewport_highlight_station;
 		this->SetWidgetDisabledState(WID_SV_CATCHMENT, st->facilities.None());

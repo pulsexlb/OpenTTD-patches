@@ -2972,17 +2972,15 @@ static bool ConResetBlockedHeliports(std::span<std::string_view> argv)
 	for (Station *st : Station::Iterate()) {
 		if (st->airport.tile == INVALID_TILE) continue;
 		if (st->airport.HasHangar()) continue;
-		if (st->airport.blocks.None()) continue;
 
 		bool occupied = false;
 		for (const Aircraft *a : Aircraft::Iterate()) {
-			if (a->targetairport == st->index && a->state != FLYING) {
+			if (a->targetairport == st->index && !a->IsAircraftFlying()) {
 				occupied = true;
 				break;
 			}
 		}
 		if (!occupied) {
-			st->airport.blocks = {};
 			count++;
 			IConsolePrint(CC_DEFAULT, "Unblocked: {}", GetString(STR_STATION_NAME, st->index));
 		}

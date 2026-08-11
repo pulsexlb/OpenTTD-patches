@@ -2,7 +2,7 @@
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
  * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <https://www.gnu.org/licenses/old-licenses/gpl-2.0>.
+ * See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with OpenTTD. If not, see <http://www.gnu.org/licenses/>.
  */
 
 /** @file script_airport.hpp Everything to query and build airports. */
@@ -12,8 +12,8 @@
 
 #include "script_object.hpp"
 #include "../../airport.h"
-#include "../../town_type.h"
 #include "../../station_type.h"
+#include "../../town_type.h"
 
 /**
  * Class that handles all airport related functions.
@@ -35,6 +35,7 @@ public:
 		AT_HELIPORT      = ::AT_HELIPORT,      ///< The heliport.
 		AT_HELISTATION   = ::AT_HELISTATION,   ///< The helistation.
 		AT_HELIDEPOT     = ::AT_HELIDEPOT,     ///< The helidepot.
+		AT_CUSTOM        = ::AT_CUSTOM,        ///< A customized airport.
 		AT_INVALID       = ::AT_INVALID,       ///< Invalid airport.
 	};
 
@@ -148,7 +149,7 @@ public:
 	 * @exception ScriptError::ERR_AREA_NOT_CLEAR
 	 * @exception ScriptError::ERR_FLAT_LAND_REQUIRED
 	 * @exception ScriptError::ERR_LOCAL_AUTHORITY_REFUSES
-	 * @exception ScriptError::ERR_STATION_TOO_SPREAD_OUT
+	 * @exception ScriptStation::ERR_STATION_TOO_LARGE
 	 * @exception ScriptStation::ERR_STATION_TOO_CLOSE_TO_ANOTHER_STATION
 	 * @return Whether the airport has been/can be build or not.
 	 */
@@ -193,23 +194,6 @@ public:
 	 * @return The TownID of the town closest to the tile.
 	 */
 	static TownID GetNearestTown(TileIndex tile, AirportType type);
-
-	/**
-	 * Get the maintenance cost factor of an airport type.
-	 * @param type The airport type to get the maintenance factor of.
-	 * @pre IsAirportInformationAvailable(type)
-	 * @return Maintenance cost factor of the airport type.
-	 */
-	static SQInteger GetMaintenanceCostFactor(AirportType type);
-
-	/**
-	 * Get the monthly maintenance cost of an airport type.
-	 * @param type The airport type to get the monthly maintenance cost of.
-	 * @pre IsAirportInformationAvailable(type)
-	 * @return Maintenance cost of the airport type per economy-month.
-	 * @see \ref ScriptEconomyTime
-	 */
-	static Money GetMonthlyMaintenanceCost(AirportType type);
 
 	/**
 	 * Get the number of helipads of this airport type.

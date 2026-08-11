@@ -63,3 +63,5 @@ bool EvaluateTimetableStateConditionalOrder(const Order *order, int lateness);
 const char *GetOrderTypeName(OrderType order_type);
 
 #endif /* ORDER_FUNC_H */
+
+DestinationID GetTargetDestination(const Order &o, bool is_aircraft);

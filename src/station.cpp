@@ -19,6 +19,7 @@
 #include "command_func.h"
 #include "news_func.h"
 #include "aircraft.h"
+#include "air.h"
 #include "vehiclelist.h"
 #include "core/pool_func.hpp"
 #include "station_base.h"
@@ -337,7 +338,7 @@ static uint GetTileCatchmentRadius(TileIndex tile, const Station *st)
 		switch (GetStationType(tile)) {
 			case StationType::Rail:    return CA_TRAIN + inc;
 			case StationType::Oilrig:  return CA_UNMODIFIED + inc;
-			case StationType::Airport: return st->airport.GetSpec()->catchment + inc;
+			case StationType::Airport: return st->airport.AirportCatchmentRadius() + inc;
 			case StationType::Truck:   return CA_TRUCK + inc;
 			case StationType::Bus:     return CA_BUS + inc;
 			case StationType::Dock:    return CA_DOCK + inc;
@@ -376,7 +377,7 @@ uint Station::GetCatchmentRadius() const
 		if (this->truck_stops        != nullptr)      ret = std::max<uint>(ret, CA_TRUCK);
 		if (this->train_station.tile != INVALID_TILE) ret = std::max<uint>(ret, CA_TRAIN);
 		if (this->ship_station.tile  != INVALID_TILE) ret = std::max<uint>(ret, CA_DOCK);
-		if (this->airport.tile       != INVALID_TILE) ret = std::max<uint>(ret, this->airport.GetSpec()->catchment);
+		if (this->airport.tile       != INVALID_TILE) ret = std::max<uint>(ret, this->airport.AirportCatchmentRadius());
 	} else {
 		if (this->bus_stops != nullptr || this->truck_stops != nullptr || this->train_station.tile != INVALID_TILE || this->ship_station.tile != INVALID_TILE || this->airport.tile != INVALID_TILE) {
 			ret = CA_UNMODIFIED;
@@ -773,7 +774,7 @@ Money AirportMaintenanceCost(Owner owner)
 
 	for (const Station *st : Station::Iterate()) {
 		if (st->owner == owner && st->facilities.Test(StationFacility::Airport)) {
-			total_cost += _price[Price::InfrastructureAirport] * st->airport.GetSpec()->maintenance_cost;
+			total_cost += _price[Price::InfrastructureAirport] * st->airport.AirportCatchmentRadius();
 		}
 	}
 	/* 3 bits fraction for the maintenance cost factor. */
@@ -791,4 +792,11 @@ void ClearExtraStationNames()
 	_extra_station_names.shrink_to_fit();
 
 	_extra_station_names_probability = 0;
+}
+
+uint Airport::AirportCatchmentRadius() const
+{
+	const AirTypeInfo *ati = GetAirTypeInfo(this->air_type);
+	assert(ati->catchment_radius <= MAX_CATCHMENT);
+	return ati->catchment_radius;
 }

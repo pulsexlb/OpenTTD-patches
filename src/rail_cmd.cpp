@@ -1274,7 +1274,7 @@ static Trackdir GetOtherTrackdir(Trackdir trackdir)
 	return static_cast<Trackdir>(to_underlying(trackdir) ^ 1);
 }
 
-static CommandCost ValidateAutoDrag(Trackdir *trackdir, TileIndex start, TileIndex end)
+CommandCost ValidateAutoDrag(Trackdir *trackdir, TileIndex start, TileIndex end)
 {
 	int x = TileX(start);
 	int y = TileY(start);

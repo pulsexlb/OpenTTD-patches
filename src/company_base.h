@@ -156,6 +156,7 @@ struct Company : CompanyPool::PoolItem<&_company_pool>, CompanyProperties {
 
 	RailTypes avail_railtypes{}; ///< Rail types available to this company.
 	RoadTypes avail_roadtypes{}; ///< Road types available to this company.
+	AirTypes avail_airtypes{};   ///< Air types available to this company.
 
 	std::unique_ptr<class AIInstance> ai_instance{};
 	class AIInfo *ai_info = nullptr;

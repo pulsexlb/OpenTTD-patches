@@ -29,6 +29,7 @@
 #include "date_func.h"
 #include "sound_func.h"
 #include "rail.h"
+#include "air.h"
 #include "core/pool_func.hpp"
 #include "core/string_consumer.hpp"
 #include "settings_func.h"
@@ -649,6 +650,7 @@ Company *DoStartupNewCompany(DoStartupNewCompanyFlag flags, CompanyID company)
 
 	c->avail_railtypes = GetCompanyRailTypes(c->index);
 	c->avail_roadtypes = GetCompanyRoadTypes(c->index);
+	c->avail_airtypes = GetCompanyAirTypes(c->index);
 	c->inaugurated_year = CalTime::CurYear();
 	c->display_inaugurated_period = EconTime::Detail::WallClockYearToDisplay(EconTime::CurYear());
 

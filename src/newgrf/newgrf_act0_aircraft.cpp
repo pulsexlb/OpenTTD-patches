@@ -38,6 +38,25 @@ static ChangeInfoResult AircraftVehicleChangeInfo(uint first, uint last, int pro
 		AircraftVehicleInfo *avi = &e->VehInfo<AircraftVehicleInfo>();
 
 		switch (prop) {
+			case 0x05: { // Air type
+				uint8_t airtype = buf.ReadByte();
+
+				if (airtype < _cur_gps.grffile->airtype_list.size()) {
+					_gted[e->index].airtypelabel = _cur_gps.grffile->airtype_list[airtype];
+					break;
+				}
+
+				switch (airtype) {
+					case 0: _gted[e->index].airtypelabel = AIRTYPE_LABEL_GRAVEL; break;
+					case 1: _gted[e->index].airtypelabel = AIRTYPE_LABEL_ASPHALT; break;
+					case 2: _gted[e->index].airtypelabel = AIRTYPE_LABEL_WATER; break;
+					default:
+						GrfMsg(1, "AircraftVehicleChangeInfo: Invalid air type {} specified, ignoring", airtype);
+						break;
+				}
+				break;
+			}
+
 			case 0x08: { // Sprite ID
 				uint8_t spriteid = buf.ReadByte();
 				uint8_t orig_spriteid = spriteid;

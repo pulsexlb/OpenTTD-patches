@@ -197,9 +197,9 @@ static const SaveLoad _old_station_desc[] = {
 	SLE_CONDNULL(2, SL_MIN_VERSION, SLV_6),  ///< Truck/bus stop status
 	SLE_CONDNULL(1, SL_MIN_VERSION, SLV_5),  ///< Blocked months
 
-	SLE_CONDVAR(Station, airport.blocks,             SLE_VAR_U64 | SLE_FILE_U16,  SL_MIN_VERSION,  SLV_3),
-	SLE_CONDVAR(Station, airport.blocks,             SLE_VAR_U64 | SLE_FILE_U32,  SLV_3, SLV_46),
-	SLE_CONDVAR(Station, airport.blocks,             SLE_UINT64,                 SLV_46, SL_MAX_VERSION),
+	SLE_CONDVAR(Station, airport.flags,             SLE_VAR_U64 | SLE_FILE_U16,  SL_MIN_VERSION,  SLV_3),
+	SLE_CONDVAR(Station, airport.flags,             SLE_VAR_U64 | SLE_FILE_U32,  SLV_3, SLV_46),
+	SLE_CONDVAR(Station, airport.flags,             SLE_UINT64,                 SLV_46, SL_MAX_VERSION),
 
 	SLE_CONDNULL(2, SL_MIN_VERSION, SLV_26), ///< last-vehicle
 	SLEG_CONDVAR_X(_old_last_vehicle_type,           SLE_UINT8,                  SLV_26, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ST_LAST_VEH_TYPE, 0, 0)),
@@ -777,7 +777,7 @@ static const NamedSaveLoad _station_desc[] = {
 	NSL("airport.type",                           SLE_VAR(Station, airport.type,                  SLE_UINT8)),
 	NSL("airport.layout",                     SLE_CONDVAR(Station, airport.layout,                SLE_UINT8,                   SLV_145,               SL_MAX_VERSION)),
 	NSL("",                                SLE_CONDNULL_X(1,                                                                   SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP, 1, 6))),
-	NSL("airport.flags",                          SLE_VAR(Station, airport.blocks,                SLE_UINT64)),
+	NSL("airport.flags",                          SLE_VAR(Station, airport.flags,                SLE_UINT64)),
 	NSL("",                                SLE_CONDNULL_X(8,                                                                   SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP, 1, 6))),
 	NSL("airport.rotation",                   SLE_CONDVAR(Station, airport.rotation,              SLE_UINT8,                   SLV_145,               SL_MAX_VERSION)),
 	NSL("",                                  SLEG_CONDARR(_old_st_persistent_storage.storage,     SLE_UINT32, 16,              SLV_145,               SLV_161)),
