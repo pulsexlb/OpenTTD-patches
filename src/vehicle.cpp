@@ -941,23 +941,23 @@ static std::array<Vehicle *, 1 << (GEN_HASHX_BITS + GEN_HASHY_BITS)> _vehicle_vi
 
 static void UpdateVehicleViewportHash(Vehicle *v, int x, int y)
 {
-	Vehicle **old_hash, **new_hash;
-	int old_x = v->coord.left;
-	int old_y = v->coord.top;
+	/* If the vehicle did not move and is already in the hash, nothing to do.
+	 * Note: the hash position is tracked via the linked-list pointers, not via
+	 * v->coord, so interleaved immediate/deferred updates cannot corrupt the
+	 * hash (each update removes the vehicle from its actual bucket first). */
+	if (v->hash_viewport_prev != nullptr && x == v->coord.left && y == v->coord.top) return;
 
-	new_hash = (x == INVALID_COORD) ? nullptr : &_vehicle_viewport_hash[GetViewportHash(x, y)];
-	old_hash = (old_x == INVALID_COORD) ? nullptr : &_vehicle_viewport_hash[GetViewportHash(old_x, old_y)];
-
-	if (old_hash == new_hash) return;
-
-	/* remove from hash table? */
-	if (old_hash != nullptr) {
+	/* remove from hash table (based on actual position, not v->coord) */
+	if (v->hash_viewport_prev != nullptr) {
 		if (v->hash_viewport_next != nullptr) v->hash_viewport_next->hash_viewport_prev = v->hash_viewport_prev;
 		*v->hash_viewport_prev = v->hash_viewport_next;
+		v->hash_viewport_prev = nullptr;
+		v->hash_viewport_next = nullptr;
 	}
 
 	/* insert into hash table? */
-	if (new_hash != nullptr) {
+	if (x != INVALID_COORD) {
+		Vehicle **new_hash = &_vehicle_viewport_hash[GetViewportHash(x, y)];
 		v->hash_viewport_next = *new_hash;
 		if (v->hash_viewport_next != nullptr) v->hash_viewport_next->hash_viewport_prev = &v->hash_viewport_next;
 		v->hash_viewport_prev = new_hash;
@@ -974,15 +974,11 @@ static std::vector<ViewportHashDeferredItem> _viewport_hash_deferred;
 
 static void UpdateVehicleViewportHashDeferred(Vehicle *v, int x, int y)
 {
-	int old_x = v->coord.left;
-	int old_y = v->coord.top;
+	/* If the vehicle did not move and is already in the hash, nothing to do. */
+	if (v->hash_viewport_prev != nullptr && x == v->coord.left && y == v->coord.top) return;
 
 	int new_hash = (x == INVALID_COORD) ? INVALID_COORD : GetViewportHash(x, y);
-	int old_hash = (old_x == INVALID_COORD) ? INVALID_COORD : GetViewportHash(old_x, old_y);
-
-	if (new_hash != old_hash) {
-		_viewport_hash_deferred.push_back({ v, new_hash, old_hash });
-	}
+	_viewport_hash_deferred.push_back({ v, new_hash, INVALID_COORD });
 }
 
 static void ProcessDeferredUpdateVehicleViewportHashes()
@@ -990,10 +986,12 @@ static void ProcessDeferredUpdateVehicleViewportHashes()
 	for (const ViewportHashDeferredItem &item : _viewport_hash_deferred) {
 		Vehicle *v = item.v;
 
-		/* remove from hash table? */
-		if (item.old_hash != INVALID_COORD) {
+		/* remove from hash table (based on actual position, not v->coord) */
+		if (v->hash_viewport_prev != nullptr) {
 			if (v->hash_viewport_next != nullptr) v->hash_viewport_next->hash_viewport_prev = v->hash_viewport_prev;
 			*v->hash_viewport_prev = v->hash_viewport_next;
+			v->hash_viewport_prev = nullptr;
+			v->hash_viewport_next = nullptr;
 		}
 
 		/* insert into hash table? */
@@ -1014,6 +1012,10 @@ void ResetVehicleHash()
 		v->hash_tile_next = nullptr;
 		v->hash_tile_prev = nullptr;
 		v->hash_tile_current = INVALID_TILE;
+		v->hash_viewport_next = nullptr;
+		v->hash_viewport_prev = nullptr;
+		v->coord.left = INVALID_COORD;
+		v->coord.top = INVALID_COORD;
 	}
 	_vehicle_viewport_hash.fill(nullptr);
 	for (VehicleTypeTileHash &vhash : _vehicle_tile_hashes) {
@@ -2018,6 +2020,7 @@ void ViewportAddVehiclesIntl(DrawPixelInfo *dpi)
 			const Vehicle *v = _vehicle_viewport_hash[x + y]; // already masked & 0xFFF
 
 			while (v != nullptr) {
+
 				if (v->IsDrawn()) {
 					if (update_vehicles &&
 							HasBit(v->vcache.cached_veh_flags, VCF_IMAGE_REFRESH) &&

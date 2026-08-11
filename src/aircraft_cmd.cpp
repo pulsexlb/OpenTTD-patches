@@ -131,6 +131,22 @@ bool IsValidImageIndex<VehicleType::Aircraft>(uint8_t image_index)
 
 void Aircraft::GetImage(Direction direction, EngineImageType image_type, VehicleSpriteSeq *result) const
 {
+	if (this->subtype == AIR_SHADOW) {
+		Aircraft *first = this->First();
+		if (first->cur_image_valid_dir != direction || HasBit(first->vcache.cached_veh_flags, VCF_IMAGE_REFRESH)) {
+			VehicleSpriteSeq seq;
+			first->UpdateImageState(direction, seq);
+			if (first->sprite_seq != seq) {
+				first->sprite_seq = seq;
+				first->UpdateSpriteSeqBound();
+				first->UpdateViewportDeferred();
+			}
+		}
+
+		result->CopyWithoutPalette(first->sprite_seq); // the shadow is never coloured
+		return;
+	}
+
 	uint8_t spritenum = this->spritenum;
 
 	if (IsCustomVehicleSpriteNum(spritenum)) {
@@ -2815,7 +2831,7 @@ void MoveAircraft(Aircraft *v, const bool nudge_towards_target)
 		gp.y = (v->y_pos != v->next_pos.y) ? v->y_pos + ((v->next_pos.y > v->y_pos) ? 1 : -1) : v->y_pos;
 
 		/* Builtin heliports keep v->tile as the terminal tile, since the landing pad is in a non-airport tile. */
-		gp.new_tile = IsHeliportTile(v->GetNextTile()) ? v->GetNextTile() : TileVirtXY(gp.x, gp.y);
+		gp.new_tile = (IsValidTile(v->GetNextTile()) && IsHeliportTile(v->GetNextTile())) ? v->GetNextTile() : TileVirtXY(gp.x, gp.y);
 	} else if (v->state > AS_RUNNING) {
 		/* Aircraft is flying or moving in a runway. */
 		assert(!v->IsHelicopter() || ((v->state != AS_LANDED && v->state != AS_START_TAKEOFF)));

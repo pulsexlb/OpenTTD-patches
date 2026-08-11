@@ -479,7 +479,7 @@ inline bool IsBuoyTile(TileIndex t)
  */
 inline bool IsHangarTile(TileIndex t)
 {
-	return IsTileType(t, TileType::Station) && IsHangar(t);
+	return IsTileType(t, TileType::Station) && IsAirport(t) && IsHangar(t);
 }
 
 /**
