@@ -109,6 +109,9 @@ void SetVisibility(Aircraft *v, bool visible)
 		}
 	}
 
+	v->UpdateIsDrawn();
+	v->Next()->UpdateIsDrawn();
+	if (v->IsHelicopter()) v->Next()->Next()->UpdateIsDrawn();
 	v->UpdateViewport(true, true);
 	v->UpdatePosition();
 }
