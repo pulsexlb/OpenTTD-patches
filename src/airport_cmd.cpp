@@ -104,6 +104,7 @@ uint8_t CalculateAirportNoiseLevel(const Airport airport, AirType airtype = INVA
 	if (airport.heliports.size() == 1 && IsHeliportTile(airport.heliports[0])) return 0;
 
 	if (airtype == INVALID_AIRTYPE) airtype = airport.air_type;
+	if (airtype == INVALID_AIRTYPE) return 0;
 
 	const AirTypeInfo *air_type_info = GetAirTypeInfo(airtype);
 

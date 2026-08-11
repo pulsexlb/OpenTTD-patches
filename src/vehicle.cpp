@@ -2335,7 +2335,7 @@ void CheckVehicleBreakdown(Vehicle *v)
 	/* The vehicle has been manually stopped. */
 	if (v->First()->vehstatus.Test(VehState::Stopped)) return;
 	/* Aircraft is not flying. */
-	if (v->type == VehicleType::Aircraft && !Aircraft::From(v)->IsAircraftFlying()) return;
+	if (v->type == VehicleType::Aircraft && (!Aircraft::From(v)->IsNormalAircraft() || !Aircraft::From(v)->IsAircraftFlying())) return;
 	/* Not a suitable train engine to break down. */
 	if (v->type == VehicleType::Train && !(Train::From(v)->IsFrontEngine()) && !_settings_game.vehicle.improved_breakdowns) return;
 

@@ -526,6 +526,7 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
  */
 static void CheckIfAircraftNeedsService(Aircraft *v)
 {
+	if (!v->IsNormalAircraft()) return;
 	if (v->IsAircraftFlying() && !v->IsAircraftFreelyFlying()) return;
 
 	if (Company::Get(v->owner)->settings.vehicle.servint_aircraft == 0 || !v->NeedsAutomaticServicing()) return;
@@ -1312,6 +1313,7 @@ static bool IsAircraftOnNextPosition(const Aircraft *v)
  */
 void UpdateAircraftState(Aircraft *v)
 {
+	if (!v->IsNormalAircraft()) return;
 	// revise: check conditions
 	// revise: is IsAircraftOnNextPosition always true here?
 	if (v->state == AS_RUNNING && !IsAircraftOnNextPosition(v)) return;
@@ -2615,7 +2617,7 @@ void HandleMissingAircraftOrders(Aircraft *v)
  */
 void Aircraft::SetDestTile(TileIndex tile)
 {
-	if (tile != 0) {
+	if (tile != TileIndex{} && tile != INVALID_TILE) {
 		assert(IsValidTile(tile));
 		assert(IsAirportTile(tile));
 		assert(IsHangar(tile) || IsApron(tile));
@@ -2626,7 +2628,7 @@ void Aircraft::SetDestTile(TileIndex tile)
 	this->dest_tile = tile;
 	this->targetairport = GetTargetDestination(this->current_order, true).ToStationID();
 
-	if (this->IsAircraftFreelyFlying()) {
+	if (this->IsNormalAircraft() && this->IsAircraftFreelyFlying()) {
 		this->state = AS_FLYING;
 		AircraftUpdateNextPos(this);
 	}

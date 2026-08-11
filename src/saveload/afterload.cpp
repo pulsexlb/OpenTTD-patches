@@ -2693,7 +2693,13 @@ bool AfterLoadGame()
 	if (IsEffectiveUpstreamSavegameVersionBefore(SLV_BUOYS_AT_0_0)) {
 		/* Tile for no orders is now INVALID_TILE instead of 0. */
 		for (Vehicle *v : Vehicle::Iterate()) {
-			if (v->dest_tile == TileIndex{}) v->SetDestTile(INVALID_TILE);
+			if (v->dest_tile != TileIndex{}) continue;
+			if (v->type == VehicleType::Aircraft) {
+				/* Aircraft dest_tile is managed by the aircraft controller. */
+				v->dest_tile = INVALID_TILE;
+				continue;
+			}
+			v->SetDestTile(INVALID_TILE);
 		}
 	}
 
