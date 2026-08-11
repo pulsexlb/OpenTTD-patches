@@ -37,6 +37,10 @@
 #include "elrail_func.h"
 #include "station_base.h"
 #include "station_cmd.h"
+#include "airport_cmd.h"
+#include "air_map.h"
+extern CommandCost RemoveAirport(TileIndex tile, DoCommandFlags flags);
+#include "depot_base.h"
 #include "station_container.h"
 #include "station_func.h"
 #include "station_kdtree.h"
@@ -100,11 +104,7 @@ bool IsHangar(TileIndex t)
 	const Station *st = Station::GetByTile(t);
 	const AirportSpec *as = st->airport.GetSpec();
 
-	for (const auto &depot : as->depots) {
-		if (st->airport.GetRotatedTileFromOffset(depot.ti) == TileIndex(t)) return true;
-	}
-
-	return false;
+	return st->airport.hangar != nullptr && st->airport.hangar->xy == TileIndex(t);
 }
 
 /**
@@ -211,15 +211,6 @@ static bool CMSATree(TileIndex tile)
 }
 
 /** Station types a station could be named after. */
-enum class StationNaming : uint8_t {
-	Rail, ///< Railway station.
-	Road, ///< Truck or bus stop.
-	Airport, ///< Airport for fixed wing aircraft.
-	Oilrig, ///< Heliport of an oilrig.
-	Dock, ///< Ship dock.
-	Heliport, ///< Standalone heliport.
-};
-
 /** Information to handle station action 0 property 24 correctly */
 struct StationNameInformation {
 	std::bitset<STR_SV_STNAME_FALLBACK - STR_SV_STNAME> used_names; ///< Used default station suffixes.
@@ -256,7 +247,7 @@ struct StationNameInformation {
  * @param force_change Force name change.
  * @return The \c StringID with the name of the station.
  */
-static StringID GenerateStationName(Station *st, TileIndex tile, StationNaming name_class, bool force_change = false)
+StringID GenerateStationName(Station *st, TileIndex tile, StationNaming name_class, bool force_change)
 {
 	const Town *t = st->town;
 
@@ -845,7 +836,7 @@ static void UpdateStationSignCoord(BaseStation *st)
  * @param name_class Station naming class to use to generate the new station's name
  * @return Command error that occurred, if any
  */
-static CommandCost BuildStationPart(Station **st, DoCommandFlags flags, bool reuse, TileArea area, StationNaming name_class)
+CommandCost BuildStationPart(Station **st, DoCommandFlags flags, bool reuse, TileArea area, StationNaming name_class)
 {
 	/* Find a deleted station close to us */
 	if (*st == nullptr && reuse) *st = GetClosestDeletedStation(area.tile);
@@ -1328,13 +1319,12 @@ CommandCost CheckFlatLandRoadStop(TileArea tile_area, const RoadStopSpec *spec, 
  * @param station StationID of airport allowed in search area.
  * @return The cost in case of success, or an error code if it failed.
  */
-static CommandCost CheckFlatLandAirport(AirportTileTableIterator tile_iter, DoCommandFlags flags, StationID *station)
+static CommandCost CheckFlatLandAirport(const TileArea &tile_area, DoCommandFlags flags, StationID *station)
 {
 	CommandCost cost(ExpensesType::Construction);
 	int allowed_z = -1;
 
-	for (; tile_iter != INVALID_TILE; ++tile_iter) {
-		const TileIndex tile_cur = tile_iter;
+	for (TileIndex tile_cur : tile_area) {
 		CommandCost ret = CheckBuildableTile(tile_cur, {}, allowed_z, true, true);
 		if (ret.Failed()) return ret;
 		cost.AddCost(ret.GetCost());
@@ -1497,6 +1487,11 @@ CommandCost FindJoiningBaseStation(StationID existing_station, StationID station
  * @param error_message the error message when building a station on top of others
  * @return command cost with the error or 'okay'
  */
+CommandCost FindJoiningAirport(StationID existing_station, StationID station_to_join, bool adjacent, TileArea ta, Station **st)
+{
+	return FindJoiningBaseStation<Station>(existing_station, station_to_join, adjacent, ta, st, STR_ERROR_MUST_DEMOLISH_AIRPORT_FIRST, [](const Station *st) -> bool { return true; });
+}
+
 static CommandCost FindJoiningStation(StationID existing_station, StationID station_to_join, bool adjacent, TileArea ta, Station **st, StringID error_message = STR_ERROR_MUST_REMOVE_RAILWAY_STATION_FIRST)
 {
 	return FindJoiningBaseStation<Station>(existing_station, station_to_join, adjacent, ta, st, error_message, [](const Station *st) -> bool { return true; });
@@ -2671,7 +2666,7 @@ uint8_t GetAirportNoiseLevelForDistance(const AirportSpec *as, uint distance)
 {
 	/* 0 cannot be accounted, and 1 is the lowest that can be reduced from town.
 	 * So no need to go any further*/
-	if (as->noise_level < 2) return as->noise_level;
+	if (as->GetAirportNoise(as->airtype) < 2) return as->GetAirportNoise(as->airtype);
 
 	auto tolerance = _settings_game.difficulty.town_council_tolerance;
 	if (tolerance == TOWN_COUNCIL_PERMISSIVE) tolerance = TOWN_COUNCIL_LENIENT;
@@ -2688,7 +2683,7 @@ uint8_t GetAirportNoiseLevelForDistance(const AirportSpec *as, uint distance)
 
 	/* If the noise reduction equals the airport noise itself, don't give it for free.
 	 * Otherwise, simply reduce the airport's level. */
-	return noise_reduction >= as->noise_level ? 1 : as->noise_level - noise_reduction;
+	return noise_reduction >= as->GetAirportNoise(as->airtype) ? 1 : as->GetAirportNoise(as->airtype) - noise_reduction;
 }
 
 /**
@@ -2707,8 +2702,8 @@ Town *AirportGetNearestTown(const AirportSpec *as, Direction rotation, TileIndex
 
 	Town *nearest = nullptr;
 
-	auto width = as->size_x;
-	auto height = as->size_y;
+	auto width = as->layouts[0].size_x;
+	auto height = as->layouts[0].size_y;
 	if (rotation == Direction::E || rotation == Direction::W) std::swap(width, height);
 
 	uint perimeter_min_x = TileX(tile);
@@ -2750,20 +2745,6 @@ static Town *AirportGetNearestTown(const Station *st, uint &mindist)
 }
 
 /** Recalculate the noise generated by the airports of each town */
-void UpdateAirportsNoise()
-{
-	if (_town_noise_no_update) return;
-
-	for (Town *t : Town::Iterate()) t->noise_reached = 0;
-
-	for (const Station *st : Station::Iterate()) {
-		if (st->airport.tile != INVALID_TILE && st->airport.type != AT_OILRIG) {
-			uint dist;
-			Town *nearest = AirportGetNearestTown(st, dist);
-			nearest->noise_reached += GetAirportNoiseLevelForDistance(st->airport.GetSpec(), dist);
-		}
-	}
-}
 
 /**
  * Checks if an airport can be removed (no aircraft on it or landing)
@@ -2775,7 +2756,7 @@ static CommandCost CanRemoveAirport(Station *st, DoCommandFlags flags)
 {
 	for (const Aircraft *a : Aircraft::Iterate()) {
 		if (!a->IsNormalAircraft()) continue;
-		if (a->targetairport == st->index && a->state != FLYING)
+		if (a->targetairport == st->index && !a->IsAircraftFlying())
 			return CommandCost(STR_ERROR_AIRCRAFT_IN_THE_WAY);
 	}
 
@@ -3789,7 +3770,7 @@ static bool ClickTile_Station(TileIndex tile)
 		ShowWaypointWindow(Waypoint::From(bst));
 	} else if (IsHangar(tile)) {
 		const Station *st = Station::From(bst);
-		ShowDepotWindow(st->airport.GetHangarTile(st->airport.GetHangarNum(tile)), VehicleType::Aircraft);
+		ShowDepotWindow(st->airport.hangar != nullptr ? st->airport.hangar->xy : tile, VehicleType::Aircraft);
 	} else {
 		ShowStationViewWindow(bst->index);
 	}

@@ -23,15 +23,15 @@
 	return GB(tmp, 0, 2);
 }
 
-/* virtual */ uint32_t AirTypeScopeResolver::GetVariable(uint8_t variable, [[maybe_unused]] uint32_t parameter, bool &available) const
+/* virtual */ uint32_t AirTypeScopeResolver::GetVariable(uint16_t variable, [[maybe_unused]] uint32_t parameter, GetVariableExtra &extra) const
 {
 	if (this->tile == INVALID_TILE) {
 		switch (variable) {
 			case 0x40: return 0;
 			case 0x41: return 0;
 			case 0x42: return 0;
-			case 0x43: return CalTime::date.base();
-			case 0x44: return HZB_TOWN_EDGE;
+			case 0x43: return CalTime::CurDate().base();
+			case 0x44: return static_cast<uint32_t>(HouseZone::TownEdge);
 		}
 	}
 
@@ -41,23 +41,23 @@
 		case 0x42: return 0;
 		case 0x43:
 			if (IsHangarTile(this->tile)) return Depot::GetByTile(this->tile)->build_date.base();
-			return CalTime::date.base();
+			return CalTime::CurDate().base();
 		case 0x44: {
 			const Town *t = nullptr;
 			t = Station::GetByTile(this->tile)->town;
-			return t != nullptr ? GetTownRadiusGroup(t, this->tile) : HZB_TOWN_EDGE;
+			return t != nullptr ? static_cast<uint32_t>(GetTownRadiusGroup(t, this->tile)) : static_cast<uint32_t>(HouseZone::TownEdge);
 		}
 	}
 
 	Debug(grf, 1, "Unhandled air type tile variable 0x{:X}", variable);
 
-	available = false;
+	extra.available = false;
 	return UINT_MAX;
 }
 
 GrfSpecFeature AirTypeResolverObject::GetFeature() const
 {
-	return GSF_AIRTYPES;
+	return GrfSpecFeature::AirTypes;
 }
 
 uint32_t AirTypeResolverObject::GetDebugID() const
@@ -96,12 +96,12 @@ SpriteID GetCustomAirSprite(const AirTypeInfo *ati, TileIndex tile, AirTypeSprit
 	if (ati->group[atsg] == nullptr) return 0;
 
 	AirTypeResolverObject object(ati, tile, context, atsg);
-	const SpriteGroup *group = object.Resolve();
-	if (group == nullptr || group->GetNumResults() == 0) return 0;
+	const ResultSpriteGroup *group = object.Resolve<ResultSpriteGroup>();
+	if (group == nullptr || group->num_sprites == 0) return 0;
 
-	if (num_results != nullptr) *num_results = group->GetNumResults();
+	if (num_results != nullptr) *num_results = group->num_sprites;
 
-	return group->GetResult();
+	return group->sprite;
 }
 
 /**

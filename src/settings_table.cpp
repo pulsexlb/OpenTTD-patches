@@ -366,6 +366,13 @@ static int32_t GetDefaultServiceInterval(const IntSettingDesc &sd, VehicleType t
  * Callback for when the player changes the timekeeping units.
  * @param Unused.
  */
+static void ModifyAirportLayout(int32_t)
+{
+	CloseWindowByClass(WindowClass::BuildToolbar);
+	extern AirType _last_built_airtype;
+	_last_built_airtype = AIRTYPE_BEGIN;
+}
+
 static void ChangeTimekeepingUnits(int32_t)
 {
 	/* If service intervals are in time units (calendar days or real-world minutes), reset them to the correct defaults if not already in a game. */
@@ -665,8 +672,8 @@ static void AircraftRangeChanged(int32_t)
 		v->acache.cached_max_range_sqr = v->acache.cached_max_range * v->acache.cached_max_range;
 
 		/* Reset destination is too far state */
-		if (v->flags.Test(VehicleAirFlag::DestinationTooFar)) {
-			v->flags.Reset(VehicleAirFlag::DestinationTooFar);
+		if (HasBit(v->flags, VAF_DEST_TOO_FAR)) {
+			ClrBit(v->flags, VAF_DEST_TOO_FAR);
 			SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
 			DeleteVehicleNews(v->index, AdviceType::AircraftDestinationTooFar);
 		}

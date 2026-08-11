@@ -26,7 +26,7 @@
  */
 bool HasAirTypeAvail(const CompanyID company, const AirType airtype)
 {
-	return !HasBit(_airtypes_hidden_mask, airtype) && HasBit(Company::Get(company)->avail_airtypes, airtype);
+	return !HasBit(_airtypes_hidden_mask, to_underlying(airtype)) && HasBit(Company::Get(company)->avail_airtypes, to_underlying(airtype));
 }
 
 /**
@@ -96,9 +96,9 @@ AirTypes GetCompanyAirTypes(CompanyID company, bool introduces)
 	for (const Engine *e : Engine::IterateType(VehicleType::Aircraft)) {
 		const EngineInfo *ei = &e->info;
 
-		if (HasBit(ei->climates, _settings_game.game_creation.landscape) &&
-			(HasBit(e->company_avail, company) || CalTime::CurDate() >= e->intro_date + DAYS_IN_YEAR)) {
-			const AircraftVehicleInfo *rvi = &e->u.air;
+		if (ei->climates.Test(_settings_game.game_creation.landscape) &&
+			(e->company_avail.Test(company) || CalTime::CurDate() >= e->intro_date + DAYS_IN_YEAR)) {
+			const AircraftVehicleInfo *rvi = &e->VehInfo<AircraftVehicleInfo>();
 
 			assert(rvi->airtype < AIRTYPE_END);
 			if (introduces) {
@@ -124,9 +124,9 @@ AirTypes GetAirTypes(bool introduces)
 
 	for (const Engine *e : Engine::IterateType(VehicleType::Aircraft)) {
 		const EngineInfo *ei = &e->info;
-		if (!HasBit(ei->climates, _settings_game.game_creation.landscape)) continue;
+		if (!ei->climates.Test(_settings_game.game_creation.landscape)) continue;
 
-		const AircraftVehicleInfo *rvi = &e->u.air;
+		const AircraftVehicleInfo *rvi = &e->VehInfo<AircraftVehicleInfo>();
 		assert(rvi->airtype < AIRTYPE_END);
 		if (introduces) {
 			rts |= GetAirTypeInfo(rvi->airtype)->introduces_airtypes;

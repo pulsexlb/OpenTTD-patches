@@ -33,7 +33,7 @@ struct AirTypeScopeResolver : public ScopeResolver {
 	}
 
 	uint32_t GetRandomBits() const override;
-	uint32_t GetVariable(uint8_t variable, uint32_t parameter, bool &available) const override;
+	uint32_t GetVariable(uint16_t variable, uint32_t parameter, GetVariableExtra &extra) const override;
 };
 
 /** Resolver object for air types. */
@@ -42,7 +42,7 @@ struct AirTypeResolverObject : public ResolverObject {
 
 	AirTypeResolverObject(const AirTypeInfo *ati, TileIndex tile, TileContext context, AirTypeSpriteGroup rtsg, uint32_t param1 = 0, uint32_t param2 = 0);
 
-	ScopeResolver *GetScope(VarSpriteGroupScope scope = VSG_SCOPE_SELF, uint8_t relative = 0) override
+	ScopeResolver *GetScope(VarSpriteGroupScope scope = VSG_SCOPE_SELF, VarSpriteGroupScopeOffset relative = 0) override
 	{
 		if (scope == VSG_SCOPE_SELF) return &this->airtype_scope;
 

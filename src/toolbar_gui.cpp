@@ -23,6 +23,9 @@
 #include "road.h"
 #include "road_gui.h"
 #include "dock_gui.h"
+#include "airport_gui.h"
+
+AirType _last_built_airtype = AIRTYPE_BEGIN;
 #include "water_map.h"
 #include "date_func.h"
 #include "vehicle_func.h"
@@ -1028,7 +1031,7 @@ static CallBackFunction ToolbarBuildAirClick(Window *w)
  */
 static CallBackFunction MenuClickBuildAir(int)
 {
-	ShowBuildAirToolbar();
+	ShowBuildAirToolbar(INVALID_AIRTYPE);
 	return CallBackFunction::None;
 }
 
@@ -2299,7 +2302,7 @@ struct MainToolbarWindow : Window {
 			case MTHK_BUILD_ROAD: ShowBuildRoadToolbar(_last_built_roadtype); break;
 			case MTHK_BUILD_TRAM: ShowBuildRoadToolbar(_last_built_tramtype); break;
 			case MTHK_BUILD_DOCKS: ShowBuildDocksToolbar(); break;
-			case MTHK_BUILD_AIRPORT: ShowBuildAirToolbar(); break;
+			case MTHK_BUILD_AIRPORT: ShowBuildAirToolbar(INVALID_AIRTYPE); break;
 			case MTHK_BUILD_TREES: ShowBuildTreesToolbar(); break;
 			case MTHK_MUSIC: ShowMusicWindow(); break;
 			case MTHK_SCRIPT_DEBUG: ShowScriptDebugWindow(); break;

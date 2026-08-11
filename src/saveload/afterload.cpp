@@ -37,6 +37,8 @@
 #include "../elrail_func.h"
 #include "../signs_func.h"
 #include "../aircraft.h"
+#include "../air_map.h"
+#include "../airport_gui.h"
 #include "../object_map.h"
 #include "../object_base.h"
 #include "../tree_map.h"
@@ -2691,7 +2693,7 @@ bool AfterLoadGame()
 	if (IsEffectiveUpstreamSavegameVersionBefore(SLV_BUOYS_AT_0_0)) {
 		/* Tile for no orders is now INVALID_TILE instead of 0. */
 		for (Vehicle *v : Vehicle::Iterate()) {
-			if (v->dest_tile == 0) v->SetDestTile(INVALID_TILE);
+			if (v->dest_tile == TileIndex{}) v->SetDestTile(INVALID_TILE);
 		}
 	}
 
@@ -2982,23 +2984,86 @@ bool AfterLoadGame()
 		}
 	}
 
-	/* In old versions it was possible to remove an airport while a plane was
-	 * taking off or landing. This gives all kind of problems when building
-	 * another airport in the same station so we don't allow that anymore.
-	 * For old savegames with such aircraft we just throw them in the air and
-	 * treat the aircraft like they were flying already. */
-	if (IsSavegameVersionBefore(SLV_146)) {
+	if (IsSavegameVersionBefore(SLV_MULTITILE_AIRPORTS)) {
+		/* Delete already crashed zeppelins. */
+		DeleteCrashedZeppelins();
+
+		/* We have to redeploy aircraft. */
 		for (Aircraft *v : Aircraft::Iterate()) {
-			if (!v->IsNormalAircraft()) continue;
-			Station *st = GetTargetAirportIfValid(v);
-			if (st == nullptr && v->state != 14) {
-				v->state = 14;
-				UpdateAircraftCache(v);
-				AircraftNextAirportPos_and_Order(v);
-				/* get aircraft back on running altitude */
-				if (!v->vehstatus.Test(VehState::Crashed)) {
-					GetAircraftFlightLevelBounds(v, &v->z_pos, nullptr);
-					SetAircraftPosition(v, v->x_pos, v->y_pos, GetAircraftFlightLevel(v));
+			if (!v->IsPrimaryVehicle()) continue;
+
+			Aircraft *u = v->Next(); // shadow
+			assert(u != nullptr);
+			v->flags = 0;
+
+			/* Assign dest_tile. */
+			v->dest_tile = TileIndex{};
+
+			int z = v->z_pos;
+			if (v->vehstatus.Test(VehState::Hidden)) {
+				assert(IsHangarTile(v->tile));
+				/* Keep aircraft in hangars. */
+				v->state = AS_HANGAR;
+				v->dest_tile = v->tile;
+				v->direction = u->direction = DiagDirToDir(GetHangarDirection(v->tile));
+				v->trackdir = u->trackdir = DiagDirToDiagTrackdir(GetHangarDirection(v->tile));
+				v->next_trackdir = INVALID_TRACKDIR;
+				v->wait_counter = 0;
+				v->x_pos = (v->x_pos & ~0xF) + 8;
+				v->y_pos = (v->y_pos & ~0xF) + 8;
+				v->current_order.Free();
+				ProcessOrders(v);
+			} else {
+				if (v->current_order.IsType(OT_LOADING)) {
+					v->vehicle_flags.Reset(VehicleFlag::LoadingFinished);
+					v->LeaveStation();
+				}
+				v->current_order.Free();
+				v->state = AS_FLYING_NO_DEST;
+				v->next_trackdir = INVALID_TRACKDIR;
+				v->trackdir = v->Next()->trackdir = TRACKDIR_X_NE;
+				v->direction = u->direction = Direction::NE;
+				v->x_pos = (v->x_pos & ~0xF) + 8;
+				v->y_pos = (v->y_pos & ~0xF) + 8;
+				v->tile = TileVirtXY(v->x_pos, v->y_pos);
+				GetAircraftFlightLevelBounds(v, nullptr, &z);
+				ProcessOrders(v);
+				AircraftUpdateNextPos(v);
+			}
+
+			SetAircraftPosition(v, v->x_pos, v->y_pos, z);
+		}
+
+		InitializeAirportGui();
+	}
+
+	if (IsSavegameVersionBefore(SLV_MULTITILE_AIRPORTS)) {
+		/* Update go to hangar orders so they store the DepotID instead of StationID. */
+		for (Aircraft *a : Aircraft::Iterate()) {
+			if (!a->IsNormalAircraft()) continue;
+
+			/* Update current order. */
+			if (a->current_order.IsType(OT_GOTO_DEPOT)) {
+				Station *st = Station::Get(a->current_order.GetDestination().ToStationID());
+				Depot *dep = st->airport.hangar;
+				if (dep == nullptr) {
+					/* Aircraft heading to a removed hangar. */
+					a->current_order.MakeDummy();
+				} else {
+					a->current_order.SetDestination(dep->index);
+				}
+			}
+
+			/* Update each aircraft order list once. */
+			if (a->orders == nullptr) continue;
+			if (a->orders->GetFirstSharedVehicle() != a) continue;
+
+			for (Order *order : a->Orders()) {
+				if (!order->IsType(OT_GOTO_DEPOT)) continue;
+				StationID station_id = order->GetDestination().ToStationID();
+				Station *st = Station::Get(station_id);
+				if (st->airport.hangar != nullptr) {
+					order->SetDestination(st->airport.hangar->index);
 				}
 			}
 		}
@@ -3563,9 +3628,6 @@ bool AfterLoadGame()
 	/* The center of train vehicles was changed, fix up spacing. */
 	if (IsSavegameVersionBefore(SLV_164)) FixupTrainLengths();
 
-	/* In version 2.2 of the savegame, we have new airports, so status of all aircraft is reset.
-	 * This has to be called after all map array updates */
-	if (IsSavegameVersionBefore(SLV_2, 2)) UpdateOldAircraft();
 
 	if (SlXvIsFeaturePresent(XSLFI_SPRINGPP)) {
 		// re-arrange vehicle_flags

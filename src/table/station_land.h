@@ -891,6 +891,429 @@ static const DrawTileSpriteSpan _station_display_datas_waypoint[] = {
  * As these are drawn/build like stations, they may use the same number of layouts. */
 static_assert(lengthof(_station_display_datas_rail) == lengthof(_station_display_datas_waypoint));
 
+/* Macros used by the airtype display sprites below (re-defined after the #undef above). */
+#define TILE_SEQ_LINE(dx, dy, dz, sx, sy, sz, img) TILE_SEQ_LINE_PAL(dx, dy, dz, sx, sy, sz, img, PAL_NONE)
+#define TILE_SEQ_LINE_PAL(dx, dy, dz, sx, sy, sz, img, pal) { dx, dy, dz, sx, sy, sz, {img, pal} },
+#define TILE_SEQ_CHILD(dx, dy, img, pal) TILE_SEQ_LINE_PAL(dx, dy, (int8_t)0x80, 0, 0, 0, img, pal)
+#define TILE_SEQ_GROUND(dx, dy, dz, img) TILE_SEQ_CHILD(2 * (dy - dx), dx + dy - dz, img, PAL_NONE)
+#define TILE_SEQ_END() { (int8_t)0x80, 0, 0, 0, 0, 0, {0, 0} }
+#define TILE_SPRITE_LINE(img, dtss) { {img, PAL_NONE}, dtss },
+#define TILE_SPRITE_LINE_NOTHING(img) { {img, PAL_NONE} },
+#define TILE_SPRITE_NULL() { {0, 0}, {} },
+
+static const DrawTileSeqStruct _station_display_nothing[] = {
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_datas_terminal_c_2[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, SPR_AIRFIELD_TERM_C_BUILD | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_1[] = {
+	TILE_SEQ_LINE( 4, 11,  0,  1,  1, 20, SPR_AIRFIELD_WIND_1 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_2[] = {
+	TILE_SEQ_LINE( 4, 11,  0,  1,  1, 20, SPR_AIRFIELD_WIND_2 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_3[] = {
+	TILE_SEQ_LINE( 4, 11,  0,  1,  1, 20, SPR_AIRFIELD_WIND_3 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_4[] = {
+	TILE_SEQ_LINE( 4, 11,  0,  1,  1, 20, SPR_AIRFIELD_WIND_4 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_1_NE[] = {
+	TILE_SEQ_LINE( 4, 11,  0,  1,  1, 20, SPR_AIRFIELD_WIND_1 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_2_NE[] = {
+	TILE_SEQ_LINE( 4, 11,  0,  1,  1, 20, SPR_AIRFIELD_WIND_2 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_3_NE[] = {
+	TILE_SEQ_LINE( 4, 11,  0,  1,  1, 20, SPR_AIRFIELD_WIND_3 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_4_NE[] = {
+	TILE_SEQ_LINE( 4, 11,  0,  1,  1, 20, SPR_AIRFIELD_WIND_4 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_1_SE[] = {
+	TILE_SEQ_LINE( 14, 12,  0,  1,  1, 20, SPR_AIRFIELD_WIND_1 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_2_SE[] = {
+	TILE_SEQ_LINE( 14, 12,  0,  1,  1, 20, SPR_AIRFIELD_WIND_2 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_3_SE[] = {
+	TILE_SEQ_LINE( 14, 12,  0,  1,  1, 20, SPR_AIRFIELD_WIND_3 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_4_SE[] = {
+	TILE_SEQ_LINE( 14, 12,  0,  1,  1, 20, SPR_AIRFIELD_WIND_4 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_1_SW[] = {
+	TILE_SEQ_LINE( 14, 5,  0,  1,  1, 20, SPR_AIRFIELD_WIND_1 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_2_SW[] = {
+	TILE_SEQ_LINE( 14, 5,  0,  1,  1, 20, SPR_AIRFIELD_WIND_2 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_3_SW[] = {
+	TILE_SEQ_LINE( 14, 5,  0,  1,  1, 20, SPR_AIRFIELD_WIND_3 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_4_SW[] = {
+	TILE_SEQ_LINE( 14, 5,  0,  1,  1, 20, SPR_AIRFIELD_WIND_4 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_1_NW[] = {
+	TILE_SEQ_LINE( 6, 3,  0,  1,  1, 20, SPR_AIRFIELD_WIND_1 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_2_NW[] = {
+	TILE_SEQ_LINE( 6, 3,  0,  1,  1, 20, SPR_AIRFIELD_WIND_2 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_3_NW[] = {
+	TILE_SEQ_LINE( 6, 3,  0,  1,  1, 20, SPR_AIRFIELD_WIND_3 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_flag_4_NW[] = {
+	TILE_SEQ_LINE( 6, 3,  0,  1,  1, 20, SPR_AIRFIELD_WIND_4 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_small_depot_se[] = {
+	TILE_SEQ_LINE(14,  0,  0,  2, 17, 28, SPR_AIRFIELD_HANGAR_FRONT | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_LINE( 0,  0,  0,  2, 17, 28, SPR_AIRFIELD_HANGAR_REAR | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_heliport[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 16, 16, 60, 43 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* control tower without fence */
+static const DrawTileSeqStruct _airtype_display_tower_1[] = {
+	TILE_SEQ_LINE( 7,  7,  0,  2,  2, 70, 59 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* control tower without fence */
+static const DrawTileSeqStruct _airtype_display_tower_2[] = {
+	TILE_SEQ_LINE( 7,  7,  0,  2,  2, 70, 60 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* control tower without fence */
+static const DrawTileSeqStruct _airtype_display_tower_3[] = {
+	TILE_SEQ_LINE( 7,  7,  0,  2,  2, 70, 61 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* control tower without fence */
+static const DrawTileSeqStruct _airtype_display_tower_4[] = {
+	TILE_SEQ_LINE( 7,  7,  0,  2,  2, 70, 62 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* control tower without fence */
+static const DrawTileSeqStruct _airtype_display_transmitter_1[] = {
+	TILE_SEQ_LINE( 7,  7,  0,  2,  2, 70, 51)
+	TILE_SEQ_END()
+};
+
+/* control tower without fence */
+static const DrawTileSeqStruct _airtype_display_transmitter_2[] = {
+	TILE_SEQ_LINE( 7,  7,  0,  2,  2, 70, 52)
+	TILE_SEQ_END()
+};
+
+/* control tower without fence */
+static const DrawTileSeqStruct _airtype_display_transmitter_3[] = {
+	TILE_SEQ_LINE( 7,  7,  0,  2,  2, 70, 53)
+	TILE_SEQ_END()
+};
+
+/* control tower without fence */
+static const DrawTileSeqStruct _airtype_display_transmitter_4[] = {
+	TILE_SEQ_LINE( 7,  7,  0,  2,  2, 70, 54)
+	TILE_SEQ_END()
+};
+
+/* turning radar -- needs 12 tiles
+ *BEGIN */
+static const DrawTileSeqStruct _airtype_display_radar_1[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_1)   // turning radar
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_2[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_2)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_3[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_3)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_4[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_4)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_5[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_5)
+	TILE_SEQ_END()
+};
+
+/* END */
+static const DrawTileSeqStruct _airtype_display_radar_6[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_6)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_7[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_7)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_8[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_8)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_9[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_9)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_10[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_A)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_11[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_B)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_radar_12[] = {
+	TILE_SEQ_LINE(7,  7,  0,  2,  2,  8, SPR_AIRPORT_RADAR_C)
+	TILE_SEQ_END()
+};
+
+/* END */
+/* plane apron */
+static const DrawTileSeqStruct _airtype_display_apron[] = {
+	TILE_SEQ_GROUND(0,  0,  0, 41)
+	TILE_SEQ_END()
+};
+
+/* helipad for continental airport */
+static const DrawTileSeqStruct _airtype_display_helipad[] = {
+	TILE_SEQ_GROUND(0,  0,  0, 42)
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_1_ne[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 67 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_1_se[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 68 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_1_sw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 69 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_1_nw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 70 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_2_ne[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 71 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_2_se[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 72 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_2_sw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 73 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_2_nw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 74 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_3_ne[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 75 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_3_se[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 76 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_3_sw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 77 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_3_nw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 78 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_flat_ne[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 79 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_flat_se[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 80 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_flat_sw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 81 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_flat_nw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 82 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_terminal_ne[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 83 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_terminal_se[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 84 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_terminal_sw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 85 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_building_terminal_nw[] = {
+	TILE_SEQ_LINE( 0,  0,  0, 15, 15, 30, 86 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_hangar_se[] = {
+	TILE_SEQ_GROUND( 0,  0,  0, 37)
+	TILE_SEQ_LINE(14,  0,  0,  2, 17, 28, 29 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_LINE( 0,  0,  0,  2, 17, 28, 39 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* West facing hangar */
+static const DrawTileSeqStruct _airtype_display_hangar_sw[] = {
+	TILE_SEQ_GROUND( 0,  0,  0, 38)
+	TILE_SEQ_LINE( 0, 14,  0, 16, 2, 28, 30 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_LINE( 0,  0,  0, 16, 2, 28, 40 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* North facing hangar */
+static const DrawTileSeqStruct _airtype_display_hangar_nw[] = {
+	TILE_SEQ_LINE(0,  0,  0, 16, 16, 28, 31 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* East facing hangar */
+static const DrawTileSeqStruct _airtype_display_hangar_ne[] = {
+	TILE_SEQ_LINE(0,  0,  0, 16, 16, 28, 32 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+static const DrawTileSeqStruct _airtype_display_hangar_se_snow[] = {
+	TILE_SEQ_GROUND( 0,  0,  0, 37)
+	TILE_SEQ_LINE(14,  0,  0,  2, 17, 28, 33 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_LINE( 0,  0,  0,  2, 17, 28, 39 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* West facing hangar */
+static const DrawTileSeqStruct _airtype_display_hangar_sw_snow[] = {
+	TILE_SEQ_GROUND( 0,  0,  0, 38)
+	TILE_SEQ_LINE( 0, 14,  0, 16, 2, 28, 34 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_LINE( 0,  0,  0, 16, 2, 28, 40 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* North facing hangar */
+static const DrawTileSeqStruct _airtype_display_hangar_nw_snow[] = {
+	TILE_SEQ_LINE(0,  0,  0, 16, 16, 28, 35 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+/* East facing hangar */
+static const DrawTileSeqStruct _airtype_display_hangar_ne_snow[] = {
+	TILE_SEQ_LINE(0,  0,  0, 16, 16, 28, 36 | (1U << PALETTE_MODIFIER_COLOUR))
+	TILE_SEQ_END()
+};
+
+#undef TILE_SEQ_END
+#undef TILE_SEQ_LINE
+#undef TILE_SEQ_LINE_PAL
+#undef TILE_SEQ_CHILD
+#undef TILE_SEQ_GROUND
+
+/**
+ * Constructor macro of a DrawTileSpriteSpan structure
+ * @param img   Ground sprite without palette of the tile
+ * @param dtss  Sequence child sprites of the tile
+ */
+#define TILE_SPRITE_LINE(img, dtss) { {img, PAL_NONE}, dtss },
+#define TILE_SPRITE_NULL() { {0, 0}, {} },
+
+
 static constexpr EnumIndexArray<std::span<const DrawTileSpriteSpan>, StationType, StationType::End> _station_display_datas{
 	_station_display_datas_rail,
 	_station_display_datas_airport,
@@ -902,3 +1325,187 @@ static constexpr EnumIndexArray<std::span<const DrawTileSpriteSpan>, StationType
 	_station_display_datas_waypoint,
 	_station_display_datas_road_waypoint,
 };
+
+extern const DrawTileSpriteSpan _airtype_display_datas_transmitter[] = {
+	TILE_SPRITE_LINE(0,              _airtype_display_transmitter_1)
+	TILE_SPRITE_LINE(0,              _airtype_display_transmitter_2)
+	TILE_SPRITE_LINE(0,              _airtype_display_transmitter_3)
+	TILE_SPRITE_LINE(0,              _airtype_display_transmitter_4)
+};
+
+extern const DrawTileSpriteSpan _airtype_display_datas_tower[] = {
+	TILE_SPRITE_LINE(0,              _airtype_display_tower_1)
+	TILE_SPRITE_LINE(0,              _airtype_display_tower_2)
+	TILE_SPRITE_LINE(0,              _airtype_display_tower_3)
+	TILE_SPRITE_LINE(0,              _airtype_display_tower_4)
+};
+
+extern const DrawTileSpriteSpan _airtype_display_datas_airport[] = {
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_ne) // building 1
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_nw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_2_ne) // building 2
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_2_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_2_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_2_nw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_3_ne) // building 3
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_3_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_3_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_3_nw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_flat_ne) // flat building
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_flat_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_flat_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_flat_nw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_terminal_ne) // terminal building
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_terminal_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_terminal_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_terminal_nw) //
+	TILE_SPRITE_NULL() // flags
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) // transmitter
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) // tower
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_NULL() // radar
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) // pier
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) // empty
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+};
+
+extern const DrawTileSpriteSpan _airtype_display_datas_radar[] = {
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_1) // APT_RADAR_FENCE_SW
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_2)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_3)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_4)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_5)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_6)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_7)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_8)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_9)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_10)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_11)
+	TILE_SPRITE_LINE(SPR_AIRPORT_APRON,              _airtype_display_radar_12)
+};
+
+extern const DrawTileSpriteSpan _airtype_display_datas_flag_NE[] = {
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_1_NE) // FLAG_2
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_2_NE)
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_3_NE)
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_4_NE)
+};
+
+extern const DrawTileSpriteSpan _airtype_display_datas_flag_SE[] = {
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_1_SE) // FLAG_2
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_2_SE)
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_3_SE)
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_4_SE)
+};
+
+extern const DrawTileSpriteSpan _airtype_display_datas_flag_SW[] = {
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_1_SW) // FLAG_2
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_2_SW)
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_3_SW)
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_4_SW)
+};
+
+extern const DrawTileSpriteSpan _airtype_display_datas_flag_NW[] = {
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_1_NW) // FLAG_2
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_2_NW)
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_3_NW)
+	TILE_SPRITE_LINE(SPR_FLAT_GRASS_TILE,            _airtype_display_flag_4_NW)
+};
+
+static const  DrawTileSpriteSpan *_airtype_display_datas_flags[] = {
+	_airtype_display_datas_flag_NE,
+	_airtype_display_datas_flag_SE,
+	_airtype_display_datas_flag_SW,
+	_airtype_display_datas_flag_NW
+};
+
+extern const DrawTileSpriteSpan _airport_hangars[] = {
+	TILE_SPRITE_LINE(38,                     _airtype_display_hangar_ne)
+	TILE_SPRITE_LINE(37,                     _airtype_display_hangar_se)
+	TILE_SPRITE_LINE(38,                     _airtype_display_hangar_sw)
+	TILE_SPRITE_LINE(37,                     _airtype_display_hangar_nw)
+};
+
+extern const DrawTileSpriteSpan _airport_heliports[] = {
+	TILE_SPRITE_LINE(0,                     _airtype_display_heliport)
+};
+
+extern const DrawTileSpriteSpan _airport_infra_no_catchment[] = {
+	TILE_SPRITE_LINE(0,                     _airtype_display_heliport)
+};
+
+extern const DrawTileSpriteSpan _airport_infra_with_catchment[] = {
+	TILE_SPRITE_LINE(0,                     _airtype_display_heliport)
+};
+
+extern const DrawTileSpriteSpan _airtype_display_datas[] = {
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_ne) // building 1
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_1_nw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_2_ne) // building 2
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_2_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_2_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_2_nw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_3_ne) // building 3
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_3_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_3_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_3_nw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_flat_ne) // flat building
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_flat_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_flat_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_flat_nw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_terminal_ne) // terminal building
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_terminal_se) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_terminal_sw) //
+	TILE_SPRITE_LINE(0,                  _airtype_display_building_terminal_nw) //
+	TILE_SPRITE_NULL() // flags
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) // transmitter
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) // tower
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_NULL() // radar
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_NULL() //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) // pier
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) // empty
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+	TILE_SPRITE_LINE(0,                  _station_display_nothing) //
+};
+
+#undef TILE_SPRITE_LINE
+#undef TILE_SPRITE_NULL
+
+/* Default waypoint is also drawn as fallback for NewGRF waypoints.
+ * As these are drawn/build like stations, they may use the same number of layouts. */
+static_assert(lengthof(_station_display_datas_rail) == lengthof(_station_display_datas_waypoint));

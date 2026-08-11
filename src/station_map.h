@@ -396,18 +396,6 @@ inline void ToggleRoadWaypointOnSnowOrDesert(TileIndex t)
 StationGfx GetTranslatedAirportTileID(StationGfx gfx);
 
 /**
- * Get the station graphics of this airport tile
- * @param t the tile to query
- * @pre IsAirport(t)
- * @return the station graphics
- */
-inline StationGfx GetAirportGfx(TileIndex t)
-{
-	dbg_assert_tile(IsAirport(t), t);
-	return GetTranslatedAirportTileID(GetStationGfx(t));
-}
-
-/**
  * Gets the direction the bay road stop entrance points towards.
  * @param t the tile of the road stop
  * @pre IsBayRoadStopTile(t)

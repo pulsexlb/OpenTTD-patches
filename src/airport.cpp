@@ -118,7 +118,7 @@ void ResetAirTypes()
 			{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, // Icons
 			{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, // Cursors
 			{ 0, 0, 0, 0 }, // Strings
-			0, AIRTYPES_NONE, AIRTYPES_NONE, 0, 0, 0, 0, AirTypeLabelList(), 0, 0,
+			0, AIRTYPES_NONE, AIRTYPES_NONE, 0, 0, 0, 0, AirTypeLabelList(), 0, CalTime::Date{},
 			AIRTYPES_NONE, AIRTYPES_NONE, 0,
 			{}, {}, 0, 0, 0, 0, 0, false, false };
 	for (; i < lengthof(_airtypes); i++) _airtypes[i] = empty_airtype;
@@ -211,9 +211,9 @@ void ConvertOldAirportData(Station *st) {
 
 	/* Old rotation dir values are 0, 2, 4, 6.
 	 * Convert them to 0, 1, 2, 3 (DiagDirection values). */
-	assert(st->airport.rotation % 2 == 0);
-	assert(st->airport.rotation <= 6);
-	st->airport.rotation = (Direction)(st->airport.rotation / 2);
+	assert(static_cast<uint>(st->airport.rotation) % 2 == 0);
+	assert(static_cast<uint>(st->airport.rotation) <= 6);
+	st->airport.rotation = static_cast<Direction>(static_cast<uint>(st->airport.rotation) / 2);
 
 	if (st->airport.type > 23) {
 		/* OpenGRF+Airports includes airport types from NEW_AIRPORT_OFFSET to 23.
@@ -242,7 +242,8 @@ void Station::ClearAirportDataInfrastructure() {
 	this->airport.helipads.clear();
 	this->airport.runways.clear();
 	if (this->airport.HasHangar()) {
-		this->airport.hangar->depot_tiles.clear();
+		delete this->airport.hangar;
+		this->airport.hangar = nullptr;
 	}
 }
 
@@ -370,7 +371,7 @@ uint RotatedAirportSpecPosition(const TileIndex tile, const TileArea tile_area, 
 	 */
 	TileIndexDiffC tile_diff = TileIndexToTileIndexDiffC(tile, tile_area.tile);
 
-	switch (rotation) {
+	switch (static_cast<uint>(rotation)) {
 		case 0:
 			break;
 		case 1:
@@ -385,7 +386,7 @@ uint RotatedAirportSpecPosition(const TileIndex tile, const TileArea tile_area, 
 		default: NOT_REACHED();
 	}
 
-	return tile_diff.x + tile_diff.y * (rotation % 2 == 0 ? tile_area.w : tile_area.h);
+	return tile_diff.x + tile_diff.y * (static_cast<uint>(rotation) % 2 == 0 ? tile_area.w : tile_area.h);
 }
 
 /**
@@ -400,7 +401,7 @@ uint RotatedAirportSpecPosition(const TileIndex tile, const TileArea tile_area, 
  */
 TrackBits RotateTrackBits(TrackBits track_bits, DiagDirection dir)
 {
-	static const TrackBits rotation_table[DiagDirection::End][TRACK_END] = {
+	static const TrackBits rotation_table[static_cast<size_t>(DiagDirection::End)][TRACK_END] = {
 		{ TRACK_BIT_X, TRACK_BIT_Y, TRACK_BIT_UPPER, TRACK_BIT_LOWER, TRACK_BIT_LEFT,  TRACK_BIT_RIGHT },
 		{ TRACK_BIT_Y, TRACK_BIT_X, TRACK_BIT_RIGHT, TRACK_BIT_LEFT,  TRACK_BIT_UPPER, TRACK_BIT_LOWER },
 		{ TRACK_BIT_X, TRACK_BIT_Y, TRACK_BIT_LOWER, TRACK_BIT_UPPER, TRACK_BIT_RIGHT, TRACK_BIT_LEFT  },
@@ -409,7 +410,7 @@ TrackBits RotateTrackBits(TrackBits track_bits, DiagDirection dir)
 
 	TrackBits rotated = TRACK_BIT_NONE;
 	for (Track track : SetTrackBitIterator(track_bits)) {
-		rotated |= rotation_table[dir][track];
+		rotated |= rotation_table[static_cast<uint>(dir)][track];
 	}
 
 	return rotated;
@@ -431,18 +432,18 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 
 		t.m5() = 0;
 
-		SB(_me[t].m6, 3, 3, StationType::Airport);
+		SB(_me[t].m6, 3, 3, to_underlying(StationType::Airport));
 		SetAirType(t, airtype);
 		SetAirportTileType(t, airport_tile_desc->type);
 
-		bool airtype_gfx = airtype != as->airtype || airport_tile_desc->gfx[rotation] == INVALID_AIRPORTTILE;
+		bool airtype_gfx = airtype != as->airtype || airport_tile_desc->gfx[static_cast<size_t>(rotation)] == INVALID_AIRPORTTILE;
 		SetAirGfxType(t, airtype_gfx);
-		SetTileAirportGfx(t, airtype_gfx ? airport_tile_desc->at_gfx : airport_tile_desc->gfx[rotation]);
+		SetTileAirportGfx(t, airtype_gfx ? airport_tile_desc->at_gfx : airport_tile_desc->gfx[static_cast<size_t>(rotation)]);
 
 		switch (GetAirportTileType(t)) {
 			case ATT_INFRASTRUCTURE_WITH_CATCH:
 			case ATT_INFRASTRUCTURE_NO_CATCH:
-				SetAirportTileRotation(t, (DiagDirection)((rotation + airport_tile_desc->dir) % DiagDirection::End));
+				SetAirportTileRotation(t, (DiagDirection)((static_cast<uint>(rotation) + static_cast<uint>(airport_tile_desc->dir)) % static_cast<uint>(DiagDirection::End)));
 				if (!airtype_gfx) SetAirportGfxForAirtype(t, airport_tile_desc->at_gfx);
 				break;
 
@@ -457,17 +458,17 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 			case ATT_APRON_HELIPAD:
 			case ATT_APRON_HELIPORT:
 			case ATT_APRON_BUILTIN_HELIPORT:
-				SetAirportTileRotation(t, (DiagDirection)((rotation + airport_tile_desc->dir) % DiagDirection::End));
+				SetAirportTileRotation(t, (DiagDirection)((static_cast<uint>(rotation) + static_cast<uint>(airport_tile_desc->dir)) % static_cast<uint>(DiagDirection::End)));
 				break;
 
 			case ATT_RUNWAY_MIDDLE:
-				SB(t.m8(), 12, 2, RotateDirection(airport_tile_desc->runway_directions, rotation));
+				SB(t.m8(), 12, 2, to_underlying(RotateDirection(airport_tile_desc->runway_directions, rotation)));
 				break;
 
 			case ATT_RUNWAY_START_NO_LANDING:
 			case ATT_RUNWAY_START_ALLOW_LANDING:
 			case ATT_RUNWAY_END:
-				SB(t.m8(), 12, 2, RotateDiagDir(airport_tile_desc->dir, rotation));
+				SB(t.m8(), 12, 2, to_underlying(RotateDiagDir(airport_tile_desc->dir, rotation)));
 				break;
 			case ATT_WAITING_POINT:
 				NOT_REACHED();
@@ -566,7 +567,7 @@ void Station::UpdateAirportDataStructure()
 		}
 	}
 
-	if (this->airport.hangar != nullptr) InvalidateWindowData(WC_BUILD_VEHICLE, this->airport.hangar->index);
+	if (this->airport.hangar != nullptr) InvalidateWindowData(WindowClass::BuildVehicle, this->airport.hangar->index);
 
 	if (this->airport.HasLandingRunway() != allow_landing) {
 		ToggleBit(this->airport.flags, AFB_LANDING_RUNWAY);
@@ -620,9 +621,9 @@ TrackBits GetAllowedTracks(TileIndex tile)
 				TileIndex t = TileAddByDir(tile, dir);
 				if (!IsValidTile(t) || !IsAirportTile(t) ||
 					GetStationIndex(t) != GetStationIndex(tile) || !MayHaveAirTracks(t)) {
-					tracks &= rem_tracks[dir];
+					tracks &= rem_tracks[static_cast<uint>(dir)];
 					} else if (IsHangar(t)) {
-						tracks &= rem_tracks[dir];
+						tracks &= rem_tracks[static_cast<uint>(dir)];
 					}
 			}
 

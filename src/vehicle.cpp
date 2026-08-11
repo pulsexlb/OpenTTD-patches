@@ -19,6 +19,8 @@
 #include "company_func.h"
 #include "train.h"
 #include "aircraft.h"
+#include "air.h"
+#include "pbs_air.h"
 #include "newgrf_debug.h"
 #include "newgrf_sound.h"
 #include "newgrf_station.h"
@@ -653,6 +655,25 @@ CommandCost EnsureNoVehicleOnGround(TileIndex tile)
 	return CommandCost();
 }
 
+/**
+ * Ensure there is no aircraft in the way at the given position.
+ * @param tile Position to examine.
+ * @return Succeeded command (ground is free) or failed command (a vehicle is found).
+ */
+CommandCost EnsureFreeHangar(TileIndex tile)
+{
+	int z = GetTileMaxPixelZ(tile) + 1;
+
+	/* Check for aircraft on the hangar tile. */
+	for (const Aircraft *a : VehiclesOnTile<VehicleType::Aircraft>(tile)) {
+		if (a->subtype == AIR_SHADOW) continue;
+		if (a->z_pos > z) continue;
+		return CommandCost(STR_ERROR_AIRCRAFT_IN_THE_WAY);
+	}
+
+	return CommandCost();
+}
+
 bool IsTrainCollidableRoadVehicleOnGround(TileIndex tile)
 {
 	for (const RoadVehicle *rv : VehiclesOnTile<VehicleType::Road>(tile)) {
@@ -1183,8 +1204,8 @@ void Vehicle::PreDestructor()
 		Aircraft *a = Aircraft::From(this);
 		Station *st = GetTargetAirportIfValid(a);
 		if (st != nullptr) {
-			const auto &layout = st->airport.GetFTA()->layout;
-			st->airport.blocks.Reset(layout[a->previous_pos].blocks | layout[a->pos].blocks);
+			/* Reserved airport tracks are released when the aircraft is removed. */
+			LiftAirportPathReservation(a, false);
 		}
 	}
 
@@ -2314,7 +2335,7 @@ void CheckVehicleBreakdown(Vehicle *v)
 	/* The vehicle has been manually stopped. */
 	if (v->First()->vehstatus.Test(VehState::Stopped)) return;
 	/* Aircraft is not flying. */
-	if (v->type == VehicleType::Aircraft && Aircraft::From(v)->state != FLYING) return;
+	if (v->type == VehicleType::Aircraft && !Aircraft::From(v)->IsAircraftFlying()) return;
 	/* Not a suitable train engine to break down. */
 	if (v->type == VehicleType::Train && !(Train::From(v)->IsFrontEngine()) && !_settings_game.vehicle.improved_breakdowns) return;
 
@@ -2392,7 +2413,6 @@ bool Vehicle::HandleBreakdown()
 						(this->current_order.IsType(OT_GOTO_DEPOT) &&
 						this->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::Breakdown) &&
 						GetTargetAirportIfValid(Aircraft::From(this)) != nullptr)) return false;
-				FindBreakdownDestination(Aircraft::From(this));
 			} else if (this->type == VehicleType::Train) {
 				Train *t = Train::From(this);
 				if (this->breakdown_type == BREAKDOWN_LOW_POWER ||
@@ -2721,7 +2741,6 @@ void VehicleEnterDepot(Vehicle *v)
 		}
 
 		case VehicleType::Aircraft:
-			HandleAircraftEnterHangar(Aircraft::From(v));
 			break;
 		default: NOT_REACHED();
 	}
@@ -4142,14 +4161,6 @@ CommandCost Vehicle::SendToDepot(DoCommandFlags flags, DepotCommandFlags command
 		if (this->type == VehicleType::Train && (closest_depot.reverse != Train::From(this)->flags.Test(VehicleRailFlag::Reversing))) {
 			Command<Commands::ReverseTrainDirection>::Do(DoCommandFlag::Execute, this->index, false);
 		}
-
-		if (this->type == VehicleType::Aircraft) {
-			Aircraft *a = Aircraft::From(this);
-			if (a->state == FLYING && a->targetairport != closest_depot.destination) {
-				/* The aircraft is now heading for a different hangar than the next in the orders */
-				AircraftNextAirportPos_and_Order(a);
-			}
-		}
 	}
 
 	return CommandCost();
@@ -4806,8 +4817,14 @@ bool CanVehicleUseStation(EngineID engine_type, const Station *st)
 			return st->facilities.Test(StationFacility::Dock);
 
 		case VehicleType::Aircraft:
-			return st->facilities.Test(StationFacility::Airport) &&
-					st->airport.GetFTA()->flags.Test(e->VehInfo<AircraftVehicleInfo>().subtype & AIR_CTOL ? AirportFTAClass::Flag::Airplanes : AirportFTAClass::Flag::Helicopters);
+			if (!st->facilities.Test(StationFacility::Airport)) return false;
+			if (st->airport.type == AT_OILRIG && e->VehInfo<AircraftVehicleInfo>().subtype == AIR_HELICOPTER) return true;
+			if (!IsCompatibleAirType(e->VehInfo<AircraftVehicleInfo>().airtype, st->airport.air_type)) return false;
+
+			if (e->VehInfo<AircraftVehicleInfo>().subtype & AIR_CTOL) return st->airport.HasLandingRunway();
+
+			return !st->airport.aprons.empty() ||
+					(e->VehInfo<AircraftVehicleInfo>().subtype == AIR_HELICOPTER && (!st->airport.helipads.empty() || !st->airport.heliports.empty()));
 
 		default:
 			return false;

@@ -18,6 +18,8 @@
 #include "../tunnelbridge_map.h"
 #include "../depot_map.h"
 #include "../infrastructure_func.h"
+#include "../air_map.h"
+#include "../air.h"
 #include "pathfinder_func.h"
 
 /**
@@ -57,7 +59,7 @@ struct CFollowTrackT {
 
 	inline CFollowTrackT(Owner o, RailTypes railtype_override = INVALID_RAILTYPES)
 	{
-		dbg_assert(IsRailTT());
+		dbg_assert(IsRailTT() || IsAirTT());
 		this->veh = nullptr;
 		Init(o, railtype_override);
 	}
@@ -93,6 +95,7 @@ struct CFollowTrackT {
 	[[debug_inline]] inline static bool IsRailTT() { return TT() == TRANSPORT_RAIL; }
 	inline bool IsTram() const { return IsRoadTT() && RoadTypeIsTram(RoadVehicle::From(this->veh)->roadtype); }
 	[[debug_inline]] inline static bool IsRoadTT() { return TT() == TRANSPORT_ROAD; }
+	[[debug_inline]] inline static bool IsAirTT() { return TT() == TRANSPORT_AIR; }
 	static inline bool Allow90degTurns() { return T90deg_turns_allowed_; }
 	static inline bool DoTrackMasking() { return Tmask_reserved_tracks; }
 
@@ -144,6 +147,7 @@ struct CFollowTrackT {
 		if (!this->CanExitOldTile()) return false;
 		this->FollowTileExit();
 		if (!this->QueryNewTileTrackStatus()) return TryReverse();
+		if (IsAirTT() && !this->CanEnterNewTile()) return false;
 		this->new_td_bits &= DiagdirReachesTrackdirs(this->exitdir);
 		if (this->new_td_bits == TRACKDIR_BIT_NONE || !this->CanEnterNewTile()) {
 			/* In case we can't enter the next tile, but are
@@ -252,6 +256,12 @@ protected:
 	 */
 	inline bool QueryNewTileTrackStatus()
 	{
+		if (IsAirTT()) {
+			if (!IsAirportTile(this->new_tile) ||
+					!MayHaveAirTracks(this->new_tile)) return false;
+			this->new_td_bits = TrackBitsToTrackdirBits(GetAirportTileTracks(this->new_tile));
+			return this->new_td_bits != TRACKDIR_BIT_NONE;
+		}
 		if (IsRailTT() && IsPlainRailTile(this->new_tile)) {
 			this->new_td_bits = TrackBitsToTrackdirBits(GetTrackBits(this->new_tile));
 		} else if (IsRoadTT()) {
@@ -268,6 +278,20 @@ protected:
 	 */
 	inline bool CanExitOldTile()
 	{
+		/* hangar can be left at one direction */
+		if (IsAirTT()) {
+			if (IsHangarTile(this->old_tile)) {
+				DiagDirection exitdir = GetHangarDirection(this->old_tile);
+				if (exitdir != this->exitdir) {
+					this->err = EC_NO_WAY;
+					return false;
+				}
+			} else if (IsHeliportTile(this->old_tile)) {
+					this->err = EC_NO_WAY;
+					return false;
+			}
+		}
+
 		/* road stop can be left at one direction only unless it's a drive-through stop */
 		if (IsRoadTT() && IsBayRoadStopTile(this->old_tile)) {
 			DiagDirection exitdir = GetBayRoadStopDir(this->old_tile);
@@ -434,6 +458,7 @@ protected:
 	inline bool ForcedReverse()
 	{
 		/* rail and road depots cause reversing */
+		if (IsAirTT()) return false;
 		if (!IsWaterTT() && IsDepotTypeTile(this->old_tile, TT())) {
 			DiagDirection exitdir = IsRailTT() ? GetRailDepotDirection(this->old_tile) : GetRoadDepotDirection(this->old_tile);
 			if (exitdir != this->exitdir) {
@@ -526,6 +551,7 @@ public:
 typedef CFollowTrackT<TRANSPORT_WATER, Ship,        true > CFollowTrackWater;
 typedef CFollowTrackT<TRANSPORT_ROAD,  RoadVehicle, true > CFollowTrackRoad;
 typedef CFollowTrackT<TRANSPORT_RAIL,  Train,       true > CFollowTrackRail;
+typedef CFollowTrackT<TRANSPORT_AIR,   Aircraft,    true > CFollowTrackAirport;
 
 typedef CFollowTrackT<TRANSPORT_RAIL,  Train,       false> CFollowTrackRailNo90;
 

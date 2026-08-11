@@ -313,7 +313,7 @@ static inline void SetAirportTileRotation(Tile t, DiagDirection dir)
 {
 	assert(IsAirportTile(t));
 	assert(IsApron(t) || IsInfrastructure(t));
-	SB(t.m8(), 14, 2, dir);
+	SB(t.m8(), 14, 2, to_underlying(dir));
 }
 
 /**
@@ -532,7 +532,7 @@ static inline TrackdirBits GetRunwayTrackdirs(TileIndex t)
 			TRACKDIR_BIT_X_SW | TRACKDIR_BIT_Y_NW,
 			TRACKDIR_BIT_Y_NW,
 	};
-	return dir_to_trackdirbits[dir];
+	return dir_to_trackdirbits[static_cast<uint>(dir)];
 }
 
 static inline TrackBits GetRunwayTracks(TileIndex t)
@@ -560,7 +560,7 @@ static inline void SetRunwayExtremeDirection(Tile t, DiagDirection dir)
 	assert(IsAirport(t));
 	assert(IsRunwayExtreme(t));
 
-	SB(t.m8(), 12, 2, dir);
+	SB(t.m8(), 12, 2, to_underlying(dir));
 }
 
 /**
@@ -577,17 +577,17 @@ static inline void AddPlainRunwayDirections(Tile t, DiagDirection dir, bool firs
 	assert(IsPlainRunway(t));
 
 	if (first) {
-		SB(t.m8(), 12, 3, DiagDirToDir(dir));
+		SB(t.m8(), 12, 3, to_underlying(DiagDirToDir(dir)));
 	} else {
 		Direction pre_dir = GetPlainRunwayDirections(t);
 		Direction add_dir = DiagDirToDir(dir);
 		assert(IsDiagonalDirection(pre_dir));
-		if (pre_dir < add_dir) Swap(add_dir, pre_dir);
+		if (static_cast<uint>(pre_dir) < static_cast<uint>(add_dir)) std::swap(add_dir, pre_dir);
 		assert(((uint)DirToDiagDir(pre_dir) + (uint)DirToDiagDir(add_dir)) % 2 == 1);
-		if (add_dir + 2 == pre_dir) {
-			SB(t.m8(), 12, 3, add_dir + 1);
+		if (static_cast<uint>(add_dir) + 2 == static_cast<uint>(pre_dir)) {
+			SB(t.m8(), 12, 3, to_underlying(static_cast<Direction>(static_cast<uint>(add_dir) + 1)));
 		} else if (pre_dir == Direction::NW && add_dir == Direction::NE) {
-			SB(t.m8(), 12, 3, Direction::N);
+			SB(t.m8(), 12, 3, to_underlying(Direction::N));
 		} else {
 			NOT_REACHED();
 		}
@@ -615,11 +615,11 @@ static inline bool RemovePlainRunwayDirections(Tile t, DiagDirection dir)
 		SB(t.m8(), 12, 4, 0);
 		SetAirportTileType(t, ATT_SIMPLE_TRACK);
 		return true;
-	} else if ((cur_dir + 1) % Direction::End == remove_dir) {
-		SB(t.m8(), 12, 3, (cur_dir - 1) & (Direction::End - 1));
+	} else if ((static_cast<uint>(cur_dir) + 1) % static_cast<uint>(Direction::End) == static_cast<uint>(remove_dir)) {
+		SB(t.m8(), 12, 3, to_underlying(static_cast<Direction>((static_cast<uint>(cur_dir) - 1) & (static_cast<uint>(Direction::End) - 1))));
 		return false;
-	} else if (cur_dir == (remove_dir + 1) % Direction::End) {
-		SB(t.m8(), 12, 3, (cur_dir + 1) % Direction::End);
+	} else if (static_cast<uint>(cur_dir) == (static_cast<uint>(remove_dir) + 1) % static_cast<uint>(Direction::End)) {
+		SB(t.m8(), 12, 3, to_underlying(static_cast<Direction>((static_cast<uint>(cur_dir) + 1) % static_cast<uint>(Direction::End))));
 		return false;
 	}
 
@@ -650,7 +650,7 @@ static inline void SetAirportTileTracks(Tile t, TrackBits tracks)
 static inline void SetHangarDirection(Tile t, DiagDirection dir)
 {
 	assert(IsHangar(t));
-	SB(t.m8(), 14, 2, dir);
+	SB(t.m8(), 14, 2, to_underlying(dir));
 }
 
 /**

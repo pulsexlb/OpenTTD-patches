@@ -1141,11 +1141,9 @@ static void FloodAircraftProc(Aircraft *v)
 	if (!IsAirportTile(v->tile) || GetTileMaxZ(v->tile) != 0) return;
 	if (v->subtype == AIR_SHADOW) return;
 
-	/* We compare v->z_pos against delta_z + 1 because the shadow
-	 * is at delta_z and the actual aircraft at delta_z + 1. */
+	/* Aircraft on an airport tile at heliport height are flooded. */
 	const Station *st = Station::GetByTile(v->tile);
-	const AirportFTAClass *airport = st->airport.GetFTA();
-	if (v->z_pos != airport->delta_z + 1) return;
+	if (v->z_pos != GetTileMaxPixelZ(v->tile) + 1) return;
 
 	FloodVehicle(v);
 }

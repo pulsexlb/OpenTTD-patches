@@ -436,7 +436,7 @@ static const std::initializer_list<AirportTileLayout> _layouts_oilrig = {
 
 /** General AirportSpec definition. */
 #define AS(dname, airtype, min_year, max_year, num_runways, num_aprons, num_helipads, num_heliports, min_runway_length, ttdpatch_type, class_id, name, preview, enabled, has_hangar, has_heliport) \
-{{class_id, 0}, _layouts_##dname, airtype, num_runways, num_aprons, num_helipads, num_heliports, min_runway_length, min_year, max_year, name, ttdpatch_type, preview, enabled, has_hangar, has_heliport, SubstituteGRFFileProps(AT_INVALID) }
+{{class_id, 0}, _layouts_##dname, airtype, num_runways, num_aprons, num_helipads, num_heliports, min_runway_length, CalTime::Year{min_year}, CalTime::Year{max_year}, name, ttdpatch_type, preview, enabled, has_hangar, has_heliport, SubstituteGRFFileProps(AT_INVALID) }
 
 /* The helidepot and helistation have ATP_TTDP_SMALL because they are at ground level */
 const AirportSpec _origin_airport_specs[] = {
