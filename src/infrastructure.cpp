@@ -108,7 +108,7 @@ static bool VehiclePositionIsAllowed(const Vehicle *v, Owner owner = INVALID_OWN
 			return true;
 		case VehicleType::Aircraft: {
 			const Aircraft *a = Aircraft::From(v);
-			if (a->state != FLYING && Station::IsValidID(a->targetairport)) {
+			if (!a->IsAircraftFlying() && Station::IsValidID(a->targetairport)) {
 				Owner station_owner = Station::Get(a->targetairport)->owner;
 				if (!IsInfraUsageAllowed(VehicleType::Aircraft, a->owner, station_owner) || station_owner == owner) return false;
 			}

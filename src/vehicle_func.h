@@ -214,3 +214,7 @@ Direction VehicleEnterTileCoordinates(GetNewVehiclePosResult &gp, DiagDirection 
 void ShowTrainTooHeavyAdviceMessage(const Vehicle *v);
 
 #endif /* VEHICLE_FUNC_H */
+
+void DeleteCrashedZeppelins();
+
+CommandCost EnsureFreeHangar(TileIndex tile);

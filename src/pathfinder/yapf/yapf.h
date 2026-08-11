@@ -102,3 +102,9 @@ bool YapfTrainCheckDepotReverse(const Train *v, TileIndex forward_depot, TileInd
 bool YapfTrainFindNearestSafeTile(const Train *v, TileIndex tile, Trackdir td, bool override_railtype);
 
 #endif /* YAPF_H */
+
+struct Aircraft;
+struct PBSTileInfo;
+struct AircraftPathChoice;
+enum AircraftState : uint8_t;
+Trackdir YapfAircraftFindPath(const Aircraft *v, PBSTileInfo &best_dest, bool &path_found, AircraftState dest_state, AircraftPathChoice &path_cache);

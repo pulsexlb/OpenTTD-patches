@@ -530,6 +530,12 @@ enum class Commands : uint8_t {
 	ConvertRoad,                            ///< convert a road type
 
 	BuildAirport,                           ///< build an airport
+	ChangeAirport,                          ///< change pieces of airport
+	AddRemoveAirportTiles,                  ///< build/remove tiles for airport tracks
+	AddRemoveTracksAirport,                 ///< build/remove tracks
+	ChangeAirType,                          ///< change the airport type (gravel, asphalt, etc.)
+	AirportChangeTrackGfx,                  ///< change the graphics of an airport tile, if possible
+	AirportToggleGround,                    ///< toggle between showing the specific airtype ground or not, if possible
 
 	BuildDock,                              ///< build a dock
 

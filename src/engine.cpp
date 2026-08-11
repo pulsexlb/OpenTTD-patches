@@ -12,6 +12,7 @@
 #include "command_func.h"
 #include "news_func.h"
 #include "aircraft.h"
+#include "air.h"
 #include "newgrf.h"
 #include "newgrf_engine.h"
 #include "strings_func.h"
@@ -898,6 +899,7 @@ void StartupEngines()
 	for (Company *c : Company::Iterate()) {
 		c->avail_railtypes = GetCompanyRailTypes(c->index);
 		c->avail_roadtypes = GetCompanyRoadTypes(c->index);
+		c->avail_airtypes = GetCompanyAirTypes(c->index);
 	}
 
 	/* Invalidate any open purchase lists */
@@ -923,6 +925,8 @@ static void EnableEngineForCompany(EngineID eid, CompanyID company)
 		c->avail_railtypes = GetCompanyRailTypes(c->index);
 	} else if (e->type == VehicleType::Road) {
 		c->avail_roadtypes = GetCompanyRoadTypes(c->index);
+	} else if (e->type == VehicleType::Aircraft) {
+		c->avail_airtypes = GetCompanyAirTypes(c->index);
 	}
 
 	if (company == _local_company) {
@@ -951,6 +955,8 @@ static void DisableEngineForCompany(EngineID eid, CompanyID company)
 		c->avail_railtypes = GetCompanyRailTypes(c->index);
 	} else if (e->type == VehicleType::Road) {
 		c->avail_roadtypes = GetCompanyRoadTypes(c->index);
+	} else if (e->type == VehicleType::Aircraft) {
+		c->avail_airtypes = GetCompanyAirTypes(c->index);
 	}
 
 	if (company == _local_company) {
@@ -1049,6 +1055,7 @@ void EnginesDailyLoop()
 	for (Company *c : Company::Iterate()) {
 		c->avail_railtypes = AddDateIntroducedRailTypes(c->avail_railtypes, CalTime::CurDate());
 		c->avail_roadtypes = AddDateIntroducedRoadTypes(c->avail_roadtypes, CalTime::CurDate());
+		c->avail_airtypes = AddDateIntroducedAirTypes(c->avail_airtypes, CalTime::CurDate());
 	}
 
 	if (CalTime::CurYear() >= _year_engine_aging_stops) return;
@@ -1201,6 +1208,11 @@ static void NewVehicleAvailable(Engine *e)
 		const RoadVehicleInfo &rvi = e->VehInfo<RoadVehicleInfo>();
 		assert(rvi.roadtype < ROADTYPE_END);
 		for (Company *c : Company::Iterate()) c->avail_roadtypes = AddDateIntroducedRoadTypes(c->avail_roadtypes | GetRoadTypeInfo(rvi.roadtype)->introduces_roadtypes, CalTime::CurDate());
+	} else if (e->type == VehicleType::Aircraft) {
+		/* maybe make another air type available */
+		const AircraftVehicleInfo &avi = e->VehInfo<AircraftVehicleInfo>();
+		assert(avi.airtype < AIRTYPE_END);
+		for (Company *c : Company::Iterate()) c->avail_airtypes = AddDateIntroducedAirTypes(c->avail_airtypes | GetAirTypeInfo(avi.airtype)->introduces_airtypes, CalTime::CurDate());
 	}
 
 	/* Only broadcast event if AIs are able to build this vehicle type. */
@@ -1366,6 +1378,11 @@ bool IsEngineBuildable(EngineID engine, VehicleType type, CompanyID company)
 		/* Check if the road type is available to this company */
 		const Company *c = Company::Get(company);
 		if (!GetRoadTypeInfo(e->VehInfo<RoadVehicleInfo>().roadtype)->powered_roadtypes.Any(c->avail_roadtypes)) return false;
+	}
+	if (type == VehicleType::Aircraft && company != OWNER_DEITY) {
+		/* Check if the air type is available to this company */
+		const Company *c = Company::Get(company);
+		if ((GetAirTypeInfo(e->VehInfo<AircraftVehicleInfo>().airtype)->compatible_airtypes & c->avail_airtypes) == AIRTYPES_NONE) return false;
 	}
 
 	return true;

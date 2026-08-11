@@ -26,6 +26,7 @@
 #include "stdafx.h"
 
 #include "aircraft.h"
+#include "air_map.h"
 #include "disaster_vehicle.h"
 #include "industry.h"
 #include "station_base.h"
@@ -275,12 +276,17 @@ static bool DisasterTick_Zeppeliner(DisasterVehicle *v)
 			if (GB(v->tick_counter, 0, 3) == 0) CreateEffectVehicleRel(v, 0, -17, 2, EV_CRASH_SMOKE);
 
 		} else if (v->state == 0) {
-			if (IsValidTile(v->tile) && IsAirportTile(v->tile)) {
+			if (IsValidZeppelinCrashSite(v->tile)) {
 				v->state = 1;
 				v->age = CalTime::DateDelta{0};
 
+				assert(IsAirportTile(v->tile));
 				AddTileNewsItem(GetEncodedString(STR_NEWS_DISASTER_ZEPPELIN, GetStationIndex(v->tile)), NewsType::Accident, v->tile);
 				AI::NewEvent(GetTileOwner(v->tile), new ScriptEventDisasterZeppelinerCrashed(GetStationIndex(v->tile)));
+				TrackBits tracks = GetAirportTileTracks(v->tile);
+				for (Track track = RemoveFirstTrack(&tracks); track != INVALID_TRACK; track = RemoveFirstTrack(&tracks)) {
+					SetAirportTrackReservation(v->tile, track);
+				}
 			}
 		}
 
@@ -292,17 +298,17 @@ static bool DisasterTick_Zeppeliner(DisasterVehicle *v)
 		return true;
 	}
 
-	if (IsValidTile(v->tile) && IsAirportTile(v->tile)) {
-		Station::GetByTile(v->tile)->airport.blocks.Set({AirportBlock::Zeppeliner, AirportBlock::RunwayIn});
-	}
-
 	if (v->state > 2) {
 		if (++v->age <= 13320) return true;
 
-		if (IsValidTile(v->tile) && IsAirportTile(v->tile)) {
+		if (IsValidZeppelinCrashSite(v->tile)) {
 			Station *st = Station::GetByTile(v->tile);
-			st->airport.blocks.Reset({AirportBlock::Zeppeliner, AirportBlock::RunwayIn});
 			AI::NewEvent(GetTileOwner(v->tile), new ScriptEventDisasterZeppelinerCleared(st->index));
+
+			TrackBits tracks = GetAirportTileTracks(v->tile);
+			for (Track track = RemoveFirstTrack(&tracks); track != INVALID_TRACK; track = RemoveFirstTrack(&tracks)) {
+				RemoveAirportTrackReservation(v->tile, track);
+			}
 		}
 
 		v->UpdatePosition(v->x_pos, v->y_pos, GetAircraftFlightLevel(v));
@@ -1089,4 +1095,34 @@ bool SetDisasterVehicleTargetingVehicle(VehicleID vehicle, VehicleID disaster_ve
 void DisasterVehicle::UpdateDeltaXY()
 {
 	this->bounds = {{-1, -1, 0}, {2, 2, 5}, {}};
+}
+
+/**
+ * Delete old crashed zeppelins, as they are not adapted to new airports.
+ */
+void DeleteCrashedZeppelins()
+{
+	for (DisasterVehicle *v : DisasterVehicle::Iterate()) {
+		if (v->subtype == ST_ZEPPELINER && v->current_order.GetDestination().base() > 2) {
+			/* If a zeppelin has crashed... */
+			if (IsValidTile(v->tile) && IsAirportTile(v->tile)) {
+				Station *st = Station::GetByTile(v->tile);
+				AI::NewEvent(GetTileOwner(v->tile), new ScriptEventDisasterZeppelinerCleared(st->index));
+			}
+
+			v->UpdatePosition(v->x_pos, v->y_pos, GetAircraftFlightLevel(v));
+			delete v;
+		}
+	}
+}
+
+/**
+ * Check if a tile is a free plane apron to crash into.
+ * @param tile the tile to check.
+ * @return whether tile is a free plane apron to crash into.
+ */
+bool IsValidZeppelinCrashSite(TileIndex tile)
+{
+	assert(IsValidTile(tile));
+	return IsPlaneApronTile(tile) && !HasAirportTileAnyReservation(tile);
 }

@@ -366,6 +366,7 @@ public:
 	uint16_t running_ticks = 0;                  ///< Number of ticks this vehicle was not stopped this day
 
 	VehStates vehstatus{};                       ///< Status
+	uint16_t wait_counter = 0;                   ///< waiting ticks (servicing, waiting in front of a signal or forced proceeding)
 	uint8_t subtype = 0;                         ///< subtype (Filled with values from #AircraftSubType/#DisasterSubType/#EffectVehicleType/#GroundVehicleSubtypeFlags)
 	GroupID group_id = GroupID::Invalid();       ///< Index of group Pool array
 

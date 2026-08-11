@@ -19,6 +19,8 @@
 #include "company_func.h"
 #include "train.h"
 #include "aircraft.h"
+#include "air.h"
+#include "pbs_air.h"
 #include "newgrf_debug.h"
 #include "newgrf_sound.h"
 #include "newgrf_station.h"
@@ -653,6 +655,25 @@ CommandCost EnsureNoVehicleOnGround(TileIndex tile)
 	return CommandCost();
 }
 
+/**
+ * Ensure there is no aircraft in the way at the given position.
+ * @param tile Position to examine.
+ * @return Succeeded command (ground is free) or failed command (a vehicle is found).
+ */
+CommandCost EnsureFreeHangar(TileIndex tile)
+{
+	int z = GetTileMaxPixelZ(tile) + 1;
+
+	/* Check for aircraft on the hangar tile. */
+	for (const Aircraft *a : VehiclesOnTile<VehicleType::Aircraft>(tile)) {
+		if (a->subtype == AIR_SHADOW) continue;
+		if (a->z_pos > z) continue;
+		return CommandCost(STR_ERROR_AIRCRAFT_IN_THE_WAY);
+	}
+
+	return CommandCost();
+}
+
 bool IsTrainCollidableRoadVehicleOnGround(TileIndex tile)
 {
 	for (const RoadVehicle *rv : VehiclesOnTile<VehicleType::Road>(tile)) {
@@ -920,23 +941,23 @@ static std::array<Vehicle *, 1 << (GEN_HASHX_BITS + GEN_HASHY_BITS)> _vehicle_vi
 
 static void UpdateVehicleViewportHash(Vehicle *v, int x, int y)
 {
-	Vehicle **old_hash, **new_hash;
-	int old_x = v->coord.left;
-	int old_y = v->coord.top;
+	/* If the vehicle did not move and is already in the hash, nothing to do.
+	 * Note: the hash position is tracked via the linked-list pointers, not via
+	 * v->coord, so interleaved immediate/deferred updates cannot corrupt the
+	 * hash (each update removes the vehicle from its actual bucket first). */
+	if (v->hash_viewport_prev != nullptr && x == v->coord.left && y == v->coord.top) return;
 
-	new_hash = (x == INVALID_COORD) ? nullptr : &_vehicle_viewport_hash[GetViewportHash(x, y)];
-	old_hash = (old_x == INVALID_COORD) ? nullptr : &_vehicle_viewport_hash[GetViewportHash(old_x, old_y)];
-
-	if (old_hash == new_hash) return;
-
-	/* remove from hash table? */
-	if (old_hash != nullptr) {
+	/* remove from hash table (based on actual position, not v->coord) */
+	if (v->hash_viewport_prev != nullptr) {
 		if (v->hash_viewport_next != nullptr) v->hash_viewport_next->hash_viewport_prev = v->hash_viewport_prev;
 		*v->hash_viewport_prev = v->hash_viewport_next;
+		v->hash_viewport_prev = nullptr;
+		v->hash_viewport_next = nullptr;
 	}
 
 	/* insert into hash table? */
-	if (new_hash != nullptr) {
+	if (x != INVALID_COORD) {
+		Vehicle **new_hash = &_vehicle_viewport_hash[GetViewportHash(x, y)];
 		v->hash_viewport_next = *new_hash;
 		if (v->hash_viewport_next != nullptr) v->hash_viewport_next->hash_viewport_prev = &v->hash_viewport_next;
 		v->hash_viewport_prev = new_hash;
@@ -953,15 +974,11 @@ static std::vector<ViewportHashDeferredItem> _viewport_hash_deferred;
 
 static void UpdateVehicleViewportHashDeferred(Vehicle *v, int x, int y)
 {
-	int old_x = v->coord.left;
-	int old_y = v->coord.top;
+	/* If the vehicle did not move and is already in the hash, nothing to do. */
+	if (v->hash_viewport_prev != nullptr && x == v->coord.left && y == v->coord.top) return;
 
 	int new_hash = (x == INVALID_COORD) ? INVALID_COORD : GetViewportHash(x, y);
-	int old_hash = (old_x == INVALID_COORD) ? INVALID_COORD : GetViewportHash(old_x, old_y);
-
-	if (new_hash != old_hash) {
-		_viewport_hash_deferred.push_back({ v, new_hash, old_hash });
-	}
+	_viewport_hash_deferred.push_back({ v, new_hash, INVALID_COORD });
 }
 
 static void ProcessDeferredUpdateVehicleViewportHashes()
@@ -969,10 +986,12 @@ static void ProcessDeferredUpdateVehicleViewportHashes()
 	for (const ViewportHashDeferredItem &item : _viewport_hash_deferred) {
 		Vehicle *v = item.v;
 
-		/* remove from hash table? */
-		if (item.old_hash != INVALID_COORD) {
+		/* remove from hash table (based on actual position, not v->coord) */
+		if (v->hash_viewport_prev != nullptr) {
 			if (v->hash_viewport_next != nullptr) v->hash_viewport_next->hash_viewport_prev = v->hash_viewport_prev;
 			*v->hash_viewport_prev = v->hash_viewport_next;
+			v->hash_viewport_prev = nullptr;
+			v->hash_viewport_next = nullptr;
 		}
 
 		/* insert into hash table? */
@@ -993,6 +1012,10 @@ void ResetVehicleHash()
 		v->hash_tile_next = nullptr;
 		v->hash_tile_prev = nullptr;
 		v->hash_tile_current = INVALID_TILE;
+		v->hash_viewport_next = nullptr;
+		v->hash_viewport_prev = nullptr;
+		v->coord.left = INVALID_COORD;
+		v->coord.top = INVALID_COORD;
 	}
 	_vehicle_viewport_hash.fill(nullptr);
 	for (VehicleTypeTileHash &vhash : _vehicle_tile_hashes) {
@@ -1183,8 +1206,8 @@ void Vehicle::PreDestructor()
 		Aircraft *a = Aircraft::From(this);
 		Station *st = GetTargetAirportIfValid(a);
 		if (st != nullptr) {
-			const auto &layout = st->airport.GetFTA()->layout;
-			st->airport.blocks.Reset(layout[a->previous_pos].blocks | layout[a->pos].blocks);
+			/* Reserved airport tracks are released when the aircraft is removed. */
+			LiftAirportPathReservation(a, false);
 		}
 	}
 
@@ -1997,6 +2020,7 @@ void ViewportAddVehiclesIntl(DrawPixelInfo *dpi)
 			const Vehicle *v = _vehicle_viewport_hash[x + y]; // already masked & 0xFFF
 
 			while (v != nullptr) {
+
 				if (v->IsDrawn()) {
 					if (update_vehicles &&
 							HasBit(v->vcache.cached_veh_flags, VCF_IMAGE_REFRESH) &&
@@ -2314,7 +2338,7 @@ void CheckVehicleBreakdown(Vehicle *v)
 	/* The vehicle has been manually stopped. */
 	if (v->First()->vehstatus.Test(VehState::Stopped)) return;
 	/* Aircraft is not flying. */
-	if (v->type == VehicleType::Aircraft && Aircraft::From(v)->state != FLYING) return;
+	if (v->type == VehicleType::Aircraft && (!Aircraft::From(v)->IsNormalAircraft() || !Aircraft::From(v)->IsAircraftFlying())) return;
 	/* Not a suitable train engine to break down. */
 	if (v->type == VehicleType::Train && !(Train::From(v)->IsFrontEngine()) && !_settings_game.vehicle.improved_breakdowns) return;
 
@@ -2392,7 +2416,6 @@ bool Vehicle::HandleBreakdown()
 						(this->current_order.IsType(OT_GOTO_DEPOT) &&
 						this->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::Breakdown) &&
 						GetTargetAirportIfValid(Aircraft::From(this)) != nullptr)) return false;
-				FindBreakdownDestination(Aircraft::From(this));
 			} else if (this->type == VehicleType::Train) {
 				Train *t = Train::From(this);
 				if (this->breakdown_type == BREAKDOWN_LOW_POWER ||
@@ -2721,7 +2744,6 @@ void VehicleEnterDepot(Vehicle *v)
 		}
 
 		case VehicleType::Aircraft:
-			HandleAircraftEnterHangar(Aircraft::From(v));
 			break;
 		default: NOT_REACHED();
 	}
@@ -4142,14 +4164,6 @@ CommandCost Vehicle::SendToDepot(DoCommandFlags flags, DepotCommandFlags command
 		if (this->type == VehicleType::Train && (closest_depot.reverse != Train::From(this)->flags.Test(VehicleRailFlag::Reversing))) {
 			Command<Commands::ReverseTrainDirection>::Do(DoCommandFlag::Execute, this->index, false);
 		}
-
-		if (this->type == VehicleType::Aircraft) {
-			Aircraft *a = Aircraft::From(this);
-			if (a->state == FLYING && a->targetairport != closest_depot.destination) {
-				/* The aircraft is now heading for a different hangar than the next in the orders */
-				AircraftNextAirportPos_and_Order(a);
-			}
-		}
 	}
 
 	return CommandCost();
@@ -4806,8 +4820,14 @@ bool CanVehicleUseStation(EngineID engine_type, const Station *st)
 			return st->facilities.Test(StationFacility::Dock);
 
 		case VehicleType::Aircraft:
-			return st->facilities.Test(StationFacility::Airport) &&
-					st->airport.GetFTA()->flags.Test(e->VehInfo<AircraftVehicleInfo>().subtype & AIR_CTOL ? AirportFTAClass::Flag::Airplanes : AirportFTAClass::Flag::Helicopters);
+			if (!st->facilities.Test(StationFacility::Airport)) return false;
+			if (st->airport.type == AT_OILRIG && e->VehInfo<AircraftVehicleInfo>().subtype == AIR_HELICOPTER) return true;
+			if (!IsCompatibleAirType(e->VehInfo<AircraftVehicleInfo>().airtype, st->airport.air_type)) return false;
+
+			if (e->VehInfo<AircraftVehicleInfo>().subtype & AIR_CTOL) return st->airport.HasLandingRunway();
+
+			return !st->airport.aprons.empty() ||
+					(e->VehInfo<AircraftVehicleInfo>().subtype == AIR_HELICOPTER && (!st->airport.helipads.empty() || !st->airport.heliports.empty()));
 
 		default:
 			return false;

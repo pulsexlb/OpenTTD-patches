@@ -338,6 +338,7 @@ struct GUISettings : public TimeSettings {
 	uint8_t     loading_indicators;                              ///< show loading indicators
 	DefaultRailRoadType default_rail_road_type;                  ///< the default rail type for the rail/road/tram GUI
 	uint8_t     default_road_type;                               ///< the default road/tram types for the road/tram GUI
+	uint8_t     default_air_type;                              ///< the default air type for the air GUI
 	uint8_t     toolbar_pos;                                     ///< position of toolbars, 0=left, 1=center, 2=right
 	uint8_t     statusbar_pos;                                   ///< position of statusbar, 0=left, 1=center, 2=right
 	uint8_t     window_snap_radius;                              ///< windows snap at each other if closer than this
@@ -968,6 +969,7 @@ struct StationSettings {
 	bool     truncate_cargo;                   ///< enable automatic truncation of station cargo
 	bool     distant_join_stations;            ///< allow to join non-adjacent stations
 	bool     never_expire_airports;            ///< never expire airports
+	bool     allow_modify_airports;            ///< allow change the layout of airports
 	uint8_t  station_spread;                   ///< amount a station may spread
 	uint8_t  catchment_increase;               ///< amount by which station catchment is increased
 	bool     cargo_class_rating_wait_time;     ///< station rating tolerance to time since last cargo pickup depends on cargo class

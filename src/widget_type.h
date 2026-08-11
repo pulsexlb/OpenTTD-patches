@@ -445,6 +445,9 @@ public:
 	void SetHighlighted(TextColour highlight_colour) override;
 	void FillDirtyWidgets(std::vector<NWidgetBase *> &dirty_widgets) override;
 
+	/** Get the data of this widget. */
+	inline const WidgetData &GetWidgetData() const { return this->widget_data; }
+
 	NWidgetDisplayFlags disp_flags;            ///< Flags that affect display and interaction with the widget.
 	Colours colour;                            ///< Colour of this widget.
 protected:

@@ -14,6 +14,7 @@
 #include "economy_type.h"
 #include "livery.h"
 #include "rail_type.h"
+#include "air_type.h"
 #include "road_type.h"
 #include "fileio_type.h"
 #include "newgrf_badge_type.h"
@@ -101,6 +102,7 @@ enum class GrfSpecFeature : uint8_t {
 	Objects, ///< Objects feature
 	RailTypes, ///< Rail types feature
 	AirportTiles, ///< Airport tiles feature
+	AirTypes, ///< Air types feature
 	RoadTypes, ///< Road types feature
 	TramTypes, ///< Tram types feature
 	RoadStops, ///< Road stops feature
@@ -365,6 +367,7 @@ struct GRFFile {
 	btree::btree_map<uint16_t, BadgeID> badge_map{};
 
 	std::vector<RailTypeLabel> railtype_list{}; ///< Railtype translation table
+	std::vector<AirTypeLabel> airtype_list{};    ///< Airtype translation table
 	std::array<RailType, RAILTYPE_END> railtype_map{};
 
 	std::vector<RoadTypeLabel> roadtype_list{}; ///< Roadtype translation table (road)

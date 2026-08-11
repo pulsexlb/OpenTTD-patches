@@ -28,6 +28,7 @@
 #include "newgrf_badge_config.h"
 #include "newgrf_cargo.h"
 #include "newgrf_sound.h"
+#include "air.h"
 #include "newgrf_station.h"
 #include "industrytype.h"
 #include "newgrf_canal.h"
@@ -340,6 +341,10 @@ Engine *GetNewEngine(const GRFFile *file, VehicleType type, uint16_t internal_id
 		_gted[e->index].railtypelabels.clear();
 		for (RailType rt : e->VehInfo<RailVehicleInfo>().railtypes) _gted[e->index].railtypelabels.push_back(GetRailTypeInfo(rt)->label);
 	}
+	if (type == VehicleType::Aircraft) {
+		assert(e->VehInfo<AircraftVehicleInfo>().airtype < AIRTYPE_END);
+		_gted[e->index].airtypelabel = GetAirTypeInfo(e->VehInfo<AircraftVehicleInfo>().airtype)->label;
+	}
 
 	GrfMsg(5, "Created new engine at index {} for GRFID {:x}, type {}, index {}", e->index, std::byteswap(file->grfid), type, internal_id);
 
@@ -584,6 +589,9 @@ void ResetNewGRFData()
 	/* Copy/reset original road type info data */
 	ResetRoadTypes();
 
+	/* Reset air type information */
+	ResetAirTypes();
+
 	/* Allocate temporary refit/cargo class data */
 	_gted.resize(Engine::GetPoolSize());
 
@@ -591,6 +599,12 @@ void ResetNewGRFData()
 	for (const Engine *e : Engine::IterateType(VehicleType::Train)) {
 		_gted[e->index].railtypelabels.clear();
 		for (RailType rt : e->VehInfo<RailVehicleInfo>().railtypes) _gted[e->index].railtypelabels.push_back(GetRailTypeInfo(rt)->label);
+	}
+
+	/* Fill air type label temporary data for default aircraft */
+	for (const Engine *e : Engine::IterateType(VehicleType::Aircraft)) {
+		assert(e->VehInfo<AircraftVehicleInfo>().airtype < AIRTYPE_END);
+		_gted[e->index].airtypelabel = GetAirTypeInfo(e->VehInfo<AircraftVehicleInfo>().airtype)->label;
 	}
 
 	/* Reset GRM reservations */
@@ -1878,6 +1892,9 @@ static void AfterLoadGRFs()
 	InitRoadTypes();
 	InitRoadTypesCaches();
 
+	/* Set up custom air types */
+	InitAirTypes();
+
 	for (Engine *e : Engine::IterateType(VehicleType::Road)) {
 		if (_gted[e->index].rv_max_speed != 0) {
 			/* Set RV maximum speed from the mph/0.8 unit value */
@@ -1927,6 +1944,16 @@ static void AfterLoadGRFs()
 	}
 
 	InitRailTypesIndirectCompatibility();
+
+	for (Engine *e : Engine::IterateType(VehicleType::Aircraft)) {
+		AirType airtype = GetAirTypeByLabel(_gted[e->index].airtypelabel);
+		if (airtype == INVALID_AIRTYPE) {
+			/* Air type is not available, so disable this engine */
+			e->info.climates = {};
+		} else {
+			e->VehInfo<AircraftVehicleInfo>().airtype = airtype;
+		}
+	}
 
 	SetYearEngineAgingStops();
 
