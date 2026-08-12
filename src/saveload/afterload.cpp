@@ -2992,6 +2992,23 @@ bool AfterLoadGame()
 		}
 	}
 
+	/* Data structure on airport has changed. */
+	if (IsSavegameVersionBefore(SLV_CUSTOM_SUBSIDY_DURATION)) {
+		/* Old saves stored the airport tile gfx in m5; move it to m4 and
+		 * rebuild the tiles from the airport specs. */
+		for (TileIndex t(0); t < Map::Size(); t++) {
+			if (!IsTileType(t, TileType::Station)) continue;
+			if (GetStationType(t) != StationType::Airport) continue;
+			Tile(t).m4() = Tile(t).m5();
+			Tile(t).m5() = 0;
+		}
+		AfterLoadSetAirportTileTypes();
+	} else {
+		for (Station *st : Station::Iterate()) {
+			st->UpdateAirportDataStructure();
+		}
+	}
+
 	if (IsSavegameVersionBefore(SLV_CUSTOM_SUBSIDY_DURATION)) {
 		/* Delete already crashed zeppelins. */
 		DeleteCrashedZeppelins();
