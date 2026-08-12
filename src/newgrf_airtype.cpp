@@ -40,7 +40,7 @@
 		case 0x41: return 0;
 		case 0x42: return 0;
 		case 0x43:
-			if (IsHangarTile(this->tile)) return Depot::GetByTile(this->tile)->build_date.base();
+			if (IsHangarTile(this->tile)) return Station::GetByTile(this->tile)->airport.hangar->build_date.base();
 			return CalTime::CurDate().base();
 		case 0x44: {
 			const Town *t = nullptr;

@@ -1435,7 +1435,7 @@ void UpdateAircraftState(Aircraft *v)
 					v->Next()->Next()->cur_speed = 0;
 					break;
 				}
-			} else if (v->current_order.IsType(OT_GOTO_DEPOT) && v->current_order.GetDestination() == GetDepotIndex(v->tile)) {
+			} else if (v->current_order.IsType(OT_GOTO_DEPOT) && v->current_order.GetDestination() == GetDepotDestinationIndex(v->tile)) {
 				v->UpdateNextTile(v->tile);
 			}
 			break;
@@ -1494,7 +1494,7 @@ void AircraftLeavesHangar(Aircraft *v)
 	if (!IsExtendedHangar(v->tile)) SetVisibility(v, true);
 
 	SetAircraftPosition(v, v->x_pos, v->y_pos, v->z_pos);
-	InvalidateWindowData(WindowClass::VehicleDepot, GetDepotIndex(v->tile));
+	InvalidateWindowData(WindowClass::VehicleDepot, v->tile.base());
 	SetWindowClassesDirty(WindowClass::AircraftList);
 }
 

@@ -4049,7 +4049,7 @@ static bool ClickTile_Station(TileIndex tile)
 
 	if (bst->facilities.Test(StationFacility::Waypoint)) {
 		ShowWaypointWindow(Waypoint::From(bst));
-	} else if (IsHangar(tile)) {
+	} else if (IsHangarTile(tile)) {
 		const Station *st = Station::From(bst);
 		ShowDepotWindow(st->airport.hangar != nullptr ? st->airport.hangar->xy : tile, VehicleType::Aircraft);
 	} else {

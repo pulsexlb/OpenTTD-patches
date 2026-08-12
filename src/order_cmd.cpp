@@ -3023,7 +3023,7 @@ static void CheckAdvanceVehicleOrdersAfterClone(Vehicle *v, DoCommandFlags flags
 	} else if (GetDepotVehicleType(v->tile) == v->type) {
 		for (VehicleOrderID idx = 0; idx < order_count; idx++) {
 			const Order *o = v->GetOrder(idx);
-			if (o->IsType(OT_GOTO_DEPOT) && o->GetDestination() == GetDepotIndex(v->tile)) {
+			if (o->IsType(OT_GOTO_DEPOT) && o->GetDestination() == GetDepotDestinationIndex(v->tile)) {
 				target_orders.push_back(idx + 1 < order_count ? idx + 1 : 0);
 			}
 		}
