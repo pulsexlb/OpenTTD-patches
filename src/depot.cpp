@@ -31,7 +31,7 @@ Depot::~Depot()
 {
 	if (CleaningPool()) return;
 
-	if (!IsDepotTile(this->xy) || GetDepotIndex(this->xy) != this->index) {
+	if (!IsDepotTile(this->xy) || (!IsHangarTile(this->xy) && GetDepotIndex(this->xy) != this->index)) {
 		/* It can happen there is no depot here anymore (TTO/TTD savegames) */
 		return;
 	}
