@@ -1219,8 +1219,12 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("", SLE_INCLUDE(IncludeBaseVehicleDescription)),
 		NSLT_STRUCT<VehicleCommonStructHandler>("common"),
 
-		NSL("next_pos.y",                SLE_CONDVAR(Aircraft, next_pos.y,             SLE_UINT32,                  SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
-		NSL("next_pos.pos",              SLE_CONDVAR(Aircraft, next_pos.pos,           SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
+		NSL("trackdir",                  SLE_CONDVAR(Aircraft, trackdir,               SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
+		NSL("state",                      SLE_CONDVAR(Aircraft, state,                  SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
+		NSL("next_trackdir",              SLE_CONDVAR(Aircraft, next_trackdir,           SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
+		NSL("next_pos.x",                 SLE_CONDVAR(Aircraft, next_pos.x,              SLE_UINT32,                  SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
+		NSL("next_pos.y",                 SLE_CONDVAR(Aircraft, next_pos.y,              SLE_UINT32,                  SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
+		NSL("next_pos.pos",               SLE_CONDVAR(Aircraft, next_pos.pos,            SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("crashed_counter",           SLE_VAR(Aircraft, crashed_counter,            SLE_UINT16)),
 		NSL("aircraft_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION)),
 
