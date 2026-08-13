@@ -1278,8 +1278,12 @@ void DoRotationStep(Aircraft *v)
 					v->x_pos = (v->x_pos & ~0xF) | 8;
 				}
 			} else {
-				/* Amend position when rotating at the edge of a tile. */
-				const AircraftSubcoordData &b = _aircraft_subcoord[static_cast<uint>(TrackdirToExitdir(v->trackdir))][TrackdirToTrack(v->trackdir)];
+				/* Amend position when rotating at the edge of a tile.
+				 * _aircraft_subcoord is indexed by the ENTRY direction (the edge the
+				 * aircraft entered the tile through), which is the reverse of the travel
+				 * (exit) direction. Using Exitdir here puts the aircraft at the wrong
+				 * tile edge, so it ends up taxiing onto an unreserved tile. */
+				const AircraftSubcoordData &b = _aircraft_subcoord[static_cast<uint>(ReverseDiagDir(TrackdirToExitdir(v->trackdir)))][TrackdirToTrack(v->trackdir)];
 				v->x_pos = (v->x_pos & ~0xF) | b.x_subcoord;
 				v->y_pos = (v->y_pos & ~0xF) | b.y_subcoord;
 			}
