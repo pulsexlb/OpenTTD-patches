@@ -1,6 +1,9 @@
 name: Release
 
 on:
+  push:
+    tags:
+    - '*'
   workflow_dispatch:
     inputs:
       ref:
@@ -81,3 +84,26 @@ jobs:
     with:
       is_tag: ${{ needs.source.outputs.is_tag }}
       survey_key: ${{ needs.source.outputs.survey_key }}
+
+  publish:
+    name: Publish to GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [source, docs, linux, linux_distros, linux-dedicated, macos, windows]
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v8
+      with:
+        pattern: openttd-*
+        merge-multiple: true
+
+    - name: Publish release
+      uses: softprops/action-gh-release@v3
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
+        files: openttd-*
