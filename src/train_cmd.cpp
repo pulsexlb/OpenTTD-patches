@@ -5334,6 +5334,17 @@ static Train *DecoupleTrain(Train *v)
 	/* The decoupled tail now runs a separate schedule: mark it as the second part. */
 	u->decouple_part = 2;
 
+	/* The decoupled rear part (u) inherits the slot occupants held by the front
+	 * part (v), so both trains share the same slots. Slots have a maximum occupant
+	 * count; if adding u would exceed that limit, u does not inherit. */
+	if (v->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
+		std::vector<TraceRestrictSlotID> slots;
+		TraceRestrictGetVehicleSlots(v->index, slots);
+		for (TraceRestrictSlotID slot_id : slots) {
+			TraceRestrictSlot::Get(slot_id)->Occupy(u);
+		}
+	}
+
 	if (u->IsEngine()) {
 		u->SetFrontEngine();
 		u->vehstatus.Reset(VehState::Stopped);
