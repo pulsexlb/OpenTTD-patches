@@ -1202,11 +1202,14 @@ void Vehicle::PreDestructor()
 
 	Company::Get(this->owner)->freeunits[this->type].ReleaseID(this->unitnumber);
 
-	if (this->type == VehicleType::Aircraft && this->IsPrimaryVehicle()) {
+	if (this->type == VehicleType::Aircraft && this->IsPrimaryVehicle() && !this->vehstatus.Test(VehState::Crashed)) {
 		Aircraft *a = Aircraft::From(this);
 		Station *st = GetTargetAirportIfValid(a);
 		if (st != nullptr) {
-			/* Reserved airport tracks are released when the aircraft is removed. */
+			/* Reserved airport tracks are released when the aircraft is removed.
+			 * Crashed aircraft have already had all their reservations released by
+			 * Aircraft::Crash/HandleCrashedAircraft, so a second lift here would walk
+			 * an already-released (non-reserved) path and fail its assertion. */
 			LiftAirportPathReservation(a, false);
 		}
 	}
