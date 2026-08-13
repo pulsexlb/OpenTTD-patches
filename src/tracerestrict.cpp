@@ -3624,10 +3624,17 @@ void TraceRestrictTransferVehicleOccupantInAllSlots(VehicleID from, VehicleID to
 	_slot_vehicle_index.erase(start, it);
 	for (TraceRestrictSlotID slot_id : slots) {
 		TraceRestrictSlot *slot = TraceRestrictSlot::Get(slot_id);
-		for (VehicleID &id : slot->occupants) {
-			if (id == from) {
-				id = to;
-				_slot_vehicle_index.insert({ to, slot_id });
+		if (slot->IsOccupant(to)) {
+			/* 'to' already occupies this slot (e.g. both consists held the same slot
+			 * before coupling), so drop 'from' rather than create a duplicate occupant. */
+			container_unordered_remove(slot->occupants, from);
+			slot->UpdateSignals();
+		} else {
+			for (VehicleID &id : slot->occupants) {
+				if (id == from) {
+					id = to;
+					_slot_vehicle_index.insert({ to, slot_id });
+				}
 			}
 		}
 	}
