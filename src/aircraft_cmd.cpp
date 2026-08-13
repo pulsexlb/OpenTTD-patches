@@ -535,6 +535,12 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
 			SetAircraftPosition(v, v->x_pos, v->y_pos, v->z_pos);
 			v->MarkDirty();
 		}
+
+		/* The aircraft build command must invalidate the vehicle tick cache, like
+		 * every other vehicle type, otherwise a newly bought aircraft is never added
+		 * to _tick_aircraft_front_cache and its Tick() is never called (it appears
+		 * stuck). */
+		InvalidateVehicleTickCaches();
 	}
 
 	return CommandCost();
