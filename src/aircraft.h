@@ -222,7 +222,7 @@ struct Aircraft final : public SpecializedVehicle<Aircraft, VehicleType::Aircraf
 	Direction last_direction;
 	uint8_t number_consecutive_turns; ///< Protection to prevent the aircraft of making a lot of turns in order to reach a specific point.
 	uint8_t turn_counter;             ///< Ticks between each turn to prevent > 45 degree turns.
-	uint8_t flags;                    ///< Aircraft flags. @see AirVehicleFlags
+	uint8_t flags = 0;                ///< Aircraft flags. @see AirVehicleFlags
 
 	AircraftCache acache;
 
