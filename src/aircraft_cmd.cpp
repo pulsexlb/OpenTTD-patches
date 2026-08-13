@@ -535,6 +535,12 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
 			SetAircraftPosition(v, v->x_pos, v->y_pos, v->z_pos);
 			v->MarkDirty();
 		}
+
+		/* The aircraft build command must invalidate the vehicle tick cache, like
+		 * every other vehicle type, otherwise a newly bought aircraft is never added
+		 * to _tick_aircraft_front_cache and its Tick() is never called (it appears
+		 * stuck). */
+		InvalidateVehicleTickCaches();
 	}
 
 	return CommandCost();
@@ -2400,7 +2406,11 @@ TileIndex FindClosestLandingTile(Aircraft *v)
 	}
 
 	TileIndex landing_tile = INVALID_TILE;
-	TileIndex free_landing_tile = INVALID_TILE;
+	/* TileIndex{} (0) is the "no free tile found" sentinel (matching the
+	 * `free_landing_tile != 0` checks below). Using INVALID_TILE here makes those
+	 * checks always true and wrongly returns INVALID_TILE whenever the target
+	 * runway is reserved, which crashes the aircraft controller on takeoff. */
+	TileIndex free_landing_tile = TileIndex{};
 	uint32_t best_dist = UINT32_MAX;
 	uint32_t free_best_dist = UINT32_MAX;
 
