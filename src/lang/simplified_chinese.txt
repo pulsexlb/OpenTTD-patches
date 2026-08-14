@@ -870,6 +870,7 @@ STR_NEWS_FIRST_AIRCRAFT_ARRIVAL                                 :{BIG_FONT}{BLAC
 STR_NEWS_TRAIN_CRASH                                            :{BIG_FONT}{BLACK}列车相撞！{}{COMMA} 人在爆炸中丧生！
 STR_NEWS_ROAD_VEHICLE_CRASH_DRIVER                              :{BIG_FONT}{BLACK}汽车事故！{}汽车与火车相撞，司机在事故中丧生！
 STR_NEWS_ROAD_VEHICLE_CRASH                                     :{BIG_FONT}{BLACK}汽车事故！{}汽车与火车相撞，{COMMA} 人在事故中丧生！
+STR_NEWS_AIRCRAFT_CAN_T_LAND                                    :{WHITE}{VEHICLE} 无法在机场降落
 STR_NEWS_AIRCRAFT_CRASH                                         :{BIG_FONT}{BLACK}飞机坠毁！{}{COMMA} 人在 {STATION} 的事故中罹难！
 STR_NEWS_PLANE_CRASH_OUT_OF_FUEL                                :{BIG_FONT}{BLACK}飞机坠毁！{}燃油不足，{COMMA} 人在事故中罹难！
 
@@ -1517,6 +1518,10 @@ STR_CONFIG_SETTING_COMPANY_STARTING_COLOUR_SECONDARY_HELPTEXT   :选择公司初
 
 STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS                        :总允许建设小型机场：{STRING}
 STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS_HELPTEXT               :启用时，每种机场一经面世，就永远可以选择建设
+STR_CONFIG_SETTING_DEFAULT_AIR_TYPE                            :默认航空类型（新游戏/加载游戏后）：{STRING2}
+STR_CONFIG_SETTING_DEFAULT_AIR_TYPE_HELPTEXT                   :选择开始或加载游戏后要使用的航空类型。'第一个可用'选择最旧的机场类型，'最后一个可用'选择最新的类型，'最常用'选择当前使用最多的类型
+STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS                    :允许建设自定义机场：{STRING2}
+STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS_HELPTEXT           :启用此设置后，每位玩家都可以建设自定义机场
 
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE                            :列车无法找到路线时提示：{STRING}
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE_HELPTEXT                   :启用时将在载具无法到达命令目的地时提示
@@ -3044,11 +3049,17 @@ STR_AIRPORT_INTERCONTINENTAL                                    :洲际机场
 STR_AIRPORT_HELIPORT                                            :直升机停机楼
 STR_AIRPORT_HELIDEPOT                                           :直升机专用机场
 STR_AIRPORT_HELISTATION                                         :直升机小型机场
+STR_AIRPORT_ROTATION_0                                          :默认方向
+STR_AIRPORT_ROTATION_90                                         :旋转 90º
+STR_AIRPORT_ROTATION_180                                        :旋转 180º
+STR_AIRPORT_ROTATION_270                                        :旋转 270º
+STR_AIRPORT_CUSTOM                                           :自定义
 
 STR_AIRPORT_CLASS_SMALL                                         :小型机场
 STR_AIRPORT_CLASS_LARGE                                         :大型机场
 STR_AIRPORT_CLASS_HUB                                           :空运枢纽
 STR_AIRPORT_CLASS_HELIPORTS                                     :直升机机场
+STR_AIRPORT_CLASS_CUSTOMIZED                                    :自定义机场
 
 STR_STATION_BUILD_NOISE                                         :{BLACK}产生的噪音：{GOLD}{COMMA}
 
@@ -4473,6 +4484,18 @@ STR_REPLACE_ENGINES                                             :机车
 STR_REPLACE_WAGONS                                              :挂车
 STR_REPLACE_ALL_RAILTYPE                                        :所有铁路载具
 STR_REPLACE_ALL_ROADTYPE                                        :所有道路载具
+STR_REPLACE_ALL_AIRTYPE                                         :所有航空类型
+
+STR_AIRTYPE_NAME_GRAVEL                                         :碎石机场
+STR_AIRTYPE_NAME_ASPHALT                                        :沥青机场
+STR_AIRTYPE_NAME_WATER                                          :水上机场
+STR_AIRTYPE_NAME_DARK                                           :深色机场
+STR_AIRTYPE_NAME_YELLOW                                         :划线跑道机场
+STR_REPLACE_AIRCRAFT_GRAVEL_VEHICLES                            :碎石机场用飞机
+STR_REPLACE_AIRCRAFT_ASPHALT_VEHICLES                           :沥青机场用飞机
+STR_REPLACE_AIRCRAFT_WATER_VEHICLES                             :水上机场用飞机
+STR_REPLACE_AIRCRAFT_DARK_VEHICLES                              :深色机场用飞机
+STR_REPLACE_AIRCRAFT_YELLOW_VEHICLES                            :划线跑道机场用飞机
 
 ###length 2
 STR_REPLACE_RAILTYPE_TOOLTIP                                    :{BLACK}选择更新载具的对应铁路类型
@@ -5187,6 +5210,28 @@ STR_ERROR_CAN_T_BUILD_CARGO_TRAM_STATION                        :此处无法建
 STR_ERROR_CAN_T_BUILD_DOCK_HERE                                 :不能在这里新建码头……
 STR_ERROR_CAN_T_BUILD_AIRPORT_HERE                              :不能在这里兴建机场……
 
+STR_ERROR_TOWN_AIRPORT_NOISE                                   :{WHITE}无法建设机场，因为会受到城镇噪音影响
+STR_ERROR_AIRPORT_DISABLED_BY_TILE                              :{WHITE}……按图块建设机场的设置已禁用。
+STR_ERROR_AIRPORT_INCORRECT_AIRTYPE                             :{WHITE}……机场的航空类型不同。
+STR_ERROR_AIRPORT_ALREADY_AIRTYPE                               :{WHITE}……机场已经是此航空类型。
+STR_ERROR_AIRPORT_CAN_T_CONVERT_WATER                           :{WHITE}……无法在水上和非水上航空类型之间转换。
+STR_ERROR_AIRPORT_CAN_T_CONVERT_HELIPORT                        :{WHITE}……无法将直升机场转换为其他航空类型。
+STR_ERROR_AIRPORT_CAN_T_BUILD_HELIPORT                          :{WHITE}……无法使用此航空类型建设直升机场。
+STR_ERROR_AIRPORT_TOO_MUCH_RUNWAYS                              :{WHITE}……超过此航空类型的跑道数量上限。
+STR_ERROR_AIRPORT_NOT_SAME_LEVEL                                :{WHITE}……不在同一水平面上。
+STR_ERROR_AIRPORT_PLAIN_WATER                                   :{WHITE}……必须建设在水面或平原地形上。
+STR_ERROR_AIRPORT_INVALID_AIR_TYPE                              :{WHITE}……图块的航空类型不同。
+STR_ERROR_AIRPORT_CAN_T_HAVE_TRACKS                             :{WHITE}……此图块不能有跑道。
+STR_ERROR_AIRPORT_NO_COMPATIBLE_NEIGHBOURS                      :{WHITE}……无法添加跑道。新跑道必须与相邻图块兼容。
+STR_ERROR_AIRPORT_CAN_T_ADD_TRACK_HANGAR                        :{WHITE}……机库只能有 x 或 y 轴方向的跑道。
+STR_ERROR_AIRPORT_RUNWAY_TOO_SHORT                              :{WHITE}……跑道太短。
+STR_ERROR_AIRPORT_RUNWAY_INCOMPLETE                             :{WHITE}……并非所有跑道都在同一个机场站。
+STR_ERROR_AIRPORT_RUNWAY_CAN_T_BUILD_OVER                       :{WHITE}……无法在这些图块上建设跑道。
+STR_ERROR_AIRPORT_PRESENT_AIRCRAFT                              :{WHITE}……机场内有飞机。
+STR_ERROR_AIRPORT_RUNWAY_OVERLAP                                :{WHITE}……跑道与其他跑道重叠。
+STR_ERROR_AIRPORT_RUNWAY_CAN_T_REMOVE                           :{WHITE}……请正确移除跑道。
+STR_ERROR_AIRPORT_REMOVE_RUNWAYS_FIRST                          :{WHITE}……必须先移除跑道。
+
 STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING                        :{WHITE}与另一车站相连
 STR_ERROR_STATION_TOO_SPREAD_OUT                                :{WHITE}……车站范围过大
 STR_ERROR_STATION_DISALLOWED_NUMBER_TRACKS                      :{WHITE}……轨道数量不正确
@@ -5502,6 +5547,17 @@ STR_ERROR_NO_STOP_COMPATIBLE_TRAM_TYPE                          :{WHITE}没有�
 STR_ERROR_NO_STOP_ARTICULATED_VEHICLE                           :{WHITE}铰接式车辆无站点可停靠。{}铰接式车辆仅可停靠于通过式车站，不可停靠于港湾式车站
 STR_ERROR_AIRPORT_NO_PLANES                                     :{WHITE}这架飞机不能降落在这个直升机场
 STR_ERROR_AIRPORT_NO_HELICOPTERS                                :{WHITE}这架直升机不能降落在这个机场
+STR_BUILD_HELIPORT_CAPTION                                      :{WHITE}直升机场方向
+STR_BUILD_AIRPORT_INFRA_NO_CATCH_CAPTION                    :{WHITE}无货运吸引范围的基础设施
+STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION                  :{WHITE}有货运吸引范围的基础设施
+STR_BUILD_AIRPORT_INFRA_TOOLTIP                             :{BLACK}选择一段基础设施及其方向
+STR_BUILD_HANGAR_CAPTION                                    :{WHITE}机库方向
+STR_BUILD_HELIPORT_ORIENTATION_TOOLTIP                          :{BLACK}选择直升机场方向
+STR_BUILD_HANGAR_ORIENTATION_TOOLTIP                        :{BLACK}选择机库方向
+STR_SELECT_GFX_AIRPORT_TRACKS_CAPTION                       :{WHITE}选择跑道图块图形
+STR_SELECT_GFX_AIRPORT_TRACKS_TOOLTIP                       :{BLACK}选择机场跑道图块的图形，然后点击跑道图块。
+STR_SELECT_GFX_AIRPORT_TRACKS_DETECT                           :{BLACK}自动
+STR_SELECT_GFX_AIRPORT_TRACKS_DEFAULT                       :{BLACK}默认
 STR_ERROR_NO_RAIL_WAYPOINT                                      :{WHITE}没有铁路路点
 STR_ERROR_NO_ROAD_WAYPOINT                                      :{WHITE}没有道路路点
 STR_ERROR_NO_BUOY                                               :{WHITE}没有浮标
@@ -6027,6 +6083,37 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING}{YELLOW}（{VELOCITY}）
 STR_TOOLBAR_ROADTYPE_VELOCITY                                   :{STRING}{YELLOW}（{VELOCITY}）
+
+STR_TOOLBAR_AIRPORT_GRAVEL_CONSTRUCTION_CAPTION                 :碎石机场建设
+STR_TOOLBAR_AIRPORT_ASPHALT_CONSTRUCTION_CAPTION                :沥青机场建设
+STR_TOOLBAR_AIRPORT_WATER_CONSTRUCTION_CAPTION                  :水上机场建设
+STR_TOOLBAR_AIRPORT_DARK_CONSTRUCTION_CAPTION                   :深色机场建设
+STR_TOOLBAR_AIRPORT_YELLOW_CONSTRUCTION_CAPTION                 :划线跑道机场建设
+STR_TOOLBAR_AIRPORT_GRAVEL_MENU_TEXT                            :碎石机场建设
+STR_TOOLBAR_AIRPORT_ASPHALT_MENU_TEXT                           :沥青机场建设
+STR_TOOLBAR_AIRPORT_WATER_MENU_TEXT                             :水上机场建设
+STR_TOOLBAR_AIRPORT_DARK_MENU_TEXT                              :深色机场建设
+STR_TOOLBAR_AIRPORT_YELLOW_MENU_TEXT                            :划线跑道机场建设
+STR_TOOLBAR_AIRPORT_CAPTION                                    :{WHITE}机场
+STR_TOOLBAR_AIRPORT_BUILD_AIRPORT_TOOLTIP                      :{BLACK}建设机场。Ctrl+点击选择另一个车站加入。按 Shift 仅显示费用估算
+STR_TOOLBAR_AIRPORT_ADD_TILES                                  :{BLACK}向机场添加或移除图块
+STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_CATCHMENT                   :{BLACK}设为有货运吸引范围的基础设施
+STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_NO_CATCHMENT                :{BLACK}设为无货运吸引范围的基础设施
+STR_TOOLBAR_AIRPORT_SET_TRACKS                                 :{BLACK}设置跑道
+STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_LANDING                      :{BLACK}定义为允许降落的跑道
+STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_NO_LANDING                   :{BLACK}定义为禁止降落的跑道
+STR_TOOLBAR_AIRPORT_BUILD_APRON                                :{BLACK}建设停机坪
+STR_TOOLBAR_AIRPORT_BUILD_HELIPAD                              :{BLACK}建设直升机停机坪
+STR_TOOLBAR_AIRPORT_BUILD_HELIPORT                             :{BLACK}建设直升机场
+STR_TOOLBAR_AIRPORT_BUILD_HANGAR_STANDARD                      :{BLACK}建设标准机库
+STR_TOOLBAR_AIRPORT_BUILD_HANGAR_EXTENDED                      :{BLACK}建设扩建机库
+STR_TOOLBAR_AIRPORT_TOGGLE_BUILD_REMOVE                        :{BLACK}切换机场图块、基础设施、停机坪和机库的建设/移除模式
+STR_TOOLBAR_AIRPORT_BUILD_PRE_AIRPORT_TOOLTIP                  :{BLACK}建设预定义的机场布局。Ctrl 启用加入车站。Shift 切换建设/显示费用估算
+STR_TOOLBAR_AIRPORT_CHANGE_AIRTYPE                             :{BLACK}更改机场的航空类型
+STR_TOOLBAR_AIRPORT_ROTATE_GRAPHICS                            :{BLACK}更改地面图形
+STR_TOOLBAR_AIRPORT_ROTATE_GRAPHICS_TOOLTIP                    :{BLACK}点击简单机场图块以更改其图形（实验性功能；仅适用于划线跑道航空类型）
+STR_TOOLBAR_AIRPORT_TOGGLE_GROUND                              :{BLACK}切换地面硬化
+STR_TOOLBAR_AIRPORT_TOGGLE_GROUND_TOOLBAR                      :{BLACK}点击简单机场图块以显示或隐藏航空类型地面精灵。
 
 STR_BADGE_NAME_LIST                                             :{STRING}：{GOLD}{STRING}
 STR_BADGE_CONFIG_MENU_TOOLTIP                                   :开启徽章设定
