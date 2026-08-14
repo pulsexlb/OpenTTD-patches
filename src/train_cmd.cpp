@@ -5357,8 +5357,8 @@ static Train *DecoupleTrain(Train *v)
 	GroupStatistics::CountVehicle(v, 1);
 	GroupStatistics::CountVehicle(u, 1);
 
-	NormaliseTrainHead(u, CCF_ARRANGE_STATION);
-	NormaliseTrainHead(v, CCF_ARRANGE_STATION);
+	NormaliseTrainHead(u, CCF_COUPLE);
+	NormaliseTrainHead(v, CCF_COUPLE);
 
 	InvalidateWindowClassesData(WindowClass::TrainList);
 	return u;
@@ -5418,8 +5418,11 @@ static void ReverseTrainArticulated(Train *v)
 				t->ClearWagon();
 				a->SetWagon();
 			}
-			std::swap(t->value, a->value);
-			std::swap(t->max_age, a->max_age);
+			/* Do NOT swap value/max_age: articulated parts are created with
+			 * value = 0 and max_age = 0 (see AddArticulatedParts), so moving the
+			 * parent's real value/lifespan onto the part record would leave the
+			 * engine's front vehicle with max_age = 0 and value = 0, which shows
+			 * as 0 remaining years and a corrupt purchase value. */
 			t = a;
 		}
 	}
@@ -5496,6 +5499,7 @@ static void Couple(Train *v, Train *u)
 		return;
 	}
 
+
 	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
 
 	CloseWindowById(WindowClass::VehicleView, u->index);
@@ -5519,7 +5523,7 @@ static void Couple(Train *v, Train *u)
 	u->ClearFrontWagon();
 	u->ClearFrontEngine();
 
-	NormaliseTrainHead(v, CCF_ARRANGE_STATION);
+	NormaliseTrainHead(v, CCF_COUPLE);
 
 	/* The train is now one consist again: it is no longer a decoupled part. */
 	v->First()->decouple_part = 0;
@@ -5557,6 +5561,24 @@ static void Couple(Train *v, Train *u)
 }
 
 /**
+ * Centre-to-centre distance between the two vehicles that meet at a coupling
+ * joint when their ends just touch. Follows the same rounding rule as
+ * Train::CalcNextVehicleOffset(): for a vehicle of odd length the half towards
+ * the front is one unit longer, so the leading vehicle rounds up its own half
+ * only when driving backwards, and the following vehicle gets the complementary
+ * rounding.
+ * @param front_len              Length (in vehicle units) of the leading vehicle.
+ * @param back_len               Length (in vehicle units) of the following vehicle.
+ * @param front_driving_backwards Whether the leading vehicle is driving backwards.
+ * @return Distance in vehicle units (same units as x_pos/y_pos offsets).
+ */
+static int CoupleJointOffset(uint8_t front_len, uint8_t back_len, bool front_driving_backwards)
+{
+	uint8_t rounding = front_driving_backwards ? 1 : 0;
+	return (front_len + rounding) / 2 + (back_len + 1 - rounding) / 2;
+}
+
+/**
  * Find the train waiting to be coupled with, at the current position.
  */
 static Train *GetCouplePosition(Train *v, bool &reverse)
@@ -5586,7 +5608,7 @@ static Train *GetCouplePosition(Train *v, bool &reverse)
 
 	uint8_t v_length = v->gcache.cached_veh_length;
 	uint8_t u_length = reverse ? u->Last()->gcache.cached_veh_length : u->gcache.cached_veh_length;
-	int expected = (v_length + 1) / 2 + (u_length + 1) / 2;
+	int expected = CoupleJointOffset(v_length, u_length, v->IsDrivingBackwards());
 
 	if (diff == expected) {
 		return u;
@@ -5978,7 +6000,7 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	if (hash & ~15) return 0;
 
 	/* Slower check using multiplication */
-	int min_diff = (v->gcache.cached_veh_length + 1) / 2 + (moving_front->gcache.cached_veh_length + 1) / 2 - 1;
+	int min_diff = CoupleJointOffset(moving_front->gcache.cached_veh_length, v->gcache.cached_veh_length, moving_front->IsDrivingBackwards());
 	if (x_diff * x_diff + y_diff * y_diff >= min_diff * min_diff) return 0;
 
 	/* Happens when there is a train under bridge next to bridge head */

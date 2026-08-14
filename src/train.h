@@ -79,6 +79,7 @@ static constexpr ConsistChangeFlags CCF_ARRANGE{ConsistChangeFlag::Length, Consi
 static constexpr ConsistChangeFlags CCF_SAVELOAD{ConsistChangeFlag::Length}; ///< Valid changes when loading a savegame. (Everything that is not stored in the save.)
 static constexpr ConsistChangeFlags CCF_ARRANGE_STATION{ConsistChangeFlag::Capacity}; ///< Valid changes for arranging the consist in a station.
 static constexpr ConsistChangeFlags CCF_ARRANGE_CHECK{ConsistChangeFlag::Capacity, ConsistChangeFlag::CheckOnly}; ///< Check whether arranging the consist in a station would be possible.
+static constexpr ConsistChangeFlags CCF_COUPLE{ConsistChangeFlag::Length, ConsistChangeFlag::Capacity}; ///< Valid changes when coupling/decoupling trains at a station.
 
 enum RealisticBrakingConstants {
 	RBC_BRAKE_FORCE_PER_LENGTH      = 2400,      ///< Additional force-based brake force per unit of train length
