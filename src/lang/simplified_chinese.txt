@@ -872,6 +872,8 @@ STR_NEWS_ROAD_VEHICLE_CRASH_DRIVER                              :{BIG_FONT}{BLAC
 STR_NEWS_ROAD_VEHICLE_CRASH                                     :{BIG_FONT}{BLACK}汽车事故！{}汽车与火车相撞，{COMMA} 人在事故中丧生！
 STR_NEWS_AIRCRAFT_CRASH                                         :{BIG_FONT}{BLACK}飞机坠毁！{}{COMMA} 人在 {STATION} 的事故中罹难！
 STR_NEWS_PLANE_CRASH_OUT_OF_FUEL                                :{BIG_FONT}{BLACK}飞机坠毁！{}燃油不足，{COMMA} 人在事故中罹难！
+STR_NEWS_ORDER_DECOUPLE_FAILED                                  :{WHITE}无法解挂 {VEHICLE}
+STR_NEWS_ORDER_COUPLE_FAILED                                    :{WHITE}无法连接 {VEHICLE} 和 {VEHICLE}
 
 STR_NEWS_DISASTER_ZEPPELIN                                      :{BIG_FONT}{BLACK}齐柏林飞艇在 {STATION} 失事！
 STR_NEWS_DISASTER_SMALL_UFO                                     :{BIG_FONT}{BLACK}汽车被 UFO 炸毁！
@@ -4560,6 +4562,10 @@ STR_VEHICLE_STATUS_HEADING_FOR_WAYPOINT_VEL                     :{LTBLUE}{1:VELO
 STR_VEHICLE_STATUS_HEADING_FOR_DEPOT_VEL                        :{ORANGE}{1:VELOCITY} - 正前往 {0:DEPOT}
 STR_VEHICLE_STATUS_HEADING_FOR_DEPOT_SERVICE_VEL                :{LTBLUE}{1:VELOCITY} - 正前往 {0:DEPOT} 以进行维护
 STR_VEHICLE_STATUS_HEADING_FOR_DEPOT_UNBUNCH_VEL                :{LTBLUE}{1:VELOCITY} - 正前往 {0:DEPOT} 以维护与调节班次
+STR_VEHICLE_STATUS_HEADING_FOR_COUPLE_VEL                       :{LTBLUE}正前往连接，{VELOCITY}
+STR_VEHICLE_STATUS_DECOUPLING                                    :{LTBLUE}解挂中
+STR_VEHICLE_STATUS_WAITING_FOR_COUPLE                           :{LTBLUE}等待连接
+STR_VEHICLE_STATUS_WAITING_FOR_COUPLE_WRONG                     :{RED}无法在车站外连接
 
 STR_VEHICLE_STATUS_CANNOT_REACH_STATION_VEL                     :{LTBLUE}{1:VELOCITY} - 无法前往 {0:STATION}
 STR_VEHICLE_STATUS_CANNOT_REACH_WAYPOINT_VEL                    :{LTBLUE}{1:VELOCITY} - 无法前往 {0:WAYPOINT}
@@ -4773,6 +4779,10 @@ STR_ORDER_GO_TO_NEAREST_DEPOT                                   :前往最近的
 STR_ORDER_GO_TO_NEAREST_HANGAR                                  :前往最近的机库
 STR_ORDER_CONDITIONAL                                           :条件式跳过命令
 STR_ORDER_SHARE                                                 :共享调度计划
+STR_ORDER_CARGO_TYPE_BUTTON                                       :{BLACK}货物类型
+STR_CARGO_CAPTION                                                 :{WHITE}{VEHICLE}（货物）
+STR_TRAIN_CARGOS_CONFIRM                                          :{BLACK}设置货物
+STR_ORDER_CONDITIONAL_DECOUPLE_PART                             :解挂部分
 STR_ORDERS_GO_TO_TOOLTIP                                        :{BLACK}在选定的命令前插入新命令，或者添加新命令至计划末尾。按 <Ctrl> 键点选车站、路点或车库以分别应用“满载任一货物”、“直达”以及“自动调节班次”。点击另一辆载具以复制其调度计划，按住 <Ctrl> 点选则可共享调度计划。如果调度计划上有任何命令涉及车库，则该载具不会自行维护
 
 STR_ORDERS_VEH_WITH_SHARED_ORDERS_LIST_TOOLTIP                  :{BLACK}显示所有共享此调度计划的载具
@@ -4846,6 +4856,40 @@ STR_ORDER_OUT_OF_RANGE                                          :{RED}（下一�
 STR_ORDER_CONDITIONAL_UNCONDITIONAL                             :跳至 #{COMMA}
 STR_ORDER_CONDITIONAL_NUM                                       :跳至 #{COMMA} [如果{STRING}{STRING}{COMMA}]
 STR_ORDER_CONDITIONAL_TRUE_FALSE                                :跳至 #{COMMA} [如果{STRING}{STRING}]
+STR_ORDER_TOGGLE_COUPLE_LOAD                                    :{BLACK}连接空车
+STR_ORDERS_COUPLE_LOAD_ANY                                      :连接任意
+STR_ORDERS_COUPLE_LOAD_EMPTY                                    :连接空车
+STR_ORDERS_COUPLE_LOAD_FULL                                     :连接满载
+STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON                    :{BLACK}第一部分：保留调度计划
+STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON                   :{BLACK}第二部分：保留调度计划
+STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :保留调度计划
+STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :保留并不清空
+STR_ORDERS_DECOUPLE_INHERIT_ORDERS                              :继承
+STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :等待连接
+STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}连接数量
+STR_ORDERS_DECOUPLE_VALUE_BUTTON                                :{BLACK}解挂数量
+STR_ORDERS_DECOUPLE_BUTTON                                      :{BLACK}解挂
+STR_ORDERS_DECOUPLE_DROP                                        :解挂
+STR_ORDERS_DECOUPLE_VALUE                                       :解挂数量
+STR_ORDERS_DECOUPLE_TOOLTIP                                     :{BLACK}在车站解挂列车
+STR_ORDER_DECOUPLE_VALUE_CAPT                                   :{WHITE}输入解挂后列车保留的车厢数量
+STR_ORDERS_GO_TO_COUPLE                                         :前往连接
+STR_ORDER_WAIT_FOR_COUPLE                                       :等待连接
+STR_ORDER_GO_TO_COUPLE                                          :前往连接 {STRING} 列车
+STR_ORDER_GO_TO_COUPLE_CARGO                                    :前往连接 {STRING} 能运载 {STRING} 的列车
+STR_ORDER_COUPLE_ANY                                            :任意
+STR_ORDER_COUPLE_EMPTY                                          :空车
+STR_ORDER_COUPLE_FULL                                           :满载
+STR_ORDER_COUPLE_SLOT                                          :在路签 {STRING1}
+STR_ORDER_COUPLE_ANY_SLOT                                     :任意路签
+STR_ORDER_DECOUPLE                                              :（解挂）
+STR_ORDER_DECOUPLE_DETAILS                                      :[解挂并保留 {COMMA} 节车厢] 第一部分 {STRING} 第二部分 {STRING}
+STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[解挂并保留 {COMMA}(自动) 节车厢] 第一部分 {STRING} 第二部分 {STRING}
+STR_ORDER_COUPLE_UNITS                                          :（{COMMA} 节车厢）
+STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :（保留调度计划）
+STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :（保留调度计划不清空）
+STR_ORDER_DECOUPLE_INHERIT_ORDERS                               :（继承调度计划）
+STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :（等待连接)
 
 STR_INVALID_ORDER                                               :{RED}（无效命令）
 
