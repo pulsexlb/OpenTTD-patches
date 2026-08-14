@@ -2779,8 +2779,22 @@ static void ReverseTrainSwapVeh(Train *v, int l, int r)
  * Swap vehicles in chain starting from \a v, and reverse their direction.
  * @param v First vehicle in chain to change.
  */
+/** [CoupleDbg] Dump the full vehicle chain (Next-linked) for chain-corruption diagnostics. */
+static void DumpTrainChain(const Train *v, const char *tag)
+{
+	Debug(desync, 1, "[CoupleDbg] {}: chain head={} :", tag, v != nullptr ? v->index.base() : -1);
+	for (const Train *t = v; t != nullptr; t = t->Next()) {
+		Debug(desync, 1, "[CoupleDbg]   veh={} eng={} frontEng={} frontWagon={} wagon={} part={} multi={} next={} prev={} tile=({},{})",
+			t->index, t->IsEngine(), t->IsFrontEngine(), t->IsFrontWagon(), t->IsWagon(), t->IsArticulatedPart(), t->IsMultiheaded(),
+			t->Next() != nullptr ? t->Next()->index.base() : -1,
+			t->Previous() != nullptr ? t->Previous()->index.base() : -1,
+			TileX(t->tile), TileY(t->tile));
+	}
+}
+
 void ReverseTrainSwapVehicles(Train *v)
 {
+	DumpTrainChain(v, "ReverseTrainSwapVehicles BEFORE");
 	int r = CountVehiclesInChain(v) - 1;  // number of vehicles - 1
 
 	/* swap start<>end, start+1<>end-1, ... */
@@ -2792,6 +2806,8 @@ void ReverseTrainSwapVehicles(Train *v)
 	for (Train *u = v; u != nullptr; u = u->Next()) {
 		UpdateStatusAfterSwap(u);
 	}
+
+	DumpTrainChain(v, "ReverseTrainSwapVehicles AFTER");
 
 	/* The front vehicle changes when flipping; invalidate the tick caches or the new front will not be ticked. */
 	InvalidateVehicleTickCaches();
@@ -5126,9 +5142,12 @@ static uint GetDecoupleVehicleAuto(Train *v)
 	bool has_wagons = false;
 	bool multihead_front = false;
 	for (Train *t = v; t != nullptr; t = t->GetNextVehicle(), pos++) {
+		Debug(desync, 1, "[CoupleDbg] GetDecoupleVehicleAuto: pos={} veh={} eng={} multi={} wagon={} part={}",
+			pos, t->index, t->IsEngine(), t->IsMultiheaded(), t->IsWagon(), t->IsArticulatedPart());
 		if (t->IsEngine()) {
 			if (t->IsMultiheaded()) {
 				if (multihead_front) {
+					Debug(desync, 1, "[CoupleDbg] GetDecoupleVehicleAuto: return pos={}", pos);
 					return pos;
 				}
 				multihead_front = true;
@@ -5142,8 +5161,16 @@ static uint GetDecoupleVehicleAuto(Train *v)
 			has_wagons = true;
 		}
 	}
-	if (engines_front > 0 && has_wagons) return engines_front;
-	if (engines_back > 0 && has_wagons) return CountVehiclesInChain(v) - engines_back;
+	Debug(desync, 1, "[CoupleDbg] GetDecoupleVehicleAuto: v={} eng_front={} eng_back={} has_wagons={}", v->index, engines_front, engines_back, has_wagons);
+	if (engines_front > 0 && has_wagons) {
+		Debug(desync, 1, "[CoupleDbg] GetDecoupleVehicleAuto: return engines_front={}", engines_front);
+		return engines_front;
+	}
+	if (engines_back > 0 && has_wagons) {
+		Debug(desync, 1, "[CoupleDbg] GetDecoupleVehicleAuto: return {}", CountVehiclesInChain(v) - engines_back);
+		return CountVehiclesInChain(v) - engines_back;
+	}
+	Debug(desync, 1, "[CoupleDbg] GetDecoupleVehicleAuto: return 1");
 	return 1;
 }
 
@@ -5167,6 +5194,9 @@ static Train *GetDecoupleVehicle(Train *v)
 		ret = ret->GetNextVehicle();
 	}
 	if (multihead_front) return nullptr;
+	Debug(desync, 1, "[CoupleDbg] GetDecoupleVehicle: v={} num_decouple={} ret={} ret_eng={} ret_part={}",
+		v->index, num_decouple, ret != nullptr ? ret->index.base() : -1,
+		ret != nullptr ? ret->IsEngine() : false, ret != nullptr ? ret->IsArticulatedPart() : false);
 	return ret;
 }
 
@@ -5351,6 +5381,8 @@ static Train *DecoupleTrain(Train *v)
 	} else {
 		u->SetFrontWagon();
 	}
+	Debug(desync, 1, "[CoupleDbg] DecoupleTrain: v={} u={} u_eng={} u_frontEng={} u_wagon={} u_part={} u_value={}",
+		v->index, u->index, u->IsEngine(), u->IsFrontEngine(), u->IsWagon(), u->IsArticulatedPart(), u->value.base());
 	SetTrainGroupID(u, DEFAULT_GROUP);
 	GroupStatistics::CountVehicle(v, -1);
 
@@ -5406,6 +5438,9 @@ static void ReverseTrainArticulated(Train *v)
 	for (Train *t = v; t != nullptr; t = t->GetNextVehicle()) {
 		if (t->HasArticulatedPart()) {
 			Train *a = t->GetLastEnginePart();
+			Debug(desync, 1, "[CoupleDbg] ReverseTrainArticulated BEFORE: t={} eng={} frontEng={} wagon={} part={} value={} | a={} eng={} part={} value={}",
+				t->index, t->IsEngine(), t->IsFrontEngine(), t->IsWagon(), t->IsArticulatedPart(), t->value.base(),
+				a->index, a->IsEngine(), a->IsArticulatedPart(), a->value.base());
 			a->ClearArticulatedPart();
 			t->SetArticulatedPart();
 			if (t->IsEngine()) {
@@ -5423,6 +5458,9 @@ static void ReverseTrainArticulated(Train *v)
 			 * parent's real value/lifespan onto the part record would leave the
 			 * engine's front vehicle with max_age = 0 and value = 0, which shows
 			 * as 0 remaining years and a corrupt purchase value. */
+			Debug(desync, 1, "[CoupleDbg] ReverseTrainArticulated AFTER: t={} eng={} frontEng={} wagon={} part={} | a={} eng={} part={} value_t={} value_a={}",
+				t->index, t->IsEngine(), t->IsFrontEngine(), t->IsWagon(), t->IsArticulatedPart(),
+				a->index, a->IsEngine(), a->IsArticulatedPart(), t->value.base(), a->value.base());
 			t = a;
 		}
 	}
@@ -5451,9 +5489,11 @@ static void ReverseTrainMultiheaded(Train *v)
  */
 static void ReverseTrainForCouple(Train *v)
 {
+	DumpTrainChain(v, "ReverseTrainForCouple ENTER");
 	ReverseTrainArticulated(v);
 	ReverseTrainMultiheaded(v);
 	ReverseTrainSwapVehicles(v);
+	DumpTrainChain(v, "ReverseTrainForCouple AFTER");
 }
 
 /**
@@ -5461,6 +5501,16 @@ static void ReverseTrainForCouple(Train *v)
  */
 static void Couple(Train *v, Train *u)
 {
+	/* v may arrive as the physical moving front (Last() when driving backwards,
+	 * which for an articulated train is a non-primary part). All order handling
+	 * (IncrementImplicitOrderIndex / ProcessOrders) and NormaliseTrainHead must
+	 * run on the primary vehicle, so normalise to the chain heads first. */
+	v = v->First();
+	u = u->First();
+
+	Debug(desync, 1, "[CoupleDbg] Couple ENTER: v={} (eng={} frontEng={} part={} bw={} len={}) u={} (eng={} frontEng={} part={} len={})",
+		v->index, v->IsEngine(), v->IsFrontEngine(), v->IsArticulatedPart(), v->IsDrivingBackwards(), v->gcache.cached_veh_length,
+		u->index, u->IsEngine(), u->IsFrontEngine(), u->IsArticulatedPart(), u->gcache.cached_veh_length);
 	/*
 	 * Orientation phase: v will stay the front of the merged consist
 	 * (ClearFrontWagon/ClearFrontEngine + NormaliseTrainHead below), so both
@@ -5525,6 +5575,13 @@ static void Couple(Train *v, Train *u)
 
 	NormaliseTrainHead(v, CCF_COUPLE);
 
+	Debug(desync, 1, "[CoupleDbg] Couple POST-NORMALISE consist v={} status:", v->index);
+	for (const Train *w = v->First(); w != nullptr; w = w->Next()) {
+		Debug(desync, 1, "[CoupleDbg]   veh={} eng={} frontEng={} wagon={} part={} multi={} frontWagon={} value={} max_age={} type={}",
+			w->index, w->IsEngine(), w->IsFrontEngine(), w->IsWagon(), w->IsArticulatedPart(), w->IsMultiheaded(), w->IsFrontWagon(),
+			w->value.base(), w->max_age.base(), (int)w->engine_type.base());
+	}
+
 	/* The train is now one consist again: it is no longer a decoupled part. */
 	v->First()->decouple_part = 0;
 
@@ -5586,11 +5643,23 @@ static Train *GetCouplePosition(Train *v, bool &reverse)
 	Vehicle *other_vehicle = nullptr;
 	FollowTrainReservation(v, &other_vehicle);
 
-	if (other_vehicle == nullptr) return nullptr;
-	if (other_vehicle->First()->index == v->index) return nullptr;
-	if (!other_vehicle->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
+	if (other_vehicle == nullptr) {
+		Debug(desync, 1, "[CoupleDbg] GetCouplePosition: v={} no other vehicle", v->index);
+		return nullptr;
+	}
+	if (other_vehicle->First()->index == v->index) {
+		Debug(desync, 1, "[CoupleDbg] GetCouplePosition: v={} other is self", v->index);
+		return nullptr;
+	}
+	if (!other_vehicle->current_order.IsType(OT_WAIT_COUPLE)) {
+		Debug(desync, 1, "[CoupleDbg] GetCouplePosition: v={} other={} order={} not WAIT_COUPLE", v->index, other_vehicle->First()->index, (int)other_vehicle->current_order.GetType());
+		return nullptr;
+	}
 	Train *u = Train::From(other_vehicle)->First();
-	if (!TrainFitStation(u)) return nullptr;
+	if (!TrainFitStation(u)) {
+		Debug(desync, 1, "[CoupleDbg] GetCouplePosition: v={} u={} does not fit station", v->index, u->index);
+		return nullptr;
+	}
 
 	DirDiff dir_diff = DirDifference(v->direction, u->direction);
 	reverse = dir_diff == DirDiff::Same || dir_diff == DirDiff::Right45 || dir_diff == DirDiff::Left45;
@@ -5609,10 +5678,14 @@ static Train *GetCouplePosition(Train *v, bool &reverse)
 	uint8_t v_length = v->gcache.cached_veh_length;
 	uint8_t u_length = reverse ? u->Last()->gcache.cached_veh_length : u->gcache.cached_veh_length;
 	int expected = CoupleJointOffset(v_length, u_length, v->IsDrivingBackwards());
+	Debug(desync, 1, "[CoupleDbg] GetCouplePosition: v={} u={} reverse={} v_len={} u_len={} v_bw={} diff={} expected={}",
+		v->index, u->index, reverse, v_length, u_length, v->IsDrivingBackwards(), diff, expected);
 
 	if (diff == expected) {
+		Debug(desync, 1, "[CoupleDbg] GetCouplePosition: v={} u={} COUPLE", v->index, u->index);
 		return u;
 	}
+	Debug(desync, 1, "[CoupleDbg] GetCouplePosition: v={} u={} MISS diff={}!=expected={}", v->index, u->index, diff, expected);
 
 	return nullptr;
 }
@@ -5625,7 +5698,10 @@ static bool TrainCoupleHandler(Train *v)
 {
 	bool reverse;
 	Train *u = GetCouplePosition(v, reverse);
-	if (u == nullptr) return false;
+	if (u == nullptr) {
+		Debug(desync, 1, "[CoupleDbg] TrainCoupleHandler: v={} no couple target", v->index);
+		return false;
+	}
 	Couple(v, u);
 	return true;
 }
@@ -5761,6 +5837,11 @@ static void TrainEnterStation(Train *consist, StationID station)
 			u->flags.Set(VehicleRailFlag::JustDecoupled);
 		}
 		SplitOrders(consist, u, load_trains);
+		Debug(desync, 1, "[CoupleDbg] Decouple SPLIT ORDERS: v={} order={} has_orders={} decouple_part={} tile=({},{}) | u={} order={} has_orders={} decouple_part={} tile=({},{})",
+			consist->index, (int)consist->current_order.GetType(), consist->orders != nullptr, consist->decouple_part, TileX(consist->tile), TileY(consist->tile),
+			u != nullptr ? u->index.base() : -1, u != nullptr ? (int)u->current_order.GetType() : -1,
+			u != nullptr && u->orders != nullptr, u != nullptr ? u->decouple_part : 0,
+			u != nullptr ? TileX(u->tile) : -1, u != nullptr ? TileY(u->tile) : -1);
 		u->last_station_visited = station;
 		if (u == consist && consist->owner == _local_company) {
 			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED, consist->index), consist->index);
@@ -6001,7 +6082,12 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 
 	/* Slower check using multiplication */
 	int min_diff = CoupleJointOffset(moving_front->gcache.cached_veh_length, v->gcache.cached_veh_length, moving_front->IsDrivingBackwards());
-	if (x_diff * x_diff + y_diff * y_diff >= min_diff * min_diff) return 0;
+	int sq_dist = x_diff * x_diff + y_diff * y_diff;
+	Debug(desync, 1, "[CoupleDbg] CheckTrainCollision: v={} moving={} sq_dist={} min2={} min_diff={} mf_len={} v_len={} mf_bw={} order_m={} order_v={}",
+		v->index, moving_front->index, sq_dist, min_diff * min_diff, min_diff,
+		moving_front->gcache.cached_veh_length, v->gcache.cached_veh_length, moving_front->IsDrivingBackwards(),
+		(int)moving_front->current_order.GetType(), (int)v->First()->current_order.GetType());
+	if (sq_dist >= min_diff * min_diff) return 0;
 
 	/* Happens when there is a train under bridge next to bridge head */
 	if (abs(v->z_pos - moving_front->z_pos) > 5) return 0;
@@ -6011,11 +6097,35 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	 * survivor, the waiting train (OT_WAIT_COUPLE) is being merged in. Stop
 	 * the moving train afterwards, the same way the caller stops it after a
 	 * regular successful couple. */
-	if (moving_front->current_order.IsType(OT_GOTO_COUPLE) && v->First()->current_order.IsType(OT_WAIT_COUPLE)) {
+	if (moving_front->First()->current_order.IsType(OT_GOTO_COUPLE) && v->First()->current_order.IsType(OT_WAIT_COUPLE)) {
+		Debug(desync, 1, "[CoupleDbg] CheckTrainCollision: v={} moving={} COUPLE-ON-TOUCH (goto vs wait)", moving_front->index, v->index);
 		Couple(moving_front, v->First());
 		moving_front->cur_speed = 0;
 		moving_front->progress = 0;
 		return 0;
+	}
+	Debug(desync, 1, "[CoupleDbg] CheckTrainCollision: v={} moving={} CRASH order_m={} order_v={} m_has_orders={} m_num={} m_cur_imp={} m_cur_real={}",
+		v->index, moving_front->index,
+		(int)moving_front->current_order.GetType(), (int)v->First()->current_order.GetType(),
+		moving_front->orders != nullptr, moving_front->GetNumOrders(),
+		moving_front->cur_implicit_order_index, moving_front->cur_real_order_index);
+	if (moving_front->orders != nullptr) {
+		for (uint i = 0; i < moving_front->GetNumOrders(); i++) {
+			const Order *o = moving_front->orders->GetOrderAt(i);
+			Debug(desync, 1, "[CoupleDbg]   moving order[{}] type={} decouple={}", i, (int)o->GetType(), (int)o->GetDecouple());
+		}
+	}
+	Debug(desync, 1, "[CoupleDbg] FLEET at crash:");
+	for (const Train *f : Train::IterateFrontOnly()) {
+		Debug(desync, 1, "[CoupleDbg]   front={} eng={} wagon={} has_orders={} num={} order={} decouple_part={} tile=({},{})",
+			f->index, f->IsEngine(), f->IsWagon(), f->orders != nullptr, f->GetNumOrders(),
+			(int)f->current_order.GetType(), f->decouple_part, TileX(f->tile), TileY(f->tile));
+		if (f->orders != nullptr) {
+			for (uint i = 0; i < f->GetNumOrders(); i++) {
+				const Order *o = f->orders->GetOrderAt(i);
+				Debug(desync, 1, "[CoupleDbg]     order[{}] type={} decouple={}", i, (int)o->GetType(), (int)o->GetDecouple());
+			}
+		}
 	}
 
 	/* Crash both trains. Two statements required to guarantee execution
@@ -7713,8 +7823,11 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			j -= adv_spd;
 			TrainController(moving_front, nullptr);
 			moving_front = moving_front->GetMovingFront();
-			/* Couple now? */
-			if (moving_front->current_order.IsType(OT_GOTO_COUPLE)) {
+			/* Couple now? The order lives on the primary vehicle (First). When
+			 * driving backwards, moving_front is the physical front (Last), which
+			 * for an articulated train is a non-primary part carrying no current
+			 * order, so test the primary's order instead. */
+			if (moving_front->First()->current_order.IsType(OT_GOTO_COUPLE)) {
 				if (TrainCoupleHandler(moving_front)) {
 					moving_front->cur_speed = 0;
 					moving_front->progress = 0;

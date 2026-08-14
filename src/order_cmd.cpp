@@ -3605,6 +3605,9 @@ bool Vehicle::HasDepotOrder() const
  */
 void DeleteVehicleOrders(Vehicle *v, bool keep_orderlist, bool reset_order_indices)
 {
+	Debug(desync, 1, "[CoupleDbg] DeleteVehicleOrders: v={} type={} keep_orderlist={} reset_indices={} has_orders={} num={} shared={}",
+		v->index, (int)v->type, keep_orderlist, reset_order_indices, v->orders != nullptr,
+		v->orders != nullptr ? v->orders->GetNumOrders() : -1, v->IsOrderListShared());
 	DeleteOrderWarnings(v);
 	InvalidateWindowClassesData(WindowClass::DepartureBoard);
 

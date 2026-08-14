@@ -988,6 +988,10 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 			CheckTrainsOnTrack(ftoti, GetOtherTunnelBridgeEnd(ftoti.res.tile));
 			if (ftoti.best != nullptr) *train_on_res = ftoti.best->First();
 		}
+		Debug(desync, 1, "[CoupleDbg] FollowTrainReservation: v={} found={} self={} res_tile=({},{}) v_tile=({},{})",
+			v->index, *train_on_res != nullptr ? (*train_on_res)->index.base() : -1,
+			*train_on_res != nullptr && (*train_on_res)->index == v->index,
+			TileX(ftoti.res.tile), TileY(ftoti.res.tile), TileX(v->tile), TileY(v->tile));
 	}
 	return ftoti.res;
 }
