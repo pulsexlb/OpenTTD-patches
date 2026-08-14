@@ -4887,7 +4887,7 @@ STR_ORDER_DECOUPLE_DETAILS                                      :[解挂并保�
 STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[解挂并保留 {COMMA}(自动) 节车厢] 第一部分 {STRING} 第二部分 {STRING}
 STR_ORDER_COUPLE_UNITS                                          :（{COMMA} 节车厢）
 STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :（保留调度计划）
-STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :（保留调度计划不清空）
+STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :（保留调度计划不装卸）
 STR_ORDER_DECOUPLE_INHERIT_ORDERS                               :（继承调度计划）
 STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :（等待连接)
 
