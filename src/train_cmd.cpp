@@ -5357,8 +5357,8 @@ static Train *DecoupleTrain(Train *v)
 	GroupStatistics::CountVehicle(v, 1);
 	GroupStatistics::CountVehicle(u, 1);
 
-	NormaliseTrainHead(u, CCF_ARRANGE_STATION);
-	NormaliseTrainHead(v, CCF_ARRANGE_STATION);
+	NormaliseTrainHead(u, CCF_COUPLE);
+	NormaliseTrainHead(v, CCF_COUPLE);
 
 	InvalidateWindowClassesData(WindowClass::TrainList);
 	return u;
@@ -5399,57 +5399,16 @@ static bool TryTrainCouple(Train *v, Train *u)
 }
 
 /**
- * Swap the roles of articulated engine parts when reversing for a couple.
- */
-static void ReverseTrainArticulated(Train *v)
-{
-	for (Train *t = v; t != nullptr; t = t->GetNextVehicle()) {
-		if (t->HasArticulatedPart()) {
-			Train *a = t->GetLastEnginePart();
-			a->ClearArticulatedPart();
-			t->SetArticulatedPart();
-			if (t->IsEngine()) {
-				t->ClearEngine();
-				if (!t->IsPrimaryVehicle()) t->vehstatus.Reset(VehState::Stopped);
-				a->SetEngine();
-				a->vehstatus.Set(VehState::Stopped);
-			}
-			if (t->IsWagon()) {
-				t->ClearWagon();
-				a->SetWagon();
-			}
-			std::swap(t->value, a->value);
-			std::swap(t->max_age, a->max_age);
-			t = a;
-		}
-	}
-}
-
-/**
- * Swap the roles of multiheaded engine parts when reversing for a couple.
- */
-static void ReverseTrainMultiheaded(Train *v)
-{
-	for (Train *t = v; t != nullptr; t = t->Next()) {
-		if (t->IsMultiheaded()) {
-			if (t->IsEngine()) {
-				t->ClearEngine();
-				std::swap(t->spritenum, t->other_multiheaded_part->spritenum);
-			} else {
-				t->SetEngine();
-			}
-		}
-	}
-}
-
-/**
- * Reverse a train for coupling: swap articulated/multiheaded roles first,
- * then swap the vehicles (mirrors decouple's visual reversing for couples).
+ * Reverse a train for coupling by physically flipping the consist.
+ *
+ * The primary/engine relationship must be preserved: for an articulated engine
+ * the front (First) stays the engine and its parts stay parts. Swapping the
+ * engine/part roles here leaves the consist front as a non-engine articulated
+ * part ("no power") and corrupts later decouples, so only the physical vehicle
+ * positions/directions are swapped, matching the standard depot flip.
  */
 static void ReverseTrainForCouple(Train *v)
 {
-	ReverseTrainArticulated(v);
-	ReverseTrainMultiheaded(v);
 	ReverseTrainSwapVehicles(v);
 }
 
@@ -5458,6 +5417,13 @@ static void ReverseTrainForCouple(Train *v)
  */
 static void Couple(Train *v, Train *u)
 {
+	/* v may arrive as the physical moving front (Last() when driving backwards,
+	 * which for an articulated train is a non-primary part). All order handling
+	 * (IncrementImplicitOrderIndex / ProcessOrders) and NormaliseTrainHead must
+	 * run on the primary vehicle, so normalise to the chain heads first. */
+	v = v->First();
+	u = u->First();
+
 	/*
 	 * Orientation phase: v will stay the front of the merged consist
 	 * (ClearFrontWagon/ClearFrontEngine + NormaliseTrainHead below), so both
@@ -5496,6 +5462,7 @@ static void Couple(Train *v, Train *u)
 		return;
 	}
 
+
 	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
 
 	CloseWindowById(WindowClass::VehicleView, u->index);
@@ -5519,7 +5486,7 @@ static void Couple(Train *v, Train *u)
 	u->ClearFrontWagon();
 	u->ClearFrontEngine();
 
-	NormaliseTrainHead(v, CCF_ARRANGE_STATION);
+	NormaliseTrainHead(v, CCF_COUPLE);
 
 	/* The train is now one consist again: it is no longer a decoupled part. */
 	v->First()->decouple_part = 0;
@@ -5557,6 +5524,24 @@ static void Couple(Train *v, Train *u)
 }
 
 /**
+ * Centre-to-centre distance between the two vehicles that meet at a coupling
+ * joint when their ends just touch. Follows the same rounding rule as
+ * Train::CalcNextVehicleOffset(): for a vehicle of odd length the half towards
+ * the front is one unit longer, so the leading vehicle rounds up its own half
+ * only when driving backwards, and the following vehicle gets the complementary
+ * rounding.
+ * @param front_len              Length (in vehicle units) of the leading vehicle.
+ * @param back_len               Length (in vehicle units) of the following vehicle.
+ * @param front_driving_backwards Whether the leading vehicle is driving backwards.
+ * @return Distance in vehicle units (same units as x_pos/y_pos offsets).
+ */
+static int CoupleJointOffset(uint8_t front_len, uint8_t back_len, bool front_driving_backwards)
+{
+	uint8_t rounding = front_driving_backwards ? 1 : 0;
+	return (front_len + rounding) / 2 + (back_len + 1 - rounding) / 2;
+}
+
+/**
  * Find the train waiting to be coupled with, at the current position.
  */
 static Train *GetCouplePosition(Train *v, bool &reverse)
@@ -5586,7 +5571,7 @@ static Train *GetCouplePosition(Train *v, bool &reverse)
 
 	uint8_t v_length = v->gcache.cached_veh_length;
 	uint8_t u_length = reverse ? u->Last()->gcache.cached_veh_length : u->gcache.cached_veh_length;
-	int expected = (v_length + 1) / 2 + (u_length + 1) / 2;
+	int expected = CoupleJointOffset(v_length, u_length, v->IsDrivingBackwards());
 
 	if (diff == expected) {
 		return u;
@@ -5978,7 +5963,7 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	if (hash & ~15) return 0;
 
 	/* Slower check using multiplication */
-	int min_diff = (v->gcache.cached_veh_length + 1) / 2 + (moving_front->gcache.cached_veh_length + 1) / 2 - 1;
+	int min_diff = CoupleJointOffset(moving_front->gcache.cached_veh_length, v->gcache.cached_veh_length, moving_front->IsDrivingBackwards());
 	if (x_diff * x_diff + y_diff * y_diff >= min_diff * min_diff) return 0;
 
 	/* Happens when there is a train under bridge next to bridge head */
@@ -5989,7 +5974,7 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	 * survivor, the waiting train (OT_WAIT_COUPLE) is being merged in. Stop
 	 * the moving train afterwards, the same way the caller stops it after a
 	 * regular successful couple. */
-	if (moving_front->current_order.IsType(OT_GOTO_COUPLE) && v->First()->current_order.IsType(OT_WAIT_COUPLE)) {
+	if (moving_front->First()->current_order.IsType(OT_GOTO_COUPLE) && v->First()->current_order.IsType(OT_WAIT_COUPLE)) {
 		Couple(moving_front, v->First());
 		moving_front->cur_speed = 0;
 		moving_front->progress = 0;
@@ -7691,8 +7676,11 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			j -= adv_spd;
 			TrainController(moving_front, nullptr);
 			moving_front = moving_front->GetMovingFront();
-			/* Couple now? */
-			if (moving_front->current_order.IsType(OT_GOTO_COUPLE)) {
+			/* Couple now? The order lives on the primary vehicle (First). When
+			 * driving backwards, moving_front is the physical front (Last), which
+			 * for an articulated train is a non-primary part carrying no current
+			 * order, so test the primary's order instead. */
+			if (moving_front->First()->current_order.IsType(OT_GOTO_COUPLE)) {
 				if (TrainCoupleHandler(moving_front)) {
 					moving_front->cur_speed = 0;
 					moving_front->progress = 0;
