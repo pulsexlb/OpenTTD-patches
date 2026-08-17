@@ -523,6 +523,10 @@ void Station::UpdateAirportDataStructure()
 			SetBit(this->airport.flags, AFB_HANGAR);
 			this->airport.hangar->xy = first_hangar;
 		}
+	} else {
+		/* No hangar tile and no existing hangar Depot: clear any stale hangar flag so that
+		 * HasHangar() does not report a hangar that no longer exists. */
+		ClrBit(this->airport.flags, AFB_HANGAR);
 	}
 
 	if (airport_area.tile == INVALID_TILE) return;

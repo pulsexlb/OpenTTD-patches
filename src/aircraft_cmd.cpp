@@ -566,13 +566,18 @@ static void CheckIfAircraftNeedsService(Aircraft *v)
 
 	const Station *st;
 	if (v->state <= AS_RUNNING) {
-		st = Station::Get(v->GetCurrentAirportID());
+		st = Station::GetIfValid(v->GetCurrentAirportID());
 	} else {
-		st = Station::Get(GetTargetDestination(v->current_order, true).ToStationID());
+		st = Station::GetIfValid(GetTargetDestination(v->current_order, true).ToStationID());
 	}
-	assert(st != nullptr);
+	/* The target station may have been deleted while the aircraft was en route; in
+	 * that case there is nothing to service at, so do not dereference the stale slot. */
+	if (st == nullptr) return;
 
-	if (st->airport.HasHangar() && CanVehicleUseStation(v, st)) {
+	/* Guard against a stale AFB_HANGAR flag: the airport may claim to have a hangar
+	 * (flag set) even though the hangar Depot pointer was already cleared. In that
+	 * case there is no valid hangar to send the aircraft to, so do not dereference it. */
+	if (st->airport.HasHangar() && st->airport.hangar != nullptr && CanVehicleUseStation(v, st)) {
 		v->current_order.MakeGoToDepot(st->airport.hangar->index, OrderDepotTypeFlag::Service);
 		v->SetDestTile(v->GetOrderHangarLocation(st->airport.hangar->index));
 		SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);

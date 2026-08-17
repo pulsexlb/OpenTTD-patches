@@ -370,8 +370,10 @@ protected:
 				return false;
 			}
 			/* When trains are not allowed to temporarily stop in depots, make all depots impassable
-			 * in pathfinding unless the train is currently ordered to this specific depot. */
-			if (_settings_game.vehicle.train_no_depot_temporary_stop) {
+			 * in pathfinding unless the train is currently ordered to this specific depot.
+			 * Only apply this when we have a vehicle to inspect; FollowReservation() runs
+			 * this without a vehicle (veh == nullptr) and must not dereference it. */
+			if (_settings_game.vehicle.train_no_depot_temporary_stop && this->veh != nullptr) {
 				const Train *t = Train::From(this->veh);
 				const bool allow = t->current_order.IsType(OT_GOTO_DEPOT) &&
 						(t->dest_tile == this->new_tile ||
