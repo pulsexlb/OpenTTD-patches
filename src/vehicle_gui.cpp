@@ -3611,8 +3611,9 @@ struct VehicleDetailsWindow : Window {
 						}
 					}
 					uint8_t total_engines = Train::From(v)->tcache.cached_num_engines;
-					assert(total_engines > 0);
-					DrawString(tr, GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, ToPercent16(total_reliability / total_engines), ToPercent16(total_max_reliability / total_engines), total_breakdowns));
+					if (total_engines > 0) {
+						DrawString(tr, GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, ToPercent16(total_reliability / total_engines), ToPercent16(total_max_reliability / total_engines), total_breakdowns));
+					}
 				} else {
 					DrawString(tr, GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, ToPercent16(v->reliability), ToPercent16(v->GetEngine()->reliability), v->breakdowns_since_last_service));
 				}
@@ -3923,6 +3924,10 @@ static WindowDesc _nontrain_vehicle_details_desc(__FILE__, __LINE__,
  */
 static void ShowVehicleDetailsWindow(const Vehicle *v)
 {
+	/* Trains without any engine (e.g. after full uncoupling) cannot be viewed. */
+	if (v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0) {
+		return;
+	}
 	CloseWindowById(WindowClass::VehicleOrders, v->index, false);
 	CloseWindowById(WindowClass::VehicleTimetable, v->index, false);
 	AllocateWindowDescFront<VehicleDetailsWindow>((v->type == VehicleType::Train) ? _train_vehicle_details_desc : _nontrain_vehicle_details_desc, v->index);
