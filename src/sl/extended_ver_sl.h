@@ -176,6 +176,8 @@ enum SlXvFeatureIndex {
 	XSLFI_ENGINE_MULTI_RAILTYPE,                  ///< See: SLV_ENGINE_MULTI_RAILTYPE (PR #14357)
 	XSLFI_TOWN_SUPPLY_HISTORY,                    ///< See: SLV_TOWN_SUPPLY_HISTORY (PR #14461)
 	XSLFI_DRIVE_BACKWARDS,                        ///< See: SLV_DRIVE_BACKWARDS (PR#15379)
+	XSLFI_TRAIN_SERVICE_AT_STATION,              ///< Trains can be serviced at stations
+	XSLFI_TRAIN_NO_DEPOT_TEMPORARY_STOP,        ///< Trains do not temporarily stop in / route through depots
 
 	XSLFI_PR_13745_APPLIED,                       ///< Tag to indicate that the fix in PR #13745 has been already applied
 	XSLFI_SIGNAL_STATE_FIX,                       ///< Tag for signal state fixes

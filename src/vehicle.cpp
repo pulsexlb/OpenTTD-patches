@@ -370,6 +370,24 @@ bool Vehicle::NeedsServicing() const
 }
 
 /**
+ * Check whether the service interval has elapsed, independent of the
+ * no-servicing-if-no-breakdowns and breakdowns settings.
+ * @return true if the vehicle is due for its periodic service.
+ */
+bool Vehicle::IsServiceIntervalDue() const
+{
+	bool service_not_due;
+	if (this->ServiceIntervalIsPercent()) {
+		service_not_due = (this->reliability >= this->GetEngine()->reliability * (100 - this->GetServiceInterval()) / 100);
+	} else if (EconTime::UsingWallclockUnits()) {
+		service_not_due = (this->date_of_last_service + (this->GetServiceInterval() * EconTime::DAYS_IN_ECONOMY_WALLCLOCK_MONTH) >= EconTime::CurDate());
+	} else {
+		service_not_due = (this->date_of_last_service + this->GetServiceInterval() >= EconTime::CurDate());
+	}
+	return !service_not_due;
+}
+
+/**
  * Checks if the current order should be interrupted for a service-in-depot order.
  * @see NeedsServicing()
  * @return true if the current order should be interrupted.
@@ -2735,6 +2753,12 @@ void VehicleEnterDepot(Vehicle *v)
 	SetWindowDirty(WindowClass::VehicleDepot, v->tile.base());
 
 	v->vehstatus.Set(VehState::Hidden);
+	/* When trains are not allowed to temporarily stop in depots, keep them stopped in the depot
+	 * until the player starts them manually. The train is only allowed to drive on if it is passing
+	 * through this depot on its way to another one (handled below). */
+	if (v->type == VehicleType::Train && _settings_game.vehicle.train_no_depot_temporary_stop) {
+		v->vehstatus.Set(VehState::Stopped);
+	}
 	v->UpdateIsDrawn();
 	v->cur_speed = 0;
 
@@ -2757,14 +2781,16 @@ void VehicleEnterDepot(Vehicle *v)
 		if (v->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders) &&
 				real_order != nullptr && !(real_order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) &&
 				(v->type == VehicleType::Aircraft ? v->current_order.GetDestination() != GetStationIndex(v->tile) : v->dest_tile != v->tile)) {
-			/* We are heading for another depot, keep driving. */
+			/* We are heading for another depot, keep driving. Do not leave the train stopped here. */
+			if (v->type == VehicleType::Train) v->vehstatus.Reset(VehState::Stopped);
 			return;
 		}
 
 		/* Test whether we are heading for this depot. If not, do nothing. */
 		if (v->current_order.GetDepotExtraFlags().Test(OrderDepotExtraFlag::Specific) &&
 				(v->type == VehicleType::Aircraft ? v->current_order.GetDestination() != GetStationIndex(v->tile) : v->dest_tile != v->tile)) {
-			/* We are heading for another depot, keep driving. */
+			/* We are heading for another depot, keep driving. Do not leave the train stopped here. */
+			if (v->type == VehicleType::Train) v->vehstatus.Reset(VehState::Stopped);
 			return;
 		}
 
@@ -3532,6 +3558,13 @@ void Vehicle::BeginLoading()
 	Station::Get(this->last_station_visited)->MarkTilesDirty(true);
 	this->cur_speed = 0;
 	this->MarkDirty();
+
+	/* When train station servicing is enabled, service the train here at the station it has
+	 * arrived at, instead of it being routed to a depot. This also covers scheduled stops where
+	 * there is no cargo to load, where the train would otherwise just pass through. */
+	if (this->type == VehicleType::Train && _settings_game.vehicle.train_service_at_station && this->IsServiceIntervalDue()) {
+		VehicleServiceInDepot(this);
+	}
 }
 
 /**

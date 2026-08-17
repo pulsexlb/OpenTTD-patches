@@ -200,6 +200,12 @@ STR_CONFIG_SETTING_ROADVEH_CANT_QUANTUM_TUNNEL_HELPTEXT         :即使道路长
 STR_CONFIG_SETTING_DRIVE_THROUGH_TRAIN_DEPOT                    :直通车辆段：{STRING}
 STR_CONFIG_SETTING_DRIVE_THROUGH_TRAIN_DEPOT_HELPTEXT           :启用直通车辆段{}列车可以在背对背的两个车库之间穿越，并且可以穿越两个车库之间的所有车库{}这需要启用 YAPF 寻路器
 
+STR_CONFIG_SETTING_TRAIN_SERVICE_AT_STATION                    :在车站为列车提供维修：{STRING}
+STR_CONFIG_SETTING_TRAIN_SERVICE_AT_STATION_HELPTEXT           :启用后，列车会在停靠的任何车站自动接受维修，而不会被路由到车辆段。
+
+STR_CONFIG_SETTING_TRAIN_NO_DEPOT_TEMPORARY_STOP               :禁止列车在车辆段临时停留：{STRING}
+STR_CONFIG_SETTING_TRAIN_NO_DEPOT_TEMPORARY_STOP_HELPTEXT      :启用后，列车进入车辆段时会停止，不会自行离开。在路径搜索中，除非列车当前有明确的车辆段指令，否则车辆段将被视为不可通行。
+
 STR_CONFIG_SETTING_WARN_RESTRICTION_WAIT_VEHICLE                :在列车因为寻路限制长时间等待时提示：{STRING}
 STR_CONFIG_SETTING_WARN_RESTRICTION_WAIT_VEHICLE_HELPTEXT       :启用时，如果列车长时间在路径信号处等待，给出提示
 

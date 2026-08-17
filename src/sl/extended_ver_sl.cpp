@@ -150,6 +150,8 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_BUILD_OBJECT_RATE_LIMIT,          XSCF_NULL,                1,   1, "build_object_rate_limit",          nullptr, nullptr, nullptr          },
 	{ XSLFI_LOCAL_COMPANY,                    XSCF_IGNORABLE_ALL,       1,   1, "local_company",                    saveLC,  loadLC,  nullptr          },
 	{ XSLFI_THROUGH_TRAIN_DEPOT,              XSCF_NULL,                1,   1, "drive_through_train_depot",        nullptr, nullptr, nullptr          },
+	{ XSLFI_TRAIN_SERVICE_AT_STATION,          XSCF_NULL,                1,   1, "train_service_at_station",          nullptr, nullptr, nullptr          },
+	{ XSLFI_TRAIN_NO_DEPOT_TEMPORARY_STOP,     XSCF_NULL,                1,   1, "train_no_depot_temporary_stop",     nullptr, nullptr, nullptr          },
 	{ XSLFI_MORE_VEHICLE_ORDERS,              XSCF_NULL,                1,   1, "more_veh_orders",                  nullptr, nullptr, nullptr          },
 	{ XSLFI_ORDER_FLAGS_EXTRA,                XSCF_NULL,                1,   1, "order_flags_extra",                nullptr, nullptr, nullptr          },
 	{ XSLFI_ONE_WAY_DT_ROAD_STOP,             XSCF_NULL,                1,   1, "one_way_dt_road_stop",             nullptr, nullptr, nullptr          },
