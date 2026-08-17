@@ -4825,8 +4825,10 @@ bool CanVehicleUseStation(EngineID engine_type, const Station *st)
 		case VehicleType::Aircraft:
 			if (!st->facilities.Test(StationFacility::Airport)) return false;
 			if (st->airport.type == AT_OILRIG && e->VehInfo<AircraftVehicleInfo>().subtype == AIR_HELICOPTER) return true;
-			if (!IsCompatibleAirType(e->VehInfo<AircraftVehicleInfo>().airtype, st->airport.air_type)) return false;
 
+			/* Aircraft of any air type may use any airport; the air type only affects
+			 * surface looks and taxi speed, not whether a vehicle can dock. Physical
+			 * requirements (runway for planes, apron/helipad for helicopters) still apply. */
 			if (e->VehInfo<AircraftVehicleInfo>().subtype & AIR_CTOL) return st->airport.HasLandingRunway();
 
 			return !st->airport.aprons.empty() ||
