@@ -369,6 +369,18 @@ protected:
 				this->err = EC_NO_WAY;
 				return false;
 			}
+			/* When trains are not allowed to temporarily stop in depots, make all depots impassable
+			 * in pathfinding unless the train is currently ordered to this specific depot. */
+			if (_settings_game.vehicle.train_no_depot_temporary_stop) {
+				const Train *t = Train::From(this->veh);
+				const bool allow = t->current_order.IsType(OT_GOTO_DEPOT) &&
+						(t->dest_tile == this->new_tile ||
+						 (t->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0);
+				if (!allow) {
+					this->err = EC_NO_WAY;
+					return false;
+				}
+			}
 		}
 
 		/* rail transport is possible only on allowed tiles */

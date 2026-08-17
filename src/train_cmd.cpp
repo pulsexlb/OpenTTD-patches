@@ -3631,7 +3631,7 @@ static bool CheckTrainStayInDepot(Train *v)
 		return true;
 	}
 
-	if (_settings_game.vehicle.drive_through_train_depot) {
+	if (_settings_game.vehicle.drive_through_train_depot && !_settings_game.vehicle.train_no_depot_temporary_stop) {
 		const TileIndex depot_tile = v->tile;
 		const DiagDirection depot_dir = GetRailDepotDirection(depot_tile);
 		const DiagDirection behind_depot_dir = ReverseDiagDir(depot_dir);

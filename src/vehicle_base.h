@@ -913,6 +913,7 @@ public:
 
 	bool NeedsServicing() const;
 	bool NeedsAutomaticServicing() const;
+	bool IsServiceIntervalDue() const;
 
 	/**
 	 * Determine the location for the station where the vehicle goes to next.
