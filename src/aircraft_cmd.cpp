@@ -659,6 +659,7 @@ void SetAircraftPosition(Aircraft *v, int x, int y, int z)
 	safe_y = Clamp(u->y_pos, 0, Map::MaxY() * TILE_SIZE);
 	u->z_pos = GetSlopePixelZ(safe_x, safe_y);
 	u->sprite_seq.CopyWithoutPalette(v->sprite_seq); // the shadow is never coloured
+	u->UpdateSpriteSeqBound(); // keep the shadow's dirty-rect bounds in sync with its sprite
 
 	u->UpdatePositionAndViewport();
 
@@ -668,6 +669,7 @@ void SetAircraftPosition(Aircraft *v, int x, int y, int z)
 		u->y_pos = y;
 		u->z_pos = z + ROTOR_Z_OFFSET;
 
+		u->UpdateSpriteSeqBound(); // keep the rotor/mail-shadow dirty-rect bounds in sync
 		u->UpdatePositionAndViewport();
 	}
 }

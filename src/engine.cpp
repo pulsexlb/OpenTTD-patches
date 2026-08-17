@@ -1379,11 +1379,8 @@ bool IsEngineBuildable(EngineID engine, VehicleType type, CompanyID company)
 		const Company *c = Company::Get(company);
 		if (!GetRoadTypeInfo(e->VehInfo<RoadVehicleInfo>().roadtype)->powered_roadtypes.Any(c->avail_roadtypes)) return false;
 	}
-	if (type == VehicleType::Aircraft && company != OWNER_DEITY) {
-		/* Check if the air type is available to this company */
-		const Company *c = Company::Get(company);
-		if ((GetAirTypeInfo(e->VehInfo<AircraftVehicleInfo>().airtype)->compatible_airtypes & c->avail_airtypes) == AIRTYPES_NONE) return false;
-	}
+	/* Aircraft are not gated by air type availability: any plane may be bought and used
+	 * at any airport regardless of the airport's surface. */
 
 	return true;
 }

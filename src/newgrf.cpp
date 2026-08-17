@@ -1948,11 +1948,12 @@ static void AfterLoadGRFs()
 	for (Engine *e : Engine::IterateType(VehicleType::Aircraft)) {
 		AirType airtype = GetAirTypeByLabel(_gted[e->index].airtypelabel);
 		if (airtype == INVALID_AIRTYPE) {
-			/* Air type is not available, so disable this engine */
-			e->info.climates = {};
-		} else {
-			e->VehInfo<AircraftVehicleInfo>().airtype = airtype;
+			/* No air type specified by the GRF (or an unknown air type label): default to
+			 * gravel so the vehicle remains usable at any airport. This keeps third-party
+			 * aircraft NewGRFs that do not set the air type property working. */
+			airtype = AIRTYPE_GRAVEL;
 		}
+		e->VehInfo<AircraftVehicleInfo>().airtype = airtype;
 	}
 
 	SetYearEngineAgingStops();
