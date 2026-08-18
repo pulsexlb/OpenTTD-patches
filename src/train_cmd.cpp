@@ -5423,6 +5423,7 @@ static void Couple(Train *v, Train *u)
 	 * run on the primary vehicle, so normalise to the chain heads first. */
 	v = v->First();
 	u = u->First();
+	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return;
 
 	/*
 	 * Orientation phase: v will stay the front of the merged consist
@@ -5553,6 +5554,7 @@ static Train *GetCouplePosition(Train *v, bool &reverse)
 	if (other_vehicle->First()->index == v->index) return nullptr;
 	if (!other_vehicle->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
 	Train *u = Train::From(other_vehicle)->First();
+	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return nullptr;
 	if (!TrainFitStation(u)) return nullptr;
 
 	DirDiff dir_diff = DirDifference(v->direction, u->direction);
@@ -5974,7 +5976,8 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	 * survivor, the waiting train (OT_WAIT_COUPLE) is being merged in. Stop
 	 * the moving train afterwards, the same way the caller stops it after a
 	 * regular successful couple. */
-	if (moving_front->First()->current_order.IsType(OT_GOTO_COUPLE) && v->First()->current_order.IsType(OT_WAIT_COUPLE)) {
+	if (IsTrainCouplingAllowed(moving_front->owner, v->owner) &&
+			moving_front->First()->current_order.IsType(OT_GOTO_COUPLE) && v->First()->current_order.IsType(OT_WAIT_COUPLE)) {
 		Couple(moving_front, v->First());
 		moving_front->cur_speed = 0;
 		moving_front->progress = 0;

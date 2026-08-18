@@ -911,6 +911,7 @@ struct EconomySettings {
 	bool     station_noise_level;            ///< build new airports when the town noise level is still within accepted limits
 	uint16_t town_noise_population[3];       ///< population to base decision on noise evaluation (@see town_council_tolerance)
 	bool     infrastructure_sharing[4];      ///< enable infrastructure sharing for rail/road/water/air
+	bool     allow_coupling_other_company_trains; ///< allow coupling with trains owned by other companies
 	uint     sharing_fee[4];                 ///< fees for infrastructure sharing for rail/road/water/air
 	bool     sharing_payment_in_debt;        ///< allow fee payment for companies with more loan than money (switch off to prevent MP exploits)
 	bool     allow_town_level_crossings;     ///< towns are allowed to build level crossings

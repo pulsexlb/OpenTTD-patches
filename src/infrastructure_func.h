@@ -23,6 +23,11 @@ bool CheckSharingChangePossible(VehicleType type, bool new_value);
 void HandleSharingCompanyDeletion(Owner owner);
 void UpdateAllBlockSignals(Owner owner = INVALID_OWNER);
 
+inline bool IsTrainCouplingAllowed(Owner first_owner, Owner second_owner)
+{
+	return first_owner == second_owner || _settings_game.economy.allow_coupling_other_company_trains;
+}
+
 inline bool IsInfrastructureSharingEnabled(VehicleType vt)
 {
 	return _settings_game.economy.infrastructure_sharing[to_underlying(vt)];

@@ -1253,6 +1253,7 @@ SettingsContainer &GetSettingsTree()
 			SettingsPage *sharing = ai->Add(new SettingsPage(STR_CONFIG_SETTING_SHARING));
 			{
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[0]"));
+				sharing->Add(new SettingEntry("economy.allow_coupling_other_company_trains"));
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[1]"));
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[2]"));
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[3]"));

@@ -104,7 +104,11 @@ private:
 		if (IsRailDepotTile(tile)) return false;
 		TrackdirBits tdb = TrackdirToTrackdirBits(td);
 		TrackBits tracks = TrackdirBitsToTrackBits(tdb);
-		if (HasReservedTracks(tile, tracks)) {
+
+		/* Search for a waiting train on this station tile directly, without
+		 * requiring a reservation. Block signals do not create reservations,
+		 * but a train waiting for coupling (OT_WAIT_COUPLE) is a valid target. */
+		if (IsRailStationTile(tile)) {
 			Train *best = nullptr;
 			Train *second_best = nullptr;
 			auto check_train_on_tile = [&](TileIndex t) {
@@ -118,17 +122,37 @@ private:
 					}
 				}
 			};
-			if (IsRailStationTile(tile)) {
-				TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
-				for (TileIndex st_tile = tile + diff; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
-					check_train_on_tile(st_tile);
-				}
+			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
+			for (TileIndex st_tile = tile + diff; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
+				check_train_on_tile(st_tile);
 			}
 			check_train_on_tile(tile);
 			if (best != nullptr) {
 				if (!best->current_order.IsType(OT_WAIT_COUPLE)) return false;
 				if (second_best != nullptr) return false;
 				/* look behind station too */
+				Vehicle *other_train = nullptr;
+				FollowTrainReservation(best, &other_train);
+				if (other_train != nullptr && other_train != best) return false;
+			}
+		} else if (HasReservedTracks(tile, tracks)) {
+			Train *best = nullptr;
+			Train *second_best = nullptr;
+			auto check_train_on_tile = [&](TileIndex t) {
+				for (Train *tr : VehiclesOnTile<VehicleType::Train>(t)) {
+					if (tr->vehstatus.Test(VehState::Crashed)) continue;
+					if (tr->track == TRACK_BIT_WORMHOLE || HasBit((TrackBits)tr->track, TrackdirToTrack(td))) {
+						Train *head = tr->First();
+						if (best != nullptr && head->index != best->index) second_best = head;
+						/* ALWAYS take the lowest ID (anti-desync!) */
+						if (best == nullptr || head->index < best->index) best = head;
+					}
+				}
+			};
+			check_train_on_tile(tile);
+			if (best != nullptr) {
+				if (!best->current_order.IsType(OT_WAIT_COUPLE)) return false;
+				if (second_best != nullptr) return false;
 				Vehicle *other_train = nullptr;
 				FollowTrainReservation(best, &other_train);
 				if (other_train != nullptr && other_train != best) return false;
@@ -455,6 +479,7 @@ public:
 	inline void PfFollowNode(Node &old_node)
 	{
 		TrackFollower F(Yapf().GetVehicle(), Yapf().GetCompatibleRailTypes());
+		if (_settings_game.economy.allow_coupling_other_company_trains) F.allow_other_company_rail = true;
 		if (F.Follow(old_node.GetLastTile(), old_node.GetLastTrackdir())) {
 			Yapf().AddMultipleNodes(&old_node, F);
 		}

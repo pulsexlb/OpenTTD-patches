@@ -524,6 +524,7 @@ STR_CONFIG_SETTING_ENABLE_REMOVE_WATER                          :允许移除海
 STR_CONFIG_SETTING_ENABLE_REMOVE_WATER_HELPTEXT                 :允许在场景编辑器外移除海洋和河流
 
 STR_CONFIG_SETTING_SHARING_RAIL                                 :共享铁路设施：{STRING}
+STR_CONFIG_SETTING_COUPLING_OTHER_COMPANY_TRAINS                :共享列车车底：{STRING}
 STR_CONFIG_SETTING_SHARING_ROAD                                 :共享道路设施：{STRING}
 STR_CONFIG_SETTING_SHARING_WATER                                :共享水运设施：{STRING}
 STR_CONFIG_SETTING_SHARING_AIR                                  :共享航空设施：{STRING}
