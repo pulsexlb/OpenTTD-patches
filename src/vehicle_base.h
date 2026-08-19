@@ -751,6 +751,18 @@ public:
 	inline Vehicle *First() const { return this->first; }
 
 	/**
+	 * Get the vehicle that carries the consist's identity (orders, group,
+	 * age, profit, unitnumber, etc.).
+	 *
+	 * For most vehicle types this is the same as First().  For trains,
+	 * after a ReverseTrainNoSwapVehicles the chain head may be a wagon
+	 * while the engine (which holds identity) sits elsewhere in the chain;
+	 * the Train override searches for the first engine.
+	 */
+	virtual Vehicle *Primary() { return this->First(); }
+	virtual const Vehicle *Primary() const { return this->First(); }
+
+	/**
 	 * Get the last vehicle of this vehicle chain.
 	 * @return the last vehicle of the chain.
 	 */
@@ -1158,7 +1170,21 @@ public:
 	inline Vehicle *GetFirstEnginePart()
 	{
 		Vehicle *v = this;
-		while (v->IsArticulatedPart()) v = v->Previous();
+		if (v->Previous() != nullptr) {
+			while (v->IsArticulatedPart()) {
+				Vehicle *prev = v->Previous();
+				if (prev == nullptr) break;
+				v = prev;
+			}
+		} else {
+			/* Chain may be reversed (ReverseTrainNoSwapVehicles): engine
+			 * is in the Next() direction instead. */
+			while (v->IsArticulatedPart()) {
+				Vehicle *next = v->Next();
+				if (next == nullptr) break;
+				v = next;
+			}
+		}
 		return v;
 	}
 
@@ -1169,7 +1195,21 @@ public:
 	inline const Vehicle *GetFirstEnginePart() const
 	{
 		const Vehicle *v = this;
-		while (v->IsArticulatedPart()) v = v->Previous();
+		if (v->Previous() != nullptr) {
+			while (v->IsArticulatedPart()) {
+				const Vehicle *prev = v->Previous();
+				if (prev == nullptr) break;
+				v = prev;
+			}
+		} else {
+			/* Chain may be reversed (ReverseTrainNoSwapVehicles): engine
+			 * is in the Next() direction instead. */
+			while (v->IsArticulatedPart()) {
+				const Vehicle *next = v->Next();
+				if (next == nullptr) break;
+				v = next;
+			}
+		}
 		return v;
 	}
 

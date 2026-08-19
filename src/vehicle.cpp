@@ -1921,7 +1921,7 @@ void CallVehicleTicks()
 		Money repair_cost = (v->breakdowns_since_last_service * vehicle_new_value / static_cast<uint>(_settings_game.vehicle.repair_cost)) + 1;
 		if (v->age > v->max_age) repair_cost <<= 1;
 		CommandCost cost(type, repair_cost);
-		v->First()->profit_this_year -= cost.GetCost() << 8;
+		Train::From(v)->First()->profit_this_year -= cost.GetCost() << 8;
 		SubtractMoneyFromCompany(v->owner, cost);
 		if (v->owner == _local_company) {
 			ShowCostOrIncomeAnimation(v->x_pos, v->y_pos, v->z_pos, cost.GetCost());
@@ -2399,7 +2399,7 @@ void CheckVehicleBreakdown(Vehicle *v)
 	if ((uint32_t) (0xffff - v->reliability) * breakdown_scaling_x2 * chance > GB(r1, 0, 24) * 10 * 2) {
 		uint32_t r2 = Random();
 		v->breakdown_ctr = GB(r1, 24, 6) + 0xF;
-		if (v->type == VehicleType::Train) Train::From(v)->First()->flags.Set(VehicleRailFlag::ConsistBreakdown);
+		if (v->type == VehicleType::Train) Train::From(v->First())->flags.Set(VehicleRailFlag::ConsistBreakdown);
 		v->breakdown_delay = GB(r2, 0, 7) + 0x80;
 		v->breakdown_chance = 0;
 		DetermineBreakdownType(v, r2);
@@ -2468,18 +2468,18 @@ bool Vehicle::HandleBreakdown()
 						/* FALL THROUGH */
 						case BREAKDOWN_EM_STOP:
 							CheckBreakdownFlags(t->First());
-							t->First()->flags.Set(VehicleRailFlag::BreakdownStopped);
+							Train::From(t->First())->flags.Set(VehicleRailFlag::BreakdownStopped);
 							break;
 						case BREAKDOWN_BRAKE_OVERHEAT:
 							CheckBreakdownFlags(t->First());
-							t->First()->flags.Set(VehicleRailFlag::BreakdownStopped);
+							Train::From(t->First())->flags.Set(VehicleRailFlag::BreakdownStopped);
 							break;
 						case BREAKDOWN_LOW_SPEED:
 							CheckBreakdownFlags(t->First());
-							t->First()->flags.Set(VehicleRailFlag::BreakdownSpeed);
+							Train::From(t->First())->flags.Set(VehicleRailFlag::BreakdownSpeed);
 							break;
 						case BREAKDOWN_LOW_POWER:
-							t->First()->flags.Set(VehicleRailFlag::BreakdownPower);
+							Train::From(t->First())->flags.Set(VehicleRailFlag::BreakdownPower);
 							break;
 						default: NOT_REACHED();
 					}
@@ -3284,7 +3284,7 @@ const Livery *GetEngineLivery(EngineID engine_type, CompanyID company, EngineID 
 
 	if (livery_setting == LIT_ALL || (livery_setting == LIT_COMPANY && company == _local_company)) {
 		if (v != nullptr && !ignore_group) {
-			const Group *g = Group::GetIfValid(v->First()->group_id);
+			const Group *g = Group::GetIfValid(Train::From(v)->First()->group_id);
 			if (g != nullptr) {
 				/* Traverse parents until we find a livery or reach the top */
 				while (!g->livery.in_use.Any({Livery::Flag::Primary, Livery::Flag::Secondary}) && g->parent != GroupID::Invalid()) {

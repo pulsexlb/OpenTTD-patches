@@ -736,7 +736,7 @@ uint8_t GetBestFittingSubType(const Vehicle *v_from, Vehicle *v_for, CargoType d
  */
 const Vehicle *GetMostSeverelyBrokenEngine(const Train *v)
 {
-	assert(v->IsFrontEngine());
+	assert(v->IsFrontEngine() || v->IsFrontWagon());
 	const Vehicle *w = v;
 	uint8_t most_severe_type = 255;
 	for (const Vehicle *u = v; u != nullptr; u = u->Next()) {

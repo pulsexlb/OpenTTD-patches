@@ -1382,7 +1382,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 	if (ret.Failed()) return ret;
 
 	/* Crashed trains can only be cloned before cleanup begins. */
-	if (v->type == VehicleType::Train && (!v->IsFrontEngine() || (Train::From(v)->vehstatus.Test(VehState::Crashed) && Train::From(v)->crash_anim_pos >= 4400))) {
+	if (v->type == VehicleType::Train && (!Train::From(v)->IsFrontEngine() && !Train::From(v)->IsFrontWagon() || (Train::From(v)->vehstatus.Test(VehState::Crashed) && Train::From(v)->crash_anim_pos >= 4400))) {
 		return CommandCost(STR_ERROR_VEHICLE_IS_DESTROYED);
 	}
 
@@ -1438,7 +1438,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 				}
 			}
 
-			if (v->type == VehicleType::Train && !v->IsFrontEngine()) {
+			if (v->type == VehicleType::Train && !Train::From(v)->IsFrontEngine() && !Train::From(v)->IsFrontWagon()) {
 				/* this s a train car
 				 * add this unit to the end of the train */
 				CommandCost result = Command<Commands::MoveRailVehicle>::Do(flags, w->index, w_rear->index, MoveRailVehicleFlags::MoveChain);

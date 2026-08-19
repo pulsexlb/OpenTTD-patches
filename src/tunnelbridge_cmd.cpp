@@ -3440,7 +3440,7 @@ static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileInde
 					if (frame != TILE_SIZE) return {};
 					Train *t = Train::From(v);
 					t->track = TRACK_BIT_WORMHOLE;
-					t->First()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
+					Train::From(t->First())->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 
 					/* Do not call PrepareToEnterBridge because that also increments z_pos if
 					 * GVF_GOINGUP_BIT is set.
@@ -3531,7 +3531,7 @@ static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileInde
 					t->SetMovingDirection(bridge_dir);
 					t->track = TRACK_BIT_WORMHOLE;
 				}
-				t->First()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
+				Train::From(t->First())->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 				ClrBit(t->gv_flags, GVF_GOINGUP_BIT);
 				ClrBit(t->gv_flags, GVF_GOINGDOWN_BIT);
 				return VehicleEnterTileState::EnteredWormhole;

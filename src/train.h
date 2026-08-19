@@ -203,6 +203,31 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	ExpensesType GetExpenseType(bool income) const override { return income ? ExpensesType::TrainRevenue : ExpensesType::TrainRun; }
 	void PlayLeaveStationSound(bool force = false) const override;
 	bool IsPrimaryVehicle() const override { return this->IsFrontEngine() || this->IsFrontWagon(); }
+
+	/**
+	 * Get the vehicle that carries the consist's identity (orders, group,
+	 * age, profit, etc.).  This is normally the FrontEngine; after a
+	 * ReverseTrainNoSwapVehicles the engine sits behind a FrontWagon at
+	 * the chain head, so we must search the chain.
+	 *
+	 * Unlike First() (which always returns the chain head), Primary()
+	 * returns the first engine in the chain.  For free-wagon chains
+	 * it falls back to First().
+	 */
+	Vehicle *Primary() override
+	{
+		for (Train *t = this->First(); t != nullptr; t = t->Next()) {
+			if (t->IsEngine()) return t;
+		}
+		return this->First();
+	}
+	const Vehicle *Primary() const override
+	{
+		for (const Train *t = this->First(); t != nullptr; t = t->Next()) {
+			if (t->IsEngine()) return t;
+		}
+		return this->First();
+	}
 	void GetImage(Direction direction, EngineImageType image_type, VehicleSpriteSeq *result) const override;
 	int GetDisplaySpeed() const override { return this->gcache.last_speed; }
 	int GetDisplayMaxSpeed() const override { return this->vcache.cached_max_speed; }
@@ -407,7 +432,7 @@ protected: // These functions should not be called outside acceleration code.
 	 */
 	inline uint16_t GetBreakdownSpeed() const
 	{
-		assert(this->IsFrontEngine());
+		assert(this->IsFrontEngine() || this->IsFrontWagon());
 		uint16_t speed = UINT16_MAX;
 
 		for (const Train *w = this; w != nullptr; w = w->Next()) {

@@ -1091,9 +1091,10 @@ void SetTrainGroupID(Train *v, GroupID new_g)
  */
 void UpdateTrainGroupID(Train *v)
 {
-	assert(v->IsFrontEngine() || v->IsFreeWagon() || v->IsFrontWagon());
+	assert(v->IsFrontEngine() || v->IsFreeWagon() || v->IsFrontWagon() || v->IsEngine());
 
-	GroupID new_g = v->IsFrontEngine() ? v->group_id : (GroupID)DEFAULT_GROUP;
+	/* Use the primary vehicle's group (may be a FrontWagon after chain reversal). */
+	GroupID new_g = (v->IsFrontEngine() || v->IsFrontWagon() || v->IsEngine()) ? v->group_id : (GroupID)DEFAULT_GROUP;
 	for (Vehicle *u = v; u != nullptr; u = u->Next()) {
 		if (u->IsEngineCountable()) UpdateNumEngineGroup(u, u->group_id, new_g);
 

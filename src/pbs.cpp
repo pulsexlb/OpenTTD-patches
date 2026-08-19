@@ -1063,7 +1063,7 @@ static int ScanTrainPositionForLookAheadStation(Train *moving_front, TileIndex s
 				uint forward_length = BaseStation::GetByTile(tile)->GetPlatformLength(tile, forward_dir);
 				uint reverse_length = BaseStation::GetByTile(tile)->GetPlatformLength(tile, ReverseDiagDir(forward_dir));
 
-				TrainReservationLookAhead &lookahead = *(moving_front->First()->lookahead);
+				TrainReservationLookAhead &lookahead = *(Train::From(moving_front->First())->lookahead);
 
 				if (u == moving_front) {
 					for (uint i = 1; i < forward_length; i++) {

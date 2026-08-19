@@ -224,7 +224,7 @@ void CheckTrainsLengths()
  */
 void CheckBreakdownFlags(Train *v)
 {
-	dbg_assert(v->IsFrontEngine());
+	dbg_assert(v->IsFrontEngine() || v->IsFrontWagon());
 	/* clear the flags we're gonna check first, we'll set them again later (if applicable) */
 	v->flags.Reset(VehicleRailFlag::BreakdownBraking);
 	v->flags.Reset(VehicleRailFlagsIsBroken);
@@ -258,7 +258,7 @@ uint16_t GetTrainVehicleMaxSpeed(const Train *u, const RailVehicleInfo &rvi_u, c
 {
 	const uint16_t base_speed = GetVehicleProperty(u, PROP_TRAIN_SPEED, rvi_u.max_speed);
 	uint16_t speed = base_speed;
-	if (u->flags.Test(VehicleRailFlag::NeedRepair) && front->IsFrontEngine()) {
+	if (u->flags.Test(VehicleRailFlag::NeedRepair) && (front->IsFrontEngine() || front->IsFrontWagon())) {
 		for (uint i = 0; i < u->critical_breakdown_count; i++) {
 			speed = std::min<uint16_t>(speed - (speed / (front->tcache.cached_num_engines + 2)) + 1, speed);
 		}
@@ -267,7 +267,7 @@ uint16_t GetTrainVehicleMaxSpeed(const Train *u, const RailVehicleInfo &rvi_u, c
 	/* clamp speed to be no less than lower of 5mph and 1/8 of base speed */
 	speed = std::max<uint16_t>(speed, std::min<uint16_t>(5, (base_speed + 7) >> 3));
 
-	if (u->flags.Test(VehicleRailFlag::HasHitRoadVehicle) && front->IsFrontEngine()) {
+	if (u->flags.Test(VehicleRailFlag::HasHitRoadVehicle) && (front->IsFrontEngine() || front->IsFrontWagon())) {
 		speed = std::min<uint16_t>(speed, 30);
 	}
 	return speed;
@@ -319,8 +319,16 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 
 	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon() || this->IsFrontWagon());
 
-	const RailVehicleInfo *rvi_v = RailVehInfo(this->engine_type);
-	EngineID first_engine = this->IsFrontEngine() ? this->engine_type : EngineID::Invalid();
+	/* Find the first real engine in the chain.  After ReverseTrainNoSwapVehicles
+	 * the First() may be a wagon (GVSF_FRONT_WAGON); the engine keeps its
+	 * GVSF_FRONT flag and sits elsewhere in the chain. */
+	const Train *first_engine_veh = this;
+	for (const Train *u = this; u != nullptr; u = u->Next()) {
+		if (u->IsEngine() && !u->IsArticulatedPart()) { first_engine_veh = u; break; }
+	}
+
+	const RailVehicleInfo *rvi_v = RailVehInfo(first_engine_veh->engine_type);
+	EngineID first_engine = first_engine_veh->IsEngine() ? first_engine_veh->engine_type : EngineID::Invalid();
 	this->gcache.cached_total_length = 0;
 	this->compatible_railtypes = {};
 	this->tcache.cached_num_engines = 0;
@@ -498,7 +506,7 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 	this->CargoChanged();
 
 	this->UpdateAcceleration();
-	if (this->IsFrontEngine()) {
+	if (this->IsFrontEngine() || this->IsFrontWagon()) {
 		if (!HasBit(this->subtype, GVSF_VIRTUAL)) SetWindowDirty(WindowClass::VehicleDetails, this->index);
 		InvalidateWindowData(WindowClass::VehicleRefit, this->index, VIWD_CONSIST_CHANGED);
 		InvalidateWindowData(WindowClass::VehicleOrders, this->index, VIWD_CONSIST_CHANGED);
@@ -1306,14 +1314,14 @@ static bool IsTrainOnNonRealisticBrakingTrack(const Train *t)
 /** Update acceleration of the train from the cached power and weight. */
 void Train::UpdateAcceleration()
 {
-	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon());
+	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon() || this->IsFrontWagon());
 
 	uint power = this->gcache.cached_power;
 	uint weight = this->gcache.cached_weight;
 	assert(weight != 0);
 	this->acceleration = Clamp(power / weight * 4, 1, 255);
 
-	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && !IsTrainOnNonRealisticBrakingTrack(this) && this->IsFrontEngine()) {
+	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && !IsTrainOnNonRealisticBrakingTrack(this) && (this->IsFrontEngine() || this->IsFrontWagon())) {
 		this->tcache.cached_tflags |= TCF_RL_BRAKING;
 		switch (_settings_game.vehicle.train_acceleration_model) {
 			default: NOT_REACHED();
@@ -1988,11 +1996,13 @@ static void NormaliseSubtypes(Train *chain)
 		chain->SetFrontEngine();
 	}
 
-	/* Now clear the bits for the rest of the chain */
+	/* Now clear the "front" bits for the rest of the chain.
+	 * Preserve GVSF_FRONT on actual engines — after ReverseTrainNoSwapVehicles
+	 * the engine may sit behind a GVSF_FRONT_WAGON at the chain head. */
 	for (Train *t = chain->Next(); t != nullptr; t = t->Next()) {
 		t->ClearFreeWagon();
-		t->ClearFrontEngine();
 		t->ClearFrontWagon();
+		if (!t->IsEngine()) t->ClearFrontEngine();
 	}
 }
 
@@ -2404,7 +2414,7 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 			DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, src->index.base());
 			SetWindowDirty(WindowClass::Company, _current_company);
 
-			if (src_head != nullptr && src_head->IsFrontEngine()) {
+			if (src_head != nullptr && (src_head->IsFrontEngine() || src_head->IsFrontWagon())) {
 				/* Cases #?b: Transfer order, unit number and other stuff
 				 * to the new front engine. */
 				src_head->orders = src->orders;
@@ -2529,7 +2539,7 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 		/* First normalise the sub types of the chain. */
 		NormaliseSubtypes(new_head);
 
-		if (v == first && !sell_chain && new_head != nullptr && new_head->IsFrontEngine()) {
+		if (v == first && !sell_chain && new_head != nullptr && (new_head->IsFrontEngine() || new_head->IsFrontWagon())) {
 			if (v->IsEngine()) {
 				/* We are selling the front engine. In this case we want to
 				 * 'give' the order, unit number and such to the new head. */
@@ -2791,6 +2801,213 @@ void ReverseTrainSwapVehicles(Train *v)
 
 	for (Train *u = v; u != nullptr; u = u->Next()) {
 		UpdateStatusAfterSwap(u);
+	}
+
+	/* The front vehicle changes when flipping; invalidate the tick caches or the new front will not be ticked. */
+	InvalidateVehicleTickCaches();
+}
+
+/**
+ * Swap all "identity" fields between two vehicles.
+ *
+ * Identity fields are those that belong to the primary vehicle (First()) of
+ * a consist — orders, finances, age, service history, group, speed state,
+ * etc.  Physical per-vehicle fields (position, cargo, sprite, caches) are
+ * NOT swapped; they stay on the original object.
+ *
+ * After the call, @a new_head carries the identity that @a old_head had
+ * and vice-versa.  The shared-order chain is updated so that order-list
+ * pointers stay consistent.
+ *
+ * @param old_head The previous First() (will become Last()).
+ * @param new_head The new First() (was Last()).
+ */
+static void CopyVehicleIdentityFields(Train *old_head, Train *new_head)
+{
+	/* ---- Orders: transfer with correct first_shared ----
+	 *
+	 * Orders are TRANSFERRED (not copied) because OrderList::first_shared
+	 * can only point to one vehicle.  We use AddToShared + RemoveFromShared
+	 * to properly update the shared chain. */
+	OrderList *old_orders = old_head->orders;
+	OrderList *new_orders = new_head->orders;
+	bool old_shared = (old_orders != nullptr && old_head->IsOrderListShared());
+	bool new_shared = (new_orders != nullptr && new_head->IsOrderListShared());
+
+	/* Handle shared chains first (uses original pointers). */
+	if (old_shared) old_head->RemoveFromShared();
+	if (new_shared) new_head->RemoveFromShared();
+
+	/* Transfer non-shared orders using AddToShared+RemoveFromShared
+	 * (must happen BEFORE swapping pointers so AddToShared can read orders). */
+	if (old_orders != nullptr && !old_shared) {
+		new_head->AddToShared(old_head);      /* chain: old_head → new_head */
+		old_head->RemoveFromShared();          /* first_shared → new_head */
+	}
+	if (new_orders != nullptr && !new_shared) {
+		old_head->AddToShared(new_head);      /* chain: new_head → old_head */
+		new_head->RemoveFromShared();          /* first_shared → old_head */
+	}
+
+	/* For shared orders, re-attach to the remaining chain. */
+	if (old_shared && old_orders != nullptr) {
+		Vehicle *chain = old_orders->GetFirstSharedVehicle();
+		if (chain != nullptr) new_head->AddToShared(chain);
+	}
+	if (new_shared && new_orders != nullptr) {
+		Vehicle *chain = new_orders->GetFirstSharedVehicle();
+		if (chain != nullptr) old_head->AddToShared(chain);
+	}
+
+	/* Now swap the pointers (after shared chain is fixed). */
+	old_head->orders = new_orders;
+	new_head->orders = old_orders;
+
+	/* ---- Copy identity fields from old_head (engine) to new_head (wagon).
+	 * old_head keeps its own values — this is critical so the engine
+	 * retains valid identity when later dragged off in the depot. ---- */
+
+	/* Current order & order indices */
+	new_head->current_order             = old_head->current_order;
+	new_head->cur_implicit_order_index  = old_head->cur_implicit_order_index;
+	new_head->cur_real_order_index      = old_head->cur_real_order_index;
+
+	/* Financial */
+	new_head->profit_this_year          = old_head->profit_this_year;
+	new_head->profit_last_year          = old_head->profit_last_year;
+	new_head->profit_lifetime           = old_head->profit_lifetime;
+	new_head->value                     = old_head->value;
+
+	/* Age & service */
+	new_head->build_year                = old_head->build_year;
+	new_head->age                       = old_head->age;
+	new_head->economy_age               = old_head->economy_age;
+	new_head->max_age                   = old_head->max_age;
+	new_head->date_of_last_service      = old_head->date_of_last_service;
+	new_head->date_of_last_service_newgrf = old_head->date_of_last_service_newgrf;
+	new_head->reliability               = old_head->reliability;
+	new_head->reliability_spd_dec       = old_head->reliability_spd_dec;
+
+	/* Breakdown */
+	new_head->breakdown_ctr             = old_head->breakdown_ctr;
+	new_head->breakdown_delay           = old_head->breakdown_delay;
+	new_head->breakdowns_since_last_service = old_head->breakdowns_since_last_service;
+	new_head->breakdown_chance          = old_head->breakdown_chance;
+	new_head->breakdown_severity        = old_head->breakdown_severity;
+	new_head->breakdown_type            = old_head->breakdown_type;
+	new_head->breakdown_chance_factor   = old_head->breakdown_chance_factor;
+
+	/* Identification — do NOT copy unitnumber to avoid duplicates.
+	 * NormaliseTrainHead will assign a fresh number to the new First(). */
+	new_head->group_id                  = old_head->group_id;
+
+	/* Status — copy vehstatus so the wagon inherits VehState::Stopped */
+	new_head->vehstatus                 = old_head->vehstatus;
+
+	/* Station history */
+	new_head->last_station_visited      = old_head->last_station_visited;
+	new_head->last_loading_station      = old_head->last_loading_station;
+	new_head->last_loading_tick         = old_head->last_loading_tick;
+
+	/* Miscellaneous */
+	new_head->dest_tile                 = old_head->dest_tile;
+
+	/* ---- Train-specific fields ---- */
+	new_head->flags                     = old_head->flags;
+	new_head->force_proceed             = old_head->force_proceed;
+	new_head->critical_breakdown_count  = old_head->critical_breakdown_count;
+	new_head->speed_restriction         = old_head->speed_restriction;
+	new_head->signal_speed_restriction  = old_head->signal_speed_restriction;
+	new_head->decouple_part             = old_head->decouple_part;
+}
+
+/**
+ * Reverse the facing direction of a train without swapping vehicle positions.
+ *
+ * Unlike ReverseTrainSwapVehicles which physically swaps vehicle positions
+ * (x, y, z, tile, track), this function only:
+ * 1. Reverses each vehicle's direction field
+ * 2. Reverses the doubly-linked list order (next↔previous, first/last updated)
+ * 3. Toggles GVF_GOINGUP/GVF_GOINGDOWN for each vehicle
+ * 4. Swaps identity fields so the new First() carries the old First()'s data
+ *
+ * After the call, what was Last() becomes First() and vice versa.
+ * Each vehicle stays at its current physical position.
+ *
+ * @param v First vehicle in chain to change.
+ */
+static void ReverseTrainNoSwapVehicles(Train *v)
+{
+	/* Collect all vehicles in chain order before touching the list. */
+	std::vector<Train *> vehicles;
+	for (Train *u = v; u != nullptr; u = u->Next()) {
+		vehicles.push_back(u);
+	}
+
+	/* Reverse direction and slope flags for each vehicle. */
+	for (Train *u : vehicles) {
+		u->direction = ReverseDir(u->direction);
+		if (HasBit(u->gv_flags, GVF_GOINGUP_BIT) || HasBit(u->gv_flags, GVF_GOINGDOWN_BIT)) {
+			ToggleBit(u->gv_flags, GVF_GOINGDOWN_BIT);
+			ToggleBit(u->gv_flags, GVF_GOINGUP_BIT);
+		}
+	}
+
+	/* Isolate each vehicle (SetNext handles first/last/previous and tagged ptrs). */
+	for (size_t i = 0; i + 1 < vehicles.size(); i++) {
+		vehicles[i]->SetNext(nullptr);
+	}
+
+	/* Re-attach in reverse order: old Last→...→old First.
+	 * Each SetNext call correctly updates first/last/previous and tagged ptrs. */
+	for (size_t i = vehicles.size(); i > 1; ) {
+		i--;
+		vehicles[i]->SetNext(vehicles[i - 1]);
+	}
+
+	Train *old_head = vehicles.front();
+	Train *new_head = vehicles.back();
+
+	/* Set GVSF_FRONT_WAGON on the new First() so IsPrimaryVehicle() returns
+	 * true for the chain head.  Clear GVSF_FRONT from the engine so that
+	 * only ONE vehicle has IsPrimaryVehicle()==true (OpenTTD invariant). */
+	if (old_head->IsFrontEngine()) {
+		old_head->ClearFrontEngine();
+		new_head->SetFrontWagon();
+	} else if (old_head->IsFrontWagon()) {
+		old_head->ClearFrontWagon();
+		new_head->SetFrontWagon();
+	} else if (old_head->IsFreeWagon()) {
+		old_head->ClearFreeWagon();
+		new_head->SetFreeWagon();
+	}
+
+	/* Swap identity fields (orders, age, profit, group, etc.) from the
+	 * engine to the new First() (wagon).  This ensures First() carries
+	 * all identity data so the entire window/UI/save system works. */
+	CopyVehicleIdentityFields(old_head, new_head);
+
+	/* Reset order indices on the engine — its orders were transferred to
+	 * the wagon, so the old indices are stale and would crash ProcessOrders. */
+	old_head->cur_implicit_order_index = 0;
+	old_head->cur_real_order_index = 0;
+
+	/* Ensure the engine is marked as stopped (it was in a depot). */
+	old_head->vehstatus.Set(VehState::Stopped);
+
+	/* Recalculate caches — ConsistChanged must be called on First()
+	 * because CargoChanged() asserts this->First() == this.
+	 * ConsistChanged finds the real engine via IsEngine() iteration. */
+	new_head->ConsistChanged(CCF_COUPLE);
+
+	/* Visual updates. Vehicles haven't moved so we must NOT call
+	 * UpdateStatusAfterSwap (which invokes VehicleEnterTile and corrupts
+	 * tile-vehicle occupancy for stationary vehicles). */
+	for (Train *u = new_head; u != nullptr; u = u->Next()) {
+		u->InvalidateImageCache();
+		u->UpdateIsDrawn();
+		u->UpdatePosition();
+		u->UpdateViewport(true, true);
 	}
 
 	/* The front vehicle changes when flipping; invalidate the tick caches or the new front will not be ticked. */
@@ -5399,17 +5616,16 @@ static bool TryTrainCouple(Train *v, Train *u)
 }
 
 /**
- * Reverse a train for coupling by physically flipping the consist.
+ * Reverse a train for coupling by reversing the chain direction and vehicle
+ * facing, without moving vehicles from their physical positions.
  *
- * The primary/engine relationship must be preserved: for an articulated engine
- * the front (First) stays the engine and its parts stay parts. Swapping the
- * engine/part roles here leaves the consist front as a non-engine articulated
- * part ("no power") and corrupts later decouples, so only the physical vehicle
- * positions/directions are swapped, matching the standard depot flip.
+ * After the call, what was Last() becomes First(). Each vehicle stays at its
+ * current (x, y, z, tile, track) but its direction is reversed and the
+ * doubly-linked list is reversed so the other end of the train is the new head.
  */
 static void ReverseTrainForCouple(Train *v)
 {
-	ReverseTrainSwapVehicles(v);
+	ReverseTrainNoSwapVehicles(v);
 }
 
 /**
@@ -5450,7 +5666,7 @@ static void Couple(Train *v, Train *u)
 		u = u->First();
 	}
 
-	v->IncrementImplicitOrderIndex();
+	v->First()->IncrementImplicitOrderIndex();
 	ProcessOrders(v);
 	v = v->First();
 
@@ -5464,14 +5680,26 @@ static void Couple(Train *v, Train *u)
 	}
 
 
-	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
-
-	CloseWindowById(WindowClass::VehicleView, u->index);
-	CloseWindowById(WindowClass::VehicleOrders, u->index);
-	CloseWindowById(WindowClass::VehicleRefit, u->index);
-	CloseWindowById(WindowClass::VehicleDetails, u->index);
-	CloseWindowById(WindowClass::VehicleTimetable, u->index);
-	DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
+	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore.
+	 * Close ALL windows for both consists: ReverseTrainNoSwapVehicles may have
+	 * changed which vehicle is First(), so cached window_number references to
+	 * the old head become stale and trigger assert(this == this->First()). */
+	for (Train *w = v; w != nullptr; w = w->Next()) {
+		CloseWindowById(WindowClass::VehicleView, w->index);
+		CloseWindowById(WindowClass::VehicleOrders, w->index);
+		CloseWindowById(WindowClass::VehicleRefit, w->index);
+		CloseWindowById(WindowClass::VehicleDetails, w->index);
+		CloseWindowById(WindowClass::VehicleTimetable, w->index);
+		DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, w->index.base());
+	}
+	for (Train *w = u; w != nullptr; w = w->Next()) {
+		CloseWindowById(WindowClass::VehicleView, w->index);
+		CloseWindowById(WindowClass::VehicleOrders, w->index);
+		CloseWindowById(WindowClass::VehicleRefit, w->index);
+		CloseWindowById(WindowClass::VehicleDetails, w->index);
+		CloseWindowById(WindowClass::VehicleTimetable, w->index);
+		DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, w->index.base());
+	}
 	SetWindowDirty(WindowClass::Company, _current_company);
 
 	DeleteVehicleOrders(u);
@@ -5490,7 +5718,7 @@ static void Couple(Train *v, Train *u)
 	NormaliseTrainHead(v, CCF_COUPLE);
 
 	/* The train is now one consist again: it is no longer a decoupled part. */
-	v->First()->decouple_part = 0;
+	v->decouple_part = 0;
 
 	/* [FIX-couple] Post-couple flag cleanup. Direction is NOT touched here: it
 	 * is maintained by the standard movement pipeline (AdvanceWagonsAfterCouple
@@ -5662,7 +5890,7 @@ int Train::UpdateSpeed(MaxSpeedInfo max_speed_info)
  */
 static bool HandlePossibleBreakdowns(Train *v)
 {
-	dbg_assert(v->IsFrontEngine());
+	dbg_assert(v->IsFrontEngine() || v->IsFrontWagon());
 	for (Train *u = v; u != nullptr; u = u->Next()) {
 		if (u->breakdown_ctr != 0 && (u->IsEngine() || u->IsMultiheaded())) {
 			if (u->breakdown_ctr <= 2) {
