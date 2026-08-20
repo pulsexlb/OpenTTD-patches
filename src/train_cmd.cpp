@@ -1988,21 +1988,43 @@ static void NormaliseSubtypes(Train *chain)
 	/* We must be the first in the chain. */
 	assert(chain->Previous() == nullptr);
 
-	/* Set the appropriate bits for the first in the chain. */
+	/* Set the appropriate bits for the first in the chain.
+	 * After ReverseTrainNoSwapVehicles the chain head may be an
+	 * articulated part (GVSF_ARTICULATED_PART) that is neither
+	 * IsWagon() nor IsEngine().  For NewGRF articulated wagons
+	 * that lack the GVSF_WAGON bit, mark them as FrontWagon so
+	 * the rest of the codebase treats the chain as a valid train. */
+	bool has_front = false;
 	if (chain->IsWagon()) {
 		if (!chain->IsFrontWagon()) chain->SetFreeWagon();
-	} else {
-		assert(chain->IsEngine());
+		has_front = true;
+	} else if (chain->IsEngine()) {
 		chain->SetFrontEngine();
+		has_front = true;
+	} else if (chain->IsArticulatedPart()) {
+		/* NewGRF articulated wagon without GVSF_WAGON — mark as FrontWagon. */
+		chain->SetFrontWagon();
+		has_front = true;
 	}
 
 	/* Now clear the "front" bits for the rest of the chain.
-	 * Preserve GVSF_FRONT on actual engines — after ReverseTrainNoSwapVehicles
-	 * the engine may sit behind a GVSF_FRONT_WAGON at the chain head. */
+	 * Only the chain head should have a "front" flag — restoring the
+	 * original invariant that the rest of the codebase relies on. */
 	for (Train *t = chain->Next(); t != nullptr; t = t->Next()) {
 		t->ClearFreeWagon();
+		t->ClearFrontEngine();
 		t->ClearFrontWagon();
-		if (!t->IsEngine()) t->ClearFrontEngine();
+	}
+
+	/* If no vehicle has a "front" flag yet (chain head was an articulated
+	 * part), set the first engine as FrontEngine. */
+	if (!has_front) {
+		for (Train *t = chain; t != nullptr; t = t->Next()) {
+			if (t->IsEngine()) {
+				t->SetFrontEngine();
+				break;
+			}
+		}
 	}
 }
 
@@ -2379,6 +2401,23 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		if (original_dst_head_front_engine) GroupStatistics::CountVehicle(original_dst_head, -1);
 
 		/* First normalise the sub types of the chains. */
+		fprintf(stderr, "[DBG] CmdMoveRailVehicle: before NormaliseSubtypes\n");
+		if (src_head != nullptr) {
+			fprintf(stderr, "  src_head=%p idx=%d subtype=%d IsEngine=%d IsWagon=%d IsFrontEngine=%d IsFrontWagon=%d\n",
+				(void*)src_head, (int)src_head->index.base(), (int)src_head->subtype,
+				(int)src_head->IsEngine(), (int)src_head->IsWagon(),
+				(int)src_head->IsFrontEngine(), (int)src_head->IsFrontWagon());
+			for (Train *t = src_head->Next(); t != nullptr; t = t->Next()) {
+				fprintf(stderr, "    next=%p idx=%d subtype=%d IsEngine=%d IsWagon=%d\n",
+					(void*)t, (int)t->index.base(), (int)t->subtype,
+					(int)t->IsEngine(), (int)t->IsWagon());
+			}
+		}
+		if (dst_head != nullptr) {
+			fprintf(stderr, "  dst_head=%p idx=%d subtype=%d IsEngine=%d IsWagon=%d\n",
+				(void*)dst_head, (int)dst_head->index.base(), (int)dst_head->subtype,
+				(int)dst_head->IsEngine(), (int)dst_head->IsWagon());
+		}
 		NormaliseSubtypes(src_head);
 		NormaliseSubtypes(dst_head);
 
@@ -2865,7 +2904,12 @@ static void CopyVehicleIdentityFields(Train *old_head, Train *new_head)
 
 	/* ---- Copy identity fields from old_head (engine) to new_head (wagon).
 	 * old_head keeps its own values — this is critical so the engine
-	 * retains valid identity when later dragged off in the depot. ---- */
+	 * retains valid identity when later dragged off in the depot.
+	 *
+	 * NOTE: engine_type is NOT copied — it controls the vehicle's sprite
+	 * and NewGRF properties.  Copying it would make the articulated part
+	 * look like an engine.  The name/display issue must be fixed in the
+	 * UI layer (use Primary() for name lookups). */
 
 	/* Current order & order indices */
 	new_head->current_order             = old_head->current_order;
@@ -2944,8 +2988,19 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 		vehicles.push_back(u);
 	}
 
+	fprintf(stderr, "[REVERSE-DBG] START: v=%p idx=%d First()=%p DrivingBackwards=%d count=%zu\n",
+		(void*)v, (int)v->index.base(), (void*)v->First(),
+		(int)v->vehicle_flags.Test(VehicleFlag::DrivingBackwards), vehicles.size());
+	for (Train *u : vehicles) {
+		fprintf(stderr, "  [pre] idx=%d tile=%u dir=%d DrivingBwd=%d First()=%p Next()=%p IsArticPart=%d\n",
+			(int)u->index.base(), (unsigned)u->tile.base(), (int)u->direction,
+			(int)u->vehicle_flags.Test(VehicleFlag::DrivingBackwards),
+			(void*)u->First(), (void*)u->Next(), (int)u->IsArticulatedPart());
+	}
+
 	/* Reverse direction and slope flags for each vehicle. */
 	for (Train *u : vehicles) {
+		fprintf(stderr, "[REVERSE-DBG] dir reverse idx=%d old_dir=%d new_dir=%d\n", (int)u->index.base(), (int)u->direction, (int)ReverseDir(u->direction));
 		u->direction = ReverseDir(u->direction);
 		if (HasBit(u->gv_flags, GVF_GOINGUP_BIT) || HasBit(u->gv_flags, GVF_GOINGDOWN_BIT)) {
 			ToggleBit(u->gv_flags, GVF_GOINGDOWN_BIT);
@@ -2953,64 +3008,81 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 		}
 	}
 
-	/* Isolate each vehicle (SetNext handles first/last/previous and tagged ptrs). */
-	for (size_t i = 0; i + 1 < vehicles.size(); i++) {
-		vehicles[i]->SetNext(nullptr);
+	/* Update within-tile pixel positions to match the flipped direction.
+	 * Vehicles stay on their tiles; only the sub-tile offset changes. */
+	for (Train *u : vehicles) {
+		DiagDirection old_d = DirToDiagDir(ReverseDir(u->direction));
+		DiagDirection new_d = DirToDiagDir(u->direction);
+		int old_base_x = TileX(u->tile) * TILE_SIZE + _vehicle_initial_x_fract[old_d];
+		int old_base_y = TileY(u->tile) * TILE_SIZE + _vehicle_initial_y_fract[old_d];
+		int new_base_x = TileX(u->tile) * TILE_SIZE + _vehicle_initial_x_fract[new_d];
+		int new_base_y = TileY(u->tile) * TILE_SIZE + _vehicle_initial_y_fract[new_d];
+		u->x_pos = u->x_pos - old_base_x + new_base_x;
+		u->y_pos = u->y_pos - old_base_y + new_base_y;
+		u->tile = TileVirtXY(u->x_pos, u->y_pos);
 	}
 
-	/* Re-attach in reverse order: old Last→...→old First.
-	 * Each SetNext call correctly updates first/last/previous and tagged ptrs. */
-	for (size_t i = vehicles.size(); i > 1; ) {
-		i--;
-		vehicles[i]->SetNext(vehicles[i - 1]);
+	/* Reverse the chain order at articulated-unit granularity.  An articulated
+	 * unit is one non-articulated-part vehicle (engine or wagon) followed by
+	 * its consecutive articulated parts.  Reversing the whole train must keep
+	 * each unit internally ordered as [head, part, part…] (the head must always
+	 * precede its own parts) and only reverse the order of the units.
+	 *
+	 * Chain reversal must happen BEFORE flipping DrivingBackwards so that the
+	 * new next-pointers are in place when the flag change makes the movement
+	 * system traverse via Previous() in the reversed order. */
+	std::vector<Train *> new_order;
+	new_order.reserve(vehicles.size());
+	std::vector<std::vector<Train *>> units;
+	for (Train *u : vehicles) {
+		if (!u->IsArticulatedPart() || units.empty()) {
+			units.emplace_back();
+		}
+		units.back().push_back(u);
+	}
+	for (auto it = units.rbegin(); it != units.rend(); ++it) {
+		for (Train *u : *it) {
+			new_order.push_back(u);
+		}
+	}
+	for (Train *u : new_order) u->SetNext(nullptr);
+	for (size_t i = 0; i + 1 < new_order.size(); i++) {
+		new_order[i]->SetNext(new_order[i + 1]);
 	}
 
-	Train *old_head = vehicles.front();
-	Train *new_head = vehicles.back();
-
-	/* Set GVSF_FRONT_WAGON on the new First() so IsPrimaryVehicle() returns
-	 * true for the chain head.  Clear GVSF_FRONT from the engine so that
-	 * only ONE vehicle has IsPrimaryVehicle()==true (OpenTTD invariant). */
-	if (old_head->IsFrontEngine()) {
-		old_head->ClearFrontEngine();
-		new_head->SetFrontWagon();
-	} else if (old_head->IsFrontWagon()) {
-		old_head->ClearFrontWagon();
-		new_head->SetFrontWagon();
-	} else if (old_head->IsFreeWagon()) {
-		old_head->ClearFreeWagon();
-		new_head->SetFreeWagon();
+	/* Chain reversal keeps the physical layout consistent.  DrivingBackwards
+	 * is NOT flipped here: the standard coupling path (Couple -> TryTrainCouple)
+	 * preserves each train's driving state, and the combined train continues
+	 * moving in its original direction with the movement system traversing via
+	 * Next() (DrivingBackwards=false). */
+	for (Train *u : vehicles) {
+		u->vehicle_flags.Reset(VehicleFlag::DrivingBackwards);
 	}
 
-	/* Swap identity fields (orders, age, profit, group, etc.) from the
-	 * engine to the new First() (wagon).  This ensures First() carries
-	 * all identity data so the entire window/UI/save system works. */
-	CopyVehicleIdentityFields(old_head, new_head);
+	fprintf(stderr, "[REVERSE-DBG] AFTER chain reverse + DrivingBackwards flip: First()=%p DrivingBackwards=%d\n",
+		(void*)new_order.front(), (int)new_order.front()->vehicle_flags.Test(VehicleFlag::DrivingBackwards));
+	for (Train *u : new_order) {
+		fprintf(stderr, "  [post] idx=%d tile=%u dir=%d DrivingBwd=%d First()=%p Next()=%p GetMvNext=%p x=%d y=%d\n",
+			(int)u->index.base(), (unsigned)u->tile.base(), (int)u->direction,
+			(int)u->vehicle_flags.Test(VehicleFlag::DrivingBackwards),
+			(void*)u->First(), (void*)u->Next(), (void*)u->GetMovingNext(), u->x_pos, u->y_pos);
+	}
 
-	/* Reset order indices on the engine — its orders were transferred to
-	 * the wagon, so the old indices are stale and would crash ProcessOrders. */
-	old_head->cur_implicit_order_index = 0;
-	old_head->cur_real_order_index = 0;
-
-	/* Ensure the engine is marked as stopped (it was in a depot). */
-	old_head->vehstatus.Set(VehState::Stopped);
-
-	/* Recalculate caches — ConsistChanged must be called on First()
-	 * because CargoChanged() asserts this->First() == this.
-	 * ConsistChanged finds the real engine via IsEngine() iteration. */
-	new_head->ConsistChanged(CCF_COUPLE);
+	/* Recalculate caches. ConsistChanged must be called on the NEW First()
+	 * because CargoChanged() asserts this->First() == this. */
+	Train *new_first = new_order.front();
+	new_first->ConsistChanged(CCF_COUPLE);
 
 	/* Visual updates. Vehicles haven't moved so we must NOT call
 	 * UpdateStatusAfterSwap (which invokes VehicleEnterTile and corrupts
 	 * tile-vehicle occupancy for stationary vehicles). */
-	for (Train *u = new_head; u != nullptr; u = u->Next()) {
+	for (Train *u : vehicles) {
 		u->InvalidateImageCache();
 		u->UpdateIsDrawn();
 		u->UpdatePosition();
 		u->UpdateViewport(true, true);
 	}
 
-	/* The front vehicle changes when flipping; invalidate the tick caches or the new front will not be ticked. */
 	InvalidateVehicleTickCaches();
 }
 
@@ -5283,18 +5355,39 @@ static bool CheckReverseTrain(const Train *consist)
  */
 static void AdvanceWagonsAfterCouple(Train *v)
 {
-	int difference = v->CalcNextVehicleOffset();
-	int diff_x = abs(v->x_pos - v->Next()->x_pos);
-	int diff_y = abs(v->y_pos - v->Next()->y_pos);
-	int real_diff = std::max(diff_x, diff_y) - difference;
+	/* v is the vehicle at the coupling joint (moving_front's predecessor
+	 * in the original chain).  We need to advance all vehicles after v.
+	 * When DrivingBackwards=true, GetMovingNext() uses Previous(), so we
+	 * must traverse consistently. */
+	Train *current = v;
 
-	/* Crash-exemption couples can meet with the wagons already a pixel or two
-	 * overlapped (the approach distance check was skipped by a too-large step).
-	 * real_diff < 0 means the coupled chain is too close, not too far: do not
-	 * push it anywhere, the regular movement loop fixes the spacing as soon as
-	 * the consist starts moving. */
-	if (real_diff > 0) {
-		for (int i = 0; i < real_diff; i++) TrainController(v->Next(), nullptr);
+	while (true) {
+		Train *next = current->GetMovingNext();
+		if (next == nullptr) break;
+
+		int difference = current->CalcNextVehicleOffset();
+		int diff_x = abs(current->x_pos - next->x_pos);
+		int diff_y = abs(current->y_pos - next->y_pos);
+		int real_diff = std::max(diff_x, diff_y) - difference;
+
+		fprintf(stderr, "[ADVANCE-DBG] current=%p idx=%d DrivingBwd=%d next=%p idx_next=%d dir=%d tile=%u offset=%d real_diff=%d diff_x=%d diff_y=%d\n",
+			(void*)current, (int)current->index.base(), (int)current->vehicle_flags.Test(VehicleFlag::DrivingBackwards),
+			(void*)next, (int)next->index.base(), (int)next->direction, (unsigned)next->tile.base(),
+			difference, real_diff, diff_x, diff_y);
+
+		/* Crash-exemption couples can meet with the wagons already a pixel or two
+		 * overlapped (the approach distance check was skipped by a too-large step).
+		 * real_diff < 0 means the coupled chain is too close, not too far: do not
+		 * push it anywhere, the regular movement loop fixes the spacing as soon as
+		 * the consist starts moving. */
+		if (real_diff > 0) {
+			for (int i = 0; i < real_diff; i++) {
+				fprintf(stderr, "[ADVANCE-DBG] TrainController iter %d on idx=%d\n", i, (int)next->index.base());
+				TrainController(next, nullptr);
+			}
+		}
+
+		current = next;
 	}
 }
 
@@ -5616,6 +5709,42 @@ static bool TryTrainCouple(Train *v, Train *u)
 }
 
 /**
+ * Same as TryTrainCouple but accepts a pre-captured v_last instead of
+ * recomputing it via v->Last().  This is needed for same-direction
+ * coupling where v has already been reversed and v->Last() would point
+ * to the wrong vehicle.
+ */
+static bool TryTrainCoupleSameDirection(Train *v, Train *v_last, Train *u)
+{
+	TrainList original_src;
+	TrainList original_dst;
+
+	MakeTrainBackup(original_src, v);
+	MakeTrainBackup(original_dst, u);
+
+	Train *u_head = u;
+
+	ArrangeTrains(&v, v_last, &u_head, u, true);
+
+	CommandCost ret = CheckTrainAttachment(v);
+	bool ok = v->CanConsistChange(CCF_ARRANGE_CHECK);
+
+	if (ret.Failed() || !ok) {
+		/* Restore the train we had. */
+		RestoreTrainBackup(original_src);
+		RestoreTrainBackup(original_dst);
+
+		v->ConsistChanged(CCF_ARRANGE_STATION);
+		u->ConsistChanged(CCF_ARRANGE_STATION);
+		return false;
+	}
+
+	/* Coupling removes a train front; invalidate the tick caches or the merged chain will be ticked twice. */
+	InvalidateVehicleTickCaches();
+	return true;
+}
+
+/**
  * Reverse a train for coupling by reversing the chain direction and vehicle
  * facing, without moving vehicles from their physical positions.
  *
@@ -5641,6 +5770,30 @@ static void Couple(Train *v, Train *u)
 	u = u->First();
 	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return;
 
+	/* DEBUG: dump state before coupling */
+	auto dump_chain = [](const char *label, Train *t) {
+		fprintf(stderr, "[COUPLE-DBG] %s chain: First()=%p idx=%d dir=%d subtype=%d IsEngine=%d IsWagon=%d IsFrontEngine=%d IsFrontWagon=%d orders=%p unitnumber=%d age=%d max_age=%d\n",
+			label, (void*)t->First(), (int)t->First()->index.base(), (int)t->First()->direction,
+			(int)t->First()->subtype, (int)t->First()->IsEngine(), (int)t->First()->IsWagon(),
+			(int)t->First()->IsFrontEngine(), (int)t->First()->IsFrontWagon(),
+			(void*)t->First()->orders, (int)t->First()->unitnumber,
+			(int)t->First()->age.base(), (int)t->First()->max_age.base());
+		for (Train *w = t->First()->Next(); w != nullptr; w = w->Next()) {
+			fprintf(stderr, "  next=%p idx=%d dir=%d subtype=%d IsEngine=%d IsWagon=%d age=%d\n",
+				(void*)w, (int)w->index.base(), (int)w->direction,
+				(int)w->subtype, (int)w->IsEngine(), (int)w->IsWagon(), (int)w->age.base());
+		}
+	};
+	dump_chain("BEFORE v", v);
+	dump_chain("BEFORE u", u);
+
+	/* DEBUG: check u chain length */
+	{
+		int cnt = 0;
+		for (Train *w = u; w != nullptr; w = w->Next()) cnt++;
+		fprintf(stderr, "[COUPLE-DBG] u chain length BEFORE couple = %d\n", cnt);
+	}
+
 	/*
 	 * Orientation phase: v will stay the front of the merged consist
 	 * (ClearFrontWagon/ClearFrontEngine + NormaliseTrainHead below), so both
@@ -5653,30 +5806,97 @@ static void Couple(Train *v, Train *u)
 	/* Which end of v reaches the joint: v is the moving train and u is
 	 * stationary, so v's own driving state decides it. If v is driving
 	 * backwards its tail meets u (no flip needed); otherwise its head meets
-	 * u, so v must be turned around and approach tail-first. */
-	if (!v->IsDrivingBackwards()) {
-		ReverseTrainForCouple(v);
-		v = v->First();
-	}
-
-	/* u must face the (possibly reversed) v within 45 degrees to couple as-is. */
-	DirDiff dir_diff = DirDifference(v->direction, u->direction);
-	if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
-		ReverseTrainForCouple(u);
-		u = u->First();
-	}
-
-	v->First()->IncrementImplicitOrderIndex();
-	ProcessOrders(v);
-	v = v->First();
-
+	 * u, so v must be turned around and approach tail-first.
+	 *
+	 * Capture v_last BEFORE reversal: after no-displacement reversal the
+	 * chain order changes but physical positions don't, so v->Last() would
+	 * refer to the wrong vehicle afterwards. */
 	Train *v_last = v->Last();
 
-	if (!TryTrainCouple(v, u)) {
-		if (v->owner == _local_company) {
-			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
+	DirDiff dir_diff = DirDifference(v->direction, u->direction);
+	DirDiff original_dir_diff = dir_diff;
+	fprintf(stderr, "[COUPLE-DBG] dir_diff in Couple = %d (Same=%d Right45=%d Left45=%d)\n", (int)dir_diff, (int)DirDiff::Same, (int)DirDiff::Right45, (int)DirDiff::Left45);
+
+	/* Same-direction coupling: both trains already face the same way.
+	 * Do NOT reverse — let them couple while continuing in their original
+	 * direction.  The spacing system will close any gap after coupling.
+	 *
+	 * For same-direction coupling, v approaches u from behind, so u must end
+	 * up in front of v in the merged consist.  Swap the ArrangeTrains args
+	 * so that u is the destination (stays in place) and v is the source
+	 * (appended behind u). */
+	bool same_direction_couple = (dir_diff == DirDiff::Same);
+	UnitID u_old_unitnumber = 0;
+	Train *dst = v;
+	Train *src = u;
+	Train *dst_last = v_last;
+
+	if (!same_direction_couple) {
+		/* Opposite-direction: reverse v to approach u head-on. */
+		if (!v->IsDrivingBackwards()) {
+			ReverseTrainForCouple(v);
+			v = v->First();
+			dir_diff = DirDifference(v->direction, u->direction);
+			fprintf(stderr, "[COUPLE-DBG] dir_diff after v reverse = %d\n", (int)dir_diff);
 		}
-		return;
+
+		u_old_unitnumber = u->unitnumber;
+		if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
+			ReverseTrainForCouple(u);
+			u = u->First();
+		}
+
+		/* After coupling, v stays in front. Use original TryTrainCouple. */
+		if (!TryTrainCouple(v, u)) {
+			if (v->owner == _local_company) {
+				AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
+			}
+			return;
+		}
+	} else {
+		/* Same-direction: v approaches u from behind, so u must end up in FRONT
+		 * of v in the merged consist. Call TryTrainCouple with swapped args
+		 * so u (the stationary train) becomes the combined head.
+		 *
+		 * Save v's original orders AND current_order BEFORE the swap —
+		 * CopyVehicleIdentityFields transfers u's orders into v, but for
+		 * same-direction coupling the combined train should retain the
+		 * APPROACHING train's (v's) orders and continue its schedule. */
+		OrderList *saved_v_orders = v->orders;
+		Order  saved_v_current_order = v->current_order;
+		VehicleOrderID saved_v_cur_implicit = v->cur_implicit_order_index;
+		Train *src_chain_head = v; /* track the source chain head before merge */
+		if (!TryTrainCouple(u, v)) {
+			if (v->owner == _local_company) {
+				AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
+			}
+			return;
+		}
+		/* TryTrainCouple returns the combined train in its first arg. */
+		v = u;
+		/* Restore the approaching train's original orders and current order
+		 * so the combined train continues v's schedule, not u's.
+		 * Clear current_order so ProcessOrders advances past the couple command. */
+		v->orders = saved_v_orders;
+		v->current_order.Free();
+		v->cur_implicit_order_index = saved_v_cur_implicit;
+		ProcessOrders(v);
+		/* The merged source (original v, now part of the combined train) retains
+		 * IsFrontEngine/IsFrontWagon from before coupling, making it a second
+		 * primary vehicle that ticks with zeroed cached_weight → SIGFPE in
+		 * GetAcceleration(). Clear those flags so only the actual chain head
+		 * (idx=0) drives the combined train. */
+		src_chain_head->ClearFrontEngine();
+		src_chain_head->ClearFrontWagon();
+	}
+
+	/* DEBUG: dump chain immediately after TryTrainCouple */
+	fprintf(stderr, "[COUPLE-DBG] AFTER TryTrainCouple: v_first=%p idx=%d v_last=%p\n",
+		(void*)v->First(), (int)v->First()->index.base(), (void*)v->Last());
+	for (Train *w = v; w != nullptr; w = w->Next()) {
+		fprintf(stderr, "  [post-couple] idx=%d tile=%u dir=%d DrivingBwd=%d Next=%p\n",
+			(int)w->index.base(), (unsigned)w->tile.base(), (int)w->direction,
+			(int)w->vehicle_flags.Test(VehicleFlag::DrivingBackwards), (void*)w->Next());
 	}
 
 
@@ -5702,7 +5922,19 @@ static void Couple(Train *v, Train *u)
 	}
 	SetWindowDirty(WindowClass::Company, _current_company);
 
-	DeleteVehicleOrders(u);
+		/* In same-direction coupling, u and v point to the same vehicle
+		 * (the combined head). DeleteVehicleOrders(u) would destroy the
+		 * orders we just restored. Skip it — the combined head keeps its
+		 * orders and only the appended chain's head (src_chain_head, idx=17)
+		 * had its orders transferred into the shared list by CopyVehicleIdentityFields. */
+		if (!same_direction_couple) {
+			DeleteVehicleOrders(u);
+		}
+	/* Release the saved unitnumber — u->unitnumber may be 0 after
+	 * CopyVehicleIdentityFields cleared it during the reversal. */
+	if (u_old_unitnumber != 0) {
+		Company::Get(u->owner)->freeunits[u->type].ReleaseID(u_old_unitnumber);
+	}
 	u->ReleaseUnitNumber();
 	GroupStatistics::CountVehicle(u, -1);
 
@@ -5712,8 +5944,15 @@ static void Couple(Train *v, Train *u)
 	u->profit_last_year = 0;
 	u->profit_this_year = 0;
 
-	u->ClearFrontWagon();
-	u->ClearFrontEngine();
+	/* In opposite-direction coupling, u is the appended train and needs its
+	 * primary flags cleared so only v drives the combined train. In
+	 * same-direction coupling, TryTrainCouple was called with swapped args so
+	 * u points to the combined head (idx=0) — clearing its flags would break
+	 * the train. Those flags were already handled by src_chain_head->Clear...() above. */
+	if (!same_direction_couple) {
+		u->ClearFrontWagon();
+		u->ClearFrontEngine();
+	}
 
 	NormaliseTrainHead(v, CCF_COUPLE);
 
@@ -5742,6 +5981,11 @@ static void Couple(Train *v, Train *u)
 		v->First()->vehicle_flags.Set(VehicleFlag::HaveSlot);
 	}
 
+	/* The artic-unit reversal + DrivingBackwards flip keeps chain order
+	 * consistent with physical layout (the movement system traverses via
+	 * Previous() when DrivingBackwards=true).  AdvanceWagonsAfterCouple
+	 * repositions wagons using TrainController which recomputes per-vehicle
+	 * direction from the track every tick. */
 	AdvanceWagonsAfterCouple(v_last);
 	InvalidateWindowClassesData(WindowClass::TrainList);
 	/* The physical chain order is now correct (orientation is fixed before
@@ -5750,6 +5994,24 @@ static void Couple(Train *v, Train *u)
 	 * only sets Reversing; the actual turnaround still happens at the usual
 	 * spot in the movement handler (speed zero + Reversing flag). */
 	if (CheckReverseTrain(v)) v->flags.Set(VehicleRailFlag::Reversing);
+
+	/* DEBUG: dump state after coupling */
+	{
+		int cnt = 0;
+		for (Train *w = v; w != nullptr; w = w->Next()) cnt++;
+		fprintf(stderr, "[COUPLE-DBG] combined chain length AFTER couple = %d\n", cnt);
+	}
+	fprintf(stderr, "[COUPLE-DBG] AFTER coupled chain: First()=%p idx=%d dir=%d subtype=%d IsEngine=%d IsWagon=%d IsFrontEngine=%d IsFrontWagon=%d orders=%p unitnumber=%d age=%d\n",
+		(void*)v->First(), (int)v->First()->index.base(), (int)v->First()->direction,
+		(int)v->First()->subtype, (int)v->First()->IsEngine(), (int)v->First()->IsWagon(),
+		(int)v->First()->IsFrontEngine(), (int)v->First()->IsFrontWagon(),
+		(void*)v->First()->orders, (int)v->First()->unitnumber, (int)v->First()->age.base());
+	for (Train *w = v->First()->Next(); w != nullptr; w = w->Next()) {
+		fprintf(stderr, "  next=%p idx=%d dir=%d subtype=%d IsEngine=%d IsWagon=%d age=%d orders=%p unitnumber=%d\n",
+			(void*)w, (int)w->index.base(), (int)w->direction,
+			(int)w->subtype, (int)w->IsEngine(), (int)w->IsWagon(),
+			(int)w->age.base(), (void*)w->orders, (int)w->unitnumber);
+	}
 }
 
 /**
@@ -5816,6 +6078,7 @@ static Train *GetCouplePosition(Train *v, bool &reverse)
  */
 static bool TrainCoupleHandler(Train *v)
 {
+	/* Standard case: find waiting train (OT_WAIT_COUPLE). */
 	bool reverse;
 	Train *u = GetCouplePosition(v, reverse);
 	if (u == nullptr) return false;
@@ -6692,6 +6955,9 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 
 		GetNewVehiclePosResult gp = GetNewVehiclePos(v);
+		fprintf(stderr, "[TC-DBG] idx=%d old_dir=%d DrivingBwd=%d tile=%u x=%d y=%d gp_old=%u gp_new=%u\n",
+			(int)v->index.base(), (int)v->direction, (int)v->vehicle_flags.Test(VehicleFlag::DrivingBackwards),
+			(unsigned)v->tile.base(), v->x_pos, v->y_pos, (unsigned)gp.old_tile.base(), (unsigned)gp.new_tile.base());
 		if (!(v->track & TRACK_BIT_WORMHOLE) && gp.old_tile != gp.new_tile &&
 				IsRailBridgeHeadTile(gp.old_tile) && DiagdirBetweenTiles(gp.old_tile, gp.new_tile) == GetTunnelBridgeDirection(gp.old_tile)) {
 			/* left a bridge headtile into a wormhole */
@@ -6899,6 +7165,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						chosen_track = _connecting_track[enterdir][exitdir];
 					}
 					chosen_track &= bits;
+					if (chosen_track == TRACK_BIT_NONE) goto invalid_rail;
 				}
 
 				/* Update XY to reflect the entrance to the new tile, and select the direction to use */
@@ -6972,9 +7239,12 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				update_signals_crossing = true;
 
 				Direction moving_direction = v->GetMovingDirection();
+				fprintf(stderr, "[TC-DBG] SetDir idx=%d old_dir=%d moving_dir=%d chosen_dir=%d DrivingBwd=%d\n",
+					(int)v->index.base(), (int)v->direction, (int)moving_direction, (int)chosen_dir, (int)v->vehicle_flags.Test(VehicleFlag::DrivingBackwards));
 				if (chosen_dir != moving_direction) {
 					notify_direction_changed(moving_direction, chosen_dir);
 					v->SetMovingDirection(chosen_dir);
+					fprintf(stderr, "[TC-DBG] SetDir AFTER idx=%d new_dir=%d\n", (int)v->index.base(), (int)v->direction);
 				}
 
 				if (v->IsMovingFront()) {
@@ -7177,6 +7447,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 		}
 
 		/* update image of train, as well as delta XY */
+		fprintf(stderr, "[TC-DBG] UpdateDeltaXY on idx=%d dir=%d DrivingBwd=%d\n", (int)v->index.base(), (int)v->direction, (int)v->vehicle_flags.Test(VehicleFlag::DrivingBackwards));
 		v->UpdateDeltaXY();
 
 		v->x_pos = gp.x;
@@ -7320,6 +7591,7 @@ invalid_rail:
 	if (prev != nullptr) return true; //FatalError("Disconnecting train");
 
 reverse_train_direction:
+	fprintf(stderr, "[TC-DBG] reverse_train_direction idx=%d old_dir=%d new_dir=%d\n", (int)v->index.base(), (int)old_direction, (int)v->direction);
 	if (old_trackbits != TrackBits{0xFF} && (v->track ^ old_trackbits) & TRACK_BIT_WORMHOLE) {
 		/* Entering/exiting wormhole failed/aborted, back out changes to vehicle direction and track */
 		v->track = old_trackbits;
@@ -7905,6 +8177,10 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		/* Loop until the train has finished moving. */
 		for (;;) {
 			j -= adv_spd;
+			fprintf(stderr, "[MVT-DBG] tick idx=%d tile=%u dir=%d DrivingBwd=%d cur_spd=%d adv_spd=%d\n",
+				(int)moving_front->index.base(), (unsigned)moving_front->tile.base(),
+				(int)moving_front->direction, (int)moving_front->vehicle_flags.Test(VehicleFlag::DrivingBackwards),
+				(int)consist->cur_speed, adv_spd);
 			TrainController(moving_front, nullptr);
 			moving_front = moving_front->GetMovingFront();
 			/* Couple now? The order lives on the primary vehicle (First). When

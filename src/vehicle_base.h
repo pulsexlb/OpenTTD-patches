@@ -658,6 +658,14 @@ public:
 	 */
 	bool IsStoppedInDepot() const
 	{
+		if (this != this->First()) {
+			fprintf(stderr, "IsStoppedInDepot CRASH: this=%p idx=%d != First()=%p idx=%d\n",
+				(void*)this, (int)this->index.base(), (void*)this->First(), (int)this->First()->index.base());
+			for (const Vehicle *u = this->First(); u != nullptr; u = u->Next()) {
+				fprintf(stderr, "  veh=%p idx=%d subtype=%d IsArtic=%d\n",
+					(void*)u, (int)u->index.base(), (int)u->subtype, (int)u->IsArticulatedPart());
+			}
+		}
 		assert(this == this->First());
 		/* Free wagons have no VehState::Stopped state */
 		if (this->IsPrimaryVehicle() && !this->vehstatus.Test(VehState::Stopped)) return false;
@@ -665,6 +673,10 @@ public:
 	}
 
 	bool IsWaitingInDepot() const {
+		if (this != this->First()) {
+			fprintf(stderr, "IsWaitingInDepot CRASH: this=%p idx=%d != First()=%p idx=%d\n",
+				(void*)this, (int)this->index.base(), (void*)this->First(), (int)this->First()->index.base());
+		}
 		assert(this == this->First());
 		return this->current_order.IsType(OT_WAITING) && this->IsChainInDepot();
 	}
