@@ -5920,6 +5920,22 @@ static void Couple(Train *v, Train *u)
 		v->current_order.Free();
 		v->cur_implicit_order_index = saved_v_cur_implicit;
 		ProcessOrders(v);
+		/* ProcessOrders does not advance past an IMPLICIT order (it returns
+		 * false when order[type] == OT_IMPLICIT). Manually advance past the
+		 * couple command so that order[cur_implicit+1] points to the real
+		 * next order — required for SplitOrders to find OT_DECOUPLE at the
+		 * station later. */
+		if (v->GetNumOrders() > 0) {
+			VehicleOrderID next_idx = v->cur_implicit_order_index + 1;
+			if (next_idx >= v->GetNumOrders()) next_idx = 0;
+			const Order *next_order = v->GetOrder(next_idx);
+			if (next_order != nullptr && !next_order->IsType(OT_IMPLICIT)) {
+				v->cur_implicit_order_index = next_idx;
+				v->cur_real_order_index = next_idx;
+				v->current_order = *next_order;
+				UpdateOrderDest(v, next_order);
+			}
+		}
 		/* The merged source (original v, now part of the combined train) retains
 		 * IsFrontEngine/IsFrontWagon from before coupling, making it a second
 		 * primary vehicle that ticks with zeroed cached_weight → SIGFPE in
