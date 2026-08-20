@@ -5570,6 +5570,14 @@ static void CreateWaitForCoupleOrder(Train *v)
 static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 {
 	Order *after_decouple_flags = v->orders->GetOrderAt(v->cur_implicit_order_index + 1);
+	fprintf(stderr, "[SPLIT-DBG] v=%d u=%d cur_imp=%d total_orders=%d after_type=%d\n",
+		(int)v->index.base(), u != nullptr ? (int)u->index.base() : -1, (int)v->cur_implicit_order_index,
+		(int)v->orders->GetNumOrders(), after_decouple_flags != nullptr ? (int)after_decouple_flags->GetType() : -1);
+	for (VehicleOrderID i = 0; i < v->orders->GetNumOrders(); i++) {
+		const Order *o = v->orders->GetOrderAt(i);
+		fprintf(stderr, "[SPLIT-DBG]   order[%d]: type=%d dest=%u decouple_flags=%d\n", (int)i, (int)o->GetType(), (unsigned)o->GetDestination().base(), (int)o->GetDecouple());
+	}
+	fflush(stderr);
 	assert(after_decouple_flags->GetType() == OT_DECOUPLE);
 
 	if (v != u) {
@@ -5853,6 +5861,23 @@ static void Couple(Train *v, Train *u)
 			}
 			return;
 		}
+		/* After opposite-direction couple, we need to advance past the OT_GOTO_COUPLE
+		 * command. ProcessOrders cannot do this because UpdateOrderDest returns false
+		 * for OT_GOTO_COUPLE (the default case). Instead we manually advance the order
+		 * indices and set the next order, mimicking what SwitchToNextOrder would do. */
+		fprintf(stderr, "[COUPLE-DBG] BEFORE order advance: idx=%d cur_implicit=%d cur_real=%d current_order=%d dest_tile=%u\n", (int)v->index.base(), (int)v->cur_implicit_order_index, (int)v->cur_real_order_index, (int)v->current_order.GetType(), (unsigned)v->dest_tile.base());
+		if (v->GetNumOrders() > 0) {
+			VehicleOrderID next_idx = v->cur_implicit_order_index + 1;
+			if (next_idx >= v->GetNumOrders()) next_idx = 0;
+			const Order *next_order = v->GetOrder(next_idx);
+			if (next_order != nullptr && !next_order->IsType(OT_IMPLICIT)) {
+				v->cur_implicit_order_index = next_idx;
+				v->cur_real_order_index = next_idx;
+				v->current_order = *next_order;
+				UpdateOrderDest(v, next_order);
+			}
+		}
+		fprintf(stderr, "[COUPLE-DBG] AFTER order advance: idx=%d cur_implicit=%d cur_real=%d current_order=%d dest_tile=%u\n", (int)v->index.base(), (int)v->cur_implicit_order_index, (int)v->cur_real_order_index, (int)v->current_order.GetType(), (unsigned)v->dest_tile.base());
 	} else {
 		/* Same-direction: v approaches u from behind, so u must end up in FRONT
 		 * of v in the merged consist. Call TryTrainCouple with swapped args
