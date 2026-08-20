@@ -4569,6 +4569,24 @@ void Vehicle::SetNext(Vehicle *next)
 	}
 }
 
+void Vehicle::SetPrevious(Vehicle *prev)
+{
+	dbg_assert(this != prev);
+	if (this->previous != nullptr) {
+		this->previous->next = nullptr;
+#if OTTD_UPPER_TAGGED_PTR
+		VehiclePoolOps::SetIsNonFrontVehiclePtr(_vehicle_pool.GetRawRef(this->previous->index.base()), false);
+#endif
+	}
+	this->previous = prev;
+	if (this->previous != nullptr) {
+		this->previous->next = this;
+#if OTTD_UPPER_TAGGED_PTR
+		VehiclePoolOps::SetIsNonFrontVehiclePtr(_vehicle_pool.GetRawRef(this->previous->index.base()), true);
+#endif
+	}
+}
+
 /**
  * Gets the running cost of a vehicle that can be used in string processing.
  * @return the vehicle's running cost

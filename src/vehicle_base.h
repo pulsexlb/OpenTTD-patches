@@ -740,6 +740,7 @@ public:
 	Money GetDisplayProfitLifetime() const { return ((this->profit_lifetime + this->profit_this_year) >> 8); }
 
 	void SetNext(Vehicle *next);
+	void SetPrevious(Vehicle *prev);
 	inline void SetFirst(Vehicle *f) { this->first = f; }
 
 	/**
