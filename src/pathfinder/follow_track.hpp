@@ -50,7 +50,6 @@ struct CFollowTrackT {
 	bool                is_station;    ///< last turn passed station
 	int                 tiles_skipped; ///< number of skipped tunnel or station tiles
 	ErrorCode           err;
-	bool                allow_other_company_rail; ///< when true, the rail owner/infrastructure check is skipped (used by the couple pathfinder)
 	RailTypes           railtypes;
 
 	inline CFollowTrackT(const VehicleType *v = nullptr, RailTypes railtype_override = INVALID_RAILTYPES)
@@ -88,7 +87,6 @@ struct CFollowTrackT {
 		this->is_tunnel = false;
 		this->tiles_skipped = 0;
 		this->err = EC_NONE;
-		this->allow_other_company_rail = false;
 		this->railtypes = railtype_override;
 	}
 
@@ -388,7 +386,7 @@ protected:
 		}
 
 		/* rail transport is possible only on allowed tiles */
-		if (IsRailTT() && !this->allow_other_company_rail && !IsInfraTileUsageAllowed(::VehicleType::Train, this->veh_owner, this->new_tile)) {
+		if (IsRailTT() && !IsInfraTileUsageAllowed(::VehicleType::Train, this->veh_owner, this->new_tile)) {
 			/* different owner */
 			this->err = EC_NO_WAY;
 			return false;

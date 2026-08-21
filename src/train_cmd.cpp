@@ -3699,10 +3699,15 @@ static bool CheckTrainStayInDepot(Train *v)
 	}
 
 	/* Only leave when we can reserve a path to our destination. */
-	if (seg_state == SigSegState::Path && !TryPathReserve(v) && v->force_proceed == TFP_NONE) {
-		/* No path and no force proceed. */
-		MarkTrainAsStuck(v);
-		return true;
+	if (seg_state == SigSegState::Path && v->force_proceed == TFP_NONE) {
+		fprintf(stderr, "depot: seg=Path, tile=(%u,%u) order=%d trying TryPathReserve\n",
+			TileX(v->tile), TileY(v->tile), (int)v->current_order.GetType());
+		bool ok = TryPathReserve(v);
+		fprintf(stderr, "depot: TryPathReserve result=%d\n", (int)ok);
+		if (!ok) {
+			MarkTrainAsStuck(v);
+			return true;
+		}
 	}
 
 	SetDepotReservation(v->tile, true);
@@ -4042,6 +4047,7 @@ static Track DoTrainPathfind(const Train *v, TileIndex tile, DiagDirection enter
 static Track DoTrainCouplePathfind(const Train *v, bool do_track_reservation)
 {
 	Track ret = YapfTrainCoupleTrack(v, !do_track_reservation);
+	fprintf(stderr, "couple_pf: train=%u order=%d ret=%d\n", v->index, (int)v->current_order.GetType(), (int)ret);
 	return ret;
 }
 

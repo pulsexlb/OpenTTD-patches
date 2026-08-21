@@ -293,34 +293,33 @@ public:
 	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
-		if (!IsRailStationTile(tile)) {
-			/* Non-station tiles: require reservation as usual. */
-			TrackdirBits tdb = TrackdirToTrackdirBits(td);
-			if (!HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb))) return false;
-			Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
-			if (t == nullptr) return false;
-			if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, t->owner)) return false;
-			if (!t->current_order.IsType(OT_WAIT_COUPLE)) return false;
-			if (!CheckOrderLoad(t) || !CheckOrderCargoType(t) || !CheckNumberOfWagons(t) || !CheckOrderSlot(t) || !TrainFitStation(t)) return false;
-			return true;
+		if (IsRailStationTile(tile)) {
+			/* Station tile: search the entire platform for a waiting train
+			 * directly, without requiring a reservation. Cross-company trains
+			 * that arrived via block signals do not leave reservations. */
+			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
+			for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
+				for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
+					if (t->vehstatus.Test(VehState::Crashed)) continue;
+					if (t->First() != t) continue;
+					if (!t->current_order.IsType(OT_WAIT_COUPLE)) continue;
+					if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, t->owner)) continue;
+					if (!CheckOrderLoad(t) || !CheckOrderCargoType(t) || !CheckNumberOfWagons(t) || !CheckOrderSlot(t) || !TrainFitStation(t)) continue;
+					return true;
+				}
+			}
+			return false;
 		}
 
-		/* Station tile: search the entire platform for a waiting train,
-		 * without requiring a reservation. The pathfinder may only touch
-		 * one tile of the platform, but the waiting train's vehicles span
-		 * multiple platform tiles. */
-		TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
-		for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
-			for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
-				if (t->vehstatus.Test(VehState::Crashed)) continue;
-				if (t->First() != t) continue;
-				if (!t->current_order.IsType(OT_WAIT_COUPLE)) continue;
-				if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, t->owner)) continue;
-				if (!CheckOrderLoad(t) || !CheckOrderCargoType(t) || !CheckNumberOfWagons(t) || !CheckOrderSlot(t) || !TrainFitStation(t)) continue;
-				return true;
-			}
-		}
-		return false;
+		/* Non-station tiles: require reservation as usual. */
+		TrackdirBits tdb = TrackdirToTrackdirBits(td);
+		if (!HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb))) return false;
+		Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
+		if (t == nullptr) return false;
+		if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, t->owner)) return false;
+		if (!t->current_order.IsType(OT_WAIT_COUPLE)) return false;
+		if (!CheckOrderLoad(t) || !CheckOrderCargoType(t) || !CheckNumberOfWagons(t) || !CheckOrderSlot(t) || !TrainFitStation(t)) return false;
+		return true;
 	}
 
 	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */

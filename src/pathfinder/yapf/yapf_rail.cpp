@@ -105,9 +105,10 @@ private:
 		TrackdirBits tdb = TrackdirToTrackdirBits(td);
 		TrackBits tracks = TrackdirBitsToTrackBits(tdb);
 
-		/* Search for a waiting train on this station tile directly, without
-		 * requiring a reservation. Block signals do not create reservations,
-		 * but a train waiting for coupling (OT_WAIT_COUPLE) is a valid target. */
+		/* For station tiles, search for a waiting train directly across the
+		 * entire platform, without requiring a reservation. Block signals do
+		 * not create reservations, but a train waiting for coupling is a valid
+		 * safe position regardless. */
 		if (IsRailStationTile(tile)) {
 			Train *best = nullptr;
 			Train *second_best = nullptr;
@@ -117,7 +118,6 @@ private:
 					if (tr->track == TRACK_BIT_WORMHOLE || HasBit((TrackBits)tr->track, TrackdirToTrack(td))) {
 						Train *head = tr->First();
 						if (best != nullptr && head->index != best->index) second_best = head;
-						/* ALWAYS take the lowest ID (anti-desync!) */
 						if (best == nullptr || head->index < best->index) best = head;
 					}
 				}
@@ -130,7 +130,6 @@ private:
 			if (best != nullptr) {
 				if (!best->current_order.IsType(OT_WAIT_COUPLE)) return false;
 				if (second_best != nullptr) return false;
-				/* look behind station too */
 				Vehicle *other_train = nullptr;
 				FollowTrainReservation(best, &other_train);
 				if (other_train != nullptr && other_train != best) return false;
@@ -144,7 +143,6 @@ private:
 					if (tr->track == TRACK_BIT_WORMHOLE || HasBit((TrackBits)tr->track, TrackdirToTrack(td))) {
 						Train *head = tr->First();
 						if (best != nullptr && head->index != best->index) second_best = head;
-						/* ALWAYS take the lowest ID (anti-desync!) */
 						if (best == nullptr || head->index < best->index) best = head;
 					}
 				}
@@ -479,7 +477,6 @@ public:
 	inline void PfFollowNode(Node &old_node)
 	{
 		TrackFollower F(Yapf().GetVehicle(), Yapf().GetCompatibleRailTypes());
-		if (_settings_game.economy.allow_coupling_other_company_trains) F.allow_other_company_rail = true;
 		if (F.Follow(old_node.GetLastTile(), old_node.GetLastTrackdir())) {
 			Yapf().AddMultipleNodes(&old_node, F);
 		}
