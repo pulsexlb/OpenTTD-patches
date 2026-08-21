@@ -116,7 +116,7 @@ private:
 				for (Train *tr : VehiclesOnTile<VehicleType::Train>(t)) {
 					if (tr->vehstatus.Test(VehState::Crashed)) continue;
 					if (tr->track == TRACK_BIT_WORMHOLE || HasBit((TrackBits)tr->track, TrackdirToTrack(td))) {
-						Train *head = tr->First();
+						Train *head = tr->Primary();
 						if (best != nullptr && head->index != best->index) second_best = head;
 						if (best == nullptr || head->index < best->index) best = head;
 					}
@@ -141,7 +141,7 @@ private:
 				for (Train *tr : VehiclesOnTile<VehicleType::Train>(t)) {
 					if (tr->vehstatus.Test(VehState::Crashed)) continue;
 					if (tr->track == TRACK_BIT_WORMHOLE || HasBit((TrackBits)tr->track, TrackdirToTrack(td))) {
-						Train *head = tr->First();
+						Train *head = tr->Primary();
 						if (best != nullptr && head->index != best->index) second_best = head;
 						if (best == nullptr || head->index < best->index) best = head;
 					}

@@ -138,10 +138,10 @@ class NIHVehicle : public NIHelper {
 	bool IsInspectable(uint index) const override        { return true; }
 	bool ShowExtraInfoOnly(uint index) const override    { return Vehicle::Get(index)->GetGRF() == nullptr; }
 	bool ShowSpriteDumpButton(uint index) const override { return true; }
-	InspectTargetId GetParent(uint index) const override { const Vehicle *first = Vehicle::Get(index)->First(); return InspectTargetId(GetGrfSpecFeature(first->type), first->index.base()); }
+	InspectTargetId GetParent(uint index) const override { const Vehicle *first = Vehicle::Get(index)->Primary(); return InspectTargetId(GetGrfSpecFeature(first->type), first->index.base()); }
 	const void *GetInstance(uint index) const override   { return Vehicle::Get(index); }
 	const void *GetSpec(uint index) const override       { return Vehicle::Get(index)->GetEngine(); }
-	std::string GetName(uint index) const override       { return GetString(STR_VEHICLE_NAME, Vehicle::Get(index)->First()->index.base()); }
+	std::string GetName(uint index) const override       { return GetString(STR_VEHICLE_NAME, Vehicle::Get(index)->Primary()->index.base()); }
 	uint32_t GetGRFID(uint index) const override         { return Vehicle::Get(index)->GetGRFID(); }
 	std::span<const BadgeID> GetBadges(uint index) const override { return Vehicle::Get(index)->GetEngine()->badges; }
 

@@ -285,7 +285,7 @@ static void TrainDetailsInfoTab(const Train *v, int left, int right, int y, uint
 						breakdown_status = STR_VEHICLE_STATUS_BROKEN_DOWN_VEL_SHORT;
 						p1 = STR_BREAKDOWN_TYPE_CRITICAL + v->breakdown_type;
 						if (v->breakdown_type == BREAKDOWN_LOW_SPEED) {
-							p2 = std::min<int>(v->First()->GetCurrentMaxSpeed(), v->breakdown_severity);
+							p2 = std::min<int>(v->Primary()->GetCurrentMaxSpeed(), v->breakdown_severity);
 						} else if (v->breakdown_type == BREAKDOWN_LOW_POWER) {
 							p2 = v->breakdown_severity * 100 / 256;
 						}
@@ -295,7 +295,7 @@ static void TrainDetailsInfoTab(const Train *v, int left, int right, int y, uint
 				} else {
 					if (v->flags.Test(VehicleRailFlag::NeedRepair)) {
 						breakdown_status = STR_NEED_REPAIR;
-						p1 = GetTrainVehicleMaxSpeed(v, v->GetEngine()->VehInfo<RailVehicleInfo>(), v->First());
+						p1 = GetTrainVehicleMaxSpeed(v, v->GetEngine()->VehInfo<RailVehicleInfo>(), v->Primary());
 					} else {
 						breakdown_status = STR_RUNNING;
 					}

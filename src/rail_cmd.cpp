@@ -4815,7 +4815,7 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 		}
 	};
 
-	if (v->GetMovingPrev() == nullptr && v->current_order.IsType(OT_LOADING_ADVANCE)) abort_load_through(v->First(), true);
+	if (v->GetMovingPrev() == nullptr && v->current_order.IsType(OT_LOADING_ADVANCE)) abort_load_through(v->Primary(), true);
 
 	/* Depot direction. */
 	const DiagDirection dir = GetRailDepotDirection(tile);
@@ -4849,7 +4849,7 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 	} else if (_fractcoords_enter[dir] == fract_coord) {
 		/* Entering depot. */
 		if (v->GetMovingPrev() == nullptr) {
-			Train *consist = v->First();
+			Train *consist = v->Primary();
 			if (consist->current_order.IsType(OT_LOADING_ADVANCE)) {
 				abort_load_through(consist, true);
 			} else if (v->GetMovingFront()->flags.Test(VehicleRailFlag::BeyondPlatformEnd)) {
@@ -4863,7 +4863,7 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 		v->UpdateIsDrawn();
 		v->tile = tile;
 		if (v->GetMovingNext() == nullptr) {
-			Train *consist = v->First();
+			Train *consist = v->Primary();
 			/* Whether the train should always leave in the forward direction. */
 			const bool reset_reverse = !_settings_game.vehicle.drive_through_train_depot ||
 					(_settings_game.difficulty.train_flip_reverse_allowed != TrainFlipReversingAllowed::None && !consist->Last()->CanLeadTrain());

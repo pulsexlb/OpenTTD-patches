@@ -107,7 +107,7 @@ bool CheckAutoreplaceValidity(EngineID from, EngineID to, CompanyID company)
  */
 void CheckCargoCapacity(Vehicle *v)
 {
-	assert(v == nullptr || v->First() == v);
+	assert(v == nullptr || v->Primary() == v);
 
 	for (Vehicle *src = v; src != nullptr; src = src->Next()) {
 		assert(src->cargo.TotalCount() == src->cargo.ActionCount(VehicleCargoList::MoveToAction::Keep));
@@ -185,7 +185,7 @@ static bool VerifyAutoreplaceRefitForOrders(const Vehicle *v, EngineID engine_ty
 	CargoTypes union_refit_mask_a = GetUnionOfArticulatedRefitMasks(v->engine_type, false);
 	CargoTypes union_refit_mask_b = GetUnionOfArticulatedRefitMasks(engine_type, false);
 
-	const Vehicle *u = (v->type == VehicleType::Train) ? v->First() : v;
+	const Vehicle *u = (v->type == VehicleType::Train) ? v->Primary() : v;
 	for (const Order *o : u->Orders()) {
 		if (!o->IsRefit() || o->IsAutoRefit()) continue;
 		CargoType cargo_type = o->GetRefitCargo();
@@ -207,7 +207,7 @@ static int GetIncompatibleRefitOrderIdForAutoreplace(const Vehicle *v, EngineID 
 {
 	CargoTypes union_refit_mask = GetUnionOfArticulatedRefitMasks(engine_type, false);
 
-	const Vehicle *u = (v->type == VehicleType::Train) ? v->First() : v;
+	const Vehicle *u = (v->type == VehicleType::Train) ? v->Primary() : v;
 
 	const OrderList *orders = u->orders;
 	if (orders == nullptr) return -1;
@@ -316,7 +316,7 @@ static CommandCost BuildReplacementVehicleRefitFailure(EngineID e, const Vehicle
 {
 	if (!IsLocalCompany() || !flags.Test(DoCommandFlag::Execute)) return CommandCost();
 
-	VehicleID old_veh_id = (old_veh->type == VehicleType::Train) ? Train::From(old_veh)->First()->index : old_veh->index;
+	VehicleID old_veh_id = (old_veh->type == VehicleType::Train) ? Train::From(old_veh)->Primary()->index : old_veh->index;
 	EncodedString headline;
 
 	int order_id = GetIncompatibleRefitOrderIdForAutoreplace(old_veh, e);

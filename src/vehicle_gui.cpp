@@ -1106,7 +1106,7 @@ struct RefitWindow : public Window {
 	{
 		std::string name = this->ship_part_names[v->index];
 		if (name.empty()) {
-			const Vehicle *front = v->First();
+			const Vehicle *front = v->Primary();
 			uint offset = 0;
 			for (const Vehicle *u = front; u != v; u = u->Next()) offset++;
 			uint16_t callback = GetVehicleCallback(XCBID_SHIP_REFIT_PART_NAME, offset, 0, front->engine_type, front);
@@ -4410,7 +4410,7 @@ public:
 				breakdown_str = STR_BREAKDOWN_TYPE_CRITICAL + w->breakdown_type;
 
 				if (w->breakdown_type == BREAKDOWN_LOW_SPEED) {
-					breakdown_param = std::min(w->First()->GetDisplayMaxSpeed(), w->breakdown_severity >> ((v->type == VehicleType::Train) ? 0 : 1));
+					breakdown_param = std::min(w->Primary()->GetDisplayMaxSpeed(), w->breakdown_severity >> ((v->type == VehicleType::Train) ? 0 : 1));
 				} else if (w->breakdown_type == BREAKDOWN_LOW_POWER) {
 					if (v->type == VehicleType::Train) {
 						uint32_t power, te;
@@ -4985,7 +4985,7 @@ bool VehicleClicked(const Vehicle *v)
 	assert(v != nullptr);
 	if (!(_thd.place_mode & HT_VEHICLE)) return false;
 
-	v = v->First();
+	v = v->Primary();
 	if (!v->IsPrimaryVehicle()) return false;
 
 	return _thd.GetCallbackWnd()->OnVehicleSelect(v);

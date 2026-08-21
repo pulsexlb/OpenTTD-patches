@@ -769,8 +769,8 @@ static void FindClosestTrainToTunnelBridgeEndEnum(const Train *t, FindTrainClose
 	}
 
 	/* ALWAYS return the lowest ID (anti-desync!) if the coordinate is the same */
-	if (pos > info->best_pos || (pos == info->best_pos && t->First()->index < info->best->index)) {
-		info->best = t->First();
+	if (pos > info->best_pos || (pos == info->best_pos && t->Primary()->index < info->best->index)) {
+		info->best = t->Primary();
 		info->best_pos = pos;
 	}
 }
@@ -1921,7 +1921,7 @@ void CallVehicleTicks()
 		Money repair_cost = (v->breakdowns_since_last_service * vehicle_new_value / static_cast<uint>(_settings_game.vehicle.repair_cost)) + 1;
 		if (v->age > v->max_age) repair_cost <<= 1;
 		CommandCost cost(type, repair_cost);
-		v->First()->profit_this_year -= cost.GetCost() << 8;
+		v->Primary()->profit_this_year -= cost.GetCost() << 8;
 		SubtractMoneyFromCompany(v->owner, cost);
 		if (v->owner == _local_company) {
 			ShowCostOrIncomeAnimation(v->x_pos, v->y_pos, v->z_pos, cost.GetCost());
@@ -2349,7 +2349,7 @@ void CheckVehicleBreakdown(Vehicle *v)
 	const int reliability_dec = (v->reliability_spd_dec << 5) >> (5 - _settings_game.difficulty.reliability_decay_speed);
 	const int rel = std::max(rel_old - reliability_dec, 0);
 	v->reliability = rel;
-	if ((rel_old >> 8) != (rel >> 8)) SetWindowDirty(WindowClass::VehicleDetails, v->First()->index);
+	if ((rel_old >> 8) != (rel >> 8)) SetWindowDirty(WindowClass::VehicleDetails, v->Primary()->index);
 
 	/* Some vehicles lose reliability but won't break down. */
 	/* Breakdowns are disabled. */
@@ -2357,9 +2357,9 @@ void CheckVehicleBreakdown(Vehicle *v)
 	/* The vehicle is already broken down. */
 	if (v->breakdown_ctr != 0) return;
 	/* The vehicle is stopped or going very slow. */
-	if (v->First()->cur_speed < 5) return;
+	if (v->Primary()->cur_speed < 5) return;
 	/* The vehicle has been manually stopped. */
-	if (v->First()->vehstatus.Test(VehState::Stopped)) return;
+	if (v->Primary()->vehstatus.Test(VehState::Stopped)) return;
 	/* Aircraft is not flying. */
 	if (v->type == VehicleType::Aircraft && (!Aircraft::From(v)->IsNormalAircraft() || !Aircraft::From(v)->IsAircraftFlying())) return;
 	/* Not a suitable train engine to break down. */
@@ -2380,7 +2380,7 @@ void CheckVehicleBreakdown(Vehicle *v)
 			/* Dual engines have their breakdown chances reduced to 70% of the normal value */
 			chance = chance * 7 / 10;
 		}
-		chance *= v->First()->breakdown_chance_factor;
+		chance *= v->Primary()->breakdown_chance_factor;
 		chance >>= 7;
 	}
 	/**
@@ -2399,7 +2399,7 @@ void CheckVehicleBreakdown(Vehicle *v)
 	if ((uint32_t) (0xffff - v->reliability) * breakdown_scaling_x2 * chance > GB(r1, 0, 24) * 10 * 2) {
 		uint32_t r2 = Random();
 		v->breakdown_ctr = GB(r1, 24, 6) + 0xF;
-		if (v->type == VehicleType::Train) Train::From(v)->First()->flags.Set(VehicleRailFlag::ConsistBreakdown);
+		if (v->type == VehicleType::Train) Train::From(v)->Primary()->flags.Set(VehicleRailFlag::ConsistBreakdown);
 		v->breakdown_delay = GB(r2, 0, 7) + 0x80;
 		v->breakdown_chance = 0;
 		DetermineBreakdownType(v, r2);
@@ -2442,7 +2442,7 @@ bool Vehicle::HandleBreakdown()
 			} else if (this->type == VehicleType::Train) {
 				Train *t = Train::From(this);
 				if (this->breakdown_type == BREAKDOWN_LOW_POWER ||
-						this->First()->cur_speed <= ((this->breakdown_type == BREAKDOWN_LOW_SPEED) ? this->breakdown_severity : 0)) {
+						this->Primary()->cur_speed <= ((this->breakdown_type == BREAKDOWN_LOW_SPEED) ? this->breakdown_severity : 0)) {
 					switch (this->breakdown_type) {
 						case BREAKDOWN_RV_CRASH:
 							if (_settings_game.vehicle.improved_breakdowns) t->flags.Set(VehicleRailFlag::HasHitRoadVehicle);
@@ -2467,23 +2467,23 @@ bool Vehicle::HandleBreakdown()
 							}
 						/* FALL THROUGH */
 						case BREAKDOWN_EM_STOP:
-							CheckBreakdownFlags(t->First());
-							t->First()->flags.Set(VehicleRailFlag::BreakdownStopped);
+							CheckBreakdownFlags(t->Primary());
+							t->Primary()->flags.Set(VehicleRailFlag::BreakdownStopped);
 							break;
 						case BREAKDOWN_BRAKE_OVERHEAT:
-							CheckBreakdownFlags(t->First());
-							t->First()->flags.Set(VehicleRailFlag::BreakdownStopped);
+							CheckBreakdownFlags(t->Primary());
+							t->Primary()->flags.Set(VehicleRailFlag::BreakdownStopped);
 							break;
 						case BREAKDOWN_LOW_SPEED:
-							CheckBreakdownFlags(t->First());
-							t->First()->flags.Set(VehicleRailFlag::BreakdownSpeed);
+							CheckBreakdownFlags(t->Primary());
+							t->Primary()->flags.Set(VehicleRailFlag::BreakdownSpeed);
 							break;
 						case BREAKDOWN_LOW_POWER:
-							t->First()->flags.Set(VehicleRailFlag::BreakdownPower);
+							t->Primary()->flags.Set(VehicleRailFlag::BreakdownPower);
 							break;
 						default: NOT_REACHED();
 					}
-					this->First()->MarkDirty();
+					this->Primary()->MarkDirty();
 					SetWindowDirty(WindowClass::VehicleView, this->index);
 					SetWindowDirty(WindowClass::VehicleDetails, this->index);
 				} else {
@@ -2538,7 +2538,7 @@ bool Vehicle::HandleBreakdown()
 					EffectVehicle *u = CreateEffectVehicleRel(this, 0, 0, 2, EV_BREAKDOWN_SMOKE);
 					if (u != nullptr) u->animation_state = 25;
 				}
-				this->First()->MarkDirty();
+				this->Primary()->MarkDirty();
 				SetWindowDirty(WindowClass::VehicleView, this->index);
 				SetWindowDirty(WindowClass::VehicleDetails, this->index);
 				return (this->breakdown_type == BREAKDOWN_CRITICAL || this->breakdown_type == BREAKDOWN_EM_STOP);
@@ -2554,9 +2554,9 @@ bool Vehicle::HandleBreakdown()
 				if (--this->breakdown_delay == 0) {
 					this->breakdown_ctr = 0;
 					if (this->type == VehicleType::Train) {
-						CheckBreakdownFlags(Train::From(this->First()));
-						this->First()->MarkDirty();
-						SetWindowDirty(WindowClass::VehicleView, this->First()->index);
+						CheckBreakdownFlags(Train::From(this->Primary()));
+						this->Primary()->MarkDirty();
+						SetWindowDirty(WindowClass::VehicleView, this->Primary()->index);
 					} else {
 						this->MarkDirty();
 						SetWindowDirty(WindowClass::VehicleView, this->index);
@@ -2731,8 +2731,8 @@ uint8_t CalcPercentVehicleFilledOfCargo(const Vehicle *front, CargoType cargo)
  */
 void VehicleEnterDepot(Vehicle *v)
 {
-	/* Always work with the front of the vehicle */
-	dbg_assert(v == v->First());
+	/* Always work with the primary (consist info carrier) of the vehicle */
+	dbg_assert(v == v->Primary());
 
 	switch (v->type) {
 		case VehicleType::Train: {
@@ -2744,7 +2744,7 @@ void VehicleEnterDepot(Vehicle *v)
 			UpdateSignalsOnSegment(t->tile, DiagDirection::Invalid, t->owner);
 			t->wait_counter = 0;
 			t->force_proceed = TFP_NONE;
-			t->ConsistChanged(CCF_ARRANGE);
+			t->First()->ConsistChanged(CCF_ARRANGE);
 			t->reverse_distance = 0;
 			t->UpdateTrainSpeedAdaptationLimit(0);
 			t->lookahead.reset();
@@ -3236,7 +3236,7 @@ LiveryScheme GetEngineLiveryScheme(EngineID engine_type, EngineID parent_engine_
 			if (v != nullptr && parent_engine_type != EngineID::Invalid()) {
 				engine_type = parent_engine_type;
 				e = Engine::Get(engine_type);
-				cargo_type = v->First()->cargo_type;
+				cargo_type = v->Primary()->cargo_type;
 			}
 			if (!IsValidCargoType(cargo_type)) cargo_type = e->GetDefaultCargoType();
 			if (!IsValidCargoType(cargo_type)) cargo_type = GetCargoTypeByLabel(CT_GOODS); // The vehicle does not carry anything, let's pick some freight cargo
@@ -3284,7 +3284,7 @@ const Livery *GetEngineLivery(EngineID engine_type, CompanyID company, EngineID 
 
 	if (livery_setting == LIT_ALL || (livery_setting == LIT_COMPANY && company == _local_company)) {
 		if (v != nullptr && !ignore_group) {
-			const Group *g = Group::GetIfValid(v->First()->group_id);
+			const Group *g = Group::GetIfValid(v->Primary()->group_id);
 			if (g != nullptr) {
 				/* Traverse parents until we find a livery or reach the top */
 				while (!g->livery.in_use.Any({Livery::Flag::Primary, Livery::Flag::Secondary}) && g->parent != GroupID::Invalid()) {

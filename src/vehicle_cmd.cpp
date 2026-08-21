@@ -262,7 +262,7 @@ CommandCost CmdSellVehicle(DoCommandFlags flags, TileIndex tile, VehicleID v_id,
 	if (v == nullptr || !IsCompanyBuildableVehicleType(v)) return CMD_ERROR;
 	if (v->tile != tile) return CMD_ERROR;
 
-	Vehicle *front = v->First();
+	Vehicle *front = v->Primary();
 
 	CommandCost ret = CheckOwnership(front->owner);
 	if (ret.Failed()) return ret;

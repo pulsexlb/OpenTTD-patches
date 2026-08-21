@@ -95,7 +95,7 @@ bool IsRailStationPlatformFree(const Train *v, TileIndex start, DiagDirection di
 		for (const Vehicle *u : Vehicle::Iterate()) {
 			if (u->type != VehicleType::Train || u->vehstatus.Test(VehState::Crashed)) continue;
 			const Train *t = Train::From(u);
-			if (t->First()->index == v->First()->index) continue;
+			if (t->Primary()->index == v->Primary()->index) continue;
 			if (t->tile == tile) return false;
 		}
 		tile = TileAdd(tile, diff);
@@ -894,7 +894,7 @@ static void CheckTrainsOnTrack(FindTrainOnTrackInfo &info, TileIndex tile)
 			}
 		}
 		if (t->track & TRACK_BIT_WORMHOLE || HasBit((TrackBits)t->track, TrackdirToTrack(info.res.trackdir))) {
-			t = t->First();
+			t = t->Primary();
 
 			/* ALWAYS return the lowest ID (anti-desync!) */
 			if (info.best == nullptr || t->index < info.best->index) info.best = t;
@@ -971,7 +971,7 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 	ftoti.res.okay = flags.Test(FollowTrainReservationFlag::OkayUnused) ? false : IsSafeWaitingPosition(v, ftoti.res.tile, ftoti.res.trackdir, true, _settings_game.pf.forbid_90_deg);
 	if (train_on_res != nullptr) {
 		CheckTrainsOnTrack(ftoti, ftoti.res.tile);
-		if (ftoti.best != nullptr) *train_on_res = ftoti.best->First();
+		if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
 		if (*train_on_res == nullptr && IsRailStationTile(ftoti.res.tile)) {
 			/* The target tile is a rail station. The track follower
 			 * has stopped on the last platform tile where we haven't
@@ -980,13 +980,13 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(ftoti.res.trackdir)));
 			for (TileIndex st_tile = ftoti.res.tile + diff; *train_on_res == nullptr && IsCompatibleTrainStationTile(st_tile, ftoti.res.tile); st_tile += diff) {
 				CheckTrainsOnTrack(ftoti, st_tile);
-				if (ftoti.best != nullptr) *train_on_res = ftoti.best->First();
+				if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
 			}
 		}
 		if (*train_on_res == nullptr && IsTileType(ftoti.res.tile, TileType::TunnelBridge) && IsTrackAcrossTunnelBridge(ftoti.res.tile, TrackdirToTrack(ftoti.res.trackdir)) && !IsTunnelBridgeWithSignalSimulation(ftoti.res.tile)) {
 			/* The target tile is a bridge/tunnel, also check the other end tile. */
 			CheckTrainsOnTrack(ftoti, GetOtherTunnelBridgeEnd(ftoti.res.tile));
-			if (ftoti.best != nullptr) *train_on_res = ftoti.best->First();
+			if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
 		}
 	}
 	return ftoti.res;
@@ -1063,7 +1063,7 @@ static int ScanTrainPositionForLookAheadStation(Train *moving_front, TileIndex s
 				uint forward_length = BaseStation::GetByTile(tile)->GetPlatformLength(tile, forward_dir);
 				uint reverse_length = BaseStation::GetByTile(tile)->GetPlatformLength(tile, ReverseDiagDir(forward_dir));
 
-				TrainReservationLookAhead &lookahead = *(moving_front->First()->lookahead);
+				TrainReservationLookAhead &lookahead = *(moving_front->Primary()->lookahead);
 
 				if (u == moving_front) {
 					for (uint i = 1; i < forward_length; i++) {

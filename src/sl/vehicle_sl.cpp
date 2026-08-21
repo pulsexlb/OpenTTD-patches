@@ -327,7 +327,7 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 			/* Before 105 there was no order for shared orders, thus it messed up horribly */
 			for (Vehicle *v : Vehicle::Iterate()) {
 				si_v = v;
-				if (v->First() != v || v->orders != nullptr || v->previous_shared != nullptr || v->next_shared == nullptr) continue;
+				if (v->Primary() != v || v->orders != nullptr || v->previous_shared != nullptr || v->next_shared == nullptr) continue;
 
 				/* As above, allocating OrderList here is safe. */
 				assert(OrderList::CanAllocateItem());
@@ -1716,10 +1716,10 @@ static void LogVehicleVENCMessage(const Vehicle *v, const char *var)
 
 	extern void WriteVehicleInfo(format_target &buffer, const Vehicle *u, const Vehicle *v, uint length);
 	uint length = 0;
-	for (const Vehicle *u = v->First(); u != v; u = u->Next()) {
+	for (const Vehicle *u = v->Primary(); u != v; u = u->Next()) {
 		length++;
 	}
-	WriteVehicleInfo(buffer, v, v->First(), length);
+	WriteVehicleInfo(buffer, v, v->Primary(), length);
 	debug_print(DebugLevelID::desync, 0, buffer);
 	LogDesyncMsg(buffer.to_string());
 }

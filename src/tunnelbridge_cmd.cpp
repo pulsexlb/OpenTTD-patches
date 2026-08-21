@@ -3077,7 +3077,7 @@ static bool ClickTile_TunnelBridge(TileIndex tile)
 		std::vector<const Vehicle *> candidates;
 		for (TileIndex test_tile : { tile, tile_end }) {
 			for (const Vehicle *v = GetFirstVehicleOnTile(test_tile, veh_type); v != nullptr; v = v->HashTileNext()) {
-				if (v->IsMovingFront()) candidates.push_back(v->First());
+				if (v->IsMovingFront()) candidates.push_back(v->Primary());
 			}
 		}
 		std::sort(candidates.begin(), candidates.end(), [&](const Vehicle *a, const Vehicle *b) {
@@ -3427,7 +3427,7 @@ static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileInde
 			uint16_t spd = GetBridgeSpec(GetBridgeType(tile))->speed;
 
 			if (v->type == VehicleType::Road) spd *= 2;
-			Vehicle *first = v->First();
+			Vehicle *first = v->Primary();
 			first->cur_speed = std::min(first->cur_speed, spd);
 		}
 
@@ -3440,7 +3440,7 @@ static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileInde
 					if (frame != TILE_SIZE) return {};
 					Train *t = Train::From(v);
 					t->track = TRACK_BIT_WORMHOLE;
-					t->First()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
+					t->Primary()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 
 					/* Do not call PrepareToEnterBridge because that also increments z_pos if
 					 * GVF_GOINGUP_BIT is set.
@@ -3531,7 +3531,7 @@ static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileInde
 					t->SetMovingDirection(bridge_dir);
 					t->track = TRACK_BIT_WORMHOLE;
 				}
-				t->First()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
+				t->Primary()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 				ClrBit(t->gv_flags, GVF_GOINGUP_BIT);
 				ClrBit(t->gv_flags, GVF_GOINGDOWN_BIT);
 				return VehicleEnterTileState::EnteredWormhole;

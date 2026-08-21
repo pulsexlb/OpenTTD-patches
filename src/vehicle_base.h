@@ -257,6 +257,7 @@ private:
 	Vehicle *next = nullptr;                     ///< pointer to the next vehicle in the chain
 	Vehicle *previous = nullptr;                 ///< NOSAVE: pointer to the previous vehicle in the chain
 	Vehicle *first = nullptr;                    ///< NOSAVE: pointer to the first vehicle in the chain
+	Vehicle *primary = nullptr;                  ///< NOSAVE: pointer to the vehicle carrying the consist info; nullptr means same as #first
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order
@@ -658,14 +659,14 @@ public:
 	 */
 	bool IsStoppedInDepot() const
 	{
-		assert(this == this->First());
+		assert(this == this->Primary());
 		/* Free wagons have no VehState::Stopped state */
 		if (this->IsPrimaryVehicle() && !this->vehstatus.Test(VehState::Stopped)) return false;
 		return this->IsChainInDepot();
 	}
 
 	bool IsWaitingInDepot() const {
-		assert(this == this->First());
+		assert(this == this->Primary());
 		return this->current_order.IsType(OT_WAITING) && this->IsChainInDepot();
 	}
 
@@ -729,6 +730,7 @@ public:
 
 	void SetNext(Vehicle *next);
 	inline void SetFirst(Vehicle *f) { this->first = f; }
+	inline void SetPrimary(Vehicle *p) { this->primary = p; }
 
 	/**
 	 * Get the next vehicle of this vehicle.
@@ -749,6 +751,16 @@ public:
 	 * @return the first vehicle of the chain.
 	 */
 	inline Vehicle *First() const { return this->first; }
+
+	/**
+	 * Get the primary vehicle of this vehicle chain, i.e. the vehicle that
+	 * carries the consist information (orders, group, unit number, etc.).
+	 * Unlike #First() this does not follow the physical chain head; the two
+	 * may be different vehicles. Defaults to #First() unless a primary
+	 * vehicle was explicitly set for the chain.
+	 * @return the primary vehicle of the chain.
+	 */
+	inline Vehicle *Primary() const { return (this->primary != nullptr) ? this->primary : this->first; }
 
 	/**
 	 * Get the last vehicle of this vehicle chain.
@@ -1455,6 +1467,12 @@ struct SpecializedVehicle : public Base {
 	 * @return first vehicle in the chain
 	 */
 	inline T *First() const { return (T *)this->Vehicle::First(); }
+
+	/**
+	 * Get the primary vehicle of the chain (consist info carrier)
+	 * @return primary vehicle in the chain
+	 */
+	inline T *Primary() const { return (T *)this->Vehicle::Primary(); }
 
 	/**
 	 * Get the last vehicle in the chain

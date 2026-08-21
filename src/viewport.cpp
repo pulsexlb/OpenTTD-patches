@@ -5492,7 +5492,7 @@ HandleViewportClickedResult HandleViewportClicked(const Viewport *vp, int x, int
 	if (v != nullptr) {
 		Debug(misc, 2, "Vehicle {} (index {}) at {}", v->unitnumber, v->index, fmt::ptr(v));
 		if (IsCompanyBuildableVehicleType(v)) {
-			v = v->First();
+			v = v->Primary();
 			WindowClass wc = _thd.GetCallbackWnd()->window_class;
 			if (_ctrl_pressed && IsVehicleControlAllowed(v, _local_company)) {
 				StartStopVehicle(v, true);
