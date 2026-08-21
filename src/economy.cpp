@@ -1524,6 +1524,8 @@ static OrderUnloadType GetUnloadType(const Vehicle *v)
 void PrepareUnload(Vehicle *front_v)
 {
 	Station *curr_station = Station::Get(front_v->last_station_visited);
+	fprintf(stderr, "PrepareUnload: push veh=%d into station=%d queue(size=%d)\n",
+		(int)front_v->index.base(), (int)curr_station->index.base(), (int)curr_station->loading_vehicles.size() + 1);
 	curr_station->loading_vehicles.push_back(front_v);
 
 	/* At this moment loading cannot be finished */
@@ -2446,6 +2448,12 @@ void LoadUnloadStation(Station *st)
 	for (Vehicle *v : st->loading_vehicles) {
 		if (v->vehstatus.Any({VehState::Stopped, VehState::Crashed}) || v->current_order.IsType(OT_LOADING_ADVANCE)) continue;
 
+		if (v->load_unload_ticks == 0) {
+			fprintf(stderr, "LoadUnloadStation: ZERO ticks veh=%d first=%d primary=%d station=%d crashed=%d stopped=%d\n",
+				(int)v->index.base(), (int)v->First()->index.base(), (int)v->Primary()->index.base(),
+				(int)st->index.base(), v->vehstatus.Test(VehState::Crashed) ? 1 : 0,
+				v->vehstatus.Test(VehState::Stopped) ? 1 : 0);
+		}
 		assert(v->load_unload_ticks != 0);
 		if (--v->load_unload_ticks == 0) last_loading = v;
 	}

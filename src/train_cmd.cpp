@@ -5532,11 +5532,20 @@ static Train *DecoupleTrain(Train *v)
 		return v;
 	}
 
+	fprintf(stderr, "DecoupleTrain: enter veh=%d first=%d primary=%d tile=(%u,%u)\n",
+		(int)v->index.base(), (int)v->First()->index.base(), (int)v->Primary()->index.base(),
+		TileX(v->tile), TileY(v->tile));
 	Train *u = GetDecoupleVehicle(v);
+	if (u == nullptr) fprintf(stderr, "DecoupleTrain: no decouple vehicle found\n");
+	else fprintf(stderr, "DecoupleTrain: split target u=%d (first=%d primary=%d)\n",
+		(int)u->index.base(), (int)u->First()->index.base(), (int)u->Primary()->index.base());
 	Debug(desync, 1, "DecoupleTrain: veh={} split u={} num={}", v->index, u != nullptr ? u->index.base() : -1, v->orders != nullptr ? v->orders->GetOrderAt(v->cur_implicit_order_index + 1)->GetNumDecouple() : -1);
 	if (u == nullptr) return v;
 
-	if (!TryTrainDecouple(v, u)) return v;
+	if (!TryTrainDecouple(v, u)) {
+		fprintf(stderr, "DecoupleTrain: TryTrainDecouple FAILED\n");
+		return v;
+	}
 
 	/* This train stays at the station and keeps on running the original orders. */
 	v->decouple_part = 1;
@@ -5687,10 +5696,6 @@ static void Couple(Train *v, Train *u)
 		ReverseTrainForCouple(u);
 		u = u->Primary();
 	} else {
-		/* u keeps its direction, but v's chain order was reversed, so u must
-		 * be attached in reversed chain order to keep chain order matching
-		 * the spatial order of the combined train. */
-		ReverseTrainChainOrder(u);
 		u = u->Primary();
 	}
 
@@ -5957,6 +5962,13 @@ static bool HandlePossibleBreakdowns(Train *v)
  */
 static void TrainEnterStation(Train *consist, StationID station)
 {
+	fprintf(stderr, "TrainEnterStation: consist=%d first=%d primary=%d station=%d\n",
+		(int)consist->index.base(), (int)consist->First()->index.base(),
+		(int)consist->Primary()->index.base(), (int)station.base());
+	/* Everything below (orders, loading state, decouple handling) is
+	 * primary-hosted consist information; the caller only passes the physical
+	 * chain head because that is what movement code has at hand. */
+	consist = consist->Primary();
 	consist->last_station_visited = station;
 
 	BaseStation *bst = BaseStation::Get(station);
@@ -6025,11 +6037,13 @@ static void TrainEnterStation(Train *consist, StationID station)
 	if (load_trains & DECOUPLE_LOAD_FIRST) {
 		consist->force_proceed = TFP_NONE;
 		InvalidateWindowData(WindowClass::VehicleView, consist->index);
+		fprintf(stderr, "BeginLoading site A (decouple first): veh=%d\n", (int)consist->index.base());
 		consist->BeginLoading();
 	}
 	if (u != nullptr && u != consist && (load_trains & DECOUPLE_LOAD_SECOND)) {
 		u->force_proceed = TFP_NONE;
 		InvalidateWindowData(WindowClass::VehicleView, u->index);
+		fprintf(stderr, "BeginLoading site B (decouple second): veh=%d\n", (int)u->index.base());
 		u->BeginLoading();
 	}
 
@@ -7906,6 +7920,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			if (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetDestination() == station_id &&
 					!(consist->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)) {
 				consist->last_station_visited = station_id;
+				fprintf(stderr, "BeginLoading site C (leave-station remain): veh=%d\n", (int)consist->index.base());
 				consist->BeginLoading();
 				return true;
 			}

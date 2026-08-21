@@ -3465,6 +3465,8 @@ static void VehicleIncreaseStats(const Vehicle *front)
 void Vehicle::BeginLoading()
 {
 	if (this->type == VehicleType::Train) {
+		fprintf(stderr, "BeginLoading: veh=%d first=%d primary=%d\n",
+			(int)this->index.base(), (int)this->First()->index.base(), (int)this->Primary()->index.base());
 #ifdef WITH_ASSERT
 		[[maybe_unused]] TileIndex station_tile = Train::From(this)->GetStationLoadingVehicle()->tile;
 		assert_tile(IsTileType(station_tile, TileType::Station), station_tile);
