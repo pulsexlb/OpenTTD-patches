@@ -507,24 +507,26 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 		/* If the consist is changed while in a depot, the vehicle view window must be invalidated to update the availability of refitting. */
 		InvalidateWindowData(WindowClass::VehicleView, this->index, VIWD_CONSIST_CHANGED);
 	}
-	if (allowed_changes.Test(ConsistChangeFlag::Length)) {
-		for (Train *u = this->Next(); u != nullptr; u = u->Next()) {
-			u->vcache.cached_max_speed = 0;
-			u->gcache.cached_weight = 0;
-			u->gcache.cached_max_te = 0;
-			u->gcache.cached_axle_resistance = 0;
-			u->gcache.cached_max_track_speed = 0;
-			u->gcache.cached_power = 0;
-			u->gcache.cached_air_drag = 0;
-			u->gcache.cached_total_length = 0;
-			u->tcache.cached_num_engines = 0;
-			u->tcache.cached_centre_mass = 0;
-			u->tcache.cached_braking_length = 0;
-			u->tcache.cached_deceleration = 0;
-			u->tcache.cached_uncapped_decel = 0;
-			u->tcache.cached_curve_speed_mod = 0;
-			u->tcache.cached_max_curve_speed = 0;
-		}
+	/* Broadcast the consist-level caches to every vehicle of the chain. They
+	 * are computed on the chain head, but any vehicle (e.g. a primary vehicle
+	 * that is not the chain head) may read its own copies at any time. */
+	for (Train *u = this->Next(); u != nullptr; u = u->Next()) {
+		u->vcache.cached_max_speed = this->vcache.cached_max_speed;
+		u->gcache.cached_weight = this->gcache.cached_weight;
+		u->gcache.cached_max_te = this->gcache.cached_max_te;
+		u->gcache.cached_axle_resistance = this->gcache.cached_axle_resistance;
+		u->gcache.cached_max_track_speed = this->gcache.cached_max_track_speed;
+		u->gcache.cached_power = this->gcache.cached_power;
+		u->gcache.cached_air_drag = this->gcache.cached_air_drag;
+		u->gcache.cached_total_length = this->gcache.cached_total_length;
+		u->tcache.cached_tflags = this->tcache.cached_tflags;
+		u->tcache.cached_num_engines = this->tcache.cached_num_engines;
+		u->tcache.cached_centre_mass = this->tcache.cached_centre_mass;
+		u->tcache.cached_braking_length = this->tcache.cached_braking_length;
+		u->tcache.cached_deceleration = this->tcache.cached_deceleration;
+		u->tcache.cached_uncapped_decel = this->tcache.cached_uncapped_decel;
+		u->tcache.cached_curve_speed_mod = this->tcache.cached_curve_speed_mod;
+		u->tcache.cached_max_curve_speed = this->tcache.cached_max_curve_speed;
 	}
 }
 
@@ -1170,6 +1172,7 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 
 	if (_settings_game.vehicle.train_acceleration_model == AM_REALISTIC && this->lookahead == nullptr) {
 		Train *v_platform = const_cast<Train *>(this->GetStationLoadingVehicle());
+		if (v_platform == nullptr) v_platform = const_cast<Train *>(this->First());
 		TileIndex platform_tile = v_platform->tile;
 		if (HasStationTileRail(platform_tile)) {
 			StationID sid = GetStationIndex(platform_tile);
@@ -1202,7 +1205,7 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 	}
 
 	if (this->flags.Test(VehicleRailFlag::ConsistSpeedReduction)) {
-		const_cast<Train *>(this)->flags.Reset(VehicleRailFlag::ConsistSpeedReduction);		for (const Train *u = this; u != nullptr; u = u->Next()) {
+		const_cast<Train *>(this)->flags.Reset(VehicleRailFlag::ConsistSpeedReduction);		for (const Train *u = this->First(); u != nullptr; u = u->Next()) {
 			if (u->track == TRACK_BIT_DEPOT) {
 				const_cast<Train *>(this)->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 				if (_settings_game.vehicle.train_acceleration_model == AM_REALISTIC) {
@@ -2208,8 +2211,9 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 	/* Not much to do! */
 	if (head == nullptr) return;
 
-	/* Tell the 'world' the train changed. */
-	head->ConsistChanged(allowed_changes);
+	/* Tell the 'world' the train changed. Physical caches are always recomputed
+	 * on the chain head, even when 'head' is the primary vehicle mid-chain. */
+	head->First()->ConsistChanged(allowed_changes);
 	UpdateTrainGroupID(head->Primary());
 	head->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 
@@ -2797,6 +2801,178 @@ void ReverseTrainSwapVehicles(Train *v)
 	InvalidateVehicleTickCaches();
 }
 
+static void DebugDumpTrainChain(const Train *v, const char *label)
+{
+	for (const Train *u = v->First(); u != nullptr; u = u->Next()) {
+		fprintf(stderr, "%s: veh=%d(%s) first=%d primary=%d ispv=%d xy=(%u,%u) dir=%d back=%d movingfront=%d\n",
+			label, (int)u->index.base(), u->IsPrimaryVehicle() ? "engine" : "wagon",
+			(int)u->First()->index.base(), (int)u->Primary()->index.base(),
+			(u->IsPrimaryVehicle() ? 1 : 0), TileX(u->tile), TileY(u->tile), (int)to_underlying(u->direction),
+			u->vehicle_flags.Test(VehicleFlag::DrivingBackwards) ? 1 : 0, u->IsMovingFront() ? 1 : 0);
+	}
+	fflush(stderr);
+}
+
+/**
+ * Reverse only the chain order of a train, without touching directions,
+ * positions or the primary vehicle. Used when a consist must be attached to
+ * a joint in reversed order to keep chain order matching spatial order.
+ */
+static void ReverseTrainChainOrder(Train *v)
+{
+	assert(v == v->First());
+	std::vector<Train *> parts;
+	for (Train *u = v; u != nullptr; u = u->Next()) parts.push_back(u);
+
+	parts[0]->SetNext(nullptr);
+	for (size_t i = 1; i < parts.size(); ++i) {
+		parts[i]->SetNext(parts[i - 1]);
+	}
+
+	Train *new_first = parts.back();
+	for (Train *u = new_first; u != nullptr; u = u->Next()) {
+		u->SetFirst(new_first);
+		u->SetLast(parts[0]);
+	}
+}
+
+/**
+ * Reverse a train in place without changing the physical positions of single
+ * vehicles: every vehicle keeps its position and only turns around, while the
+ * chain order is reversed so the former last vehicle becomes the chain front.
+ * The primary vehicle (consist info carrier) is not moved, so the train keeps
+ * its identity, orders and group.
+ *
+ * Multi-part units (dual-headed engines and articulated engines) are reversed
+ * as a whole block: inside such a block the vehicles exchange positions like
+ * ReverseTrainSwapVehicles does, keeping the internal chain order intact, so
+ * the "rear follows front" / "articulated parts follow base" invariants are
+ * preserved and the new chain front of such a block is always a legal chain
+ * head (front dual-headed part / articulated base).
+ * @param v First vehicle of the chain to reverse.
+ */
+static void ReverseTrainNoSwapVehicles(Train *v)
+{
+	assert(v == v->First());
+	DebugDumpTrainChain(v, "NoSwapReverse-before");
+
+	/* Split the chain into blocks of vehicles that must be reversed as a unit. */
+	std::vector<std::vector<Train *>> blocks;
+	for (Train *u = v; u != nullptr;) {
+		if (u->IsMultiheaded() && u->IsEngine() && u->other_multiheaded_part != nullptr) {
+			/* Dual-headed engine: front and rear part form one block. */
+			fprintf(stderr, "NoSwap: dualhead veh=%d other=%d adjacent=%d\n",
+				(int)u->index.base(), (int)u->other_multiheaded_part->index.base(),
+				u->Next() == u->other_multiheaded_part ? 1 : 0);
+			blocks.push_back({u, u->other_multiheaded_part});
+			u = u->Next();
+			if (u != nullptr) u = u->Next();
+		} else if (u->HasArticulatedPart()) {
+			/* Articulated engine: base and all consecutive articulated parts form one block. */
+			blocks.emplace_back();
+			blocks.back().push_back(u);
+			u = u->Next();
+			while (u != nullptr && u->IsArticulatedPart()) {
+				blocks.back().push_back(u);
+				u = u->Next();
+			}
+		} else {
+			blocks.push_back({u});
+			u = u->Next();
+		}
+	}
+
+	for (size_t bi = 0; bi < blocks.size(); bi++) {
+		fprintf(stderr, "NoSwap: block %zu:", bi);
+		for (const Train *b : blocks[bi]) fprintf(stderr, " %d", (int)b->index.base());
+		fprintf(stderr, "\n");
+	}
+
+	/* Reverse every block internally, like ReverseTrainSwapVehicles does. */
+	for (auto &block : blocks) {
+		int r = static_cast<int>(block.size()) - 1;
+		int l = 0;
+		while (l <= r) {
+			Train *a = block[l];
+			Train *b = block[r];
+			if (a != b) {
+				bool a_hidden = a->vehstatus.Test(VehState::Hidden);
+				bool b_hidden = b->vehstatus.Test(VehState::Hidden);
+				b->vehstatus.Set(VehState::Hidden, a_hidden);
+				a->vehstatus.Set(VehState::Hidden, b_hidden);
+
+				std::swap(a->track, b->track);
+				std::swap(a->direction, b->direction);
+				std::swap(a->x_pos, b->x_pos);
+				std::swap(a->y_pos, b->y_pos);
+				std::swap(a->tile, b->tile);
+				std::swap(a->z_pos, b->z_pos);
+
+				SwapTrainFlags(&a->gv_flags, &b->gv_flags);
+			} else {
+				/* Swap GVF_GOINGUP_BIT/GVF_GOINGDOWN_BIT. */
+				SwapTrainFlags(&a->gv_flags, &a->gv_flags);
+			}
+			l++;
+			r--;
+		}
+
+		if (block.size() > 1) {
+			/* The vehicles changed place, fully update them. */
+			for (Train *u : block) UpdateStatusAfterSwap(u);
+		} else {
+			/* Single vehicle turning around in place: reverse the direction and
+			 * update sprites, but do not re-enter the (unchanged) tile. */
+			Train *u = block[0];
+			u->direction = ReverseDir(u->direction);
+			u->InvalidateImageCache();
+			u->UpdateIsDrawn();
+			u->UpdatePosition();
+			u->UpdateViewport(true, true);
+		}
+	}
+
+	/* Relink the blocks in reverse order. SetNext() cannot be used here: it
+	 * walks and repairs first/previous pointers of the surrounding chains,
+	 * which are in a stale intermediate state while the chain is being
+	 * reordered, leading to broken links and endless loops. Assign all
+	 * next/previous pointers directly instead. */
+	Train *old_first = blocks[0][0];
+	Train *new_first = blocks.back()[0];
+
+	/* Flatten the block order into a single vehicle sequence. */
+	std::vector<Train *> order;
+	for (auto it = blocks.rbegin(); it != blocks.rend(); ++it) {
+		for (Train *u : *it) order.push_back(u);
+	}
+
+	for (size_t i = 0; i < order.size(); i++) {
+		order[i]->SetNextRaw((i + 1 < order.size()) ? order[i + 1] : nullptr);
+		order[i]->SetPreviousRaw((i > 0) ? order[i - 1] : nullptr);
+	}
+	for (Train *u = new_first; u != nullptr; u = u->Next()) {
+		u->SetFirst(new_first);
+		u->SetLast(old_first);
+	}
+
+	/* Normalise the chain pointers. The primary pointers are intentionally left
+	 * untouched: the primary vehicle stays part of this chain, so the train
+	 * keeps its identity, orders and group. */
+	for (Train *u = new_first; u != nullptr; u = u->Next()) {
+		u->SetFirst(new_first);
+		u->SetLast(old_first);
+		u->vehicle_flags.Reset(VehicleFlag::DrivingBackwards);
+	}
+
+	/* CCF_COUPLE (not CCF_ARRANGE): ARRANGE includes DepotDirection which
+	 * would overwrite the per-vehicle directions we just reversed. */
+	new_first->ConsistChanged(CCF_COUPLE);
+
+	/* The front vehicle changes when flipping; invalidate the tick caches or the new front will not be ticked. */
+	InvalidateVehicleTickCaches();
+	DebugDumpTrainChain(new_first, "NoSwapReverse-after");
+}
+
 /**
  * Check if a level crossing tile has a train on it
  * @param tile tile to test
@@ -3097,9 +3273,10 @@ static bool IsWholeTrainInsideDepot(const Train *v)
  */
 static void ReverseTrainDirection(Train *consist)
 {
+	Train *first = consist->First();
 	Train *moving_front = consist->GetMovingFront();
 	if (IsRailDepotTile(moving_front->tile)) {
-		if (IsWholeTrainInsideDepot(consist)) return;
+		if (IsWholeTrainInsideDepot(first)) return;
 		InvalidateWindowData(WindowClass::VehicleDepot, moving_front->tile.base());
 	}
 
@@ -3128,7 +3305,7 @@ static void ReverseTrainDirection(Train *consist)
 		}
 	}
 
-	for (Train *u = consist; u != nullptr; u = u->Next()) {
+	for (Train *u = first; u != nullptr; u = u->Next()) {
 		u->flags.Reset({VehicleRailFlag::BeyondPlatformEnd, VehicleRailFlag::NotYetInPlatform});
 	}
 
@@ -3189,7 +3366,7 @@ static void ReverseTrainDirection(Train *consist)
 	/* Check if we should back up or flip the train. */
 	if (consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards) || _settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::None || consist->Last()->CanLeadTrain()) {
 		/* The train will back up. */
-		for (Train *u = consist; u != nullptr; u = u->Next()) {
+		for (Train *u = first; u != nullptr; u = u->Next()) {
 			u->vehicle_flags.Flip(VehicleFlag::DrivingBackwards);
 
 			/* Invert going up/down */
@@ -3206,12 +3383,12 @@ static void ReverseTrainDirection(Train *consist)
 		AdvanceWagonsBeforeSwap(moving_front);
 
 		/* swap start<>end, start+1<>end-1, ... */
-		ReverseTrainSwapVehicles(consist);
+		ReverseTrainSwapVehicles(first);
 
 		AdvanceWagonsAfterSwap(moving_front);
 	}
 
-	ClrBit(consist->vcache.cached_veh_flags, VCF_GV_ZERO_SLOPE_RESIST);
+	ClrBit(first->vcache.cached_veh_flags, VCF_GV_ZERO_SLOPE_RESIST);
 
 	if (IsRailDepotTile(moving_front->tile)) {
 		InvalidateWindowData(WindowClass::VehicleDepot, moving_front->tile.base());
@@ -3221,7 +3398,7 @@ static void ReverseTrainDirection(Train *consist)
 	consist->flags.Reset(VehicleRailFlag::Reversing);
 
 	/* recalculate cached data */
-	consist->ConsistChanged(CCF_TRACK);
+	first->ConsistChanged(CCF_TRACK);
 
 	/* update all images */
 	for (Train *u = consist; u != nullptr; u = u->Next()) u->UpdateViewport(false, false);
@@ -3700,10 +3877,7 @@ static bool CheckTrainStayInDepot(Train *v)
 
 	/* Only leave when we can reserve a path to our destination. */
 	if (seg_state == SigSegState::Path && v->force_proceed == TFP_NONE) {
-		fprintf(stderr, "depot: seg=Path, tile=(%u,%u) order=%d trying TryPathReserve\n",
-			TileX(v->tile), TileY(v->tile), (int)v->current_order.GetType());
 		bool ok = TryPathReserve(v);
-		fprintf(stderr, "depot: TryPathReserve result=%d\n", (int)ok);
 		if (!ok) {
 			MarkTrainAsStuck(v);
 			return true;
@@ -4047,7 +4221,6 @@ static Track DoTrainPathfind(const Train *v, TileIndex tile, DiagDirection enter
 static Track DoTrainCouplePathfind(const Train *v, bool do_track_reservation)
 {
 	Track ret = YapfTrainCoupleTrack(v, !do_track_reservation);
-	fprintf(stderr, "couple_pf: train=%u order=%d ret=%d\n", v->index, (int)v->current_order.GetType(), (int)ret);
 	return ret;
 }
 
@@ -5405,17 +5578,17 @@ static bool TryTrainCouple(Train *v, Train *u)
 }
 
 /**
- * Reverse a train for coupling by physically flipping the consist.
+ * Reverse a train for coupling by flipping the consist in place.
  *
- * The primary/engine relationship must be preserved: for an articulated engine
- * the front (First) stays the engine and its parts stay parts. Swapping the
- * engine/part roles here leaves the consist front as a non-engine articulated
- * part ("no power") and corrupts later decouples, so only the physical vehicle
- * positions/directions are swapped, matching the standard depot flip.
+ * Single vehicles keep their physical position and only turn around; the chain
+ * order is reversed so the former tail becomes the front. Dual-headed and
+ * articulated units are reversed as whole blocks (their parts exchange
+ * positions inside the block). The primary vehicle is not moved, so the train
+ * keeps its identity, orders and group.
  */
 static void ReverseTrainForCouple(Train *v)
 {
-	ReverseTrainSwapVehicles(v);
+	ReverseTrainNoSwapVehicles(v);
 }
 
 /**
@@ -5444,31 +5617,52 @@ static void Couple(Train *v, Train *u)
 	 * stationary, so v's own driving state decides it. If v is driving
 	 * backwards its tail meets u (no flip needed); otherwise its head meets
 	 * u, so v must be turned around and approach tail-first. */
+	DebugDumpTrainChain(v, "Couple-before-flip-v");
 	if (!v->IsDrivingBackwards()) {
 		ReverseTrainForCouple(v);
 		v = v->Primary();
 	}
+	DebugDumpTrainChain(v, "Couple-after-flip-v");
 
 	/* u must face the (possibly reversed) v within 45 degrees to couple as-is. */
 	DirDiff dir_diff = DirDifference(v->direction, u->direction);
 	if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
 		ReverseTrainForCouple(u);
 		u = u->Primary();
+	} else {
+		/* u keeps its direction, but v's chain order was reversed, so u must
+		 * be attached in reversed chain order to keep chain order matching
+		 * the spatial order of the combined train. */
+		ReverseTrainChainOrder(u);
+		u = u->Primary();
 	}
 
 	v->IncrementImplicitOrderIndex();
 	ProcessOrders(v);
-	v = v->Primary();
 
-	Train *v_last = v->Last();
+	/* TryTrainCouple performs chain surgery (MakeTrainBackup/ArrangeTrains) and
+	 * needs the physical chain head; the primary vehicle is only the identity
+	 * for user-facing messages below. */
+	Train *v_phys = v->First();
+	Train *u_phys = u->First();
 
-	if (!TryTrainCouple(v, u)) {
+	Train *v_last = v_phys->Last();
+
+	if (!TryTrainCouple(v_phys, u_phys)) {
 		if (v->owner == _local_company) {
 			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
 		}
 		return;
 	}
 
+
+	/* The absorbed consist's primary pointers must follow the surviving
+	 * primary, otherwise vehicles of the absorbed part resolve their consist
+	 * info (orders, name, group) from a stale mid-chain vehicle. */
+	Train *v_prim = v->Primary();
+	for (Train *w = v->First(); w != nullptr; w = w->Next()) {
+		w->SetPrimary(v_prim);
+	}
 
 	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
 
@@ -5520,7 +5714,9 @@ static void Couple(Train *v, Train *u)
 		v->Primary()->vehicle_flags.Set(VehicleFlag::HaveSlot);
 	}
 
+	DebugDumpTrainChain(v_phys, "Couple-after-merge");
 	AdvanceWagonsAfterCouple(v_last);
+	DebugDumpTrainChain(v_phys, "Couple-after-advance");
 	InvalidateWindowClassesData(WindowClass::TrainList);
 	/* The physical chain order is now correct (orientation is fixed before
 	 * the merge), so give the consist the usual chance to reverse in the
@@ -5623,7 +5819,10 @@ TileIndex Train::GetOrderStationLocation(StationID station)
 /** Goods at the consist have changed, update the graphics, cargo, and acceleration. */
 void Train::MarkDirty()
 {
-	Train *v = this;
+	/* Callable on any vehicle of the chain (e.g. a primary vehicle that is not
+	 * the chain head): refresh the whole physical chain and recompute the
+	 * consist caches on the chain head. */
+	Train *v = this->First();
 	do {
 		v->colourmap = PAL_NONE;
 		v->InvalidateImageCache();
@@ -5631,8 +5830,8 @@ void Train::MarkDirty()
 	} while ((v = v->Next()) != nullptr);
 
 	/* need to update acceleration and cached values since the goods on the train changed. */
-	this->CargoChanged();
-	this->UpdateAcceleration();
+	this->First()->CargoChanged();
+	this->First()->UpdateAcceleration();
 }
 
 /**
@@ -5669,7 +5868,9 @@ int Train::UpdateSpeed(MaxSpeedInfo max_speed_info)
 static bool HandlePossibleBreakdowns(Train *v)
 {
 	dbg_assert(v->IsFrontEngine());
-	for (Train *u = v; u != nullptr; u = u->Next()) {
+	/* Breakdown state is per-vehicle; iterate the whole physical chain, which
+	 * may extend before the primary vehicle when it is not the chain head. */
+	for (Train *u = v->First(); u != nullptr; u = u->Next()) {
 		if (u->breakdown_ctr != 0 && (u->IsEngine() || u->IsMultiheaded())) {
 			if (u->breakdown_ctr <= 2) {
 				if (u->HandleBreakdown()) return true;
@@ -7716,7 +7917,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		consist->SetLastSpeed();
 	}
 
-	for (Train *u = consist; u != nullptr; u = u->Next()) {
+	for (Train *u = consist->First(); u != nullptr; u = u->Next()) {
 		if (!(u->IsDrawn())) continue;
 
 		u->UpdateViewport(false, false);

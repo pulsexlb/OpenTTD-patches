@@ -662,15 +662,18 @@ public:
 	 */
 	bool IsStoppedInDepot() const
 	{
-		assert(this == this->Primary());
+		/* Physical state: always evaluated on the chain head, callable on any vehicle. */
+		const Vehicle *f = this->First();
 		/* Free wagons have no VehState::Stopped state */
-		if (this->IsPrimaryVehicle() && !this->vehstatus.Test(VehState::Stopped)) return false;
-		return this->IsChainInDepot();
+		if (f->IsPrimaryVehicle() && !f->vehstatus.Test(VehState::Stopped)) return false;
+		return f->IsChainInDepot();
 	}
 
 	bool IsWaitingInDepot() const {
-		assert(this == this->Primary());
-		return this->current_order.IsType(OT_WAITING) && this->IsChainInDepot();
+		/* The waiting order is consist info carried by the primary vehicle; the
+		 * depot check is physical and evaluated on the chain head. Callable on
+		 * any vehicle of the chain. */
+		return this->Primary()->current_order.IsType(OT_WAITING) && this->First()->IsChainInDepot();
 	}
 
 	/**
@@ -733,7 +736,12 @@ public:
 
 	void SetNext(Vehicle *next);
 	inline void SetFirst(Vehicle *f) { this->first = f; }
+	inline void SetLast(Vehicle *l) { this->last = l; }
 	inline void SetPrimary(Vehicle *p) { this->primary = p; }
+	/* Raw pointer assignment without the chain-consistency walks of SetNext();
+	 * only for code that relinks an entire chain in one pass. */
+	inline void SetNextRaw(Vehicle *n) { this->next = n; }
+	inline void SetPreviousRaw(Vehicle *p) { this->previous = p; }
 
 	/**
 	 * Get the next vehicle of this vehicle.

@@ -392,7 +392,7 @@ int GetTrainDetailsWndVScroll(VehicleID veh_id, TrainDetailsWindowTabs det_tab)
 
 	if (det_tab == TDW_TAB_TOTALS) { // Total cargo tab
 		CargoArray max_cargo{};
-		for (const Vehicle *v = Vehicle::Get(veh_id); v != nullptr; v = v->Next()) {
+		for (const Vehicle *v = Vehicle::Get(veh_id)->First(); v != nullptr; v = v->Next()) {
 			max_cargo[v->cargo_type] += v->cargo_cap;
 		}
 
@@ -404,7 +404,7 @@ int GetTrainDetailsWndVScroll(VehicleID veh_id, TrainDetailsWindowTabs det_tab)
 			num += 3; // needs three more: speed, power/weight ratio, TE/weight ratio
 		}
 	} else {
-		for (const Train *v = Train::Get(veh_id); v != nullptr; v = v->GetNextVehicle()) {
+		for (const Train *v = Train::Get(veh_id)->First(); v != nullptr; v = v->GetNextVehicle()) {
 			GetCargoSummaryOfArticulatedVehicle(v, _cargo_summary);
 			num += std::max(1u, (unsigned)_cargo_summary.size());
 
@@ -438,7 +438,7 @@ void DrawTrainDetails(const Train *v, const Rect &r, int vscroll_pos, uint16_t v
 		Direction dir = rtl ? Direction::E : Direction::W;
 		int x = rtl ? r.right : r.left;
 		uint8_t line_number = 0;
-		for (; v != nullptr && vscroll_pos > -vscroll_cap; v = v->GetNextVehicle()) {
+		for (v = v->First(); v != nullptr && vscroll_pos > -vscroll_cap; v = v->GetNextVehicle()) {
 			GetCargoSummaryOfArticulatedVehicle(v, _cargo_summary);
 
 			/* Draw sprites */

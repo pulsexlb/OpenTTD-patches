@@ -210,7 +210,9 @@ void VehicleServiceInDepot(Vehicle *v)
 	dbg_assert(v != nullptr);
 	if (v->type == VehicleType::Train) {
 		Train *t = Train::From(v);
-		for (Train *u = t; u != nullptr; u = u->Next()) {
+		/* Maintenance covers the whole physical chain, which may extend
+		 * before the primary vehicle when it is not the chain head. */
+		for (Train *u = t->First(); u != nullptr; u = u->Next()) {
 			if (u->IsEngine() || u->IsRearDualheaded()) {
 				u->flags.Reset({VehicleRailFlag::NeedRepair, VehicleRailFlag::HasHitRoadVehicle, VehicleRailFlag::ConsistBreakdown});
 				u->critical_breakdown_count = 0;
@@ -221,7 +223,8 @@ void VehicleServiceInDepot(Vehicle *v)
 		if (t->IsFrontEngine()) {
 			t->flags.Reset(VehicleRailFlag::BreakdownBraking);
 			t->flags.Reset(VehicleRailFlagsIsBroken);
-			t->ConsistChanged(CCF_REFIT);
+			/* Cache recomputation always runs on the chain head. */
+			t->First()->ConsistChanged(CCF_REFIT);
 		}
 	} else if (v->type == VehicleType::Road) {
 		RoadVehicle::From(v)->critical_breakdown_count = 0;
