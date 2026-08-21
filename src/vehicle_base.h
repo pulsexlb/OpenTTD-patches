@@ -446,7 +446,7 @@ public:
 	 * Is this vehicle the moving front of the vehicle chain?
 	 * @return \c true iff this vehicle is the moving front of the vehicle chain.
 	 */
-	bool IsMovingFront() const { return this->First()->IsPrimaryVehicle() && (this->IsDrivingBackwards() ? this->Next() : this->Previous()) == nullptr; }
+	bool IsMovingFront() const { return this->Primary()->IsPrimaryVehicle() && (this->IsDrivingBackwards() ? this->Next() : this->Previous()) == nullptr; }
 
 	/**
 	 * Get the moving front of the vehicle chain.

@@ -402,10 +402,13 @@ struct DepotWindow : Window {
 		if (free_wagon) {
 			DrawString(text, STR_DEPOT_NO_ENGINE);
 		} else {
+			/* Identity fields (unit number, running flag, age) come from the
+			 * primary vehicle; the drawn images come from the chain head. */
+			const Vehicle *ident = v->Primary();
 			Rect flag = r.WithWidth(this->flag_size.width, rtl).WithHeight(this->flag_size.height).Translate(0, diff_y);
-			DrawSpriteIgnorePadding((v->vehstatus.Test(VehState::Stopped)) ? SPR_FLAG_VEH_STOPPED : SPR_FLAG_VEH_RUNNING, PAL_NONE, flag, SA_CENTER);
+			DrawSpriteIgnorePadding((ident->vehstatus.Test(VehState::Stopped)) ? SPR_FLAG_VEH_STOPPED : SPR_FLAG_VEH_RUNNING, PAL_NONE, flag, SA_CENTER);
 
-			DrawString(text, GetString(STR_JUST_COMMA, v->unitnumber), (v->max_age - DAYS_IN_LEAP_YEAR) >= v->age || (v->type == VehicleType::Train && Train::From(v)->IsFrontWagon()) ? TextColour::Black : TextColour::Red);
+			DrawString(text, GetString(STR_JUST_COMMA, ident->unitnumber), (ident->max_age - DAYS_IN_LEAP_YEAR) >= ident->age || (ident->type == VehicleType::Train && Train::From(ident)->IsFrontWagon()) ? TextColour::Black : TextColour::Red);
 		}
 	}
 
@@ -549,17 +552,17 @@ struct DepotWindow : Window {
 					[[fallthrough]];
 
 				case VehicleType::Road:
-					if (xm <= this->flag_size.width) return {.action = DepotGUIAction::StartStop, .vehicle = vehicle};
+					if (xm <= this->flag_size.width) return {.action = DepotGUIAction::StartStop, .vehicle = vehicle->Primary()};
 					break;
 
 				case VehicleType::Ship:
 				case VehicleType::Aircraft:
-					if (xm <= this->flag_size.width && ym >= (uint)(GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal)) return {.action = DepotGUIAction::StartStop, .vehicle = vehicle};
+					if (xm <= this->flag_size.width && ym >= (uint)(GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal)) return {.action = DepotGUIAction::StartStop, .vehicle = vehicle->Primary()};
 					break;
 
 				default: NOT_REACHED();
 			}
-			return {.action = DepotGUIAction::ShowVehicle, .vehicle = vehicle};
+			return {.action = DepotGUIAction::ShowVehicle, .vehicle = vehicle->Primary()};
 		}
 
 		if (this->type != VehicleType::Train) return {.action = DepotGUIAction::DragVehicle, .vehicle = vehicle};
@@ -567,7 +570,7 @@ struct DepotWindow : Window {
 		/* Clicking on the counter */
 		if (xm >= matrix_widget->current_x - this->count_width) {
 			if (is_wagon) return {.action = DepotGUIAction::Error};
-			return  {.action = DepotGUIAction::ShowVehicle, .vehicle = vehicle};
+			return  {.action = DepotGUIAction::ShowVehicle, .vehicle = vehicle->Primary()};
 		}
 
 		/* Account for the header */

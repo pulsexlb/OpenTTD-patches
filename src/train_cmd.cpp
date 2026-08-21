@@ -2211,6 +2211,34 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 	/* Not much to do! */
 	if (head == nullptr) return;
 
+	/* Self-heal the primary pointer after chain surgery: if the recorded
+	 * primary is no longer part of this chain or has lost its front status
+	 * (e.g. ClearFrontWagon/ClearFrontEngine), fall back to the chain head. */
+	{
+		Train *prim = head->Primary();
+		bool valid = false;
+		for (Train *u = head; u != nullptr; u = u->Next()) {
+			if (u == prim) {
+				valid = u->IsPrimaryVehicle() || u->IsFreeWagon();
+				break;
+			}
+		}
+		if (!valid) {
+			for (Train *u = head; u != nullptr; u = u->Next()) u->SetPrimary(head);
+
+			/* The demoted vehicle is no longer a train identity: close its
+			 * vehicle windows, same as when coupling absorbs a train front. */
+			if (prim != head) {
+				CloseWindowById(WindowClass::VehicleView, prim->index.base());
+				CloseWindowById(WindowClass::VehicleDetails, prim->index.base());
+				CloseWindowById(WindowClass::VehicleOrders, prim->index.base());
+				CloseWindowById(WindowClass::VehicleRefit, prim->index.base());
+				CloseWindowById(WindowClass::VehicleTimetable, prim->index.base());
+				DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, prim->index.base());
+			}
+		}
+	}
+
 	/* Tell the 'world' the train changed. Physical caches are always recomputed
 	 * on the chain head, even when 'head' is the primary vehicle mid-chain. */
 	head->First()->ConsistChanged(allowed_changes);
@@ -5712,6 +5740,16 @@ static void Couple(Train *v, Train *u)
 		TraceRestrictTransferVehicleOccupantInAllSlots(u->index, v->Primary()->index);
 		u->vehicle_flags.Reset(VehicleFlag::HaveSlot);
 		v->Primary()->vehicle_flags.Set(VehicleFlag::HaveSlot);
+	}
+
+	/* If the absorbed consist was queued for loading/unloading at a station,
+	 * drop the stale entry: it can never leave the queue by itself anymore
+	 * and its load_unload_ticks would eventually hit zero and assert. */
+	Station *couple_station = Station::GetIfValid(u->last_station_visited);
+	if (couple_station != nullptr) {
+		auto &loading = couple_station->loading_vehicles;
+		auto it = std::find(loading.begin(), loading.end(), u);
+		if (it != loading.end()) loading.erase(it);
 	}
 
 	DebugDumpTrainChain(v_phys, "Couple-after-merge");
