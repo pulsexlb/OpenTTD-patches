@@ -258,6 +258,7 @@ private:
 	Vehicle *previous = nullptr;                 ///< NOSAVE: pointer to the previous vehicle in the chain
 	Vehicle *first = nullptr;                    ///< NOSAVE: pointer to the first vehicle in the chain
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
+	Vehicle *primary = nullptr;                  ///< NOSAVE: pointer to the identity-carrying vehicle (original engine after reversal)
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order
 	Vehicle *previous_shared = nullptr;          ///< NOSAVE: pointer to the previous vehicle in the shared order chain
@@ -742,6 +743,9 @@ public:
 	void SetNext(Vehicle *next);
 	void SetPrevious(Vehicle *prev);
 	inline void SetFirst(Vehicle *f) { this->first = f; }
+	inline void SetPrimary(Vehicle *p) { this->primary = p; }
+	inline Vehicle *GetPrimary() { return this->primary; }
+	inline const Vehicle *GetPrimary() const { return this->primary; }
 
 	/**
 	 * Get the next vehicle of this vehicle.
@@ -770,10 +774,10 @@ public:
 	 * For most vehicle types this is the same as First().  For trains,
 	 * after a ReverseTrainNoSwapVehicles the chain head may be a wagon
 	 * while the engine (which holds identity) sits elsewhere in the chain;
-	 * the Train override searches for the first engine.
+	 * Primary() returns the identity-carrying vehicle directly.
 	 */
-	virtual Vehicle *Primary() { return this->First(); }
-	virtual const Vehicle *Primary() const { return this->First(); }
+	virtual Vehicle *Primary() { return this->primary; }
+	virtual const Vehicle *Primary() const { return this->primary; }
 
 	/**
 	 * Get the last vehicle of this vehicle chain.

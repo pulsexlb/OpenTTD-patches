@@ -1502,7 +1502,7 @@ Money CargoPayment::PayTransfer(CargoType cargo, CargoPacket *cp, uint count, Ti
  */
 static OrderLoadType GetLoadType(const Vehicle *v)
 {
-	return Train::From(v)->First()->current_order.GetCargoLoadType(v->cargo_type);
+	return Train::From(v)->Primary()->current_order.GetCargoLoadType(v->cargo_type);
 }
 
 /**
@@ -1514,7 +1514,7 @@ static OrderLoadType GetLoadType(const Vehicle *v)
  */
 static OrderUnloadType GetUnloadType(const Vehicle *v)
 {
-	return Train::From(v)->First()->current_order.GetCargoUnloadType(v->cargo_type);
+	return Train::From(v)->Primary()->current_order.GetCargoUnloadType(v->cargo_type);
 }
 
 /**
@@ -1792,12 +1792,12 @@ static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist
 	IterateVehicleParts(v_start, PrepareRefitAction(consist_capleft, refit_mask));
 
 	bool is_auto_refit = new_cid == CARGO_AUTO_REFIT;
-	bool check_order = (Train::From(v)->First()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad);
+	bool check_order = (Train::From(v)->Primary()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad);
 	if (is_auto_refit) {
 		/* Get a refittable cargo type with waiting cargo for next_station or StationID::Invalid(). */
 		new_cid = v_start->cargo_type;
 		for (CargoType cid : refit_mask) {
-			if (check_order && Train::From(v)->First()->current_order.GetCargoLoadType(cid) == OrderLoadType::NoLoad) continue;
+			if (check_order && Train::From(v)->Primary()->current_order.GetCargoLoadType(cid) == OrderLoadType::NoLoad) continue;
 			if (st->goods[cid].data != nullptr && st->goods[cid].data->cargo.HasCargoFor(next_station.Get(cid))) {
 				/* Try to find out if auto-refitting would succeed. In case the refit is allowed,
 				 * the returned refit capacity will be greater than zero. */
@@ -1825,13 +1825,13 @@ static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist
 		 * misrouting it. */
 		IterateVehicleParts(v_start, ReturnCargoAction(st, StationID::Invalid()));
 		CommandCost cost = Command<Commands::RefitVehicle>::Do(DoCommandFlag::Execute, v_start->index, new_cid, 0xFF, true, false, 1); // Auto-refit and only this vehicle including artic parts.
-		if (cost.Succeeded()) Train::From(v)->First()->profit_this_year -= cost.GetCost() << 8;
+		if (cost.Succeeded()) Train::From(v)->Primary()->profit_this_year -= cost.GetCost() << 8;
 	}
 
 	/* Add new capacity to consist capacity and reserve cargo */
 	IterateVehicleParts(v_start, FinalizeRefitAction(consist_capleft, st, next_station,
-			is_auto_refit || Train::From(v)->First()->current_order.IsFullLoadOrder(),
-			(Train::From(v)->First()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad) ? v->First() : nullptr));
+			is_auto_refit || Train::From(v)->Primary()->current_order.IsFullLoadOrder(),
+			(Train::From(v)->Primary()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad) ? v->Primary() : nullptr));
 }
 
 /**

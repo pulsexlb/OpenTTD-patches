@@ -1172,7 +1172,7 @@ static uint32_t VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *objec
 		return nullptr;
 	}
 
-	const Order &order = Train::From(v)->First()->current_order;
+	const Order &order = Train::From(v)->Primary()->current_order;
 	bool not_loading = (order.GetUnloadType() == OrderUnloadType::NoUnload) && (order.GetLoadType() == OrderLoadType::NoLoad);
 	bool in_motion = !order.IsType(OT_LOADING) || not_loading;
 

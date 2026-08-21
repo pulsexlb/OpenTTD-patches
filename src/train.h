@@ -206,26 +206,23 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 
 	/**
 	 * Get the vehicle that carries the consist's identity (orders, group,
-	 * age, profit, etc.).  This is normally the FrontEngine; after a
-	 * ReverseTrainNoSwapVehicles the engine sits behind a FrontWagon at
-	 * the chain head, so we must search the chain.
+	 * age, profit, etc.).  This is set by ReverseTrainNoSwapVehicles to the
+	 * original head, which remains the identity holder even after reversal.
 	 *
-	 * Unlike First() (which always returns the chain head), Primary()
-	 * returns the first engine in the chain.  For free-wagon chains
+	 * Unlike First() (which returns the current chain head), Primary()
+	 * returns the identity-carrying vehicle.  For free-wagon chains
 	 * it falls back to First().
 	 */
 	Vehicle *Primary() override
 	{
-		for (Train *t = this->First(); t != nullptr; t = t->Next()) {
-			if (t->IsEngine()) return t;
-		}
+		Vehicle *p = this->GetPrimary();
+		if (p != nullptr) return p;
 		return this->First();
 	}
 	const Vehicle *Primary() const override
 	{
-		for (const Train *t = this->First(); t != nullptr; t = t->Next()) {
-			if (t->IsEngine()) return t;
-		}
+		const Vehicle *p = this->GetPrimary();
+		if (p != nullptr) return p;
 		return this->First();
 	}
 	void GetImage(Direction direction, EngineImageType image_type, VehicleSpriteSeq *result) const override;

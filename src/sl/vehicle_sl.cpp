@@ -320,6 +320,19 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 				u->last = v;
 			}
 		}
+
+		/* Fill the primary pointer for trains. After reversal, the identity-carrying
+		 * vehicle (with orders) may not be at First(). Find it by scanning for the
+		 * vehicle that owns the order list. */
+		if (v->type == VehicleType::Train) {
+			Vehicle *primary = v;
+			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
+				if (u->orders != nullptr) { primary = u; break; }
+			}
+			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
+				Train::From(u)->SetPrimary(primary);
+			}
+		}
 	}
 
 	if (part_of_load) {

@@ -185,7 +185,7 @@ static bool VerifyAutoreplaceRefitForOrders(const Vehicle *v, EngineID engine_ty
 	CargoTypes union_refit_mask_a = GetUnionOfArticulatedRefitMasks(v->engine_type, false);
 	CargoTypes union_refit_mask_b = GetUnionOfArticulatedRefitMasks(engine_type, false);
 
-	const Vehicle *u = (v->type == VehicleType::Train) ? v->First() : v;
+	const Vehicle *u = (v->type == VehicleType::Train) ? v->Primary() : v;
 	for (const Order *o : u->Orders()) {
 		if (!o->IsRefit() || o->IsAutoRefit()) continue;
 		CargoType cargo_type = o->GetRefitCargo();
@@ -207,7 +207,7 @@ static int GetIncompatibleRefitOrderIdForAutoreplace(const Vehicle *v, EngineID 
 {
 	CargoTypes union_refit_mask = GetUnionOfArticulatedRefitMasks(engine_type, false);
 
-	const Vehicle *u = (v->type == VehicleType::Train) ? v->First() : v;
+	const Vehicle *u = (v->type == VehicleType::Train) ? v->Primary() : v;
 
 	const OrderList *orders = u->orders;
 	if (orders == nullptr) return -1;

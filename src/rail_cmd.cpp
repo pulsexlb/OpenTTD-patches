@@ -4815,7 +4815,7 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 		}
 	};
 
-	if (v->GetMovingPrev() == nullptr && v->current_order.IsType(OT_LOADING_ADVANCE)) abort_load_through(v->First(), true);
+	if (v->GetMovingPrev() == nullptr && v->current_order.IsType(OT_LOADING_ADVANCE)) abort_load_through(static_cast<Train*>(Train::From(v)->Primary()), true);
 
 	/* Depot direction. */
 	const DiagDirection dir = GetRailDepotDirection(tile);
@@ -4849,7 +4849,7 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 	} else if (_fractcoords_enter[dir] == fract_coord) {
 		/* Entering depot. */
 		if (v->GetMovingPrev() == nullptr) {
-			Train *consist = v->First();
+			Train *consist = static_cast<Train*>(Train::From(v)->Primary());
 			if (consist->current_order.IsType(OT_LOADING_ADVANCE)) {
 				abort_load_through(consist, true);
 			} else if (v->GetMovingFront()->flags.Test(VehicleRailFlag::BeyondPlatformEnd)) {

@@ -2982,6 +2982,10 @@ static void CopyVehicleIdentityFields(Train *old_head, Train *new_head)
  */
 static void ReverseTrainNoSwapVehicles(Train *v)
 {
+	/* Remember the original head as the identity holder. After reversal,
+	 * First() may point to a different vehicle, but Primary() always
+	 * returns the original engine that carries orders/group/unitnumber. */
+	v->SetPrimary(v);
 	/* Collect all vehicles in chain order before touching the list. */
 	std::vector<Train *> vehicles;
 	for (Train *u = v; u != nullptr; u = u->Next()) {
@@ -3061,15 +3065,12 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 	/* Transfer identity fields from old head to new head.
 	 * After reversal, the old head is at the back of the chain and the new
 	 * head is at the front. The new head must carry the train's identity
-	 * (orders, unitnumber, age, etc.) for the combined train to work correctly. */
-	CopyVehicleIdentityFields(vehicles.front(), new_order.front());
+	 * (orders, unitnumber, age, etc.) for the combined train to work correctly.
+	 * NOTE: CopyVehicleIdentityFields removed — Primary() now tracks the original
+	 * identity holder, so orders stay on the original head without copying. */
 	/* Transfer unitnumber: the new head becomes the train's identity carrier.
-	 * Release the old head's unitnumber to avoid duplicates. */
-	if (vehicles.front()->unitnumber != 0) {
-		new_order.front()->unitnumber = vehicles.front()->unitnumber;
-		Company::Get(vehicles.front()->owner)->freeunits[vehicles.front()->type].ReleaseID(vehicles.front()->unitnumber);
-		vehicles.front()->unitnumber = 0;
-	}
+	 * Release the old head's unitnumber to avoid duplicates.
+	 * NOTE: Removed — unitnumber stays on original Primary(). */
 
 	fprintf(stderr, "[REVERSE-DBG] AFTER chain reverse + DrivingBackwards flip: First()=%p DrivingBackwards=%d\n",
 		(void*)new_order.front(), (int)new_order.front()->vehicle_flags.Test(VehicleFlag::DrivingBackwards));
@@ -3096,6 +3097,15 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 	}
 
 	InvalidateVehicleTickCaches();
+	/* Fix the first pointer on the new head — SetNext only updates successors,
+	 * never the caller itself, so new_order.front()->first still points to the
+	 * old head. ConsistChanged asserts u->First() == this for every vehicle. */
+	new_order.front()->SetFirst(new_order.front());
+	/* Propagate primary to all vehicles in the chain. Only the input vehicle
+	 * had SetPrimary called at the start; after reversal the physical head
+	 * changed, so other vehicles need the same primary pointer. */
+	for (Train *u : new_order) u->SetPrimary(v);
+	NormaliseSubtypes(new_order.front());
 }
 
 /**
@@ -5729,42 +5739,6 @@ static bool TryTrainCouple(Train *v, Train *u)
 }
 
 /**
- * Same as TryTrainCouple but accepts a pre-captured v_last instead of
- * recomputing it via v->Last().  This is needed for same-direction
- * coupling where v has already been reversed and v->Last() would point
- * to the wrong vehicle.
- */
-static bool TryTrainCoupleSameDirection(Train *v, Train *v_last, Train *u)
-{
-	TrainList original_src;
-	TrainList original_dst;
-
-	MakeTrainBackup(original_src, v);
-	MakeTrainBackup(original_dst, u);
-
-	Train *u_head = u;
-
-	ArrangeTrains(&v, v_last, &u_head, u, true);
-
-	CommandCost ret = CheckTrainAttachment(v);
-	bool ok = v->CanConsistChange(CCF_ARRANGE_CHECK);
-
-	if (ret.Failed() || !ok) {
-		/* Restore the train we had. */
-		RestoreTrainBackup(original_src);
-		RestoreTrainBackup(original_dst);
-
-		v->ConsistChanged(CCF_ARRANGE_STATION);
-		u->ConsistChanged(CCF_ARRANGE_STATION);
-		return false;
-	}
-
-	/* Coupling removes a train front; invalidate the tick caches or the merged chain will be ticked twice. */
-	InvalidateVehicleTickCaches();
-	return true;
-}
-
-/**
  * Reverse a train for coupling by reversing the chain direction and vehicle
  * facing, without moving vehicles from their physical positions.
  *
@@ -5790,30 +5764,6 @@ static void Couple(Train *v, Train *u)
 	u = u->First();
 	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return;
 
-	/* DEBUG: dump state before coupling */
-	auto dump_chain = [](const char *label, Train *t) {
-		fprintf(stderr, "[COUPLE-DBG] %s chain: First()=%p idx=%d dir=%d subtype=%d IsEngine=%d IsWagon=%d IsFrontEngine=%d IsFrontWagon=%d orders=%p unitnumber=%d age=%d max_age=%d\n",
-			label, (void*)t->First(), (int)t->First()->index.base(), (int)t->First()->direction,
-			(int)t->First()->subtype, (int)t->First()->IsEngine(), (int)t->First()->IsWagon(),
-			(int)t->First()->IsFrontEngine(), (int)t->First()->IsFrontWagon(),
-			(void*)t->First()->orders, (int)t->First()->unitnumber,
-			(int)t->First()->age.base(), (int)t->First()->max_age.base());
-		for (Train *w = t->First()->Next(); w != nullptr; w = w->Next()) {
-			fprintf(stderr, "  next=%p idx=%d dir=%d subtype=%d IsEngine=%d IsWagon=%d age=%d\n",
-				(void*)w, (int)w->index.base(), (int)w->direction,
-				(int)w->subtype, (int)w->IsEngine(), (int)w->IsWagon(), (int)w->age.base());
-		}
-	};
-	dump_chain("BEFORE v", v);
-	dump_chain("BEFORE u", u);
-
-	/* DEBUG: check u chain length */
-	{
-		int cnt = 0;
-		for (Train *w = u; w != nullptr; w = w->Next()) cnt++;
-		fprintf(stderr, "[COUPLE-DBG] u chain length BEFORE couple = %d\n", cnt);
-	}
-
 	/*
 	 * Orientation phase: v will stay the front of the merged consist
 	 * (ClearFrontWagon/ClearFrontEngine + NormaliseTrainHead below), so both
@@ -5826,202 +5776,70 @@ static void Couple(Train *v, Train *u)
 	/* Which end of v reaches the joint: v is the moving train and u is
 	 * stationary, so v's own driving state decides it. If v is driving
 	 * backwards its tail meets u (no flip needed); otherwise its head meets
-	 * u, so v must be turned around and approach tail-first.
-	 *
-	 * Capture v_last BEFORE reversal: after no-displacement reversal the
-	 * chain order changes but physical positions don't, so v->Last() would
-	 * refer to the wrong vehicle afterwards. */
+	 * u, so v must be turned around and approach tail-first. */
+	if (!v->IsDrivingBackwards()) {
+		ReverseTrainForCouple(v);
+		v = v->First();
+	}
+
+	/* u must face the (possibly reversed) v within 45 degrees to couple as-is.
+	 * Use Primary()->direction since First() may have changed after reversal. */
+	DirDiff dir_diff = DirDifference(v->Primary()->direction, u->Primary()->direction);
+	if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
+		ReverseTrainForCouple(u);
+		u = u->First();
+	}
+
+	/* Order operations must run on the primary vehicle (identity holder),
+	 * not necessarily on First() after reversal. */
+	Vehicle *v_primary = v->Primary();
+	v_primary->IncrementImplicitOrderIndex();
+	ProcessOrders(v_primary);
+	v = v->First();
+
 	Train *v_last = v->Last();
 
-	DirDiff dir_diff = DirDifference(v->direction, u->direction);
-	DirDiff original_dir_diff = dir_diff;
-	fprintf(stderr, "[COUPLE-DBG] dir_diff in Couple = %d (Same=%d Right45=%d Left45=%d)\n", (int)dir_diff, (int)DirDiff::Same, (int)DirDiff::Right45, (int)DirDiff::Left45);
-
-	/* Same-direction coupling: both trains already face the same way.
-	 * Do NOT reverse — let them couple while continuing in their original
-	 * direction.  The spacing system will close any gap after coupling.
-	 *
-	 * For same-direction coupling, v approaches u from behind, so u must end
-	 * up in front of v in the merged consist.  Swap the ArrangeTrains args
-	 * so that u is the destination (stays in place) and v is the source
-	 * (appended behind u). */
-	bool same_direction_couple = (dir_diff == DirDiff::Same);
-	UnitID u_old_unitnumber = 0;
-	Train *dst = v;
-	Train *src = u;
-	Train *dst_last = v_last;
-
-	if (!same_direction_couple) {
-		/* Opposite-direction: reverse v to approach u head-on. */
-		if (!v->IsDrivingBackwards()) {
-			ReverseTrainForCouple(v);
-			v = v->First();
-			NormaliseSubtypes(v);
-			dir_diff = DirDifference(v->direction, u->direction);
-			fprintf(stderr, "[COUPLE-DBG] dir_diff after v reverse = %d\n", (int)dir_diff);
+	if (!TryTrainCouple(v, u)) {
+		if (v->owner == _local_company) {
+			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
 		}
-
-		u_old_unitnumber = u->unitnumber;
-		if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
-			ReverseTrainForCouple(u);
-			u = u->First();
-			NormaliseSubtypes(u);
-		}
-
-		/* After coupling, v stays in front. Use original TryTrainCouple. */
-		if (!TryTrainCouple(v, u)) {
-			if (v->owner == _local_company) {
-				AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
-			}
-			return;
-		}
-		/* After opposite-direction couple, we need to advance past the OT_GOTO_COUPLE
-		 * command. ProcessOrders cannot do this because UpdateOrderDest returns false
-		 * for OT_GOTO_COUPLE (the default case). Instead we manually advance the order
-		 * indices and set the next order, mimicking what SwitchToNextOrder would do. */
-		fprintf(stderr, "[COUPLE-DBG] BEFORE order advance: idx=%d cur_implicit=%d cur_real=%d current_order=%d dest_tile=%u\n", (int)v->index.base(), (int)v->cur_implicit_order_index, (int)v->cur_real_order_index, (int)v->current_order.GetType(), (unsigned)v->dest_tile.base());
-		if (v->GetNumOrders() > 0) {
-			VehicleOrderID next_idx = v->cur_implicit_order_index + 1;
-			if (next_idx >= v->GetNumOrders()) next_idx = 0;
-			const Order *next_order = v->GetOrder(next_idx);
-			if (next_order != nullptr && !next_order->IsType(OT_IMPLICIT)) {
-				v->cur_implicit_order_index = next_idx;
-				v->cur_real_order_index = next_idx;
-				v->current_order = *next_order;
-				UpdateOrderDest(v, next_order);
-			}
-		}
-		fprintf(stderr, "[COUPLE-DBG] AFTER order advance: idx=%d cur_implicit=%d cur_real=%d current_order=%d dest_tile=%u\n", (int)v->index.base(), (int)v->cur_implicit_order_index, (int)v->cur_real_order_index, (int)v->current_order.GetType(), (unsigned)v->dest_tile.base());
-	} else {
-		/* Same-direction: v approaches u from behind, so u must end up in FRONT
-		 * of v in the merged consist. Call TryTrainCouple with swapped args
-		 * so u (the stationary train) becomes the combined head.
-		 *
-		 * Save v's original orders AND current_order BEFORE the swap —
-		 * CopyVehicleIdentityFields transfers u's orders into v, but for
-		 * same-direction coupling the combined train should retain the
-		 * APPROACHING train's (v's) orders and continue its schedule. */
-		OrderList *saved_v_orders = v->orders;
-		Order  saved_v_current_order = v->current_order;
-		VehicleOrderID saved_v_cur_implicit = v->cur_implicit_order_index;
-		Train *src_chain_head = v; /* track the source chain head before merge */
-		if (!TryTrainCouple(u, v)) {
-			if (v->owner == _local_company) {
-				AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
-			}
-			return;
-		}
-		/* TryTrainCouple returns the combined train in its first arg. */
-		v = u;
-		/* Restore the approaching train's original orders and current order
-		 * so the combined train continues v's schedule, not u's.
-		 * Clear current_order so ProcessOrders advances past the couple command. */
-		v->orders = saved_v_orders;
-		v->current_order.Free();
-		v->cur_implicit_order_index = saved_v_cur_implicit;
-		ProcessOrders(v);
-		/* ProcessOrders does not advance past an IMPLICIT order (it returns
-		 * false when order[type] == OT_IMPLICIT). Manually advance past the
-		 * couple command so that order[cur_implicit+1] points to the real
-		 * next order — required for SplitOrders to find OT_DECOUPLE at the
-		 * station later. */
-		if (v->GetNumOrders() > 0) {
-			VehicleOrderID next_idx = v->cur_implicit_order_index + 1;
-			if (next_idx >= v->GetNumOrders()) next_idx = 0;
-			const Order *next_order = v->GetOrder(next_idx);
-			if (next_order != nullptr && !next_order->IsType(OT_IMPLICIT)) {
-				v->cur_implicit_order_index = next_idx;
-				v->cur_real_order_index = next_idx;
-				v->current_order = *next_order;
-				UpdateOrderDest(v, next_order);
-			}
-		}
-		/* The merged source (original v, now part of the combined train) retains
-		 * IsFrontEngine/IsFrontWagon from before coupling, making it a second
-		 * primary vehicle that ticks with zeroed cached_weight → SIGFPE in
-		 * GetAcceleration(). Clear those flags so only the actual chain head
-		 * (idx=0) drives the combined train. */
-		src_chain_head->ClearFrontEngine();
-		src_chain_head->ClearFrontWagon();
+		return;
 	}
 
-	/* DEBUG: dump chain immediately after TryTrainCouple */
-	fprintf(stderr, "[COUPLE-DBG] AFTER TryTrainCouple: v_first=%p idx=%d v_last=%p\n",
-		(void*)v->First(), (int)v->First()->index.base(), (void*)v->Last());
-	for (Train *w = v; w != nullptr; w = w->Next()) {
-		fprintf(stderr, "  [post-couple] idx=%d tile=%u dir=%d DrivingBwd=%d Next=%p\n",
-			(int)w->index.base(), (unsigned)w->tile.base(), (int)w->direction,
-			(int)w->vehicle_flags.Test(VehicleFlag::DrivingBackwards), (void*)w->Next());
-	}
+	/* TryTrainCouple may have changed which vehicle is the chain head.
+	 * Re-acquire the current head for subsequent operations. */
+	v = v->First();
 
 
-	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore.
-	 * Close ALL windows for both consists: ReverseTrainNoSwapVehicles may have
-	 * changed which vehicle is First(), so cached window_number references to
-	 * the old head become stale and trigger assert(this == this->First()). */
-	for (Train *w = v; w != nullptr; w = w->Next()) {
-		CloseWindowById(WindowClass::VehicleView, w->index);
-		CloseWindowById(WindowClass::VehicleOrders, w->index);
-		CloseWindowById(WindowClass::VehicleRefit, w->index);
-		CloseWindowById(WindowClass::VehicleDetails, w->index);
-		CloseWindowById(WindowClass::VehicleTimetable, w->index);
-		DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, w->index.base());
-	}
-	for (Train *w = u; w != nullptr; w = w->Next()) {
-		CloseWindowById(WindowClass::VehicleView, w->index);
-		CloseWindowById(WindowClass::VehicleOrders, w->index);
-		CloseWindowById(WindowClass::VehicleRefit, w->index);
-		CloseWindowById(WindowClass::VehicleDetails, w->index);
-		CloseWindowById(WindowClass::VehicleTimetable, w->index);
-		DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, w->index.base());
-	}
+	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
+
+	CloseWindowById(WindowClass::VehicleView, u->index);
+	CloseWindowById(WindowClass::VehicleOrders, u->index);
+	CloseWindowById(WindowClass::VehicleRefit, u->index);
+	CloseWindowById(WindowClass::VehicleDetails, u->index);
+	CloseWindowById(WindowClass::VehicleTimetable, u->index);
+	DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
 	SetWindowDirty(WindowClass::Company, _current_company);
 
-		/* In same-direction coupling, u and v point to the same vehicle
-		 * (the combined head). DeleteVehicleOrders(u) would destroy the
-		 * orders we just restored. Skip it — the combined head keeps its
-		 * orders and only the appended chain's head (src_chain_head, idx=17)
-		 * had its orders transferred into the shared list by CopyVehicleIdentityFields. */
-		if (!same_direction_couple) {
-			DeleteVehicleOrders(u);
-		}
-	/* Release the saved unitnumber — u->unitnumber may be 0 after
-	 * CopyVehicleIdentityFields cleared it during the reversal. */
-	if (u_old_unitnumber != 0) {
-		Company::Get(u->owner)->freeunits[u->type].ReleaseID(u_old_unitnumber);
-	}
+	DeleteVehicleOrders(u);
 	u->ReleaseUnitNumber();
 	GroupStatistics::CountVehicle(u, -1);
 
-	v->profit_this_year += u->profit_this_year;
-	v->profit_last_year += u->profit_last_year;
+	/* Profit operations use the primary vehicle (identity holder). */
+	Vehicle *primary = v->Primary();
+	primary->profit_this_year += u->profit_this_year;
+	primary->profit_last_year += u->profit_last_year;
 
 	u->profit_last_year = 0;
 	u->profit_this_year = 0;
 
-	/* In opposite-direction coupling, u is the appended train and needs its
-	 * primary flags cleared so only v drives the combined train. In
-	 * same-direction coupling, TryTrainCouple was called with swapped args so
-	 * u points to the combined head (idx=0) — clearing its flags would break
-	 * the train. Those flags were already handled by src_chain_head->Clear...() above. */
-	if (!same_direction_couple) {
-		u->ClearFrontWagon();
-		u->ClearFrontEngine();
-	}
+	u->ClearFrontWagon();
+	u->ClearFrontEngine();
 
 	NormaliseTrainHead(v, CCF_COUPLE);
 
-	/* Reset DrivingBackwards for the combined train: after reversal the v-train
-	 * had DrivingBackwards=true so GetMovingFront() returned Last(), but the
-	 * merged train should move forward via Next() traversal (DrivingBackwards=false). */
-	if (!same_direction_couple) {
-		for (Train *w = v; w != nullptr; w = w->Next()) {
-			w->vehicle_flags.Reset(VehicleFlag::DrivingBackwards);
-		}
-	}
-
 	/* The train is now one consist again: it is no longer a decoupled part. */
-	v->decouple_part = 0;
+	v->First()->decouple_part = 0;
 
 	/* [FIX-couple] Post-couple flag cleanup. Direction is NOT touched here: it
 	 * is maintained by the standard movement pipeline (AdvanceWagonsAfterCouple
@@ -6045,11 +5863,6 @@ static void Couple(Train *v, Train *u)
 		v->First()->vehicle_flags.Set(VehicleFlag::HaveSlot);
 	}
 
-	/* The artic-unit reversal + DrivingBackwards flip keeps chain order
-	 * consistent with physical layout (the movement system traverses via
-	 * Previous() when DrivingBackwards=true).  AdvanceWagonsAfterCouple
-	 * repositions wagons using TrainController which recomputes per-vehicle
-	 * direction from the track every tick. */
 	AdvanceWagonsAfterCouple(v_last);
 	InvalidateWindowClassesData(WindowClass::TrainList);
 	/* The physical chain order is now correct (orientation is fixed before
@@ -6058,24 +5871,6 @@ static void Couple(Train *v, Train *u)
 	 * only sets Reversing; the actual turnaround still happens at the usual
 	 * spot in the movement handler (speed zero + Reversing flag). */
 	if (CheckReverseTrain(v)) v->flags.Set(VehicleRailFlag::Reversing);
-
-	/* DEBUG: dump state after coupling */
-	{
-		int cnt = 0;
-		for (Train *w = v; w != nullptr; w = w->Next()) cnt++;
-		fprintf(stderr, "[COUPLE-DBG] combined chain length AFTER couple = %d\n", cnt);
-	}
-	fprintf(stderr, "[COUPLE-DBG] AFTER coupled chain: First()=%p idx=%d dir=%d subtype=%d IsEngine=%d IsWagon=%d IsFrontEngine=%d IsFrontWagon=%d orders=%p unitnumber=%d age=%d\n",
-		(void*)v->First(), (int)v->First()->index.base(), (int)v->First()->direction,
-		(int)v->First()->subtype, (int)v->First()->IsEngine(), (int)v->First()->IsWagon(),
-		(int)v->First()->IsFrontEngine(), (int)v->First()->IsFrontWagon(),
-		(void*)v->First()->orders, (int)v->First()->unitnumber, (int)v->First()->age.base());
-	for (Train *w = v->First()->Next(); w != nullptr; w = w->Next()) {
-		fprintf(stderr, "  next=%p idx=%d dir=%d subtype=%d IsEngine=%d IsWagon=%d age=%d orders=%p unitnumber=%d\n",
-			(void*)w, (int)w->index.base(), (int)w->direction,
-			(int)w->subtype, (int)w->IsEngine(), (int)w->IsWagon(),
-			(int)w->age.base(), (void*)w->orders, (int)w->unitnumber);
-	}
 }
 
 /**
