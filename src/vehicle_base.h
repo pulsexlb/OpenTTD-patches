@@ -217,6 +217,7 @@ struct GroundVehicleCache;
 extern NamedSaveLoadTable GetVehicleDescription(VehicleType vt);
 struct LoadgameState;
 struct GRFFile;
+struct VehicleCommonStructHandler;
 
 namespace upstream_sl {
 	class SlVehicleCommon;
@@ -258,6 +259,7 @@ private:
 	Vehicle *previous = nullptr;                 ///< NOSAVE: pointer to the previous vehicle in the chain
 	Vehicle *first = nullptr;                    ///< NOSAVE: pointer to the first vehicle in the chain
 	Vehicle *primary = nullptr;                  ///< NOSAVE: pointer to the vehicle carrying the consist info; nullptr means same as #first
+	uint8_t consist_primary = 0;                 ///< SAVE(XSLFI_TRAIN_PRIMARY): temporary flag used to persist which vehicle of the chain is the primary
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order
@@ -265,6 +267,7 @@ private:
 
 public:
 	friend NamedSaveLoadTable GetVehicleDescription(VehicleType vt); ///< So we can use private/protected variables in the saveload code
+	friend struct ::VehicleCommonStructHandler;                      ///< Saves the common vehicle description (needs #consist_primary)
 	friend void FixOldVehicles(LoadgameState &ls);
 	friend void AfterLoadVehiclesPhase1(bool part_of_load);     ///< So we can set the #previous and #first pointers while loading
 	friend bool LoadOldVehicle(LoadgameState &ls, int num);     ///< So we can set the proper next pointer while loading

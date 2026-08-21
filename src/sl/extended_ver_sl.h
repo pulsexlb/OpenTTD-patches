@@ -209,6 +209,7 @@ enum SlXvFeatureIndex {
 	XSLFI_JOKERPP,                                ///< This is a JokerPP game, use this for loading some settings
 	XSLFI_CHILLPP,                                ///< This is a ChillPP game, use this for loading some settings
 	XSLFI_ORDER_DECOUPLE,                         ///< Couple/decouple train orders
+	XSLFI_TRAIN_PRIMARY,                          ///< Trains have a separate primary (consist info carrier) vehicle
 
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };

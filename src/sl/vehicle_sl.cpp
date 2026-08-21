@@ -251,6 +251,7 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 
 		if (part_of_load) v->fill_percent_te_id = INVALID_TE_ID;
 		v->first = nullptr;
+		v->primary = nullptr;
 		v->last = nullptr;
 		if (v->IsGroundVehicle()) v->GetGroundVehicleCache()->first_engine = EngineID::Invalid();
 	}
@@ -318,6 +319,16 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 		if (v->Next() == nullptr) {
 			for (Vehicle *u = v; u != nullptr; u = u->Previous()) {
 				u->last = v;
+			}
+		}
+
+		/* Fill the primary pointers. The flag is only saved with XSLFI_TRAIN_PRIMARY,
+		 * for older savegames it is zero and primary defaults to first. */
+		if (v->Previous() == nullptr) {
+			Vehicle *primary = v;
+			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
+				if (u->consist_primary != 0) primary = u;
+				u->primary = primary;
 			}
 		}
 	}
@@ -715,6 +726,7 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 
 	void Save(Vehicle *v) const override
 	{
+		v->consist_primary = (v->Primary() == v) ? 1 : 0;
 		SlObjectSaveFiltered(v, this->GetLoadDescription());
 	}
 
@@ -1002,6 +1014,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("progress",                       SLE_VAR(Vehicle, progress,                  SLE_UINT8)),
 
 		NSL("vehstatus",                      SLE_VAR(Vehicle, vehstatus,                 SLE_UINT8)),
+		NSL("consist_primary",          SLE_CONDVAR_X(Vehicle, consist_primary,           SLE_UINT8,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_PRIMARY))),
 		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),

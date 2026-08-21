@@ -155,6 +155,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_MORE_VEHICLE_ORDERS,              XSCF_NULL,                1,   1, "more_veh_orders",                  nullptr, nullptr, nullptr          },
 	{ XSLFI_ORDER_FLAGS_EXTRA,                XSCF_NULL,                1,   1, "order_flags_extra",                nullptr, nullptr, nullptr          },
 	{ XSLFI_ORDER_DECOUPLE,                   XSCF_NULL,                1,   1, "order_decouple",                   nullptr, nullptr, nullptr          },
+	{ XSLFI_TRAIN_PRIMARY,                   XSCF_NULL,                1,   1, "train_primary",                    nullptr, nullptr, nullptr          },
 	{ XSLFI_ONE_WAY_DT_ROAD_STOP,             XSCF_NULL,                1,   1, "one_way_dt_road_stop",             nullptr, nullptr, nullptr          },
 	{ XSLFI_ONE_WAY_ROAD_BRIDGE,              XSCF_NULL,                1,   1, "one_way_road_bridge",              nullptr, nullptr, nullptr          },
 	{ XSLFI_ONE_WAY_ROAD_STATE,               XSCF_NULL,                1,   1, "one_way_road_state",               nullptr, nullptr, nullptr          },
