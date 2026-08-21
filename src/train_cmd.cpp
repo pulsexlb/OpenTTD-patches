@@ -2224,6 +2224,8 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 			}
 		}
 		if (!valid) {
+			fprintf(stderr, "NormaliseHead self-heal: head=%d old_primary=%d\n",
+				(int)head->index.base(), (int)head->Primary()->index.base());
 			for (Train *u = head; u != nullptr; u = u->Next()) u->SetPrimary(head);
 
 			/* The demoted vehicle is no longer a train identity: close its
@@ -5558,6 +5560,33 @@ static Train *DecoupleTrain(Train *v)
 	} else {
 		u->SetFrontWagon();
 	}
+
+	/* Pin the decoupled part's primary to its first engine (if any), even
+	 * when the chain head is a wagon: the engine carries the consist's age,
+	 * unit number and identity, and it keeps its front-engine status so the
+	 * NormaliseTrainHead self-heal does not fall back to the wagon head. */
+	{
+		Train *u_prim = u;
+		for (Train *w = u; w != nullptr; w = w->Next()) {
+			if (w->IsEngine()) {
+				u_prim = w;
+				break;
+			}
+		}
+		if (u_prim != u) {
+			for (Train *w = u; w != nullptr; w = w->Next()) w->SetPrimary(u_prim);
+			/* Restore the front-engine flag: it may have been cleared when
+			 * this engine's train was absorbed by a couple. Without it the
+			 * NormaliseTrainHead self-heal would reject the pinned primary
+			 * and fall back to the chain head (a wagon without a lifetime). */
+			u_prim->SetFrontEngine();
+		}
+		fprintf(stderr, "Decouple: u_first=%d u_primary=%d ispv=%d age=%d max_age=%d\n",
+			(int)u->index.base(), (int)u->Primary()->index.base(),
+			u->Primary()->IsPrimaryVehicle() ? 1 : 0,
+			(int)u->Primary()->age.base(), (int)u->Primary()->max_age.base());
+	}
+
 	SetTrainGroupID(u, DEFAULT_GROUP);
 	GroupStatistics::CountVehicle(v, -1);
 

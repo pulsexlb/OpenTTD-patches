@@ -2209,11 +2209,14 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 		const GUIVehicleGroup &vehgroup = *it;
 		if (this->grouping == GB_NONE) {
 			const Vehicle *v = vehgroup.GetSingleVehicle();
+			/* Identity fields (age, lifetime, profit, ...) come from the
+			 * primary vehicle, which may differ from the chain head. */
+			const Vehicle *ident = v->Primary();
 
 			std::array<StringParameter, 5> params = {
 				EconTime::UsingWallclockUnits() ? STR_VEHICLE_LIST_PROFIT_THIS_PERIOD_LAST_PERIOD : STR_VEHICLE_LIST_PROFIT_THIS_YEAR_LAST_YEAR,
-				v->GetDisplayProfitThisYear(),
-				v->GetDisplayProfitLastYear(),
+				ident->GetDisplayProfitThisYear(),
+				ident->GetDisplayProfitLastYear(),
 				std::monostate{},
 				std::monostate{}
 			};
@@ -2221,9 +2224,9 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 			StringID str;
 			switch (this->vehgroups.SortType()) {
 				case VST_AGE: {
-					str = (v->age + DAYS_IN_YEAR < v->max_age) ? STR_VEHICLE_LIST_AGE : STR_VEHICLE_LIST_AGE_RED;
-					params[3] = DateDeltaToYearDelta(v->age);
-					params[4] = DateDeltaToYearDelta(v->max_age);
+					str = (ident->age + DAYS_IN_YEAR < ident->max_age) ? STR_VEHICLE_LIST_AGE : STR_VEHICLE_LIST_AGE_RED;
+					params[3] = DateDeltaToYearDelta(ident->age);
+					params[4] = DateDeltaToYearDelta(ident->max_age);
 					break;
 				}
 
@@ -2238,21 +2241,21 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 				}
 
 				case VST_RELIABILITY: {
-					str = ToPercent16(v->reliability) >= 50 ? STR_VEHICLE_LIST_RELIABILITY : STR_VEHICLE_LIST_RELIABILITY_RED;
-					params[3] = ToPercent16(v->reliability);
+					str = ToPercent16(ident->reliability) >= 50 ? STR_VEHICLE_LIST_RELIABILITY : STR_VEHICLE_LIST_RELIABILITY_RED;
+					params[3] = ToPercent16(ident->reliability);
 					break;
 				}
 
 				case VST_MAX_SPEED: {
 					str = STR_VEHICLE_LIST_MAX_SPEED;
-					params[3] = v->GetDisplayMaxSpeed();
+					params[3] = ident->GetDisplayMaxSpeed();
 					break;
 				}
 
 				case VST_MODEL: {
 					str = STR_VEHICLE_LIST_ENGINE_BUILT;
-					params[3] = v->engine_type;
-					params[4] = v->build_year;
+					params[3] = ident->engine_type;
+					params[4] = ident->build_year;
 					break;
 				}
 
@@ -2276,25 +2279,25 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 				}
 
 				case VST_TIME_TO_LIVE: {
-					auto years_remaining = (v->max_age / DAYS_IN_LEAP_YEAR) - (v->age / DAYS_IN_LEAP_YEAR);
+					auto years_remaining = (ident->max_age / DAYS_IN_LEAP_YEAR) - (ident->age / DAYS_IN_LEAP_YEAR);
 					str = (years_remaining > 1) ? STR_VEHICLE_LIST_TIME_TO_LIVE : ((years_remaining < 0) ? STR_VEHICLE_LIST_TIME_TO_LIVE_OVERDUE : STR_VEHICLE_LIST_TIME_TO_LIVE_RED);
 					params[3] = std::abs(years_remaining.base());
 					break;
 				}
 
 				case VST_TIMETABLE_DELAY: {
-					if (v->lateness_counter == 0 || (!_settings_client.gui.timetable_in_ticks && v->lateness_counter / TimetableDisplayUnitSize() == 0)) {
+					if (ident->lateness_counter == 0 || (!_settings_client.gui.timetable_in_ticks && ident->lateness_counter / TimetableDisplayUnitSize() == 0)) {
 						str = STR_VEHICLE_LIST_TIMETABLE_DELAY_ON_TIME;
 					} else {
-						str = v->lateness_counter > 0 ? STR_VEHICLE_LIST_TIMETABLE_DELAY_LATE : STR_VEHICLE_LIST_TIMETABLE_DELAY_EARLY;
-						std::tie(params[3], params[4]) = GetTimetableParameters(std::abs(v->lateness_counter));
+						str = ident->lateness_counter > 0 ? STR_VEHICLE_LIST_TIMETABLE_DELAY_LATE : STR_VEHICLE_LIST_TIMETABLE_DELAY_EARLY;
+						std::tie(params[3], params[4]) = GetTimetableParameters(std::abs(ident->lateness_counter));
 					}
 					break;
 				}
 
 				case VST_PROFIT_LIFETIME: {
 					str = STR_VEHICLE_LIST_PROFIT_THIS_YEAR_LAST_YEAR_LIFETIME;
-					params[3] = v->GetDisplayProfitLifetime();
+					params[3] = ident->GetDisplayProfitLifetime();
 					break;
 				}
 
