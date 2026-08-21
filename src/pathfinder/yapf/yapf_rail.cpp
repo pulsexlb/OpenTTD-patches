@@ -522,6 +522,11 @@ public:
 			}
 		}
 
+		/* Destination is at the origin (path length 0). The reservation
+		 * already reaches the waiting train. Return the origin's trackdir
+		 * so the train can follow its existing reservation. */
+		if (pPrev == nullptr) return origin.trackdir;
+
 		next_trackdir = pPrev->GetTrackdir();
 		if (!dont_reserve) {
 			bool reserved = this->TryReservePath(nullptr, pNode->GetLastTile(), true);
