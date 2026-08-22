@@ -5495,12 +5495,28 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 				u->current_order = v->current_order;
 				u->IncrementImplicitOrderIndex();
 				break;
-			case ODOF_LOAD_AND_WAIT:
-				/* Load/unload at this station (via DECOUPLE_LOAD_SECOND), the
-				 * single wait-for-couple order takes over once loading ends. */
+			case ODOF_LOAD_AND_WAIT: {
+				/* Generate [GOTO_STATION(this station), WAIT_FOR_COUPLE]: the
+				 * part stays on its platform, loads/unloads through the regular
+				 * loading flow, and falls into the wait-for-couple hold once
+				 * loading finishes. */
 				load_trains |= DECOUPLE_LOAD_SECOND;
-				CreateWaitForCoupleOrder(u);
+
+				Order station_order;
+				/* Destination of the DECOUPLE order = the station we are coupled
+				 * at right now. MakeGoToStation resets all flags/markers, so the
+				 * generated order is a plain go-to-station entry. */
+				station_order.MakeGoToStation(after_decouple_flags->GetDestination().ToStationID());
+
+				Order wait_for_couple_order;
+				wait_for_couple_order.MakeWaitCouple();
+
+				if (u->orders == nullptr && !OrderList::CanAllocateItem()) break;
+				DeleteVehicleOrders(u, false, true);
+				InsertOrder(u, std::move(station_order), 0);
+				InsertOrder(u, std::move(wait_for_couple_order), 1);
 				break;
+			}
 			case ODOF_WAIT_FOR_COUPLE:
 				CreateWaitForCoupleOrder(u);
 				break;

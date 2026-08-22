@@ -1526,7 +1526,12 @@ void PrepareUnload(Vehicle *front_v)
 	Station *curr_station = Station::Get(front_v->last_station_visited);
 	fprintf(stderr, "PrepareUnload: push veh=%d into station=%d queue(size=%d)\n",
 		(int)front_v->index.base(), (int)curr_station->index.base(), (int)curr_station->loading_vehicles.size() + 1);
-	curr_station->loading_vehicles.push_back(front_v);
+	/* Guard against duplicate queue entries when BeginLoading runs twice for
+	 * the same vehicle without an intervening LeaveStation. */
+	auto &loading_queue = curr_station->loading_vehicles;
+	if (std::find(loading_queue.begin(), loading_queue.end(), front_v) == loading_queue.end()) {
+		loading_queue.push_back(front_v);
+	}
 
 	/* At this moment loading cannot be finished */
 	front_v->vehicle_flags.Reset(VehicleFlag::LoadingFinished);
