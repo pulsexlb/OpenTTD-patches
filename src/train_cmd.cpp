@@ -1596,6 +1596,8 @@ void GetTrainSpriteSize(EngineID engine, uint &width, uint &height, int &xoffs, 
  * @param[out] ret the vehicle that has been built.
  * @return the cost of this operation or an error.
  */
+static void MaterialiseTrainPrimary(Train *head);
+
 static CommandCost CmdBuildRailWagon(TileIndex tile, DoCommandFlags flags, const Engine *e, Vehicle **ret)
 {
 	const RailVehicleInfo *rvi = &e->VehInfo<RailVehicleInfo>();
@@ -1655,6 +1657,7 @@ static CommandCost CmdBuildRailWagon(TileIndex tile, DoCommandFlags flags, const
 
 		v->UpdatePosition();
 		v->First()->ConsistChanged(CCF_ARRANGE);
+		MaterialiseTrainPrimary(v->First());
 		UpdateTrainGroupID(v->Primary());
 
 		CheckConsistencyOfArticulatedVehicle(v);
@@ -1835,6 +1838,7 @@ CommandCost CmdBuildRailVehicle(TileIndex tile, DoCommandFlags flags, const Engi
 		}
 
 		v->ConsistChanged(CCF_ARRANGE);
+		MaterialiseTrainPrimary(v->First());
 		UpdateTrainGroupID(v);
 
 		CheckConsistencyOfArticulatedVehicle(v);
@@ -1941,6 +1945,11 @@ static void RemoveFromConsist(Train *part, bool chain = false)
  */
 static void InsertInConsist(Train *dst, Train *chain)
 {
+	fprintf(stderr, "InsertInConsist: dst=%d dst_next=%d next_artic=%d chain=%d\n",
+		dst ? (int)dst->index.base() : -1,
+		(dst && dst->Next()) ? (int)dst->Next()->index.base() : -1,
+		(dst && dst->Next() && dst->Next()->IsArticulatedPart()) ? 1 : 0,
+		chain ? (int)chain->index.base() : -1);
 	/* We do not want to add something in the middle of an articulated part. */
 	assert(dst != nullptr && (dst->Next() == nullptr || !dst->Next()->IsArticulatedPart()));
 
@@ -2206,6 +2215,24 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
  * we have changed and update all kinds of variables.
  * @param head the train to update.
  */
+/**
+ * Materialise the primary pointers of a chain: prefer the first engine in the
+ * chain (it carries the consist identity), fall back to the chain head for
+ * engine-less wagon chains. Call after building a chain and after any chain
+ * surgery so the fallback rule in Primary() is never relied upon.
+ */
+static void MaterialiseTrainPrimary(Train *head)
+{
+	Train *prim = head;
+	for (Train *u = head; u != nullptr; u = u->Next()) {
+		if (u->IsEngine()) {
+			prim = u;
+			break;
+		}
+	}
+	for (Train *u = head; u != nullptr; u = u->Next()) u->SetPrimary(prim);
+}
+
 static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 {
 	/* Not much to do! */
@@ -2226,7 +2253,7 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 		if (!valid) {
 			fprintf(stderr, "NormaliseHead self-heal: head=%d old_primary=%d\n",
 				(int)head->index.base(), (int)head->Primary()->index.base());
-			for (Train *u = head; u != nullptr; u = u->Next()) u->SetPrimary(head);
+			MaterialiseTrainPrimary(head);
 
 			/* The demoted vehicle is no longer a train identity: close its
 			 * vehicle windows, same as when coupling absorbs a train front. */
@@ -2967,7 +2994,6 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 	 * which are in a stale intermediate state while the chain is being
 	 * reordered, leading to broken links and endless loops. Assign all
 	 * next/previous pointers directly instead. */
-	Train *old_first = blocks[0][0];
 	Train *new_first = blocks.back()[0];
 
 	/* Flatten the block order into a single vehicle sequence. */
@@ -2980,17 +3006,13 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 		order[i]->SetNextRaw((i + 1 < order.size()) ? order[i + 1] : nullptr);
 		order[i]->SetPreviousRaw((i > 0) ? order[i - 1] : nullptr);
 	}
-	for (Train *u = new_first; u != nullptr; u = u->Next()) {
-		u->SetFirst(new_first);
-		u->SetLast(old_first);
-	}
-
+	Train *new_last = order.back();
 	/* Normalise the chain pointers. The primary pointers are intentionally left
 	 * untouched: the primary vehicle stays part of this chain, so the train
 	 * keeps its identity, orders and group. */
 	for (Train *u = new_first; u != nullptr; u = u->Next()) {
 		u->SetFirst(new_first);
-		u->SetLast(old_first);
+		u->SetLast(new_last);
 		u->vehicle_flags.Reset(VehicleFlag::DrivingBackwards);
 	}
 
@@ -5126,6 +5148,9 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mark_as_stuck, bool first_tile_okay)
 {
 	dbg_assert(consist->IsPrimaryVehicle());
+	fprintf(stderr, "TryPathReserve: consist=%d first=%d primary=%d ordertype=%d dest=%d\n",
+		(int)consist->index.base(), (int)consist->First()->index.base(), (int)consist->Primary()->index.base(),
+		(int)consist->current_order.GetType(), consist->current_order.GetDestination().value);
 
 	ClearLookAheadIfInvalid(consist);
 
@@ -5245,6 +5270,9 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 	}
 	consist->flags.Reset(VehicleRailFlag::Stuck);
 	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC) FillTrainReservationLookAhead(consist);
+	fprintf(stderr, "TryPathReserve result: consist=%d first=%d primary=%d result=%d\n",
+		(int)consist->index.base(), (int)consist->First()->index.base(), (int)consist->Primary()->index.base(),
+		(int)result_flags);
 	return result_flags;
 }
 
@@ -5623,6 +5651,9 @@ static bool TryTrainCouple(Train *v, Train *u)
 	Train *u_head = u;
 	Train *v_last = v->Last();
 
+	fprintf(stderr, "TryTrainCouple: v=%d first=%d v_last=%d u=%d u_first=%d\n",
+		(int)v->index.base(), (int)v->First()->index.base(), (int)v_last->index.base(),
+		(int)u->index.base(), (int)u->First()->index.base());
 	ArrangeTrains(&v, v_last, &u_head, u, true);
 
 	CommandCost ret = CheckTrainAttachment(v);
@@ -5698,6 +5729,12 @@ static void Couple(Train *v, Train *u)
 	} else {
 		u = u->Primary();
 	}
+
+	/* The couple happened at the station of the GOTO_COUPLE order; record it
+	 * as the last visited station (the movement-loop coupling path never goes
+	 * through TrainEnterStation). Without this the implicit order bookkeeping
+	 * on departure runs with an invalid station and derails order advancement. */
+	v->last_station_visited = v->current_order.GetDestination().ToStationID();
 
 	v->IncrementImplicitOrderIndex();
 	ProcessOrders(v);
@@ -5788,7 +5825,26 @@ static void Couple(Train *v, Train *u)
 
 	DebugDumpTrainChain(v_phys, "Couple-after-merge");
 	AdvanceWagonsAfterCouple(v_last);
+
+	/* Stale look-ahead/reservations from before the flip: rebuild them for
+	 * the combined train's new position and direction, otherwise it drives
+	 * blindly (and may end up in a depot) until it hits a PBS signal. */
+	v->Primary()->lookahead.reset();
+	if (u != nullptr) u->lookahead.reset();
+	fprintf(stderr, "Couple: re-reserving for primary=%d\n", (int)v->Primary()->index.base());
+	TryPathReserve(v->Primary());
+
 	DebugDumpTrainChain(v_phys, "Couple-after-advance");
+	{
+		const Train *prim = v_phys->Primary();
+		fprintf(stderr, "Couple-orders: prim=%d ordertype=%d dest=%d dest_tile=(%u,%u) last_station=%d implicit=%d real=%d stuck=%d\n",
+			(int)prim->index.base(), (int)prim->current_order.GetType(),
+			prim->current_order.GetDestination().value,
+			TileX(prim->dest_tile), TileY(prim->dest_tile),
+			(int)prim->last_station_visited.base(),
+			(int)prim->cur_implicit_order_index, (int)prim->cur_real_order_index,
+			prim->flags.Test(VehicleRailFlag::Stuck) ? 1 : 0);
+	}
 	InvalidateWindowClassesData(WindowClass::TrainList);
 	/* The physical chain order is now correct (orientation is fixed before
 	 * the merge), so give the consist the usual chance to reverse in the

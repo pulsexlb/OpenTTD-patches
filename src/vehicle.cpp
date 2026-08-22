@@ -2736,6 +2736,14 @@ void VehicleEnterDepot(Vehicle *v)
 {
 	/* Always work with the primary (consist info carrier) of the vehicle */
 	dbg_assert(v == v->Primary());
+	if (v->type == VehicleType::Train) {
+		const Train *t = Train::From(v);
+		fprintf(stderr, "VehicleEnterDepot: veh=%d primary=%d ordertype=%d dest=%d last_station=%d\n",
+			(int)v->index.base(), (int)t->Primary()->index.base(),
+			(int)t->Primary()->current_order.GetType(),
+			t->Primary()->current_order.GetDestination().value,
+			(int)t->Primary()->last_station_visited.base());
+	}
 
 	switch (v->type) {
 		case VehicleType::Train: {
