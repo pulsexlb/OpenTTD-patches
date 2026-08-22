@@ -4887,8 +4887,8 @@ STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON                    :{BLACK}第一�
 STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON                   :{BLACK}第二部分：保留调度计划
 STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :保留调度计划
 STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :保留并不清空
-STR_ORDERS_DECOUPLE_INHERIT_ORDERS                              :继承
 STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :等待连接
+STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                              :装载并等待连接
 STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}连接数量
 STR_ORDERS_DECOUPLE_VALUE_BUTTON                                :{BLACK}解挂数量
 STR_ORDERS_DECOUPLE_BUTTON                                      :{BLACK}解挂
@@ -4911,7 +4911,7 @@ STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[解挂并保�
 STR_ORDER_COUPLE_UNITS                                          :（{COMMA} 节车厢）
 STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :（保留调度计划）
 STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :（保留调度计划不装卸）
-STR_ORDER_DECOUPLE_INHERIT_ORDERS                               :（继承调度计划）
+STR_ORDER_DECOUPLE_LOAD_AND_WAIT                               :（装载并等待连接）
 STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :（等待连接)
 
 STR_INVALID_ORDER                                               :{RED}（无效命令）

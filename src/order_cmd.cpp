@@ -2837,7 +2837,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 					Order new_order;
 					new_order.MakeDecouple();
 					new_order.SetDecoupleFirstOrdersType(ODOF_KEEP_ORDERS_NO_LOAD);
-					new_order.SetDecoupleSecondOrdersType(ODOF_INHERIT_ORDERS);
+					new_order.SetDecoupleSecondOrdersType(ODOF_LOAD_AND_WAIT);
 					CmdInsertOrder(flags, InsertOrderCmdData(v->index, sel_ord + 1, new_order));
 				}
 				break;

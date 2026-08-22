@@ -955,8 +955,8 @@ STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON                    :{BLACK}First: K
 STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON                   :{BLACK}Second: Keep orders
 STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :Keep orders
 STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :Keep and no loading
-STR_ORDERS_DECOUPLE_INHERIT_ORDERS                              :Inherit
 STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :Wait for couple
+STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                              :Load and wait for couple
 STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}Units couple
 STR_ORDER_COUPLE_SLOT_BUTTON                                   :{BLACK}Slot
 STR_ORDER_COUPLE_SLOT_TOOLTIP                                 :{BLACK}The trace restrict slot the train must couple with
@@ -981,7 +981,7 @@ STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[Decouple and k
 STR_ORDER_COUPLE_UNITS                                          :(with {COMMA} units)
 STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :(Keep orders)
 STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :(Keep orders without loading/unloading)
-STR_ORDER_DECOUPLE_INHERIT_ORDERS                               :(Inherit orders)
+STR_ORDER_DECOUPLE_LOAD_AND_WAIT                               :(Load and wait for couple)
 STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :(Wait for couple)
 STR_NEWS_VEHICLE_AUTORENEW_FAILED                               :{WHITE}Autorenew failed on {VEHICLE}{}{STRING1}
 

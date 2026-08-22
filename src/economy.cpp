@@ -1987,6 +1987,9 @@ static void LoadUnloadVehicle(Vehicle *front)
 			}
 		}
 	}
+	fprintf(stderr, "LoadUnloadStation: front=%d station_tile=%d belongs=%d\n",
+		(int)front->index.base(), (int)station_tile.base(),
+		st->TileBelongsToRailStation(station_tile) ? 1 : 0);
 	int platform_length_left = 0;
 	if (pull_through_mode) {
 		platform_length_left = st->GetPlatformLength(station_tile, ReverseDiagDir(DirToDiagDir(station_vehicle->GetMovingDirection()))) * TILE_SIZE - GetTileMarginInFrontOfTrain(Train::From(station_vehicle));

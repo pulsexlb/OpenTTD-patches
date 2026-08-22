@@ -547,9 +547,20 @@ public:
 	/** How many wagons are we taking */
 	inline uint8_t GetNumCouple() const { return GB(this->decouple_flags, 1, 7); }
 	/** What orders should first part get */
-	inline OrderDecoupleOrdersFlags GetDecoupleFirstOrdersType() const { return (OrderDecoupleOrdersFlags)GB(this->flags, 0, 3); }
+	inline OrderDecoupleOrdersFlags GetDecoupleFirstOrdersType() const
+	{
+		auto type = (OrderDecoupleOrdersFlags)GB(this->flags, 0, 3);
+		/* Clamp legacy (ODOF_INHERIT_ORDERS == 2) and out-of-range values. */
+		if (type == (OrderDecoupleOrdersFlags)2 || type >= ODOF_END) return ODOF_KEEP_ORDERS;
+		return type;
+	}
 	/** What orders should second part get */
-	inline OrderDecoupleOrdersFlags GetDecoupleSecondOrdersType() const { return (OrderDecoupleOrdersFlags)GB(this->flags, 4, 3); }
+	inline OrderDecoupleOrdersFlags GetDecoupleSecondOrdersType() const
+	{
+		auto type = (OrderDecoupleOrdersFlags)GB(this->flags, 4, 3);
+		if (type == (OrderDecoupleOrdersFlags)2 || type >= ODOF_END) return ODOF_KEEP_ORDERS;
+		return type;
+	}
 	/** Get counter for the 'jump xx% of times' option */
 	inline int8_t GetJumpCounter() const { return GB(this->GetXData(), 0, 8); }
 	/** Get counter operation */

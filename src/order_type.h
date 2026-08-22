@@ -114,9 +114,11 @@ enum OrderCoupleFlags : uint8_t {
 enum OrderDecoupleOrdersFlags : uint8_t {
 	ODOF_KEEP_ORDERS         = 0, ///< Keep the orders.
 	ODOF_KEEP_ORDERS_NO_LOAD = 1, ///< Keep the orders, but do not load.
-	ODOF_INHERIT_ORDERS      = 2, ///< Inherit the orders of the other part.
+	/* Value 2 was ODOF_INHERIT_ORDERS in earlier savegames; it is no longer
+	 * supported and clamps back to ODOF_KEEP_ORDERS when loaded. */
 	ODOF_WAIT_FOR_COUPLE     = 3, ///< Wait for a couple.
-	ODOF_END                 = 4,
+	ODOF_LOAD_AND_WAIT       = 4, ///< Load/unload at this station, then wait for a couple.
+	ODOF_END                 = 5,
 };
 
 enum OrderSlotSubType : uint8_t {

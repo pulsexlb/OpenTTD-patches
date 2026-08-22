@@ -602,10 +602,13 @@ static const StringID _order_couple_load_drowdown[] = {
 };
 
 static const StringID _order_decouple_orders_drowdown[] = {
-	STR_ORDERS_DECOUPLE_KEEP_ORDERS,
-	STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD,
-	STR_ORDERS_DECOUPLE_INHERIT_ORDERS,
-	STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE,
+	/* Index must match OrderDecoupleOrdersFlags (value 2 is the retired
+	 * ODOF_INHERIT_ORDERS and is not selectable). */
+	STR_ORDERS_DECOUPLE_KEEP_ORDERS,          // 0
+	STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD,  // 1
+	INVALID_STRING_ID,                        // 2 (legacy, unused)
+	STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE,      // 3
+	STR_ORDERS_DECOUPLE_LOAD_AND_WAIT,        // 4
 	INVALID_STRING_ID
 };
 
@@ -1416,9 +1419,18 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 
 		case OT_DECOUPLE: {
 			uint num_d = order->GetNumDecouple();
+			auto decouple_orders_str = [](OrderDecoupleOrdersFlags type) {
+				switch (type) {
+					case ODOF_KEEP_ORDERS: return STR_ORDER_DECOUPLE_KEEP_ORDERS;
+					case ODOF_KEEP_ORDERS_NO_LOAD: return STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD;
+					case ODOF_WAIT_FOR_COUPLE: return STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE;
+					case ODOF_LOAD_AND_WAIT: return STR_ORDER_DECOUPLE_LOAD_AND_WAIT;
+					default: NOT_REACHED();
+				}
+			};
 			AppendStringInPlace(line, num_d == 0 ? STR_ORDER_DECOUPLE_DETAILS_AUTO : STR_ORDER_DECOUPLE_DETAILS, num_d,
-					STR_ORDER_DECOUPLE_KEEP_ORDERS + to_underlying(order->GetDecoupleFirstOrdersType()),
-					STR_ORDER_DECOUPLE_KEEP_ORDERS + to_underlying(order->GetDecoupleSecondOrdersType()));
+					decouple_orders_str(order->GetDecoupleFirstOrdersType()),
+					decouple_orders_str(order->GetDecoupleSecondOrdersType()));
 			break;
 		}
 

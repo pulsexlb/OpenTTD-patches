@@ -2274,16 +2274,18 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 	UpdateTrainGroupID(head->Primary());
 	head->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 
-	/* Not a front engine, i.e. a free wagon chain. No need to do more. */
-	if (!head->IsPrimaryVehicle()) return;
+	/* Identity operations (refit button, windows, unit number) belong to the
+	 * primary vehicle, which may sit mid-chain when it is not the chain head. */
+	Train *ident = head->Primary();
+	if (!ident->IsPrimaryVehicle()) return;
 
 	/* Update the refit button and window */
-	InvalidateWindowData(WindowClass::VehicleRefit, head->index, VIWD_CONSIST_CHANGED);
-	SetWindowWidgetDirty(WindowClass::VehicleView, head->index, WID_VV_REFIT);
+	InvalidateWindowData(WindowClass::VehicleRefit, ident->index, VIWD_CONSIST_CHANGED);
+	SetWindowWidgetDirty(WindowClass::VehicleView, ident->index, WID_VV_REFIT);
 
 	/* If we don't have a unit number yet, set one. */
-	if (head->unitnumber != 0 || HasBit(head->subtype, GVSF_VIRTUAL)) return;
-	head->unitnumber = Company::Get(head->owner)->freeunits[head->type].UseID(GetFreeUnitNumber(VehicleType::Train, head->owner));
+	if (ident->unitnumber != 0 || HasBit(ident->subtype, GVSF_VIRTUAL)) return;
+	ident->unitnumber = Company::Get(ident->owner)->freeunits[ident->type].UseID(GetFreeUnitNumber(VehicleType::Train, ident->owner));
 }
 
 CommandCost CmdMoveVirtualRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleID dest_veh, MoveRailVehicleFlags move_flags)
@@ -5453,35 +5455,6 @@ static constexpr uint8_t DECOUPLE_LOAD_SECOND = 2; ///< Load the second part.
  * Copy the orders to the new rear part of the consist, so it can wait for
  * a couple at the next station.
  */
-static void InheritWaitForCoupleOrders(Train *v, Train *u)
-{
-	if (!OrderList::CanAllocateItem()) return;
-
-	Order station_order;
-	Order station_decouple_order;
-	Order wait_for_couple_order;
-	Order *copy_destination = nullptr;
-
-	station_order.AssignOrder(v->current_order);
-	station_decouple_order.AssignOrder(*v->orders->GetOrderAt(v->cur_implicit_order_index + 1));
-	wait_for_couple_order.MakeWaitCouple();
-
-	std::vector<const Order *> next_station = v->orders->GetNextStoppingOrder(v);
-	if (!next_station.empty()) {
-		copy_destination = new Order();
-		copy_destination->AssignOrder(*next_station.front());
-		copy_destination->SetDecouple(ODF_NOTHING);
-	}
-	if (v == u) DeleteVehicleOrders(v, false, true);
-
-	if (u->orders == nullptr && !OrderList::CanAllocateItem()) return;
-
-	InsertOrder(u, std::move(station_order), 0);
-	InsertOrder(u, std::move(station_decouple_order), 1);
-	InsertOrder(u, std::move(wait_for_couple_order), 2);
-	if (copy_destination != nullptr) InsertOrder(u, std::move(*copy_destination), 3);
-	delete copy_destination;
-}
 
 /**
  * Create a wait-for-couple order at the start of the order list.
@@ -5522,16 +5495,24 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 				u->current_order = v->current_order;
 				u->IncrementImplicitOrderIndex();
 				break;
-			case ODOF_INHERIT_ORDERS:
+			case ODOF_LOAD_AND_WAIT:
+				/* Load/unload at this station (via DECOUPLE_LOAD_SECOND), the
+				 * single wait-for-couple order takes over once loading ends. */
 				load_trains |= DECOUPLE_LOAD_SECOND;
-				InheritWaitForCoupleOrders(v, u);
+				CreateWaitForCoupleOrder(u);
 				break;
 			case ODOF_WAIT_FOR_COUPLE:
 				CreateWaitForCoupleOrder(u);
 				break;
 			default: NOT_REACHED();
 		}
+		fprintf(stderr, "SplitOrders: before ProcessOrders(u): u=%d ordertype=%d back=%d\n",
+			(int)u->index.base(), (int)u->current_order.GetType(),
+			u->vehicle_flags.Test(VehicleFlag::DrivingBackwards) ? 1 : 0);
 		ProcessOrders(u);
+		fprintf(stderr, "SplitOrders: after ProcessOrders(u): u=%d ordertype=%d dest=%d\n",
+			(int)u->index.base(), (int)u->current_order.GetType(), u->current_order.GetDestination().value);
+		fprintf(stderr, "SplitOrders-done: u=%d u_primary=%d\n", (int)u->index.base(), (int)u->Primary()->index.base());
 	}
 
 	switch (after_decouple_flags->GetDecoupleFirstOrdersType()) {
@@ -5541,9 +5522,11 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 		case ODOF_KEEP_ORDERS_NO_LOAD:
 			v->IncrementImplicitOrderIndex();
 			break;
-		case ODOF_INHERIT_ORDERS:
+		case ODOF_LOAD_AND_WAIT:
+			/* Load/unload at this station, then wait for a couple. */
 			load_trains |= DECOUPLE_LOAD_FIRST;
-			InheritWaitForCoupleOrders(v, v);
+			DeleteVehicleOrders(v, false, true);
+			CreateWaitForCoupleOrder(v);
 			break;
 		case ODOF_WAIT_FOR_COUPLE:
 			DeleteVehicleOrders(v, false, true);
@@ -5622,6 +5605,10 @@ static Train *DecoupleTrain(Train *v)
 			 * NormaliseTrainHead self-heal would reject the pinned primary
 			 * and fall back to the chain head (a wagon without a lifetime). */
 			u_prim->SetFrontEngine();
+			/* Only one vehicle of a chain may be a driver: drop the front-wagon
+			 * flag of the chain head, otherwise both the wagon head and the
+			 * mid-chain engine tick independently and drag the consist apart. */
+			u->ClearFrontWagon();
 		}
 		fprintf(stderr, "Decouple: u_first=%d u_primary=%d ispv=%d age=%d max_age=%d\n",
 			(int)u->index.base(), (int)u->Primary()->index.base(),
@@ -5639,6 +5626,10 @@ static Train *DecoupleTrain(Train *v)
 	NormaliseTrainHead(v, CCF_COUPLE);
 
 	InvalidateWindowClassesData(WindowClass::TrainList);
+	fprintf(stderr, "DecoupleTrain-end: u_first=%d u_primary=%d v_primary=%d\n",
+		(int)u->First()->index.base(), (int)u->Primary()->index.base(), (int)v->Primary()->index.base());
+	DebugDumpTrainChain(u, "DecoupleTrain-end-u");
+	DebugDumpTrainChain(v, "DecoupleTrain-end-v");
 	return u;
 }
 
@@ -6053,6 +6044,10 @@ static void TrainEnterStation(Train *consist, StationID station)
 	Debug(desync, 1, "TrainEnterStation: veh={} st={} tile=({},{}) want_decouple={} ordertype={}", consist->index, station, TileX(consist->tile), TileY(consist->tile), want_decouple, (int)consist->current_order.GetType());
 	if (want_decouple) {
 		u = DecoupleTrain(consist);
+		/* All further handling of the rear part (orders, loading, windows)
+		 * must operate on its primary vehicle, not the physical chain head. */
+		if (u != nullptr) u = u->Primary();
+		if (u != nullptr) DebugDumpTrainChain(u, "TrainEnterStation-u-after-primary");
 		Debug(desync, 1, "TrainEnterStation: veh={} decoupled u={}", consist->index, u != nullptr ? u->index.base() : -1);
 		/* If the front was driving backwards, the decoupled part is in front of it.
 		 * Reverse it now so it drives away from the decoupled part, then forbid
