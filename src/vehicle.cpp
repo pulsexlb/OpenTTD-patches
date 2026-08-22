@@ -2665,8 +2665,10 @@ uint8_t CalcPercentVehicleFilled(const Vehicle *front, StringID *colour)
 	bool order_no_load = is_loading && (front->current_order.GetLoadType() == OrderLoadType::NoLoad);
 	bool order_full_load = is_loading && front->current_order.IsFullLoadOrder();
 
-	/* Count up max and used */
-	for (const Vehicle *v = front; v != nullptr; v = v->Next()) {
+	/* Count up max and used. The chain may extend before the front vehicle
+	 * (e.g. a primary vehicle sitting at the chain tail after a decouple),
+	 * so always walk from the physical chain head. */
+	for (const Vehicle *v = front->First(); v != nullptr; v = v->Next()) {
 		count += v->cargo.StoredCount();
 		max += v->cargo_cap;
 		if (v->cargo_cap != 0 && colour != nullptr) {
@@ -2709,7 +2711,7 @@ uint8_t CalcPercentVehicleFilledOfCargo(const Vehicle *front, CargoType cargo)
 	int max = 0;
 
 	/* Count up max and used */
-	for (const Vehicle *v = front; v != nullptr; v = v->Next()) {
+	for (const Vehicle *v = front->First(); v != nullptr; v = v->Next()) {
 		if (v->cargo_type != cargo) continue;
 		count += v->cargo.StoredCount();
 		max += v->cargo_cap;

@@ -516,7 +516,7 @@ void DrawTrainDetails(const Train *v, const Rect &r, int vscroll_pos, uint16_t v
 		int y = r.top;
 		int empty_weight = 0;
 		int loaded_weight = 0;
-		for (const Train *u = v; u != nullptr; u = u->Next()) {
+		for (const Train *u = v->First(); u != nullptr; u = u->Next()) {
 			const auto weight_without_cargo = u->GetWeightWithoutCargo();
 			empty_weight  += weight_without_cargo;
 			loaded_weight += weight_without_cargo + u->GetCargoWeight(u->cargo_cap);
@@ -555,7 +555,7 @@ void DrawTrainDetails(const Train *v, const Rect &r, int vscroll_pos, uint16_t v
 		CargoArray max_cargo{};
 		Money feeder_share = 0;
 
-		for (const Train *u = v; u != nullptr; u = u->Next()) {
+		for (const Train *u = v->First(); u != nullptr; u = u->Next()) {
 			act_cargo[u->cargo_type] += u->cargo.StoredCount();
 			max_cargo[u->cargo_type] += u->cargo_cap;
 			feeder_share             += u->cargo.GetFeederShare();
