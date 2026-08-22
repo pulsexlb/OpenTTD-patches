@@ -5389,11 +5389,16 @@ static uint GetDecoupleVehicleAuto(Train *v)
  */
 static Train *GetDecoupleVehicle(Train *v)
 {
-	Order *decouple_order = v->orders->GetOrderAt(v->cur_implicit_order_index + 1);
+	/* Order data lives on the primary vehicle; the unit walk must start at the
+	 * physical chain head, which may be a different vehicle when the primary
+	 * sits mid-chain after a couple. */
+	Train *prim = v->Primary();
+	Order *decouple_order = prim->orders->GetOrderAt(prim->cur_implicit_order_index + 1);
 	uint num_decouple = decouple_order->GetNumDecouple();
 	if (num_decouple == 0) num_decouple = GetDecoupleVehicleAuto(v);
-	Train *ret = v->GetNextVehicle();
-	bool multihead_front = v->IsMultiheaded();
+	Train *head = v->First();
+	Train *ret = head->GetNextVehicle();
+	bool multihead_front = head->IsMultiheaded();
 
 	for (uint i = 1; i < num_decouple && ret->GetNextVehicle() != nullptr; i++) {
 		if (multihead_front) {
