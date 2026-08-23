@@ -2949,32 +2949,34 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 	assert(v == v->First());
 	DebugDumpTrainChain(v, "NoSwapReverse-before");
 
-	/* Pre-scan: every dual-headed pair must be adjacent, otherwise the
-	 * block-based relink would corrupt the chain. Fall back to the vanilla
-	 * swap reversal (which moves vehicles around but is always safe). */
-	for (Train *u = v; u != nullptr; u = u->Next()) {
-		if (u->IsMultiheaded() && u->IsEngine() &&
-				(u->other_multiheaded_part == nullptr || u->other_multiheaded_part != u->Next())) {
-			fprintf(stderr, "NoSwap: dualhead pair not adjacent (veh=%d other=%d), falling back to swap\n",
-				(int)u->index.base(),
-				u->other_multiheaded_part ? (int)u->other_multiheaded_part->index.base() : -1);
-			ReverseTrainSwapVehicles(v);
-			InvalidateVehicleTickCaches();
-			return;
-		}
-	}
-
-	/* Split the chain into blocks of vehicles that must be reversed as a unit. */
+	/* Split the chain into blocks of vehicles that must be reversed as a unit.
+	 * A dual-headed unit spans from its front half to its rear half,
+	 * including any vehicles between them (wrapped/wrapped-around wagons),
+	 * so the pair may be non-adjacent. */
 	std::vector<std::vector<Train *>> blocks;
 	for (Train *u = v; u != nullptr;) {
-		if (u->IsMultiheaded() && u->IsEngine() && u->other_multiheaded_part != nullptr) {
-			/* Dual-headed engine: front and rear part form one block. */
-			fprintf(stderr, "NoSwap: dualhead veh=%d other=%d adjacent=%d\n",
-				(int)u->index.base(), (int)u->other_multiheaded_part->index.base(),
-				u->Next() == u->other_multiheaded_part ? 1 : 0);
-			blocks.push_back({u, u->other_multiheaded_part});
-			u = u->Next();
-			if (u != nullptr) u = u->Next();
+		if (u->IsMultiheaded() && u->IsEngine() && !u->IsRearDualheaded() && u->other_multiheaded_part != nullptr) {
+			/* Dual-headed engine: everything from the front half up to and
+			 * including the rear half forms one block. */
+			blocks.emplace_back();
+			bool found_rear = false;
+			for (Train *w = u; w != nullptr; w = w->Next()) {
+				blocks.back().push_back(w);
+				if (w == u->other_multiheaded_part) {
+					found_rear = true;
+					break;
+				}
+			}
+			if (!found_rear) {
+				/* Rear half not ahead of us: malformed state, fall back to the
+				 * vanilla swap reversal which is always safe. */
+				fprintf(stderr, "NoSwap: dualhead rear not found (veh=%d other=%d), falling back to swap\n",
+					(int)u->index.base(), (int)u->other_multiheaded_part->index.base());
+				ReverseTrainSwapVehicles(v);
+				InvalidateVehicleTickCaches();
+				return;
+			}
+			u = blocks.back().back()->Next();
 		} else if (u->HasArticulatedPart()) {
 			/* Articulated engine: base and all consecutive articulated parts form one block. */
 			blocks.emplace_back();
@@ -2990,13 +2992,7 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 		}
 	}
 
-	for (size_t bi = 0; bi < blocks.size(); bi++) {
-		fprintf(stderr, "NoSwap: block %zu:", bi);
-		for (const Train *b : blocks[bi]) fprintf(stderr, " %d", (int)b->index.base());
-		fprintf(stderr, "\n");
-	}
-
-	/* Reverse every block internally, like ReverseTrainSwapVehicles does. */
+/* Reverse every block internally, like ReverseTrainSwapVehicles does. */
 	for (auto &block : blocks) {
 		int r = static_cast<int>(block.size()) - 1;
 		int l = 0;
