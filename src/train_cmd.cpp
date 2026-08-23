@@ -2265,13 +2265,9 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 				break;
 			}
 		}
-		int drivers = 0;
-		for (Train *u = head; u != nullptr; u = u->Next()) {
-			if (u->IsPrimaryVehicle()) drivers++;
-		}
-		if (!valid || drivers > 1) {
-			fprintf(stderr, "NormaliseHead self-heal: head=%d old_primary=%d drivers=%d\n",
-				(int)head->index.base(), (int)head->Primary()->index.base(), drivers);
+		if (!valid) {
+			fprintf(stderr, "NormaliseHead self-heal: head=%d old_primary=%d\n",
+				(int)head->index.base(), (int)head->Primary()->index.base());
 			MaterialiseTrainPrimary(head);
 
 			/* The demoted vehicle is no longer a train identity: close its
@@ -4938,14 +4934,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 	/* Don't use tracks here as the setting to forbid 90 deg turns might have been switched between reservation and now. */
 	TrackBits res_tracks = (TrackBits)(GetReservedTrackbits(tile) & DiagdirReachesTracks(enterdir));
 	/* Do we have a suitable reserved track? */
-	if (res_tracks != TRACK_BIT_NONE) {
-		/* When the caller asked for a reservation, an already-reserved track
-		 * satisfies that request: the reservation exists and can simply be
-		 * followed. Without this flag the caller would treat the existing
-		 * reservation as a failed path search and mark the train stuck. */
-		if (do_track_reservation) result_flags |= CTTRF_RESERVATION_MADE;
-		return { FindFirstTrack(res_tracks), result_flags };
-	}
+	if (res_tracks != TRACK_BIT_NONE) return { FindFirstTrack(res_tracks), result_flags };
 
 	bool mark_stuck = (flags & CTTF_MARK_STUCK);
 
