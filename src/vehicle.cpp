@@ -1555,6 +1555,33 @@ void RebuildVehicleTickCaches()
 	}
 	_tick_caches_valid = true;
 	_tick_effect_veh_cache_valid = true;
+
+	{
+		fprintf(stderr, "RebuildTickCaches: upper_tagged=%d train_fronts:", OTTD_UPPER_TAGGED_PTR ? 1 : 0);
+		for (Train *t : _tick_train_front_cache) {
+			if (t->index.base() <= 32) fprintf(stderr, " %d(p%d)", (int)t->index.base(), (int)t->Primary()->index.base());
+		}
+		fprintf(stderr, "\n");
+	}
+}
+
+/**
+ * Recompute the pool's front/non-front marker bits for an entire chain after
+ * the chain was relinked with direct pointer assignment (which bypasses
+ * SetNext()'s marker maintenance). head must be the chain front.
+ */
+void ResetChainNonFrontMarkers(Vehicle *head)
+{
+#if OTTD_UPPER_TAGGED_PTR
+	bool first = true;
+	for (Vehicle *v = head; v != nullptr; v = v->Next()) {
+		VehiclePoolOps::SetIsNonFrontVehiclePtr(_vehicle_pool.GetRawRef(v->index.base()), !first);
+		first = false;
+	}
+#else
+	/* Markers not used; nothing to do. */
+	(void)head;
+#endif
 }
 
 void ValidateVehicleTickCaches(std::function<void(std::string_view)> log)
@@ -3886,7 +3913,12 @@ void Vehicle::HandleLoading(bool mode)
 			if (!mode && this->type != VehicleType::Train) PayStationSharingFee(this, Station::Get(this->last_station_visited));
 
 			/* Not the first call for this tick, or still loading */
-			if (mode || !this->vehicle_flags.Test(VehicleFlag::LoadingFinished) || (this->current_order_time < wait_time && this->current_order.GetLeaveType() != OLT_LEAVE_EARLY) || ShouldVehicleContinueWaiting(this)) {
+			bool cont_wait = ShouldVehicleContinueWaiting(this);
+			fprintf(stderr, "HandleLoading hold: veh=%d mode=%d finished=%d ordertime=%d waittime=%d cont_wait=%d\n",
+				(int)this->index.base(), mode ? 1 : 0,
+				this->vehicle_flags.Test(VehicleFlag::LoadingFinished) ? 1 : 0,
+				(int)this->current_order_time, (int)wait_time, cont_wait ? 1 : 0);
+			if (mode || !this->vehicle_flags.Test(VehicleFlag::LoadingFinished) || (this->current_order_time < wait_time && this->current_order.GetLeaveType() != OLT_LEAVE_EARLY) || cont_wait) {
 				if (!mode && this->type == VehicleType::Train && Train::From(this)->flags.Test(VehicleRailFlag::AdvanceInPlatform)) this->AdvanceLoadingInStation();
 				return;
 			}

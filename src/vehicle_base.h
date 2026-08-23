@@ -218,6 +218,8 @@ extern NamedSaveLoadTable GetVehicleDescription(VehicleType vt);
 struct LoadgameState;
 struct GRFFile;
 struct VehicleCommonStructHandler;
+void ResetChainNonFrontMarkers(Vehicle *head);
+void ResetChainNonFrontMarkers(Vehicle *head);
 
 namespace upstream_sl {
 	class SlVehicleCommon;

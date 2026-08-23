@@ -2398,6 +2398,14 @@ static void LoadUnloadVehicle(Vehicle *front)
 		if (!finished_loading) LinkRefresher::Run(front, true, true);
 
 		front->vehicle_flags.Set(VehicleFlag::LoadingFinished, finished_loading);
+		{
+			int cap_total = 0, stored_total = 0;
+			for (const Vehicle *w = front->First(); w != nullptr; w = w->Next()) { cap_total += w->cargo_cap; stored_total += w->cargo.StoredCount(); }
+			fprintf(stderr, "LoadUnloadVehicle: front=%d finished=%d load_type=%d full_load=%d cap=%d stored=%d\n",
+				(int)front->index.base(), finished_loading ? 1 : 0,
+				(int)front->current_order.GetLoadType(),
+				front->current_order.IsFullLoadOrder() ? 1 : 0, cap_total, stored_total);
+		}
 
 		if (finished_loading && may_leave_early()) {
 			front->current_order.SetLeaveType(OLT_LEAVE_EARLY);

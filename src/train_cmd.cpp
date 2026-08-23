@@ -3017,6 +3017,10 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 		u->SetLast(new_last);
 		u->vehicle_flags.Reset(VehicleFlag::DrivingBackwards);
 	}
+	/* Direct pointer assignment bypasses SetNext()'s marker maintenance;
+	 * recompute the pool's front/non-front markers for the new chain,
+	 * otherwise tick-cache rebuilds pick wrong chain fronts. */
+	ResetChainNonFrontMarkers(new_first);
 
 	/* CCF_COUPLE (not CCF_ARRANGE): ARRANGE includes DepotDirection which
 	 * would overwrite the per-vehicle directions we just reversed. */
@@ -5503,10 +5507,11 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 				load_trains |= DECOUPLE_LOAD_SECOND;
 
 				Order station_order;
-				/* Destination of the DECOUPLE order = the station we are coupled
-				 * at right now. MakeGoToStation resets all flags/markers, so the
-				 * generated order is a plain go-to-station entry. */
-				station_order.MakeGoToStation(after_decouple_flags->GetDestination().ToStationID());
+				/* v is the front part's primary whose last-station record was set
+				 * to this station at TrainEnterStation entry -- the only reliable
+				 * source for "the station we are decoupling at". MakeGoToStation
+				 * resets all flags/markers, producing a plain station order. */
+				station_order.MakeGoToStation(v->last_station_visited);
 
 				Order wait_for_couple_order;
 				wait_for_couple_order.MakeWaitCouple();
@@ -5529,6 +5534,16 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 		fprintf(stderr, "SplitOrders: after ProcessOrders(u): u=%d ordertype=%d dest=%d\n",
 			(int)u->index.base(), (int)u->current_order.GetType(), u->current_order.GetDestination().value);
 		fprintf(stderr, "SplitOrders-done: u=%d u_primary=%d\n", (int)u->index.base(), (int)u->Primary()->index.base());
+	}
+
+	for (const Train *w = u->First(); w != nullptr; w = w->Next()) {
+		fprintf(stderr, "TES-final: veh=%d ispv=%d subtype=0x%02x front=%d fwagon=%d engine=%d artic=%d freewagon=%d\n",
+			(int)w->index.base(), w->IsPrimaryVehicle() ? 1 : 0, w->subtype,
+			HasBit(w->subtype, GVSF_FRONT) ? 1 : 0,
+			HasBit(w->subtype, GVSF_FRONT_WAGON) ? 1 : 0,
+			HasBit(w->subtype, GVSF_ENGINE) ? 1 : 0,
+			HasBit(w->subtype, GVSF_ARTICULATED_PART) ? 1 : 0,
+			HasBit(w->subtype, GVSF_FREE_WAGON) ? 1 : 0);
 	}
 
 	switch (after_decouple_flags->GetDecoupleFirstOrdersType()) {
@@ -5640,6 +5655,10 @@ static Train *DecoupleTrain(Train *v)
 
 	NormaliseTrainHead(u, CCF_COUPLE);
 	NormaliseTrainHead(v, CCF_COUPLE);
+
+	/* The split created a new chain front; invalidate the vehicle tick caches
+	 * so both parts are ticked from now on (same as couple/flip do). */
+	InvalidateVehicleTickCaches();
 
 	InvalidateWindowClassesData(WindowClass::TrainList);
 	fprintf(stderr, "DecoupleTrain-end: u_first=%d u_primary=%d v_primary=%d\n",
