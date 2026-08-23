@@ -1657,8 +1657,7 @@ static CommandCost CmdBuildRailWagon(TileIndex tile, DoCommandFlags flags, const
 
 		v->UpdatePosition();
 		v->First()->ConsistChanged(CCF_ARRANGE);
-		MaterialiseTrainPrimary(v->First());
-		UpdateTrainGroupID(v->Primary());
+		UpdateTrainGroupID(v->First());
 
 		CheckConsistencyOfArticulatedVehicle(v);
 
@@ -1679,6 +1678,11 @@ static CommandCost CmdBuildRailWagon(TileIndex tile, DoCommandFlags flags, const
 			});
 			for (Train *w : candidates) {
 				if (Command<Commands::MoveRailVehicle>::Do(DoCommandFlag::Execute, v->index, w->Last()->index, MoveRailVehicleFlags::MoveChain).Succeeded()) {
+					/* The built wagon joined an existing chain: unify primaries
+					 * onto that chain's info carrier. Standalone wagons keep
+					 * primary == nullptr so Primary() keeps falling back to
+					 * First(). */
+					MaterialiseTrainPrimary(v->First());
 					break;
 				}
 			}
@@ -2231,6 +2235,11 @@ static void MaterialiseTrainPrimary(Train *head)
 		}
 	}
 	for (Train *u = head; u != nullptr; u = u->Next()) u->SetPrimary(prim);
+	if (head->index.base() <= 40) {
+		fprintf(stderr, "MatPrim: head=%d prim=%d members:", (int)head->index.base(), (int)prim->index.base());
+		for (Train *u = head; u != nullptr; u = u->Next()) fprintf(stderr, " %d", (int)u->index.base());
+		fprintf(stderr, "\n");
+	}
 }
 
 static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
@@ -2914,6 +2923,21 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 {
 	assert(v == v->First());
 	DebugDumpTrainChain(v, "NoSwapReverse-before");
+
+	/* Pre-scan: every dual-headed pair must be adjacent, otherwise the
+	 * block-based relink would corrupt the chain. Fall back to the vanilla
+	 * swap reversal (which moves vehicles around but is always safe). */
+	for (Train *u = v; u != nullptr; u = u->Next()) {
+		if (u->IsMultiheaded() && u->IsEngine() &&
+				(u->other_multiheaded_part == nullptr || u->other_multiheaded_part != u->Next())) {
+			fprintf(stderr, "NoSwap: dualhead pair not adjacent (veh=%d other=%d), falling back to swap\n",
+				(int)u->index.base(),
+				u->other_multiheaded_part ? (int)u->other_multiheaded_part->index.base() : -1);
+			ReverseTrainSwapVehicles(v);
+			InvalidateVehicleTickCaches();
+			return;
+		}
+	}
 
 	/* Split the chain into blocks of vehicles that must be reversed as a unit. */
 	std::vector<std::vector<Train *>> blocks;
