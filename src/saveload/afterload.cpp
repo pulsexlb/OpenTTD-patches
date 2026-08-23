@@ -4195,7 +4195,7 @@ bool AfterLoadGame()
 	if (IsSavegameVersionBefore(SLV_127)) {
 		for (Station *st : Station::Iterate()) UpdateStationAcceptance(st, false);
 	}
-	
+
 
 	// setting moved from game settings to company settings
 	if (SlXvIsFeaturePresent(XSLFI_ORDER_OCCUPANCY, 1, 1)) {

@@ -959,6 +959,11 @@ Track YapfTrainChooseTrack(const Train *v, TileIndex tile, DiagDirection enterdi
 		? CYapfRailNo90::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest)
 		: CYapfRail::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
 
+	fprintf(stderr, "YAPF ChooseTrack: veh=%d tile=(%u,%u) enterdir=%d reserve=%d path_found=%d target=(%s)\n",
+		(int)v->index.base(), TileX(tile), TileY(tile), (int)enterdir, reserve_track ? 1 : 0,
+		path_found ? 1 : 0,
+		(target != nullptr && target->okay) ? "set" : "none");
+
 	return (td_ret != INVALID_TRACKDIR) ? TrackdirToTrack(td_ret) : FindFirstTrack(tracks);
 }
 

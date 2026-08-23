@@ -962,6 +962,17 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 
 		tile = moving_front->tile;
 		trackdir = moving_front->GetVehicleTrackdir();
+
+		/* When driving backwards (or the primary is not at the chain head)
+		 * the facing trackdir may point against the reservation: the route was
+		 * laid down in the direction of travel, not of facing. Flip the
+		 * starting trackdir when the reserved tiles actually begin in the
+		 * opposite direction, so the reservation walk follows the real
+		 * reservation instead of terminating immediately. */
+		if (!(GetReservedTrackbits(tile) & TrackdirToTrackdirBits(trackdir))) {
+			Trackdir rev = ReverseTrackdir(trackdir);
+			if (GetReservedTrackbits(tile) & TrackdirToTrackdirBits(rev)) trackdir = rev;
+		}
 	}
 
 	if (IsRailDepotTile(tile) && !GetDepotReservationTrackBits(tile)) return PBSTileInfo(tile, trackdir, false);

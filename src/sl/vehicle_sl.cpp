@@ -325,10 +325,34 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 		/* Fill the primary pointers. The flag is only saved with XSLFI_TRAIN_PRIMARY,
 		 * for older savegames it is zero and primary defaults to first. */
 		if (v->Previous() == nullptr) {
+			/* Locate the flagged primary carrier first (there is exactly one per
+			 * chain; vehicles ahead of it must not receive an intermediate
+			 * value), then assign it to every member of the chain. */
 			Vehicle *primary = v;
 			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-				if (u->consist_primary != 0) primary = u;
+				if (u->consist_primary != 0) {
+					primary = u;
+					break;
+				}
+			}
+			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
 				u->primary = primary;
+			}
+			if (v->type == VehicleType::Train && v->index.base() <= 40) {
+				fprintf(stderr, "LoadRestorePrim: chain head=%d:", (int)v->index.base());
+				for (Vehicle *u = v; u != nullptr; u = u->Next()) {
+					fprintf(stderr, " %d(f%d,p%d)", (int)u->index.base(), u->consist_primary, (int)u->Primary()->index.base());
+				}
+				fprintf(stderr, "\n");
+				for (Vehicle *u = v; u != nullptr; u = u->Next()) {
+					/* Note: first/last are not necessarily filled yet at this
+					 * point in the iteration (tails may come later), so only
+					 * next/previous are dumped here. */
+					fprintf(stderr, "LoadPtrs: veh=%d next=%d prev=%d\n",
+						(int)u->index.base(),
+						u->Next() ? (int)u->Next()->index.base() : -1,
+						u->Previous() ? (int)u->Previous()->index.base() : -1);
+				}
 			}
 		}
 	}
@@ -444,9 +468,13 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 		switch (v->type) {
 			case VehicleType::Train: {
 				Train *t = Train::From(v);
-				if (t->IsFrontEngine() || t->IsFreeWagon() || t->IsFrontWagon()) {
+				/* Every chain needs its caches recomputed after load. The gate
+				 * runs on the primary vehicle (which may sit mid-chain when it
+				 * is not the chain head), while the cache recomputation itself
+				 * is always anchored on the physical chain head. */
+				if (t->Primary()->IsPrimaryVehicle() || t->IsFreeWagon()) {
 					t->gcache.last_speed = t->cur_speed; // update displayed train speed
-					t->ConsistChanged(CCF_SAVELOAD);
+					t->First()->ConsistChanged(CCF_SAVELOAD);
 				}
 				break;
 			}
@@ -727,6 +755,11 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 	void Save(Vehicle *v) const override
 	{
 		v->consist_primary = (v->Primary() == v) ? 1 : 0;
+		if (v->type == VehicleType::Train && v->index.base() <= 40 && v->Primary()->index.base() <= 40) {
+			fprintf(stderr, "SaveConsistPrim: veh=%d primary=%d first=%d flag=%d\n",
+				(int)v->index.base(), (int)v->Primary()->index.base(),
+				(int)v->First()->index.base(), v->consist_primary);
+		}
 		SlObjectSaveFiltered(v, this->GetLoadDescription());
 	}
 

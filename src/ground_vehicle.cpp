@@ -268,6 +268,11 @@ GroundVehicleAcceleration GroundVehicle<T, Type>::GetAcceleration()
 		this->breakdown_chance_factor = Clamp<uint64_t>(breakdown_factor >> 16, 5, 255);
 	}
 
+	if (mass == 0) {
+		fprintf(stderr, "GetAcceleration ZERO MASS: veh=%d first=%d primary=%d head_weight=%d\n",
+			(int)this->index.base(), (int)this->First()->index.base(), (int)this->Primary()->index.base(),
+			this->First()->gcache.cached_weight);
+	}
 	int braking_accel;
 	if (Type == VehicleType::Train && Train::From(this)->UsingRealisticBraking()) {
 		/* Assume that every part of a train is braked, not just the engine.
