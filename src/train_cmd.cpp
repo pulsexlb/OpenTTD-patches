@@ -2259,9 +2259,13 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 				break;
 			}
 		}
-		if (!valid) {
-			fprintf(stderr, "NormaliseHead self-heal: head=%d old_primary=%d\n",
-				(int)head->index.base(), (int)head->Primary()->index.base());
+		int drivers = 0;
+		for (Train *u = head; u != nullptr; u = u->Next()) {
+			if (u->IsPrimaryVehicle()) drivers++;
+		}
+		if (!valid || drivers > 1) {
+			fprintf(stderr, "NormaliseHead self-heal: head=%d old_primary=%d drivers=%d\n",
+				(int)head->index.base(), (int)head->Primary()->index.base(), drivers);
 			MaterialiseTrainPrimary(head);
 
 			/* The demoted vehicle is no longer a train identity: close its
@@ -2274,6 +2278,27 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 				CloseWindowById(WindowClass::VehicleTimetable, prim->index.base());
 				DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, prim->index.base());
 			}
+		}
+	}
+
+	/* Per-vehicle consistency: every member of the chain must resolve to the
+	 * same primary. Vanilla demotion surgery (subtype normalisation, unit
+	 * number release, order deletion) knows nothing about primary pointers and
+	 * leaves stale self-references behind -- e.g. a locomotive dragged behind
+	 * another in a depot keeps "primary == itself" while no longer being a
+	 * driver. Unify any divergent members onto the chain carrier. */
+	{
+		bool consistent = true;
+		for (Train *u = head; u != nullptr; u = u->Next()) {
+			if (u->Primary() != head->Primary()) {
+				consistent = false;
+				break;
+			}
+		}
+		if (!consistent) {
+			fprintf(stderr, "NormaliseHead primary-consistency: head=%d carrier=%d\n",
+				(int)head->index.base(), (int)head->Primary()->index.base());
+			MaterialiseTrainPrimary(head);
 		}
 	}
 
