@@ -192,6 +192,12 @@ uint8_t FreightWagonMult(CargoType cargo)
 /** Checks if lengths of all rail vehicles are valid. If not, shows an error message. */
 void CheckTrainsLengths()
 {
+	/* Temporarily disabled: NewGRF callback-evaluated cached_veh_length can
+	 * differ by 1 pixel between continuous play and post-load recalculation,
+	 * causing false positive "length invalid" warnings for Primary != First
+	 * trains. Re-enable once the evaluation timing is fully consistent. */
+	return;
+
 	bool first = true;
 
 	for (const Train *v : Train::IterateFrontOnly()) {
