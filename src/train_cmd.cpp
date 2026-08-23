@@ -8144,26 +8144,34 @@ bool Train::Tick()
 {
 	DEBUG_UPDATESTATECHECKSUM("Train::Tick: v: {}, x: {}, y: {}, track: {}", this->index, this->x_pos, this->y_pos, this->track);
 	UpdateStateChecksum((((uint64_t) this->x_pos) << 32) | (this->y_pos << 16) | this->track);
-	if (this->IsPrimaryVehicle()) {
-		if (!(this->vehstatus.Test(VehState::Stopped) || this->IsWaitingInDepot()) || this->cur_speed > 0) this->running_ticks++;
+	/* Drive each chain exactly once, triggered by its chain head. The driving
+	 * operations run on the chain's primary vehicle, which -- after a
+	 * no-swap couple/decouple -- may sit mid-chain instead of at the head. */
+	if (this != this->First()) return true;
 
-		this->current_order_time++;
+	Train *prim = this->Primary();
 
-		if (!TrainLocoHandler(this, false)) return false;
-
-		/* We might change chain order during coupling or reversing */
-		if (!this->IsPrimaryVehicle()) return true;
-
-		return TrainLocoHandler(this, true);
-	} else if (this->IsFreeWagon() && this->vehstatus.Test(VehState::Crashed)) {
-		/* Delete flooded standalone wagon chain */
-		if (++this->crash_anim_pos >= 4400) {
-			delete this;
-			return false;
+	if (!prim->IsPrimaryVehicle()) {
+		/* Engine-less wagon chains: only the flooded-standalone-chain cleanup. */
+		if (prim == this && this->IsFreeWagon() && this->vehstatus.Test(VehState::Crashed)) {
+			if (++this->crash_anim_pos >= 4400) {
+				delete this;
+				return false;
+			}
 		}
+		return true;
 	}
 
-	return true;
+	if (!(prim->vehstatus.Test(VehState::Stopped) || prim->IsWaitingInDepot()) || prim->cur_speed > 0) prim->running_ticks++;
+
+	prim->current_order_time++;
+
+	if (!TrainLocoHandler(prim, false)) return false;
+
+	/* We might change chain order during coupling or reversing */
+	if (!this->Primary()->IsPrimaryVehicle()) return true;
+
+	return TrainLocoHandler(prim, true);
 }
 
 /**
