@@ -34,6 +34,9 @@ void GroundVehicle<T, Type>::PowerChanged()
 	uint16_t max_track_speed = this->vcache.cached_max_speed; // Max track speed in internal units.
 
 	this->CalculatePower(total_power, max_te, false);
+	if (this->index.base() <= 6 && Type == VehicleType::Train) {
+		fprintf(stderr, "PowerChanged calc: veh=%d total=%d\n", (int)this->index.base(), total_power);
+	}
 
 	for (const T *u = v; u != nullptr; u = u->Next()) {
 		number_of_parts++;
@@ -60,10 +63,15 @@ void GroundVehicle<T, Type>::PowerChanged()
 
 	if (this->gcache.cached_power != total_power || this->gcache.cached_max_te != max_te) {
 		/* Stop the vehicle if it has no power, unless it is a front wagon (can be coupled/decoupled). */
-		if (total_power == 0 && !this->IsFrontWagon()) this->vehstatus.Set(VehState::Stopped);
+		if (total_power == 0 && !this->IsFrontWagon()) {
+			this->vehstatus.Set(VehState::Stopped);
+			if (this->index.base() <= 6) fprintf(stderr, "PowerChanged zero-power stop: veh=%d\n", (int)this->index.base());
+		}
 
 		this->gcache.cached_power = total_power;
 		this->gcache.cached_max_te = max_te;
+		fprintf(stderr, "PowerChanged store: veh=%d total_power=%d\n",
+			(int)this->index.base(), total_power);
 		SetWindowDirty(WindowClass::VehicleDetails, this->index);
 		SetWindowWidgetDirty(WindowClass::VehicleView, this->index, WID_VV_START_STOP);
 	}

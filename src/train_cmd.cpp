@@ -2552,9 +2552,11 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		 * state can cause an unexpected departure. */
 		if (!HasFlag(move_flags, MoveRailVehicleFlags::Virtual)) {
 			if (src_head != nullptr) {
+				fprintf(stderr, "SET-STOPPED move-rail-src: src_head=%d\n", (int)src_head->index.base());
 				for (Train *u = src_head->First(); u != nullptr; u = u->Next()) u->vehstatus.Set(VehState::Stopped);
 			}
 			if (dst_head != nullptr) {
+				fprintf(stderr, "SET-STOPPED move-rail-dst: dst_head=%d\n", (int)dst_head->index.base());
 				for (Train *u = dst_head->First(); u != nullptr; u = u->Next()) u->vehstatus.Set(VehState::Stopped);
 			}
 		}
@@ -2912,11 +2914,12 @@ void ReverseTrainSwapVehicles(Train *v)
 static void DebugDumpTrainChain(const Train *v, const char *label)
 {
 	for (const Train *u = v->First(); u != nullptr; u = u->Next()) {
-		fprintf(stderr, "%s: veh=%d(%s) first=%d primary=%d ispv=%d xy=(%u,%u) dir=%d back=%d movingfront=%d\n",
+		fprintf(stderr, "%s: veh=%d(%s) first=%d primary=%d ispv=%d xy=(%u,%u) dir=%d back=%d stopped=%d movingfront=%d\n",
 			label, (int)u->index.base(), u->IsPrimaryVehicle() ? "engine" : "wagon",
 			(int)u->First()->index.base(), (int)u->Primary()->index.base(),
 			(u->IsPrimaryVehicle() ? 1 : 0), TileX(u->tile), TileY(u->tile), (int)to_underlying(u->direction),
-			u->vehicle_flags.Test(VehicleFlag::DrivingBackwards) ? 1 : 0, u->IsMovingFront() ? 1 : 0);
+			u->vehicle_flags.Test(VehicleFlag::DrivingBackwards) ? 1 : 0,
+				u->vehstatus.Test(VehState::Stopped) ? 1 : 0, u->IsMovingFront() ? 1 : 0);
 	}
 	fflush(stderr);
 }
@@ -3392,6 +3395,8 @@ static bool IsWholeTrainInsideDepot(const Train *v)
 static void ReverseTrainDirection(Train *consist)
 {
 	Train *first = consist->First();
+	fprintf(stderr, "RTD enter: head=%d stopped=%d\n",
+		(int)first->index.base(), first->vehstatus.Test(VehState::Stopped) ? 1 : 0);
 	Train *moving_front = consist->GetMovingFront();
 	if (IsRailDepotTile(moving_front->tile)) {
 		if (IsWholeTrainInsideDepot(first)) return;
@@ -3622,6 +3627,9 @@ static void ReverseTrainDirection(Train *consist)
 		consist->flags.Reset(VehicleRailFlag::Stuck);
 		consist->wait_counter = 0;
 	}
+
+	fprintf(stderr, "RTD exit: head=%d stopped=%d\n",
+		(int)first->index.base(), first->vehstatus.Test(VehState::Stopped) ? 1 : 0);
 }
 
 /**
@@ -5663,8 +5671,9 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 	}
 
 	for (const Train *w = u->First(); w != nullptr; w = w->Next()) {
-		fprintf(stderr, "TES-final: veh=%d ispv=%d subtype=0x%02x front=%d fwagon=%d engine=%d artic=%d freewagon=%d\n",
-			(int)w->index.base(), w->IsPrimaryVehicle() ? 1 : 0, w->subtype,
+		fprintf(stderr, "TES-final-u: veh=%d ispv=%d stopped=%d subtype=0x%02x front=%d fwagon=%d engine=%d artic=%d freewagon=%d\n",
+			(int)w->index.base(), w->IsPrimaryVehicle() ? 1 : 0,
+			w->vehstatus.Test(VehState::Stopped) ? 1 : 0, w->subtype,
 			HasBit(w->subtype, GVSF_FRONT) ? 1 : 0,
 			HasBit(w->subtype, GVSF_FRONT_WAGON) ? 1 : 0,
 			HasBit(w->subtype, GVSF_ENGINE) ? 1 : 0,
@@ -5705,8 +5714,9 @@ static Train *DecoupleTrain(Train *v)
 		return v;
 	}
 
-	fprintf(stderr, "DecoupleTrain: enter veh=%d first=%d primary=%d tile=(%u,%u)\n",
+	fprintf(stderr, "DecoupleTrain: enter veh=%d first=%d primary=%d prim_stopped=%d tile=(%u,%u)\n",
 		(int)v->index.base(), (int)v->First()->index.base(), (int)v->Primary()->index.base(),
+		v->Primary()->vehstatus.Test(VehState::Stopped) ? 1 : 0,
 		TileX(v->tile), TileY(v->tile));
 	Train *u = GetDecoupleVehicle(v);
 	if (u == nullptr) fprintf(stderr, "DecoupleTrain: no decouple vehicle found\n");
@@ -5791,6 +5801,9 @@ static Train *DecoupleTrain(Train *v)
 		(int)u->First()->index.base(), (int)u->Primary()->index.base(), (int)v->Primary()->index.base());
 	DebugDumpTrainChain(u, "DecoupleTrain-end-u");
 	DebugDumpTrainChain(v, "DecoupleTrain-end-v");
+
+	u->vehstatus.Reset(VehState::Stopped);
+	v->vehstatus.Reset(VehState::Stopped);
 	return u;
 }
 
@@ -6230,6 +6243,12 @@ static void TrainEnterStation(Train *consist, StationID station)
 		}
 		SplitOrders(consist, u, load_trains);
 		u->last_station_visited = station;
+		if (u != nullptr) {
+			fprintf(stderr, "TES-post-split: u=%d stopped=%d back=%d order=%d\n",
+				(int)u->index.base(), u->vehstatus.Test(VehState::Stopped) ? 1 : 0,
+				u->vehicle_flags.Test(VehicleFlag::DrivingBackwards) ? 1 : 0,
+				(int)u->current_order.GetType());
+		}
 		if (u == consist && consist->owner == _local_company) {
 			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED, consist->index), consist->index);
 		}
@@ -6262,6 +6281,25 @@ static void TrainEnterStation(Train *consist, StationID station)
 		InvalidateWindowData(WindowClass::VehicleView, u->index);
 		fprintf(stderr, "BeginLoading site B (decouple second): veh=%d\n", (int)u->index.base());
 		u->BeginLoading();
+	}
+
+	/* The arrival handler stops the whole consist so the split can happen.
+	 * Afterwards each part's primary must be un-stopped again: the front part
+	 * departs on its own orders, and the rear part must remain drivable for
+	 * its own schedule / wait-for-couple hold. Non-decouple arrivals have no
+	 * rear part (u == nullptr). */
+	consist->Primary()->vehstatus.Reset(VehState::Stopped);
+	if (u != nullptr) u->Primary()->vehstatus.Reset(VehState::Stopped);
+
+	for (const Train *w = consist->First(); w != nullptr; w = w->Next()) {
+		fprintf(stderr, "TES-exit-v: veh=%d stopped=%d\n",
+			(int)w->index.base(), w->vehstatus.Test(VehState::Stopped) ? 1 : 0);
+	}
+	if (u != nullptr) {
+		for (const Train *w = u->First(); w != nullptr; w = w->Next()) {
+			fprintf(stderr, "TES-exit-u: veh=%d stopped=%d\n",
+				(int)w->index.base(), w->vehstatus.Test(VehState::Stopped) ? 1 : 0);
+		}
 	}
 
 	if (load_trains != DECOUPLE_NO_LOAD) {

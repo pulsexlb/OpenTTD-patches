@@ -415,7 +415,10 @@ uint Vehicle::Crash(bool)
 
 	uint pass = 0;
 	/* Stop the vehicle. */
-	if (this->IsPrimaryVehicle()) this->vehstatus.Set(VehState::Stopped);
+	if (this->IsPrimaryVehicle()) {
+		if (this->index.base() <= 8) fprintf(stderr, "SET-STOPPED crash-stop: veh=%d\n", (int)this->index.base());
+		this->vehstatus.Set(VehState::Stopped);
+	}
 	/* crash all wagons, and count passengers */
 	for (Vehicle *v = this; v != nullptr; v = v->Next()) {
 		/* We do not transfer reserver cargo back, so TotalCount() instead of StoredCount() */
@@ -1350,6 +1353,7 @@ static void VehicleEnteredDepotThisTick(Vehicle *v)
 	 * the path out of the depot before we might autoreplace it to a different
 	 * engine. The new engine would not own the reserved path we store that we
 	 * stopped the vehicle, so autoreplace can start it again */
+	if (v->index.base() <= 8) fprintf(stderr, "SET-STOPPED autoreplace: veh=%d\n", (int)v->index.base());
 	v->vehstatus.Set(VehState::Stopped);
 }
 
@@ -2824,6 +2828,7 @@ void VehicleEnterDepot(Vehicle *v)
 	 * until the player starts them manually. The train is only allowed to drive on if it is passing
 	 * through this depot on its way to another one (handled below). */
 	if (v->type == VehicleType::Train && _settings_game.vehicle.train_no_depot_temporary_stop) {
+		if (v->index.base() <= 6) fprintf(stderr, "SET-STOPPED depot-temp: veh=%d\n", (int)v->index.base());
 		v->vehstatus.Set(VehState::Stopped);
 	}
 	v->UpdateIsDrawn();
