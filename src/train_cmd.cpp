@@ -2681,8 +2681,20 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 	return cost;
 }
 
+static Direction _last_valid_dirs[40] = {};
+
 void Train::UpdateDeltaXY()
 {
+	if (this->index.base() < 40) {
+		Direction d = this->direction;
+		if (to_underlying(d) > 7) {
+			fprintf(stderr, "UpdateDeltaXY BAD: veh=%d dir=%d last_good=%d\n",
+				(int)this->index.base(), (int)d, (int)_last_valid_dirs[this->index.base()]);
+		} else {
+			_last_valid_dirs[this->index.base()] = d;
+		}
+	}
+
 	/* Set common defaults. */
 	this->bounds = {{-1, -1, 0}, {3, 3, 6}, {}};
 
@@ -2693,6 +2705,7 @@ void Train::UpdateDeltaXY()
 
 	Direction dir = this->direction;
 	if (flipped) dir = ReverseDir(dir);
+	if (to_underlying(dir) > 7) return; /* Defensive: skip invalid directions */
 
 	if (!IsDiagonalDirection(dir)) {
 		static constexpr DiagDirectionIndexArray<Point> _sign_table{{{
@@ -2739,6 +2752,8 @@ void Train::UpdateDeltaXY()
 				break;
 
 			default:
+				fprintf(stderr, "UpdateDeltaXY BAD DIR: veh=%d dir=%d\n",
+					(int)this->index.base(), (int)dir);
 				NOT_REACHED();
 		}
 	}
@@ -2965,6 +2980,20 @@ static void ReverseTrainChainOrder(Train *v)
 static void ReverseTrainNoSwapVehicles(Train *v)
 {
 	assert(v == v->First());
+
+	/* Dual-headed engines require the vanilla full physical swap: swapping
+	 * their halves' positions across tiles breaks tile/track/direction
+	 * consistency in ways that NoSwap cannot handle. */
+	for (Train *u = v; u != nullptr; u = u->Next()) {
+		if (u->IsMultiheaded() && u->IsEngine()) {
+			fprintf(stderr, "NoSwap: dualhead present (veh=%d), using vanilla full swap\n",
+				(int)u->index.base());
+			ReverseTrainSwapVehicles(v);
+			InvalidateVehicleTickCaches();
+			return;
+		}
+	}
+
 	DebugDumpTrainChain(v, "NoSwapReverse-before");
 
 	/* Split the chain into blocks of vehicles that must be reversed as a unit.
