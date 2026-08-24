@@ -2681,20 +2681,8 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 	return cost;
 }
 
-static Direction _last_valid_dirs[40] = {};
-
 void Train::UpdateDeltaXY()
 {
-	if (this->index.base() < 40) {
-		Direction d = this->direction;
-		if (to_underlying(d) > 7) {
-			fprintf(stderr, "UpdateDeltaXY BAD: veh=%d dir=%d last_good=%d\n",
-				(int)this->index.base(), (int)d, (int)_last_valid_dirs[this->index.base()]);
-		} else {
-			_last_valid_dirs[this->index.base()] = d;
-		}
-	}
-
 	/* Set common defaults. */
 	this->bounds = {{-1, -1, 0}, {3, 3, 6}, {}};
 
@@ -2705,7 +2693,6 @@ void Train::UpdateDeltaXY()
 
 	Direction dir = this->direction;
 	if (flipped) dir = ReverseDir(dir);
-	if (to_underlying(dir) > 7) return; /* Defensive: skip invalid directions */
 
 	if (!IsDiagonalDirection(dir)) {
 		static constexpr DiagDirectionIndexArray<Point> _sign_table{{{
@@ -2752,8 +2739,6 @@ void Train::UpdateDeltaXY()
 				break;
 
 			default:
-				fprintf(stderr, "UpdateDeltaXY BAD DIR: veh=%d dir=%d\n",
-					(int)this->index.base(), (int)dir);
 				NOT_REACHED();
 		}
 	}
@@ -5463,28 +5448,6 @@ static void AdvanceWagonsAfterCouple(Train *v)
 		for (int i = 0; i < real_diff; i++) TrainController(v->Next(), nullptr);
 	}
 
-	/* Precise alignment: TrainController advances in movement-step
-	 * granularity and may not land exactly on the target spacing, leaving a
-	 * residual that CheckTrainsLengths would flag after a save/load cycle.
-	 * Snap the coupled-on section to the exact offset along the track axis.
-	 * A positive residual means still too far apart (move toward v), a
-	 * negative one means overshot (move away from v). */
-	{
-		Train *w = v->Next();
-		int rx = abs(v->x_pos - w->x_pos);
-		int ry = abs(v->y_pos - w->y_pos);
-		int residual = std::max(rx, ry) - difference;
-		if (residual != 0) {
-			int sx = (v->x_pos != w->x_pos) ? ((v->x_pos > w->x_pos) ? 1 : -1) : 0;
-			int sy = (v->y_pos != w->y_pos) ? ((v->y_pos > w->y_pos) ? 1 : -1) : 0;
-			for (Train *u = w; u != nullptr; u = u->Next()) {
-				u->x_pos += sx * residual;
-				u->y_pos += sy * residual;
-				u->UpdatePosition();
-				u->UpdateViewport(true, true);
-			}
-		}
-	}
 }
 
 /**
