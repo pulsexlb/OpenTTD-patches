@@ -102,6 +102,17 @@ private:
 	bool FindSafeCouplePositionProc(TileIndex tile, Trackdir td)
 	{
 		if (IsRailDepotTile(tile)) return false;
+
+		/* Reaching a tile occupied by the wait-for-couple partner IS the
+		 * destination -- do not try to reserve its tiles. */
+		for (const Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
+			Train *carrier = t->First()->Primary();
+			if (carrier->current_order.IsType(OT_WAIT_COUPLE)) {
+				fprintf(stderr, "FSCP: reached waiting partner veh=%d tile=(%u,%u)\n",
+					(int)t->index.base(), TileX(tile), TileY(tile));
+				return true;
+			}
+		}
 		TrackdirBits tdb = TrackdirToTrackdirBits(td);
 		TrackBits tracks = TrackdirBitsToTrackBits(tdb);
 
@@ -172,9 +183,13 @@ private:
 				}
 			}
 		} else if (GetReservedTrackbits(tile) != TRACK_BIT_NONE) {
-			if (!TryReserveRailTrack(tile, TrackdirToTrack(td))) return false;
+			if (!TryReserveRailTrack(tile, TrackdirToTrack(td))) {
+				fprintf(stderr, "FSCP: reserved-track reserve fail tile=(%u,%u)\n", TileX(tile), TileY(tile));
+				return false;
+			}
 			UnreserveRailTrack(tile, TrackdirToTrack(td));
 		}
+		fprintf(stderr, "FSCP: plain ok tile=(%u,%u)\n", TileX(tile), TileY(tile));
 		return true;
 	}
 

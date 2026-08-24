@@ -5855,6 +5855,9 @@ static bool TryTrainCouple(Train *v, Train *u)
  */
 static void ReverseTrainForCouple(Train *v)
 {
+	/* Physical reversal always operates on the whole chain; callers may pass
+	 * the primary vehicle which can sit mid-chain. */
+	v = v->First();
 	ReverseTrainNoSwapVehicles(v);
 }
 
