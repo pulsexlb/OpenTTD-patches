@@ -1524,8 +1524,6 @@ static OrderUnloadType GetUnloadType(const Vehicle *v)
 void PrepareUnload(Vehicle *front_v)
 {
 	Station *curr_station = Station::Get(front_v->last_station_visited);
-	fprintf(stderr, "PrepareUnload: push veh=%d into station=%d queue(size=%d)\n",
-		(int)front_v->index.base(), (int)curr_station->index.base(), (int)curr_station->loading_vehicles.size() + 1);
 	/* Guard against duplicate queue entries when BeginLoading runs twice for
 	 * the same vehicle without an intervening LeaveStation. */
 	auto &loading_queue = curr_station->loading_vehicles;
@@ -1992,9 +1990,6 @@ static void LoadUnloadVehicle(Vehicle *front)
 			}
 		}
 	}
-	fprintf(stderr, "LoadUnloadStation: front=%d station_tile=%d belongs=%d\n",
-		(int)front->index.base(), (int)station_tile.base(),
-		st->TileBelongsToRailStation(station_tile) ? 1 : 0);
 	int platform_length_left = 0;
 	if (pull_through_mode) {
 		platform_length_left = st->GetPlatformLength(station_tile, ReverseDiagDir(DirToDiagDir(station_vehicle->GetMovingDirection()))) * TILE_SIZE - GetTileMarginInFrontOfTrain(Train::From(station_vehicle));
@@ -2401,10 +2396,6 @@ static void LoadUnloadVehicle(Vehicle *front)
 		{
 			int cap_total = 0, stored_total = 0;
 			for (const Vehicle *w = front->First(); w != nullptr; w = w->Next()) { cap_total += w->cargo_cap; stored_total += w->cargo.StoredCount(); }
-			fprintf(stderr, "LoadUnloadVehicle: front=%d finished=%d load_type=%d full_load=%d cap=%d stored=%d\n",
-				(int)front->index.base(), finished_loading ? 1 : 0,
-				(int)front->current_order.GetLoadType(),
-				front->current_order.IsFullLoadOrder() ? 1 : 0, cap_total, stored_total);
 		}
 
 		if (finished_loading && may_leave_early()) {
@@ -2465,10 +2456,6 @@ void LoadUnloadStation(Station *st)
 		if (v->vehstatus.Any({VehState::Stopped, VehState::Crashed}) || v->current_order.IsType(OT_LOADING_ADVANCE)) continue;
 
 		if (v->load_unload_ticks == 0) {
-			fprintf(stderr, "LoadUnloadStation: ZERO ticks veh=%d first=%d primary=%d station=%d crashed=%d stopped=%d\n",
-				(int)v->index.base(), (int)v->First()->index.base(), (int)v->Primary()->index.base(),
-				(int)st->index.base(), v->vehstatus.Test(VehState::Crashed) ? 1 : 0,
-				v->vehstatus.Test(VehState::Stopped) ? 1 : 0);
 		}
 		assert(v->load_unload_ticks != 0);
 		if (--v->load_unload_ticks == 0) last_loading = v;

@@ -416,7 +416,6 @@ uint Vehicle::Crash(bool)
 	uint pass = 0;
 	/* Stop the vehicle. */
 	if (this->IsPrimaryVehicle()) {
-		if (this->index.base() <= 8) fprintf(stderr, "SET-STOPPED crash-stop: veh=%d\n", (int)this->index.base());
 		this->vehstatus.Set(VehState::Stopped);
 	}
 	/* crash all wagons, and count passengers */
@@ -1353,7 +1352,6 @@ static void VehicleEnteredDepotThisTick(Vehicle *v)
 	 * the path out of the depot before we might autoreplace it to a different
 	 * engine. The new engine would not own the reserved path we store that we
 	 * stopped the vehicle, so autoreplace can start it again */
-	if (v->index.base() <= 8) fprintf(stderr, "SET-STOPPED autoreplace: veh=%d\n", (int)v->index.base());
 	v->vehstatus.Set(VehState::Stopped);
 }
 
@@ -1561,11 +1559,8 @@ void RebuildVehicleTickCaches()
 	_tick_effect_veh_cache_valid = true;
 
 	{
-		fprintf(stderr, "RebuildTickCaches: upper_tagged=%d train_fronts:", OTTD_UPPER_TAGGED_PTR ? 1 : 0);
 		for (Train *t : _tick_train_front_cache) {
-			if (t->index.base() <= 32) fprintf(stderr, " %d(p%d)", (int)t->index.base(), (int)t->Primary()->index.base());
 		}
-		fprintf(stderr, "\n");
 	}
 }
 
@@ -2771,11 +2766,6 @@ void VehicleEnterDepot(Vehicle *v)
 	dbg_assert(v == v->Primary());
 	if (v->type == VehicleType::Train) {
 		const Train *t = Train::From(v);
-		fprintf(stderr, "VehicleEnterDepot: veh=%d primary=%d ordertype=%d dest=%d last_station=%d\n",
-			(int)v->index.base(), (int)t->Primary()->index.base(),
-			(int)t->Primary()->current_order.GetType(),
-			t->Primary()->current_order.GetDestination().value,
-			(int)t->Primary()->last_station_visited.base());
 	}
 
 	switch (v->type) {
@@ -2828,7 +2818,6 @@ void VehicleEnterDepot(Vehicle *v)
 	 * until the player starts them manually. The train is only allowed to drive on if it is passing
 	 * through this depot on its way to another one (handled below). */
 	if (v->type == VehicleType::Train && _settings_game.vehicle.train_no_depot_temporary_stop) {
-		if (v->index.base() <= 6) fprintf(stderr, "SET-STOPPED depot-temp: veh=%d\n", (int)v->index.base());
 		v->vehstatus.Set(VehState::Stopped);
 	}
 	v->UpdateIsDrawn();
@@ -3507,8 +3496,6 @@ static void VehicleIncreaseStats(const Vehicle *front)
 void Vehicle::BeginLoading()
 {
 	if (this->type == VehicleType::Train) {
-		fprintf(stderr, "BeginLoading: veh=%d first=%d primary=%d\n",
-			(int)this->index.base(), (int)this->First()->index.base(), (int)this->Primary()->index.base());
 #ifdef WITH_ASSERT
 		[[maybe_unused]] TileIndex station_tile = Train::From(this)->GetStationLoadingVehicle()->tile;
 		assert_tile(IsTileType(station_tile, TileType::Station), station_tile);
@@ -3919,10 +3906,6 @@ void Vehicle::HandleLoading(bool mode)
 
 			/* Not the first call for this tick, or still loading */
 			bool cont_wait = ShouldVehicleContinueWaiting(this);
-			fprintf(stderr, "HandleLoading hold: veh=%d mode=%d finished=%d ordertime=%d waittime=%d cont_wait=%d\n",
-				(int)this->index.base(), mode ? 1 : 0,
-				this->vehicle_flags.Test(VehicleFlag::LoadingFinished) ? 1 : 0,
-				(int)this->current_order_time, (int)wait_time, cont_wait ? 1 : 0);
 			if (mode || !this->vehicle_flags.Test(VehicleFlag::LoadingFinished) || (this->current_order_time < wait_time && this->current_order.GetLeaveType() != OLT_LEAVE_EARLY) || cont_wait) {
 				if (!mode && this->type == VehicleType::Train && Train::From(this)->flags.Test(VehicleRailFlag::AdvanceInPlatform)) this->AdvanceLoadingInStation();
 				return;

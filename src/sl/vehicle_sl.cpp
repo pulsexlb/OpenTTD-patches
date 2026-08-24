@@ -339,19 +339,12 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 				u->primary = primary;
 			}
 			if (v->type == VehicleType::Train && v->index.base() <= 40) {
-				fprintf(stderr, "LoadRestorePrim: chain head=%d:", (int)v->index.base());
 				for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-					fprintf(stderr, " %d(f%d,p%d)", (int)u->index.base(), u->consist_primary, (int)u->Primary()->index.base());
 				}
-				fprintf(stderr, "\n");
 				for (Vehicle *u = v; u != nullptr; u = u->Next()) {
 					/* Note: first/last are not necessarily filled yet at this
 					 * point in the iteration (tails may come later), so only
 					 * next/previous are dumped here. */
-					fprintf(stderr, "LoadPtrs: veh=%d next=%d prev=%d\n",
-						(int)u->index.base(),
-						u->Next() ? (int)u->Next()->index.base() : -1,
-						u->Previous() ? (int)u->Previous()->index.base() : -1);
 				}
 			}
 		}
@@ -756,9 +749,6 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 	{
 		v->consist_primary = (v->Primary() == v) ? 1 : 0;
 		if (v->type == VehicleType::Train && v->index.base() <= 40 && v->Primary()->index.base() <= 40) {
-			fprintf(stderr, "SaveConsistPrim: veh=%d primary=%d first=%d flag=%d\n",
-				(int)v->index.base(), (int)v->Primary()->index.base(),
-				(int)v->First()->index.base(), v->consist_primary);
 		}
 		SlObjectSaveFiltered(v, this->GetLoadDescription());
 	}

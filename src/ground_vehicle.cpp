@@ -35,7 +35,6 @@ void GroundVehicle<T, Type>::PowerChanged()
 
 	this->CalculatePower(total_power, max_te, false);
 	if (this->index.base() <= 6 && Type == VehicleType::Train) {
-		fprintf(stderr, "PowerChanged calc: veh=%d total=%d\n", (int)this->index.base(), total_power);
 	}
 
 	for (const T *u = v; u != nullptr; u = u->Next()) {
@@ -65,13 +64,10 @@ void GroundVehicle<T, Type>::PowerChanged()
 		/* Stop the vehicle if it has no power, unless it is a front wagon (can be coupled/decoupled). */
 		if (total_power == 0 && !this->IsFrontWagon()) {
 			this->vehstatus.Set(VehState::Stopped);
-			if (this->index.base() <= 6) fprintf(stderr, "PowerChanged zero-power stop: veh=%d\n", (int)this->index.base());
 		}
 
 		this->gcache.cached_power = total_power;
 		this->gcache.cached_max_te = max_te;
-		fprintf(stderr, "PowerChanged store: veh=%d total_power=%d\n",
-			(int)this->index.base(), total_power);
 		SetWindowDirty(WindowClass::VehicleDetails, this->index);
 		SetWindowWidgetDirty(WindowClass::VehicleView, this->index, WID_VV_START_STOP);
 	}
@@ -277,9 +273,6 @@ GroundVehicleAcceleration GroundVehicle<T, Type>::GetAcceleration()
 	}
 
 	if (mass == 0) {
-		fprintf(stderr, "GetAcceleration ZERO MASS: veh=%d first=%d primary=%d head_weight=%d\n",
-			(int)this->index.base(), (int)this->First()->index.base(), (int)this->Primary()->index.base(),
-			this->First()->gcache.cached_weight);
 	}
 	int braking_accel;
 	if (Type == VehicleType::Train && Train::From(this)->UsingRealisticBraking()) {

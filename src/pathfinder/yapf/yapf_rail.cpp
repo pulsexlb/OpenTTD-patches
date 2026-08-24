@@ -108,8 +108,6 @@ private:
 		for (const Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
 			Train *carrier = t->First()->Primary();
 			if (carrier->current_order.IsType(OT_WAIT_COUPLE)) {
-				fprintf(stderr, "FSCP: reached waiting partner veh=%d tile=(%u,%u)\n",
-					(int)t->index.base(), TileX(tile), TileY(tile));
 				return true;
 			}
 		}
@@ -138,18 +136,10 @@ private:
 				check_train_on_tile(st_tile);
 			}
 			check_train_on_tile(tile);
-			fprintf(stderr, "FSCP: tile=(%u,%u) best=%d second=%d\n",
-				TileX(tile), TileY(tile),
-				best ? (int)best->index.base() : -1,
-				second_best ? (int)second_best->index.base() : -1);
 			if (best != nullptr) {
-				if (!best->current_order.IsType(OT_WAIT_COUPLE)) { fprintf(stderr, "FSCP reject: order=%d\n", (int)best->current_order.GetType()); return false; }
-				if (second_best != nullptr) { fprintf(stderr, "FSCP reject: second_best=%d\n", (int)second_best->index.base()); return false; }
 				Vehicle *other_train = nullptr;
 				FollowTrainReservation(best, &other_train);
 				if (other_train != nullptr && other_train != best) {
-					fprintf(stderr, "FSCP reject: follow-train=%d first=%d\n",
-						(int)other_train->index.base(), (int)other_train->First()->index.base());
 					return false;
 				}
 			}
@@ -167,29 +157,19 @@ private:
 				}
 			};
 			check_train_on_tile(tile);
-			fprintf(stderr, "FSCP: tile=(%u,%u) best=%d second=%d\n",
-				TileX(tile), TileY(tile),
-				best ? (int)best->index.base() : -1,
-				second_best ? (int)second_best->index.base() : -1);
 			if (best != nullptr) {
-				if (!best->current_order.IsType(OT_WAIT_COUPLE)) { fprintf(stderr, "FSCP reject: order=%d\n", (int)best->current_order.GetType()); return false; }
-				if (second_best != nullptr) { fprintf(stderr, "FSCP reject: second_best=%d\n", (int)second_best->index.base()); return false; }
 				Vehicle *other_train = nullptr;
 				FollowTrainReservation(best, &other_train);
 				if (other_train != nullptr && other_train != best) {
-					fprintf(stderr, "FSCP reject: follow-train=%d first=%d\n",
-						(int)other_train->index.base(), (int)other_train->First()->index.base());
 					return false;
 				}
 			}
 		} else if (GetReservedTrackbits(tile) != TRACK_BIT_NONE) {
 			if (!TryReserveRailTrack(tile, TrackdirToTrack(td))) {
-				fprintf(stderr, "FSCP: reserved-track reserve fail tile=(%u,%u)\n", TileX(tile), TileY(tile));
 				return false;
 			}
 			UnreserveRailTrack(tile, TrackdirToTrack(td));
 		}
-		fprintf(stderr, "FSCP: plain ok tile=(%u,%u)\n", TileX(tile), TileY(tile));
 		return true;
 	}
 
@@ -530,15 +510,11 @@ public:
 	Trackdir FindNearestCoupleTrain(const Train *v, bool dont_reserve)
 	{
 		PBSTileInfo origin = FollowTrainReservation(v, nullptr, FollowTrainReservationFlag::IgnoreLookahead);
-		fprintf(stderr, "CNCT: v=%d origin=(%u,%u) td=%d okay=%d\n",
-			(int)v->index.base(), TileX(origin.tile), TileY(origin.tile),
-			(int)origin.trackdir, origin.okay ? 1 : 0);
 		/* Set origin and destination. */
 		Yapf().SetOrigin(origin.tile, origin.trackdir);
 		Yapf().SetDestination(v);
 
 		bool path_found = Yapf().FindPath(v);
-		fprintf(stderr, "CNCT: path_found=%d\n", path_found ? 1 : 0);
 		if (!path_found) return INVALID_TRACKDIR;
 
 		/* Found a destination, set as reservation target. */
@@ -555,12 +531,10 @@ public:
 
 			if (!this->CheckSafePositionOnNode(pPrev)) {
 				safe_fails++;
-				fprintf(stderr, "CNCT: unsafe position at tile=(%u,%u)\n", TileX(pPrev->GetTile()), TileY(pPrev->GetTile()));
 				break;
 			}
 			safe_checks++;
 		}
-		fprintf(stderr, "CNCT: walk done safe_ok=%d safe_fail=%d\n", safe_checks, safe_fails);
 
 		/* Destination is at the origin (path length 0). The reservation
 		 * already reaches the waiting train. Return the origin's trackdir
@@ -999,10 +973,6 @@ Track YapfTrainChooseTrack(const Train *v, TileIndex tile, DiagDirection enterdi
 		? CYapfRailNo90::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest)
 		: CYapfRail::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
 
-	fprintf(stderr, "YAPF ChooseTrack: veh=%d tile=(%u,%u) enterdir=%d reserve=%d path_found=%d target=(%s)\n",
-		(int)v->index.base(), TileX(tile), TileY(tile), (int)enterdir, reserve_track ? 1 : 0,
-		path_found ? 1 : 0,
-		(target != nullptr && target->okay) ? "set" : "none");
 
 	return (td_ret != INVALID_TRACKDIR) ? TrackdirToTrack(td_ret) : FindFirstTrack(tracks);
 }
