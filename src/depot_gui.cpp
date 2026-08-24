@@ -1122,8 +1122,8 @@ struct DepotWindow : Window {
 						} else if (result.wagon == nullptr || result.wagon->index != sel) {
 							this->vehicle_over = VehicleID::Invalid();
 							TrainDepotMoveVehicle(result.wagon, sel, result.vehicle);
-						} else if (result.vehicle != nullptr && result.vehicle->IsPrimaryVehicle()) {
-							ShowVehicleViewWindow(result.vehicle);
+						} else if (result.vehicle != nullptr && result.vehicle->Primary()->IsPrimaryVehicle()) {
+							ShowVehicleViewWindow(result.vehicle->Primary());
 						}
 					}
 				} else if (result.action == DepotGUIAction::DragVehicle && result.vehicle != nullptr && sel == result.vehicle->index) {

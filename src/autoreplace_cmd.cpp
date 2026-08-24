@@ -107,7 +107,7 @@ bool CheckAutoreplaceValidity(EngineID from, EngineID to, CompanyID company)
  */
 void CheckCargoCapacity(Vehicle *v)
 {
-	assert(v == nullptr || v->Primary() == v);
+	assert(v == nullptr || v->First() == v);
 
 	for (Vehicle *src = v; src != nullptr; src = src->Next()) {
 		assert(src->cargo.TotalCount() == src->cargo.ActionCount(VehicleCargoList::MoveToAction::Keep));

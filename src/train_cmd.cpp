@@ -2247,6 +2247,10 @@ static void MaterialiseTrainPrimary(Train *head)
 		}
 	}
 	for (Train *u = head; u != nullptr; u = u->Next()) u->SetPrimary(prim);
+	/* The carrier must carry the front-engine marker wherever it sits in the
+	 * chain -- vanilla surgery (e.g. NormaliseSubtypes) strips it from every
+	 * non-head vehicle without knowing about primary pointers. */
+	if (prim->IsEngine()) prim->SetFrontEngine();
 	if (head->index.base() <= 40) {
 		fprintf(stderr, "MatPrim: head=%d prim=%d members:", (int)head->index.base(), (int)prim->index.base());
 		for (Train *u = head; u != nullptr; u = u->Next()) fprintf(stderr, " %d", (int)u->index.base());
@@ -2259,54 +2263,37 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 	/* Not much to do! */
 	if (head == nullptr) return;
 
-	/* Self-heal the primary pointer after chain surgery: if the recorded
-	 * primary is no longer part of this chain or has lost its front status
-	 * (e.g. ClearFrontWagon/ClearFrontEngine), fall back to the chain head. */
+	/* Unify the primary pointers of the chain (single driver, consistent
+	 * resolution, valid carrier), then simply close the vehicle windows of
+	 * every member -- identities may have shifted and players can reopen
+	 * them. */
 	{
-		Train *prim = head->Primary();
+		std::vector<Train *> members;
+		for (Train *u = head; u != nullptr; u = u->Next()) members.push_back(u);
+
 		bool valid = false;
-		for (Train *u = head; u != nullptr; u = u->Next()) {
-			if (u == prim) {
-				valid = u->IsPrimaryVehicle() || u->IsFreeWagon();
-				break;
-			}
+		int drivers = 0;
+		for (Train *u : members) {
+			if (u == head->Primary()) valid = u->IsPrimaryVehicle() || u->IsFreeWagon();
+			if (u->IsPrimaryVehicle()) drivers++;
 		}
-		if (!valid) {
-			fprintf(stderr, "NormaliseHead self-heal: head=%d old_primary=%d\n",
-				(int)head->index.base(), (int)head->Primary()->index.base());
-			MaterialiseTrainPrimary(head);
 
-			/* The demoted vehicle is no longer a train identity: close its
-			 * vehicle windows, same as when coupling absorbs a train front. */
-			if (prim != head) {
-				CloseWindowById(WindowClass::VehicleView, prim->index.base());
-				CloseWindowById(WindowClass::VehicleDetails, prim->index.base());
-				CloseWindowById(WindowClass::VehicleOrders, prim->index.base());
-				CloseWindowById(WindowClass::VehicleRefit, prim->index.base());
-				CloseWindowById(WindowClass::VehicleTimetable, prim->index.base());
-				DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, prim->index.base());
-			}
-		}
-	}
-
-	/* Per-vehicle consistency: every member of the chain must resolve to the
-	 * same primary. Vanilla demotion surgery (subtype normalisation, unit
-	 * number release, order deletion) knows nothing about primary pointers and
-	 * leaves stale self-references behind -- e.g. a locomotive dragged behind
-	 * another in a depot keeps "primary == itself" while no longer being a
-	 * driver. Unify any divergent members onto the chain carrier. */
-	{
-		bool consistent = true;
-		for (Train *u = head; u != nullptr; u = u->Next()) {
-			if (u->Primary() != head->Primary()) {
-				consistent = false;
-				break;
-			}
-		}
-		if (!consistent) {
-			fprintf(stderr, "NormaliseHead primary-consistency: head=%d carrier=%d\n",
-				(int)head->index.base(), (int)head->Primary()->index.base());
+		if (!valid || drivers > 1) {
+			fprintf(stderr, "NormaliseHead unify: head=%d valid=%d drivers=%d\n",
+				(int)head->index.base(), valid ? 1 : 0, drivers);
 			MaterialiseTrainPrimary(head);
+		}
+
+		Train *new_prim = head->Primary();
+		for (Train *u : members) {
+			u->SetPrimary(new_prim);
+
+			CloseWindowById(WindowClass::VehicleView, u->index.base());
+			CloseWindowById(WindowClass::VehicleDetails, u->index.base());
+			CloseWindowById(WindowClass::VehicleOrders, u->index.base());
+			CloseWindowById(WindowClass::VehicleRefit, u->index.base());
+			CloseWindowById(WindowClass::VehicleTimetable, u->index.base());
+			DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
 		}
 	}
 
@@ -2477,6 +2464,14 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		NormaliseSubtypes(src_head);
 		NormaliseSubtypes(dst_head);
 
+		/* NormaliseSubtypes strips front markers from every non-head vehicle
+		 * and knows nothing about primary pointers; re-materialise each
+		 * resulting chain's primary onto its carrier (first engine, or the
+		 * head for engine-less wagon chains) so mid-chain primaries stay
+		 * drivable and stale self-references are cleaned up. */
+		if (src_head != nullptr) MaterialiseTrainPrimary(src_head);
+		if (dst_head != nullptr) MaterialiseTrainPrimary(dst_head);
+
 		/* There are 14 different cases:
 		 *  1) front engine gets moved to a new train, it stays a front engine.
 		 *     a) the 'next' part is a wagon that becomes a free wagon chain.
@@ -2550,6 +2545,18 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		if (!flags.Test(DoCommandFlag::NoCargoCapacityCheck)) {
 			CheckCargoCapacity(src_head);
 			CheckCargoCapacity(dst_head);
+		}
+
+		/* A drag-drop edit of a consist in a depot always leaves it stopped,
+		 * so neither a mid-chain primary nor any other partial head/primary
+		 * state can cause an unexpected departure. */
+		if (!HasFlag(move_flags, MoveRailVehicleFlags::Virtual)) {
+			if (src_head != nullptr) {
+				for (Train *u = src_head->First(); u != nullptr; u = u->Next()) u->vehstatus.Set(VehState::Stopped);
+			}
+			if (dst_head != nullptr) {
+				for (Train *u = dst_head->First(); u != nullptr; u = u->Next()) u->vehstatus.Set(VehState::Stopped);
+			}
 		}
 
 		if (src_head != nullptr) {
@@ -3863,8 +3870,9 @@ static void CheckNextTrainTile(Train *moving_front)
  */
 static bool CheckTrainStayInDepot(Train *v)
 {
-	/* bail out if not all wagons are in the same depot or not in a depot at all */
-	for (const Train *u = v; u != nullptr; u = u->Next()) {
+	/* bail out if not all wagons are in the same depot or not in a depot at all.
+	 * Walk from the physical chain head: the primary vehicle may sit mid-chain. */
+	for (const Train *u = v->First(); u != nullptr; u = u->Next()) {
 		if (u->track != TRACK_BIT_DEPOT || u->tile != v->tile) return false;
 	}
 
