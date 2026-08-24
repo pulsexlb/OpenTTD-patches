@@ -301,10 +301,15 @@ public:
 			for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
 				for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
 					if (t->vehstatus.Test(VehState::Crashed)) continue;
-					if (t->First() != t) continue;
-					if (!t->current_order.IsType(OT_WAIT_COUPLE)) continue;
-					if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, t->owner)) continue;
-					if (!CheckOrderLoad(t) || !CheckOrderCargoType(t) || !CheckNumberOfWagons(t) || !CheckOrderSlot(t) || !TrainFitStation(t)) continue;
+					/* The waiting train may have its primary vehicle (the info
+					 * carrier holding the wait-for-couple order) anywhere in
+					 * the chain -- resolve through it instead of requiring a
+					 * chain head. */
+					Train *carrier = t->First()->Primary();
+					Train *rep = t->First();
+					if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) continue;
+					if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, carrier->owner)) continue;
+					if (!CheckOrderLoad(carrier) || !CheckOrderCargoType(carrier) || !CheckNumberOfWagons(rep) || !CheckOrderSlot(carrier) || !TrainFitStation(rep)) continue;
 					return true;
 				}
 			}
