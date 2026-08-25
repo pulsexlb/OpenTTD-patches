@@ -486,8 +486,14 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 	this->tcache.cached_curve_speed_mod = min_curve_speed_mod;
 	this->tcache.cached_max_curve_speed = this->GetCurveSpeedLimit();
 
-	if (driving_backwards && !this->Last()->CanLeadTrain()) {
-		this->tcache.cached_tflags |= TCF_NO_DRIVING_CAB;
+	/* Restrict speed when the end of the chain that currently leads has no
+	 * driving cab. With Primary != First the chain head can be a wagon, so
+	 * forward-driven trains need this check as much as reversed ones. */
+	{
+		const Train *leader = driving_backwards ? this->Last() : this->First();
+		if (!leader->CanLeadTrain()) {
+			this->tcache.cached_tflags |= TCF_NO_DRIVING_CAB;
+		}
 	}
 
 	extern std::array<RailTypes, 3> _railtypes_acceleration_type_masks;
@@ -1169,7 +1175,7 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 
 	if (this->current_order.IsType(OT_LOADING_ADVANCE)) max_speed = std::min<int>(max_speed, _settings_game.vehicle.through_load_speed_limit);
 
-	/* If the train is going backwards, without a leading cab, restrict its speed. */
+	/* If the leading end of the train has no driving cab, restrict its speed. */
 	if (this->tcache.cached_tflags & TCF_NO_DRIVING_CAB) {
 		constexpr int BACKWARDS_NO_CAB_SPEED_LIMIT = 32;
 		max_speed = std::min<int>(max_speed, BACKWARDS_NO_CAB_SPEED_LIMIT);

@@ -804,7 +804,10 @@ void TraceRestrictProgram::Execute(const Train *v, const TraceRestrictProgramInp
 
 							case TRTSVF_DRIVING_BACKWARDS_NO_CAB:
 								if (input.input_flags.Test(TraceRestrictProgramInputFlag::InvertDrivingDirection)) {
-									has_status = !v->vehicle_flags.Test(VehicleFlag::DrivingBackwards) && !v->Last()->CanLeadTrain();
+									/* Evaluate as if the driving direction were flipped: the
+									 * opposite end of the chain would be leading. */
+									const Train *flipped_leader = v->vehicle_flags.Test(VehicleFlag::DrivingBackwards) ? v->First() : v->Last();
+									has_status = !flipped_leader->CanLeadTrain();
 								} else {
 									/* Use cached value. */
 									has_status = v->tcache.cached_tflags & TCF_NO_DRIVING_CAB;

@@ -1035,14 +1035,20 @@ bool YapfTrainCheckReverse(const Train *v)
 
 	int reverse_penalty = 0;
 
-	/* Consider whether the train might back up at reduced speed. */
-	if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::None && !v->Last()->CanLeadTrain()
+	/* Consider whether the train might change its speed by backing up instead
+	 * of flipping: each end leads in one direction, and only ends without a
+	 * driving cab restrict the speed. */
+	const bool driving_backwards = v->vehicle_flags.Test(VehicleFlag::DrivingBackwards);
+	const bool leading_end_fast = driving_backwards ? v->Last()->CanLeadTrain() : v->First()->CanLeadTrain();
+	const bool flipped_end_fast = driving_backwards ? v->First()->CanLeadTrain() : v->Last()->CanLeadTrain();
+	if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::None
+			&& leading_end_fast != flipped_end_fast
 			&& moving_front->track != TRACK_BIT_DEPOT && moving_back->track != TRACK_BIT_DEPOT) {
-		if (!v->vehicle_flags.Test(VehicleFlag::DrivingBackwards)) {
-			/* We're currently driving forwards at full speed, and would rather not reverse if possible. */
+		if (leading_end_fast) {
+			/* We're currently driving at full speed, and would rather not reverse if possible. */
 			reverse_penalty += DRIVING_BACKWARDS_PENALTY;
 		} else {
-			/* We're currently driving backwards slowly, prefer reversing. */
+			/* We're currently driving slowly, prefer reversing. */
 			reverse_penalty -= DRIVING_BACKWARDS_PENALTY;
 		}
 	}
@@ -1084,7 +1090,11 @@ bool YapfTrainCheckReverse(const Train *v)
 bool YapfTrainCheckDepotReverse(const Train *v, TileIndex forward_depot, TileIndex reverse_depot)
 {
 	int reverse_penalty = 1;
-	if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::None && !v->Last()->CanLeadTrain()) {
+	/* Prefer the exit orientation whose leading end has a driving cab;
+	 * a preference only exists when exactly one end can lead. */
+	const bool front_can_lead_d = v->First()->CanLeadTrain();
+	const bool back_can_lead_d = v->Last()->CanLeadTrain();
+	if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::None && front_can_lead_d != back_can_lead_d) {
 		/* Apply penalties to prefer driving out in forward direction. */
 		if (v->vehicle_flags.Test(VehicleFlag::DrivingBackwards)) {
 			/* Prefer reverse depot. */
