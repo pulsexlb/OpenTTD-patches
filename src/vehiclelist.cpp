@@ -141,12 +141,13 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 	list->clear();
 
 	auto add_veh = [&](const Vehicle *v) {
-		if (cid == CargoFilterCriteria::CF_ANY || VehicleCargoFilter(v, cid)) list->push_back(v);
+		const Vehicle *prim = v->Primary();
+		if (cid == CargoFilterCriteria::CF_ANY || VehicleCargoFilter(prim, cid)) list->push_back(prim);
 	};
 
 	auto fill_all_vehicles = [&]() {
 		for (const Vehicle *v : Vehicle::IterateTypeFrontOnly(vli.vtype)) {
-			if (!HasBit(v->subtype, GVSF_VIRTUAL) && v->owner == vli.company && v->IsPrimaryVehicle()) {
+			if (!HasBit(v->subtype, GVSF_VIRTUAL) && v->owner == vli.company && v->First()->Primary()->IsPrimaryVehicle()) {
 				add_veh(v);
 			}
 		}
@@ -164,7 +165,7 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 		case VL_SHARED_ORDERS: {
 			/* Add all vehicles from this vehicle's shared order list */
 			const Vehicle *v = Vehicle::GetIfValid(vli.ToVehicleID());
-			if (v == nullptr || v->type != vli.vtype || !v->IsPrimaryVehicle()) return false;
+			if (v == nullptr || v->type != vli.vtype || !v->First()->Primary()->IsPrimaryVehicle()) return false;
 
 			for (; v != nullptr; v = v->NextShared()) {
 				add_veh(v);
@@ -175,8 +176,8 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 		case VL_GROUP_LIST:
 			if (vli.index != ALL_GROUP) {
 				for (const Vehicle *v : Vehicle::IterateTypeFrontOnly(vli.vtype)) {
-					if (!HasBit(v->subtype, GVSF_VIRTUAL) && v->IsPrimaryVehicle() &&
-							v->owner == vli.company && GroupIsInGroup(v->group_id, vli.ToGroupID())) {
+					if (!HasBit(v->subtype, GVSF_VIRTUAL) && v->First()->Primary()->IsPrimaryVehicle() &&
+						v->owner == vli.company && GroupIsInGroup(v->First()->Primary()->group_id, vli.ToGroupID())) {
 						add_veh(v);
 					}
 				}

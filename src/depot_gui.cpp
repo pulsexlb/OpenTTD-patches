@@ -1271,10 +1271,11 @@ void ShowDepotTooltip(Window *w, const TileIndex tile)
 
 	for (const Vehicle *v : VehiclesOnTile(tile, GetDepotVehicleType(tile))) {
 		if (v->IsInDepot()) {
-			if (v->IsPrimaryVehicle()) {
+			const Vehicle *carrier = v->First()->Primary();
+			if (carrier->IsPrimaryVehicle()) {
 				totals.total_vehicle_count++;
-				if (v->IsWaitingInDepot()) totals.waiting_vehicle_count++;
-				if (v->IsStoppedInDepot()) totals.stopped_vehicle_count++;
+				if (carrier->IsWaitingInDepot()) totals.waiting_vehicle_count++;
+				if (carrier->IsStoppedInDepot()) totals.stopped_vehicle_count++;
 			}
 			if (v->type == VehicleType::Train) {
 				const Train *t = Train::From(v);
