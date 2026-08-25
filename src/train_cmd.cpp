@@ -1973,9 +1973,13 @@ static void NormaliseDualHeads(Train *t)
 	for (; t != nullptr; t = t->GetNextVehicle()) {
 		if (!t->IsMultiheaded() || !t->IsEngine()) continue;
 
-		/* Make sure that there are no free cars before next engine */
+		/* Make sure that there are no free cars before next engine.
+		 * Stop at the other dual-head half as well: unlike vanilla the rear
+		 * half may not carry the engine flag, and overshooting it made the
+		 * walk insert the rear half past vehicles that belong outside the
+		 * dual-head block. */
 		Train *u;
-		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine(); u = u->Next()) {}
+		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine() && u->Next() != t->other_multiheaded_part; u = u->Next()) {}
 
 		if (u == t->other_multiheaded_part) continue;
 
@@ -2722,9 +2726,7 @@ void Train::UpdateDeltaXY()
 				break;
 
 			default:
-				// FIX THIS
-				// NOT_REACHED();
-				break;
+				NOT_REACHED();
 		}
 	}
 }
