@@ -10,6 +10,7 @@
 #include "stdafx.h"
 #include "window_gui.h"
 #include "command_func.h"
+#include "company_func.h"
 #include "train.h"
 #include "train_cmd.h"
 #include "strings_func.h"
@@ -435,11 +436,24 @@ void DrawTrainDetails(const Train *v, const Rect &r, int vscroll_pos, uint16_t v
 
 	/* draw the first 3 details tabs */
 	if (det_tab != TDW_TAB_TOTALS && det_tab != TDW_TAB_PERF) {
+		int bar_width = ScaleGUITrad(4);
+		Rect content = rtl ? Rect{r.left, r.top, r.right - bar_width, r.bottom} : Rect{r.left + bar_width, r.top, r.right, r.bottom};
 		Direction dir = rtl ? Direction::E : Direction::W;
-		int x = rtl ? r.right : r.left;
+		int x = rtl ? content.right : content.left;
 		uint8_t line_number = 0;
 		for (v = v->First(); v != nullptr && vscroll_pos > -vscroll_cap; v = v->GetNextVehicle()) {
 			GetCargoSummaryOfArticulatedVehicle(v, _cargo_summary);
+
+			/* Draw company colour bar on the left edge of this unit's row */
+			{
+				PixelColour col = GetColourGradient(_company_colours[v->owner], Shade::Normal);
+				if (!rtl) {
+					GfxFillRect(r.left, r.top - line_height * vscroll_pos, r.left + bar_width - 1, r.top - line_height * vscroll_pos + line_height - 1, col);
+				} else {
+					GfxFillRect(r.right - bar_width, r.top - line_height * vscroll_pos, r.right - 1, r.top - line_height * vscroll_pos + line_height - 1, col);
+				}
+			}
+
 
 			/* Draw sprites */
 			uint dx = 0;

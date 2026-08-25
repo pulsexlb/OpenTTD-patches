@@ -2722,7 +2722,9 @@ void Train::UpdateDeltaXY()
 				break;
 
 			default:
-				NOT_REACHED();
+				// FIX THIS
+				// NOT_REACHED();
+				break;
 		}
 	}
 }
