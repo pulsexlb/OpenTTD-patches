@@ -1398,11 +1398,23 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 		}
 
 		case OT_GOTO_COUPLE: {
-			if (order->HasCoupleCargoType()) {
-				AppendStringInPlace(line, STR_ORDER_GO_TO_COUPLE_CARGO, STR_ORDER_COUPLE_ANY + to_underlying(order->GetCoupleLoad()), CargoSpec::Get(order->GetCoupleCargoType())->name);
+			std::vector<StringParameter> couple_params;
+			if (const Station *cst = order->HasCoupleStation() ? Station::GetIfValid(order->GetCoupleStation()) : nullptr; cst != nullptr) {
+				couple_params.emplace_back(STR_STATION_NAME);
+				couple_params.emplace_back(cst->index);
 			} else {
-				AppendStringInPlace(line, STR_ORDER_GO_TO_COUPLE, STR_ORDER_COUPLE_ANY + to_underlying(order->GetCoupleLoad()));
+				/* The {STRING1} code always consumes one argument; pad so the
+				 * following load-condition parameter keeps its position. */
+				couple_params.emplace_back(STR_ORDER_COUPLE_ANY);
+				couple_params.emplace_back(std::monostate{});
 			}
+			couple_params.emplace_back(STR_ORDER_COUPLE_ANY + to_underlying(order->GetCoupleLoad()));
+			StringID couple_str = STR_ORDER_GO_TO_COUPLE;
+			if (order->HasCoupleCargoType()) {
+				couple_str = STR_ORDER_GO_TO_COUPLE_CARGO;
+				couple_params.emplace_back(CargoSpec::Get(order->GetCoupleCargoType())->name);
+			}
+			AppendStringWithArgsInPlace(line, couple_str, couple_params);
 			uint num_c = order->GetNumCouple();
 			if (num_c > 0) {
 				AppendStringInPlace(line, STR_ORDER_COUPLE_UNITS, num_c);
@@ -1632,6 +1644,7 @@ private:
 		OPOS_COND_STATION,
 		OPOS_CONDITIONAL_RETARGET,
 		OPOS_DEPARTURE_VIA,
+		OPOS_COUPLE_STATION,
 		OPOS_END,
 	};
 
@@ -1821,6 +1834,7 @@ private:
 			HT_RECT,              // OPOS_COND_STATION
 			HT_NONE,              // OPOS_CONDITIONAL_RETARGET
 			HT_RECT,              // OPOS_DEPARTURE_VIA
+			HT_RECT,              // OPOS_COUPLE_STATION
 		};
 		SetObjectToPlaceWnd(ANIMCURSOR_PICKSTATION, PAL_NONE, goto_place_style[type - 1], this);
 		this->goto_type = type;
@@ -1828,6 +1842,7 @@ private:
 		this->SetWidgetDirty(WID_O_COND_AUX_VIA);
 		this->SetWidgetDirty(WID_O_COND_AUX_STATION);
 		this->SetWidgetDirty(WID_O_MGMT_BTN);
+		this->SetWidgetDirty(WID_O_COUPLE_STATION);
 	}
 
 	void OrderClick_WaitForCouple()
@@ -1859,7 +1874,10 @@ private:
 		VehicleOrderID sel_ord = this->OrderGetSel();
 		const Order *order = this->vehicle->GetOrder(sel_ord);
 		if (order->HasCoupleCargoType()) {
-			this->ModifyOrder(sel_ord, MOF_COUPLE_CARGO, CARGO_NO_REFIT);
+			/* Clear the restriction: CARGO_NO_REFIT must go into the command's
+			 * cargo parameter, not the data parameter. */
+			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile,
+					this->vehicle->index, sel_ord, MOF_COUPLE_CARGO, {}, CARGO_NO_REFIT, {});
 		} else {
 			ShowVehicleCargoTypesWindow(this->vehicle, sel_ord, this);
 		}
@@ -2683,6 +2701,7 @@ public:
 					train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_COUPLE);
 					this->SetWidgetLoweredState(WID_O_COUPLE_LOAD, order->GetCoupleLoad() == ODC_IS_EMPTY);
 					this->SetWidgetLoweredState(WID_O_COUPLE_CARGO, order->HasCoupleCargoType());
+					this->SetWidgetLoweredState(WID_O_COUPLE_STATION, order->HasCoupleStation());
 					break;
 				}
 
@@ -2726,9 +2745,15 @@ public:
 			this->selected_order = -1; // Disable selection any selected row at a competitor order window.
 		} else {
 			this->SetWidgetLoweredState(WID_O_GOTO, this->goto_type != OPOS_NONE && this->goto_type != OPOS_COND_VIA
-					&& this->goto_type != OPOS_COND_STATION && this->goto_type != OPOS_CONDITIONAL_RETARGET);
+					&& this->goto_type != OPOS_COND_STATION && this->goto_type != OPOS_CONDITIONAL_RETARGET
+					&& this->goto_type != OPOS_COUPLE_STATION);
 			this->SetWidgetLoweredState(WID_O_COND_AUX_VIA, this->goto_type == OPOS_COND_VIA);
 			this->SetWidgetLoweredState(WID_O_COND_AUX_STATION, this->goto_type == OPOS_COND_STATION);
+			{
+				const Order *sel_order = this->vehicle->GetOrder(this->OrderGetSel());
+				this->SetWidgetLoweredState(WID_O_COUPLE_STATION, this->goto_type == OPOS_COUPLE_STATION
+						|| (sel_order != nullptr && sel_order->IsType(OT_GOTO_COUPLE) && sel_order->HasCoupleStation()));
+			}
 			this->SetWidgetLoweredState(WID_O_MGMT_BTN, this->goto_type == OPOS_CONDITIONAL_RETARGET);
 		}
 		this->DrawWidgets();
@@ -3303,6 +3328,7 @@ public:
 						case OPOS_SHARE:                sel = ODDI_SHARE; break;
 						case OPOS_INSERT_FROM_VEHICLE:  sel = ODDI_INSERT_FROM_VEHICLE; break;
 						case OPOS_CONDITIONAL_RETARGET: sel = -1; break;
+						case OPOS_COUPLE_STATION: sel = -1; break;
 						case OPOS_DEPARTURE_VIA:        sel = ODDI_LABEL_DEPARTURES_VIA; break;
 						default: NOT_REACHED();
 					}
@@ -3779,6 +3805,21 @@ public:
 				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
 				this->query_text_widget = widget;
 				ShowQueryString(GetString(STR_JUST_INT, order->GetNumCouple()), STR_ORDER_DECOUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
+				break;
+			}
+
+			case WID_O_COUPLE_STATION: {
+				const Order *sel_order = this->vehicle->GetOrder(this->OrderGetSel());
+				if (this->goto_type != OPOS_NONE) {
+					/* Cancel station picking. */
+					ResetObjectToPlace();
+				} else if (sel_order != nullptr && sel_order->IsType(OT_GOTO_COUPLE) && sel_order->HasCoupleStation()) {
+					/* Restriction active: second click clears it. */
+					this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_STATION, 0);
+				} else {
+					/* Start picking a station on the map. */
+					this->OrderClick_Goto(OPOS_COUPLE_STATION);
+				}
 				break;
 			}
 
@@ -4313,6 +4354,23 @@ public:
 					}
 				}
 			}
+		} else if (this->goto_type == OPOS_COUPLE_STATION) {
+			if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry)) {
+				const Station *st = nullptr;
+
+				if (IsTileType(tile, TileType::Station)) {
+					st = Station::GetByTile(tile);
+				} else {
+					const Industry *in = Industry::GetByTile(tile);
+					st = in->neutral_station;
+				}
+				if (st != nullptr && st->train_station.tile != INVALID_TILE && IsInfraUsageAllowed(this->vehicle->type, this->vehicle->owner, st->owner)) {
+					/* Encoded as station ID + 1; 0 clears the restriction. */
+					if (this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_STATION, st->index.base() + 1)) {
+						ResetObjectToPlace();
+					}
+				}
+			}
 		} else if (this->goto_type == OPOS_DEPARTURE_VIA) {
 			if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry)) {
 				const BaseStation *st = nullptr;
@@ -4405,6 +4463,7 @@ public:
 		this->SetWidgetDirty(WID_O_COND_AUX_VIA);
 		this->SetWidgetDirty(WID_O_COND_AUX_STATION);
 		this->SetWidgetDirty(WID_O_MGMT_BTN);
+		this->SetWidgetDirty(WID_O_COUPLE_STATION);
 
 		/* Remove drag highlighting if it exists. */
 		if (this->order_over != INVALID_VEH_ORDER_ID) {
@@ -4623,14 +4682,16 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 			EndContainer(),
 			NWidget(WWT_PANEL, Colours::Grey), SetFill(1, 0), SetResize(1, 0), EndContainer(),
 			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
-				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_COUPLE_LOAD), SetMinimalSize(124, 12), SetFill(1, 0),
+				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_COUPLE_LOAD), SetMinimalSize(112, 12), SetFill(1, 0),
 														SetStringTip(STR_ORDER_TOGGLE_COUPLE_LOAD, STR_ORDER_CONDITIONAL_VARIABLE_TOOLTIP), SetResize(1, 0),
-				NWidget(WWT_TEXTBTN, Colours::Grey, WID_O_COUPLE_CARGO), SetMinimalSize(124, 12), SetFill(1, 0),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_O_COUPLE_CARGO), SetMinimalSize(112, 12), SetFill(1, 0),
 												SetStringTip(STR_ORDER_CARGO_TYPE_BUTTON, STR_ORDER_CONDITIONAL_COMPARATOR_TOOLTIP), SetResize(1, 0),
-				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_COUPLE_SLOT), SetMinimalSize(124, 12), SetFill(1, 0),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_COUPLE_SLOT), SetMinimalSize(112, 12), SetFill(1, 0),
 												SetStringTip(STR_ORDER_COUPLE_SLOT_BUTTON, STR_ORDER_COUPLE_SLOT_TOOLTIP), SetResize(1, 0),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_VALUE), SetMinimalSize(124, 12), SetFill(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_VALUE), SetMinimalSize(112, 12), SetFill(1, 0),
 														SetStringTip(STR_ORDERS_COUPLE_VALUE_BUTTON, STR_ORDER_CONDITIONAL_VALUE_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_STATION), SetMinimalSize(112, 12), SetFill(1, 0),
+														SetStringTip(STR_ORDER_COUPLE_STATION_BUTTON, STR_ORDER_COUPLE_STATION_TOOLTIP), SetResize(1, 0),
 			EndContainer(),
 			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
 				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_ORDERS_FIRST), SetMinimalSize(124, 12), SetFill(1, 0),

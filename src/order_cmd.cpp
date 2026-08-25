@@ -506,6 +506,9 @@ void Order::AllocExtraInfo()
 {
 	if (!this->extra) {
 		this->extra.reset(new OrderExtraInfo());
+		/* Default the couple-slot field to "no slot": slot IDs start at 0,
+		 * so a zeroed xdata would otherwise read back as a selected slot. */
+		this->extra->xdata = static_cast<uint16_t>(INVALID_TRACE_RESTRICT_SLOT_ID.base());
 	}
 }
 
@@ -2127,7 +2130,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				break;
 
 			case OT_GOTO_COUPLE:
-				if (mof != MOF_COUPLE_LOAD && mof != MOF_COUPLE_CARGO && mof != MOF_COUPLE_VALUE && mof != MOF_COUPLE_SLOT) return CMD_ERROR;
+				if (mof != MOF_COUPLE_LOAD && mof != MOF_COUPLE_CARGO && mof != MOF_COUPLE_VALUE && mof != MOF_COUPLE_SLOT && mof != MOF_COUPLE_STATION) return CMD_ERROR;
 				break;
 
 			case OT_DECOUPLE:
@@ -2464,6 +2467,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(data);
 				if (slot == nullptr || slot->vehicle_type != v->type) return CMD_ERROR;
 				if (!slot->IsUsableByOwner(v->owner)) return CMD_ERROR;
+			}
+			break;
+
+		case MOF_COUPLE_STATION:
+			/* Encoded as station ID + 1; 0 clears the restriction. */
+			if (data != 0) {
+				const Station *st = Station::GetIfValid(data - 1);
+				if (st == nullptr) return CMD_ERROR;
 			}
 			break;
 
@@ -2859,6 +2870,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				order->SetCoupleSlot(TraceRestrictSlotID{(uint16_t)data});
 				break;
 
+			case MOF_COUPLE_STATION:
+				order->SetCoupleStation(data == 0 ? StationID::Invalid() : StationID{(uint16_t)(data - 1)});
+				break;
+
 			case MOF_FIRST_ORDERS:
 				order->SetDecoupleFirstOrdersType((OrderDecoupleOrdersFlags)data);
 				break;
@@ -2965,6 +2980,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				u->current_order.SetCoupleCargoType(order->GetCoupleCargoType());
 				u->current_order.SetNumCouple(order->GetNumCouple());
 				u->current_order.SetCoupleSlot(order->GetCoupleSlot());
+				u->current_order.SetXData2Low(order->GetXData2Low());
 			}
 
 			/* Unbunching data is no longer valid. */

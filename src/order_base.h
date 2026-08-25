@@ -88,6 +88,7 @@ void ClearOrderDestinationRefcountMap();
  * OrderConditionVariable::CargoWaitingAmount: Bits 0-15: Station ID to test + 1
  * OrderConditionVariable::CargoWaitingAmountPercentage: Bits 0-15: Station ID to test + 1, Bit 16: Refit mode
  * OrderConditionVariable::DispatchSlot: OCDM_ROUTE_ID: Bits 0-15: Route ID
+ * OT_GOTO_COUPLE: Bits 0-15: Couple station ID + 1 (0 = any)
  */
 
 struct OrderExtraInfo {
@@ -388,6 +389,31 @@ public:
 	 * @param slot the slot, or #TraceRestrictSlotID::Invalid() for any slot.
 	 */
 	inline void SetCoupleSlot(TraceRestrictSlotID slot) { SB(this->GetXDataRef(), 0, 16, slot.base()); }
+
+	/**
+	 * Does the couple order restrict coupling to a specific station?
+	 * @pre IsType(OT_GOTO_COUPLE)
+	 * @return true if a specific station is set.
+	 */
+	inline bool HasCoupleStation() const { return this->GetXData2Low() != 0; }
+
+	/**
+	 * Get the station the train must couple at.
+	 * @pre IsType(OT_GOTO_COUPLE)
+	 * @return the station, or #StationID::Invalid() if unrestricted.
+	 */
+	inline StationID GetCoupleStation() const
+	{
+		if (!this->HasCoupleStation()) return StationID::Invalid();
+		return StationID{(uint16_t)(this->GetXData2Low() - 1)};
+	}
+
+	/**
+	 * Set the station the train must couple at.
+	 * @pre IsType(OT_GOTO_COUPLE)
+	 * @param station the station, or #StationID::Invalid() for any station.
+	 */
+	inline void SetCoupleStation(StationID station) { this->SetXData2Low(station == StationID::Invalid() ? 0 : station.base() + 1); }
 
 	/**
 	 * Update the jump_counter of this order.

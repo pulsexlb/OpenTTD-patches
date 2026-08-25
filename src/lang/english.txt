@@ -960,6 +960,8 @@ STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                              :Load and wait fo
 STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}Units couple
 STR_ORDER_COUPLE_SLOT_BUTTON                                   :{BLACK}Slot
 STR_ORDER_COUPLE_SLOT_TOOLTIP                                 :{BLACK}The trace restrict slot the train must couple with
+STR_ORDER_COUPLE_STATION_BUTTON                                :{BLACK}Station
+STR_ORDER_COUPLE_STATION_TOOLTIP                               :{BLACK}Select a station on the map to restrict coupling to. Click again to clear
 STR_ORDERS_DECOUPLE_VALUE_BUTTON                                :{BLACK}Units decouple
 STR_ORDERS_DECOUPLE_BUTTON                                      :{BLACK}Decouple
 STR_ORDERS_DECOUPLE_DROP                                        :Decouple
@@ -968,13 +970,13 @@ STR_ORDERS_DECOUPLE_TOOLTIP                                     :{BLACK}Decouple
 STR_ORDER_DECOUPLE_VALUE_CAPT                                   :{WHITE}Enter how many units will stay in train after decoupling
 STR_ORDERS_GO_TO_COUPLE                                         :Go to couple
 STR_ORDER_WAIT_FOR_COUPLE                                       :Wait for couple
-STR_ORDER_GO_TO_COUPLE                                          :Go to couple {STRING} train
-STR_ORDER_GO_TO_COUPLE_CARGO                                    :Go to couple {STRING} train that can carry {STRING}
+STR_ORDER_GO_TO_COUPLE                                          :Go to couple at the {STRING1} station with a {STRING} train
+STR_ORDER_GO_TO_COUPLE_CARGO                                    :Go to couple at the {STRING1} station with a {STRING} train that can carry {STRING}
 STR_ORDER_COUPLE_ANY                                            :any
 STR_ORDER_COUPLE_EMPTY                                          :empty
 STR_ORDER_COUPLE_FULL                                           :full
 STR_ORDER_COUPLE_ANY_SLOT                                     :Any slot
-STR_ORDER_COUPLE_SLOT                                          :in slot {STRING1}
+STR_ORDER_COUPLE_SLOT                                          : in slot {STRING1}
 STR_ORDER_DECOUPLE                                              :(Decouple)
 STR_ORDER_DECOUPLE_DETAILS                                      :[Decouple and keep {COMMA} units] First part {STRING} Second part {STRING}
 STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[Decouple and keep {COMMA}(auto) units] First part {STRING} Second part {STRING}

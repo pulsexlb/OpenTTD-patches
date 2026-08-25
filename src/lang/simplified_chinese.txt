@@ -1520,9 +1520,9 @@ STR_CONFIG_SETTING_COMPANY_STARTING_COLOUR_SECONDARY_HELPTEXT   :选择公司初
 
 STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS                        :总允许建设小型机场：{STRING}
 STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS_HELPTEXT               :启用时，每种机场一经面世，就永远可以选择建设
-STR_CONFIG_SETTING_DEFAULT_AIR_TYPE                            :默认航空类型（新游戏/加载游戏后）：{STRING2}
+STR_CONFIG_SETTING_DEFAULT_AIR_TYPE                            :默认航空类型（新游戏/加载游戏后）：{STRING}
 STR_CONFIG_SETTING_DEFAULT_AIR_TYPE_HELPTEXT                   :选择开始或加载游戏后要使用的航空类型。'第一个可用'选择最旧的机场类型，'最后一个可用'选择最新的类型，'最常用'选择当前使用最多的类型
-STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS                    :允许建设自定义机场：{STRING2}
+STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS                    :允许建设自定义机场：{STRING}
 STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS_HELPTEXT           :启用此设置后，每位玩家都可以建设自定义机场
 
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE                            :列车无法找到路线时提示：{STRING}
@@ -4898,12 +4898,14 @@ STR_ORDERS_DECOUPLE_TOOLTIP                                     :{BLACK}在车�
 STR_ORDER_DECOUPLE_VALUE_CAPT                                   :{WHITE}输入解挂后列车保留的车厢数量
 STR_ORDERS_GO_TO_COUPLE                                         :前往连接
 STR_ORDER_WAIT_FOR_COUPLE                                       :等待连接
-STR_ORDER_GO_TO_COUPLE                                          :前往连接 {STRING} 列车
-STR_ORDER_GO_TO_COUPLE_CARGO                                    :前往连接 {STRING} 能运载 {STRING} 的列车
+STR_ORDER_GO_TO_COUPLE                                          :在 {STRING} 车站前往连接 {STRING} 列车
+STR_ORDER_GO_TO_COUPLE_CARGO                                    :在 {STRING} 车站前往连接能运载 {STRING} 的 {STRING} 列车
 STR_ORDER_COUPLE_ANY                                            :任意
 STR_ORDER_COUPLE_EMPTY                                          :空车
 STR_ORDER_COUPLE_FULL                                           :满载
-STR_ORDER_COUPLE_SLOT                                          :在路签 {STRING1}
+STR_ORDER_COUPLE_SLOT                                          :且有路签 {STRING}
+STR_ORDER_COUPLE_STATION_BUTTON                                :{BLACK}车站
+STR_ORDER_COUPLE_STATION_TOOLTIP                               :{BLACK}在地图上选择一个车站作为对接目标车站。再次点击清除
 STR_ORDER_COUPLE_ANY_SLOT                                     :任意路签
 STR_ORDER_DECOUPLE                                              :（解挂）
 STR_ORDER_DECOUPLE_DETAILS                                      :[解挂并保留 {COMMA} 节车厢] 第一部分 {STRING} 第二部分 {STRING}

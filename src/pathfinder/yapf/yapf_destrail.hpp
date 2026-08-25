@@ -290,6 +290,13 @@ public:
 		return s->IsOccupant(t->index);
 	}
 
+	/** Does the detection tile match the couple station restriction, if any? */
+	bool CheckCoupleStation(TileIndex tile) const
+	{
+		if (!dest_order.HasCoupleStation()) return true;
+		return IsRailStationTile(tile) && GetStationIndex(tile) == dest_order.GetCoupleStation();
+	}
+
 	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
@@ -309,7 +316,7 @@ public:
 					Train *rep = t->First();
 					if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) continue;
 					if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, carrier->owner)) continue;
-					if (!CheckOrderLoad(carrier) || !CheckOrderCargoType(carrier) || !CheckNumberOfWagons(rep) || !CheckOrderSlot(carrier) || !TrainFitStation(rep)) continue;
+					if (!CheckOrderLoad(carrier) || !CheckOrderCargoType(carrier) || !CheckNumberOfWagons(rep) || !CheckOrderSlot(carrier) || !CheckCoupleStation(st_tile) || !TrainFitStation(rep)) continue;
 					/* Pre-validate the merged consist with the same logic as depot
 					 * vehicle moves; skip targets that would produce an invalid train. */
 					if (!IsCoupleArrangementValid(const_cast<Train *>(Yapf().GetVehicle()), rep)) continue;
@@ -326,7 +333,7 @@ public:
 		if (t == nullptr) return false;
 		if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, t->owner)) return false;
 		if (!t->current_order.IsType(OT_WAIT_COUPLE)) return false;
-		if (!CheckOrderLoad(t) || !CheckOrderCargoType(t) || !CheckNumberOfWagons(t) || !CheckOrderSlot(t) || !TrainFitStation(t)) return false;
+		if (!CheckOrderLoad(t) || !CheckOrderCargoType(t) || !CheckNumberOfWagons(t) || !CheckOrderSlot(t) || !CheckCoupleStation(tile) || !TrainFitStation(t)) return false;
 		/* Pre-validate the merged consist with the same logic as depot
 		 * vehicle moves; reject targets that would produce an invalid train. */
 		if (!IsCoupleArrangementValid(const_cast<Train *>(Yapf().GetVehicle()), t->First())) return false;
