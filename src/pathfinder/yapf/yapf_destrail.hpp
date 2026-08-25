@@ -310,6 +310,9 @@ public:
 					if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) continue;
 					if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, carrier->owner)) continue;
 					if (!CheckOrderLoad(carrier) || !CheckOrderCargoType(carrier) || !CheckNumberOfWagons(rep) || !CheckOrderSlot(carrier) || !TrainFitStation(rep)) continue;
+					/* Pre-validate the merged consist with the same logic as depot
+					 * vehicle moves; skip targets that would produce an invalid train. */
+					if (!IsCoupleArrangementValid(const_cast<Train *>(Yapf().GetVehicle()), rep)) continue;
 					return true;
 				}
 			}
@@ -324,6 +327,9 @@ public:
 		if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, t->owner)) return false;
 		if (!t->current_order.IsType(OT_WAIT_COUPLE)) return false;
 		if (!CheckOrderLoad(t) || !CheckOrderCargoType(t) || !CheckNumberOfWagons(t) || !CheckOrderSlot(t) || !TrainFitStation(t)) return false;
+		/* Pre-validate the merged consist with the same logic as depot
+		 * vehicle moves; reject targets that would produce an invalid train. */
+		if (!IsCoupleArrangementValid(const_cast<Train *>(Yapf().GetVehicle()), t->First())) return false;
 		return true;
 	}
 

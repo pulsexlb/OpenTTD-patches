@@ -5697,6 +5697,37 @@ static Train *DecoupleTrain(Train *v)
 }
 
 /**
+ * Check whether coupling the moving consist onto the waiting consist would
+ * produce a valid train, using the same backup/arrange/validate/restore logic
+ * as depot vehicle moves (CmdMoveRailVehicle). No change is kept.
+ * @param v_phys physical chain head of the moving train.
+ * @param u_phys physical chain head of the waiting train.
+ * @return true if the merged consist passes attachment validation.
+ */
+bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
+{
+	TrainList original_src;
+	TrainList original_dst;
+
+	MakeTrainBackup(original_src, v_phys);
+	MakeTrainBackup(original_dst, u_phys);
+
+	Train *u_head = u_phys;
+	Train *v = v_phys;
+	Train *v_last = v_phys->Last();
+
+	ArrangeTrains(&v, v_last, &u_head, u_phys, true);
+
+	bool ok = !CheckTrainAttachment(v).Failed();
+	ok &= v->CanConsistChange(CCF_ARRANGE_CHECK);
+
+	RestoreTrainBackup(original_src);
+	RestoreTrainBackup(original_dst);
+
+	return ok;
+}
+
+/**
  * Try to couple the two consists together.
  */
 static bool TryTrainCouple(Train *v, Train *u)
