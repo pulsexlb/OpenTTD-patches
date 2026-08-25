@@ -5712,6 +5712,12 @@ static Train *DecoupleTrain(Train *v)
  */
 bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 {
+	/* The pathfinder operates on the Primary, which may be in the middle of
+	 * the physical chain. Back up and arrange complete consists only; otherwise
+	 * RestoreTrainBackup would detach every vehicle preceding the Primary. */
+	v_phys = v_phys->First();
+	u_phys = u_phys->First();
+
 	TrainList original_src;
 	TrainList original_dst;
 
