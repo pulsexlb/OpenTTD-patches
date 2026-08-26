@@ -6337,6 +6337,8 @@ static void TrainEnterStation(Train *consist, StationID station)
 			u->flags.Set(VehicleRailFlag::JustDecoupled);
 		}
 		SplitOrders(consist, u, load_trains);
+		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);
+		if (u != nullptr && u->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(u);
 		u->last_station_visited = station;
 		if (u != nullptr) {
 		}
@@ -8184,7 +8186,9 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		DiagDirection dir = VehicleExitDir(moving_front->GetMovingDirection(), moving_front->track);
 		if (IsRailDepotTile(moving_front->tile) || IsTileType(moving_front->tile, TileType::TunnelBridge)) dir = DiagDirection::Invalid;
 
-		if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SigSegState::Path || _settings_game.pf.reserve_paths) {
+		if (consist->current_order.IsType(OT_WAIT_COUPLE)) {
+			FreeTrainTrackReservation(consist);
+		} else if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SigSegState::Path || _settings_game.pf.reserve_paths) {
 			TryPathReserve(consist, true, true);
 		}
 		consist->flags.Reset(VehicleRailFlag::LeavingStation);
