@@ -6495,13 +6495,14 @@ void Train::ReserveTrackUnderConsist() const
 uint Train::Crash(bool flooded)
 {
 	uint victims = 0;
-	if (this->IsPrimaryVehicle()) {
+	Train *consist = this->Primary();
+	if (consist->IsPrimaryVehicle()) {
 		victims += 2; // driver
 
 		/* Remove the reserved path in front of the train if it is not stuck.
 		 * Also clear all reserved tracks the train is currently on. */
-		if (!this->flags.Test(VehicleRailFlag::Stuck)) FreeTrainTrackReservation(this);
-		for (const Train *v = this; v != nullptr; v = v->Next()) {
+		if (!consist->flags.Test(VehicleRailFlag::Stuck)) FreeTrainTrackReservation(consist);
+		for (const Train *v = this->First(); v != nullptr; v = v->Next()) {
 			ClearPathReservation(v, v->tile, v->GetVehicleTrackdir(), true);
 		}
 
@@ -6511,7 +6512,7 @@ uint Train::Crash(bool flooded)
 		if (crossing != INVALID_TILE) UpdateLevelCrossing(crossing);
 
 		/* Remove the loading indicators (if any) */
-		HideFillingPercent(&this->fill_percent_te_id);
+		HideFillingPercent(&consist->fill_percent_te_id);
 	}
 
 	RegisterGameEvents(GEF_TRAIN_CRASH);
@@ -7795,9 +7796,19 @@ static void DeleteLastWagon(Train *v)
 	for (; v->Next() != nullptr; v = v->Next()) new_last = v;
 	new_last->SetNext(nullptr);
 
+	/* The primary can sit in the middle of the physical chain. Once cleanup
+	 * reaches it, the remaining wreckage must not retain pointers to the
+	 * primary vehicle that is about to be freed. The wreck no longer needs a
+	 * logical identity, so use its surviving physical head as a safe anchor. */
+	bool deleting_primary = first != v && first->Primary() == v;
+	if (deleting_primary) {
+		for (Train *u = first; u != nullptr; u = u->Next()) u->SetPrimary(first);
+	}
+
 	if (first != v) {
-		/* Recalculate cached train properties */
-		first->ConsistChanged(CCF_ARRANGE);
+		/* Recalculate cached train properties while a valid logical carrier is
+		 * still part of the remaining wreckage. */
+		if (!deleting_primary && first->Primary()->IsPrimaryVehicle()) first->ConsistChanged(CCF_ARRANGE);
 		/* Update the depot window in case a part of the consist is in a depot.
 		 * If v == first, then it is updated in PreDestructor(). */
 
@@ -8382,6 +8393,11 @@ bool Train::Tick()
 	 * operations run on the chain's primary vehicle, which -- after a
 	 * no-swap couple/decouple -- may sit mid-chain instead of at the head. */
 	if (this != this->First()) return true;
+
+	/* Crashed consists are physical wreckage. Drive their animation and
+	 * tail-first removal from the physical chain head, independently of where
+	 * the former consist-information carrier sits in the chain. */
+	if (this->vehstatus.Test(VehState::Crashed)) return HandleCrashedTrain(this);
 
 	Train *prim = this->Primary();
 
