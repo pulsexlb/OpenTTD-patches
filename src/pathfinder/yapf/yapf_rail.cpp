@@ -107,7 +107,7 @@ private:
 		 * destination -- do not try to reserve its tiles. */
 		for (const Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
 			Train *carrier = t->First()->Primary();
-			if (carrier->current_order.IsType(OT_WAIT_COUPLE)) {
+			if (carrier->current_order.IsType(OT_WAIT_COUPLE) && !carrier->vehstatus.Test(VehState::Stopped)) {
 				return true;
 			}
 		}
@@ -123,7 +123,7 @@ private:
 			Train *second_best = nullptr;
 			auto check_train_on_tile = [&](TileIndex t) {
 				for (Train *tr : VehiclesOnTile<VehicleType::Train>(t)) {
-					if (tr->vehstatus.Test(VehState::Crashed)) continue;
+					if (tr->vehstatus.Test(VehState::Crashed) || tr->Primary()->vehstatus.Test(VehState::Stopped)) continue;
 					if (tr->track == TRACK_BIT_WORMHOLE || HasBit((TrackBits)tr->track, TrackdirToTrack(td))) {
 						Train *head = tr->Primary();
 						if (best != nullptr && head->index != best->index) second_best = head;
@@ -148,7 +148,7 @@ private:
 			Train *second_best = nullptr;
 			auto check_train_on_tile = [&](TileIndex t) {
 				for (Train *tr : VehiclesOnTile<VehicleType::Train>(t)) {
-					if (tr->vehstatus.Test(VehState::Crashed)) continue;
+					if (tr->vehstatus.Test(VehState::Crashed) || tr->Primary()->vehstatus.Test(VehState::Stopped)) continue;
 					if (tr->track == TRACK_BIT_WORMHOLE || HasBit((TrackBits)tr->track, TrackdirToTrack(td))) {
 						Train *head = tr->Primary();
 						if (best != nullptr && head->index != best->index) second_best = head;

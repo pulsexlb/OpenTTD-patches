@@ -1196,7 +1196,8 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 	 * to zero happens on physical contact. */
 	if (this->current_order.IsType(OT_GOTO_COUPLE)) {
 		const Train *tgt = Train::GetIfValid(this->couple_target);
-		bool target_ok = tgt != nullptr && !tgt->vehstatus.Test(VehState::Crashed)
+		bool target_ok = tgt != nullptr && !tgt->Primary()->vehstatus.Test(VehState::Crashed)
+				&& !tgt->Primary()->vehstatus.Test(VehState::Stopped)
 				&& tgt->Primary()->current_order.IsType(OT_WAIT_COUPLE)
 				&& IsTrainCouplingAllowed(this->owner, tgt->owner);
 		if (!target_ok) {
@@ -5845,6 +5846,7 @@ Train *ValidateCoupleCandidate(const Train *moving, Train *rep, TileIndex contac
 	const Order &order = carrier->current_order;
 
 	if (!order.IsType(OT_WAIT_COUPLE)) return nullptr;
+	if (carrier->vehstatus.Test(VehState::Stopped)) return nullptr;
 	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return nullptr;
 	if (!CoupleOrderLoadOk(order, carrier)) return nullptr;
 	if (!CoupleCargoOk(order, rep)) return nullptr;
@@ -6143,6 +6145,7 @@ static Train *GetCouplePosition(Train *v, bool &reverse)
 	if (other_vehicle->Primary()->index == v->index) return nullptr;
 	if (!other_vehicle->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
 	Train *u = Train::From(other_vehicle)->Primary();
+	if (u->vehstatus.Test(VehState::Stopped)) return nullptr;
 	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return nullptr;
 	if (!TrainFitStation(u)) return nullptr;
 
@@ -6597,6 +6600,7 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	 * the moving train afterwards, the same way the caller stops it after a
 	 * regular successful couple. */
 	if (IsTrainCouplingAllowed(moving_front->owner, v->owner) &&
+			!v->Primary()->vehstatus.Test(VehState::Stopped) &&
 			moving_front->Primary()->current_order.IsType(OT_GOTO_COUPLE) && v->Primary()->current_order.IsType(OT_WAIT_COUPLE)) {
 		Couple(moving_front, v->Primary());
 		moving_front->cur_speed = 0;
