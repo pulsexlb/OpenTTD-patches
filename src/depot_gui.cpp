@@ -577,7 +577,7 @@ struct DepotWindow : Window {
 		x -= this->header_width;
 
 		/* find the vehicle in this row that was clicked */
-		const Train *wagon = Train::From(vehicle);
+		const Train *wagon = Train::From(vehicle)->First();
 		for (; wagon != nullptr; wagon = wagon->Next()) {
 			x -= wagon->GetDisplayImageWidth();
 			if (x < 0) break;
