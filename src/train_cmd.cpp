@@ -7051,6 +7051,7 @@ void TrainControllerTraceRestrictFrontEvaluation(TileIndex tile, Trackdir dir, T
 bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 {
 	Train *first = v->First();
+	Train *consist = first->Primary();
 	Train *prev = nullptr;
 	SCOPE_INFO_FMT([&], "TrainController: {}, {}, {}", VehicleInfoDumper(v), VehicleInfoDumper(prev), VehicleInfoDumper(nomove));
 	bool direction_changed = false; // has direction of any part changed?
@@ -7061,14 +7062,14 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 	auto notify_direction_changed = [&](Direction old_direction, Direction new_direction) {
 		if (prev == nullptr && _settings_game.vehicle.train_acceleration_model == AM_ORIGINAL) {
-			const AccelerationSlowdownParams *asp = &_accel_slowdown[static_cast<uint>(first->GetAccelerationType())];
+			const AccelerationSlowdownParams *asp = &_accel_slowdown[static_cast<uint>(consist->GetAccelerationType())];
 			DirDiff diff = DirDifference(old_direction, new_direction);
-			first->cur_speed -= (diff == DirDiff::Right45 || diff == DirDiff::Left45 ? asp->small_turn : asp->large_turn) * first->cur_speed >> 8;
+			consist->cur_speed -= (diff == DirDiff::Right45 || diff == DirDiff::Left45 ? asp->small_turn : asp->large_turn) * consist->cur_speed >> 8;
 		}
 		direction_changed = true;
 	};
 
-	if (reverse && first->reverse_distance == 1 && (first->cur_speed <= 15 || !first->UsingRealisticBraking())) {
+	if (reverse && consist->reverse_distance == 1 && (consist->cur_speed <= 15 || !consist->UsingRealisticBraking())) {
 		/* Train is not moving too fast and reversing distance has been reached */
 		goto reverse_train_direction;
 	}
@@ -7103,7 +7104,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					/* Inside depot */
 					gp.x = v->x_pos;
 					gp.y = v->y_pos;
-					first->reverse_distance = 0;
+					consist->reverse_distance = 0;
 				} else {
 					/* Not inside depot */
 
@@ -7116,7 +7117,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					}
 					if (vets.Test(VehicleEnterTileState::EnteredStation)) {
 						/* The new position is the end of the platform */
-						TrainEnterStation(first, GetStationIndex(gp.new_tile));
+						TrainEnterStation(consist, GetStationIndex(gp.new_tile));
 					}
 					if (old_direction != v->direction) notify_direction_changed(old_direction, v->direction);
 				}
@@ -7152,20 +7153,20 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 				/* Check if the new tile constrains tracks that are compatible
 				 * with the current train, if not, bail out. */
-				if (!CheckCompatibleRail(first, gp.new_tile, enterdir, prev == nullptr)) goto invalid_rail;
+				if (!CheckCompatibleRail(consist, gp.new_tile, enterdir, prev == nullptr)) goto invalid_rail;
 
 				TrackBits chosen_track;
 				bool reverse_at_signal = false;
 				if (prev == nullptr) {
 					/* Currently the locomotive is active. Determine which one of the
 					 * available tracks to choose */
-					ChooseTrainTrackResult result = ChooseTrainTrack(first, gp.new_tile, enterdir, bits, CTTF_MARK_STUCK | CTTF_NON_LOOKAHEAD);
+					ChooseTrainTrackResult result = ChooseTrainTrack(consist, gp.new_tile, enterdir, bits, CTTF_MARK_STUCK | CTTF_NON_LOOKAHEAD);
 					assert(IsValidTrack(result.track));
 					chosen_track = TrackToTrackBits(result.track);
 					reverse_at_signal = (result.ctt_flags & CTTRF_REVERSE_AT_SIGNAL);
 					dbg_assert_msg_tile(chosen_track & (bits | GetReservedTrackbits(gp.new_tile)), gp.new_tile, "0x{:X}, 0x{:X}, 0x{:X}", chosen_track, bits, GetReservedTrackbits(gp.new_tile));
 
-					if (first->force_proceed != TFP_NONE && IsPlainRailTile(gp.new_tile) && HasSignals(gp.new_tile)) {
+					if (consist->force_proceed != TFP_NONE && IsPlainRailTile(gp.new_tile) && HasSignals(gp.new_tile)) {
 						/* For each signal we find decrease the counter by one.
 						 * We start at two, so the first signal we pass decreases
 						 * this to one, then if we reach the next signal it is
@@ -7176,13 +7177,13 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 								GetSignalType(gp.new_tile, TrackdirToTrack(dir)) != SignalType::Path)) {
 							/* However, we do not want to be stopped by PBS signals
 							 * entered via the back. */
-							first->force_proceed = (first->force_proceed == TFP_SIGNAL) ? TFP_STUCK : TFP_NONE;
-							InvalidateWindowData(WindowClass::VehicleView, first->index);
+							consist->force_proceed = (consist->force_proceed == TFP_SIGNAL) ? TFP_STUCK : TFP_NONE;
+							InvalidateWindowData(WindowClass::VehicleView, consist->index);
 						}
 					}
 
 					/* Check if it's a red signal and that force proceed is not clicked. */
-					if ((red_signals & chosen_track) && first->force_proceed == TFP_NONE) {
+					if ((red_signals & chosen_track) && consist->force_proceed == TFP_NONE) {
 						/* In front of a red signal */
 						Trackdir i = FindFirstTrackdir(trackdirbits);
 
@@ -7192,22 +7193,22 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						}
 
 						/* Don't handle stuck trains here. */
-						if (first->flags.Test(VehicleRailFlag::Stuck)) return false;
+						if (consist->flags.Test(VehicleRailFlag::Stuck)) return false;
 
 						if (IsNoEntrySignal(gp.new_tile, TrackdirToTrack(i)) && HasSignalOnTrackdir(gp.new_tile, i)) {
 							goto reverse_train_direction;
 						}
 
 						if (!HasSignalOnTrackdir(gp.new_tile, ReverseTrackdir(i))) {
-							first->cur_speed = 0;
-							first->subspeed = 0;
-							first->progress = 255; // make sure that every bit of acceleration will hit the signal again, so speed stays 0.
-							if (!_settings_game.pf.reverse_at_signals || ++first->wait_counter < _settings_game.pf.wait_oneway_signal * DAY_TICKS * 2) return false;
+							consist->cur_speed = 0;
+							consist->subspeed = 0;
+							consist->progress = 255; // make sure that every bit of acceleration will hit the signal again, so speed stays 0.
+							if (!_settings_game.pf.reverse_at_signals || ++consist->wait_counter < _settings_game.pf.wait_oneway_signal * DAY_TICKS * 2) return false;
 						} else if (HasSignalOnTrackdir(gp.new_tile, i)) {
-							first->cur_speed = 0;
-							first->subspeed = 0;
-							first->progress = 255; // make sure that every bit of acceleration will hit the signal again, so speed stays 0.
-							if (!_settings_game.pf.reverse_at_signals || ++first->wait_counter < _settings_game.pf.wait_twoway_signal * DAY_TICKS * 2) {
+							consist->cur_speed = 0;
+							consist->subspeed = 0;
+							consist->progress = 255; // make sure that every bit of acceleration will hit the signal again, so speed stays 0.
+							if (!_settings_game.pf.reverse_at_signals || ++consist->wait_counter < _settings_game.pf.wait_twoway_signal * DAY_TICKS * 2) {
 								DiagDirection exitdir = TrackdirToExitdir(i);
 								TileIndex o_tile = TileAddByDiagDir(gp.new_tile, exitdir);
 
@@ -7233,7 +7234,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						 * signal blocking us, because a train would then be stuck forever. */
 						if (!_settings_game.pf.reverse_at_signals && !HasOnewaySignalBlockingTrackdir(gp.new_tile, i) &&
 								UpdateSignalsOnSegment(v->tile, enterdir, v->owner) == SigSegState::Path) {
-							first->wait_counter = 0;
+							consist->wait_counter = 0;
 							return false;
 						}
 						goto reverse_train_direction;
@@ -7247,13 +7248,13 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						if (IsPlainRailTile(gp.new_tile) && HasSignals(gp.new_tile) && IsRestrictedSignal(gp.new_tile)) {
 							const Trackdir dir = FindFirstTrackdir(trackdirbits);
 							if (HasSignalOnTrack(gp.new_tile, TrackdirToTrack(dir))) {
-								TrainControllerTraceRestrictFrontEvaluation(gp.new_tile, dir, first, TRPAUF_REVERSE_BEHIND, [&]() -> bool {
+								TrainControllerTraceRestrictFrontEvaluation(gp.new_tile, dir, consist, TRPAUF_REVERSE_BEHIND, [&]() -> bool {
 									return !IsPbsSignal(GetSignalType(gp.new_tile, TrackdirToTrack(dir)));
 								}, [&](const TraceRestrictProgramResult &out) {
 									if (out.flags & TRPRF_REVERSE_BEHIND && GetSignalType(gp.new_tile, TrackdirToTrack(dir)) == SignalType::Path &&
 											!HasSignalOnTrackdir(gp.new_tile, dir)) {
-										first->reverse_distance = first->gcache.cached_total_length + (IsDiagonalTrack(TrackdirToTrack(dir)) ? 16 : 8);
-										SetWindowDirty(WindowClass::VehicleView, first->index);
+										consist->reverse_distance = consist->gcache.cached_total_length + (IsDiagonalTrack(TrackdirToTrack(dir)) ? 16 : 8);
+										SetWindowDirty(WindowClass::VehicleView, consist->index);
 									}
 								});
 							}
@@ -7303,15 +7304,15 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 				if (!(v->track & TRACK_BIT_WORMHOLE) && IsTunnelBridgeWithSignalSimulation(gp.new_tile) && (GetAcrossTunnelBridgeTrackBits(gp.new_tile) & chosen_track)) {
 					/* If red signal stop. */
-					if (v->IsMovingFront() && first->force_proceed == 0) {
+					if (v->IsMovingFront() && consist->force_proceed == 0) {
 						if (IsTunnelBridgeSignalSimulationEntrance(gp.new_tile) && GetTunnelBridgeEntranceSignalState(gp.new_tile) == SignalState::Red) {
-							first->cur_speed = 0;
-							first->vehstatus.Set(VehState::TrainSlowing);
+							consist->cur_speed = 0;
+							consist->vehstatus.Set(VehState::TrainSlowing);
 							return false;
 						}
 						if (IsTunnelBridgeSignalSimulationExitOnly(gp.new_tile) &&
 								TrackdirEntersTunnelBridge(gp.new_tile, TrackDirectionToTrackdir(FindFirstTrack(chosen_track), chosen_dir))) {
-							first->cur_speed = 0;
+							consist->cur_speed = 0;
 							goto invalid_rail;
 						}
 						/* Flip signal on tunnel entrance tile red. */
@@ -7369,7 +7370,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				}
 
 				if (v->IsMovingFront()) {
-					first->wait_counter = 0;
+					consist->wait_counter = 0;
 
 					/* If we are approaching a crossing that is reserved, play the sound now. */
 					TileIndex crossing = TrainApproachingCrossingTile(v); // We know we are the moving front, so we can check v.
@@ -7381,7 +7382,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 				if (vets.Test(VehicleEnterTileState::EnteredStation)) {
 					/* The new position is the location where we want to stop */
-					TrainEnterStation(first, GetStationIndex(gp.new_tile));
+					TrainEnterStation(consist, GetStationIndex(gp.new_tile));
 				}
 			}
 		} else {
@@ -7390,7 +7391,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 			if (old_tile != gp.new_tile && IsTunnelBridgeWithSignalSimulation(v->tile) && (v->Previous() == nullptr || v->Next() == nullptr)) {
 				const uint simulated_wormhole_signals = GetTunnelBridgeSignalSimulationSpacing(v->tile);
 				if (old_tile == v->tile) {
-					if (v->IsMovingFront() && first->force_proceed == 0 && IsTunnelBridgeSignalSimulationExitOnly(v->tile)) goto invalid_rail;
+					if (v->IsMovingFront() && consist->force_proceed == 0 && IsTunnelBridgeSignalSimulationExitOnly(v->tile)) goto invalid_rail;
 					/* Entered wormhole set counters. */
 					v->tunnel_bridge_tile_ctr = static_cast<uint8_t>(simulated_wormhole_signals - 1);
 					v->tunnel_bridge_signal_num = 0;
@@ -7398,7 +7399,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					if (v->IsMovingFront() && IsTunnelBridgeSignalSimulationEntrance(old_tile) && (IsTunnelBridgeRestrictedSignal(old_tile) || _settings_game.vehicle.train_speed_adaptation)) {
 						const Trackdir trackdir = GetTunnelBridgeEntranceTrackdir(old_tile);
 						if (IsTunnelBridgeRestrictedSignal(old_tile)) {
-							TrainControllerTraceRestrictFrontEvaluation(old_tile, trackdir, first, TRPAUF_NONE, [&]() -> bool {
+							TrainControllerTraceRestrictFrontEvaluation(old_tile, trackdir, consist, TRPAUF_NONE, [&]() -> bool {
 								/* Only acquire slot when not using realistic braking, as the tunnel/bridge entrance otherwise acts as a block signal */
 								return _settings_game.vehicle.train_braking_model != TBM_REALISTIC;
 							}, [&](const TraceRestrictProgramResult &out) {});
@@ -7418,7 +7419,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 								TraceRestrictProgramResult out;
 								TraceRestrictProgramInput input(old_tile, trackdir, nullptr, nullptr);
 								input.permitted_slot_operations = TRPISP_RELEASE_BACK;
-								prog->Execute(first, input, out);
+								prog->Execute(consist, input, out);
 							}
 						}
 						if (_settings_game.vehicle.train_speed_adaptation) {
@@ -7436,21 +7437,21 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					int z = GetSlopePixelZ(gp.x, gp.y, true) - v->z_pos;
 					if (IsTileType(gp.new_tile, TileType::TunnelBridge) && !(abs(z) > 2)) {
 						if (CheckTrainStayInWormHole(v, gp.new_tile)) {
-							first->cur_speed = 0;
+							consist->cur_speed = 0;
 							return false;
 						}
 						leaving = true;
 						if (IsTunnelBridgeRestrictedSignal(gp.new_tile) && IsTunnelBridgeSignalSimulationExit(gp.new_tile)) {
 							const Trackdir trackdir = GetTunnelBridgeExitTrackdir(gp.new_tile);
-							TrainControllerTraceRestrictFrontEvaluation(gp.new_tile, trackdir, first, TRPAUF_NONE, [&]() -> bool {
+							TrainControllerTraceRestrictFrontEvaluation(gp.new_tile, trackdir, consist, TRPAUF_NONE, [&]() -> bool {
 								return !IsTunnelBridgeEffectivelyPBS(gp.new_tile);
 							}, [&](const TraceRestrictProgramResult &out) {});
 						}
 					} else {
 						if (IsTooCloseBehindTrain(v, gp.new_tile, TILE_SIZE * v->tunnel_bridge_tile_ctr, distance == 0)) {
 							if (distance == 0) v->tunnel_bridge_tile_ctr = 0;
-							first->cur_speed = 0;
-							first->vehstatus.Set(VehState::TrainSlowing);
+							consist->cur_speed = 0;
+							consist->vehstatus.Set(VehState::TrainSlowing);
 							return false;
 						}
 						/* flip signal in front to red on bridges*/
@@ -7486,7 +7487,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				if (v->tunnel_bridge_tile_ctr != Train::TBS_INVALID_DISTANCE) v->tunnel_bridge_tile_ctr--;
 
 				if (leaving) { // Reset counters.
-					first->force_proceed = TFP_NONE;
+					consist->force_proceed = TFP_NONE;
 					v->tunnel_bridge_tile_ctr = 0;
 					v->tunnel_bridge_signal_num = 0;
 					update_signal_tunbridge_exit = true;
@@ -7559,9 +7560,9 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						MarkTileDirtyByTile(gp.new_tile, VMDF_NOT_MAP_MODE);
 					}
 				}
-				if (v->IsMovingFront() && !IsTunnelBridgeWithSignalSimulation(v->tile) && (first->lookahead != nullptr &&
-						first->cur_speed > 0 && first->lookahead->reservation_end_position <= first->lookahead->current_position + 24)) {
-					TryLongReserveChooseTrainTrackFromReservationEnd(first, true);
+				if (v->IsMovingFront() && !IsTunnelBridgeWithSignalSimulation(v->tile) && (consist->lookahead != nullptr &&
+						consist->cur_speed > 0 && consist->lookahead->reservation_end_position <= consist->lookahead->current_position + 24)) {
+					TryLongReserveChooseTrainTrackFromReservationEnd(consist, true);
 				}
 				continue;
 			}
@@ -7582,7 +7583,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 		if (prev == nullptr) {
 			/* This is the first vehicle in the train */
-			AffectSpeedByZChange(first, v->z_pos - old_z);
+			AffectSpeedByZChange(consist, v->z_pos - old_z);
 		}
 
 		if (update_signal_tunbridge_exit) {
@@ -7610,7 +7611,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					ApplySignalTrainAdaptationSpeed(v, gp.old_tile, TrackdirToTrack(rev_trackdir));
 				}
 
-				switch (TrainMovedChangeSignal(first, gp.new_tile, enterdir, true)) {
+				switch (TrainMovedChangeSignal(consist, gp.new_tile, enterdir, true)) {
 					case CHANGED_NORMAL_TO_PBS_BLOCK:
 						/* We are entering a block with PBS signals right now, but
 						* not through a PBS signal. This means we don't have a
@@ -7622,8 +7623,8 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						* the problem. */
 						if ((!HasReservedTracks(gp.new_tile, v->track) &&
 								!TryReserveRailTrack(gp.new_tile, FindFirstTrack(v->track))) ||
-								!TryPathReserve(first)) {
-							MarkTrainAsStuck(first);
+								!TryPathReserve(consist)) {
+							MarkTrainAsStuck(consist);
 						}
 
 						break;
@@ -7632,7 +7633,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						{
 							/* We went past a long reserve PBS signal. Try to extend the
 							* reservation if reserving failed at another LR signal. */
-							TryLongReserveChooseTrainTrackFromReservationEnd(first);
+							TryLongReserveChooseTrainTrackFromReservationEnd(consist);
 							break;
 						}
 
@@ -7644,7 +7645,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 			/* Signals can only change when the first
 			 * (above) or the last vehicle moves. */
 			if (v->GetMovingNext() == nullptr) {
-				TrainMovedChangeSignal(first, gp.old_tile, ReverseDiagDir(enterdir), false);
+				TrainMovedChangeSignal(consist, gp.old_tile, ReverseDiagDir(enterdir), false);
 				if (IsLevelCrossingTile(gp.old_tile)) UpdateLevelCrossing(gp.old_tile);
 
 				if (IsTileType(gp.old_tile, TileType::Railway) && HasSignals(gp.old_tile)) {
@@ -7663,7 +7664,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 								TraceRestrictProgramResult out;
 								TraceRestrictProgramInput input(gp.old_tile, ReverseTrackdir(rev_trackdir), nullptr, nullptr);
 								input.permitted_slot_operations = TRPISP_RELEASE_BACK;
-								prog->Execute(first, input, out);
+								prog->Execute(consist, input, out);
 							}
 						}
 					}
@@ -7681,7 +7682,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 								TraceRestrictProgramResult out;
 								TraceRestrictProgramInput input(gp.old_tile, ReverseTrackdir(rev_trackdir), nullptr, nullptr);
 								input.permitted_slot_operations = TRPISP_RELEASE_BACK;
-								prog->Execute(first, input, out);
+								prog->Execute(consist, input, out);
 							}
 						}
 						if (_settings_game.vehicle.train_speed_adaptation) {
@@ -7694,9 +7695,9 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 		/* Do not check on every tick to save some computing time. */
 		if (v->IsMovingFront()) {
-			if (first->lookahead != nullptr && first->cur_speed > 0 && first->lookahead->reservation_end_position <= first->lookahead->current_position + 24) {
-				TryLongReserveChooseTrainTrackFromReservationEnd(first, true);
-			} else if (first->tick_counter % _settings_game.pf.path_backoff_interval == 0) {
+			if (consist->lookahead != nullptr && consist->cur_speed > 0 && consist->lookahead->reservation_end_position <= consist->lookahead->current_position + 24) {
+				TryLongReserveChooseTrainTrackFromReservationEnd(consist, true);
+			} else if (consist->tick_counter % _settings_game.pf.path_backoff_interval == 0) {
 				CheckNextTrainTile(v);
 			}
 		}
@@ -7719,10 +7720,10 @@ reverse_train_direction:
 		if (!(v->track & TRACK_BIT_WORMHOLE)) v->z_pos = GetSlopePixelZ(v->x_pos, v->y_pos, true);
 	}
 	if (reverse) {
-		first->wait_counter = 0;
-		first->cur_speed = 0;
-		first->subspeed = 0;
-		ReverseTrainDirection(first);
+		consist->wait_counter = 0;
+		consist->cur_speed = 0;
+		consist->subspeed = 0;
+		ReverseTrainDirection(consist);
 	}
 
 	return false;
@@ -8035,7 +8036,7 @@ static TileIndex TrainApproachingCrossingTile(const Train *moving_front)
 
 	/* not a crossing || wrong axis || unusable rail (wrong type or owner) */
 	if (!IsLevelCrossingTile(tile) || DiagDirToAxis(dir) == GetCrossingRoadAxis(tile) ||
-			!CheckCompatibleRail(moving_front->First(), tile, dir, true)) {
+			!CheckCompatibleRail(moving_front->Primary(), tile, dir, true)) {
 		return INVALID_TILE;
 	}
 
