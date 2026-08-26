@@ -5793,10 +5793,17 @@ static Train *DecoupleTrain(Train *v)
  */
 static bool CoupleOrderLoadOk(const Order &order, const Train *t)
 {
+	uint cargo = 0;
+	uint capacity = 0;
+	for (const Train *u = t->First(); u != nullptr; u = u->Next()) {
+		cargo += u->cargo.StoredCount();
+		capacity += u->cargo_cap;
+	}
+
 	switch (order.GetCoupleLoad()) {
 		case ODC_ANY: return true;
-		case ODC_IS_EMPTY: return t->cargo.StoredCount() == 0;
-		case ODC_IS_FULL: return t->cargo.StoredCount() == t->cargo_cap;
+		case ODC_IS_EMPTY: return cargo == 0;
+		case ODC_IS_FULL: return capacity > 0 && cargo == capacity;
 		default: NOT_REACHED();
 	}
 }
@@ -5849,7 +5856,7 @@ Train *ValidateCoupleCandidate(const Train *moving, Train *rep, TileIndex contac
 	if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
 	if (carrier->vehstatus.Test(VehState::Stopped)) return nullptr;
 	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return nullptr;
-	if (!CoupleOrderLoadOk(order, carrier)) return nullptr;
+	if (!CoupleOrderLoadOk(order, rep)) return nullptr;
 	if (!CoupleCargoOk(order, rep)) return nullptr;
 	if (!CoupleNumOk(order, rep)) return nullptr;
 	if (!CoupleSlotOk(order, carrier)) return nullptr;
