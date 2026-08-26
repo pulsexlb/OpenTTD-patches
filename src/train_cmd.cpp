@@ -5821,7 +5821,10 @@ static bool CoupleCargoOk(const Order &order, const Train *t)
 static bool CoupleNumOk(const Order &order, const Train *t)
 {
 	if (order.GetNumCouple() == 0) return true;
-	return (order.GetNumCouple() == CountVehiclesInChain(t));
+
+	uint count = 0;
+	for (const Train *u = t->First(); u != nullptr; u = u->GetNextUnit()) count++;
+	return order.GetNumCouple() == count;
 }
 
 static bool CoupleSlotOk(const Order &order, const Train *t)
