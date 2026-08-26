@@ -363,7 +363,7 @@ struct DepotWindow : Window {
 
 		switch (v->type) {
 			case VehicleType::Train: {
-				const Train *u = Train::From(v);
+				const Train *u = Train::From(v)->First();
 				free_wagon = u->IsFreeWagon();
 
 				uint x_space = free_wagon ?
@@ -782,7 +782,7 @@ struct DepotWindow : Window {
 			uint max_width = ScaleSpriteTrad(VEHICLEINFO_FULL_VEHICLE_WIDTH);
 			for (uint num = 0; num < this->vehicle_list.size(); num++) {
 				uint width = 0;
-				for (const Train *v = Train::From(this->vehicle_list[num]); v != nullptr; v = v->Next()) {
+				for (const Train *v = Train::From(this->vehicle_list[num])->First(); v != nullptr; v = v->Next()) {
 					width += v->GetDisplayImageWidth();
 				}
 				max_width = std::max(max_width, width);

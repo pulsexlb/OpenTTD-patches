@@ -2127,7 +2127,7 @@ static void DrawSmallOrderList(OrderIterateWrapper<const Order> orders, int left
 void DrawVehicleImage(const Vehicle *v, const Rect &r, VehicleID selection, EngineImageType image_type, int skip)
 {
 	switch (v->type) {
-		case VehicleType::Train:    DrawTrainImage(Train::From(v), r, selection, image_type, skip); break;
+		case VehicleType::Train:    DrawTrainImage(Train::From(v)->First(), r, selection, image_type, skip); break;
 		case VehicleType::Road:     DrawRoadVehImage(v, r, selection, image_type, skip);  break;
 		case VehicleType::Ship:     DrawShipImage(v, r, selection, image_type);     break;
 		case VehicleType::Aircraft: DrawAircraftImage(v, r, selection, image_type); break;
