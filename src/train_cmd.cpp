@@ -5842,10 +5842,11 @@ static bool CoupleStationOk(const Order &order, TileIndex contact_tile)
  */
 Train *ValidateCoupleCandidate(const Train *moving, Train *rep, TileIndex contact_tile)
 {
+	const Order &order = moving->Primary()->current_order;
 	Train *carrier = rep->Primary();
-	const Order &order = carrier->current_order;
 
-	if (!order.IsType(OT_WAIT_COUPLE)) return nullptr;
+	if (!order.IsType(OT_GOTO_COUPLE)) return nullptr;
+	if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
 	if (carrier->vehstatus.Test(VehState::Stopped)) return nullptr;
 	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return nullptr;
 	if (!CoupleOrderLoadOk(order, carrier)) return nullptr;
@@ -5877,7 +5878,8 @@ Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir 
 	for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
 		for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
 			if (t->vehstatus.Test(VehState::Crashed)) continue;
-			if (ValidateCoupleCandidate(moving, t->First(), st_tile) != nullptr) return ValidateCoupleCandidate(moving, t->First(), st_tile);
+			Train *target = ValidateCoupleCandidate(moving, t->First(), st_tile);
+			if (target != nullptr) return target;
 		}
 	}
 	return nullptr;
@@ -6143,11 +6145,8 @@ static Train *GetCouplePosition(Train *v, bool &reverse)
 
 	if (other_vehicle == nullptr) return nullptr;
 	if (other_vehicle->Primary()->index == v->index) return nullptr;
-	if (!other_vehicle->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
 	Train *u = Train::From(other_vehicle)->Primary();
-	if (u->vehstatus.Test(VehState::Stopped)) return nullptr;
-	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return nullptr;
-	if (!TrainFitStation(u)) return nullptr;
+	if (ValidateCoupleCandidate(v, u->First(), other_vehicle->tile) == nullptr) return nullptr;
 
 	DirDiff dir_diff = DirDifference(v->direction, u->direction);
 	reverse = dir_diff == DirDiff::Same || dir_diff == DirDiff::Right45 || dir_diff == DirDiff::Left45;
@@ -6599,10 +6598,9 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	 * survivor, the waiting train (OT_WAIT_COUPLE) is being merged in. Stop
 	 * the moving train afterwards, the same way the caller stops it after a
 	 * regular successful couple. */
-	if (IsTrainCouplingAllowed(moving_front->owner, v->owner) &&
-			!v->Primary()->vehstatus.Test(VehState::Stopped) &&
-			moving_front->Primary()->current_order.IsType(OT_GOTO_COUPLE) && v->Primary()->current_order.IsType(OT_WAIT_COUPLE)) {
-		Couple(moving_front, v->Primary());
+	Train *couple_target = ValidateCoupleCandidate(moving_front, v->First(), v->tile);
+	if (couple_target != nullptr) {
+		Couple(moving_front, couple_target->Primary());
 		moving_front->cur_speed = 0;
 		moving_front->progress = 0;
 		return 0;

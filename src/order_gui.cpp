@@ -598,7 +598,6 @@ static const StringID _order_couple_load_drowdown[] = {
 	STR_ORDERS_COUPLE_LOAD_ANY,
 	STR_ORDERS_COUPLE_LOAD_EMPTY,
 	STR_ORDERS_COUPLE_LOAD_FULL,
-	INVALID_STRING_ID
 };
 
 static const StringID _order_decouple_orders_drowdown[] = {
@@ -606,10 +605,8 @@ static const StringID _order_decouple_orders_drowdown[] = {
 	 * ODOF_INHERIT_ORDERS and is not selectable). */
 	STR_ORDERS_DECOUPLE_KEEP_ORDERS,          // 0
 	STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD,  // 1
-	INVALID_STRING_ID,                        // 2 (legacy, unused)
 	STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE,      // 3
 	STR_ORDERS_DECOUPLE_LOAD_AND_WAIT,        // 4
-	INVALID_STRING_ID
 };
 
 static const StringID _order_manage_list_dropdown[] = {
