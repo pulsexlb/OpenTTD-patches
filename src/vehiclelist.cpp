@@ -91,7 +91,7 @@ void BuildDepotVehicleList(VehicleType type, TileIndex tile, VehicleList *engine
 			}
 		}
 
-		if (v->IsMovingFront()) engines->push_back(v->First());
+		if (v->IsMovingFront()) engines->push_back(v->Primary());
 	}
 }
 
