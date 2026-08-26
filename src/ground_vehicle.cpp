@@ -434,14 +434,6 @@ void GroundVehicle<T, Type>::UpdateZPositionInWormhole()
 template <class T, VehicleType Type>
 uint GroundVehicle<T, Type>::DoUpdateSpeed(GroundVehicleAcceleration accel, int min_speed, int max_speed, int advisory_max_speed, bool use_realistic_braking)
 {
-	int cb_pre = this->cur_speed;
-	if constexpr (Type == VehicleType::Train) {
-		const Train *cbt = static_cast<const Train *>(this);
-		if (cbt->Primary() != nullptr && cbt->Primary()->current_order.IsType(OT_GOTO_COUPLE) && this->cur_speed > 40) {
-			fprintf(stderr, "[CBSPEED] v%d pre cur=%d strict=%d adv=%d accel=%d brake=%d\n",
-					(int)this->index.base(), this->cur_speed, max_speed, advisory_max_speed, accel.acceleration, accel.braking);
-		}
-	}
 	int new_subspeed = ((int)this->subspeed + accel.acceleration) + (this->cur_speed << 8);
 	int new_lb_subspeed = 0;
 
@@ -503,12 +495,6 @@ uint GroundVehicle<T, Type>::DoUpdateSpeed(GroundVehicleAcceleration accel, int 
 	new_subspeed = std::max(new_subspeed, min_speed << 8);
 
 	this->cur_speed = new_subspeed >> 8;
-	if constexpr (Type == VehicleType::Train) {
-		const Train *cbt = static_cast<const Train *>(this);
-		if (cbt->Primary() != nullptr && cbt->Primary()->current_order.IsType(OT_GOTO_COUPLE) && this->cur_speed > cb_pre + 10) {
-			fprintf(stderr, "[CBSPEED] v%d JUMP %d -> %d\n", (int)this->index.base(), cb_pre, this->cur_speed);
-		}
-	}
 	this->subspeed = (uint8_t)new_subspeed;
 
 	int scaled_spd = this->GetAdvanceSpeed(this->cur_speed);

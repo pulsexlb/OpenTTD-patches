@@ -1206,9 +1206,6 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 			int centre_dist = std::max(abs(mf->x_pos - tgt->x_pos), abs(mf->y_pos - tgt->y_pos));
 			int joint_offset = CoupleJointOffset(mf->gcache.cached_veh_length, tgt->gcache.cached_veh_length, mf->IsDrivingBackwards());
 			int gap = std::max(0, centre_dist - joint_offset);
-			if ((this->tick_counter % 20) == 0) fprintf(stderr, "[CBRAKE] v%d real=%d la=%d gap=%d cur=%d decel_x2=%d\n",
-					(int)this->index.base(), (int)this->UsingRealisticBraking(), this->lookahead != nullptr, gap, this->cur_speed,
-					this->tcache.cached_deceleration * 2);
 			if (gap > 0) {
 				constexpr int COUPLE_CRAWL_SPEED = 5;
 				int allowed;
@@ -1240,22 +1237,21 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 					}
 				}
 
-				/* Realistic braking only: hard near-field guarantee. The advisory
-				 * brake in DoUpdateSpeed can never drop speed faster than the
-				 * train's own braking rate, so a violation of the approach curve
-				 * cannot be recovered from before contact. Within four tiles we
-				 * therefore clamp the current speed directly to the remaining gap
-				 * (like the station-entry stop handler), so the per-tick advance
-				 * never exceeds it and contact happens at crawl speed.
-				 * The original model keeps its vanilla last-tile-only behaviour. */
+				/* Realistic braking only: within four tiles blend in a linear
+				 * ramp (crawl + 4 per world unit of gap). Its slope exceeds the
+				 * steepest descent of the physics curve, so the envelope
+				 * min(physics, ramp) is continuous: the physics value governs
+				 * until the crossover (~gap 27), then the ramp monotonically
+				 * brings the leading end to crawl speed at contact. */
 				if (this->UsingRealisticBraking() && gap <= TILE_SIZE * 4) {
-					int near_spd = std::max(COUPLE_CRAWL_SPEED, gap);
+					int near_spd = std::max(COUPLE_CRAWL_SPEED, gap * 4);
+					allowed = std::min(allowed, near_spd);
+					/* Direct clamp as a safety net; with the continuous envelope
+					 * it only ever trims a small residual per tick. */
 					if (near_spd < this->cur_speed) {
 						const_cast<Train *>(this)->vehstatus.Set(VehState::TrainSlowing);
 						const_cast<Train *>(this)->cur_speed = near_spd;
-						fprintf(stderr, "[CBRAKE] near-clamp v%d gap=%d -> %d\n", (int)this->index.base(), gap, near_spd);
 					}
-					allowed = std::min(allowed, near_spd);
 				}
 
 				max_speed = std::min(max_speed, allowed);
