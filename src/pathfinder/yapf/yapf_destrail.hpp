@@ -255,75 +255,15 @@ public:
 		return this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir());
 	}
 
-	bool CheckOrderLoad(const Train *t) const
-	{
-		switch (dest_order.GetCoupleLoad()) {
-			case ODC_ANY: return true;
-			case ODC_IS_EMPTY: return t->cargo.StoredCount() == 0;
-			case ODC_IS_FULL: return t->cargo.StoredCount() == t->cargo_cap;
-			default: NOT_REACHED();
-		}
-	}
-
-	bool CheckOrderCargoType(const Train *t) const
-	{
-		if (!dest_order.HasCoupleCargoType()) return true;
-		CargoType cargo_type = dest_order.GetCoupleCargoType();
-		for (const Train *v = t; v != nullptr; v = v->Next()) {
-			if (v->cargo_type == cargo_type && v->cargo_cap > 0) return true;
-		}
-		return false;
-	}
-
-	bool CheckNumberOfWagons(const Train *t) const
-	{
-		if (dest_order.GetNumCouple() == 0) return true;
-		return (dest_order.GetNumCouple() == CountVehiclesInChain(t));
-	}
-
-	bool CheckOrderSlot(const Train *t) const
-	{
-		TraceRestrictSlotID slot = dest_order.GetCoupleSlot();
-		if (slot == TraceRestrictSlotID::Invalid()) return true;
-		const TraceRestrictSlot *s = TraceRestrictSlot::GetIfValid(slot);
-		if (s == nullptr) return false;
-		return s->IsOccupant(t->index);
-	}
-
-	/** Does the detection tile match the couple station restriction, if any? */
-	bool CheckCoupleStation(TileIndex tile) const
-	{
-		if (!dest_order.HasCoupleStation()) return true;
-		return IsRailStationTile(tile) && GetStationIndex(tile) == dest_order.GetCoupleStation();
-	}
-
 	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
 		if (IsRailStationTile(tile)) {
 			/* Station tile: search the entire platform for a waiting train
 			 * directly, without requiring a reservation. Cross-company trains
-			 * that arrived via block signals do not leave reservations. */
-			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
-			for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
-				for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
-					if (t->vehstatus.Test(VehState::Crashed)) continue;
-					/* The waiting train may have its primary vehicle (the info
-					 * carrier holding the wait-for-couple order) anywhere in
-					 * the chain -- resolve through it instead of requiring a
-					 * chain head. */
-					Train *carrier = t->First()->Primary();
-					Train *rep = t->First();
-					if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) continue;
-					if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, carrier->owner)) continue;
-					if (!CheckOrderLoad(carrier) || !CheckOrderCargoType(carrier) || !CheckNumberOfWagons(rep) || !CheckOrderSlot(carrier) || !CheckCoupleStation(st_tile) || !TrainFitStation(rep)) continue;
-					/* Pre-validate the merged consist with the same logic as depot
-					 * vehicle moves; skip targets that would produce an invalid train. */
-					if (!IsCoupleArrangementValid(const_cast<Train *>(Yapf().GetVehicle()), rep)) continue;
-					return true;
-				}
-			}
-			return false;
+			 * that arrived via block signals do not leave reservations.
+			 * All order/permission/validity checks live in the shared resolver. */
+			return ResolveCoupleTargetStation(Yapf().GetVehicle(), tile, td) != nullptr;
 		}
 
 		/* Non-station tiles: require reservation as usual. */
@@ -331,13 +271,7 @@ public:
 		if (!HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb))) return false;
 		Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
 		if (t == nullptr) return false;
-		if (!IsTrainCouplingAllowed(Yapf().GetVehicle()->owner, t->owner)) return false;
-		if (!t->current_order.IsType(OT_WAIT_COUPLE)) return false;
-		if (!CheckOrderLoad(t) || !CheckOrderCargoType(t) || !CheckNumberOfWagons(t) || !CheckOrderSlot(t) || !CheckCoupleStation(tile) || !TrainFitStation(t)) return false;
-		/* Pre-validate the merged consist with the same logic as depot
-		 * vehicle moves; reject targets that would produce an invalid train. */
-		if (!IsCoupleArrangementValid(const_cast<Train *>(Yapf().GetVehicle()), t->First())) return false;
-		return true;
+		return ValidateCoupleCandidate(Yapf().GetVehicle(), t->First(), tile) != nullptr;
 	}
 
 	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */

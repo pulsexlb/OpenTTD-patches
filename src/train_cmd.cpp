@@ -1110,6 +1110,8 @@ static void ApplyLookAheadItem(const Train *v, const TrainReservationLookAheadIt
 	}
 }
 
+static int CoupleJointOffset(uint8_t front_len, uint8_t back_len, bool front_driving_backwards);
+
 static void AdvanceLookAheadPosition(Train *v)
 {
 	v->lookahead->current_position++;
@@ -1163,6 +1165,12 @@ static void AdvanceLookAheadPosition(Train *v)
 	}
 }
 
+/** Maximum speeds for train that is broken down or approaching line end */
+static const uint16_t _breakdown_speeds[16] = {
+	225, 210, 195, 180, 165, 150, 135, 120, 105, 90, 75, 60, 45, 30, 15, 15
+};
+
+
 /**
  * Calculates the maximum speed information of the vehicle under its current conditions.
  * @return Maximum speed information of the vehicle.
@@ -1182,6 +1190,80 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 	}
 
 	int advisory_max_speed = max_speed;
+
+	/* Braking for a coupling approach: decelerate so the leading end reaches
+	 * the contact point of the waiting train at crawl speed; the actual stop
+	 * to zero happens on physical contact. */
+	if (this->current_order.IsType(OT_GOTO_COUPLE)) {
+		const Train *tgt = Train::GetIfValid(this->couple_target);
+		bool target_ok = tgt != nullptr && !tgt->vehstatus.Test(VehState::Crashed)
+				&& tgt->Primary()->current_order.IsType(OT_WAIT_COUPLE)
+				&& IsTrainCouplingAllowed(this->owner, tgt->owner);
+		if (!target_ok) {
+			if (tgt != nullptr) const_cast<Train *>(this)->couple_target = VehicleID::Invalid();
+		} else {
+			const Train *mf = this->GetMovingFront();
+			int centre_dist = std::max(abs(mf->x_pos - tgt->x_pos), abs(mf->y_pos - tgt->y_pos));
+			int joint_offset = CoupleJointOffset(mf->gcache.cached_veh_length, tgt->gcache.cached_veh_length, mf->IsDrivingBackwards());
+			int gap = std::max(0, centre_dist - joint_offset);
+			if ((this->tick_counter % 20) == 0) fprintf(stderr, "[CBRAKE] v%d real=%d la=%d gap=%d cur=%d decel_x2=%d\n",
+					(int)this->index.base(), (int)this->UsingRealisticBraking(), this->lookahead != nullptr, gap, this->cur_speed,
+					this->tcache.cached_deceleration * 2);
+			if (gap > 0) {
+				constexpr int COUPLE_CRAWL_SPEED = 5;
+				int allowed;
+				if (this->UsingRealisticBraking()) {
+					TrainDecelerationStats stats(this, this->z_pos);
+					if (stats.deceleration_x2 == 0) {
+						/* Wagon-headed consists carry no cached realistic deceleration
+						 * (UpdateAcceleration skips non-front-engine heads); approximate
+						 * with the power-derived value used by the original model. */
+						uint16_t fallback = Clamp((this->acceleration * 7) / 2, 1, 200);
+						stats.deceleration_x2 = 2 * fallback;
+						stats.uncapped_deceleration_x2 = 2 * fallback;
+					}
+					allowed = GetRealisticBrakingSpeedForDistance(stats, gap, COUPLE_CRAWL_SPEED, tgt->z_pos - this->z_pos);
+				} else {
+					/* Original model: vanilla only slows down within the final tile
+					 * of approach via the _breakdown_speeds step table, with the
+					 * current speed clamped directly like TrainApproachingLineEnd. */
+					allowed = max_speed;
+					if (gap <= TILE_SIZE) {
+						uint idx = Clamp<uint>(TILE_SIZE - gap, 0, 15);
+						uint16_t break_speed = _breakdown_speeds[idx];
+						if (break_speed < this->cur_speed) {
+							const_cast<Train *>(this)->vehstatus.Set(VehState::TrainSlowing);
+							const_cast<Train *>(this)->cur_speed = break_speed;
+						}
+						max_speed = std::min(max_speed, static_cast<int>(break_speed));
+						allowed = max_speed;
+					}
+				}
+
+				/* Realistic braking only: hard near-field guarantee. The advisory
+				 * brake in DoUpdateSpeed can never drop speed faster than the
+				 * train's own braking rate, so a violation of the approach curve
+				 * cannot be recovered from before contact. Within four tiles we
+				 * therefore clamp the current speed directly to the remaining gap
+				 * (like the station-entry stop handler), so the per-tick advance
+				 * never exceeds it and contact happens at crawl speed.
+				 * The original model keeps its vanilla last-tile-only behaviour. */
+				if (this->UsingRealisticBraking() && gap <= TILE_SIZE * 4) {
+					int near_spd = std::max(COUPLE_CRAWL_SPEED, gap);
+					if (near_spd < this->cur_speed) {
+						const_cast<Train *>(this)->vehstatus.Set(VehState::TrainSlowing);
+						const_cast<Train *>(this)->cur_speed = near_spd;
+						fprintf(stderr, "[CBRAKE] near-clamp v%d gap=%d -> %d\n", (int)this->index.base(), gap, near_spd);
+					}
+					allowed = std::min(allowed, near_spd);
+				}
+
+				max_speed = std::min(max_speed, allowed);
+				advisory_max_speed = std::min(advisory_max_speed, allowed);
+
+			}
+		}
+	}
 
 	if (_settings_game.vehicle.train_acceleration_model == AM_REALISTIC && this->lookahead == nullptr) {
 		Train *v_platform = const_cast<Train *>(this->GetStationLoadingVehicle());
@@ -1290,8 +1372,6 @@ int Train::GetCurrentMaxSpeed() const
 	MaxSpeedInfo info = this->GetCurrentMaxSpeedInfo();
 	int max_speed = std::min(info.strict_max_speed, info.advisory_max_speed);
 
-	/* Trains going to couple should approach slowly. */
-	if (this->current_order.IsType(OT_GOTO_COUPLE)) max_speed = std::min(max_speed, 40);
 	/* Unpowered front wagons should not drive too fast. */
 	if (this->IsFrontWagon() && !this->flags.Test(VehicleRailFlag::PoweredWagon)) max_speed = std::min(max_speed, 50);
 
@@ -4330,9 +4410,9 @@ static Track DoTrainPathfind(const Train *v, TileIndex tile, DiagDirection enter
  * @param do_track_reservation Whether to reserve the path.
  * @return The track to take, or #INVALID_TRACK if no path was found.
  */
-static Track DoTrainCouplePathfind(const Train *v, bool do_track_reservation)
+static Track DoTrainCouplePathfind(const Train *v, bool do_track_reservation, Train **couple_target)
 {
-	Track ret = YapfTrainCoupleTrack(v, !do_track_reservation);
+	Track ret = YapfTrainCoupleTrack(v, !do_track_reservation, couple_target);
 	return ret;
 }
 
@@ -5052,7 +5132,11 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 	 * follow the waiting train's reservation. Only takes over once the
 	 * reservation has been extended as far as possible (res_dest.tile == tile). */
 	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
-		Track path_found = DoTrainCouplePathfind(consist, do_track_reservation);
+		Train *couple_target = nullptr;
+		Track path_found = DoTrainCouplePathfind(consist, do_track_reservation, &couple_target);
+		/* Track the concrete contact-end vehicle for approach braking; the
+		 * speed code re-validates it every tick. */
+		consist->couple_target = (path_found != INVALID_TRACK && couple_target != nullptr) ? couple_target->index : VehicleID::Invalid();
 		if (path_found != INVALID_TRACK && res_dest.tile == tile) {
 			best_track = path_found;
 		}
@@ -5710,6 +5794,97 @@ static Train *DecoupleTrain(Train *v)
  * @param u_phys physical chain head of the waiting train.
  * @return true if the merged consist passes attachment validation.
  */
+static bool CoupleOrderLoadOk(const Order &order, const Train *t)
+{
+	switch (order.GetCoupleLoad()) {
+		case ODC_ANY: return true;
+		case ODC_IS_EMPTY: return t->cargo.StoredCount() == 0;
+		case ODC_IS_FULL: return t->cargo.StoredCount() == t->cargo_cap;
+		default: NOT_REACHED();
+	}
+}
+
+static bool CoupleCargoOk(const Order &order, const Train *t)
+{
+	if (!order.HasCoupleCargoType()) return true;
+	CargoType cargo_type = order.GetCoupleCargoType();
+	for (const Train *v = t; v != nullptr; v = v->Next()) {
+		if (v->cargo_type == cargo_type && v->cargo_cap > 0) return true;
+	}
+	return false;
+}
+
+static bool CoupleNumOk(const Order &order, const Train *t)
+{
+	if (order.GetNumCouple() == 0) return true;
+	return (order.GetNumCouple() == CountVehiclesInChain(t));
+}
+
+static bool CoupleSlotOk(const Order &order, const Train *t)
+{
+	TraceRestrictSlotID slot = order.GetCoupleSlot();
+	if (slot == TraceRestrictSlotID::Invalid()) return true;
+	const TraceRestrictSlot *rs = TraceRestrictSlot::GetIfValid(slot);
+	if (rs == nullptr) return false;
+	return rs->IsOccupant(t->index);
+}
+
+static bool CoupleStationOk(const Order &order, TileIndex contact_tile)
+{
+	if (!order.HasCoupleStation()) return true;
+	return IsRailStationTile(contact_tile) && GetStationIndex(contact_tile) == order.GetCoupleStation();
+}
+
+/**
+ * Validate a waiting train as a coupling partner for the moving consist and
+ * return the end of its chain expected to make contact first.
+ * @param moving the approaching consist.
+ * @param rep physical chain head of the waiting train.
+ * @param contact_tile tile where the coupling is expected to happen.
+ * @return the contact-end vehicle of the waiting train, or nullptr if invalid.
+ */
+Train *ValidateCoupleCandidate(const Train *moving, Train *rep, TileIndex contact_tile)
+{
+	Train *carrier = rep->Primary();
+	const Order &order = carrier->current_order;
+
+	if (!order.IsType(OT_WAIT_COUPLE)) return nullptr;
+	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return nullptr;
+	if (!CoupleOrderLoadOk(order, carrier)) return nullptr;
+	if (!CoupleCargoOk(order, rep)) return nullptr;
+	if (!CoupleNumOk(order, rep)) return nullptr;
+	if (!CoupleSlotOk(order, carrier)) return nullptr;
+	if (!CoupleStationOk(order, contact_tile)) return nullptr;
+	if (!TrainFitStation(rep)) return nullptr;
+	if (!IsCoupleArrangementValid(const_cast<Train *>(moving), rep)) return nullptr;
+
+	/* The waiting train's closest end to the contact point is met first. */
+	Train *first = rep;
+	Train *last = rep->Last();
+	return DistanceManhattan(first->tile, contact_tile) <= DistanceManhattan(last->tile, contact_tile) ? last : first;
+}
+
+/**
+ * Scan a station platform for a valid coupling partner.
+ * @param moving the approaching consist.
+ * @param tile tile the couple pathfinder wants to reach.
+ * @param td trackdir of arrival.
+ * @return contact-end vehicle of a waiting train, or nullptr.
+ */
+Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir td)
+{
+	if (!IsRailStationTile(tile)) return nullptr;
+
+	TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
+	for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
+		for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
+			if (t->vehstatus.Test(VehState::Crashed)) continue;
+			if (ValidateCoupleCandidate(moving, t->First(), st_tile) != nullptr) return ValidateCoupleCandidate(moving, t->First(), st_tile);
+		}
+	}
+	return nullptr;
+}
+
 bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 {
 	/* The pathfinder operates on the Primary, which may be in the middle of
@@ -7755,12 +7930,6 @@ static bool HandleCrashedTrain(Train *v)
 
 	return true;
 }
-
-/** Maximum speeds for train that is broken down or approaching line end */
-static const uint16_t _breakdown_speeds[16] = {
-	225, 210, 195, 180, 165, 150, 135, 120, 105, 90, 75, 60, 45, 30, 15, 15
-};
-
 
 /**
  * Train is approaching line end, slow down and possibly reverse
