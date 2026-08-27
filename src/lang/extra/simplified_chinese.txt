@@ -54,6 +54,7 @@ STR_SETTINGS_MENU_MONEY_TEXT_EFFECTS                            :显示收入/�
 STR_SETTINGS_MENU_SHOW_HIDDEN_SIGNS                             :隐藏所显示的标志名
 
 STR_MAP_MENU_PLAN_LIST                                          :计划列表
+STR_MAP_MENU_ORDER_LIST_MANAGER                                 :调度表列表
 
 STR_VEHICLE_TYPE_TRAINS                                         :列车
 STR_VEHICLE_TYPE_ROAD_VEHICLES                                  :汽车
@@ -1994,6 +1995,38 @@ STR_PLANS_OWN_ONLY_TOOLTIP                                      :{BLACK}仅显�
 STR_SORT_BY_PLAN_ID                                             :计划编号
 STR_SORT_BY_OWNER                                               :所有者
 STR_SORT_BY_DATE                                                :日期
+
+# Order list manager window
+STR_ORDER_LIST_CAPTION                                          :{WHITE}调度表列表
+STR_ORDER_LIST_NEW                                              :{BLACK}新建
+STR_ORDER_LIST_NEW_TOOLTIP                                      :{BLACK}创建新的调度表
+STR_ORDER_LIST_EDIT                                             :{BLACK}编辑
+STR_ORDER_LIST_DELETE                                           :{BLACK}删除
+STR_ORDER_LIST_DELETE_TOOLTIP                                   :{BLACK}删除选中的调度表
+STR_ORDER_LIST_PUBLIC                                           :{BLACK}公开
+STR_ORDER_LIST_PUBLIC_TOOLTIP                                   :{BLACK}切换调度表的可见性。公开的调度表会对其他公司显示。
+STR_ORDER_LIST_MAKE_PUBLIC                                      :{BLACK}设为公开
+STR_ORDER_LIST_MAKE_PRIVATE                                     :{BLACK}设为私有
+STR_ORDER_LIST_LIST_TOOLTIP                                     :{BLACK}点击编辑按钮在订单窗口打开该调度表
+STR_ORDER_LIST_QUERY_RENAME                                     :{WHITE}重命名调度表
+STR_ORDER_LIST_DEFAULT_NAME                                     :调度表 {NUM}
+STR_SORT_BY_ORDER_LIST_ID                                      :调度表编号
+STR_ERROR_CAN_T_RENAME_ORDER_LIST                               :{WHITE}无法重命名调度表...
+STR_ORDER_LIST_ORDERS_CAPTION                                  :{WHITE}{RAW_STRING}（调度计划）
+
+# Order list timetable window
+STR_ORDER_LIST_TIMETABLE_CAPTION                                :{WHITE}时刻表
+STR_ORDER_LIST_TIMETABLE_LIST_TOOLTIP                           :{BLACK}点击调度命令进行选择
+STR_ORDER_LIST_TIMETABLE_WAIT                                   :{BLACK}等待时间
+STR_ORDER_LIST_TIMETABLE_WAIT_TOOLTIP                           :{BLACK}设置选中命令的等待时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL                                 :{BLACK}行驶时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL_TOOLTIP                         :{BLACK}设置选中命令的行驶时间
+STR_ORDER_LIST_TIMETABLE_WAIT_FIXED                             :{BLACK}锁定等待时间
+STR_ORDER_LIST_TIMETABLE_WAIT_UNFIX                             :{BLACK}解锁等待时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL_FIXED                           :{BLACK}锁定行驶时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL_UNFIX                           :{BLACK}解锁行驶时间
+STR_ORDER_LIST_TIMETABLE_WAIT_QUERY                             :{WHITE}选中命令的等待时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL_QUERY                           :{WHITE}选中命令的行驶时间
 
 STR_WARNING_LOADGAME_REMOVED_UNCORRECTABLE_VEHICLES             :{WHITE}由于在加载过程中无可挽回的错误，已经移除了{NUM} 辆车
 

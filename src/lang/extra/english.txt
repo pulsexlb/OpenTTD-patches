@@ -91,6 +91,7 @@ STR_SETTINGS_MENU_MONEY_TEXT_EFFECTS                            :Income/cost tex
 STR_SETTINGS_MENU_SHOW_HIDDEN_SIGNS                             :Hidden signs and names displayed
 
 STR_MAP_MENU_PLAN_LIST                                          :Plan list
+STR_MAP_MENU_ORDER_LIST_MANAGER                                 :Order list manager
 
 STR_VEHICLE_TYPE_TRAINS                                         :Trains
 STR_VEHICLE_TYPE_ROAD_VEHICLES                                  :Road Vehicles
@@ -2062,6 +2063,38 @@ STR_PLANS_OWN_ONLY_TOOLTIP                                      :{BLACK}Own show
 STR_SORT_BY_PLAN_ID                                             :Plan ID
 STR_SORT_BY_OWNER                                               :Owner
 STR_SORT_BY_DATE                                                :Date
+
+# Order list manager window
+STR_ORDER_LIST_CAPTION                                          :{WHITE}Order lists
+STR_ORDER_LIST_NEW                                              :{BLACK}New
+STR_ORDER_LIST_NEW_TOOLTIP                                      :{BLACK}Create a new order list
+STR_ORDER_LIST_EDIT                                             :{BLACK}Edit
+STR_ORDER_LIST_DELETE                                           :{BLACK}Delete
+STR_ORDER_LIST_DELETE_TOOLTIP                                   :{BLACK}Delete the selected order list
+STR_ORDER_LIST_PUBLIC                                           :{BLACK}Public
+STR_ORDER_LIST_PUBLIC_TOOLTIP                                   :{BLACK}Toggle the visibility of an order list. A public order list will be shown to the other companies.
+STR_ORDER_LIST_MAKE_PUBLIC                                      :{BLACK}Make public
+STR_ORDER_LIST_MAKE_PRIVATE                                     :{BLACK}Make private
+STR_ORDER_LIST_LIST_TOOLTIP                                     :{BLACK}Click the edit button to open the order list in the order window
+STR_ORDER_LIST_QUERY_RENAME                                     :{WHITE}Rename order list
+STR_ORDER_LIST_DEFAULT_NAME                                     :Order list {NUM}
+STR_SORT_BY_ORDER_LIST_ID                                      :Order list ID
+STR_ERROR_CAN_T_RENAME_ORDER_LIST                               :{WHITE}Can't rename order list...
+STR_ORDER_LIST_ORDERS_CAPTION                                  :{WHITE}{RAW_STRING} (Orders)
+
+# Order list timetable window
+STR_ORDER_LIST_TIMETABLE_CAPTION                                :{WHITE}Timetable
+STR_ORDER_LIST_TIMETABLE_LIST_TOOLTIP                           :{BLACK}Click on an order to select it
+STR_ORDER_LIST_TIMETABLE_WAIT                                   :{BLACK}Wait time
+STR_ORDER_LIST_TIMETABLE_WAIT_TOOLTIP                           :{BLACK}Set the wait time of the selected order
+STR_ORDER_LIST_TIMETABLE_TRAVEL                                 :{BLACK}Travel time
+STR_ORDER_LIST_TIMETABLE_TRAVEL_TOOLTIP                         :{BLACK}Set the travel time of the selected order
+STR_ORDER_LIST_TIMETABLE_WAIT_FIXED                             :{BLACK}Lock wait time
+STR_ORDER_LIST_TIMETABLE_WAIT_UNFIX                             :{BLACK}Unlock wait time
+STR_ORDER_LIST_TIMETABLE_TRAVEL_FIXED                           :{BLACK}Lock travel time
+STR_ORDER_LIST_TIMETABLE_TRAVEL_UNFIX                           :{BLACK}Unlock travel time
+STR_ORDER_LIST_TIMETABLE_WAIT_QUERY                             :{WHITE}Wait time for selected order
+STR_ORDER_LIST_TIMETABLE_TRAVEL_QUERY                           :{WHITE}Travel time for selected order
 
 STR_WARNING_LOADGAME_REMOVED_UNCORRECTABLE_VEHICLES             :{WHITE}Removed {NUM} vehicles found to be uncorrectably invalid during load
 

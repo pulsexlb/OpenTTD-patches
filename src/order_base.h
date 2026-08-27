@@ -1304,6 +1304,10 @@ private:
 
 	Colours route_overlay_colour = Colours::White;
 
+	std::string name{};               ///< Name of the order list. Empty for vehicle-owned order lists.
+	Owner company = INVALID_OWNER;    ///< Company owning this player-created order list. INVALID_OWNER for vehicle-owned order lists.
+	bool is_public = false;           ///< Whether this player-created order list is public.
+
 	VehicleOrderID num_manual_orders = 0; ///< NOSAVE: How many manually added orders are there in the list.
 	uint num_vehicles = 0;                ///< NOSAVE: Number of vehicles that share this order list.
 	Vehicle *first_shared = nullptr;      ///< NOSAVE: pointer to the first vehicle in the shared order chain.
@@ -1545,6 +1549,34 @@ public:
 	void SetRouteOverlayColour(Colours colour)
 	{
 		this->route_overlay_colour = colour;
+	}
+
+	/**
+	 * Is this a player-created order list (not owned by a specific vehicle)?
+	 * A player-created order list has a name and a company, and is not subject to
+	 * the normal order list lifecycle (it is not freed when the last vehicle
+	 * using it is deleted).
+	 * @return whether this order list is player-created
+	 */
+	inline bool IsPlayerCreated() const { return this->company != INVALID_OWNER && !this->name.empty(); }
+
+	inline const std::string &GetName() const { return this->name; }
+	inline void SetName(const std::string &name) { this->name = name; }
+
+	inline Owner GetCompany() const { return this->company; }
+	inline void SetCompany(Owner owner) { this->company = owner; }
+
+	inline bool IsPublic() const { return this->is_public; }
+	inline void SetPublic(bool is_public) { this->is_public = is_public; }
+
+	/**
+	 * Is this order list visible to the given company (either owned by them or public)?
+	 * @param owner company to check visibility for
+	 * @return whether the order list is visible to the company
+	 */
+	inline bool IsVisibleToCompany(Owner owner) const
+	{
+		return this->IsPlayerCreated() && (this->company == owner || this->is_public);
 	}
 
 	/**

@@ -98,6 +98,9 @@ SaveLoadTable GetOrderListDescription()
 	static const SaveLoad _orderlist_desc[] = {
 		SLEG_CONDVAR("first",  _order_item_ref,    SLE_UINT32, SL_MIN_VERSION, SLV_ORDERS_OWNED_BY_ORDERLIST),
 		SLEG_CONDSTRUCTLIST("orders", SlOrders<OrderList>, SLV_ORDERS_OWNED_BY_ORDERLIST, SL_MAX_VERSION),
+		SLE_SSTR(OrderList, name, SLE_STR),
+		SLE_VAR(OrderList, company, SLE_UINT8),
+		SLE_VAR(OrderList, is_public, SLE_BOOL),
 	};
 
 	return _orderlist_desc;
