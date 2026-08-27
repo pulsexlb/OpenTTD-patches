@@ -31,8 +31,6 @@
 #include "table/sprites.h"
 #include "table/strings.h"
 
-static const uint MAX_LENGTH_ORDERLIST_NAME_CHARS = 64; ///< The maximum length of an order list name in characters
-
 static constexpr NWidgetPart _nested_orderlist_widgets[] = {
 	NWidget(NWID_HORIZONTAL),
 		NWidget(WWT_CLOSEBOX, Colours::Grey),

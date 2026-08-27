@@ -82,7 +82,7 @@ StringID GetSlotGroupWarning(TraceRestrictSlotGroupID slot_group, Owner owner);
 
 static bool ModifyOrder(const Vehicle *v, VehicleOrderID order_id, ModifyOrderFlags mof, uint16_t data, bool error_msg = true)
 {
-	return Command<Commands::ModifyOrder>::Post(error_msg ? STR_ERROR_CAN_T_MODIFY_THIS_ORDER : (StringID)0, v->tile, v->index, order_id, mof, data, {}, {});
+	return Command<Commands::ModifyOrder>::Post(error_msg ? STR_ERROR_CAN_T_MODIFY_THIS_ORDER : (StringID)0, v->tile, OrderTargetType::Vehicle, v->index.base(), order_id, mof, data, {}, {});
 }
 
 struct CargoTypeOrdersWindow : public Window {
@@ -263,12 +263,12 @@ public:
 
 			if (action_type == order_action_type) return;
 
-			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, this->vehicle->index, this->order_id, mof, action_type, cargo_id, {});
+			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, OrderTargetType::Vehicle, this->vehicle->index.base(), this->order_id, mof, action_type, cargo_id, {});
 
 			this->GetWidget<NWidgetCore>(widget)->SetStringTip(this->cargo_type_order_dropdown[this->GetOrderActionTypeForCargo(cargo_id)], STR_CARGO_TYPE_LOAD_ORDERS_DROP_TOOLTIP + this->variant);
 			this->SetWidgetDirty(widget);
 		} else if (widget == WID_CTO_SET_TO_ALL_DROPDOWN) {
-			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, this->vehicle->index, this->order_id, mof, action_type, INVALID_CARGO, {});
+			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, OrderTargetType::Vehicle, this->vehicle->index.base(), this->order_id, mof, action_type, INVALID_CARGO, {});
 
 			for (int i = 0; i < (int)_sorted_standard_cargo_specs.size(); i++) {
 				const CargoSpec *cs = _sorted_cargo_specs[i];
@@ -1874,7 +1874,7 @@ private:
 			/* Clear the restriction: CARGO_NO_REFIT must go into the command's
 			 * cargo parameter, not the data parameter. */
 			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile,
-					this->vehicle->index, sel_ord, MOF_COUPLE_CARGO, {}, CARGO_NO_REFIT, {});
+					OrderTargetType::Vehicle, this->vehicle->index.base(), sel_ord, MOF_COUPLE_CARGO, {}, CARGO_NO_REFIT, {});
 		} else {
 			ShowVehicleCargoTypesWindow(this->vehicle, sel_ord, this);
 		}
@@ -2073,7 +2073,7 @@ private:
 		/* When networking, move one order lower */
 		int selected = this->selected_order + (int)_networking;
 
-		if (Command<Commands::DeleteOrder>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, this->vehicle->tile, this->vehicle->index, this->OrderGetSel())) {
+		if (Command<Commands::DeleteOrder>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, this->vehicle->tile, OrderTargetType::Vehicle, this->vehicle->index.base(), this->OrderGetSel())) {
 			this->selected_order = selected >= this->vehicle->GetNumOrders() ? -1 : selected;
 			this->UpdateButtonState();
 		}
@@ -3919,14 +3919,14 @@ public:
 		}
 
 		if (this->query_text_widget == WID_O_TEXT_LABEL && str.has_value()) {
-			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, this->vehicle->index, this->OrderGetSel(), MOF_LABEL_TEXT, {}, {}, *str);
+			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, OrderTargetType::Vehicle, this->vehicle->index.base(), this->OrderGetSel(), MOF_LABEL_TEXT, {}, {}, *str);
 		}
 
 		if (!str.has_value() || str->empty()) return;
 
 		auto create_slot_counter = [&](ModifyOrderFlags mof, bool counter) {
 			using Payload = CmdPayload<Commands::ModifyOrder>;
-			Payload follow_up_payload = Payload::Make(this->vehicle->index, this->OrderGetSel(), mof, {}, {}, {});
+			Payload follow_up_payload = Payload::Make(OrderTargetType::Vehicle, this->vehicle->index.base(), this->OrderGetSel(), mof, {}, {}, {});
 			TraceRestrictFollowUpCmdData follow_up{ BaseCommandContainer<Commands::ModifyOrder>((StringID)0, this->vehicle->tile, std::move(follow_up_payload)) };
 			if (counter) {
 				TraceRestrictCreateCounterCmdData data;
@@ -4274,7 +4274,7 @@ public:
 				VehicleOrderID to_order = this->GetOrderFromPt(pt.y);
 
 				if (!(from_order == to_order || from_order == INVALID_VEH_ORDER_ID || from_order > this->vehicle->GetNumOrders() || to_order == INVALID_VEH_ORDER_ID || to_order > this->vehicle->GetNumOrders()) &&
-						Command<Commands::MoveOrder>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, this->vehicle->tile, this->vehicle->index, from_order, to_order, 1)) {
+						Command<Commands::MoveOrder>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, this->vehicle->tile, OrderTargetType::Vehicle, this->vehicle->index.base(), from_order, to_order, 1)) {
 					this->selected_order = -1;
 					this->UpdateButtonState();
 				}

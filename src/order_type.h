@@ -23,6 +23,15 @@ struct OrderListIDTag : public PoolIDTraits<uint16_t, 64000, 0xFFFF> {};
 using OrderListID = PoolID<OrderListIDTag>;
 typedef uint32_t TimetableTicks;
 
+/** What kind of target an order-editing command refers to. */
+enum class OrderTargetType : uint8_t {
+	Vehicle,   ///< The orders of a vehicle (shared order chain).
+	OrderList, ///< A player-created standalone order list.
+};
+
+static const uint MAX_LENGTH_ORDERLIST_NAME_CHARS = 64; ///< The maximum length of an order list name in characters
+
+
 struct DestinationID {
 	static inline constexpr bool fmt_as_base = true;
 	static inline constexpr bool serialisation_as_base = true;

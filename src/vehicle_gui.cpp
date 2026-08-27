@@ -1593,7 +1593,7 @@ struct CargoTypesWindow : public Window {
 			case WID_VCT_SET: // set button
 				if (this->sel != CARGO_NO_REFIT) {
 					const Vehicle *v = Vehicle::Get(this->window_number);
-					if (Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, v->index, this->order, MOF_COUPLE_CARGO, {}, this->sel, {})) this->Close();
+					if (Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, OrderTargetType::Vehicle, v->index.base(), this->order, MOF_COUPLE_CARGO, {}, this->sel, {})) this->Close();
 				}
 				break;
 		}

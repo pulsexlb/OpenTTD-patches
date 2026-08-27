@@ -1001,9 +1001,9 @@ struct TimetableWindow : GeneralVehicleWindow {
 		ModifyTimetableCtrlFlags flags{};
 		if (clear) flags.Set(ModifyTimetableCtrlFlag::ClearField);
 		if (bulk) {
-			Command<Commands::BulkChangeTimetable>::Post(v->index, mtf, data, flags);
+			Command<Commands::BulkChangeTimetable>::Post(OrderTargetType::Vehicle, v->index.base(), mtf, data, flags);
 		} else {
-			Command<Commands::ChangeTimetable>::Post(v->index, order_number, mtf, data, flags);
+			Command<Commands::ChangeTimetable>::Post(OrderTargetType::Vehicle, v->index.base(), order_number, mtf, data, flags);
 		}
 	}
 

@@ -404,7 +404,7 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 
 	int order_pos = ScriptOrderPositionToRealOrderPosition(vehicle_id, order_position);
 	int jump_pos = ScriptOrderPositionToRealOrderPosition(vehicle_id, jump_to);
-	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, vehicle_id, order_pos, MOF_COND_DESTINATION, jump_pos, {}, {});
+	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, OrderTargetType::Vehicle, vehicle_id.base(), order_pos, MOF_COND_DESTINATION, jump_pos, {}, {});
 }
 
 /* static */ bool ScriptOrder::SetOrderCondition(VehicleID vehicle_id, OrderPosition order_position, OrderCondition condition)
@@ -415,7 +415,7 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 	EnforcePrecondition(false, condition >= OC_LOAD_PERCENTAGE && condition <= OC_REMAINING_LIFETIME);
 
 	int order_pos = ScriptOrderPositionToRealOrderPosition(vehicle_id, order_position);
-	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, vehicle_id, order_pos, MOF_COND_VARIABLE, condition, {}, {});
+	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, OrderTargetType::Vehicle, vehicle_id.base(), order_pos, MOF_COND_VARIABLE, condition, {}, {});
 }
 
 /* static */ bool ScriptOrder::SetOrderCompareFunction(VehicleID vehicle_id, OrderPosition order_position, CompareFunction compare)
@@ -426,7 +426,7 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 	EnforcePrecondition(false, compare >= CF_EQUALS && compare <= CF_IS_FALSE);
 
 	int order_pos = ScriptOrderPositionToRealOrderPosition(vehicle_id, order_position);
-	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, vehicle_id, order_pos, MOF_COND_COMPARATOR, compare, {}, {});
+	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, OrderTargetType::Vehicle, vehicle_id.base(), order_pos, MOF_COND_COMPARATOR, compare, {}, {});
 }
 
 /* static */ bool ScriptOrder::SetOrderCompareValue(VehicleID vehicle_id, OrderPosition order_position, SQInteger value)
@@ -438,7 +438,7 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 	if (GetOrderCondition(vehicle_id, order_position) == OC_MAX_SPEED) value = value * 10 / 16;
 
 	int order_pos = ScriptOrderPositionToRealOrderPosition(vehicle_id, order_position);
-	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, vehicle_id, order_pos, MOF_COND_VALUE, value, {}, {});
+	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, OrderTargetType::Vehicle, vehicle_id.base(), order_pos, MOF_COND_VALUE, value, {}, {});
 }
 
 /* static */ bool ScriptOrder::SetStopLocation(VehicleID vehicle_id, OrderPosition order_position, StopLocation stop_location)
@@ -452,7 +452,7 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 	order_position = ScriptOrder::ResolveOrderPosition(vehicle_id, order_position);
 
 	int order_pos = ScriptOrderPositionToRealOrderPosition(vehicle_id, order_position);
-	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, vehicle_id, order_pos, MOF_STOP_LOCATION, stop_location, {}, {});
+	return ScriptObject::Command<Commands::ModifyOrder>::Do(0, OrderTargetType::Vehicle, vehicle_id.base(), order_pos, MOF_STOP_LOCATION, stop_location, {}, {});
 }
 
 /* static */ bool ScriptOrder::SetOrderRefit(VehicleID vehicle_id, OrderPosition order_position, CargoType refit_cargo)
@@ -564,7 +564,7 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 	EnforcePrecondition(false, IsValidVehicleOrder(vehicle_id, order_position));
 
 	int order_pos = ScriptOrderPositionToRealOrderPosition(vehicle_id, order_position);
-	return ScriptObject::Command<Commands::DeleteOrder>::Do(0, vehicle_id, order_pos);
+	return ScriptObject::Command<Commands::DeleteOrder>::Do(0, OrderTargetType::Vehicle, vehicle_id.base(), order_pos);
 }
 
 /* static */ bool ScriptOrder::SkipToOrder(VehicleID vehicle_id, OrderPosition next_order)
@@ -623,7 +623,7 @@ static void _DoCommandReturnSetOrderFlags(class ScriptInstance &instance)
 	EnforcePrecondition(false, (order_flags & OF_GOTO_NEAREST_DEPOT) == (current & OF_GOTO_NEAREST_DEPOT));
 
 	if ((current & OF_NON_STOP_FLAGS) != (order_flags & OF_NON_STOP_FLAGS)) {
-		return ScriptObject::Command<Commands::ModifyOrder>::Do(&::_DoCommandReturnSetOrderFlags, vehicle_id, order_pos, MOF_NON_STOP, order_flags & OF_NON_STOP_FLAGS, {}, {});
+		return ScriptObject::Command<Commands::ModifyOrder>::Do(&::_DoCommandReturnSetOrderFlags, OrderTargetType::Vehicle, vehicle_id.base(), order_pos, MOF_NON_STOP, order_flags & OF_NON_STOP_FLAGS, {}, {});
 	}
 
 	switch (order->GetType()) {
@@ -632,16 +632,16 @@ static void _DoCommandReturnSetOrderFlags(class ScriptInstance &instance)
 				uint data = DA_ALWAYS_GO;
 				if (order_flags & OF_SERVICE_IF_NEEDED) data = DA_SERVICE;
 				if (order_flags & OF_STOP_IN_DEPOT) data = DA_STOP;
-				return ScriptObject::Command<Commands::ModifyOrder>::Do(&::_DoCommandReturnSetOrderFlags, vehicle_id, order_pos, MOF_DEPOT_ACTION, data, {}, {});
+				return ScriptObject::Command<Commands::ModifyOrder>::Do(&::_DoCommandReturnSetOrderFlags, OrderTargetType::Vehicle, vehicle_id.base(), order_pos, MOF_DEPOT_ACTION, data, {}, {});
 			}
 			break;
 
 		case OT_GOTO_STATION:
 			if ((current & OF_UNLOAD_FLAGS) != (order_flags & OF_UNLOAD_FLAGS)) {
-				return ScriptObject::Command<Commands::ModifyOrder>::Do(&::_DoCommandReturnSetOrderFlags, vehicle_id, order_pos, MOF_UNLOAD, (order_flags & OF_UNLOAD_FLAGS) >> 2, {}, {});
+				return ScriptObject::Command<Commands::ModifyOrder>::Do(&::_DoCommandReturnSetOrderFlags, OrderTargetType::Vehicle, vehicle_id.base(), order_pos, MOF_UNLOAD, (order_flags & OF_UNLOAD_FLAGS) >> 2, {}, {});
 			}
 			if ((current & OF_LOAD_FLAGS) != (order_flags & OF_LOAD_FLAGS)) {
-				return ScriptObject::Command<Commands::ModifyOrder>::Do(&::_DoCommandReturnSetOrderFlags, vehicle_id, order_pos, MOF_LOAD, (order_flags & OF_LOAD_FLAGS) >> 5, {}, {});
+				return ScriptObject::Command<Commands::ModifyOrder>::Do(&::_DoCommandReturnSetOrderFlags, OrderTargetType::Vehicle, vehicle_id.base(), order_pos, MOF_LOAD, (order_flags & OF_LOAD_FLAGS) >> 5, {}, {});
 			}
 			break;
 
@@ -676,7 +676,7 @@ static void _DoCommandReturnSetOrderFlags(class ScriptInstance &instance)
 
 	int order_pos_move = ScriptOrderPositionToRealOrderPosition(vehicle_id, order_position_move);
 	int order_pos_target = ScriptOrderPositionToRealOrderPosition(vehicle_id, order_position_target);
-	return ScriptObject::Command<Commands::MoveOrder>::Do(0, vehicle_id, order_pos_move, order_pos_target, 1);
+	return ScriptObject::Command<Commands::MoveOrder>::Do(0, OrderTargetType::Vehicle, vehicle_id.base(), order_pos_move, order_pos_target, 1);
 }
 
 /* static */ bool ScriptOrder::CopyOrders(VehicleID vehicle_id, VehicleID main_vehicle_id)

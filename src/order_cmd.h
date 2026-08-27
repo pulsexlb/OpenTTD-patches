@@ -24,32 +24,44 @@ struct InsertOrderCmdData final : public CommandPayloadSerialisable<InsertOrderC
 
 	using OrderFields = MemberPtrTupleTypeAdapter<decltype(Order::GetCmdRefFields())>;
 
-	VehicleID veh;
+	bool is_list = false;             ///< True when inserting into a player-created order list instead of a vehicle.
+	VehicleID veh{};
+	OrderListID list = OrderListID::Invalid(); ///< Target order list when #is_list is true.
 	VehicleOrderID sel_ord; // This may be INVALID_VEH_ORDER_ID to append to the end of the order list
 	OrderFields::Value new_order;
 
 	InsertOrderCmdData() = default;
+	/** Target a vehicle's (possibly shared) orders. */
 	InsertOrderCmdData(VehicleID veh, VehicleOrderID sel_ord, const Order &order) :
 			veh(veh), sel_ord(sel_ord), new_order(MemberPtrsTie(order, Order::GetCmdRefFields())) {}
+	/** Target a player-created order list. */
+	InsertOrderCmdData(OrderListID list, VehicleOrderID sel_ord, const Order &order) :
+			is_list(true), list(list), sel_ord(sel_ord), new_order(MemberPtrsTie(order, Order::GetCmdRefFields())) {}
 
 	void SerialisePayload(BufferSerialisationRef buffer) const;
 	bool Deserialise(DeserialisationBuffer &buffer, StringValidationSettings default_string_validation);
 	void FormatDebugSummary(struct format_target &) const;
 };
 
-DEF_CMD_TUPLE_LT (Commands::ModifyOrder,            CmdModifyOrder,                     {}, CommandType::RouteManagement, CmdDataT<VehicleID, VehicleOrderID, ModifyOrderFlags, uint16_t, CargoType, std::string>)
+DEF_CMD_TUPLE_LT (Commands::ModifyOrder,            CmdModifyOrder,                     {}, CommandType::RouteManagement, CmdDataT<OrderTargetType, uint32_t, VehicleOrderID, ModifyOrderFlags, uint16_t, CargoType, std::string>)
 DEF_CMD_TUPLE_LT (Commands::SkipToOrder,            CmdSkipToOrder,                     {}, CommandType::RouteManagement, CmdDataT<VehicleID, VehicleOrderID>)
-DEF_CMD_TUPLE_LT (Commands::DeleteOrder,            CmdDeleteOrder,                     {}, CommandType::RouteManagement, CmdDataT<VehicleID, VehicleOrderID>)
+DEF_CMD_TUPLE_LT (Commands::DeleteOrder,            CmdDeleteOrder,                     {}, CommandType::RouteManagement, CmdDataT<OrderTargetType, uint32_t, VehicleOrderID>)
 DEF_CMD_DIRECT_LT(Commands::InsertOrder,            CmdInsertOrder,                     {}, CommandType::RouteManagement, InsertOrderCmdData)
 DEF_CMD_TUPLE_LT (Commands::OrderRefit,             CmdOrderRefit,                      {}, CommandType::RouteManagement, CmdDataT<VehicleID, VehicleOrderID, CargoType>)
 DEF_CMD_TUPLE_LT (Commands::CloneOrder,             CmdCloneOrder,                      {}, CommandType::RouteManagement, CmdDataT<CloneOptions, VehicleID, VehicleID>)
 DEF_CMD_TUPLE_LT (Commands::InsertOrdersFromVeh,    CmdInsertOrdersFromVehicle,         {}, CommandType::RouteManagement, CmdDataT<VehicleID, VehicleID, VehicleOrderID>)
-DEF_CMD_TUPLE_LT (Commands::MoveOrder,              CmdMoveOrder,                       {}, CommandType::RouteManagement, CmdDataT<VehicleID, VehicleOrderID, VehicleOrderID, uint16_t>)
+DEF_CMD_TUPLE_LT (Commands::MoveOrder,              CmdMoveOrder,                       {}, CommandType::RouteManagement, CmdDataT<OrderTargetType, uint32_t, VehicleOrderID, VehicleOrderID, uint16_t>)
 DEF_CMD_TUPLE_LT (Commands::ReverseOrderList,       CmdReverseOrderList,                {}, CommandType::RouteManagement, CmdDataT<VehicleID, ReverseOrderOperation>)
 DEF_CMD_TUPLE_LT (Commands::DuplicateOrder,         CmdDuplicateOrder,                  {}, CommandType::RouteManagement, CmdDataT<VehicleID, VehicleOrderID>)
 DEF_CMD_TUPLE_LT (Commands::SetRouteOverlayColour,  CmdSetRouteOverlayColour,           {}, CommandType::RouteManagement, CmdDataT<VehicleID, Colours>)
 DEF_CMD_TUPLE_NT (Commands::MassChangeOrder,        CmdMassChangeOrder,                 {}, CommandType::RouteManagement, CmdDataT<DestinationID, VehicleType, OrderType, CargoType, DestinationID>)
 DEF_CMD_TUPLE    (Commands::ClearOrderBackup,       CmdClearOrderBackup,     CMD_CLIENT_ID, CommandType::ServerSetting,   CmdDataT<ClientID>)
+
+/* Player-created order list management commands. */
+DEF_CMD_TUPLE_LT (Commands::CreateOrderList,        CmdCreateOrderList,                 {}, CommandType::RouteManagement, CmdDataT<std::string>)
+DEF_CMD_TUPLE_LT (Commands::RenameOrderList,        CmdRenameOrderList,                 {}, CommandType::RouteManagement, CmdDataT<OrderListID, std::string>)
+DEF_CMD_TUPLE_NT (Commands::DeleteOrderList,        CmdDeleteOrderList,                 {}, CommandType::RouteManagement, CmdDataT<OrderListID>)
+DEF_CMD_TUPLE_NT (Commands::SetOrderListPublic,     CmdSetOrderListPublic,              {}, CommandType::RouteManagement, CmdDataT<OrderListID, bool>)
 
 struct BulkOrderCmdData final : public CommandPayloadSerialisable<BulkOrderCmdData> {
 	static constexpr bool HasStringSanitiser = false;

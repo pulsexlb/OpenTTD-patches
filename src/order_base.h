@@ -1553,12 +1553,14 @@ public:
 
 	/**
 	 * Is this a player-created order list (not owned by a specific vehicle)?
-	 * A player-created order list has a name and a company, and is not subject to
+	 * A player-created order list has a company set, and is not subject to
 	 * the normal order list lifecycle (it is not freed when the last vehicle
-	 * using it is deleted).
+	 * using it is deleted). The name may still be empty; it will be shown
+	 * as the default name then.
 	 * @return whether this order list is player-created
 	 */
-	inline bool IsPlayerCreated() const { return this->company != INVALID_OWNER && !this->name.empty(); }
+	inline bool IsPlayerCreated() const { return this->company != INVALID_OWNER; }
+
 
 	inline const std::string &GetName() const { return this->name; }
 	inline void SetName(const std::string &name) { this->name = name; }

@@ -4362,7 +4362,7 @@ CommandCost TraceRestrictFollowUpCmdData::ExecuteWithValue(uint16_t value, DoCom
 			using Payload = CmdPayload<Commands::ModifyOrder>;
 			if (const Payload *src = this->cmd.payload->AsType<Payload>(); src != nullptr) {
 				Payload payload = *src;
-				uint16_t &cmd_value = payload.GetValue<3>(); // Make sure that it is the expected type
+				uint16_t &cmd_value = payload.GetValue<4>(); // Make sure that it is the expected type
 				cmd_value = value;
 				return DoCommand<Commands::ModifyOrder>(this->cmd.tile, payload, flags);
 			}

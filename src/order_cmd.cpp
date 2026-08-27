@@ -596,6 +596,19 @@ void OrderList::RecalculateTimetableDuration()
  */
 void OrderList::FreeChain(bool keep_orderlist)
 {
+	if (this->IsPlayerCreated()) {
+		/* Player-created order lists are managed via dedicated commands. They must not be freed by the
+		 * normal lifecycle, and they also do not unregister destinations as none were ever registered. */
+		for (Order *o : this->Orders()) {
+			if (!CleaningPool()) o->InvalidateGuiOnRemove();
+		}
+		this->orders.clear();
+		this->num_manual_orders = 0;
+		this->timetable_duration = 0;
+		this->total_duration = 0;
+		return;
+	}
+
 	VehicleType type = this->GetFirstSharedVehicle()->type;
 	Owner owner = this->GetFirstSharedVehicle()->owner;
 	for (Order *o : this->Orders()) {
@@ -839,7 +852,10 @@ void OrderList::InsertOrderAt(Order &&ins_order, VehicleOrderID index)
 		this->timetable_duration += new_order->GetTimetabledWait() + new_order->GetTimetabledTravel();
 		this->total_duration += new_order->GetWaitTime() + new_order->GetTravelTime();
 	}
-	RegisterOrderDestination(new_order, this->GetFirstSharedVehicle()->type, this->GetFirstSharedVehicle()->owner);
+	/* Player-created order lists have no executing vehicle and never register their destinations. */
+	if (!this->IsPlayerCreated()) {
+		RegisterOrderDestination(new_order, this->GetFirstSharedVehicle()->type, this->GetFirstSharedVehicle()->owner);
+	}
 
 	/* We can visit oil rigs and buoys that are not our own. They will be shown in
 	 * the list of stations. So, we need to invalidate that window if needed. */
@@ -866,7 +882,9 @@ void OrderList::DeleteOrderAt(VehicleOrderID index)
 		this->timetable_duration -= (to_remove->GetTimetabledWait() + to_remove->GetTimetabledTravel());
 		this->total_duration -= (to_remove->GetWaitTime() + to_remove->GetTravelTime());
 	}
-	UnregisterOrderDestination(to_remove, this->GetFirstSharedVehicle()->type, this->GetFirstSharedVehicle()->owner);
+	if (!this->IsPlayerCreated()) {
+		UnregisterOrderDestination(to_remove, this->GetFirstSharedVehicle()->type, this->GetFirstSharedVehicle()->owner);
+	}
 
 	to_remove->InvalidateGuiOnRemove();
 
@@ -1071,14 +1089,157 @@ uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int
 	return v->type == VehicleType::Aircraft ? DistanceSquare(prev_tile, cur_tile) : DistanceManhattan(prev_tile, cur_tile);
 }
 
+/* ------------------------------------------------------------------
+ *  Support for editing player-created (standalone) order lists.
+ * ------------------------------------------------------------------ */
+
+/** Resolve a command id to a standalone (player-created) order list, or nullptr when invalid. */
+static OrderList *GetStandaloneOrderList(uint32_t id)
+{
+	OrderList *ol = OrderList::GetIfValid(OrderListID(static_cast<uint16_t>(id)));
+	return (ol != nullptr && ol->IsPlayerCreated()) ? ol : nullptr;
+}
+
+static bool StandaloneHasUnbunchingOrder(const OrderList *ol)
+{
+	for (const Order *o : ol->Orders()) {
+		if (o->IsType(OT_GOTO_DEPOT) && o->GetDepotActionType() & ODATFB_UNBUNCH) return true;
+	}
+	return false;
+}
+
+static bool StandaloneHasConditionalOrder(const OrderList *ol)
+{
+	for (const Order *o : ol->Orders()) {
+		if (o->IsType(OT_CONDITIONAL)) return true;
+	}
+	return false;
+}
+
+static bool StandaloneHasFullLoadOrder(const OrderList *ol)
+{
+	for (const Order *o : ol->Orders()) {
+		if (o->IsType(OT_GOTO_STATION) && o->IsFullLoadOrder()) return true;
+		if (o->IsType(OT_GOTO_STATION) && o->GetLoadType() == OrderLoadType::CargoTypeLoad) {
+			for (CargoType cid{}; cid < NUM_CARGO; cid++) {
+				if (IsFullLoadOrderLoadType(o->GetCargoLoadType(cid))) return true;
+			}
+		}
+	}
+	return false;
+}
+
 /**
- * Add an order to the orderlist of a vehicle.
+ * Validate a new order's references for insertion into a player-created order list.
+ * There is no vehicle involved, so only destination existence is checked; unlike the
+ * vehicle path all order types and destinations are allowed regardless of type.
+ */
+static CommandCost ValidateStandaloneNewOrder(const Order &new_order)
+{
+	switch (new_order.GetType()) {
+		case OT_GOTO_STATION:
+			if (Station::GetIfValid(new_order.GetDestination().ToStationID()) == nullptr) return CMD_ERROR;
+			break;
+
+		case OT_GOTO_WAYPOINT:
+			if (Waypoint::GetIfValid(new_order.GetDestination().ToStationID()) == nullptr) return CMD_ERROR;
+			break;
+
+		case OT_GOTO_DEPOT:
+			if (new_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) {
+				if (Station::GetIfValid(new_order.GetDestination().ToStationID()) == nullptr) return CMD_ERROR;
+			} else {
+				if (Depot::GetIfValid(new_order.GetDestination().ToDepotID()) == nullptr) return CMD_ERROR;
+			}
+			break;
+
+		default:
+			break;
+	}
+	return CommandCost();
+}
+
+/** Insert an order into a standalone order list and fix up conditional jump targets. */
+static void InsertOrderOnStandaloneList(OrderList *ol, Order &&new_o, VehicleOrderID sel_ord)
+{
+	ol->InsertOrderAt(std::move(new_o), sel_ord);
+
+	/* As we insert an order, the order to skip to will be 'wrong'. */
+	VehicleOrderID cur_order_id = 0;
+	if (sel_ord + 1 == ol->GetNumOrders() && sel_ord > 0) {
+		/* Avoid scanning whole order list for inserts at the end. */
+		cur_order_id = sel_ord - 1;
+	}
+	for (Order *order : ol->Orders(cur_order_id)) {
+		if (order->IsType(OT_CONDITIONAL)) {
+			VehicleOrderID order_id = order->GetConditionSkipToOrder();
+			if (order_id >= sel_ord) {
+				order->SetConditionSkipToOrder(order_id + 1);
+			}
+			if (order_id == cur_order_id) {
+				order->SetConditionSkipToOrder((VehicleOrderID)((order_id + 1) % ol->GetNumOrders()));
+			}
+		}
+		cur_order_id++;
+	}
+
+	InvalidateWindowClassesData(WindowClass::OrderList);
+	/* TODO(M2/M3): 调度计划编辑器与时刻表窗口也需要同步失效。 */
+}
+
+/** Delete an order from a standalone order list and fix up conditional jump targets. */
+static void DeleteOrderOnStandaloneList(OrderList *ol, VehicleOrderID sel_ord)
+{
+	ol->DeleteOrderAt(sel_ord);
+
+	/* As we delete an order, the order to skip to will be 'wrong'. */
+	VehicleOrderID cur_order_id = 0;
+	for (Order *order : ol->Orders()) {
+		if (order->IsType(OT_CONDITIONAL)) {
+			VehicleOrderID order_id = order->GetConditionSkipToOrder();
+			if (order_id >= sel_ord) order_id = std::max(order_id - 1, 0);
+			if (order_id == cur_order_id) order_id = (VehicleOrderID)((order_id + 1) % ol->GetNumOrders());
+			order->SetConditionSkipToOrder(order_id);
+		}
+		cur_order_id++;
+	}
+
+	InvalidateWindowClassesData(WindowClass::OrderList);
+	/* TODO(M2/M3): 同上。 */
+}
+
+/**
+ * Add an order to the orders of a vehicle or a player-created order list.
  * @return the cost of this operation or an error
  */
 CommandCost CmdInsertOrder(DoCommandFlags flags, const InsertOrderCmdData &data)
 {
 	Order new_order{};
 	MemberPtrsTie(new_order, Order::GetCmdRefFields()) = data.new_order;
+
+	if (data.is_list) {
+		OrderList *ol = GetStandaloneOrderList(data.list.base());
+		if (ol == nullptr) return CMD_ERROR;
+
+		CommandCost ret = CheckOwnership(ol->GetCompany());
+		if (ret.Failed()) return ret;
+
+		ret = ValidateStandaloneNewOrder(new_order);
+		if (ret.Failed()) return ret;
+
+		VehicleOrderID sel_ord = data.sel_ord;
+		if (sel_ord == INVALID_VEH_ORDER_ID) sel_ord = static_cast<VehicleOrderID>(ol->GetNumOrders()); // Append to end of list
+		if (sel_ord > ol->GetNumOrders()) return CMD_ERROR;
+		if (ol->GetNumOrders() >= MAX_VEH_ORDER_ID) return CommandCost(STR_ERROR_TOO_MANY_ORDERS);
+
+		if (flags.Test(DoCommandFlag::Execute)) {
+			InsertOrderOnStandaloneList(ol, Order(new_order), sel_ord);
+		}
+
+		CommandCost cost;
+		cost.SetResultData(sel_ord);
+		return cost;
+	}
 
 	return CmdInsertOrderIntl(flags, Vehicle::GetIfValid(data.veh), data.sel_ord, new_order, {});
 }
@@ -1661,15 +1822,39 @@ static CargoType GetFirstValidCargo()
 }
 
 /**
- * Delete an order from the orderlist of a vehicle.
+ * Delete an order from the orders of a vehicle or a player-created order list.
  * @param flags operation to perform
- * @param veh_id the ID of the vehicle
+ * @param is_list whether #id refers to an order list instead of a vehicle
+ * @param id ID of the vehicle or order list
  * @param sel_ord the order to delete
  * @return the cost of this operation or an error
  */
-CommandCost CmdDeleteOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderID sel_ord)
+CommandCost CmdDeleteOrder(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, VehicleOrderID sel_ord)
 {
-	Vehicle *v = Vehicle::GetIfValid(veh_id);
+	const bool is_list = target_type == OrderTargetType::OrderList;
+	if (is_list) {
+		OrderList *ol = GetStandaloneOrderList(id);
+		if (ol == nullptr) return CMD_ERROR;
+
+		CommandCost ret = CheckOwnership(ol->GetCompany());
+		if (ret.Failed()) return ret;
+
+		if (sel_ord >= ol->GetNumOrders()) return CMD_ERROR;
+		if (ol->GetOrderAt(sel_ord) == nullptr) return CMD_ERROR;
+
+		/* If the next order is a decouple order, it must be deleted together with this one. */
+		Order *next_order = ol->GetOrderAt(sel_ord + 1);
+		if (next_order != nullptr && next_order->IsType(OT_DECOUPLE)) {
+			CmdDeleteOrder(flags, OrderTargetType::OrderList, id, sel_ord + 1);
+		}
+
+		if (flags.Test(DoCommandFlag::Execute)) {
+			DeleteOrderOnStandaloneList(ol, sel_ord);
+		}
+		return CommandCost();
+	}
+
+	Vehicle *v = Vehicle::GetIfValid(VehicleID(static_cast<uint16_t>(id)));
 
 	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
 
@@ -1684,7 +1869,7 @@ CommandCost CmdDeleteOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 	/* If the next order is a decouple order, it must be deleted together with this one. */
 	Order *next_order = v->GetOrder(sel_ord + 1);
 	if (next_order != nullptr && next_order->IsType(OT_DECOUPLE)) {
-		CmdDeleteOrder(flags, v->index, sel_ord + 1);
+		CmdDeleteOrder(flags, OrderTargetType::Vehicle, v->index.base(), sel_ord + 1);
 	}
 
 	if (flags.Test(DoCommandFlag::Execute)) {
@@ -1837,7 +2022,9 @@ CommandCost CmdSkipToOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 /**
  * Move an order inside the orderlist
  * @param flags operation to perform
- * @param veh the ID of the vehicle
+ * @param flags operation to perform
+ * @param is_list whether #id refers to an order list instead of a vehicle
+ * @param id ID of the vehicle or order list
  * @param moving_order the order to move
  * @param target_order the target order
  * @param count the number of orders to move
@@ -1845,15 +2032,27 @@ CommandCost CmdSkipToOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
  * @note The target order will move one place down in the orderlist
  *  if you move the order upwards else it'll move it one place down
  */
-CommandCost CmdMoveOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID moving_order, VehicleOrderID target_order, uint16_t count)
+CommandCost CmdMoveOrder(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, VehicleOrderID moving_order, VehicleOrderID target_order, uint16_t count)
 {
-	Vehicle *v = Vehicle::GetIfValid(veh);
-	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
+	const bool is_list = target_type == OrderTargetType::OrderList;
+	OrderList *ol = nullptr;
+	Vehicle *v = nullptr;
+	if (is_list) {
+		ol = GetStandaloneOrderList(id);
+		if (ol == nullptr) return CMD_ERROR;
+	} else {
+		v = Vehicle::GetIfValid(VehicleID(static_cast<uint16_t>(id)));
+		if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
+	}
 
-	CommandCost ret = CheckOwnership(v->owner);
+	auto get_order = [&](VehicleOrderID pos) -> const Order * {
+		return v != nullptr ? v->GetOrder(pos) : ol->GetOrderAt(pos);
+	};
+
+	CommandCost ret = CheckOwnership(v != nullptr ? v->owner : ol->GetCompany());
 	if (ret.Failed()) return ret;
 
-	const VehicleOrderID order_count = v->GetNumOrders();
+	const VehicleOrderID order_count = v != nullptr ? v->GetNumOrders() : ol->GetNumOrders();
 
 	/* Don't make senseless movements */
 	if (count == 0 || order_count <= 1 || moving_order >= order_count || target_order >= order_count || moving_order == target_order) return CMD_ERROR;
@@ -1865,15 +2064,30 @@ CommandCost CmdMoveOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID mov
 	}
 
 	/* Decouple orders are bound to the order before them, so they cannot be moved. */
-	const Order *moving_one = v->GetOrder(moving_order);
-	if (moving_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
-	const Order *after_moving_one = v->GetOrder(moving_order + 1);
+	const Order *moving_one = get_order(moving_order);
+	if (moving_one == nullptr || moving_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
+	const Order *after_moving_one = get_order(moving_order + 1);
 	if (after_moving_one != nullptr && after_moving_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
-	const Order *target_one = v->GetOrder(moving_order > target_order ? target_order : target_order + 1);
+	const Order *target_one = get_order(moving_order > target_order ? target_order : target_order + 1);
 	if (target_one != nullptr && target_one->IsType(OT_DECOUPLE)) return CMD_ERROR;
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		v->orders->MoveOrders(moving_order, target_order, count);
+		(v != nullptr ? v->orders : ol)->MoveOrders(moving_order, target_order, count);
+
+		if (is_list) {
+			/* As we move an order, the order to skip to will be 'wrong'. */
+			for (Order *order : ol->Orders()) {
+				if (order->IsType(OT_CONDITIONAL)) {
+					VehicleOrderID idx = order->GetConditionSkipToOrder();
+					if (idx >= order_count) continue;
+					if (idx >= moving_order && idx < moving_order + count) order->SetConditionSkipToOrder(target_order + (idx - moving_order));
+					else if (idx > moving_order && idx <= target_order) order->SetConditionSkipToOrder(idx - count);
+					else if (idx < moving_order && idx >= target_order) order->SetConditionSkipToOrder(idx + count);
+				}
+			}
+			InvalidateWindowClassesData(WindowClass::OrderList);
+			return CommandCost();
+		}
 
 		/* Update shared list */
 		Vehicle *u = v->FirstShared();
@@ -2092,23 +2306,59 @@ CommandCost CmdReverseOrderList(DoCommandFlags flags, VehicleID veh, ReverseOrde
  * @param text for MOF_LABEL_TEXT
  * @return the cost of this operation or an error
  */
-CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID sel_ord, ModifyOrderFlags mof, uint16_t data, CargoType cargo_id, const std::string &text)
+CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, VehicleOrderID sel_ord, ModifyOrderFlags mof, uint16_t data, CargoType cargo_id, const std::string &text)
 {
+	const bool is_list = target_type == OrderTargetType::OrderList;
+
 	if (mof >= MOF_END) return CMD_ERROR;
 
 	if (mof != MOF_LABEL_TEXT && !text.empty()) return CMD_ERROR;
 
-	Vehicle *v = Vehicle::GetIfValid(veh);
-	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
+	OrderList *ol = nullptr;
+	Vehicle *v = nullptr;
+	if (is_list) {
+		ol = OrderList::GetIfValid(OrderListID(static_cast<uint16_t>(id)));
+		if (ol == nullptr || !ol->IsPlayerCreated()) return CMD_ERROR;
+	} else {
+		v = Vehicle::GetIfValid(VehicleID(static_cast<uint16_t>(id)));
+		if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
+	}
 
-	CommandCost ret = CheckOwnership(v->owner);
+	Owner target_owner = is_list ? ol->GetCompany() : v->owner;
+
+	CommandCost ret = CheckOwnership(target_owner);
 	if (ret.Failed()) return ret;
 
 	/* Is it a valid order? */
-	if (sel_ord >= v->GetNumOrders()) return CMD_ERROR;
+	if (!is_list) ol = v->orders;
+	if (ol == nullptr || sel_ord >= ol->GetNumOrders()) return CMD_ERROR;
 
-	Order *order = v->GetOrder(sel_ord);
+	Order *order = ol->GetOrderAt(sel_ord);
 	assert(order != nullptr);
+
+	/* Dispatch nested order commands to the same target mode as this command. */
+	auto delete_order_cmd = [&](VehicleOrderID pos) {
+		if (is_list) {
+			CmdDeleteOrder(flags, OrderTargetType::OrderList, id, pos);
+		} else {
+			Command<Commands::DeleteOrder>::Do(flags, OrderTargetType::Vehicle, v->index.base(), pos);
+		}
+	};
+	auto insert_order_cmd = [&](VehicleOrderID pos, const Order &new_o) {
+		if (is_list) {
+			CmdInsertOrder(flags, InsertOrderCmdData(ol->index, pos, new_o));
+		} else {
+			CmdInsertOrder(flags, InsertOrderCmdData(v->index, pos, new_o));
+		}
+	};
+	auto change_timetable_cmd = [&](VehicleOrderID pos, ModifyTimetableFlags mtf2, uint32_t data2, ModifyTimetableCtrlFlags ctrl2) {
+		if (is_list) {
+			CmdChangeTimetable(flags, OrderTargetType::OrderList, id, pos, mtf2, data2, ctrl2);
+		} else {
+			Command<Commands::ChangeTimetable>::Do(flags, OrderTargetType::Vehicle, v->index.base(), pos, mtf2, data2, ctrl2);
+		}
+	};
+
 	if (mof == MOF_COLOUR) {
 		if (order->GetType() == OT_IMPLICIT) return CMD_ERROR;
 	} else {
@@ -2168,7 +2418,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 		default: NOT_REACHED();
 
 		case MOF_NON_STOP:
-			if (!v->IsGroundVehicle()) return CMD_ERROR;
+			if (!is_list && !v->IsGroundVehicle()) return CMD_ERROR;
 			if (data >= ONSF_END) return CMD_ERROR;
 			if ((data & ONSF_NO_STOP_AT_DESTINATION_STATION) && order->IsType(OT_GOTO_DEPOT)) return CMD_ERROR;
 			if (data == order->GetNonStopType()) return CommandCost();
@@ -2176,7 +2426,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 			break;
 
 		case MOF_STOP_LOCATION:
-			if (v->type != VehicleType::Train) return CMD_ERROR;
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
 			if (data >= to_underlying(OrderStopLocation::End)) return CMD_ERROR;
 			break;
 
@@ -2220,23 +2470,23 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 
 			/* Check if we are allowed to add unbunching. We are always allowed to remove it. */
 			if (data == DA_UNBUNCH) {
-				/* Only one unbunching order is allowed in a vehicle's orders. If this order already has an unbunching action, no error is needed. */
-				if (v->HasUnbunchingOrder() && !(order->GetDepotActionType() & ODATFB_UNBUNCH)) return CommandCost(STR_ERROR_UNBUNCHING_ONLY_ONE_ALLOWED);
+				/* Only one unbunching order is allowed in the orders. If this order already has an unbunching action, no error is needed. */
+				if ((is_list ? StandaloneHasUnbunchingOrder(ol) : v->HasUnbunchingOrder()) && !(order->GetDepotActionType() & ODATFB_UNBUNCH)) return CommandCost(STR_ERROR_UNBUNCHING_ONLY_ONE_ALLOWED);
 
-				if (v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch)) return CommandCost(STR_ERROR_UNBUNCHING_NO_UNBUNCHING_SCHED_DISPATCH);
-				if (v->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) return CommandCost(STR_ERROR_UNBUNCHING_NO_UNBUNCHING_AUTO_SEPARATION);
+				if (!is_list && v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch)) return CommandCost(STR_ERROR_UNBUNCHING_NO_UNBUNCHING_SCHED_DISPATCH);
+				if (!is_list && v->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) return CommandCost(STR_ERROR_UNBUNCHING_NO_UNBUNCHING_AUTO_SEPARATION);
 
-				/* We don't allow unbunching if the vehicle has a conditional order. */
-				if (v->HasConditionalOrder()) return CommandCost(STR_ERROR_UNBUNCHING_NO_UNBUNCHING_CONDITIONAL);
-				/* We don't allow unbunching if the vehicle has a full load order. */
-				if (v->HasFullLoadOrder()) return CommandCost(STR_ERROR_UNBUNCHING_NO_UNBUNCHING_FULL_LOAD);
+				/* We don't allow unbunching if there is a conditional order. */
+				if (is_list ? StandaloneHasConditionalOrder(ol) : v->HasConditionalOrder()) return CommandCost(STR_ERROR_UNBUNCHING_NO_UNBUNCHING_CONDITIONAL);
+				/* We don't allow unbunching if there is a full load order. */
+				if (is_list ? StandaloneHasFullLoadOrder(ol) : v->HasFullLoadOrder()) return CommandCost(STR_ERROR_UNBUNCHING_NO_UNBUNCHING_FULL_LOAD);
 			}
 			break;
 
 		case MOF_COND_VARIABLE: {
 			OrderConditionVariable cond_variable = static_cast<OrderConditionVariable>(data);
 			if (cond_variable >= OrderConditionVariable::End) return CMD_ERROR;
-			if ((cond_variable == OrderConditionVariable::FreePlatforms || cond_variable == OrderConditionVariable::DrivingBackwards || cond_variable == OrderConditionVariable::DecouplePart) && v->type != VehicleType::Train) return CMD_ERROR;
+			if ((cond_variable == OrderConditionVariable::FreePlatforms || cond_variable == OrderConditionVariable::DrivingBackwards || cond_variable == OrderConditionVariable::DecouplePart) && !is_list && v->type != VehicleType::Train) return CMD_ERROR;
 			break;
 		}
 
@@ -2267,14 +2517,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				case OrderConditionVariable::VehicleInSlot: {
 					if (occ != OrderConditionComparator::IsTrue && occ != OrderConditionComparator::IsFalse && occ != OrderConditionComparator::Equal && occ != OrderConditionComparator::NotEqual) return CMD_ERROR;
 					const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(order->GetXData());
-					if (slot != nullptr && slot->vehicle_type != v->type) return CMD_ERROR;
+					if (slot != nullptr && (!is_list && slot->vehicle_type != v->type)) return CMD_ERROR;
 					break;
 				}
 
 				case OrderConditionVariable::VehicleInSlotGroup: {
 					if (occ != OrderConditionComparator::IsTrue && occ != OrderConditionComparator::IsFalse) return CMD_ERROR;
 					const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(order->GetXData());
-					if (sg != nullptr && sg->vehicle_type != v->type) return CMD_ERROR;
+					if (sg != nullptr && (!is_list && sg->vehicle_type != v->type)) return CMD_ERROR;
 					break;
 				}
 
@@ -2312,7 +2562,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 					if (data != INVALID_TRACE_RESTRICT_SLOT_ID) {
 						const TraceRestrictSlot *trslot = TraceRestrictSlot::GetIfValid(data);
 						if (trslot == nullptr) return CMD_ERROR;
-						if (!trslot->IsUsableByOwner(v->owner)) return CMD_ERROR;
+						if (!trslot->IsUsableByOwner(target_owner)) return CMD_ERROR;
 					}
 					break;
 				}
@@ -2321,16 +2571,16 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 					if (data != INVALID_TRACE_RESTRICT_SLOT_ID) {
 						const TraceRestrictSlot *trslot = TraceRestrictSlot::GetIfValid(data);
 						if (trslot == nullptr) return CMD_ERROR;
-						if (trslot->vehicle_type != v->type) return CMD_ERROR;
-						if (!trslot->IsUsableByOwner(v->owner)) return CMD_ERROR;
+						if ((!is_list && trslot->vehicle_type != v->type)) return CMD_ERROR;
+						if (!trslot->IsUsableByOwner(target_owner)) return CMD_ERROR;
 					}
 					break;
 
 				case OrderConditionVariable::VehicleInSlotGroup:
 					if (data != INVALID_TRACE_RESTRICT_SLOT_GROUP) {
 						const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(data);
-						if (sg == nullptr || sg->vehicle_type != v->type) return CMD_ERROR;
-						if (!sg->CompanyCanReferenceSlotGroup(v->owner)) return CMD_ERROR;
+						if (sg == nullptr || (!is_list && sg->vehicle_type != v->type)) return CMD_ERROR;
+						if (!sg->CompanyCanReferenceSlotGroup(target_owner)) return CMD_ERROR;
 					}
 					break;
 
@@ -2370,7 +2620,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 					if (data != INVALID_TRACE_RESTRICT_COUNTER_ID) {
 						const TraceRestrictCounter *ctr = TraceRestrictCounter::GetIfValid(data);
 						if (ctr == nullptr) return CMD_ERROR;
-						if (!ctr->IsUsableByOwner(v->owner)) return CMD_ERROR;
+						if (!ctr->IsUsableByOwner(target_owner)) return CMD_ERROR;
 					}
 					break;
 
@@ -2383,7 +2633,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 					break;
 
 				case OrderConditionVariable::DispatchSlot:
-					if (data != UINT16_MAX && data >= v->orders->GetScheduledDispatchScheduleCount()) {
+					if (data != UINT16_MAX && data >= ol->GetScheduledDispatchScheduleCount()) {
 						return CMD_ERROR;
 					}
 					break;
@@ -2437,12 +2687,12 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 
 		case MOF_SECOND_ORDERS:
 		case MOF_FIRST_ORDERS:
-			if (v->type != VehicleType::Train) return CMD_ERROR;
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
 			if (data >= ODOF_END) return CMD_ERROR;
 			break;
 
 		case MOF_DECOUPLE:
-			if (v->type != VehicleType::Train) return CMD_ERROR;
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
 			if (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) return CMD_ERROR;
 			break;
 
@@ -2465,8 +2715,8 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 		case MOF_COUPLE_SLOT:
 			if (data != INVALID_TRACE_RESTRICT_SLOT_ID) {
 				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(data);
-				if (slot == nullptr || slot->vehicle_type != v->type) return CMD_ERROR;
-				if (!slot->IsUsableByOwner(v->owner)) return CMD_ERROR;
+				if (slot == nullptr || (!is_list && slot->vehicle_type != v->type)) return CMD_ERROR;
+				if (!slot->IsUsableByOwner(target_owner)) return CMD_ERROR;
 			}
 			break;
 
@@ -2485,21 +2735,21 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 		case MOF_SLOT:
 			if (data != INVALID_TRACE_RESTRICT_SLOT_ID) {
 				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(data);
-				if (slot == nullptr || slot->vehicle_type != v->type) return CMD_ERROR;
-				if (!slot->IsUsableByOwner(v->owner)) return CMD_ERROR;
+				if (slot == nullptr || (!is_list && slot->vehicle_type != v->type)) return CMD_ERROR;
+				if (!slot->IsUsableByOwner(target_owner)) return CMD_ERROR;
 			}
 			break;
 
 		case MOF_SLOT_GROUP:
 			if (data != INVALID_TRACE_RESTRICT_SLOT_GROUP) {
 				const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(data);
-				if (sg == nullptr || sg->vehicle_type != v->type) return CMD_ERROR;
-				if (!sg->CompanyCanReferenceSlotGroup(v->owner)) return CMD_ERROR;
+				if (sg == nullptr || (!is_list && sg->vehicle_type != v->type)) return CMD_ERROR;
+				if (!sg->CompanyCanReferenceSlotGroup(target_owner)) return CMD_ERROR;
 			}
 			break;
 
 		case MOF_RV_TRAVEL_DIR:
-			if (v->type != VehicleType::Road) return CMD_ERROR;
+			if (!is_list && v->type != VehicleType::Road) return CMD_ERROR;
 			if (data >= to_underlying(DiagDirection::End) && data != to_underlying(DiagDirection::Invalid)) return CMD_ERROR;
 			break;
 
@@ -2507,7 +2757,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 			if (data != INVALID_TRACE_RESTRICT_COUNTER_ID) {
 				const TraceRestrictCounter *ctr = TraceRestrictCounter::GetIfValid(data);
 				if (ctr == nullptr) return CMD_ERROR;
-				if (!ctr->IsUsableByOwner(v->owner)) return CMD_ERROR;
+				if (!ctr->IsUsableByOwner(target_owner)) return CMD_ERROR;
 			}
 			break;
 
@@ -2545,10 +2795,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 					order->SetLoadType(OrderLoadType::LoadIfPossible);
 					order->SetUnloadType(OrderUnloadType::UnloadIfPossible);
 					if (order->IsWaitTimetabled() || order->GetWaitTime() > 0) {
-						Command<Commands::ChangeTimetable>::Do(flags, v->index, sel_ord, MTF_WAIT_TIME, 0, ModifyTimetableCtrlFlag::ClearField);
+						change_timetable_cmd(sel_ord, MTF_WAIT_TIME, 0, ModifyTimetableCtrlFlag::ClearField);
 					}
 					if (order->IsScheduledDispatchOrder(false)) {
-						Command<Commands::ChangeTimetable>::Do(flags, v->index, sel_ord, MTF_ASSIGN_SCHEDULE, -1, {});
+						change_timetable_cmd(sel_ord, MTF_ASSIGN_SCHEDULE, -1, {});
 					}
 				}
 				break;
@@ -2842,14 +3092,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 				OrderDecoupleFlags decouple_flags = order->GetDecouple();
 				order->SetDecouple(data);
 				if (decouple_flags == ODF_DECOUPLE && order->GetDecouple() == ODF_NOTHING) {
-					Command<Commands::DeleteOrder>::Do(flags, v->index, sel_ord + 1);
+					delete_order_cmd(sel_ord + 1);
 				}
 				if (decouple_flags == ODF_NOTHING && order->GetDecouple() == ODF_DECOUPLE) {
 					Order new_order;
 					new_order.MakeDecouple();
 					new_order.SetDecoupleFirstOrdersType(ODOF_KEEP_ORDERS_NO_LOAD);
 					new_order.SetDecoupleSecondOrdersType(ODOF_LOAD_AND_WAIT);
-					CmdInsertOrder(flags, InsertOrderCmdData(v->index, sel_ord + 1, new_order));
+					insert_order_cmd(sel_ord + 1, new_order);
 				}
 				break;
 			}
@@ -2919,8 +3169,12 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 			default: NOT_REACHED();
 		}
 
-		/* Update the windows and full load flags, also for vehicles that share the same order list */
-		Vehicle *u = v->FirstShared();
+		if (is_list) {
+			InvalidateWindowClassesData(WindowClass::OrderList);
+			/* TODO(M2/M3): 调度计划编辑器与时刻表窗口也需要同步失效。 */
+		} else {
+			/* Update the windows and full load flags, also for vehicles that share the same order list */
+			Vehicle *u = v->FirstShared();
 		DeleteOrderWarnings(u);
 		for (; u != nullptr; u = u->NextShared()) {
 			/* Toggle u->current_order "Full load" flag if it changed.
@@ -2987,6 +3241,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, VehicleID veh, VehicleOrderID s
 			u->ResetDepotUnbunching();
 
 			InvalidateVehicleOrder(u, VIWD_MODIFY_ORDERS);
+		}
 		}
 	}
 
@@ -3059,6 +3314,111 @@ static bool ShouldResetOrderIndicesOnOrderCopy(const Vehicle *src, const Vehicle
 		if (!src->GetOrder(i)->Equals(*dst->GetOrder(i))) return true;
 	}
 	return false;
+}
+
+/**
+ * Create a new player-created order list.
+ * @param flags operation to perform
+ * @param name the name of the list; may be empty, in which case a default
+ *             name is displayed by the GUI (kept empty on purpose so every
+ *             client generates it in its own language).
+ * @return the cost of this operation; result data is the id of the created order list
+ */
+CommandCost CmdCreateOrderList(DoCommandFlags flags, const std::string &name)
+{
+	if (_current_company == OWNER_DEITY || _current_company == COMPANY_SPECTATOR) return CMD_ERROR;
+	if (name.size() >= MAX_LENGTH_ORDERLIST_NAME_CHARS * MAX_CHAR_LENGTH) return CMD_ERROR;
+
+	if (!OrderList::CanAllocateItem()) return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
+
+	OrderListID id = OrderListID::Invalid();
+	if (flags.Test(DoCommandFlag::Execute)) {
+		OrderList *ol = OrderList::Create();
+		ol->SetCompany(_current_company);
+		ol->SetName(name);
+		ol->SetPublic(false);
+		id = ol->index;
+	}
+
+	InvalidateWindowClassesData(WindowClass::OrderList);
+
+	CommandCost cost;
+	cost.SetResultData(id);
+	return cost;
+}
+
+/**
+ * Rename a player-created order list.
+ * @param flags operation to perform
+ * @param list_id the id of the order list to rename
+ * @param name the new name of the list; empty restores the default display name
+ * @return the cost of this operation or an error
+ */
+CommandCost CmdRenameOrderList(DoCommandFlags flags, OrderListID list_id, const std::string &name)
+{
+	OrderList *ol = GetStandaloneOrderList(list_id.base());
+	if (ol == nullptr) return CMD_ERROR;
+	if (!name.empty() && Utf8StringLength(name) >= MAX_LENGTH_ORDERLIST_NAME_CHARS) return CMD_ERROR;
+
+	CommandCost ret = CheckOwnership(ol->GetCompany());
+	if (ret.Failed()) return ret;
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		ol->SetName(name);
+		InvalidateWindowClassesData(WindowClass::OrderList);
+		/* TODO(M2/M3): 同上，同步编辑器/时刻表窗口标题。 */
+	}
+	return CommandCost();
+}
+
+/**
+ * Delete a player-created order list.
+ * @param flags operation to perform
+ * @param list_id the id of the order list to delete
+ * @return the cost of this operation or an error
+ */
+CommandCost CmdDeleteOrderList(DoCommandFlags flags, OrderListID list_id)
+{
+	OrderList *ol = GetStandaloneOrderList(list_id.base());
+	if (ol == nullptr) return CMD_ERROR;
+	/* Refuse while vehicles still execute this list. Not reachable today since lists
+	 * cannot be assigned yet, but kept as guard for future assignment support. */
+	if (ol->GetNumVehicles() != 0) return CMD_ERROR;
+
+	CommandCost ret = CheckOwnership(ol->GetCompany());
+	if (ret.Failed()) return ret;
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		/* Destinations were never registered for standalone lists; FreeChain's guard
+		 * handles clearing without unregistering. We never free via FreeChain(false). */
+		ol->FreeChain(true);
+		delete ol;
+		InvalidateWindowClassesData(WindowClass::OrderList);
+		/* TODO(M2/M3): 关闭打开中的调度计划编辑器与时刻表窗口。 */
+	}
+	return CommandCost();
+}
+
+/**
+ * Change the visibility of a player-created order list.
+ * @param flags operation to perform
+ * @param list_id the id of the order list
+ * @param is_public whether the list becomes public
+ * @return the cost of this operation or an error
+ */
+CommandCost CmdSetOrderListPublic(DoCommandFlags flags, OrderListID list_id, bool is_public)
+{
+	OrderList *ol = GetStandaloneOrderList(list_id.base());
+	if (ol == nullptr) return CMD_ERROR;
+
+	CommandCost ret = CheckOwnership(ol->GetCompany());
+	if (ret.Failed()) return ret;
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		ol->SetPublic(is_public);
+		InvalidateWindowClassesData(WindowClass::OrderList);
+	}
+	return CommandCost();
 }
 
 /**
@@ -3365,7 +3725,7 @@ CommandCost CmdInsertOrdersFromVehicle(DoCommandFlags flags, VehicleID veh_dst, 
 	}
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		CmdMoveOrder(flags, veh_dst, new_orders_start, insert_pos, dst->GetNumOrders() - new_orders_start);
+		CmdMoveOrder(flags, OrderTargetType::Vehicle, veh_dst.base(), new_orders_start, insert_pos, dst->GetNumOrders() - new_orders_start);
 
 		for (Vehicle *u = dst->FirstShared(); u != nullptr; u = u->NextShared()) {
 			u->ResetDepotUnbunching();
@@ -4667,7 +5027,7 @@ CommandCost CmdMassChangeOrder(DoCommandFlags flags, DestinationID from_dest, Ve
 						Order new_order(*order);
 						new_order.SetDestination(to_dest);
 						if (CmdInsertOrderIntl(flags, v, index + 1, new_order, {CmdInsertOrderIntlFlag::AllowLoadByCargoType, CmdInsertOrderIntlFlag::AllowDuplicateUnbunch}).Succeeded()) {
-							Command<Commands::DeleteOrder>::Do(flags, v->index, index);
+							Command<Commands::DeleteOrder>::Do(flags, OrderTargetType::Vehicle, v->index.base(), index);
 						}
 					}
 					index++;
@@ -4715,14 +5075,24 @@ const char *GetOrderTypeName(OrderType order_type)
 
 void InsertOrderCmdData::SerialisePayload(BufferSerialisationRef buffer) const
 {
-	buffer.Send_generic(this->veh);
+	buffer.Send_bool(this->is_list);
+	if (this->is_list) {
+		buffer.Send_generic(this->list);
+	} else {
+		buffer.Send_generic(this->veh);
+	}
 	buffer.Send_generic(this->sel_ord);
 	buffer.Send_generic(this->new_order);
 }
 
 bool InsertOrderCmdData::Deserialise(DeserialisationBuffer &buffer, StringValidationSettings default_string_validation)
 {
-	buffer.Recv_generic(this->veh, default_string_validation);
+	this->is_list = buffer.Recv_bool();
+	if (this->is_list) {
+		buffer.Recv_generic(this->list, default_string_validation);
+	} else {
+		buffer.Recv_generic(this->veh, default_string_validation);
+	}
 	buffer.Recv_generic(this->sel_ord, default_string_validation);
 	buffer.Recv_generic(this->new_order, default_string_validation);
 
@@ -4731,7 +5101,11 @@ bool InsertOrderCmdData::Deserialise(DeserialisationBuffer &buffer, StringValida
 
 void InsertOrderCmdData::FormatDebugSummary(format_target &output) const
 {
-	output.format("{}, {}, order: ", this->veh, this->sel_ord);
+	if (this->is_list) {
+		output.format("order list {}, {}, order: ", this->list.base(), this->sel_ord);
+	} else {
+		output.format("vehicle {}, {}, order: ", this->veh.base(), this->sel_ord);
+	}
 
 	auto handler = [&]<size_t... Tindices>(std::index_sequence<Tindices...>) {
 		output.format(Order::CMD_TUPLE_FMT, std::get<Tindices>(this->new_order)...);
@@ -4848,7 +5222,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					buf.Recv_generic_seq({}, mof, data, cargo_id, text);
 					if (buf.error) return CMD_ERROR;
 					if (modify_pos != INVALID_VEH_ORDER_ID) {
-						last_result = CmdModifyOrder(flags, cmd_data.veh, modify_pos, mof, data, cargo_id, text);
+						last_result = CmdModifyOrder(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), modify_pos, mof, data, cargo_id, text);
 					}
 					break;
 				}
@@ -4870,7 +5244,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					buf.Recv_generic_seq({}, mtf, data, ctrl_flags);
 					if (buf.error) return CMD_ERROR;
 					if (modify_pos != INVALID_VEH_ORDER_ID) {
-						last_result = CmdChangeTimetable(flags, cmd_data.veh, modify_pos, mtf, data, ctrl_flags);
+						last_result = CmdChangeTimetable(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), modify_pos, mtf, data, ctrl_flags);
 					}
 					break;
 				}
@@ -4907,7 +5281,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					buf.Recv_generic_seq({}, from, to, count);
 					if (buf.error) return CMD_ERROR;
 					if (count == INVALID_VEH_ORDER_ID) count = v->GetNumOrders() - from;
-					last_result = CmdMoveOrder(flags, cmd_data.veh, from, to, count);
+					last_result = CmdMoveOrder(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), from, to, count);
 					insert_pos = INVALID_VEH_ORDER_ID;
 					modify_pos = INVALID_VEH_ORDER_ID;
 					break;
