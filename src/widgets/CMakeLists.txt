@@ -39,6 +39,7 @@ add_files(
     news_widget.h
     object_widget.h
     order_widget.h
+    orderlist_widget.h
     osk_widget.h
     picker_widget.h
     plans_widget.h

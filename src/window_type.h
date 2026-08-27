@@ -849,6 +849,12 @@ enum class WindowClass : uint16_t {
 	 */
 	Plans,
 
+	/**
+	 * Order list manager window; %Window numbers:
+	 *   - 0 = #OrderListWidgets
+	 */
+	OrderList,
+
 	TemplateReplacementGuiMain,
 	BuildVirtualTrain,
 	TemplateReplacementCreateTemplate,

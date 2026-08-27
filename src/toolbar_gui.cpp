@@ -60,6 +60,7 @@ AirType _last_built_airtype = AIRTYPE_BEGIN;
 #include "goal_base.h"
 #include "story_base.h"
 #include "plans_func.h"
+#include "orderlist_gui.h"
 #include "toolbar_gui.h"
 #include "framerate_type.h"
 #include "zoning.h"
@@ -473,6 +474,7 @@ enum class MapMenuEntries : uint8_t {
 	ShowTownDirectory, ///< Open window with list of towns.
 	ShowIndustryDirectory, ///< Open window with list of industries.
 	ShowPlans, ///< Open plan window.
+	ShowOrderListManager, ///< Open order list manager window.
 };
 
 static CallBackFunction ToolbarMapClick(Window *w)
@@ -483,6 +485,7 @@ static CallBackFunction ToolbarMapClick(Window *w)
 	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_LINGRAPH_LEGEND,         MapMenuEntries::ShowLinkGraph,         false));
 	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_SIGN_LIST,               MapMenuEntries::ShowSignList,          false));
 	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_PLAN_LIST,               MapMenuEntries::ShowPlans,             false));
+	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_ORDER_LIST_MANAGER,     MapMenuEntries::ShowOrderListManager,  false));
 	PopupMainToolbarMenu(w, WID_TN_SMALL_MAP, std::move(list), 0);
 	return CallBackFunction::None;
 }
@@ -516,6 +519,7 @@ static CallBackFunction MenuClickMap(int index)
 		case MapMenuEntries::ShowTownDirectory:     ShowTownDirectory(); break;
 		case MapMenuEntries::ShowIndustryDirectory: ShowIndustryDirectory(); break;
 		case MapMenuEntries::ShowPlans:             ShowPlansWindow(); break;
+		case MapMenuEntries::ShowOrderListManager:  ShowOrderListManager(); break;
 	}
 	return CallBackFunction::None;
 }
