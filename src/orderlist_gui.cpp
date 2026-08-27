@@ -9,7 +9,11 @@
 
 #include "stdafx.h"
 #include "order_base.h"
+#include "order_cmd.h"
+#include "orderlist_edit.h"
 #include "orderlist_gui.h"
+#include "command_func.h"
+#include <cstdio>
 #include "company_func.h"
 #include "company_base.h"
 #include "company_gui.h"
@@ -80,6 +84,7 @@ typedef GUIList<const OrderList *, const bool &> GUIOrderList;
 
 struct OrderListWindow : Window {
 	Scrollbar *vscroll = nullptr;                   ///< Vertical scrollbar of the list of order lists.
+	WidgetID query_widget = WID_OL_CAPTION;         ///< Currently open query widget (rename dialog).
 	std::vector<OrderListID> list{};                ///< The translation table linking panel indices to their related OrderListID.
 	int selected = INT_MAX;                         ///< What item is currently selected in the panel.
 	uint edit_btn_left = 0;                         ///< left offset of the edit buttons
@@ -105,11 +110,15 @@ private:
 
 	void BuildSortOrderList()
 	{
+		fprintf(stderr, "[OL][manager] build needRebuild=%d local=%u pool=%zu\n",
+				this->orders.NeedRebuild() ? 1 : 0, (unsigned)_local_company.base(), (size_t)OrderList::GetNumItems());
 		if (this->orders.NeedRebuild()) {
 			this->orders.clear();
 			this->orders.reserve(OrderList::GetNumItems());
 
 			for (const OrderList *ol : OrderList::Iterate()) {
+				fprintf(stderr, "[OL][manager]   list %u: player=%d vis=%d name='%s'\n",
+						ol->index.base(), ol->IsPlayerCreated(), ol->IsVisibleToCompany(_local_company), ol->GetName().c_str());
 				if (!ol->IsVisibleToCompany(_local_company)) continue;
 				if (this->string_filter.IsEmpty()) {
 					this->orders.push_back(ol);
@@ -186,19 +195,32 @@ public:
 	{
 		switch (widget) {
 			case WID_OL_NEW:
-				/* TODO: 引入命令后，创建一个使用默认名称、company为当前公司、默认私有的玩家调度计划。 */
+				fprintf(stderr, "[OL][ui] new-button clicked, posting CreateOrderList\n");
+				{
+					bool posted = Command<Commands::CreateOrderList>::Post(CommandCallback::CreateOrderList, TileIndex{}, {});
+					fprintf(stderr, "[OL][ui] post returned %d\n", posted ? 1 : 0);
+				}
 				break;
 
 			case WID_OL_RENAME:
-				/* TODO: 引入命令后，对选中的调度计划进行重命名。 */
+				if (const OrderList *ol = this->GetSelectedOrderList(); ol != nullptr) {
+					this->query_widget = WID_OL_RENAME;
+					ShowQueryString(GetString(STR_JUST_RAW_STRING, ol->GetName()),
+							STR_ORDER_LIST_QUERY_RENAME, MAX_LENGTH_ORDERLIST_NAME_CHARS,
+							this, CS_ALPHANUMERAL, QueryStringFlag::LengthIsInChars);
+				}
 				break;
 
 			case WID_OL_PUBLIC:
-				/* TODO: 引入命令后，切换选中调度计划的公开状态。 */
+				if (const OrderList *ol = this->GetSelectedOrderList(); ol != nullptr) {
+					Command<Commands::SetOrderListPublic>::Post(this->list[this->selected], !ol->IsPublic());
+				}
 				break;
 
 			case WID_OL_DELETE:
-				/* TODO: 引入命令后，删除选中的调度计划。 */
+				if (this->selected != INT_MAX) {
+					Command<Commands::DeleteOrderList>::Post(this->list[this->selected]);
+				}
 				break;
 
 			case WID_OL_LIST: {
@@ -207,7 +229,7 @@ public:
 					const int btn_left = this->edit_btn_left;
 					const int btn_right = btn_left + SETTING_BUTTON_WIDTH;
 					if (pt.x >= btn_left && pt.x < btn_right) {
-						/* TODO: 在订单编辑窗口中打开选中的调度计划。 */
+						if (new_selected >= 0 && static_cast<size_t>(new_selected) < this->list.size()) ShowOrderListEditor(this->list[new_selected]);
 					}
 				}
 				this->selected = new_selected;
@@ -241,6 +263,17 @@ public:
 				}
 				break;
 		}
+	}
+
+	void OnQueryTextFinished(std::optional<std::string> str) override
+	{
+		if (!str.has_value() || this->query_widget != WID_OL_RENAME) return;
+		this->query_widget = {};
+
+		if (this->selected == INT_MAX || this->selected >= static_cast<int>(this->list.size())) return;
+		OrderListID id = this->list[this->selected];
+
+		Command<Commands::RenameOrderList>::Post(STR_ERROR_CAN_T_RENAME_ORDER_LIST, TileIndex{}, id, *str);
 	}
 
 	const OrderList *GetSelectedOrderList() const
@@ -406,6 +439,27 @@ const std::initializer_list<GUIOrderList::SortFunction * const> OrderListWindow:
 	&OrderListNameSorter,
 	&OrderListOwnerSorter,
 };
+
+/**
+ * Callback after creating a new order list; opens the editor for it.
+ */
+void CcCreateOrderList(const CommandCost &result, [[maybe_unused]] const std::string &name)
+{
+	fprintf(stderr, "[OL][cc-create] fired ok=%d\n", result.Succeeded());
+	if (!result.Succeeded()) return;
+
+	auto id = result.GetResultData<OrderListID>();
+	if (!id.has_value()) { fprintf(stderr, "[OL][cc-create] no id in result\n"); return; }
+	fprintf(stderr, "[OL][cc-create] opening editor for list %u\n", id->base());
+	ShowOrderListEditor(*id);
+}
+
+/** Display string for a list name: falls back to a default name when unset. */
+static std::string GetOrderListDisplayName(const OrderList *ol)
+{
+	if (ol->GetName().empty()) return GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1);
+	return ol->GetName();
+}
 
 /** Show the window to manage player-created order lists. */
 void ShowOrderListManager()

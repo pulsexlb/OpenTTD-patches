@@ -16,6 +16,8 @@
 #include "tile_type.h"
 #include "widget_type.h"
 #include "string_type.h"
+#include "order_type.h"
+#include "order_base.h"
 #include "core/alloc_type.hpp"
 #include "3rdparty/cpp-btree/btree_map.h"
 
@@ -1219,8 +1221,15 @@ inline bool MayBeShown(const Window *w)
 
 struct GeneralVehicleWindow : public Window {
 	const Vehicle *vehicle;
+	const OrderList *order_list = nullptr; ///< Standalone player-created order list target; only valid when #vehicle is nullptr.
 
 	GeneralVehicleWindow(WindowDesc &desc, const Vehicle *v) : Window(desc), vehicle(v) {}
+
+	bool HasVehicle() const { return this->vehicle != nullptr; }
+	OrderListID GetTargetListID() const { return this->order_list->index; }
+
+	/** Orders of the current target, regardless of mode (defined after Vehicle is complete). */
+	const OrderList *GetTargetOrders() const;
 };
 
 #endif /* WINDOW_GUI_H */

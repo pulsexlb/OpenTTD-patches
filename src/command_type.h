@@ -823,6 +823,7 @@ enum class CommandCallback : uint8_t {
 	/* order_gui.cpp */
 	InsertOrder,
 	InsertOrdersFromVehicle,
+	CreateOrderList,
 
 	/* plans_gui.cpp */
 	AddPlan,

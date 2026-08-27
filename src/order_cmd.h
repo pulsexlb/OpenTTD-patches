@@ -63,6 +63,9 @@ DEF_CMD_TUPLE_LT (Commands::RenameOrderList,        CmdRenameOrderList,         
 DEF_CMD_TUPLE_NT (Commands::DeleteOrderList,        CmdDeleteOrderList,                 {}, CommandType::RouteManagement, CmdDataT<OrderListID>)
 DEF_CMD_TUPLE_NT (Commands::SetOrderListPublic,     CmdSetOrderListPublic,              {}, CommandType::RouteManagement, CmdDataT<OrderListID, bool>)
 
+/** Invalidate every GUI that displays a standalone player-created order list. */
+void InvalidateStandaloneOrderGUIs();
+
 struct BulkOrderCmdData final : public CommandPayloadSerialisable<BulkOrderCmdData> {
 	static constexpr bool HasStringSanitiser = false;
 

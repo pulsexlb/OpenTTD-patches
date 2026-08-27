@@ -855,6 +855,18 @@ enum class WindowClass : uint16_t {
 	 */
 	OrderList,
 
+	/**
+	 * Player-created order list editor (reuses #OrdersWindow); %Window numbers:
+	 *   - id = #OrderListWidgets-based editor window
+	 */
+	OrderListEditor,
+
+	/**
+	 * Player-created order list timetable (reuses #TimetableWindow); %Window numbers:
+	 *   - id = #VehicleTimetableWidgets-based window
+	 */
+	OrderListTimetable,
+
 	TemplateReplacementGuiMain,
 	BuildVirtualTrain,
 	TemplateReplacementCreateTemplate,

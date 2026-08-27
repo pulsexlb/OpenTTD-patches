@@ -222,7 +222,8 @@ static void ChangeTimetableOnOrderList(OrderList *ol, VehicleOrderID order_numbe
 	ol->UpdateTimetableDuration(timetable_delta);
 
 	InvalidateWindowClassesData(WindowClass::OrderList);
-	/* TODO(M2/M3): 调度计划编辑器与时刻表窗口也需要同步失效。 */
+	InvalidateWindowClassesData(WindowClass::OrderListEditor);
+	InvalidateWindowClassesData(WindowClass::OrderListTimetable);
 }
 
 /**

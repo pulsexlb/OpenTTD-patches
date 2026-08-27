@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include "debug.h"
+#include <cstdio>
 #include "command_func.h"
 #include "company_func.h"
 #include "news_func.h"
@@ -1025,13 +1026,13 @@ TileIndex Order::GetLocation(const Vehicle *v, bool airport) const
 		case OT_GOTO_WAYPOINT:
 		case OT_GOTO_STATION:
 		case OT_IMPLICIT:
-			if (airport && v->type == VehicleType::Aircraft) return Station::Get(this->GetDestination().ToStationID())->airport.tile;
+			if (airport && v != nullptr && v->type == VehicleType::Aircraft) return Station::Get(this->GetDestination().ToStationID())->airport.tile;
 			return BaseStation::Get(this->GetDestination().ToStationID())->xy;
 
 		case OT_GOTO_DEPOT:
 			if (this->GetDepotActionType() & ODATFB_NEAREST_DEPOT) return INVALID_TILE;
 			if (this->GetDestination() == DepotID::Invalid()) return INVALID_TILE;
-			return (v->type == VehicleType::Aircraft) ? Station::Get(this->GetDestination().ToStationID())->xy : Depot::Get(this->GetDestination().ToDepotID())->xy;
+			return (v != nullptr && v->type == VehicleType::Aircraft) ? Station::Get(this->GetDestination().ToStationID())->xy : Depot::Get(this->GetDestination().ToDepotID())->xy;
 
 		default:
 			return INVALID_TILE;
@@ -1092,6 +1093,14 @@ uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int
 /* ------------------------------------------------------------------
  *  Support for editing player-created (standalone) order lists.
  * ------------------------------------------------------------------ */
+
+/** Invalidate every GUI that displays a standalone player-created order list. */
+void InvalidateStandaloneOrderGUIs()
+{
+	InvalidateWindowClassesData(WindowClass::OrderList);
+	InvalidateWindowClassesData(WindowClass::OrderListEditor);
+	InvalidateWindowClassesData(WindowClass::OrderListTimetable);
+}
 
 /** Resolve a command id to a standalone (player-created) order list, or nullptr when invalid. */
 static OrderList *GetStandaloneOrderList(uint32_t id)
@@ -1183,8 +1192,7 @@ static void InsertOrderOnStandaloneList(OrderList *ol, Order &&new_o, VehicleOrd
 		cur_order_id++;
 	}
 
-	InvalidateWindowClassesData(WindowClass::OrderList);
-	/* TODO(M2/M3): 调度计划编辑器与时刻表窗口也需要同步失效。 */
+	InvalidateStandaloneOrderGUIs();
 }
 
 /** Delete an order from a standalone order list and fix up conditional jump targets. */
@@ -1204,8 +1212,7 @@ static void DeleteOrderOnStandaloneList(OrderList *ol, VehicleOrderID sel_ord)
 		cur_order_id++;
 	}
 
-	InvalidateWindowClassesData(WindowClass::OrderList);
-	/* TODO(M2/M3): 同上。 */
+	InvalidateStandaloneOrderGUIs();
 }
 
 /**
@@ -1219,6 +1226,7 @@ CommandCost CmdInsertOrder(DoCommandFlags flags, const InsertOrderCmdData &data)
 
 	if (data.is_list) {
 		OrderList *ol = GetStandaloneOrderList(data.list.base());
+		fprintf(stderr, "[OL][insert-list] enter list=%u valid=%d sel=%u\n", data.list.base(), ol != nullptr, data.sel_ord);
 		if (ol == nullptr) return CMD_ERROR;
 
 		CommandCost ret = CheckOwnership(ol->GetCompany());
@@ -2085,7 +2093,7 @@ CommandCost CmdMoveOrder(DoCommandFlags flags, OrderTargetType target_type, uint
 					else if (idx < moving_order && idx >= target_order) order->SetConditionSkipToOrder(idx + count);
 				}
 			}
-			InvalidateWindowClassesData(WindowClass::OrderList);
+			InvalidateStandaloneOrderGUIs();
 			return CommandCost();
 		}
 
@@ -3170,8 +3178,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 		}
 
 		if (is_list) {
-			InvalidateWindowClassesData(WindowClass::OrderList);
-			/* TODO(M2/M3): 调度计划编辑器与时刻表窗口也需要同步失效。 */
+			InvalidateStandaloneOrderGUIs();
 		} else {
 			/* Update the windows and full load flags, also for vehicles that share the same order list */
 			Vehicle *u = v->FirstShared();
@@ -3326,10 +3333,11 @@ static bool ShouldResetOrderIndicesOnOrderCopy(const Vehicle *src, const Vehicle
  */
 CommandCost CmdCreateOrderList(DoCommandFlags flags, const std::string &name)
 {
-	if (_current_company == OWNER_DEITY || _current_company == COMPANY_SPECTATOR) return CMD_ERROR;
-	if (name.size() >= MAX_LENGTH_ORDERLIST_NAME_CHARS * MAX_CHAR_LENGTH) return CMD_ERROR;
+	fprintf(stderr, "[OL][create] enter company=%u flags=%x namelen=%zu\n", (unsigned)_current_company.base(), flags.base(), name.size());
+	if (_current_company == OWNER_DEITY || _current_company == COMPANY_SPECTATOR) { fprintf(stderr, "[OL][create] reject: spectator/deity\n"); return CMD_ERROR; }
+	if (name.size() >= MAX_LENGTH_ORDERLIST_NAME_CHARS * MAX_CHAR_LENGTH) { fprintf(stderr, "[OL][create] reject: name too long\n"); return CMD_ERROR; }
 
-	if (!OrderList::CanAllocateItem()) return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
+	if (!OrderList::CanAllocateItem()) { fprintf(stderr, "[OL][create] reject: no free slot\n"); return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS); }
 
 	OrderListID id = OrderListID::Invalid();
 	if (flags.Test(DoCommandFlag::Execute)) {
@@ -3338,9 +3346,10 @@ CommandCost CmdCreateOrderList(DoCommandFlags flags, const std::string &name)
 		ol->SetName(name);
 		ol->SetPublic(false);
 		id = ol->index;
+		fprintf(stderr, "[OL][create] executed -> list %u company=%u\n", id.base(), (unsigned)_current_company.base());
 	}
 
-	InvalidateWindowClassesData(WindowClass::OrderList);
+	InvalidateStandaloneOrderGUIs();
 
 	CommandCost cost;
 	cost.SetResultData(id);
@@ -3365,8 +3374,7 @@ CommandCost CmdRenameOrderList(DoCommandFlags flags, OrderListID list_id, const 
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		ol->SetName(name);
-		InvalidateWindowClassesData(WindowClass::OrderList);
-		/* TODO(M2/M3): 同上，同步编辑器/时刻表窗口标题。 */
+		InvalidateStandaloneOrderGUIs();
 	}
 	return CommandCost();
 }
@@ -3392,9 +3400,11 @@ CommandCost CmdDeleteOrderList(DoCommandFlags flags, OrderListID list_id)
 		/* Destinations were never registered for standalone lists; FreeChain's guard
 		 * handles clearing without unregistering. We never free via FreeChain(false). */
 		ol->FreeChain(true);
+		const uint32_t closed_id = list_id.base();
 		delete ol;
-		InvalidateWindowClassesData(WindowClass::OrderList);
-		/* TODO(M2/M3): 关闭打开中的调度计划编辑器与时刻表窗口。 */
+		CloseWindowById(WindowClass::OrderListEditor, closed_id, false);
+		CloseWindowById(WindowClass::OrderListTimetable, closed_id, false);
+		InvalidateStandaloneOrderGUIs();
 	}
 	return CommandCost();
 }
@@ -3416,7 +3426,7 @@ CommandCost CmdSetOrderListPublic(DoCommandFlags flags, OrderListID list_id, boo
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		ol->SetPublic(is_public);
-		InvalidateWindowClassesData(WindowClass::OrderList);
+		InvalidateStandaloneOrderGUIs();
 	}
 	return CommandCost();
 }

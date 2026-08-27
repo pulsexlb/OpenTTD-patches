@@ -1793,6 +1793,9 @@ static WindowDesc _schdispatch_desc(__FILE__, __LINE__,
  */
 void ShowSchdispatchWindow(const Vehicle *v)
 {
+	/* Standalone (player-created) order lists are not supported by this
+	 * vehicle-bound window yet; callers must hide the entry point. */
+	if (v == nullptr || !v->IsPrimaryVehicle()) return;
 	AllocateWindowDescFront<SchdispatchWindow>(_schdispatch_desc, v->index);
 }
 
@@ -2255,11 +2258,13 @@ void SchdispatchInvalidateWindows(const Vehicle *v)
 
 	v = v->FirstShared();
 	for (Window *w : Window::Iterate()) {
+		const GeneralVehicleWindow *gw = dynamic_cast<const GeneralVehicleWindow *>(w);
+		if (gw == nullptr || !gw->HasVehicle()) continue; // standalone list windows have no vehicle
 		if (w->window_class == WindowClass::VehicleTimetable) {
-			if (static_cast<GeneralVehicleWindow *>(w)->vehicle->FirstShared() == v) w->SetDirty();
+			if (gw->vehicle->FirstShared() == v) w->SetDirty();
 		}
 		if (w->window_class == WindowClass::ScheduledDispatchSlots || w->window_class == WindowClass::VehicleOrders) {
-			if (static_cast<GeneralVehicleWindow *>(w)->vehicle->FirstShared() == v) w->InvalidateData(VIWD_MODIFY_ORDERS, false);
+			if (gw->vehicle->FirstShared() == v) w->InvalidateData(VIWD_MODIFY_ORDERS, false);
 		}
 	}
 }

@@ -257,6 +257,7 @@ void Station::AddFacility(StationFacility new_facility_bit, TileIndex facil_xy)
 	this->owner = _current_company;
 	this->build_date = CalTime::CurDate();
 	SetWindowClassesDirty(WindowClass::VehicleOrders);
+	SetWindowClassesDirty(WindowClass::OrderListEditor);
 }
 
 /**
