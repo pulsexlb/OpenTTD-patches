@@ -439,7 +439,6 @@ struct TimetableWindow : GeneralVehicleWindow {
 	uint32_t TargetId() const { return this->HasVehicle() ? this->vehicle->index.base() : this->list_id.base(); }
 	bool IsDispatchEnabled() const {
 		bool result = this->HasVehicle() ? this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) : (this->order_list != nullptr && this->order_list->IsDispatchEnabled());
-		fprintf(stderr, "[OL][tt-IsDispEnabled] hasVeh=%d result=%d\n", this->HasVehicle(), result);
 		return result;
 	}
 	VehicleType RefType() const { return this->HasVehicle() ? this->vehicle->type : VehicleType::Train; }
@@ -772,9 +771,8 @@ struct TimetableWindow : GeneralVehicleWindow {
 			case WID_VT_CAPTION:
 				if (!this->HasVehicle()) {
 					const OrderList *ol = this->order_list;
-					const std::string &name = ol->GetName();
-					if (!name.empty()) return GetString(STR_ORDER_LIST_ORDERS_CAPTION, name);
-					return GetString(STR_ORDER_LIST_ORDERS_CAPTION, GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1));
+					if (ol->GetName().empty()) return GetString(STR_JUST_RAW_STRING, GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1));
+					return GetString(STR_JUST_RAW_STRING, ol->GetName());
 				}
 				return GetString(STR_TIMETABLE_TITLE, this->vehicle->index);
 			case WID_VT_EXPECTED: return GetString(this->show_expected ? STR_TIMETABLE_EXPECTED : STR_TIMETABLE_SCHEDULED);

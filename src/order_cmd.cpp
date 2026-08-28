@@ -9,7 +9,6 @@
 
 #include "stdafx.h"
 #include "debug.h"
-#include <cstdio>
 #include "command_func.h"
 #include "company_func.h"
 #include "news_func.h"
@@ -1227,7 +1226,6 @@ CommandCost CmdInsertOrder(DoCommandFlags flags, const InsertOrderCmdData &data)
 
 	if (data.is_list) {
 		OrderList *ol = GetStandaloneOrderList(data.list.base());
-		fprintf(stderr, "[OL][insert-list] enter list=%u valid=%d sel=%u\n", data.list.base(), ol != nullptr, data.sel_ord);
 		if (ol == nullptr) return CMD_ERROR;
 
 		CommandCost ret = CheckOwnership(ol->GetCompany());
@@ -3334,11 +3332,7 @@ static bool ShouldResetOrderIndicesOnOrderCopy(const Vehicle *src, const Vehicle
  */
 CommandCost CmdCreateOrderList(DoCommandFlags flags, const std::string &name)
 {
-	fprintf(stderr, "[OL][create] enter company=%u flags=%x namelen=%zu\n", (unsigned)_current_company.base(), flags.base(), name.size());
-	if (_current_company == OWNER_DEITY || _current_company == COMPANY_SPECTATOR) { fprintf(stderr, "[OL][create] reject: spectator/deity\n"); return CMD_ERROR; }
-	if (name.size() >= MAX_LENGTH_ORDERLIST_NAME_CHARS * MAX_CHAR_LENGTH) { fprintf(stderr, "[OL][create] reject: name too long\n"); return CMD_ERROR; }
 
-	if (!OrderList::CanAllocateItem()) { fprintf(stderr, "[OL][create] reject: no free slot\n"); return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS); }
 
 	OrderListID id = OrderListID::Invalid();
 	if (flags.Test(DoCommandFlag::Execute)) {
@@ -3347,7 +3341,6 @@ CommandCost CmdCreateOrderList(DoCommandFlags flags, const std::string &name)
 		ol->SetName(name);
 		ol->SetPublic(false);
 		id = ol->index;
-		fprintf(stderr, "[OL][create] executed -> list %u company=%u\n", id.base(), (unsigned)_current_company.base());
 	}
 
 	InvalidateStandaloneOrderGUIs();

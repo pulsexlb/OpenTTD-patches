@@ -13,7 +13,6 @@
 #include "orderlist_edit.h"
 #include "orderlist_gui.h"
 #include "command_func.h"
-#include <cstdio>
 #include "company_func.h"
 #include "company_base.h"
 #include "company_gui.h"
@@ -110,15 +109,11 @@ private:
 
 	void BuildSortOrderList()
 	{
-		fprintf(stderr, "[OL][manager] build needRebuild=%d local=%u pool=%zu\n",
-				this->orders.NeedRebuild() ? 1 : 0, (unsigned)_local_company.base(), (size_t)OrderList::GetNumItems());
 		if (this->orders.NeedRebuild()) {
 			this->orders.clear();
 			this->orders.reserve(OrderList::GetNumItems());
 
 			for (const OrderList *ol : OrderList::Iterate()) {
-				fprintf(stderr, "[OL][manager]   list %u: player=%d vis=%d name='%s'\n",
-						ol->index.base(), ol->IsPlayerCreated(), ol->IsVisibleToCompany(_local_company), ol->GetName().c_str());
 				if (!ol->IsVisibleToCompany(_local_company)) continue;
 				if (this->string_filter.IsEmpty()) {
 					this->orders.push_back(ol);
@@ -195,10 +190,8 @@ public:
 	{
 		switch (widget) {
 			case WID_OL_NEW:
-				fprintf(stderr, "[OL][ui] new-button clicked, posting CreateOrderList\n");
 				{
 					bool posted = Command<Commands::CreateOrderList>::Post(CommandCallback::CreateOrderList, TileIndex{}, {});
-					fprintf(stderr, "[OL][ui] post returned %d\n", posted ? 1 : 0);
 				}
 				break;
 
@@ -338,7 +331,8 @@ public:
 						DrawFrameRect(br, Colours::Grey, {});
 						DrawSprite(SPR_RENAME, PAL_NONE, CentreBounds(br.left, br.right, this->edit_btn_spr_dim.width), CentreBounds(br.top, br.bottom, this->edit_btn_spr_dim.height));
 
-						std::string str = ol->IsPublic() ? ol->GetName() : GetString(STR_PLANS_LIST_ITEM_PLAN_PRIVATE) + ol->GetName();
+						std::string base_name = ol->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1) : ol->GetName();
+					std::string str = ol->IsPublic() ? base_name : GetString(STR_PLANS_LIST_ITEM_PLAN_PRIVATE) + base_name;
 						DrawString(text_left, text_right, y + (this->resize.step_height - GetCharacterHeight(FontSize::Normal)) / 2, str, TextColour::White);
 					}
 					y += this->resize.step_height;
@@ -445,12 +439,9 @@ const std::initializer_list<GUIOrderList::SortFunction * const> OrderListWindow:
  */
 void CcCreateOrderList(const CommandCost &result, [[maybe_unused]] const std::string &name)
 {
-	fprintf(stderr, "[OL][cc-create] fired ok=%d\n", result.Succeeded());
 	if (!result.Succeeded()) return;
 
 	auto id = result.GetResultData<OrderListID>();
-	if (!id.has_value()) { fprintf(stderr, "[OL][cc-create] no id in result\n"); return; }
-	fprintf(stderr, "[OL][cc-create] opening editor for list %u\n", id->base());
 	ShowOrderListEditor(*id);
 }
 

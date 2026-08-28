@@ -286,7 +286,6 @@ struct SchdispatchWindow : GeneralVehicleWindow {
 	uint32_t TargetId() const { return this->HasVehicle() ? this->vehicle->index.base() : this->list_id.base(); }
 	bool IsDispatchEnabled() const {
 		bool r = this->HasVehicle() ? this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) : (this->order_list != nullptr && this->order_list->IsDispatchEnabled());
-		fprintf(stderr, "[OL][sch-IsDispEnabled] hasVeh=%d r=%d\n", this->HasVehicle(), r);
 		return r;
 	}
 	const Order *OrderAt(int i) const { return this->HasVehicle() ? this->vehicle->GetOrder(i) : (this->order_list != nullptr ? this->order_list->GetOrderAt(i) : nullptr); }
@@ -316,7 +315,6 @@ struct SchdispatchWindow : GeneralVehicleWindow {
 
 		this->owner = this->order_list->GetCompany();
 		this->AutoSelectSchedule();
-		fprintf(stderr, "[OL][sch] opened list %u schedules=%u\n", id.base(), Target()->GetScheduledDispatchScheduleCount());
 	}
 
 	void Close(int data = 0) override
@@ -522,9 +520,8 @@ struct SchdispatchWindow : GeneralVehicleWindow {
 			case WID_SCHDISPATCH_CAPTION:
 				if (!this->HasVehicle()) {
 					const OrderList *ol = this->order_list;
-					const std::string &name = ol->GetName();
-					if (!name.empty()) return GetString(STR_ORDER_LIST_ORDERS_CAPTION, name);
-					return GetString(STR_ORDER_LIST_ORDERS_CAPTION, GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1));
+					if (ol->GetName().empty()) return GetString(STR_JUST_RAW_STRING, GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1));
+					return GetString(STR_JUST_RAW_STRING, ol->GetName());
 				}
 				return GetString(STR_SCHDISPATCH_CAPTION, this->vehicle->index);
 
@@ -1268,7 +1265,6 @@ struct SchdispatchWindow : GeneralVehicleWindow {
 
 			case WID_SCHDISPATCH_ENABLED: {
 				bool enable = !this->IsDispatchEnabled();
-				fprintf(stderr, "[OL][sch-enabled] click: cur=%d -> new=%d kind=%d id=%u\n", !enable, enable, (int)this->TargetKind(), this->TargetId());
 				Command<Commands::SchDispatchSetEnabled>::Post(STR_ERROR_CAN_T_TIMETABLE_VEHICLE, this->TargetKind(), this->TargetId(), enable);
 				if (enable && this->Target() != nullptr && this->Target()->GetScheduledDispatchScheduleCount() == 0) {
 					AddNewScheduledDispatchSchedule(this->TargetKind(), this->TargetId());
@@ -1887,7 +1883,6 @@ void ShowSchdispatchWindowForList(OrderListID id)
 	if (ol == nullptr || !ol->IsPlayerCreated()) return;
 	if (ol->GetCompany() != _local_company) return;
 
-	fprintf(stderr, "[OL][sch] show list %u\n", id.base());
 	if (BringWindowToFrontById(WindowClass::OrderListSchedule, id.base()) != nullptr) return;
 	new SchdispatchWindow(_orderlist_schedule_desc, id);
 }

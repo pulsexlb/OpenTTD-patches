@@ -1810,8 +1810,6 @@ private:
 
 	void PostInsert(const Order &order, VehicleOrderID sel)
 	{
-		fprintf(stderr, "[OL][ui-insert] mode=%s sel=%u type=%d\n",
-				this->HasVehicle() ? "vehicle" : "list", sel, static_cast<int>(order.GetType()));
 		if (this->HasVehicle()) {
 			DoCommandP<Commands::InsertOrder>(this->CmdTile(), InsertOrderCmdData(this->vehicle->index, sel, order), STR_ERROR_CAN_T_INSERT_NEW_ORDER, CommandCallback::InsertOrder);
 		} else {
@@ -2385,7 +2383,6 @@ public:
 		this->FinishInitNested(id.base());
 
 		this->owner = this->order_list->GetCompany();
-		fprintf(stderr, "[OL][editor] opened list %u orders=%u\n", id.base(), NumOrders());
 
 		this->OnInvalidateData(VIWD_MODIFY_ORDERS);
 	}
@@ -2474,7 +2471,6 @@ public:
 	 */
 	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
 	{
-		fprintf(stderr, "[OL][orders-inval] data=%d orders=%u\n", data, NumOrders());
 		switch (data) {
 			case VIWD_AUTOREPLACE:
 				/* Autoreplace replaced the vehicle */
@@ -2960,7 +2956,6 @@ public:
 
 	void DrawOrderListWidget(const Rect &r) const
 	{
-		if (getenv("OL_DEBUG") != nullptr) fprintf(stderr, "[OL][draw-list] num=%u sel=%d\n", NumOrders(), this->selected_order);
 		Rect ir = r.Shrink(WidgetDimensions::scaled.frametext, WidgetDimensions::scaled.framerect);
 		bool rtl = _current_text_dir == TD_RTL;
 		uint64_t max_value = GetParamMaxValue(NumOrders(), 2);
@@ -3196,9 +3191,8 @@ public:
 			case WID_O_CAPTION:
 				if (!this->HasVehicle()) {
 					const OrderList *ol = this->order_list;
-					const std::string &name = ol->GetName();
-					if (!name.empty()) return GetString(STR_ORDER_LIST_ORDERS_CAPTION, name);
-					return GetString(STR_ORDER_LIST_ORDERS_CAPTION, GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1));
+					if (ol->GetName().empty()) return GetString(STR_JUST_RAW_STRING, GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1));
+					return GetString(STR_JUST_RAW_STRING, ol->GetName());
 				}
 				return GetString(STR_ORDERS_CAPTION, this->vehicle->index);
 
@@ -5176,7 +5170,6 @@ void ShowOrdersWindow(const Vehicle *v)
 
 void CcInsertOrder(const CommandCost &result, const InsertOrderCmdData &data)
 {
-	fprintf(stderr, "[OL][cc-insert] fired ok=%d is_list=%d\n", result.Succeeded(), data.is_list);
 	if (!result.Succeeded()) return;
 
 	auto pos = result.GetResultData<VehicleOrderID>();
@@ -5184,7 +5177,6 @@ void CcInsertOrder(const CommandCost &result, const InsertOrderCmdData &data)
 
 	if (data.is_list) {
 		OrdersWindow *lw = dynamic_cast<OrdersWindow *>(FindWindowById(WindowClass::OrderListEditor, data.list.base()));
-		fprintf(stderr, "[OL][cc-insert] editor lookup %p pos=%u\n", (void *)lw, *pos);
 		if (lw != nullptr) lw->ScrollTowardsOrder(*pos);
 		return;
 	}
