@@ -21,6 +21,8 @@
 #include "settings_type.h"
 #include "scope.h"
 #include "timetable_cmd.h"
+#include "schdispatch.h"
+#include "order_cmd.h"
 
 #include "widgets/vehicle_widget.h"
 
@@ -221,10 +223,8 @@ static void ChangeTimetableOnOrderList(OrderList *ol, VehicleOrderID order_numbe
 	ol->UpdateTotalDuration(total_delta);
 	ol->UpdateTimetableDuration(timetable_delta);
 
-	InvalidateWindowClassesData(WindowClass::OrderList);
-	InvalidateWindowClassesData(WindowClass::OrderListEditor);
-	InvalidateWindowClassesData(WindowClass::OrderListTimetable);
-	InvalidateWindowClassesData(WindowClass::OrderListSchedule);
+	/* Refresh the standalone order-list windows and any vehicles sharing this list. */
+	SetTimetableWindowsDirty(nullptr, STWDF_SCHEDULED_DISPATCH);
 }
 
 /**
@@ -870,30 +870,42 @@ CommandCost CmdAutomateTimetable(DoCommandFlags flags, VehicleID veh, bool autom
 /**
  * Enable or disable auto timetable separation
  * @param flags Operation to perform.
- * @param veh Vehicle index.
+ * @param target_type The target type (vehicle or order list).
+ * @param id The vehicle or order list index.
  * @param separation Whether to enable/disable auto separatiom.
  * @return the cost of this operation or an error
  */
-CommandCost CmdTimetableSeparation(DoCommandFlags flags, VehicleID veh, bool separation)
+CommandCost CmdTimetableSeparation(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, bool separation)
 {
-	Vehicle *v = Vehicle::GetIfValid(veh);
-	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
+	Vehicle *v = nullptr;
+	OrderList *ol = ResolveSchDispatchTarget(target_type, id, &v);
+	if (ol == nullptr) return CMD_ERROR;
 
-	CommandCost ret = CheckOwnership(v->owner);
+	CommandCost ret = CheckSchDispatchOwnership(target_type, ol, v);
 	if (ret.Failed()) return ret;
 
-	if (separation && (v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) || v->HasUnbunchingOrder())) return CommandCost(STR_ERROR_SEPARATION_MUTUALLY_EXCLUSIVE);
+	if (separation && (ol->IsPlayerCreated() ? ol->IsDispatchEnabled() : (v != nullptr && v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch)))) return CommandCost(STR_ERROR_SEPARATION_MUTUALLY_EXCLUSIVE);
+	if (separation && v != nullptr && v->HasUnbunchingOrder()) return CommandCost(STR_ERROR_SEPARATION_MUTUALLY_EXCLUSIVE);
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		for (Vehicle *v2 = v->FirstShared(); v2 != nullptr; v2 = v2->NextShared()) {
-			if (separation) {
-				v2->vehicle_flags.Set(VehicleFlag::TimetableSeparation);
-			} else {
-				v2->vehicle_flags.Reset(VehicleFlag::TimetableSeparation);
+		if (ol->IsPlayerCreated()) {
+			/* The list owns the separation state; all vehicles sharing it mirror
+			 * the state in their flags so the runtime and vehicle UIs agree. */
+			ol->SetSeparationEnabled(separation);
+			for (Vehicle *v2 = ol->GetFirstSharedVehicle(); v2 != nullptr; v2 = v2->NextShared()) {
+				v2->vehicle_flags.Set(VehicleFlag::TimetableSeparation, separation);
+				v2->vehicle_flags.Reset(VehicleFlag::SeparationActive);
+				if (separation) v2->timetable_start = StateTicks{0};
 			}
-			v2->vehicle_flags.Reset(VehicleFlag::SeparationActive);
+		} else if (v != nullptr) {
+			for (Vehicle *v2 = v->FirstShared(); v2 != nullptr; v2 = v2->NextShared()) {
+				v2->vehicle_flags.Set(VehicleFlag::TimetableSeparation, separation);
+				v2->vehicle_flags.Reset(VehicleFlag::SeparationActive);
+				if (separation) v2->timetable_start = StateTicks{0};
+			}
 		}
 		SetTimetableWindowsDirty(v, STWDF_SCHEDULED_DISPATCH);
+		InvalidateStandaloneOrderGUIs();
 	}
 
 	return CommandCost();

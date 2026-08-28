@@ -438,8 +438,19 @@ struct TimetableWindow : GeneralVehicleWindow {
 	OrderTargetType TargetKind() const { return this->HasVehicle() ? OrderTargetType::Vehicle : OrderTargetType::OrderList; }
 	uint32_t TargetId() const { return this->HasVehicle() ? this->vehicle->index.base() : this->list_id.base(); }
 	bool IsDispatchEnabled() const {
-		bool result = this->HasVehicle() ? this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) : (this->order_list != nullptr && this->order_list->IsDispatchEnabled());
-		return result;
+		if (this->HasVehicle()) {
+			/* A vehicle sharing a player-created list uses the list's state. */
+			if (this->vehicle->orders != nullptr && this->vehicle->orders->IsPlayerCreated()) return this->vehicle->orders->IsDispatchEnabled();
+			return this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch);
+		}
+		return this->order_list != nullptr && this->order_list->IsDispatchEnabled();
+	}
+	bool IsSeparationEnabled() const {
+		if (this->HasVehicle()) {
+			if (this->vehicle->orders != nullptr && this->vehicle->orders->IsPlayerCreated()) return this->vehicle->orders->IsSeparationEnabled();
+			return this->vehicle->vehicle_flags.Test(VehicleFlag::TimetableSeparation);
+		}
+		return this->order_list != nullptr && this->order_list->IsSeparationEnabled();
 	}
 	VehicleType RefType() const { return this->HasVehicle() ? this->vehicle->type : VehicleType::Train; }
 
@@ -716,13 +727,13 @@ struct TimetableWindow : GeneralVehicleWindow {
 			this->SetWidgetDisabledState(WID_VT_CHANGE_SPEED, disable_speed);
 			this->SetWidgetDisabledState(WID_VT_CLEAR_SPEED, disable_speed);
 
-			bool has_separation = this->HasVehicle() && v->vehicle_flags.Test(VehicleFlag::TimetableSeparation);
+			bool has_separation = this->IsSeparationEnabled();
 			bool has_sched_dispatch = this->IsDispatchEnabled();
 
 			this->SetWidgetDisabledState(WID_VT_START_DATE, Target() == nullptr || has_separation || has_sched_dispatch);
 			this->SetWidgetDisabledState(WID_VT_RESET_LATENESS, Target() == nullptr);
 			this->SetWidgetDisabledState(WID_VT_AUTOFILL, Target() == nullptr || (this->HasVehicle() && v->vehicle_flags.Test(VehicleFlag::AutomateTimetable)));
-			this->SetWidgetDisabledState(WID_VT_AUTO_SEPARATION, (this->HasVehicle() && (has_sched_dispatch || v->HasUnbunchingOrder())));
+			this->SetWidgetDisabledState(WID_VT_AUTO_SEPARATION, has_sched_dispatch || (this->HasVehicle() && v->HasUnbunchingOrder()));
 			this->EnableWidget(WID_VT_AUTOMATE);
 			this->EnableWidget(WID_VT_ADD_VEH_GROUP);
 			this->SetWidgetDisabledState(WID_VT_LOCK_ORDER_TIME, !wait_lockable);
@@ -749,7 +760,7 @@ struct TimetableWindow : GeneralVehicleWindow {
 
 		this->SetWidgetLoweredState(WID_VT_AUTOFILL, this->HasVehicle() && v->vehicle_flags.Test(VehicleFlag::AutofillTimetable));
 		this->SetWidgetLoweredState(WID_VT_AUTOMATE, this->HasVehicle() && v->vehicle_flags.Test(VehicleFlag::AutomateTimetable));
-		this->SetWidgetLoweredState(WID_VT_AUTO_SEPARATION, this->HasVehicle() && v->vehicle_flags.Test(VehicleFlag::TimetableSeparation));
+		this->SetWidgetLoweredState(WID_VT_AUTO_SEPARATION, this->IsSeparationEnabled());
 		this->SetWidgetLoweredState(WID_VT_SCHEDULED_DISPATCH, this->IsDispatchEnabled());
 
 		this->SetWidgetDisabledState(WID_VT_SCHEDULED_DISPATCH, Target() == nullptr);
@@ -1215,8 +1226,7 @@ struct TimetableWindow : GeneralVehicleWindow {
 			}
 
 			case WID_VT_AUTO_SEPARATION: {
-				if (!this->HasVehicle()) break;
-				Command<Commands::TimetableSeparation>::Post(STR_ERROR_CAN_T_TIMETABLE_VEHICLE, v->index, !v->vehicle_flags.Test(VehicleFlag::TimetableSeparation));
+				Command<Commands::TimetableSeparation>::Post(STR_ERROR_CAN_T_TIMETABLE_VEHICLE, this->TargetKind(), this->TargetId(), !this->IsSeparationEnabled());
 				break;
 			}
 
@@ -1491,7 +1501,25 @@ void SetTimetableWindowsDirty(const Vehicle *v, SetTimetableWindowsDirtyFlags fl
 		InvalidateWindowClassesData(WindowClass::OrderListEditor, VIWD_MODIFY_ORDERS);
 		InvalidateWindowClassesData(WindowClass::OrderListTimetable, VIWD_MODIFY_ORDERS);
 		InvalidateWindowClassesData(WindowClass::OrderListSchedule, VIWD_MODIFY_ORDERS);
+
+		/* Vehicles sharing a player-created list must refresh their windows too. */
+		for (const OrderList *ol : OrderList::Iterate()) {
+			if (!ol->IsPlayerCreated()) continue;
+			for (const Vehicle *v2 = ol->GetFirstSharedVehicle(); v2 != nullptr; v2 = v2->NextShared()) {
+				SetWindowDirty(WindowClass::VehicleTimetable, v2->index);
+				SetWindowDirty(WindowClass::ScheduledDispatchSlots, v2->index);
+				SetWindowDirty(WindowClass::VehicleOrders, v2->index);
+			}
+		}
 		return;
+	}
+
+	/* A vehicle sharing a player-created list must also refresh the list windows. */
+	if (v->orders != nullptr && v->orders->IsPlayerCreated()) {
+		InvalidateWindowData(WindowClass::OrderList, v->orders->index.base(), VIWD_MODIFY_ORDERS);
+		InvalidateWindowData(WindowClass::OrderListEditor, v->orders->index.base(), VIWD_MODIFY_ORDERS);
+		InvalidateWindowData(WindowClass::OrderListTimetable, v->orders->index.base(), VIWD_MODIFY_ORDERS);
+		InvalidateWindowData(WindowClass::OrderListSchedule, v->orders->index.base(), VIWD_MODIFY_ORDERS);
 	}
 
 	if (!(HaveWindowByClass(WindowClass::VehicleTimetable) ||

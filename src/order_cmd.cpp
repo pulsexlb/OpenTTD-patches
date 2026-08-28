@@ -432,6 +432,15 @@ void InvalidateVehicleOrder(const Vehicle *v, int data)
 	InvalidateWindowData(WindowClass::VehicleView, v->index);
 	SetWindowDirty(WindowClass::ScheduledDispatchSlots, v->index);
 
+	/* The vehicle may share a player-created order list; its standalone windows
+	 * must be kept in sync (e.g. the editor's scrollbar count). */
+	if (v->orders != nullptr && v->orders->IsPlayerCreated()) {
+		InvalidateWindowData(WindowClass::OrderList, v->orders->index.base(), data);
+		InvalidateWindowData(WindowClass::OrderListEditor, v->orders->index.base(), data);
+		InvalidateWindowData(WindowClass::OrderListTimetable, v->orders->index.base(), data);
+		InvalidateWindowData(WindowClass::OrderListSchedule, v->orders->index.base(), data);
+	}
+
 	if (data != 0) {
 		/* Calls SetDirty() too */
 		InvalidateWindowData(WindowClass::VehicleOrders, v->index, data);
@@ -1122,6 +1131,14 @@ void InvalidateStandaloneOrderGUIs()
 	InvalidateWindowClassesData(WindowClass::OrderListEditor, VIWD_MODIFY_ORDERS);
 	InvalidateWindowClassesData(WindowClass::OrderListTimetable, VIWD_MODIFY_ORDERS);
 	InvalidateWindowClassesData(WindowClass::OrderListSchedule, VIWD_MODIFY_ORDERS);
+
+	/* Vehicles sharing a player-created list must refresh their windows too. */
+	for (const OrderList *ol : OrderList::Iterate()) {
+		if (!ol->IsPlayerCreated()) continue;
+		for (const Vehicle *v = ol->GetFirstSharedVehicle(); v != nullptr; v = v->NextShared()) {
+			InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);
+		}
+	}
 }
 
 /** Resolve a command id to a standalone (player-created) order list, or nullptr when invalid. */
@@ -4060,6 +4077,12 @@ void DeleteVehicleOrders(Vehicle *v, bool keep_orderlist, bool reset_order_indic
 		UpdateDeparturesWindowVehicleFilter(v->orders, false);
 		v->RemoveFromShared();
 		v->orders = nullptr;
+	} else if (v->orders != nullptr && v->orders->IsPlayerCreated()) {
+		/* Only vehicle on a player-created list: detach it without modifying
+		 * the list itself. The list is a shared resource and must stay intact. */
+		UpdateDeparturesWindowVehicleFilter(v->orders, false);
+		v->orders->RemoveVehicle(v);
+		v->orders = nullptr;
 	} else {
 		CloseWindowById(GetWindowClassForVehicleType(v->type), VehicleListIdentifier(VL_SHARED_ORDERS, v->type, v->owner, v->index).ToWindowNumber());
 		if (v->orders != nullptr) {
@@ -4864,6 +4887,9 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 					}
 					v->orders = target;
 					target->AssignVehicle(v);
+					/* Adopt the list's dispatch/separation state (shared state). */
+					v->vehicle_flags.Set(VehicleFlag::ScheduledDispatch, target->IsDispatchEnabled());
+					v->vehicle_flags.Set(VehicleFlag::TimetableSeparation, target->IsSeparationEnabled());
 					/* Start at the beginning of the new list. */
 					v->cur_implicit_order_index = 0;
 					v->cur_real_order_index = 0;

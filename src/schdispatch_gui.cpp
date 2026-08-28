@@ -285,8 +285,11 @@ struct SchdispatchWindow : GeneralVehicleWindow {
 	OrderTargetType TargetKind() const { return this->HasVehicle() ? OrderTargetType::Vehicle : OrderTargetType::OrderList; }
 	uint32_t TargetId() const { return this->HasVehicle() ? this->vehicle->index.base() : this->list_id.base(); }
 	bool IsDispatchEnabled() const {
-		bool r = this->HasVehicle() ? this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) : (this->order_list != nullptr && this->order_list->IsDispatchEnabled());
-		return r;
+		if (this->HasVehicle()) {
+			if (this->vehicle->orders != nullptr && this->vehicle->orders->IsPlayerCreated()) return this->vehicle->orders->IsDispatchEnabled();
+			return this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch);
+		}
+		return this->order_list != nullptr && this->order_list->IsDispatchEnabled();
 	}
 	const Order *OrderAt(int i) const { return this->HasVehicle() ? this->vehicle->GetOrder(i) : (this->order_list != nullptr ? this->order_list->GetOrderAt(i) : nullptr); }
 	VehicleType RefType() const { return this->HasVehicle() ? this->vehicle->type : VehicleType::Train; }

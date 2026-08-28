@@ -21,6 +21,7 @@
 #include "schdispatch.h"
 #include "vehicle_gui.h"
 #include "timetable_cmd.h"
+#include "order_cmd.h"
 #include "core/format.hpp"
 
 #include <algorithm>
@@ -32,7 +33,7 @@
 
 #include "safeguards.h"
 
-static OrderList *ResolveSchDispatchTarget(OrderTargetType target_type, uint32_t id, Vehicle **veh)
+OrderList *ResolveSchDispatchTarget(OrderTargetType target_type, uint32_t id, Vehicle **veh)
 {
 	*veh = nullptr;
 	if (target_type == OrderTargetType::OrderList) {
@@ -45,7 +46,7 @@ static OrderList *ResolveSchDispatchTarget(OrderTargetType target_type, uint32_t
 	return v->orders;
 }
 
-static CommandCost CheckSchDispatchOwnership(OrderTargetType target_type, const OrderList *ol, const Vehicle *v)
+CommandCost CheckSchDispatchOwnership(OrderTargetType target_type, const OrderList *ol, const Vehicle *v)
 {
 	return CheckOwnership(target_type == OrderTargetType::OrderList ? ol->GetCompany() : v->owner);
 }
@@ -67,17 +68,24 @@ CommandCost CmdSchDispatchSetEnabled(DoCommandFlags flags, OrderTargetType targe
 	if (ret.Failed()) return ret;
 
 
-	if (enable && v != nullptr && (v->vehicle_flags.Test(VehicleFlag::TimetableSeparation) || v->HasUnbunchingOrder())) return CommandCost(STR_ERROR_SEPARATION_MUTUALLY_EXCLUSIVE);
+	if (enable && (ol->IsPlayerCreated() ? ol->IsSeparationEnabled() : (v != nullptr && v->vehicle_flags.Test(VehicleFlag::TimetableSeparation)))) return CommandCost(STR_ERROR_SEPARATION_MUTUALLY_EXCLUSIVE);
+	if (enable && v != nullptr && v->HasUnbunchingOrder()) return CommandCost(STR_ERROR_SEPARATION_MUTUALLY_EXCLUSIVE);
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		if (v != nullptr) {
+		if (ol->IsPlayerCreated()) {
+			/* The list owns the dispatch-enabled state; all vehicles sharing it
+			 * mirror the state in their flags so the runtime and vehicle UIs agree. */
+			ol->SetDispatchEnabled(enable);
+			for (Vehicle *v2 = ol->GetFirstSharedVehicle(); v2 != nullptr; v2 = v2->NextShared()) {
+				v2->vehicle_flags.Set(VehicleFlag::ScheduledDispatch, enable);
+			}
+		} else if (v != nullptr) {
 			for (Vehicle *v2 = v->FirstShared(); v2 != nullptr; v2 = v2->NextShared()) {
 				v2->vehicle_flags.Set(VehicleFlag::ScheduledDispatch, enable);
 			}
-		} else {
-			ol->SetDispatchEnabled(enable);
 		}
 		SetTimetableWindowsDirty(v, STWDF_SCHEDULED_DISPATCH);
+		InvalidateStandaloneOrderGUIs();
 	}
 
 	return CommandCost();

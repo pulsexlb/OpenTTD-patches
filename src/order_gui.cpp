@@ -1814,7 +1814,13 @@ private:
 	const Order *OrderAt(VehicleOrderID i) const { return this->HasVehicle() ? this->vehicle->GetOrder(i) : (this->order_list != nullptr ? this->order_list->GetOrderAt(i) : nullptr); }
 	Owner TargetOwner() const { return this->HasVehicle() ? this->vehicle->owner : (this->order_list != nullptr ? this->order_list->GetCompany() : OWNER_NONE); }
 	bool IsLocalTarget() const { return this->TargetOwner() == _local_company; }
-	bool IsDispatchEnabled() const { return this->HasVehicle() ? this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) : (this->order_list != nullptr && this->order_list->IsDispatchEnabled()); }
+	bool IsDispatchEnabled() const {
+		if (this->HasVehicle()) {
+			if (this->vehicle->orders != nullptr && this->vehicle->orders->IsPlayerCreated()) return this->vehicle->orders->IsDispatchEnabled();
+			return this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch);
+		}
+		return this->order_list != nullptr && this->order_list->IsDispatchEnabled();
+	}
 	OrderTargetType TargetKind() const { return this->HasVehicle() ? OrderTargetType::Vehicle : OrderTargetType::OrderList; }
 	uint32_t TargetId() const { return this->HasVehicle() ? this->vehicle->index.base() : this->list_id.base(); }
 	TileIndex CmdTile() const { return this->HasVehicle() ? this->vehicle->tile : TileIndex{}; } // TileIndex{} == 0 passes the command tile gate for tile-less commands
@@ -3415,7 +3421,7 @@ public:
 						}
 						this->ModifyOrder(sel, MOF_STOP_LOCATION, to_underlying(osl));
 					}
-					if (this->vehicle->type == VehicleType::Road) {
+					if (this->HasVehicle() && this->vehicle->type == VehicleType::Road) {
 						DiagDirection current = order->GetRoadVehTravelDirection();
 						if (_settings_client.gui.show_adv_load_mode_features || current != DiagDirection::Invalid) {
 							uint dir = (to_underlying(current) + 1) & 0xFF;
@@ -3581,7 +3587,7 @@ public:
 					}
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_TEXT_BUTTON, ODDI_LABEL_TEXT, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_DEPARTURES_VIA_BUTTON, ODDI_LABEL_DEPARTURES_VIA, false));
-					if (this->vehicle->type == VehicleType::Train) {
+					if (this->HasVehicle() && this->vehicle->type == VehicleType::Train) {
 						list.push_back(MakeDropDownListStringItem(STR_ORDER_WAIT_FOR_COUPLE, ODDI_WAIT_FOR_COUPLE, false));
 						list.push_back(MakeDropDownListStringItem(STR_ORDERS_GO_TO_COUPLE, ODDI_GO_TO_COUPLE, false));
 					}

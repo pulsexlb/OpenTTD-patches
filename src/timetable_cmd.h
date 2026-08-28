@@ -65,7 +65,7 @@ DEF_CMD_TUPLE_NT(Commands::BulkChangeTimetable,              CmdBulkChangeTimeta
 DEF_CMD_TUPLE_NT(Commands::SetVehicleOnTime,                 CmdSetVehicleOnTime,              {}, CommandType::RouteManagement, CmdDataT<VehicleID, bool>)
 DEF_CMD_TUPLE_NT(Commands::AutofillTimetable,                CmdAutofillTimetable,             {}, CommandType::RouteManagement, CmdDataT<VehicleID, bool, bool>)
 DEF_CMD_TUPLE_NT(Commands::AutomateTimetable,                CmdAutomateTimetable,             {}, CommandType::RouteManagement, CmdDataT<VehicleID, bool>)
-DEF_CMD_TUPLE_NT(Commands::TimetableSeparation,              CmdTimetableSeparation,           {}, CommandType::RouteManagement, CmdDataT<VehicleID, bool>)
+DEF_CMD_TUPLE_NT(Commands::TimetableSeparation,              CmdTimetableSeparation,           {}, CommandType::RouteManagement, CmdDataT<OrderTargetType, uint32_t, bool>)
 DEF_CMD_TUPLE_NT(Commands::SetTimetableStart,                CmdSetTimetableStart,             {}, CommandType::RouteManagement, CmdDataT<VehicleID, bool, StateTicks>)
 
 DEF_CMD_TUPLE_NT(Commands::SchDispatchSetEnabled,            CmdSchDispatchSetEnabled,         {}, CommandType::RouteManagement, CmdDataT<OrderTargetType, uint32_t, bool>)

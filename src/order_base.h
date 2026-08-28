@@ -1310,6 +1310,7 @@ private:
 	Owner company = INVALID_OWNER;    ///< Company owning this player-created order list. INVALID_OWNER for vehicle-owned order lists.
 	bool is_public = false;           ///< Whether this player-created order list is public.
 	bool dispatch_enabled = false;    ///< Whether scheduled dispatch is enabled (mirrors VehicleFlag::ScheduledDispatch).
+	bool separation_enabled = false;  ///< Whether auto timetable separation is enabled (mirrors VehicleFlag::TimetableSeparation).
 
 	VehicleOrderID num_manual_orders = 0; ///< NOSAVE: How many manually added orders are there in the list.
 	uint num_vehicles = 0;                ///< NOSAVE: Number of vehicles that share this order list.
@@ -1583,6 +1584,9 @@ public:
 
 	inline bool IsDispatchEnabled() const { return this->dispatch_enabled; }
 	inline void SetDispatchEnabled(bool enabled) { this->dispatch_enabled = enabled; }
+
+	inline bool IsSeparationEnabled() const { return this->separation_enabled; }
+	inline void SetSeparationEnabled(bool enabled) { this->separation_enabled = enabled; }
 
 	/**
 	 * Is this order list visible to the given company (either owned by them or public)?

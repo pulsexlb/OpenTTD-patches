@@ -1419,7 +1419,7 @@ OrderImportErrors ImportJsonOrderList(const Vehicle *veh, std::string_view json_
 			}
 
 			if (have_schedule && veh->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) {
-				Command<Commands::TimetableSeparation>::Post(veh->index, false);
+				Command<Commands::TimetableSeparation>::Post(OrderTargetType::Vehicle, veh->index.base(), false);
 			}
 
 			uint schedule_index = schedule_insert_offset;
