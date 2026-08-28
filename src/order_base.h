@@ -1371,6 +1371,13 @@ public:
 
 	void Initialize(Vehicle *v);
 
+	/**
+	 * Recompute the derived counters of a player-created order list that has no
+	 * vehicles. Such lists are never passed to #Initialize, so after loading a
+	 * savegame their manual order count and durations would stay zero otherwise.
+	 */
+	void InitializePlayerCreated();
+
 	void RecalculateTimetableDuration();
 
 	/**

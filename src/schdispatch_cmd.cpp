@@ -388,6 +388,7 @@ CommandCost CmdSchDispatchAddNewSchedule(DoCommandFlags flags, OrderTargetType t
 	if (flags.Test(DoCommandFlag::Execute)) {
 		if (ol == nullptr) {
 			v->orders = OrderList::Create(nullptr, v);
+			v->primary_order = v->orders->index;
 		}
 		ol->GetScheduledDispatchScheduleSet().emplace_back();
 		DispatchSchedule &ds = ol->GetScheduledDispatchScheduleSet().back();

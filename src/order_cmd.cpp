@@ -589,6 +589,10 @@ void OrderList::Initialize(Vehicle *v)
 	}
 
 	for (const Vehicle *u = v->NextShared(); u != nullptr; u = u->NextShared()) ++this->num_vehicles;
+
+	fprintf(stderr, "[PXEXEC] Initialize ol=%u num=%u manual=%u nv=%u veh=%u\n",
+			this->index.base(), (unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders,
+			this->num_vehicles, v->index.base());
 }
 
 /**
@@ -606,12 +610,40 @@ void OrderList::RecalculateTimetableDuration()
 }
 
 /**
+ * Recompute the derived counters of a player-created order list that has no
+ * vehicles. Such lists are never passed to #Initialize, so after loading a
+ * savegame their manual order count and durations would stay zero otherwise.
+ */
+void OrderList::InitializePlayerCreated()
+{
+	assert(this->IsPlayerCreated());
+	assert(this->GetNumVehicles() == 0 && this->first_shared == nullptr);
+
+	this->num_manual_orders = 0;
+	this->timetable_duration = 0;
+	this->total_duration = 0;
+	for (const Order *o : this->Orders()) {
+		if (!o->IsType(OT_IMPLICIT)) ++this->num_manual_orders;
+		if (!o->IsType(OT_CONDITIONAL)) {
+			this->timetable_duration += o->GetTimetabledWait() + o->GetTimetabledTravel();
+			this->total_duration += o->GetWaitTime() + o->GetTravelTime();
+		}
+	}
+
+	fprintf(stderr, "[PXEXEC] InitializePlayerCreated ol=%u num=%u manual=%u\n",
+			this->index.base(), (unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders);
+}
+
+/**
  * Free a complete order chain.
  * @param keep_orderlist If this is true only delete the orders, otherwise also delete the OrderList.
  * @note do not use on "current_order" vehicle orders!
  */
 void OrderList::FreeChain(bool keep_orderlist)
 {
+	fprintf(stderr, "[PXEXEC] FreeChain ol=%u keep=%d pc=%d num=%u manual=%u nv=%u\n",
+			this->index.base(), keep_orderlist ? 1 : 0, this->IsPlayerCreated() ? 1 : 0,
+			(unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders, this->num_vehicles);
 	if (this->IsPlayerCreated()) {
 		/* Player-created order lists are managed via dedicated commands. They must not be freed by the
 		 * normal lifecycle, and they also do not unregister destinations as none were ever registered. */
@@ -880,6 +912,10 @@ void OrderList::InsertOrderAt(Order &&ins_order, VehicleOrderID index)
 		if (bs->owner == OWNER_NONE) InvalidateWindowClassesData(WindowClass::StationList);
 	}
 
+	fprintf(stderr, "[PXEXEC] InsertOrderAt ol=%u idx=%u type=%u num=%u manual=%u nv=%u pc=%d\n",
+			this->index.base(), (unsigned)index, (unsigned)new_order->GetType(),
+			(unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders, this->num_vehicles,
+			this->IsPlayerCreated() ? 1 : 0);
 }
 
 
@@ -889,7 +925,12 @@ void OrderList::InsertOrderAt(Order &&ins_order, VehicleOrderID index)
  */
 void OrderList::DeleteOrderAt(VehicleOrderID index)
 {
-	if (index >= this->GetNumOrders()) return;
+	if (index >= this->GetNumOrders()) {
+		fprintf(stderr, "[PXEXEC] DeleteOrderAt ol=%u IGNORED out-of-range idx=%u num=%u manual=%u\n",
+				this->index.base(), (unsigned)index, (unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders);
+		return;
+
+	}
 
 	Order *to_remove = &(this->orders[index]);
 
@@ -905,6 +946,11 @@ void OrderList::DeleteOrderAt(VehicleOrderID index)
 	to_remove->InvalidateGuiOnRemove();
 
 	this->orders.erase(this->orders.begin() + index);
+
+	fprintf(stderr, "[PXEXEC] DeleteOrderAt ol=%u idx=%u type=%u num=%u manual=%u nv=%u pc=%d\n",
+			this->index.base(), (unsigned)index, (unsigned)to_remove->GetType(),
+			(unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders, this->num_vehicles,
+			this->IsPlayerCreated() ? 1 : 0);
 }
 
 /**
@@ -937,8 +983,10 @@ void OrderList::MoveOrders(VehicleOrderID from, VehicleOrderID to, uint16_t coun
  */
 void OrderList::RemoveVehicle(Vehicle *v)
 {
+	fprintf(stderr, "[PXEXEC] RemoveVehicle ol=%u veh=%u nv=%u->", this->index.base(), v->index.base(), this->num_vehicles);
 	--this->num_vehicles;
 	if (v == this->first_shared) this->first_shared = v->NextShared();
+	fprintf(stderr, "%u\n", this->num_vehicles);
 }
 
 /**
@@ -948,6 +996,8 @@ void OrderList::RemoveVehicle(Vehicle *v)
  */
 void OrderList::AssignVehicle(Vehicle *v)
 {
+	fprintf(stderr, "[PXEXEC] AssignVehicle ol=%u veh=%u nv=%u pc=%d\n",
+			this->index.base(), v->index.base(), this->num_vehicles, this->IsPlayerCreated() ? 1 : 0);
 	if (this->first_shared == nullptr) {
 		this->first_shared = v;
 		this->AddVehicle(v);
@@ -992,7 +1042,14 @@ void OrderList::DebugCheckSanity() const
 			check_total_duration += o->GetWaitTime() + o->GetTravelTime();
 		}
 	}
+	auto sanity_fail = [&](const char *what, long long a, long long b) {
+		fprintf(stderr, "[PXEXEC] SANITY-FAIL ol=%u %s: %lld != %lld (num=%u manual=%u nv=%u first_shared=%p pc=%d)\n",
+				this->index.base(), what, a, b,
+				(unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders, this->num_vehicles,
+				(const void *)this->first_shared, this->IsPlayerCreated() ? 1 : 0);
+	};
 	assert_msg(this->GetNumOrders() == check_num_orders, "{}, {}", this->GetNumOrders(), check_num_orders);
+	if (this->num_manual_orders != check_num_manual_orders) sanity_fail("num_manual_orders", (long long)this->num_manual_orders, (long long)check_num_manual_orders);
 	assert_msg(this->num_manual_orders == check_num_manual_orders, "{}, {}", this->num_manual_orders, check_num_manual_orders);
 	assert_msg(this->timetable_duration == check_timetable_duration, "{}, {}", this->timetable_duration, check_timetable_duration);
 	assert_msg(this->total_duration == check_total_duration, "{}, {}", this->total_duration, check_total_duration);
@@ -1207,10 +1264,152 @@ static CommandCost ValidateStandaloneNewOrder(const Order &new_order)
 	return CommandCost();
 }
 
+/**
+ * Adjust the remembered resume position of every vehicle that is currently away
+ * on an execute-schedule detour but calls the given order list home. Those
+ * vehicles are not part of the list's shared chain, so their position must be
+ * updated separately when the list's contents change.
+ * @param home the order list the vehicles call home
+ * @param adjust callable adjusting a VehicleOrderID in place
+ */
+template <typename F>
+static void AdjustExecutingResumeIndices(OrderListID home, F &&adjust)
+{
+	for (Vehicle *u : Vehicle::Iterate()) {
+		if (u->orders == nullptr || !u->IsExecutingSchedule() || u->primary_order != home) continue;
+		adjust(u->primary_order_index);
+	}
+}
+
+static void CancelLoadingDueToDeletedOrder(Vehicle *v);
+
+/**
+ * Update the order indices of the vehicles following a standalone order list
+ * (its shared chain, e.g. vehicles executing it) after an order was inserted.
+ * @param ol the order list that got an order inserted
+ * @param sel_ord the position the order was inserted at
+ */
+static void StandaloneListInsertUpdateVehicles(OrderList *ol, VehicleOrderID sel_ord)
+{
+	for (Vehicle *u = ol->GetFirstSharedVehicle(); u != nullptr; u = u->NextShared()) {
+		/* If there is added an order before the current one, we need
+		 * to update the selected order. We do not change implicit/real order indices though.
+		 * If the new order is between the current implicit order and real order, the implicit order will
+		 * later skip the inserted order. */
+		if (sel_ord <= u->cur_real_order_index) {
+			uint cur = u->cur_real_order_index + 1;
+			/* Check if we don't go out of bound */
+			if (cur < u->GetNumOrders()) {
+				u->cur_real_order_index = cur;
+			}
+		}
+		if (sel_ord == u->cur_implicit_order_index && u->IsGroundVehicle()) {
+			/* We are inserting an order just before the current implicit order.
+			 * We do not know whether we will reach current implicit or the newly inserted order first.
+			 * So, disable creation of implicit orders until we are on track again. */
+			uint16_t &gv_flags = u->GetGroundVehicleFlags();
+			SetBit(gv_flags, GVF_SUPPRESS_IMPLICIT_ORDERS);
+		}
+		if (sel_ord <= u->cur_implicit_order_index) {
+			uint cur = u->cur_implicit_order_index + 1;
+			/* Check if we don't go out of bound */
+			if (cur < u->GetNumOrders()) {
+				u->cur_implicit_order_index = cur;
+			}
+		}
+
+		if (u->cur_timetable_order_index != INVALID_VEH_ORDER_ID && sel_ord <= u->cur_timetable_order_index) {
+			uint cur = u->cur_timetable_order_index + 1;
+			/* Check if we don't go out of bound */
+			if (cur < u->GetNumOrders()) {
+				u->cur_timetable_order_index = cur;
+			}
+		}
+
+		/* Unbunching data is no longer valid. */
+		u->ResetDepotUnbunching();
+
+		/* Update any possible open window of the vehicle */
+		InvalidateVehicleOrder(u, INVALID_VEH_ORDER_ID | (sel_ord << 16));
+	}
+
+	/* Keep the resume position of vehicles executing another list but calling
+	 * this list home in sync as well. */
+	AdjustExecutingResumeIndices(ol->index, [&](VehicleOrderID &idx) {
+		if (sel_ord <= idx) {
+			uint cur = idx + 1;
+			/* Check if we don't go out of bound */
+			if (cur < ol->GetNumOrders()) {
+				idx = cur;
+			}
+		}
+	});
+}
+
+/**
+ * Update the order indices of the vehicles following a standalone order list
+ * (its shared chain, e.g. vehicles executing it) after an order was deleted.
+ * @param ol the order list that had an order deleted
+ * @param sel_ord the position the order was deleted at
+ */
+static void StandaloneListDeleteUpdateVehicles(OrderList *ol, VehicleOrderID sel_ord)
+{
+	for (Vehicle *u = ol->GetFirstSharedVehicle(); u != nullptr; u = u->NextShared()) {
+		if (sel_ord == u->cur_real_order_index && u->current_order.IsAnyLoadingType()) {
+			CancelLoadingDueToDeletedOrder(u);
+		}
+
+		if (sel_ord < u->cur_real_order_index) {
+			u->cur_real_order_index--;
+		} else if (sel_ord == u->cur_real_order_index) {
+			u->UpdateRealOrderIndex();
+		}
+
+		if (sel_ord < u->cur_implicit_order_index) {
+			u->cur_implicit_order_index--;
+		} else if (sel_ord == u->cur_implicit_order_index) {
+			/* Make sure the index is valid */
+			if (u->cur_implicit_order_index >= u->GetNumOrders()) u->cur_implicit_order_index = 0;
+
+			/* Skip non-implicit orders for the implicit-order-index (e.g. if the current implicit order was deleted */
+			while (u->cur_implicit_order_index != u->cur_real_order_index && !u->GetOrder(u->cur_implicit_order_index)->IsType(OT_IMPLICIT)) {
+				u->cur_implicit_order_index++;
+				if (u->cur_implicit_order_index >= u->GetNumOrders()) u->cur_implicit_order_index = 0;
+			}
+		}
+		/* Unbunching data is no longer valid. */
+		u->ResetDepotUnbunching();
+
+		if (u->cur_timetable_order_index != INVALID_VEH_ORDER_ID) {
+			if (sel_ord < u->cur_timetable_order_index) {
+				u->cur_timetable_order_index--;
+			} else if (sel_ord == u->cur_timetable_order_index) {
+				u->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+			}
+		}
+
+		/* Update any possible open window of the vehicle */
+		InvalidateVehicleOrder(u, sel_ord | (INVALID_VEH_ORDER_ID << 16));
+	}
+
+	/* Keep the resume position of vehicles executing another list but calling
+	 * this list home in sync as well. If the order to resume at was deleted,
+	 * its successor has shifted into its place. */
+	AdjustExecutingResumeIndices(ol->index, [&](VehicleOrderID &idx) {
+		if (sel_ord < idx) {
+			idx--;
+		} else if (sel_ord == idx && idx >= ol->GetNumOrders()) {
+			idx = 0;
+		}
+	});
+}
+
 /** Insert an order into a standalone order list and fix up conditional jump targets. */
 static void InsertOrderOnStandaloneList(OrderList *ol, Order &&new_o, VehicleOrderID sel_ord)
 {
 	ol->InsertOrderAt(std::move(new_o), sel_ord);
+
+	StandaloneListInsertUpdateVehicles(ol, sel_ord);
 
 	/* As we insert an order, the order to skip to will be 'wrong'. */
 	VehicleOrderID cur_order_id = 0;
@@ -1238,6 +1437,8 @@ static void InsertOrderOnStandaloneList(OrderList *ol, Order &&new_o, VehicleOrd
 static void DeleteOrderOnStandaloneList(OrderList *ol, VehicleOrderID sel_ord)
 {
 	ol->DeleteOrderAt(sel_ord);
+
+	StandaloneListDeleteUpdateVehicles(ol, sel_ord);
 
 	/* As we delete an order, the order to skip to will be 'wrong'. */
 	VehicleOrderID cur_order_id = 0;
@@ -1769,6 +1970,7 @@ void InsertOrder(Vehicle *v, Order &&new_o, VehicleOrderID sel_ord)
 	/* Create new order and link in list */
 	if (v->orders == nullptr) {
 		v->orders = OrderList::Create(std::move(new_o), v);
+		v->primary_order = v->orders->index;
 	} else {
 		v->orders->InsertOrderAt(std::move(new_o), sel_ord);
 	}
@@ -1818,6 +2020,18 @@ void InsertOrder(Vehicle *v, Order &&new_o, VehicleOrderID sel_ord)
 		/* Update any possible open window of the vehicle */
 		InvalidateVehicleOrder(u, INVALID_VEH_ORDER_ID | (sel_ord << 16));
 	}
+
+	/* Keep the resume position of vehicles executing another list but calling
+	 * this list home in sync as well. */
+	AdjustExecutingResumeIndices(v->orders->index, [&](VehicleOrderID &idx) {
+		if (sel_ord <= idx) {
+			uint cur = idx + 1;
+			/* Check if we don't go out of bound */
+			if (cur < v->GetNumOrders()) {
+				idx = cur;
+			}
+		}
+	});
 
 	/* As we insert an order, the order to skip to will be 'wrong'. */
 	VehicleOrderID cur_order_id = 0;
@@ -1961,6 +2175,9 @@ static void CancelLoadingDueToDeletedOrder(Vehicle *v)
  */
 void DeleteOrder(Vehicle *v, VehicleOrderID sel_ord)
 {
+	fprintf(stderr, "[PXEXEC] DeleteOrder veh=%u ol=%u sel=%u num=%u manual=%u r=%u i=%u\n",
+			v->index.base(), v->orders->index.base(), (unsigned)sel_ord, (unsigned)v->GetNumOrders(),
+			(unsigned)v->GetNumManualOrders(), (unsigned)v->cur_real_order_index, (unsigned)v->cur_implicit_order_index);
 	v->orders->DeleteOrderAt(sel_ord);
 
 	Vehicle *u = v->FirstShared();
@@ -2004,6 +2221,17 @@ void DeleteOrder(Vehicle *v, VehicleOrderID sel_ord)
 		/* Update any possible open window of the vehicle */
 		InvalidateVehicleOrder(u, sel_ord | (INVALID_VEH_ORDER_ID << 16));
 	}
+
+	/* Keep the resume position of vehicles executing another list but calling
+	 * this list home in sync as well. If the order to resume at was deleted,
+	 * its successor has shifted into its place. */
+	AdjustExecutingResumeIndices(v->orders->index, [&](VehicleOrderID &idx) {
+		if (sel_ord < idx) {
+			idx--;
+		} else if (sel_ord == idx && idx >= v->GetNumOrders()) {
+			idx = 0;
+		}
+	});
 
 	/* As we delete an order, the order to skip to will be 'wrong'. */
 	VehicleOrderID cur_order_id = 0;
@@ -2141,6 +2369,28 @@ CommandCost CmdMoveOrder(DoCommandFlags flags, OrderTargetType target_type, uint
 					else if (idx < moving_order && idx >= target_order) order->SetConditionSkipToOrder(idx + count);
 				}
 			}
+
+			/* Update the order indices of the vehicles following the list and the
+			 * resume positions of vehicles executing another list but calling this
+			 * list home. */
+			auto adjust_order_idx = [&](VehicleOrderID idx) -> VehicleOrderID {
+				if (idx >= order_count) return idx;
+				if (idx >= moving_order && idx < moving_order + count) return target_order + (idx - moving_order);
+				if (idx > moving_order && idx <= target_order) return idx - count;
+				if (idx < moving_order && idx >= target_order) return idx + count;
+				return idx;
+			};
+			for (Vehicle *u = ol->GetFirstSharedVehicle(); u != nullptr; u = u->NextShared()) {
+				u->cur_real_order_index = adjust_order_idx(u->cur_real_order_index);
+				u->cur_implicit_order_index = adjust_order_idx(u->cur_implicit_order_index);
+				u->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+				u->ResetDepotUnbunching();
+				InvalidateVehicleOrderOnMove(u, moving_order, target_order, count);
+			}
+			AdjustExecutingResumeIndices(ol->index, [&](VehicleOrderID &idx) {
+				idx = adjust_order_idx(idx);
+			});
+
 			InvalidateStandaloneOrderGUIs();
 			return CommandCost();
 		}
@@ -2188,6 +2438,12 @@ CommandCost CmdMoveOrder(DoCommandFlags flags, OrderTargetType target_type, uint
 			/* Update any possible open window of the vehicle */
 			InvalidateVehicleOrderOnMove(u, moving_order, target_order, count);
 		}
+
+		/* Keep the resume position of vehicles executing another list but calling
+		 * this list home in sync as well. */
+		AdjustExecutingResumeIndices(v->orders->index, [&](VehicleOrderID &idx) {
+			idx = adjust_order_idx(idx);
+		});
 
 		/* As we move an order, the order to skip to will be 'wrong'. */
 		for (Order *order : v->Orders()) {
@@ -2305,6 +2561,12 @@ CommandCost CmdReverseOrderList(DoCommandFlags flags, VehicleID veh, ReverseOrde
 					u->ResetDepotUnbunching();
 					InvalidateVehicleOrder(u, VIWD_REMOVE_ALL_ORDERS); // All orders have moved/been modified, deselect
 				}
+
+				/* Keep the resume position of vehicles executing another list but
+				 * calling this list home in sync as well. */
+				AdjustExecutingResumeIndices(v->orders->index, [&](VehicleOrderID &idx) {
+					idx = map_order_id(idx);
+				});
 			}
 			break;
 		}
@@ -3453,6 +3715,16 @@ CommandCost CmdDeleteOrderList(DoCommandFlags flags, OrderListID list_id)
 	if (ret.Failed()) return ret;
 
 	if (flags.Test(DoCommandFlag::Execute)) {
+		/* Vehicles away on an execute-schedule detour may still call this list
+		 * home (they are not part of its shared chain). Their home is gone, so
+		 * they adopt the list they are currently executing. */
+		for (Vehicle *u : Vehicle::Iterate()) {
+			if (u->orders != nullptr && u->IsExecutingSchedule() && u->primary_order == list_id) {
+				u->primary_order = u->orders->index;
+				u->primary_order_index = INVALID_VEH_ORDER_ID;
+			}
+		}
+
 		/* Destinations were never registered for standalone lists; FreeChain's guard
 		 * handles clearing without unregistering. We never free via FreeChain(false). */
 		ol->FreeChain(true);
@@ -3559,6 +3831,8 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 
 				/* Link this vehicle in the shared-list */
 				dst->AddToShared(src);
+				/* AddToShared may have created a new list when src had none. */
+				dst->primary_order = dst->orders->index;
 
 
 				/* Set automation bit if target has it. */
@@ -3653,6 +3927,7 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 				}
 				assert(OrderList::CanAllocateItem());
 				dst->orders = OrderList::Create(std::move(dst_orders), dst);
+				dst->primary_order = dst->orders->index;
 
 				/* Copy over scheduled dispatch data */
 				assert(dst->orders != nullptr);
@@ -3751,6 +4026,7 @@ CommandCost CmdInsertOrdersFromVehicle(DoCommandFlags flags, VehicleID veh_dst, 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		if (dst->orders == nullptr) {
 			dst->orders = OrderList::Create(nullptr, dst);
+			dst->primary_order = dst->orders->index;
 		}
 
 		const std::vector<DispatchSchedule> &src_scheds = src->orders->GetScheduledDispatchScheduleSet();
@@ -4057,6 +4333,21 @@ bool Vehicle::HasDepotOrder() const
 }
 
 /**
+ * Free a vehicle-owned order list that served as the home of execute-schedule
+ * vehicles when the last reference to it is gone.
+ * @param home the order list to maybe free
+ */
+static void FreeOrphanedExecuteScheduleHome(OrderList *home)
+{
+	if (home == nullptr || home->IsPlayerCreated()) return;
+	if (home->GetNumVehicles() != 0) return;
+	for (const Vehicle *u : Vehicle::Iterate()) {
+		if (u->orders != nullptr && u->primary_order == home->index) return;
+	}
+	home->FreeChain(false);
+}
+
+/**
  * Delete all orders from a vehicle
  * @param v                   Vehicle whose orders to reset
  * @param keep_orderlist      If true, do not free the order list, only empty it.
@@ -4071,6 +4362,19 @@ void DeleteVehicleOrders(Vehicle *v, bool keep_orderlist, bool reset_order_indic
 	InvalidateWindowClassesData(WindowClass::DepartureBoard);
 
 	extern void UpdateDeparturesWindowVehicleFilter(const OrderList *order_list, bool remove);
+
+	/* The vehicle may be away on an execute-schedule detour; in that case
+	 * v->orders is the list being executed and the real home list is kept
+	 * by primary_order. Drop the detour state first, then clean up the
+	 * home list if nothing references it anymore. */
+	OrderList *execute_home = nullptr;
+	if (v->IsExecutingSchedule()) {
+		execute_home = OrderList::GetIfValid(v->primary_order);
+		fprintf(stderr, "[PXEXEC] DeleteVehicleOrders veh=%u executing: orders=%u home=%u resume=%u\n",
+				v->index.base(), v->orders->index.base(), v->primary_order.base(), (unsigned)v->primary_order_index);
+		v->primary_order = OrderListID::Invalid();
+		v->primary_order_index = INVALID_VEH_ORDER_ID;
+	}
 
 	if (v->IsOrderListShared()) {
 		/* Remove ourself from the shared order list. */
@@ -4095,6 +4399,16 @@ void DeleteVehicleOrders(Vehicle *v, bool keep_orderlist, bool reset_order_indic
 
 	/* Unbunching data is no longer valid. */
 	v->ResetDepotUnbunching();
+
+	if (v->orders == nullptr) {
+		/* No orders left: the vehicle has no primary order list either. */
+		v->primary_order = OrderListID::Invalid();
+		v->primary_order_index = INVALID_VEH_ORDER_ID;
+	}
+
+	/* The vehicle is gone from the list it was executing; free its old home
+	 * list if it was a detached vehicle-owned list nobody references anymore. */
+	FreeOrphanedExecuteScheduleHome(execute_home);
 
 	if (reset_order_indices) {
 		v->cur_implicit_order_index = v->cur_real_order_index = 0;
@@ -4723,6 +5037,78 @@ void FlushAdvanceOrderIndexDeferred(const Vehicle *v, bool apply)
 }
 
 /**
+ * A vehicle executing another order list finished one full pass of it: return
+ * the vehicle to its primary (home) order list and resume at the position
+ * remembered when the detour started.
+ * @note called from the order index wrap-around handling, so the caller must
+ *       cope with the vehicle's order list having changed on return.
+ */
+void Vehicle::ReturnFromExecuteSchedule(bool from_real_index)
+{
+	OrderList *home = OrderList::GetIfValid(this->primary_order);
+	OrderList *target = this->orders;
+	fprintf(stderr, "[PXEXEC] RETURN(%s) veh=%u target=%u(num=%u manual=%u r=%u i=%u) home=%u resume=%u\n",
+			from_real_index ? "real" : "implicit", this->index.base(), target->index.base(),
+			(unsigned)target->GetNumOrders(), (unsigned)target->GetNumManualOrders(),
+			(unsigned)this->cur_real_order_index, (unsigned)this->cur_implicit_order_index,
+			this->primary_order.base(), (unsigned)this->primary_order_index);
+	if (home == nullptr) {
+		fprintf(stderr, "[PXEXEC] RETURN home invalid -> adopt current\n");
+	} else if (home == target) {
+		fprintf(stderr, "[PXEXEC] RETURN home==target -> adopt current\n");
+	}
+	if (home == nullptr || home == target) {
+		/* The home list is gone (its deletion should have handled this):
+		 * adopt the list we are on as the new home. */
+		this->primary_order = target->index;
+		this->primary_order_index = INVALID_VEH_ORDER_ID;
+		return;
+	}
+
+	if (home->GetNumOrders() == 0) {
+		/* Nothing to resume into: keep executing the target list until the
+		 * home list has orders again. */
+		fprintf(stderr, "[PXEXEC] RETURN home empty -> stay executing\n");
+		return;
+	}
+
+	/* Detach from the target list's shared chain. */
+	if (target->IsShared()) {
+		this->RemoveFromShared();
+	} else {
+		target->RemoveVehicle(this);
+	}
+
+	/* Re-join the home list. */
+	this->orders = home;
+	home->AssignVehicle(this);
+
+	/* Dispatch/separation is a property of the list being followed. */
+	this->vehicle_flags.Set(VehicleFlag::ScheduledDispatch, home->IsDispatchEnabled());
+	this->vehicle_flags.Set(VehicleFlag::TimetableSeparation, home->IsSeparationEnabled());
+
+	/* Resume where we left the home list when we jumped away. */
+	VehicleOrderID resume = this->primary_order_index;
+	if (resume == INVALID_VEH_ORDER_ID || resume >= home->GetNumOrders()) {
+		fprintf(stderr, "[PXEXEC] RETURN resume %u out of range (num=%u) -> 0\n", (unsigned)resume, (unsigned)home->GetNumOrders());
+		resume = 0;
+	}
+	this->primary_order_index = INVALID_VEH_ORDER_ID;
+	this->primary_order = home->index;
+	this->cur_implicit_order_index = resume;
+	this->cur_real_order_index = resume;
+	this->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+	this->UpdateRealOrderIndex();
+
+	this->current_order.Free();
+	this->SetDestTile(INVALID_TILE);
+	InvalidateVehicleOrder(this, VIWD_MODIFY_ORDERS);
+	fprintf(stderr, "[PXEXEC] RETURN done veh=%u home=%u(num=%u manual=%u) r=%u i=%u\n",
+			this->index.base(), home->index.base(), (unsigned)home->GetNumOrders(), (unsigned)home->GetNumManualOrders(),
+			(unsigned)this->cur_real_order_index, (unsigned)this->cur_implicit_order_index);
+}
+
+/**
  * Update the vehicle's destination tile from an order.
  * @param order the order the vehicle currently has
  * @param v the vehicle to update
@@ -4873,17 +5259,36 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			assert(!pbs_look_ahead);
 			{
 				OrderList *target = OrderList::GetIfValid(order->GetDestination().ToOrderListID());
-				if (target != nullptr && target != v->orders && target->IsPlayerCreated() && target->IsVisibleToCompany(v->owner)) {
-					/* Execute the target order list: switch this vehicle to it (shared list). */
+				if (target != nullptr && target != v->orders && !v->IsExecutingSchedule() && target->IsPlayerCreated() && target->IsVisibleToCompany(v->owner)) {
+					/* Execute the target order list: switch this vehicle to it (shared list).
+					 * The vehicle's own list is kept as the primary order list; after one
+					 * full pass of the target list the vehicle returns to it and resumes
+					 * where it left. Nested execute-schedule orders are skipped while
+					 * already executing. */
+					OrderList *home = v->orders;
+					fprintf(stderr, "[PXEXEC] JUMP-IN veh=%u home=%u(num=%u manual=%u r=%u i=%u) -> target=%u(num=%u manual=%u)\n",
+							v->index.base(), home->index.base(), (unsigned)home->GetNumOrders(), (unsigned)home->GetNumManualOrders(),
+							(unsigned)v->cur_real_order_index, (unsigned)v->cur_implicit_order_index,
+							target->index.base(), (unsigned)target->GetNumOrders(), (unsigned)target->GetNumManualOrders());
+					/* Step past this execute-schedule order; the resulting position is
+					 * where execution of our own list resumes after the detour. */
+					v->IncrementRealOrderIndex();
+					v->primary_order = home->index;
+					v->primary_order_index = v->cur_real_order_index;
+
+					/* Remember the home list's dispatch/separation state if it is not
+					 * mirrored by the list itself, so we can restore it when returning. */
+					if (!home->IsPlayerCreated()) {
+						home->SetDispatchEnabled(v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch));
+						home->SetSeparationEnabled(v->vehicle_flags.Test(VehicleFlag::TimetableSeparation));
+					}
+
+					/* Unlink from our own list's shared chain. The list itself is kept
+					 * alive, it is where the vehicle returns to. */
 					if (v->IsOrderListShared()) {
-						/* Part of a shared chain: unlink from it. */
 						v->RemoveFromShared();
-					} else if (v->orders->IsPlayerCreated()) {
-						/* Only vehicle on a player-created list: detach, keeping the list. */
-						v->orders->RemoveVehicle(v);
 					} else {
-						/* Only vehicle on a vehicle-owned list: free the list. */
-						v->orders->FreeChain(false);
+						home->RemoveVehicle(v);
 					}
 					v->orders = target;
 					target->AssignVehicle(v);
@@ -5261,6 +5666,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 		if (v->orders == nullptr) {
 			if (!OrderList::CanAllocateItem()) return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
 			v->orders = OrderList::Create(nullptr, v);
+			v->primary_order = v->orders->index;
 		}
 
 		VehicleOrderID insert_pos = INVALID_VEH_ORDER_ID;

@@ -2580,6 +2580,8 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 				/* Cases #?b: Transfer order, unit number and other stuff
 				 * to the new front engine. */
 				src_head->orders = src->orders;
+				src_head->primary_order = src->primary_order;
+				src_head->primary_order_index = src->primary_order_index;
 				if (src_head->orders != nullptr) src_head->AddToShared(src);
 				src_head->CopyVehicleConfigAndStatistics(src);
 			}
@@ -2718,6 +2720,8 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 				/* We are selling the front engine. In this case we want to
 				 * 'give' the order, unit number and such to the new head. */
 				new_head->orders = first->orders;
+				new_head->primary_order = first->primary_order;
+				new_head->primary_order_index = first->primary_order_index;
 				new_head->AddToShared(first);
 				DeleteVehicleOrders(first);
 
@@ -5625,6 +5629,8 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 			case ODOF_KEEP_ORDERS:
 				load_trains |= DECOUPLE_LOAD_SECOND;
 				u->orders = v->orders;
+				u->primary_order = v->primary_order;
+				u->primary_order_index = v->primary_order_index;
 				u->AddToShared(v);
 				u->cur_real_order_index = v->cur_real_order_index;
 				u->cur_implicit_order_index = v->cur_implicit_order_index;
@@ -5632,6 +5638,8 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 				break;
 			case ODOF_KEEP_ORDERS_NO_LOAD:
 				u->orders = v->orders;
+				u->primary_order = v->primary_order;
+				u->primary_order_index = v->primary_order_index;
 				u->AddToShared(v);
 				u->cur_real_order_index = v->cur_real_order_index;
 				u->cur_implicit_order_index = v->cur_implicit_order_index;

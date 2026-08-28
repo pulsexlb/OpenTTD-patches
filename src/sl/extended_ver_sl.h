@@ -210,6 +210,7 @@ enum SlXvFeatureIndex {
 	XSLFI_CHILLPP,                                ///< This is a ChillPP game, use this for loading some settings
 	XSLFI_ORDER_DECOUPLE,                         ///< Couple/decouple train orders
 	XSLFI_TRAIN_PRIMARY,                          ///< Trains have a separate primary (consist info carrier) vehicle
+	XSLFI_VEHICLE_PRIMARY_ORDER,                  ///< Vehicles remember their primary order list while executing another one
 
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };

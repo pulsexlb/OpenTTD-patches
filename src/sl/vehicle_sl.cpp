@@ -304,6 +304,25 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 				}
 			}
 		}
+
+		if (!SlXvIsFeaturePresent(XSLFI_VEHICLE_PRIMARY_ORDER)) {
+			/* Older savegames do not know about the primary order list: every
+			 * vehicle simply belongs to the order list it currently has. */
+			for (Vehicle *v : Vehicle::Iterate()) {
+				si_v = v;
+				if (v->orders != nullptr && v->primary_order == OrderListID::Invalid()) {
+					v->primary_order = v->orders->index;
+				}
+			}
+		}
+
+		/* Player-created order lists usually have no vehicles and are therefore
+		 * never passed to Initialize(); recompute their derived counters, which
+		 * are not saved and would stay zero (or get corrupted by later edits). */
+		for (OrderList *ol : OrderList::Iterate()) {
+			if (!ol->IsPlayerCreated() || ol->GetNumVehicles() != 0) continue;
+			ol->InitializePlayerCreated();
+		}
 	}
 
 	for (Vehicle *v : Vehicle::Iterate()) {
@@ -1105,6 +1124,9 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("orders",                    SLEG_CONDVAR(_old_order_item_ref,                SLE_FILE_U16 | SLE_VAR_U32, SL_MIN_VERSION, SLV_69)),
 		NSL("orders",                    SLEG_CONDVAR(_old_order_item_ref,                SLE_UINT32,                 SLV_69, SLV_105)),
 		NSL("orders",                     SLE_CONDREF(Vehicle, orders,                    REF_ORDERLIST,              SLV_105, SL_MAX_VERSION)),
+
+		NSL("primary_order",            SLE_CONDVAR_X(Vehicle, primary_order,              SLE_UINT16,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_VEHICLE_PRIMARY_ORDER))),
+		NSL("primary_order_index",      SLE_CONDVAR_X(Vehicle, primary_order_index,        SLE_UINT16,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_VEHICLE_PRIMARY_ORDER))),
 
 		NSL("age",                        SLE_CONDVAR(Vehicle, age,                       SLE_FILE_U16 | SLE_VAR_I32, SL_MIN_VERSION, SLV_31)),
 		NSL("age",                        SLE_CONDVAR(Vehicle, age,                       SLE_INT32,                  SLV_31, SL_MAX_VERSION)),

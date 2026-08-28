@@ -380,6 +380,8 @@ public:
 	Order current_order{};                       ///< The current order (+ status, like: loading)
 
 	OrderList *orders = nullptr;                 ///< Pointer to the order list for this vehicle
+	OrderListID primary_order = OrderListID::Invalid();        ///< The order list this vehicle belongs to; equals #orders->index unless it is currently away on an execute-schedule detour
+	VehicleOrderID primary_order_index = INVALID_VEH_ORDER_ID; ///< While executing another order list: position in #primary_order to resume at; #INVALID_VEH_ORDER_ID otherwise
 
 	NO_UNIQUE_ADDRESS NewGRFCache grf_cache{};   ///< Cache of often used calculated NewGRF values
 	Direction cur_image_valid_dir = Direction::Invalid; ///< NOSAVE: direction for which cur_image does not need to be regenerated on the next tick
@@ -855,6 +857,19 @@ public:
 	inline bool IsOrderListShared() const { return this->orders != nullptr && this->orders->IsShared(); }
 
 	/**
+	 * Is this vehicle currently away on an execute-schedule detour, i.e. is it
+	 * following another order list than its primary (home) order list?
+	 */
+	inline bool IsExecutingSchedule() const { return this->orders != nullptr && this->primary_order != OrderListID::Invalid() && this->orders->index != this->primary_order; }
+
+	/**
+	 * Finished one full pass of the order list being executed: return to the
+	 * primary order list and resume at the remembered position.
+	 * @param from_real_index false when triggered by the implicit order index wrap.
+	 */
+	void ReturnFromExecuteSchedule(bool from_real_index = true);
+
+	/**
 	 * Get the number of orders this vehicle has.
 	 * @return the number of orders this vehicle has.
 	 */
@@ -1014,20 +1029,30 @@ private:
 	/**
 	 * Advance cur_real_order_index to the next real order.
 	 * cur_implicit_order_index is not touched.
+	 * @return whether the index wrapped past the end of the order list.
 	 */
-	void SkipToNextRealOrderIndex()
+	bool SkipToNextRealOrderIndex()
 	{
+		bool wrapped = false;
 		if (this->GetNumManualOrders() > 0) {
 			/* Advance to next real order */
 			do {
 				this->cur_real_order_index++;
-				if (this->cur_real_order_index >= this->GetNumOrders()) this->cur_real_order_index = 0;
+				if (this->cur_real_order_index >= this->GetNumOrders()) {
+					this->cur_real_order_index = 0;
+					wrapped = true;
+				}
 			} while (this->GetOrder(this->cur_real_order_index)->IsType(OT_IMPLICIT) || this->GetOrder(this->cur_real_order_index)->IsType(OT_DECOUPLE));
 			this->cur_timetable_order_index = this->cur_real_order_index;
 		} else {
+			wrapped = this->cur_real_order_index != 0 || this->GetNumOrders() <= 1;
 			this->cur_real_order_index = 0;
 			this->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
 		}
+		/* Wrapped past the end: a vehicle executing another order list has now
+		 * finished one full pass and must return to its own order list. */
+		if (wrapped && this->IsExecutingSchedule()) this->ReturnFromExecuteSchedule();
+		return wrapped;
 	}
 
 public:
@@ -1045,13 +1070,21 @@ public:
 
 		assert(this->cur_real_order_index == 0 || this->cur_real_order_index < this->GetNumOrders());
 
+		bool wrapped = false;
 		/* Advance to next implicit order */
 		do {
 			this->cur_implicit_order_index++;
-			if (this->cur_implicit_order_index >= this->GetNumOrders()) this->cur_implicit_order_index = 0;
+			if (this->cur_implicit_order_index >= this->GetNumOrders()) {
+				this->cur_implicit_order_index = 0;
+				wrapped = true;
+			}
 		} while (this->cur_implicit_order_index != this->cur_real_order_index && !this->GetOrder(this->cur_implicit_order_index)->IsType(OT_IMPLICIT));
 
 		InvalidateVehicleOrder(this, 0);
+
+		/* See SkipToNextRealOrderIndex: returning is a no-op when the real
+		 * index already returned us home. */
+		if (wrapped && this->IsExecutingSchedule()) this->ReturnFromExecuteSchedule(false);
 	}
 
 	/**
