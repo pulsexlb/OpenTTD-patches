@@ -14,5 +14,6 @@
 
 void ShowOrderListEditor(OrderListID id);
 void ShowOrderListTimetable(OrderListID id);
+void ShowSchdispatchWindowForList(OrderListID id);
 
 #endif /* ORDERLIST_EDIT_H */

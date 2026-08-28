@@ -1097,9 +1097,10 @@ uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int
 /** Invalidate every GUI that displays a standalone player-created order list. */
 void InvalidateStandaloneOrderGUIs()
 {
-	InvalidateWindowClassesData(WindowClass::OrderList);
-	InvalidateWindowClassesData(WindowClass::OrderListEditor);
-	InvalidateWindowClassesData(WindowClass::OrderListTimetable);
+	InvalidateWindowClassesData(WindowClass::OrderList, VIWD_MODIFY_ORDERS);
+	InvalidateWindowClassesData(WindowClass::OrderListEditor, VIWD_MODIFY_ORDERS);
+	InvalidateWindowClassesData(WindowClass::OrderListTimetable, VIWD_MODIFY_ORDERS);
+	InvalidateWindowClassesData(WindowClass::OrderListSchedule, VIWD_MODIFY_ORDERS);
 }
 
 /** Resolve a command id to a standalone (player-created) order list, or nullptr when invalid. */
@@ -5336,7 +5337,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					} else {
 						/* Delete schedules individually, perform order updates */
 						for (uint i = v->orders->GetScheduledDispatchScheduleCount(); i > 0; i--) {
-							CmdSchDispatchRemoveSchedule(flags, cmd_data.veh, i - 1);
+							CmdSchDispatchRemoveSchedule(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), i - 1);
 						}
 					}
 					break;
@@ -5348,7 +5349,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					uint32_t duration;
 					buf.Recv_generic_seq({}, start_tick, duration);
 					if (buf.error) return CMD_ERROR;
-					if (CmdSchDispatchAddNewSchedule(flags, cmd_data.veh, start_tick, duration).Succeeded()) {
+					if (CmdSchDispatchAddNewSchedule(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), start_tick, duration).Succeeded()) {
 						active_schedule_id = v->orders->GetScheduledDispatchScheduleCount() - 1;
 						active_schedule = &v->orders->GetDispatchScheduleByIndex(active_schedule_id);
 						active_schedule_after_end = 0;
@@ -5379,7 +5380,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					bool enabled;
 					buf.Recv_generic_seq({}, enabled);
 					if (buf.error) return CMD_ERROR;
-					CmdSchDispatchSetEnabled(flags, cmd_data.veh, enabled);
+					CmdSchDispatchSetEnabled(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), enabled);
 					break;
 				}
 
@@ -5388,7 +5389,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					buf.Recv_generic_seq({}, text);
 					if (buf.error) return CMD_ERROR;
 					if (active_schedule_id != UINT_MAX) {
-						CmdSchDispatchRenameSchedule(flags, cmd_data.veh, active_schedule_id, text);
+						CmdSchDispatchRenameSchedule(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), active_schedule_id, text);
 					}
 					break;
 				}
@@ -5399,7 +5400,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					buf.Recv_generic_seq({}, tag_id, text);
 					if (buf.error) return CMD_ERROR;
 					if (active_schedule_id != UINT_MAX) {
-						CmdSchDispatchRenameTag(flags, cmd_data.veh, active_schedule_id, tag_id, text);
+						CmdSchDispatchRenameTag(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), active_schedule_id, tag_id, text);
 					}
 					break;
 				}
@@ -5410,7 +5411,7 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					buf.Recv_generic_seq({}, route_id, text);
 					if (buf.error) return CMD_ERROR;
 					if (active_schedule_id != UINT_MAX) {
-						CmdSchDispatchEditRoute(flags, cmd_data.veh, active_schedule_id, route_id, text);
+						CmdSchDispatchEditRoute(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), active_schedule_id, route_id, text);
 					}
 					break;
 				}

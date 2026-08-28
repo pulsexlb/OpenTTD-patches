@@ -36,7 +36,7 @@ VehicleOrderID AdvanceOrderIndexDeferred(const Vehicle *v, VehicleOrderID index)
 void FlushAdvanceOrderIndexDeferred(const Vehicle *v, bool apply);
 uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int conditional_depth = 0);
 
-void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int y, bool selected, bool timetable, int left, int middle, int right);
+void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int y, bool selected, bool timetable, int left, int middle, int right, bool dispatch_enabled = false, const OrderList *orders = nullptr);
 
 static const uint DEF_SERVINT_DAYS_TRAINS   = 150;
 static const uint DEF_SERVINT_DAYS_ROADVEH  = 150;

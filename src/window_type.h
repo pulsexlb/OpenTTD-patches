@@ -867,6 +867,12 @@ enum class WindowClass : uint16_t {
 	 */
 	OrderListTimetable,
 
+	/**
+	 * Player-created order list scheduled dispatch (reuses #SchdispatchWindow); %Window numbers:
+	 *   - id = target order list id
+	 */
+	OrderListSchedule,
+
 	TemplateReplacementGuiMain,
 	BuildVirtualTrain,
 	TemplateReplacementCreateTemplate,

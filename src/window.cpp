@@ -1360,6 +1360,7 @@ void ChangeWindowOwner(Owner old_owner, Owner new_owner)
 			case WindowClass::OrderList: // Company-owned windows; closed via company cleanup instead.
 			case WindowClass::OrderListEditor:
 			case WindowClass::OrderListTimetable:
+			case WindowClass::OrderListSchedule:
 				continue;
 
 			default:

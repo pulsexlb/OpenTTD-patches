@@ -101,6 +101,7 @@ SaveLoadTable GetOrderListDescription()
 		SLE_SSTR(OrderList, name, SLE_STR),
 		SLE_VAR(OrderList, company, SLE_UINT8),
 		SLE_VAR(OrderList, is_public, SLE_BOOL),
+		SLE_VAR(OrderList, dispatch_enabled, SLE_BOOL),
 	};
 
 	return _orderlist_desc;

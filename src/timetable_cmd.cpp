@@ -224,6 +224,7 @@ static void ChangeTimetableOnOrderList(OrderList *ol, VehicleOrderID order_numbe
 	InvalidateWindowClassesData(WindowClass::OrderList);
 	InvalidateWindowClassesData(WindowClass::OrderListEditor);
 	InvalidateWindowClassesData(WindowClass::OrderListTimetable);
+	InvalidateWindowClassesData(WindowClass::OrderListSchedule);
 }
 
 /**

@@ -861,7 +861,7 @@ static StringID GetDepotOrderGoToString(const Order &order)
  * @param middle X position between order index and order text
  * @param right Right border for text drawing
  */
-void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int y, bool selected, bool timetable, int left, int middle, int right)
+void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int y, bool selected, bool timetable, int left, int middle, int right, bool dispatch_enabled, const OrderList *orders)
 {
 	bool rtl = _current_text_dir == TD_RTL;
 
@@ -1480,13 +1480,13 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 	int edge = DrawString(rtl ? left : middle, rtl ? middle : right, y, line, colour);
 	line.clear();
 
-	if (v != nullptr && v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) && order->IsScheduledDispatchOrder(false) && edge != 0) {
+	if (dispatch_enabled && order->IsScheduledDispatchOrder(false) && edge != 0 && orders != nullptr) {
 		StringID str = (order->IsWaitTimetabled() || !timetable) ? STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER : STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER_NO_WAIT_TIME;
-		const DispatchSchedule &ds = v->orders->GetDispatchScheduleByIndex(order->GetDispatchScheduleIndex());
+		const DispatchSchedule &ds = orders->GetDispatchScheduleByIndex(order->GetDispatchScheduleIndex());
 		if (!ds.ScheduleName().empty()) {
 			AppendStringInPlace(line, str, STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER_NAMED_SCHEDULE, ds.ScheduleName());
 		} else {
-			AppendStringInPlace(line, str, v->orders->GetScheduledDispatchScheduleCount() > 1 ? STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER_SCHEDULE_INDEX : STR_EMPTY,
+			AppendStringInPlace(line, str, orders->GetScheduledDispatchScheduleCount() > 1 ? STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER_SCHEDULE_INDEX : STR_EMPTY,
 					order->GetDispatchScheduleIndex() + 1);
 		}
 		edge = DrawString(rtl ? left : edge + 3, rtl ? edge - 3 : right, y, line, colour);
@@ -1801,6 +1801,9 @@ private:
 	const Order *OrderAt(VehicleOrderID i) const { return this->HasVehicle() ? this->vehicle->GetOrder(i) : (this->order_list != nullptr ? this->order_list->GetOrderAt(i) : nullptr); }
 	Owner TargetOwner() const { return this->HasVehicle() ? this->vehicle->owner : (this->order_list != nullptr ? this->order_list->GetCompany() : OWNER_NONE); }
 	bool IsLocalTarget() const { return this->TargetOwner() == _local_company; }
+	bool IsDispatchEnabled() const { return this->HasVehicle() ? this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) : (this->order_list != nullptr && this->order_list->IsDispatchEnabled()); }
+	OrderTargetType TargetKind() const { return this->HasVehicle() ? OrderTargetType::Vehicle : OrderTargetType::OrderList; }
+	uint32_t TargetId() const { return this->HasVehicle() ? this->vehicle->index.base() : this->list_id.base(); }
 	TileIndex CmdTile() const { return this->HasVehicle() ? this->vehicle->tile : TileIndex{}; } // TileIndex{} == 0 passes the command tile gate for tile-less commands
 	VehicleType RefType() const { return this->HasVehicle() ? this->vehicle->type : VehicleType::Train; }
 	const OrderList *Target() const { return this->GetTargetOrders(); }
@@ -2066,7 +2069,7 @@ private:
 	{
 		Order order;
 		order.MakeGoToDepot(DepotID::Invalid(), {OrderDepotTypeFlag::PartOfOrders},
-				(_settings_client.gui.new_nonstop || _settings_game.order.nonstop_only) && (!this->HasVehicle() || this->vehicle->IsGroundVehicle()) ? ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS : ONSF_STOP_EVERYWHERE);
+				(_settings_client.gui.new_nonstop || _settings_game.order.nonstop_only) && this->RefType() != VehicleType::Ship ? ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS : ONSF_STOP_EVERYWHERE);
 		order.SetDepotActionType(ODATFB_NEAREST_DEPOT);
 
 		this->InsertNewOrder(order);
@@ -2415,7 +2418,7 @@ public:
 			case WID_O_COND_VARIABLE: {
 				Dimension d = {0, 0};
 				for (const auto &ocv : _order_conditional_variable) {
-					if (this->HasVehicle() && this->vehicle->type != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DecouplePart)) {
+					if (this->RefType() != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DecouplePart)) {
 						continue;
 					}
 					d = maxdim(d, GetStringBoundingBox(OrderStringForVariable(this->vehicle, ocv)));
@@ -3000,7 +3003,8 @@ public:
 			/* Don't draw anything if it extends past the end of the window. */
 			if (!this->vscroll->IsVisible(i)) break;
 
-			DrawOrderString(this->vehicle, order, i, y, i == this->selected_order, false, ir.left, middle, ir.right);
+			DrawOrderString(this->vehicle, order, i, y, i == this->selected_order, false, ir.left, middle, ir.right,
+					this->IsDispatchEnabled(), this->Target());
 			y += line_height;
 
 			i++;
@@ -3361,7 +3365,7 @@ public:
 						if (this->IsWidgetActiveInLayout(WID_O_TEXT_LABEL)) this->OnClick({}, WID_O_TEXT_LABEL, click_count);
 						return;
 					}
-					if (!this->HasVehicle() || this->vehicle->type == VehicleType::Train) {
+					if (this->RefType() == VehicleType::Train) {
 						OrderStopLocation osl = static_cast<OrderStopLocation>((to_underlying(order->GetStopLocation()) + 1) % to_underlying(OrderStopLocation::End));
 						if (osl == OrderStopLocation::Through && !_settings_client.gui.show_adv_load_mode_features) {
 							osl = OrderStopLocation::NearEnd;
@@ -3427,7 +3431,7 @@ public:
 
 				/* Standalone lists act like trains here: every per-order option is available,
 				 * except constraints that need a real consist (passenger through-load scan). */
-				const bool train_like = !this->HasVehicle() || this->vehicle->type == VehicleType::Train;
+				const bool train_like = this->RefType() == VehicleType::Train;
 				if (train_like && order->IsType(OT_GOTO_STATION) && (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) == 0) {
 					const OrderStopLocation osl = order->GetStopLocation();
 					list.push_back(MakeDropDownListDividerItem());
@@ -3528,7 +3532,7 @@ public:
 					}
 					DropDownList list;
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_GO_TO, ODDI_GO_TO, false));
-					list.push_back(MakeDropDownListStringItem((this->HasVehicle() && this->vehicle->type == VehicleType::Aircraft) ? STR_ORDER_GO_TO_NEAREST_HANGAR : STR_ORDER_GO_TO_NEAREST_DEPOT, ODDI_GO_TO_NEAREST_DEPOT, false));
+					list.push_back(MakeDropDownListStringItem((this->RefType() == VehicleType::Aircraft) ? STR_ORDER_GO_TO_NEAREST_HANGAR : STR_ORDER_GO_TO_NEAREST_DEPOT, ODDI_GO_TO_NEAREST_DEPOT, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_CONDITIONAL, ODDI_CONDITIONAL, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_SHARE, ODDI_SHARE, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_INSERT_FROM_VEHICLE, ODDI_INSERT_FROM_VEHICLE, false));
@@ -3757,7 +3761,7 @@ public:
 				const OrderConditionVariable current_ocv = OrderAt(this->OrderGetSel())->GetConditionVariable();
 				DropDownList list;
 				for (const auto &ocv : _order_conditional_variable) {
-					if (this->HasVehicle() && this->vehicle->type != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DrivingBackwards || ocv == OrderConditionVariable::DecouplePart)) {
+					if (this->RefType() != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DrivingBackwards || ocv == OrderConditionVariable::DecouplePart)) {
 						continue;
 					}
 					if (current_ocv != ocv) {
@@ -4124,8 +4128,8 @@ public:
 
 		auto create_slot_counter = [&](ModifyOrderFlags mof, bool counter) {
 			using Payload = CmdPayload<Commands::ModifyOrder>;
-			OrderTargetType tt = this->HasVehicle() ? OrderTargetType::Vehicle : OrderTargetType::OrderList;
-			uint32_t tid = this->HasVehicle() ? this->vehicle->index.base() : this->list_id.base();
+			OrderTargetType tt = this->TargetKind();
+			uint32_t tid = this->TargetId();
 			Payload follow_up_payload = Payload::Make(tt, tid, this->OrderGetSel(), mof, {}, {}, {});
 			TraceRestrictFollowUpCmdData follow_up{ BaseCommandContainer<Commands::ModifyOrder>((StringID)0, this->CmdTile(), std::move(follow_up_payload)) };
 			if (counter) {
