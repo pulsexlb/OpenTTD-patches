@@ -49,12 +49,14 @@ struct DestinationID {
 	constexpr DestinationID(TraceRestrictSlotID slot) : value(slot.base()) {}
 	constexpr DestinationID(TraceRestrictSlotGroupID sg) : value(sg.base()) {}
 	constexpr DestinationID(TraceRestrictCounterID ctr) : value(ctr.base()) {}
+	constexpr DestinationID(OrderListID ol) : value(ol.base()) {}
 
 	constexpr DepotID ToDepotID() const noexcept { return static_cast<DepotID>(this->value); }
 	constexpr StationID ToStationID() const noexcept { return static_cast<StationID>(this->value); }
 	constexpr TraceRestrictSlotID ToSlotID() const noexcept { return static_cast<TraceRestrictSlotID>(this->value); }
 	constexpr TraceRestrictSlotGroupID ToSlotGroupID() const noexcept { return static_cast<TraceRestrictSlotGroupID>(this->value); }
 	constexpr TraceRestrictCounterID ToCounterID() const noexcept { return static_cast<TraceRestrictCounterID>(this->value); }
+	constexpr OrderListID ToOrderListID() const noexcept { return static_cast<OrderListID>(this->value); }
 	constexpr BaseType base() const noexcept { return this->value; }
 	constexpr const BaseType &base_ref() const noexcept { return this->value; }
 	constexpr BaseType &edit_base() { return this->value; }
@@ -100,6 +102,7 @@ enum OrderType : uint8_t {
 	OT_GOTO_COUPLE,  ///< Go to the station where the train will couple with another train.
 	OT_WAIT_COUPLE,  ///< Wait for another train to couple with this one.
 	OT_DECOUPLE,     ///< Decouple some of the wagons from the train.
+	OT_EXECUTE_SCHEDULE, ///< Execute another order list: switch this vehicle to the target player-created order list.
 	OT_END
 };
 
@@ -344,6 +347,7 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_COUPLE_STATION, ///< Change the station to couple at.
 	MOF_FIRST_ORDERS,    ///< Change orders of first part of train after decoupling.
 	MOF_SECOND_ORDERS,   ///< Change orders of second part of train after decoupling.
+	MOF_EXECUTE_SCHEDULE, ///< Change the target order list of an execute-schedule order.
 	MOF_END
 };
 

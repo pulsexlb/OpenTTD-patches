@@ -1792,6 +1792,10 @@ STR_ORDER_IMPORT_ORDER_LIST_INSERT_REVERSED                     :导入调度计
 STR_ORDER_INSERT_FROM_VEHICLE                                   :插入载具调度计划
 
 STR_ORDER_TRY_ACQUIRE_SLOT_BUTTON                               :尝试领取路签
+STR_ORDER_EXECUTE_SCHEDULE_BUTTON                               :执行调度计划
+STR_ORDER_EXECUTE_SCHEDULE                                      :执行调度计划：{RAW_STRING}
+STR_ORDER_EXECUTE_SCHEDULE_UNDEFINED                             :执行调度计划：{STRING}
+STR_ORDER_EXECUTE_SCHEDULE_TOOLTIP                              :{BLACK}到达该指令后要执行的调度计划
 STR_ORDER_RELEASE_SLOT_BUTTON                                   :返还路签
 STR_ORDER_RELEASE_SLOT_GROUP_BUTTON                             :返还路签组路签
 STR_ORDER_CHANGE_COUNTER_BUTTON                                 :更改计数器

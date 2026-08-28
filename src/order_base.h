@@ -289,6 +289,7 @@ public:
 	void MakeReleaseSlotGroup();
 	void MakeChangeCounter();
 	void MakeLabel(OrderLabelSubType subtype);
+	void MakeExecuteSchedule();
 
 	/**
 	 * Is this a 'goto' order with a real destination?
@@ -723,9 +724,10 @@ public:
 	 * explicitly set (but travel_time is actually unused for conditionals). */
 
 	inline bool IsSlotCounterOrder() const { return this->IsType(OT_COUNTER) || this->IsType(OT_SLOT) || this->IsType(OT_SLOT_GROUP); }
+	inline bool IsExecuteScheduleOrder() const { return this->IsType(OT_EXECUTE_SCHEDULE); }
 
 	/** Does this order not have any associated travel or wait times */
-	inline bool HasNoTimetableTimes() const { return this->IsSlotCounterOrder() || this->IsType(OT_LABEL); }
+	inline bool HasNoTimetableTimes() const { return this->IsSlotCounterOrder() || this->IsType(OT_LABEL) || this->IsExecuteScheduleOrder(); }
 
 	/**
 	 * Does this order have an explicit wait time set?
@@ -1493,6 +1495,13 @@ public:
 	 * @param v vehicle to add to the list
 	 */
 	inline void AddVehicle([[maybe_unused]] Vehicle *v) { ++this->num_vehicles; }
+
+	/**
+	 * Make the given vehicle follow this order list, inserting it into this list's shared chain.
+	 * The vehicle must have been removed from its previous list first.
+	 * @param v vehicle to add
+	 */
+	void AssignVehicle(Vehicle *v);
 
 	void RemoveVehicle(Vehicle *v);
 

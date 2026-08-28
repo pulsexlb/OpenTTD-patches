@@ -336,6 +336,13 @@ void Order::MakeLabel(OrderLabelSubType subtype)
 	this->flags = subtype;
 }
 
+void Order::MakeExecuteSchedule()
+{
+	this->type = OT_EXECUTE_SCHEDULE;
+	this->dest = OrderListID::Invalid();
+	this->flags = 0;
+}
+
 /**
  * Make this depot/station order also a refit order.
  * @param cargo   the cargo type to change to.
@@ -767,7 +774,7 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 			});
 			if (invalid) return CargoMaskedStationIDVector(cargo_mask);
 		}
-	} while (next->IsType(OT_GOTO_DEPOT) || next->IsSlotCounterOrder() || next->IsType(OT_DUMMY) || next->IsType(OT_LABEL)
+	} while (next->IsType(OT_GOTO_DEPOT) || next->IsSlotCounterOrder() || next->IsType(OT_DUMMY) || next->IsType(OT_LABEL) || next->IsExecuteScheduleOrder()
 			|| (next->IsBaseStationOrder() && next->GetDestination() == v->last_station_visited));
 
 	return CargoMaskedStationIDVector(cargo_mask, { next->GetDestination().ToStationID() });
@@ -923,6 +930,21 @@ void OrderList::RemoveVehicle(Vehicle *v)
 {
 	--this->num_vehicles;
 	if (v == this->first_shared) this->first_shared = v->NextShared();
+}
+
+/**
+ * Make the given vehicle follow this order list, inserting it into this list's shared chain.
+ * The vehicle must have been removed from its previous list first.
+ * @param v vehicle to add
+ */
+void OrderList::AssignVehicle(Vehicle *v)
+{
+	if (this->first_shared == nullptr) {
+		this->first_shared = v;
+		this->AddVehicle(v);
+	} else {
+		v->AddToShared(this->first_shared);
+	}
 }
 
 /**
@@ -1634,6 +1656,16 @@ static CommandCost PreInsertOrderCheck(Vehicle *v, const Order &new_order, CmdIn
 				const TraceRestrictCounter *ctr = TraceRestrictCounter::GetIfValid(data);
 				if (ctr == nullptr) return CMD_ERROR;
 				if (!ctr->IsUsableByOwner(v->owner)) return CMD_ERROR;
+			}
+			break;
+		}
+
+		case OT_EXECUTE_SCHEDULE: {
+			OrderListID target_id = new_order.GetDestination().ToOrderListID();
+			if (target_id != OrderListID::Invalid()) {
+				const OrderList *target = OrderList::GetIfValid(target_id);
+				if (target == nullptr || !target->IsPlayerCreated()) return CMD_ERROR;
+				if (!target->IsVisibleToCompany(v->owner)) return CMD_ERROR;
 			}
 			break;
 		}
@@ -2406,6 +2438,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				if (mof != MOF_COUNTER_ID && mof != MOF_COUNTER_OP && mof != MOF_COUNTER_VALUE) return CMD_ERROR;
 				break;
 
+			case OT_EXECUTE_SCHEDULE:
+				if (mof != MOF_EXECUTE_SCHEDULE) return CMD_ERROR;
+				break;
+
 			case OT_LABEL:
 				if (order->GetLabelSubType() == OLST_TEXT) {
 					if (mof != MOF_LABEL_TEXT) return CMD_ERROR;
@@ -2752,6 +2788,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(data);
 				if (sg == nullptr || (!is_list && sg->vehicle_type != v->type)) return CMD_ERROR;
 				if (!sg->CompanyCanReferenceSlotGroup(target_owner)) return CMD_ERROR;
+			}
+			break;
+
+		case MOF_EXECUTE_SCHEDULE:
+			if (data != OrderListID::Invalid().base()) {
+				const OrderList *target = OrderList::GetIfValid(OrderListID(data));
+				if (target == nullptr || !target->IsPlayerCreated()) return CMD_ERROR;
+				if (!target->IsVisibleToCompany(target_owner)) return CMD_ERROR;
 			}
 			break;
 
@@ -3146,6 +3190,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			case MOF_SLOT:
 			case MOF_SLOT_GROUP:
 			case MOF_COUNTER_ID:
+			case MOF_EXECUTE_SCHEDULE:
 				order->SetDestination(data);
 				break;
 
@@ -4801,6 +4846,39 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			v->IncrementRealOrderIndex();
 			break;
 
+		case OT_EXECUTE_SCHEDULE:
+			assert(!pbs_look_ahead);
+			{
+				OrderList *target = OrderList::GetIfValid(order->GetDestination().ToOrderListID());
+				if (target != nullptr && target != v->orders && target->IsPlayerCreated() && target->IsVisibleToCompany(v->owner)) {
+					/* Execute the target order list: switch this vehicle to it (shared list). */
+					if (v->IsOrderListShared()) {
+						/* Part of a shared chain: unlink from it. */
+						v->RemoveFromShared();
+					} else if (v->orders->IsPlayerCreated()) {
+						/* Only vehicle on a player-created list: detach, keeping the list. */
+						v->orders->RemoveVehicle(v);
+					} else {
+						/* Only vehicle on a vehicle-owned list: free the list. */
+						v->orders->FreeChain(false);
+					}
+					v->orders = target;
+					target->AssignVehicle(v);
+					/* Start at the beginning of the new list. */
+					v->cur_implicit_order_index = 0;
+					v->cur_real_order_index = 0;
+					v->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+					v->UpdateRealOrderIndex();
+					v->current_order.Free();
+					v->SetDestTile(INVALID_TILE);
+					InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);
+				} else {
+					UpdateVehicleTimetable(v, true);
+					v->IncrementRealOrderIndex();
+				}
+			}
+			break;
+
 		case OT_DUMMY:
 		case OT_LABEL:
 			assert(!pbs_look_ahead);
@@ -5071,6 +5149,7 @@ const char *GetOrderTypeName(OrderType order_type)
 		"OT_GOTO_COUPLE",
 		"OT_WAIT_COUPLE",
 		"OT_DECOUPLE",
+		"OT_EXECUTE_SCHEDULE",
 	};
 	static_assert(lengthof(names) == OT_END);
 	if (order_type < OT_END) return names[order_type];

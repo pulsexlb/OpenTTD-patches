@@ -5112,7 +5112,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 		 * the destination but instead to the next one if service isn't needed. */
 		CheckIfTrainNeedsService(consist);
 		if (consist->current_order.IsType(OT_DUMMY) || consist->current_order.IsType(OT_CONDITIONAL) || consist->current_order.IsType(OT_GOTO_DEPOT) ||
-				consist->current_order.IsSlotCounterOrder() || consist->current_order.IsType(OT_LABEL)) {
+				consist->current_order.IsSlotCounterOrder() || consist->current_order.IsType(OT_LABEL) || consist->current_order.IsExecuteScheduleOrder()) {
 			ProcessOrders(consist);
 		}
 	}
@@ -8173,7 +8173,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	/* exit if train is stopped */
 	if (consist->vehstatus.Test(VehState::Stopped) && consist->cur_speed == 0) return true;
 
-	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL);
+	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL) && !consist->current_order.IsExecuteScheduleOrder();
 	if (ProcessOrders(consist) && CheckReverseTrain(consist)) {
 		consist->wait_counter = 0;
 		consist->cur_speed = 0;

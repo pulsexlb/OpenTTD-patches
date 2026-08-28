@@ -589,6 +589,7 @@ enum OrderDropDownID {
 	ODDI_SHARE,
 	ODDI_INSERT_FROM_VEHICLE,
 	ODDI_TRY_ACQUIRE_SLOT,
+	ODDI_EXECUTE_SCHEDULE,
 	ODDI_RELEASE_SLOT,
 	ODDI_RELEASE_SLOT_GROUP,
 	ODDI_CHANGE_COUNTER,
@@ -1369,6 +1370,18 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			break;
 		}
 
+		case OT_EXECUTE_SCHEDULE: {
+			OrderListID target_id = order->GetDestination().ToOrderListID();
+			const OrderList *target = OrderList::GetIfValid(target_id);
+			if (target == nullptr) {
+				AppendStringInPlace(line, STR_ORDER_EXECUTE_SCHEDULE_UNDEFINED, STR_TRACE_RESTRICT_VARIABLE_UNDEFINED_RED, std::monostate{});
+			} else {
+				std::string name = target->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, target->index.base() + 1) : target->GetName();
+				AppendStringInPlace(line, STR_ORDER_EXECUTE_SCHEDULE, name);
+			}
+			break;
+		}
+
 		case OT_LABEL: {
 			auto get_destination_string = [&]() -> StringID {
 				if (Waypoint::IsValidID(order->GetDestination().ToStationID())) {
@@ -2080,6 +2093,17 @@ private:
 	{
 		Order order;
 		order.MakeTryAcquireSlot();
+
+		this->InsertNewOrder(order);
+	}
+
+	/**
+	 * Handle the click on the execute-schedule button.
+	 */
+	void OrderClick_ExecuteSchedule()
+	{
+		Order order;
+		order.MakeExecuteSchedule();
 
 		this->InsertNewOrder(order);
 	}
@@ -2864,6 +2888,17 @@ public:
 					break;
 				}
 
+				case OT_EXECUTE_SCHEDULE: {
+					if (row_sel != nullptr) {
+						row_sel->SetDisplayedPlane(DP_ROW_SLOT);
+					} else {
+						train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_SLOT);
+					}
+
+					this->GetWidget<NWidgetCore>(WID_O_SLOT)->SetToolTip(STR_ORDER_EXECUTE_SCHEDULE_TOOLTIP);
+					break;
+				}
+
 				case OT_GOTO_COUPLE: {
 					if (this->HasVehicle()) assert(this->vehicle->type == VehicleType::Train);
 					train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_COUPLE);
@@ -3227,7 +3262,12 @@ public:
 				VehicleOrderID sel = this->OrderGetSel();
 				const Order *order = OrderAt(sel);
 
-				if (order != nullptr && order->IsType(OT_SLOT)) {
+				if (order != nullptr && order->IsExecuteScheduleOrder()) {
+					const OrderList *target = OrderList::GetIfValid(order->GetDestination().ToOrderListID());
+					if (target == nullptr) return GetString(STR_TRACE_RESTRICT_VARIABLE_UNDEFINED);
+					std::string name = target->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, target->index.base() + 1) : target->GetName();
+					return GetString(STR_JUST_RAW_STRING, name);
+				} else if (order != nullptr && order->IsType(OT_SLOT)) {
 					if (order->GetDestination() == INVALID_TRACE_RESTRICT_SLOT_ID) {
 						return GetString(STR_TRACE_RESTRICT_VARIABLE_UNDEFINED);
 					} else {
@@ -3531,6 +3571,7 @@ public:
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_SHARE, ODDI_SHARE, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_INSERT_FROM_VEHICLE, ODDI_INSERT_FROM_VEHICLE, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_TRY_ACQUIRE_SLOT_BUTTON, ODDI_TRY_ACQUIRE_SLOT, false));
+					list.push_back(MakeDropDownListStringItem(STR_ORDER_EXECUTE_SCHEDULE_BUTTON, ODDI_EXECUTE_SCHEDULE, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_RELEASE_SLOT_BUTTON, ODDI_RELEASE_SLOT, false));
 					if (TraceRestrictSlotGroup::GetNumItems() > 0) {
 						list.push_back(MakeDropDownListStringItem(STR_ORDER_RELEASE_SLOT_GROUP_BUTTON, ODDI_RELEASE_SLOT_GROUP, false));
@@ -3914,6 +3955,25 @@ public:
 			case WID_O_SLOT: {
 				const Order *o = OrderAt(this->OrderGetSel());
 				if (o == nullptr) return;
+				if (o->IsExecuteScheduleOrder()) {
+					DropDownList list;
+					int selected = -1;
+					OrderListID current = o->GetDestination().ToOrderListID();
+					int item_index = 0;
+					list.push_back(MakeDropDownListStringItem(STR_TRACE_RESTRICT_VARIABLE_UNDEFINED, OrderListID::Invalid().base(), false));
+					if (current == OrderListID::Invalid()) selected = item_index;
+					item_index++;
+					for (const OrderList *ol : OrderList::Iterate()) {
+						if (!ol->IsPlayerCreated()) continue;
+						if (!ol->IsVisibleToCompany(this->TargetOwner())) continue;
+						std::string name = ol->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1) : ol->GetName();
+						list.push_back(MakeDropDownListStringItem(std::move(name), ol->index.base(), false));
+						if (ol->index == current) selected = item_index;
+						item_index++;
+					}
+					ShowDropDownList(this, std::move(list), selected, WID_O_SLOT, 0, DropDownOption::Filterable, DDSF_SHARED);
+					break;
+				}
 				if (o->IsType(OT_SLOT_GROUP)) {
 					int selected;
 					TraceRestrictSlotGroupID value = OrderAt(this->OrderGetSel())->GetDestination().ToSlotGroupID();
@@ -4197,6 +4257,7 @@ public:
 					case ODDI_SHARE:                this->OrderClick_Goto(OPOS_SHARE); break;
 					case ODDI_INSERT_FROM_VEHICLE:  this->OrderClick_Goto(OPOS_INSERT_FROM_VEHICLE); break;
 					case ODDI_TRY_ACQUIRE_SLOT:     this->OrderClick_TryAcquireSlot(); break;
+					case ODDI_EXECUTE_SCHEDULE:     this->OrderClick_ExecuteSchedule(); break;
 					case ODDI_RELEASE_SLOT:         this->OrderClick_ReleaseSlot(); break;
 					case ODDI_RELEASE_SLOT_GROUP:   this->OrderClick_ReleaseSlotGroup(); break;
 					case ODDI_CHANGE_COUNTER:       this->OrderClick_ChangeCounter(); break;
@@ -4356,6 +4417,10 @@ public:
 			case WID_O_SLOT: {
 				const Order *o = OrderAt(this->OrderGetSel());
 				if (o == nullptr) return;
+				if (o->IsExecuteScheduleOrder()) {
+					this->ModifyOrder(this->OrderGetSel(), MOF_EXECUTE_SCHEDULE, index);
+					break;
+				}
 				if (o->IsType(OT_SLOT_GROUP)) {
 					TraceRestrictRecordRecentSlotGroup(TraceRestrictSlotGroupID(index));
 					this->ModifyOrder(this->OrderGetSel(), MOF_SLOT_GROUP, index);
