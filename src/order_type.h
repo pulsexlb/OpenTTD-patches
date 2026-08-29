@@ -130,7 +130,8 @@ enum OrderDecoupleOrdersFlags : uint8_t {
 	 * supported and clamps back to ODOF_KEEP_ORDERS when loaded. */
 	ODOF_WAIT_FOR_COUPLE     = 3, ///< Wait for a couple.
 	ODOF_LOAD_AND_WAIT       = 4, ///< Load/unload at this station, then wait for a couple.
-	ODOF_END                 = 5,
+	ODOF_EXECUTE_SCHEDULE    = 5, ///< Adopt a player-created order list as the part's own schedule.
+	ODOF_END                 = 6,
 };
 
 enum OrderSlotSubType : uint8_t {
@@ -348,6 +349,8 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_FIRST_ORDERS,    ///< Change orders of first part of train after decoupling.
 	MOF_SECOND_ORDERS,   ///< Change orders of second part of train after decoupling.
 	MOF_EXECUTE_SCHEDULE, ///< Change the target order list of an execute-schedule order.
+	MOF_DECOUPLE_FIRST_SCHEDULE,  ///< Change the schedule the first part adopts after decoupling.
+	MOF_DECOUPLE_SECOND_SCHEDULE, ///< Change the schedule the second part adopts after decoupling.
 	MOF_END
 };
 

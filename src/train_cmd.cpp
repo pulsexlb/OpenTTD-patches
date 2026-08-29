@@ -5619,6 +5619,39 @@ static void CreateWaitForCoupleOrder(Train *v)
  * Split the orders between the two parts of the consist after decoupling.
  * @param load_trains Whether the first/second part should load.
  */
+/**
+ * Make a decoupled train part adopt a player-created order list as its own
+ * schedule: both its orders and its primary order list become the schedule.
+ * @param part the train part
+ * @param schedule_id the schedule to adopt
+ * @return true when the schedule was adopted
+ */
+static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id)
+{
+	OrderList *ol = OrderList::GetIfValid(schedule_id);
+	if (ol == nullptr || !ol->IsPlayerCreated()) return false;
+
+	OrderListID schedule = ol->index;
+	OrderList *adopted = ol;
+
+	DeleteVehicleOrders(part, false, true);
+
+	part->orders = adopted;
+	adopted->AssignVehicle(part);
+	part->primary_order = schedule;
+	part->primary_order_index = INVALID_VEH_ORDER_ID;
+	part->cur_implicit_order_index = 0;
+	part->cur_real_order_index = 0;
+	part->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+	part->UpdateRealOrderIndex();
+	part->current_order.Free();
+
+	/* Adopt the schedule's dispatch/separation state. */
+	part->vehicle_flags.Set(VehicleFlag::ScheduledDispatch, adopted->IsDispatchEnabled());
+	part->vehicle_flags.Set(VehicleFlag::TimetableSeparation, adopted->IsSeparationEnabled());
+	return true;
+}
+
 static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 {
 	Order *after_decouple_flags = v->orders->GetOrderAt(v->cur_implicit_order_index + 1);
@@ -5672,6 +5705,9 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 			case ODOF_WAIT_FOR_COUPLE:
 				CreateWaitForCoupleOrder(u);
 				break;
+			case ODOF_EXECUTE_SCHEDULE:
+				AdoptDecoupleSchedule(u, after_decouple_flags->GetDecoupleSecondScheduleID());
+				break;
 			default: NOT_REACHED();
 		}
 		ProcessOrders(u);
@@ -5696,6 +5732,9 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 		case ODOF_WAIT_FOR_COUPLE:
 			DeleteVehicleOrders(v, false, true);
 			CreateWaitForCoupleOrder(v);
+			break;
+		case ODOF_EXECUTE_SCHEDULE:
+			AdoptDecoupleSchedule(v, after_decouple_flags->GetDecoupleFirstScheduleID());
 			break;
 		default: NOT_REACHED();
 	}

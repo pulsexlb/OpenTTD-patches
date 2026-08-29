@@ -2696,7 +2696,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				break;
 
 			case OT_DECOUPLE:
-				if (mof != MOF_FIRST_ORDERS && mof != MOF_SECOND_ORDERS && mof != MOF_DECOUPLE_VALUE) return CMD_ERROR;
+				if (mof != MOF_FIRST_ORDERS && mof != MOF_SECOND_ORDERS && mof != MOF_DECOUPLE_VALUE && mof != MOF_DECOUPLE_FIRST_SCHEDULE && mof != MOF_DECOUPLE_SECOND_SCHEDULE) return CMD_ERROR;
 				break;
 
 			case OT_SLOT:
@@ -3006,6 +3006,16 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
 			if (data >= ODOF_END) return CMD_ERROR;
 			break;
+
+		case MOF_DECOUPLE_FIRST_SCHEDULE:
+		case MOF_DECOUPLE_SECOND_SCHEDULE: {
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
+			if (order->GetType() != OT_DECOUPLE) return CMD_ERROR;
+			const OrderList *target = OrderList::GetIfValid(OrderListID(data));
+			if (target == nullptr || !target->IsPlayerCreated()) return CMD_ERROR;
+			if (!target->IsVisibleToCompany(target_owner)) return CMD_ERROR;
+			break;
+		}
 
 		case MOF_DECOUPLE:
 			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
@@ -3454,6 +3464,16 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 			case MOF_SECOND_ORDERS:
 				order->SetDecoupleSecondOrdersType((OrderDecoupleOrdersFlags)data);
+				break;
+
+			case MOF_DECOUPLE_FIRST_SCHEDULE:
+				order->SetDecoupleFirstOrdersType(ODOF_EXECUTE_SCHEDULE);
+				order->SetDecoupleFirstScheduleID(OrderListID{(uint16_t)data});
+				break;
+
+			case MOF_DECOUPLE_SECOND_SCHEDULE:
+				order->SetDecoupleSecondOrdersType(ODOF_EXECUTE_SCHEDULE);
+				order->SetDecoupleSecondScheduleID(OrderListID{(uint16_t)data});
 				break;
 
 			case MOF_WAYPOINT_FLAGS:

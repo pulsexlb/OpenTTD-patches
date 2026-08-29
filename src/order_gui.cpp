@@ -606,13 +606,25 @@ static const StringID _order_couple_load_drowdown[] = {
 };
 
 static const StringID _order_decouple_orders_drowdown[] = {
-	/* Index must match OrderDecoupleOrdersFlags (value 2 is the retired
-	 * ODOF_INHERIT_ORDERS and is not selectable). */
+	/* Index must match _order_decouple_orders_drowdown_flags (value 2 is the
+	 * retired ODOF_INHERIT_ORDERS and is not selectable). */
 	STR_ORDERS_DECOUPLE_KEEP_ORDERS,          // 0
 	STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD,  // 1
 	STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE,      // 3
 	STR_ORDERS_DECOUPLE_LOAD_AND_WAIT,        // 4
+	STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE,     // 5
 };
+
+/* Dropdown index -> OrderDecoupleOrdersFlags; the dropdown skips the retired value 2. */
+static const OrderDecoupleOrdersFlags _order_decouple_orders_drowdown_flags[] = {
+	ODOF_KEEP_ORDERS,
+	ODOF_KEEP_ORDERS_NO_LOAD,
+	ODOF_WAIT_FOR_COUPLE,
+	ODOF_LOAD_AND_WAIT,
+	ODOF_EXECUTE_SCHEDULE,
+};
+
+static_assert(lengthof(_order_decouple_orders_drowdown) == lengthof(_order_decouple_orders_drowdown_flags));
 
 static const StringID _order_manage_list_dropdown[] = {
 	STR_ORDER_REVERSE_ORDER_LIST,
@@ -1460,18 +1472,23 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 
 		case OT_DECOUPLE: {
 			uint num_d = order->GetNumDecouple();
-			auto decouple_orders_str = [](OrderDecoupleOrdersFlags type) {
+			auto decouple_orders_str = [&](OrderDecoupleOrdersFlags type, OrderListID schedule_id) -> std::string {
 				switch (type) {
-					case ODOF_KEEP_ORDERS: return STR_ORDER_DECOUPLE_KEEP_ORDERS;
-					case ODOF_KEEP_ORDERS_NO_LOAD: return STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD;
-					case ODOF_WAIT_FOR_COUPLE: return STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE;
-					case ODOF_LOAD_AND_WAIT: return STR_ORDER_DECOUPLE_LOAD_AND_WAIT;
+					case ODOF_KEEP_ORDERS: return GetString(STR_ORDER_DECOUPLE_KEEP_ORDERS);
+					case ODOF_KEEP_ORDERS_NO_LOAD: return GetString(STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD);
+					case ODOF_WAIT_FOR_COUPLE: return GetString(STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE);
+					case ODOF_LOAD_AND_WAIT: return GetString(STR_ORDER_DECOUPLE_LOAD_AND_WAIT);
+					case ODOF_EXECUTE_SCHEDULE: {
+						const OrderList *ol = OrderList::GetIfValid(schedule_id);
+						std::string name = (ol == nullptr || ol->GetName().empty()) ? GetString(STR_ORDER_LIST_DEFAULT_NAME, schedule_id.base() + 1) : ol->GetName();
+						return GetString(STR_ORDER_DECOUPLE_USE_SCHEDULE, name);
+					}
 					default: NOT_REACHED();
 				}
 			};
 			AppendStringInPlace(line, num_d == 0 ? STR_ORDER_DECOUPLE_DETAILS_AUTO : STR_ORDER_DECOUPLE_DETAILS, num_d,
-					decouple_orders_str(order->GetDecoupleFirstOrdersType()),
-					decouple_orders_str(order->GetDecoupleSecondOrdersType()));
+					decouple_orders_str(order->GetDecoupleFirstOrdersType(), order->GetDecoupleFirstScheduleID()),
+					decouple_orders_str(order->GetDecoupleSecondOrdersType(), order->GetDecoupleSecondScheduleID()));
 			break;
 		}
 
@@ -1807,6 +1824,7 @@ private:
 	std::array<int, 4> current_aux_planes{};
 	int current_value_plane = 0;
 	int current_mgmt_plane = 0;
+	int decouple_schedule_part = -1; ///< While the decouple schedule picker is open: 0 for the first train part, 1 for the second, -1 otherwise.
 	OrderListID list_id = OrderListID::Invalid(); ///< Target list id when editing a standalone (player-created) order list.
 
 private:
@@ -2032,14 +2050,50 @@ private:
 		}
 	}
 
-	void OrderClick_OrdersFirst(int orders_type)
+	void OrderClick_OrdersFirst(int index)
 	{
-		this->ModifyOrder(this->OrderGetSel(), MOF_FIRST_ORDERS, orders_type);
+		this->OrderClick_OrdersType(index, true);
 	}
 
-	void OrderClick_OrdersSecond(int orders_type)
+	void OrderClick_OrdersSecond(int index)
 	{
-		this->ModifyOrder(this->OrderGetSel(), MOF_SECOND_ORDERS, orders_type);
+		this->OrderClick_OrdersType(index, false);
+	}
+
+	/**
+	 * Handle a selection in the decouple orders dropdown.
+	 * @param index the selected dropdown index
+	 * @param first true for the first part of the train, false for the second
+	 */
+	void OrderClick_OrdersType(int index, bool first)
+	{
+		if (index < 0 || (uint)index >= lengthof(_order_decouple_orders_drowdown_flags)) return;
+		OrderDecoupleOrdersFlags flag = _order_decouple_orders_drowdown_flags[index];
+		if (flag == ODOF_EXECUTE_SCHEDULE) {
+			/* Show the schedule picker for this part. */
+			this->decouple_schedule_part = first ? 0 : 1;
+			this->ShowDecoupleScheduleDropdown(first ? WID_O_ORDERS_FIRST : WID_O_ORDERS_SECOND);
+			return;
+		}
+		this->ModifyOrder(this->OrderGetSel(), first ? MOF_FIRST_ORDERS : MOF_SECOND_ORDERS, to_underlying(flag));
+	}
+
+	/**
+	 * Show a filterable dropdown with all visible player-created order lists,
+	 * used to pick the schedule a decoupled train part adopts.
+	 * @param widget the widget to attach the dropdown to
+	 */
+	void ShowDecoupleScheduleDropdown(WidgetID widget)
+	{
+		DropDownList list;
+		for (const OrderList *ol : OrderList::Iterate()) {
+			if (!ol->IsPlayerCreated()) continue;
+			if (!ol->IsVisibleToCompany(this->TargetOwner())) continue;
+			std::string name = ol->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1) : ol->GetName();
+			list.push_back(MakeDropDownListStringItem(std::move(name), ol->index.base(), false));
+		}
+		if (list.empty()) return;
+		ShowDropDownList(this, std::move(list), -1, widget, 0, DropDownOption::Filterable, DDSF_SHARED);
 	}
 
 	/**
@@ -4111,6 +4165,7 @@ public:
 				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
 					this->OrderClick_OrdersFirst(0);
 				} else {
+					this->decouple_schedule_part = -1;
 					ShowDropDownMenu(this, _order_decouple_orders_drowdown, 0, WID_O_ORDERS_FIRST, 0, 0);
 				}
 				break;
@@ -4119,6 +4174,7 @@ public:
 				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
 					this->OrderClick_OrdersSecond(0);
 				} else {
+					this->decouple_schedule_part = -1;
 					ShowDropDownMenu(this, _order_decouple_orders_drowdown, 0, WID_O_ORDERS_SECOND, 0, 0);
 				}
 				break;
@@ -4298,10 +4354,20 @@ public:
 				break;
 
 			case WID_O_ORDERS_FIRST:
+				if (this->decouple_schedule_part == 0) {
+					this->decouple_schedule_part = -1;
+					this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_FIRST_SCHEDULE, index);
+					break;
+				}
 				this->OrderClick_OrdersFirst(index);
 				break;
 
 			case WID_O_ORDERS_SECOND:
+				if (this->decouple_schedule_part == 1) {
+					this->decouple_schedule_part = -1;
+					this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_SECOND_SCHEDULE, index);
+					break;
+				}
 				this->OrderClick_OrdersSecond(index);
 				break;
 

@@ -957,6 +957,7 @@ STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :Keep orders
 STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :Keep and no loading
 STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :Wait for couple
 STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                              :Load and wait for couple
+STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :Use a schedule
 STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}Units couple
 STR_ORDER_COUPLE_SLOT_BUTTON                                   :{BLACK}Slot
 STR_ORDER_COUPLE_SLOT_TOOLTIP                                 :{BLACK}The trace restrict slot the train must couple with
@@ -978,13 +979,14 @@ STR_ORDER_COUPLE_FULL                                           :full
 STR_ORDER_COUPLE_ANY_SLOT                                     :Any slot
 STR_ORDER_COUPLE_SLOT                                          : in slot {STRING1}
 STR_ORDER_DECOUPLE                                              :(Decouple)
-STR_ORDER_DECOUPLE_DETAILS                                      :[Decouple and keep {COMMA} units] First part {STRING} Second part {STRING}
-STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[Decouple and keep {COMMA}(auto) units] First part {STRING} Second part {STRING}
+STR_ORDER_DECOUPLE_DETAILS                                      :[Decouple and keep {COMMA} units] First part {RAW_STRING} Second part {RAW_STRING}
+STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[Decouple and keep {COMMA}(auto) units] First part {RAW_STRING} Second part {RAW_STRING}
 STR_ORDER_COUPLE_UNITS                                          :(with {COMMA} units)
 STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :(Keep orders)
 STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :(Keep orders without loading/unloading)
 STR_ORDER_DECOUPLE_LOAD_AND_WAIT                               :(Load and wait for couple)
 STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :(Wait for couple)
+STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :(Use schedule {RAW_STRING})
 STR_NEWS_VEHICLE_AUTORENEW_FAILED                               :{WHITE}Autorenew failed on {VEHICLE}{}{STRING1}
 
 STR_NEWS_NEW_VEHICLE_NOW_AVAILABLE                              :{BIG_FONT}{BLACK}New {STRING} now available!
