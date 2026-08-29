@@ -5600,17 +5600,16 @@ static void AdvanceWagonsAfterCouple(Train *v)
 }
 
 /**
- * Check whether the whole train fits into the station.
+ * Check whether both ends of the train are standing on the same station
+ * platform. Only actual vehicle positions are used; vehicle lengths (NewGRF
+ * callback driven) are deliberately not consulted, so articulated parts and
+ * non-standard vehicle lengths cannot make the check fail.
  */
 bool TrainFitStation(const Train *v)
 {
 	if (!IsRailStationTile(v->tile)) return false;
 	if (!IsRailStationTile(v->Last()->tile)) return false;
-	StationID sid = GetStationIndex(v->tile);
-	const Station *st = Station::Get(sid);
-	int station_length = st->GetPlatformLength(v->tile, DirToDiagDir(ReverseDir(v->direction))) * TILE_SIZE;
-	/* vehicle position is in the middle, half vehicle size overlap is fine and solves corner case */
-	return v->gcache.cached_total_length - (v->gcache.cached_veh_length + 1) / 2 - v->Last()->gcache.cached_veh_length / 2 <= station_length;
+	return GetStationIndex(v->tile) == GetStationIndex(v->Last()->tile);
 }
 
 /**
