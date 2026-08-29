@@ -4409,11 +4409,14 @@ static Track DoTrainPathfind(const Train *v, TileIndex tile, DiagDirection enter
  * Find the track to take when going to couple with another train.
  * @param v The train.
  * @param do_track_reservation Whether to reserve the path.
+ * @param couple_target Optionally returns the contact-end vehicle of the
+ *   waiting train the path leads to.
+ * @param couple_cost Optionally returns the path cost of the found route.
  * @return The track to take, or #INVALID_TRACK if no path was found.
  */
-static Track DoTrainCouplePathfind(const Train *v, bool do_track_reservation, Train **couple_target)
+static Track DoTrainCouplePathfind(const Train *v, bool do_track_reservation, Train **couple_target, uint32_t *couple_cost)
 {
-	Track ret = YapfTrainCoupleTrack(v, !do_track_reservation, couple_target);
+	Track ret = YapfTrainCoupleTrack(v, !do_track_reservation, couple_target, couple_cost);
 	return ret;
 }
 
@@ -5134,10 +5137,17 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 	 * reservation has been extended as far as possible (res_dest.tile == tile). */
 	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
 		Train *couple_target = nullptr;
-		Track path_found = DoTrainCouplePathfind(consist, do_track_reservation, &couple_target);
+		uint32_t couple_cost = 0;
+		Track path_found = DoTrainCouplePathfind(consist, do_track_reservation, &couple_target, &couple_cost);
 		/* Track the concrete contact-end vehicle for approach braking; the
 		 * speed code re-validates it every tick. */
 		consist->couple_target = (path_found != INVALID_TRACK && couple_target != nullptr) ? couple_target->index : VehicleID::Invalid();
+		/* Register (or update) the claim on the waiting train so competing
+		 * approaching consists look for another partner. Must happen after
+		 * couple_target is set: the claim is only valid while it points here. */
+		if (couple_target != nullptr && consist->couple_target != VehicleID::Invalid()) {
+			ClaimCoupleTarget(consist, couple_target->Primary(), couple_cost);
+		}
 		if (path_found != INVALID_TRACK && res_dest.tile == tile) {
 			best_track = path_found;
 		}
@@ -5900,20 +5910,85 @@ static bool CoupleStationOk(const Order &order, TileIndex contact_tile)
 }
 
 /**
+ * Check whether the claim stored on a waiting consist is still held by a live
+ * moving consist that is homing in on it.
+ * @param carrier Primary of the waiting consist.
+ * @return the claimant's Primary, or nullptr when the claim has gone stale.
+ */
+static Train *GetValidCoupleClaimant(const Train *carrier)
+{
+	Train *claimant = Train::GetIfValid(carrier->couple_claimant);
+	if (claimant == nullptr) return nullptr;
+
+	/* The claim only counts while the claimant is still approaching this
+	 * consist; anything else (order left, different target, crash) releases it. */
+	if (!claimant->current_order.IsType(OT_GOTO_COUPLE)) return nullptr;
+	if (claimant->vehstatus.Test(VehState::Crashed)) return nullptr;
+	Train *tgt = Train::GetIfValid(claimant->couple_target);
+	if (tgt == nullptr || tgt->Primary() != carrier) return nullptr;
+
+	return claimant;
+}
+
+/**
+ * Check whether a waiting consist is claimed by another approaching consist
+ * whose claim the given challenger cannot beat. The best (cheapest path)
+ * challenger takes the claim over, so the waiting train always ends up with
+ * the nearest approaching train as its coupling partner.
+ * @param carrier Primary of the waiting consist.
+ * @param moving the approaching consist challenging the claim.
+ * @param claim_cost path cost of the challenger's route to the waiting consist.
+ * @return true when the claim blocks the challenger.
+ */
+static bool CoupleClaimBlocks(const Train *carrier, const Train *moving, uint32_t claim_cost)
+{
+	Train *claimant = GetValidCoupleClaimant(carrier);
+	if (claimant == nullptr) return false;
+	if (claimant == moving->Primary()) return false;
+	/* Equal or worse cost does not take the claim away from its holder. */
+	return claim_cost >= carrier->couple_claim_cost;
+}
+
+void ClaimCoupleTarget(Train *moving, Train *carrier, uint32_t claim_cost)
+{
+	Train *prim = moving->Primary();
+	if (!prim->current_order.IsType(OT_GOTO_COUPLE)) return;
+
+	Train *claimant = GetValidCoupleClaimant(carrier);
+	if (claimant == prim) {
+		carrier->couple_claim_cost = claim_cost;
+		return;
+	}
+	if (claimant != nullptr && claim_cost >= carrier->couple_claim_cost) return;
+
+	/* The beaten claimant must look for another waiting train. */
+	if (claimant != nullptr) claimant->couple_target = VehicleID::Invalid();
+
+	carrier->couple_claimant = prim->index;
+	carrier->couple_claim_cost = claim_cost;
+}
+
+/**
  * Validate a waiting train as a coupling partner for the moving consist and
  * return the end of its chain expected to make contact first.
  * @param moving the approaching consist.
  * @param rep physical chain head of the waiting train.
  * @param contact_tile tile where the coupling is expected to happen.
+ * @param respect_claim when true, a waiting train already claimed by another
+ *   approaching consist is rejected (target selection); the claim is ignored
+ *   on the physical contact paths so a reached partner always couples.
+ * @param claim_cost path cost of the moving consist's route when selecting.
  * @return the contact-end vehicle of the waiting train, or nullptr if invalid.
  */
-Train *ValidateCoupleCandidate(const Train *moving, Train *rep, TileIndex contact_tile)
+Train *ValidateCoupleCandidate(const Train *moving, Train *rep, TileIndex contact_tile,
+		bool respect_claim, uint32_t claim_cost)
 {
 	const Order &order = moving->Primary()->current_order;
 	Train *carrier = rep->Primary();
 
 	if (!order.IsType(OT_GOTO_COUPLE)) return nullptr;
 	if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
+	if (respect_claim && CoupleClaimBlocks(carrier, moving, claim_cost)) return nullptr;
 	if (carrier->vehstatus.Test(VehState::Stopped)) return nullptr;
 	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return nullptr;
 	if (!CoupleOrderLoadOk(order, rep)) return nullptr;
@@ -5935,9 +6010,13 @@ Train *ValidateCoupleCandidate(const Train *moving, Train *rep, TileIndex contac
  * @param moving the approaching consist.
  * @param tile tile the couple pathfinder wants to reach.
  * @param td trackdir of arrival.
+ * @param respect_claim whether an existing couple claim on the waiting train
+ *   blocks this consist (see #ValidateCoupleCandidate).
+ * @param claim_cost path cost of the moving consist's route when selecting.
  * @return contact-end vehicle of a waiting train, or nullptr.
  */
-Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir td)
+Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir td,
+		bool respect_claim, uint32_t claim_cost)
 {
 	if (!IsRailStationTile(tile)) return nullptr;
 
@@ -5945,7 +6024,7 @@ Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir 
 	for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
 		for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
 			if (t->vehstatus.Test(VehState::Crashed)) continue;
-			Train *target = ValidateCoupleCandidate(moving, t->First(), st_tile);
+			Train *target = ValidateCoupleCandidate(moving, t->First(), st_tile, respect_claim, claim_cost);
 			if (target != nullptr) return target;
 		}
 	}

@@ -113,8 +113,11 @@ void CheckBreakdownFlags(Train *v);
 void GetTrainSpriteSize(EngineID engine, uint &width, uint &height, int &xoffs, int &yoffs, EngineImageType image_type);
 bool TrainFitStation(const Train *v);
 bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys);
-Train *ValidateCoupleCandidate(const Train *moving, Train *waiting_first, TileIndex contact_tile);
-Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir td);
+Train *ValidateCoupleCandidate(const Train *moving, Train *waiting_first, TileIndex contact_tile,
+		bool respect_claim = false, uint32_t claim_cost = 0);
+Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir td,
+		bool respect_claim = false, uint32_t claim_cost = 0);
+void ClaimCoupleTarget(Train *moving, Train *carrier, uint32_t claim_cost);
 
 bool TrainOnCrossing(TileIndex tile);
 void NormalizeTrainVehInDepot(const Train *u);
@@ -173,6 +176,12 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	/* Transient coupling-approach state (not saved): the physical end vehicle of
 	 * the consist we are approaching, resolved by the couple pathfinder. */
 	VehicleID couple_target = VehicleID::Invalid();
+	/* Transient couple-claim state (not saved): which approaching consist has
+	 * claimed this (waiting) consist as its couple target. Only one moving
+	 * train may home onto a waiting train; a challenger with a cheaper path
+	 * takes the claim over. Kept on the consist Primary. */
+	VehicleID couple_claimant = VehicleID::Invalid();
+	uint32_t couple_claim_cost = 0;
 
 	RailTypes railtypes{}; ///< On which rail types the train can run.
 	RailTypes compatible_railtypes{}; ///< With which rail types the train is compatible.

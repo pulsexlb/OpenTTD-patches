@@ -252,18 +252,31 @@ public:
 	/** @copydoc CYapfBaseT::PfDetectDestinationFunc */
 	inline bool PfDetectDestination(Node &n)
 	{
-		return this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir());
+		return this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir(), n.GetCost());
+	}
+
+	/**
+	 * Coarse segment-level check used by the cost calculation. The challenger's
+	 * node cost is not final yet, so only a free (or self-claimed) waiting
+	 * train counts here; the exact claim comparison happens when the node is
+	 * evaluated as the destination.
+	 */
+	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
+	{
+		return this->PfDetectDestination(tile, td, UINT32_MAX);
 	}
 
 	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
-	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
+	inline bool PfDetectDestination(TileIndex tile, Trackdir td, uint32_t claim_cost)
 	{
 		if (IsRailStationTile(tile)) {
 			/* Station tile: search the entire platform for a waiting train
 			 * directly, without requiring a reservation. Cross-company trains
 			 * that arrived via block signals do not leave reservations.
-			 * All order/permission/validity checks live in the shared resolver. */
-			return ResolveCoupleTargetStation(Yapf().GetVehicle(), tile, td) != nullptr;
+			 * All order/permission/validity checks live in the shared resolver.
+			 * A waiting train already claimed by another approaching consist is
+			 * not a destination unless this consist's path is cheaper. */
+			return ResolveCoupleTargetStation(Yapf().GetVehicle(), tile, td, true, claim_cost) != nullptr;
 		}
 
 		/* Non-station tiles: require reservation as usual. */
@@ -271,7 +284,7 @@ public:
 		if (!HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb))) return false;
 		Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
 		if (t == nullptr) return false;
-		return ValidateCoupleCandidate(Yapf().GetVehicle(), t->First(), tile) != nullptr;
+		return ValidateCoupleCandidate(Yapf().GetVehicle(), t->First(), tile, true, claim_cost) != nullptr;
 	}
 
 	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */
