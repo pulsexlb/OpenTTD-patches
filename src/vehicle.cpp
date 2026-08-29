@@ -3422,10 +3422,6 @@ PaletteID GetUncachedTrainPaletteIgnoringGroup(const Train *v)
  */
 void Vehicle::DeleteUnreachedImplicitOrders()
 {
-	fprintf(stderr, "[PXEXEC] DeleteUnreachedImplicitOrders veh=%u ol=%u num=%u manual=%u r=%u i=%u\n",
-			this->index.base(), this->orders != nullptr ? this->orders->index.base() : 0xFFFF,
-			(unsigned)this->GetNumOrders(), (unsigned)this->GetNumManualOrders(),
-			(unsigned)this->cur_real_order_index, (unsigned)this->cur_implicit_order_index);
 	if (this->IsGroundVehicle()) {
 		uint16_t &gv_flags = this->GetGroundVehicleFlags();
 		if (HasBit(gv_flags, GVF_SUPPRESS_IMPLICIT_ORDERS)) {

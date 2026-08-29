@@ -1793,10 +1793,10 @@ STR_ORDER_INSERT_FROM_VEHICLE                                   :插入载具调
 
 STR_ORDER_TRY_ACQUIRE_SLOT_BUTTON                               :尝试领取路签
 STR_ORDER_EXECUTE_SCHEDULE_BUTTON                               :执行调度计划
-STR_ORDER_EXECUTE_SCHEDULE                                      :执行调度计划：{RAW_STRING}
+STR_ORDER_EXECUTE_SCHEDULE                                      :执行调度计划：{STRING}
 STR_ORDER_EXECUTE_SCHEDULE_UNDEFINED                             :执行调度计划：{STRING}
 STR_ORDER_EXECUTE_SCHEDULE_TOOLTIP                              :{BLACK}到达该指令后要执行的调度计划
-STR_ORDERS_END_OF_EXECUTE_SCHEDULE                              :--{RAW_STRING}执行结束--
+STR_ORDERS_END_OF_EXECUTE_SCHEDULE                              :- - {STRING} 执行结束 - -
 STR_ORDERS_EXIT_EXECUTE_BUTTON                                  :{BLACK}退出当前执行
 STR_ORDERS_EXIT_EXECUTE_TOOLTIP                                 :{BLACK}退出当前正在执行的调度计划，返回本载具自己的调度计划
 STR_ERROR_CAN_T_EXIT_EXECUTE_SCHEDULE                           :{WHITE}不能退出调度计划执行……
@@ -2020,7 +2020,7 @@ STR_ORDER_LIST_QUERY_RENAME                                     :{WHITE}重命�
 STR_ORDER_LIST_DEFAULT_NAME                                     :调度表 {NUM}
 STR_SORT_BY_ORDER_LIST_ID                                      :调度表编号
 STR_ERROR_CAN_T_RENAME_ORDER_LIST                               :{WHITE}无法重命名调度表...
-STR_ORDER_LIST_ORDERS_CAPTION                                  :{WHITE}{RAW_STRING}（调度计划）
+STR_ORDER_LIST_ORDERS_CAPTION                                  :{WHITE}{STRING}（调度计划）
 
 # Order list timetable window
 STR_ORDER_LIST_TIMETABLE_CAPTION                                :{WHITE}时刻表

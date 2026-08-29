@@ -865,9 +865,8 @@ public:
 	/**
 	 * Finished one full pass of the order list being executed: return to the
 	 * primary order list and resume at the remembered position.
-	 * @param from_real_index false when triggered by the implicit order index wrap.
 	 */
-	void ReturnFromExecuteSchedule(bool from_real_index = true);
+	void ReturnFromExecuteSchedule();
 
 	/**
 	 * Get the number of orders this vehicle has.
@@ -1084,7 +1083,7 @@ public:
 
 		/* See SkipToNextRealOrderIndex: returning is a no-op when the real
 		 * index already returned us home. */
-		if (wrapped && this->IsExecutingSchedule()) this->ReturnFromExecuteSchedule(false);
+		if (wrapped && this->IsExecutingSchedule()) this->ReturnFromExecuteSchedule();
 	}
 
 	/**

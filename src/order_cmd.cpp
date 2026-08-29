@@ -589,10 +589,6 @@ void OrderList::Initialize(Vehicle *v)
 	}
 
 	for (const Vehicle *u = v->NextShared(); u != nullptr; u = u->NextShared()) ++this->num_vehicles;
-
-	fprintf(stderr, "[PXEXEC] Initialize ol=%u num=%u manual=%u nv=%u veh=%u\n",
-			this->index.base(), (unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders,
-			this->num_vehicles, v->index.base());
 }
 
 /**
@@ -629,9 +625,6 @@ void OrderList::InitializePlayerCreated()
 			this->total_duration += o->GetWaitTime() + o->GetTravelTime();
 		}
 	}
-
-	fprintf(stderr, "[PXEXEC] InitializePlayerCreated ol=%u num=%u manual=%u\n",
-			this->index.base(), (unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders);
 }
 
 /**
@@ -641,9 +634,6 @@ void OrderList::InitializePlayerCreated()
  */
 void OrderList::FreeChain(bool keep_orderlist)
 {
-	fprintf(stderr, "[PXEXEC] FreeChain ol=%u keep=%d pc=%d num=%u manual=%u nv=%u\n",
-			this->index.base(), keep_orderlist ? 1 : 0, this->IsPlayerCreated() ? 1 : 0,
-			(unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders, this->num_vehicles);
 	if (this->IsPlayerCreated()) {
 		/* Player-created order lists are managed via dedicated commands. They must not be freed by the
 		 * normal lifecycle, and they also do not unregister destinations as none were ever registered. */
@@ -911,11 +901,6 @@ void OrderList::InsertOrderAt(Order &&ins_order, VehicleOrderID index)
 		BaseStation *bs = BaseStation::Get(new_order->GetDestination().ToStationID());
 		if (bs->owner == OWNER_NONE) InvalidateWindowClassesData(WindowClass::StationList);
 	}
-
-	fprintf(stderr, "[PXEXEC] InsertOrderAt ol=%u idx=%u type=%u num=%u manual=%u nv=%u pc=%d\n",
-			this->index.base(), (unsigned)index, (unsigned)new_order->GetType(),
-			(unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders, this->num_vehicles,
-			this->IsPlayerCreated() ? 1 : 0);
 }
 
 
@@ -925,12 +910,7 @@ void OrderList::InsertOrderAt(Order &&ins_order, VehicleOrderID index)
  */
 void OrderList::DeleteOrderAt(VehicleOrderID index)
 {
-	if (index >= this->GetNumOrders()) {
-		fprintf(stderr, "[PXEXEC] DeleteOrderAt ol=%u IGNORED out-of-range idx=%u num=%u manual=%u\n",
-				this->index.base(), (unsigned)index, (unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders);
-		return;
-
-	}
+	if (index >= this->GetNumOrders()) return;
 
 	Order *to_remove = &(this->orders[index]);
 
@@ -946,11 +926,6 @@ void OrderList::DeleteOrderAt(VehicleOrderID index)
 	to_remove->InvalidateGuiOnRemove();
 
 	this->orders.erase(this->orders.begin() + index);
-
-	fprintf(stderr, "[PXEXEC] DeleteOrderAt ol=%u idx=%u type=%u num=%u manual=%u nv=%u pc=%d\n",
-			this->index.base(), (unsigned)index, (unsigned)to_remove->GetType(),
-			(unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders, this->num_vehicles,
-			this->IsPlayerCreated() ? 1 : 0);
 }
 
 /**
@@ -983,10 +958,8 @@ void OrderList::MoveOrders(VehicleOrderID from, VehicleOrderID to, uint16_t coun
  */
 void OrderList::RemoveVehicle(Vehicle *v)
 {
-	fprintf(stderr, "[PXEXEC] RemoveVehicle ol=%u veh=%u nv=%u->", this->index.base(), v->index.base(), this->num_vehicles);
 	--this->num_vehicles;
 	if (v == this->first_shared) this->first_shared = v->NextShared();
-	fprintf(stderr, "%u\n", this->num_vehicles);
 }
 
 /**
@@ -996,8 +969,6 @@ void OrderList::RemoveVehicle(Vehicle *v)
  */
 void OrderList::AssignVehicle(Vehicle *v)
 {
-	fprintf(stderr, "[PXEXEC] AssignVehicle ol=%u veh=%u nv=%u pc=%d\n",
-			this->index.base(), v->index.base(), this->num_vehicles, this->IsPlayerCreated() ? 1 : 0);
 	if (this->first_shared == nullptr) {
 		this->first_shared = v;
 		this->AddVehicle(v);
@@ -1042,14 +1013,7 @@ void OrderList::DebugCheckSanity() const
 			check_total_duration += o->GetWaitTime() + o->GetTravelTime();
 		}
 	}
-	auto sanity_fail = [&](const char *what, long long a, long long b) {
-		fprintf(stderr, "[PXEXEC] SANITY-FAIL ol=%u %s: %lld != %lld (num=%u manual=%u nv=%u first_shared=%p pc=%d)\n",
-				this->index.base(), what, a, b,
-				(unsigned)this->GetNumOrders(), (unsigned)this->num_manual_orders, this->num_vehicles,
-				(const void *)this->first_shared, this->IsPlayerCreated() ? 1 : 0);
-	};
 	assert_msg(this->GetNumOrders() == check_num_orders, "{}, {}", this->GetNumOrders(), check_num_orders);
-	if (this->num_manual_orders != check_num_manual_orders) sanity_fail("num_manual_orders", (long long)this->num_manual_orders, (long long)check_num_manual_orders);
 	assert_msg(this->num_manual_orders == check_num_manual_orders, "{}, {}", this->num_manual_orders, check_num_manual_orders);
 	assert_msg(this->timetable_duration == check_timetable_duration, "{}, {}", this->timetable_duration, check_timetable_duration);
 	assert_msg(this->total_duration == check_total_duration, "{}, {}", this->total_duration, check_total_duration);
@@ -2175,9 +2139,6 @@ static void CancelLoadingDueToDeletedOrder(Vehicle *v)
  */
 void DeleteOrder(Vehicle *v, VehicleOrderID sel_ord)
 {
-	fprintf(stderr, "[PXEXEC] DeleteOrder veh=%u ol=%u sel=%u num=%u manual=%u r=%u i=%u\n",
-			v->index.base(), v->orders->index.base(), (unsigned)sel_ord, (unsigned)v->GetNumOrders(),
-			(unsigned)v->GetNumManualOrders(), (unsigned)v->cur_real_order_index, (unsigned)v->cur_implicit_order_index);
 	v->orders->DeleteOrderAt(sel_ord);
 
 	Vehicle *u = v->FirstShared();
@@ -4403,8 +4364,6 @@ void DeleteVehicleOrders(Vehicle *v, bool keep_orderlist, bool reset_order_indic
 	OrderList *execute_home = nullptr;
 	if (v->IsExecutingSchedule()) {
 		execute_home = OrderList::GetIfValid(v->primary_order);
-		fprintf(stderr, "[PXEXEC] DeleteVehicleOrders veh=%u executing: orders=%u home=%u resume=%u\n",
-				v->index.base(), v->orders->index.base(), v->primary_order.base(), (unsigned)v->primary_order_index);
 		v->primary_order = OrderListID::Invalid();
 		v->primary_order_index = INVALID_VEH_ORDER_ID;
 	}
@@ -5076,20 +5035,10 @@ void FlushAdvanceOrderIndexDeferred(const Vehicle *v, bool apply)
  * @note called from the order index wrap-around handling, so the caller must
  *       cope with the vehicle's order list having changed on return.
  */
-void Vehicle::ReturnFromExecuteSchedule(bool from_real_index)
+void Vehicle::ReturnFromExecuteSchedule()
 {
 	OrderList *home = OrderList::GetIfValid(this->primary_order);
 	OrderList *target = this->orders;
-	fprintf(stderr, "[PXEXEC] RETURN(%s) veh=%u target=%u(num=%u manual=%u r=%u i=%u) home=%u resume=%u\n",
-			from_real_index ? "real" : "implicit", this->index.base(), target->index.base(),
-			(unsigned)target->GetNumOrders(), (unsigned)target->GetNumManualOrders(),
-			(unsigned)this->cur_real_order_index, (unsigned)this->cur_implicit_order_index,
-			this->primary_order.base(), (unsigned)this->primary_order_index);
-	if (home == nullptr) {
-		fprintf(stderr, "[PXEXEC] RETURN home invalid -> adopt current\n");
-	} else if (home == target) {
-		fprintf(stderr, "[PXEXEC] RETURN home==target -> adopt current\n");
-	}
 	if (home == nullptr || home == target) {
 		/* The home list is gone (its deletion should have handled this):
 		 * adopt the list we are on as the new home. */
@@ -5101,7 +5050,6 @@ void Vehicle::ReturnFromExecuteSchedule(bool from_real_index)
 	if (home->GetNumOrders() == 0) {
 		/* Nothing to resume into: keep executing the target list until the
 		 * home list has orders again. */
-		fprintf(stderr, "[PXEXEC] RETURN home empty -> stay executing\n");
 		return;
 	}
 
@@ -5122,10 +5070,7 @@ void Vehicle::ReturnFromExecuteSchedule(bool from_real_index)
 
 	/* Resume where we left the home list when we jumped away. */
 	VehicleOrderID resume = this->primary_order_index;
-	if (resume == INVALID_VEH_ORDER_ID || resume >= home->GetNumOrders()) {
-		fprintf(stderr, "[PXEXEC] RETURN resume %u out of range (num=%u) -> 0\n", (unsigned)resume, (unsigned)home->GetNumOrders());
-		resume = 0;
-	}
+	if (resume == INVALID_VEH_ORDER_ID || resume >= home->GetNumOrders()) resume = 0;
 	this->primary_order_index = INVALID_VEH_ORDER_ID;
 	this->primary_order = home->index;
 	this->cur_implicit_order_index = resume;
@@ -5136,9 +5081,6 @@ void Vehicle::ReturnFromExecuteSchedule(bool from_real_index)
 	this->current_order.Free();
 	this->SetDestTile(INVALID_TILE);
 	InvalidateVehicleOrder(this, VIWD_MODIFY_ORDERS);
-	fprintf(stderr, "[PXEXEC] RETURN done veh=%u home=%u(num=%u manual=%u) r=%u i=%u\n",
-			this->index.base(), home->index.base(), (unsigned)home->GetNumOrders(), (unsigned)home->GetNumManualOrders(),
-			(unsigned)this->cur_real_order_index, (unsigned)this->cur_implicit_order_index);
 }
 
 /**
@@ -5299,10 +5241,6 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 					 * where it left. Nested execute-schedule orders are skipped while
 					 * already executing. */
 					OrderList *home = v->orders;
-					fprintf(stderr, "[PXEXEC] JUMP-IN veh=%u home=%u(num=%u manual=%u r=%u i=%u) -> target=%u(num=%u manual=%u)\n",
-							v->index.base(), home->index.base(), (unsigned)home->GetNumOrders(), (unsigned)home->GetNumManualOrders(),
-							(unsigned)v->cur_real_order_index, (unsigned)v->cur_implicit_order_index,
-							target->index.base(), (unsigned)target->GetNumOrders(), (unsigned)target->GetNumManualOrders());
 					/* Step past this execute-schedule order; the resulting position is
 					 * where execution of our own list resumes after the detour. */
 					v->IncrementRealOrderIndex();
