@@ -5631,14 +5631,24 @@ static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id)
 	OrderList *ol = OrderList::GetIfValid(schedule_id);
 	if (ol == nullptr || !ol->IsPlayerCreated()) return false;
 
-	OrderListID schedule = ol->index;
-	OrderList *adopted = ol;
+	/* Build a wrapper schedule holding a single execute-schedule order for the
+	 * target schedule; the part will run the target through the regular
+	 * execute-schedule mechanism, restarting it after every full pass. The
+	 * wrapper is a vehicle-owned list, so it is freed automatically when the
+	 * part's orders are replaced or removed. */
+	Order execute_order;
+	execute_order.MakeExecuteSchedule();
+	execute_order.SetDestination(ol->index);
+
+	std::vector<Order> wrapper_orders;
+	wrapper_orders.push_back(std::move(execute_order));
+
+	if (!OrderList::CanAllocateItem()) return false;
 
 	DeleteVehicleOrders(part, false, true);
 
-	part->orders = adopted;
-	adopted->AssignVehicle(part);
-	part->primary_order = schedule;
+	part->orders = OrderList::Create(std::move(wrapper_orders), part);
+	part->primary_order = part->orders->index;
 	part->primary_order_index = INVALID_VEH_ORDER_ID;
 	part->cur_implicit_order_index = 0;
 	part->cur_real_order_index = 0;
@@ -5646,9 +5656,9 @@ static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id)
 	part->UpdateRealOrderIndex();
 	part->current_order.Free();
 
-	/* Adopt the schedule's dispatch/separation state. */
-	part->vehicle_flags.Set(VehicleFlag::ScheduledDispatch, adopted->IsDispatchEnabled());
-	part->vehicle_flags.Set(VehicleFlag::TimetableSeparation, adopted->IsSeparationEnabled());
+	/* The wrapper mirrors the part's dispatch/separation state while it is the home list. */
+	part->orders->SetDispatchEnabled(part->vehicle_flags.Test(VehicleFlag::ScheduledDispatch));
+	part->orders->SetSeparationEnabled(part->vehicle_flags.Test(VehicleFlag::TimetableSeparation));
 	return true;
 }
 
