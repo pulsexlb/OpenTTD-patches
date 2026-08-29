@@ -2088,6 +2088,8 @@ STR_ORDER_LIST_QUERY_RENAME                                     :{WHITE}Rename o
 STR_ORDER_LIST_DEFAULT_NAME                                     :Order list {NUM}
 STR_SORT_BY_ORDER_LIST_ID                                      :Order list ID
 STR_ERROR_CAN_T_RENAME_ORDER_LIST                               :{WHITE}Can't rename order list...
+STR_ERROR_CAN_T_DELETE_ORDER_LIST                               :{WHITE}Can't delete order list...
+STR_ERROR_ORDER_LIST_IN_USE                                     :{WHITE}It is used by other vehicles
 STR_ORDER_LIST_ORDERS_CAPTION                                  :{WHITE}{RAW_STRING} (Orders)
 
 # Order list timetable window

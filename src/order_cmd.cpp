@@ -3721,9 +3721,8 @@ CommandCost CmdDeleteOrderList(DoCommandFlags flags, OrderListID list_id)
 {
 	OrderList *ol = GetStandaloneOrderList(list_id.base());
 	if (ol == nullptr) return CMD_ERROR;
-	/* Refuse while vehicles still execute this list. Not reachable today since lists
-	 * cannot be assigned yet, but kept as guard for future assignment support. */
-	if (ol->GetNumVehicles() != 0) return CMD_ERROR;
+	/* Refuse while vehicles still execute this list. */
+	if (ol->GetNumVehicles() != 0) return CommandCost(STR_ERROR_ORDER_LIST_IN_USE);
 
 	CommandCost ret = CheckOwnership(ol->GetCompany());
 	if (ret.Failed()) return ret;

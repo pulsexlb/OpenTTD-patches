@@ -2020,6 +2020,8 @@ STR_ORDER_LIST_QUERY_RENAME                                     :{WHITE}重命�
 STR_ORDER_LIST_DEFAULT_NAME                                     :调度表 {NUM}
 STR_SORT_BY_ORDER_LIST_ID                                      :调度表编号
 STR_ERROR_CAN_T_RENAME_ORDER_LIST                               :{WHITE}无法重命名调度表...
+STR_ERROR_CAN_T_DELETE_ORDER_LIST                               :{WHITE}无法删除调度表...
+STR_ERROR_ORDER_LIST_IN_USE                                     :{WHITE}正在其它载具中使用
 STR_ORDER_LIST_ORDERS_CAPTION                                  :{WHITE}{STRING}（调度计划）
 
 # Order list timetable window
