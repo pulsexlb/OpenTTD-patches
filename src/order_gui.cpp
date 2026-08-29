@@ -1463,6 +1463,9 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			if (order->HasCoupleSlot()) {
 				AppendStringInPlace(line, STR_ORDER_COUPLE_SLOT, STR_TRACE_RESTRICT_SLOT_NAME, order->GetCoupleSlot().base());
 			}
+			if (order->GetCoupleUseWaitingSchedule()) {
+				AppendStringInPlace(line, STR_ORDER_COUPLE_USE_WAITING_SCHEDULE_SUFFIX);
+			}
 			break;
 		}
 
@@ -3534,6 +3537,10 @@ public:
 				DropDownList list;
 				list.push_back(MakeDropDownListStringItem(STR_ORDER_DUPLICATE_ORDER, 0, false));
 				if (order->IsType(OT_CONDITIONAL)) list.push_back(MakeDropDownListStringItem(STR_ORDER_CHANGE_JUMP_TARGET, 1, false));
+				if (order->IsType(OT_GOTO_COUPLE)) {
+					list.push_back(MakeDropDownListDividerItem());
+					list.push_back(MakeDropDownListCheckedItem(order->GetCoupleUseWaitingSchedule(), STR_ORDER_COUPLE_USE_WAITING_SCHEDULE, 0x600, false));
+				}
 
 				/* Standalone lists act like trains here: every per-order option is available,
 				 * except constraints that need a real consist (passenger through-load scan). */
@@ -4617,6 +4624,14 @@ public:
 							const Order *dec_order = OrderAt(this->OrderGetSel());
 							if (dec_order == nullptr) break;
 							this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE, dec_order->GetDecouple() == ODF_DECOUPLE ? ODF_NOTHING : ODF_DECOUPLE);
+						}
+						break;
+
+					case 0x600:
+						{
+							const Order *cpl_order = OrderAt(this->OrderGetSel());
+							if (cpl_order == nullptr || !cpl_order->IsType(OT_GOTO_COUPLE)) break;
+							this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_USE_WAITING_SCHEDULE, cpl_order->GetCoupleUseWaitingSchedule() ? 0 : 1);
 						}
 						break;
 

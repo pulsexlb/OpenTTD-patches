@@ -4907,6 +4907,8 @@ STR_ORDER_COUPLE_FULL                                           :满载
 STR_ORDER_COUPLE_SLOT                                          :且有路签 {STRING}
 STR_ORDER_COUPLE_STATION_BUTTON                                :{BLACK}车站
 STR_ORDER_COUPLE_STATION_TOOLTIP                               :{BLACK}在地图上选择一个车站作为对接目标车站。再次点击清除
+STR_ORDER_COUPLE_USE_WAITING_SCHEDULE                          :使用等待对接列车的调度计划
+STR_ORDER_COUPLE_USE_WAITING_SCHEDULE_SUFFIX                   :（并使用等待对接列车的调度计划）
 STR_ORDER_COUPLE_ANY_SLOT                                     :任意路签
 STR_ORDER_DECOUPLE                                              :（解挂）
 STR_ORDER_DECOUPLE_DETAILS                                      :[解挂并保留 {COMMA} 节车厢] 第一部分 {STRING} 第二部分 {STRING}

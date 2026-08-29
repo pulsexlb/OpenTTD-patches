@@ -963,6 +963,8 @@ STR_ORDER_COUPLE_SLOT_BUTTON                                   :{BLACK}Slot
 STR_ORDER_COUPLE_SLOT_TOOLTIP                                 :{BLACK}The trace restrict slot the train must couple with
 STR_ORDER_COUPLE_STATION_BUTTON                                :{BLACK}Station
 STR_ORDER_COUPLE_STATION_TOOLTIP                               :{BLACK}Select a station on the map to restrict coupling to. Click again to clear
+STR_ORDER_COUPLE_USE_WAITING_SCHEDULE                          :Use the waiting train's schedule
+STR_ORDER_COUPLE_USE_WAITING_SCHEDULE_SUFFIX                   :(and use the waiting train's schedule)
 STR_ORDERS_DECOUPLE_VALUE_BUTTON                                :{BLACK}Units decouple
 STR_ORDERS_DECOUPLE_BUTTON                                      :{BLACK}Decouple
 STR_ORDERS_DECOUPLE_DROP                                        :Decouple

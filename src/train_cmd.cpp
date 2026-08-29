@@ -6033,6 +6033,54 @@ static void ReverseTrainForCouple(Train *v)
 }
 
 /**
+ * Make the moving consist take over the waiting consist's schedule: the order
+ * list (incl. shared chain membership), the primary order list, the execution
+ * position and the dispatch/timetable state are all taken from the waiting
+ * consist instead of keeping the moving consist's own schedule.
+ * @param v the surviving (moving) consist's primary vehicle
+ * @param u the waiting consist's primary vehicle
+ */
+static void AdoptCoupleWaitingSchedule(Train *v, Train *u)
+{
+	if (u->orders == nullptr) return;
+	OrderList *adopted = u->orders;
+
+	if (v->orders != adopted) {
+		/* Leave our own order list first. */
+		if (v->IsOrderListShared()) {
+			v->RemoveFromShared();
+		} else if (v->orders->IsPlayerCreated()) {
+			v->orders->RemoveVehicle(v);
+		} else {
+			v->orders->FreeChain(false);
+		}
+		v->orders = adopted;
+		adopted->AssignVehicle(v);
+	}
+
+	/* Take over the waiting consist's schedule state wholesale. */
+	v->primary_order = u->primary_order;
+	v->primary_order_index = u->primary_order_index;
+	v->cur_real_order_index = u->cur_real_order_index;
+	v->cur_implicit_order_index = u->cur_implicit_order_index;
+	v->cur_timetable_order_index = u->cur_timetable_order_index;
+	v->current_order_time = u->current_order_time;
+	v->lateness_counter = u->lateness_counter;
+	v->timetable_start = u->timetable_start;
+	v->dispatch_records = u->dispatch_records;
+	u->dispatch_records.clear();
+	v->vehicle_flags.Set(VehicleFlag::ScheduledDispatch, u->vehicle_flags.Test(VehicleFlag::ScheduledDispatch));
+	v->vehicle_flags.Set(VehicleFlag::TimetableSeparation, u->vehicle_flags.Test(VehicleFlag::TimetableSeparation));
+	v->vehicle_flags.Set(VehicleFlag::AutomateTimetable, u->vehicle_flags.Test(VehicleFlag::AutomateTimetable));
+	v->vehicle_flags.Set(VehicleFlag::SeparationActive, u->vehicle_flags.Test(VehicleFlag::SeparationActive));
+
+	/* Let the next ProcessOrders pick up the order at the taken-over position. */
+	v->current_order.Free();
+	v->SetDestTile(INVALID_TILE);
+	v->last_station_visited = u->last_station_visited;
+}
+
+/**
  * Couple the train \a u onto the train \a v.
  */
 static void Couple(Train *v, Train *u)
@@ -6044,6 +6092,10 @@ static void Couple(Train *v, Train *u)
 	v = v->Primary();
 	u = u->Primary();
 	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return;
+
+	/* The couple order may instruct the consist to adopt the waiting
+	 * consist's schedule; current_order is still that order here. */
+	bool adopt_waiting_schedule = v->current_order.IsType(OT_GOTO_COUPLE) && v->current_order.GetCoupleUseWaitingSchedule();
 
 	/*
 	 * Orientation phase: v will stay the front of the merged consist
@@ -6114,6 +6166,11 @@ static void Couple(Train *v, Train *u)
 	CloseWindowById(WindowClass::VehicleTimetable, u->index);
 	DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
 	SetWindowDirty(WindowClass::Company, _current_company);
+
+	/* The moving consist may take over the waiting consist's schedule; do this
+	 * before the waiting consist's orders are removed, so its state can be
+	 * copied and the surviving consist can join its shared chain. */
+	if (adopt_waiting_schedule) AdoptCoupleWaitingSchedule(v, u);
 
 	DeleteVehicleOrders(u);
 	u->ReleaseUnitNumber();

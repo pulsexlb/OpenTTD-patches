@@ -571,6 +571,10 @@ public:
 	inline uint8_t GetNumDecouple() const { return GB(this->decouple_flags, 1, 7); }
 	/** What kind of train are we looking for */
 	inline OrderCoupleFlags GetCoupleLoad() const { return (OrderCoupleFlags)GB(this->flags, 0, 3); }
+	/** Does the consist take over the waiting consist's schedule at coupling? */
+	inline bool GetCoupleUseWaitingSchedule() const { return HasBit(this->flags, 3); }
+	/** Set whether the consist takes over the waiting consist's schedule at coupling. */
+	inline void SetCoupleUseWaitingSchedule(bool on) { SB(this->flags, 3, 1, on ? 1 : 0); }
 	/** How many wagons are we taking */
 	inline uint8_t GetNumCouple() const { return GB(this->decouple_flags, 1, 7); }
 	/** What orders should first part get */

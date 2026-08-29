@@ -2692,7 +2692,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				break;
 
 			case OT_GOTO_COUPLE:
-				if (mof != MOF_COUPLE_LOAD && mof != MOF_COUPLE_CARGO && mof != MOF_COUPLE_VALUE && mof != MOF_COUPLE_SLOT && mof != MOF_COUPLE_STATION) return CMD_ERROR;
+				if (mof != MOF_COUPLE_LOAD && mof != MOF_COUPLE_CARGO && mof != MOF_COUPLE_VALUE && mof != MOF_COUPLE_SLOT && mof != MOF_COUPLE_STATION && mof != MOF_COUPLE_USE_WAITING_SCHEDULE) return CMD_ERROR;
 				break;
 
 			case OT_DECOUPLE:
@@ -3052,6 +3052,11 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				const Station *st = Station::GetIfValid(data - 1);
 				if (st == nullptr) return CMD_ERROR;
 			}
+			break;
+
+		case MOF_COUPLE_USE_WAITING_SCHEDULE:
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
+			if (order->GetType() != OT_GOTO_COUPLE) return CMD_ERROR;
 			break;
 
 		case MOF_WAYPOINT_FLAGS:
@@ -3456,6 +3461,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 			case MOF_COUPLE_STATION:
 				order->SetCoupleStation(data == 0 ? StationID::Invalid() : StationID{(uint16_t)(data - 1)});
+				break;
+
+			case MOF_COUPLE_USE_WAITING_SCHEDULE:
+				order->SetCoupleUseWaitingSchedule(data != 0);
 				break;
 
 			case MOF_FIRST_ORDERS:
