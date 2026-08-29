@@ -9,7 +9,6 @@
 
 #include "stdafx.h"
 #include "station_base.h"
-#include "newgrf_airtype.h"
 #include "depot_base.h"
 #include "air_map.h"
 #include "window_func.h"
@@ -29,43 +28,11 @@ typedef std::vector<Aircraft *> AircraftList;
 
 AirTypeInfo _airtypes[AIRTYPE_END];
 std::vector<AirType> _sorted_airtypes;
-AirTypes _airtypes_hidden_mask;
 bool _show_airport_tracks = false;
 
 
 const AirportSpec AirportSpec::dummy = {{APC_BEGIN, 0}, {}, INVALID_AIRTYPE, 0, 0, 0, 0, 0, CalTime::MIN_YEAR, CalTime::MIN_YEAR, STR_NULL, ATP_TTDP_LARGE, 0, false, false, false, SubstituteGRFFileProps(AT_INVALID)};
 const AirportSpec AirportSpec::custom = {{APC_CUSTOM, 0}, {}, INVALID_AIRTYPE, 0, 0, 0, 0, 0, CalTime::MIN_YEAR, CalTime::MIN_YEAR, STR_AIRPORT_CUSTOM, ATP_TTDP_LARGE, 0, false, false, false, SubstituteGRFFileProps(AT_INVALID)};
-
-
-void ResolveAirTypeGUISprites(AirTypeInfo *ati)
-{
-	SpriteID cursors_base = GetCustomAirSprite(ati, INVALID_TILE, ATSG_CURSORS);
-	if (cursors_base != 0) {
-		ati->gui_sprites.add_airport_tiles        = cursors_base +   0;
-		ati->gui_sprites.build_track_tile         = cursors_base +   1;
-		ati->gui_sprites.change_airtype           = cursors_base +   2;
-		ati->gui_sprites.build_catchment_infra    = cursors_base +   3;
-		ati->gui_sprites.build_noncatchment_infra = cursors_base +   4;
-		ati->gui_sprites.define_landing_runway    = cursors_base +   5;
-		ati->gui_sprites.define_nonlanding_runway = cursors_base +   6;
-		ati->gui_sprites.build_apron              = cursors_base +   7;
-		ati->gui_sprites.build_helipad            = cursors_base +   8;
-		ati->gui_sprites.build_heliport           = cursors_base +   9;
-		ati->gui_sprites.build_hangar             = cursors_base +  10;
-
-		ati->cursor.add_airport_tiles        = cursors_base +  11;
-		ati->cursor.build_track_tile         = cursors_base +  12;
-		ati->cursor.change_airtype           = cursors_base +  13;
-		ati->cursor.build_catchment_infra    = cursors_base +  14;
-		ati->cursor.build_noncatchment_infra = cursors_base +  15;
-		ati->cursor.define_landing_runway    = cursors_base +  16;
-		ati->cursor.define_nonlanding_runway = cursors_base +  17;
-		ati->cursor.build_apron              = cursors_base +  18;
-		ati->cursor.build_helipad            = cursors_base +  19;
-		ati->cursor.build_heliport           = cursors_base +  20;
-		ati->cursor.build_hangar             = cursors_base +  21;
-	}
-}
 
 
 /**
@@ -118,9 +85,7 @@ void ResetAirTypes()
 			{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, // Icons
 			{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, // Cursors
 			{ 0, 0, 0, 0 }, // Strings
-			0, AIRTYPES_NONE, AIRTYPES_NONE, 0, 0, 0, 0, AirTypeLabelList(), 0, CalTime::Date{},
-			AIRTYPES_NONE, AIRTYPES_NONE, 0,
-			{}, {}, 0, 0, 0, 0, 0, false, false };
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, false };
 	for (; i < lengthof(_airtypes); i++) _airtypes[i] = empty_airtype;
 }
 
@@ -136,57 +101,17 @@ static bool CompareAirTypes(const AirType &first, const AirType &second)
 }
 
 /**
- * Resolve sprites of custom air types
+ * Build the sorted list of buildable air types.
  */
 void InitAirTypes()
 {
-	for (AirType at = AIRTYPE_BEGIN; at != AIRTYPE_END; at++) {
-		AirTypeInfo *ati = &_airtypes[at];
-		ResolveAirTypeGUISprites(ati);
-	}
-
 	_sorted_airtypes.clear();
 	for (AirType at = AIRTYPE_BEGIN; at != AIRTYPE_END; at++) {
-		if (_airtypes[at].label != 0 && !HasBit(_airtypes_hidden_mask, at)) {
+		if (_airtypes[at].label != 0) {
 			_sorted_airtypes.push_back(at);
 		}
 	}
 	std::sort(_sorted_airtypes.begin(), _sorted_airtypes.end(), CompareAirTypes);
-
-}
-
-/**
- * Allocate a new air type label
- */
-AirType AllocateAirType(AirTypeLabel label)
-{
-	for (AirType at = AIRTYPE_BEGIN; at != AIRTYPE_END; at++) {
-		AirTypeInfo *ati = &_airtypes[at];
-
-		if (ati->label == 0) {
-			/* Set up new air type */
-			*ati = _original_airtypes[AIRTYPE_BEGIN];
-			ati->label = label;
-			ati->alternate_labels.clear();
-
-			/* Make us compatible with ourself. */
-			ati->compatible_airtypes = (AirTypes)(1 << at);
-
-			/* We also introduce ourself. */
-			ati->introduces_airtypes = (AirTypes)(1 << at);
-
-			/* Default sort order; order of allocation, but with some
-			 * offsets so it's easier for NewGRF to pick a spot without
-			 * changing the order of other (original) air types.
-			 * The << is so you can place other airtypes in between the
-			 * other airtypes, the 7 is to be able to place something
-			 * before the first (default) air type. */
-			ati->sorting_order = at << 4 | 7;
-			return at;
-		}
-	}
-
-	return INVALID_AIRTYPE;
 }
 
 /**

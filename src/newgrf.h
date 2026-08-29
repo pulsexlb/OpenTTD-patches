@@ -367,7 +367,6 @@ struct GRFFile {
 	btree::btree_map<uint16_t, BadgeID> badge_map{};
 
 	std::vector<RailTypeLabel> railtype_list{}; ///< Railtype translation table
-	std::vector<AirTypeLabel> airtype_list{};    ///< Airtype translation table
 	std::array<RailType, RAILTYPE_END> railtype_map{};
 
 	std::vector<RoadTypeLabel> roadtype_list{}; ///< Roadtype translation table (road)

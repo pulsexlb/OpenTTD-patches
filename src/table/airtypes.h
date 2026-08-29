@@ -167,9 +167,6 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Offset of snow tiles */
 		SPR_RAIL_SNOW_OFFSET,
 
-		/* Compatible airtypes */
-		AIRTYPES_GRAVEL | AIRTYPES_ASPHALT | AIRTYPES_YELLOW,
-
 		/* fallback_airtype */
 		0,
 
@@ -185,26 +182,11 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Gravel type label. */
 		AIRTYPE_LABEL_GRAVEL,
 
-		/* alternate labels */
-		AirTypeLabelList(),
-
 		/* map colour */
 		0x0A,
 
-		/* introduction date */
-		CalTime::INVALID_DATE,
-
-		/* airtypes required for this to be introduced */
-		AIRTYPES_NONE,
-
-		/* introduction air types */
-		AIRTYPES_GRAVEL,
-
 		/* sort order */
 		0 << 4 | 7,
-
-		{ nullptr },
-		{ nullptr },
 
 		/* Catchment. */
 		3,
@@ -373,9 +355,6 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Offset of snow tiles */
 		SPR_RAIL_SNOW_OFFSET,
 
-		/* Compatible airtypes */
-		AIRTYPES_ASPHALT | AIRTYPES_YELLOW | AIRTYPES_DARK,
-
 		/* fallback_airtype */
 		0,
 
@@ -391,26 +370,11 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Gravel type label. */
 		AIRTYPE_LABEL_ASPHALT,
 
-		/* alternate labels */
-		AirTypeLabelList(),
-
 		/* map colour */
 		0x0A,
 
-		/* introduction date */
-		CalTime::INVALID_DATE,
-
-		/* airtypes required for this to be introduced */
-		AIRTYPES_NONE,
-
-		/* introduction air types */
-		AIRTYPES_ASPHALT | AIRTYPES_DARK | AIRTYPES_YELLOW,
-
 		/* sort order */
 		1 << 4 | 7,
-
-		{ nullptr },
-		{ nullptr },
 
 		/* Catchment. */
 		8,
@@ -579,9 +543,6 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Offset of snow tiles */
 		SPR_RAIL_SNOW_OFFSET,
 
-		/* Compatible airtypes */
-		AIRTYPES_GRAVEL | AIRTYPES_ASPHALT | AIRTYPES_WATER,
-
 		/* fallback_airtype */
 		0,
 
@@ -597,26 +558,11 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Gravel type label. */
 		AIRTYPE_LABEL_WATER,
 
-		/* alternate labels */
-		AirTypeLabelList(),
-
 		/* map colour */
 		0x0A,
 
-		/* introduction date */
-		CalTime::INVALID_DATE,
-
-		/* airtypes required for this to be introduced */
-		AIRTYPES_NONE,
-
-		/* introduction air types */
-		AIRTYPES_WATER,
-
 		/* sort order */
 		2 << 4 | 7,
-
-		{ nullptr },
-		{ nullptr },
 
 		/* Catchment. */
 		4,
@@ -785,9 +731,6 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Offset of snow tiles */
 		SPR_RAIL_SNOW_OFFSET,
 
-		/* Compatible airtypes */
-		AIRTYPES_YELLOW | AIRTYPES_ASPHALT,
-
 		/* fallback_airtype */
 		0,
 
@@ -803,26 +746,11 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Gravel type label. */
 		AIRTYPE_LABEL_ASPHALT_DARK,
 
-		/* alternate labels */
-		AirTypeLabelList(),
-
 		/* map colour */
 		0x0A,
 
-		/* introduction date */
-		CalTime::INVALID_DATE,
-
-		/* airtypes required for this to be introduced */
-		AIRTYPES_NONE,
-
-		/* introduction air types */
-		AIRTYPES_DARK,
-
 		/* sort order */
 		3 << 4 | 7,
-
-		{ nullptr },
-		{ nullptr },
 
 		/* Catchment. */
 		8,
@@ -991,9 +919,6 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Offset of snow tiles */
 		SPR_RAIL_SNOW_OFFSET,
 
-		/* Compatible airtypes */
-		AIRTYPES_YELLOW | AIRTYPES_ASPHALT,
-
 		/* fallback_airtype */
 		0,
 
@@ -1009,26 +934,11 @@ static const AirTypeInfo _original_airtypes[] = {
 		/* Gravel type label. */
 		AIRTYPE_LABEL_ASPHALT_YELLOW,
 
-		/* alternate labels */
-		AirTypeLabelList(),
-
 		/* map colour */
 		0x0A,
 
-		/* introduction date */
-		CalTime::INVALID_DATE,
-
-		/* airtypes required for this to be introduced */
-		AIRTYPES_NONE,
-
-		/* introduction air types */
-		AIRTYPES_YELLOW,
-
 		/* sort order */
 		4 << 4 | 7,
-
-		{ nullptr },
-		{ nullptr },
 
 		/* Catchment. */
 		8,

@@ -341,11 +341,6 @@ Engine *GetNewEngine(const GRFFile *file, VehicleType type, uint16_t internal_id
 		_gted[e->index].railtypelabels.clear();
 		for (RailType rt : e->VehInfo<RailVehicleInfo>().railtypes) _gted[e->index].railtypelabels.push_back(GetRailTypeInfo(rt)->label);
 	}
-	if (type == VehicleType::Aircraft) {
-		assert(e->VehInfo<AircraftVehicleInfo>().airtype < AIRTYPE_END);
-		_gted[e->index].airtypelabel = GetAirTypeInfo(e->VehInfo<AircraftVehicleInfo>().airtype)->label;
-	}
-
 	GrfMsg(5, "Created new engine at index {} for GRFID {:x}, type {}, index {}", e->index, std::byteswap(file->grfid), type, internal_id);
 
 	return e;
@@ -599,12 +594,6 @@ void ResetNewGRFData()
 	for (const Engine *e : Engine::IterateType(VehicleType::Train)) {
 		_gted[e->index].railtypelabels.clear();
 		for (RailType rt : e->VehInfo<RailVehicleInfo>().railtypes) _gted[e->index].railtypelabels.push_back(GetRailTypeInfo(rt)->label);
-	}
-
-	/* Fill air type label temporary data for default aircraft */
-	for (const Engine *e : Engine::IterateType(VehicleType::Aircraft)) {
-		assert(e->VehInfo<AircraftVehicleInfo>().airtype < AIRTYPE_END);
-		_gted[e->index].airtypelabel = GetAirTypeInfo(e->VehInfo<AircraftVehicleInfo>().airtype)->label;
 	}
 
 	/* Reset GRM reservations */
@@ -1944,17 +1933,6 @@ static void AfterLoadGRFs()
 	}
 
 	InitRailTypesIndirectCompatibility();
-
-	for (Engine *e : Engine::IterateType(VehicleType::Aircraft)) {
-		AirType airtype = GetAirTypeByLabel(_gted[e->index].airtypelabel);
-		if (airtype == INVALID_AIRTYPE) {
-			/* No air type specified by the GRF (or an unknown air type label): default to
-			 * gravel so the vehicle remains usable at any airport. This keeps third-party
-			 * aircraft NewGRFs that do not set the air type property working. */
-			airtype = AIRTYPE_GRAVEL;
-		}
-		e->VehInfo<AircraftVehicleInfo>().airtype = airtype;
-	}
 
 	SetYearEngineAgingStops();
 

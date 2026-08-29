@@ -1043,10 +1043,8 @@ static CallBackFunction MenuClickBuildAir(int index)
 {
 	if (_settings_game.station.allow_modify_airports) {
 		_last_built_airtype = (AirType)index;
-		ShowBuildAirToolbar(_last_built_airtype);
-	} else {
-		ShowBuildAirToolbar(INVALID_AIRTYPE);
 	}
+	ShowBuildAirToolbar(_last_built_airtype);
 	return CallBackFunction::None;
 }
 

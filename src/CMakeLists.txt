@@ -300,7 +300,6 @@ add_files(
     newgrf.h
     newgrf_act5.h
     newgrf_airport.cpp
-    newgrf_airtype.cpp
     newgrf_airport.h
     newgrf_airporttiles.cpp
     newgrf_airporttiles.h

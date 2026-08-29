@@ -548,7 +548,7 @@ struct BuildAirToolbarWindow : Window {
 	{
 		if (_game_mode != GameMode::Normal  || !CanBuildVehicleInfrastructure(VehicleType::Aircraft)) return ES_NOT_HANDLED;
 		extern AirType _last_built_airtype;
-		Window *w = ShowBuildAirToolbar(_settings_game.station.allow_modify_airports ? _last_built_airtype : INVALID_AIRTYPE);
+		Window *w = ShowBuildAirToolbar(_last_built_airtype);
 		if (w == nullptr) return ES_NOT_HANDLED;
 		return w->OnHotkey(hotkey);
 	}
@@ -1665,16 +1665,12 @@ static void SetDefaultAirGui()
 		}
 		case 0: {
 			/* Use first available type */
-			std::vector<AirType>::const_iterator it = std::find_if(_sorted_airtypes.begin(), _sorted_airtypes.end(),
-					[](AirType r){ return HasAirTypeAvail(_local_company, r); });
-			rt = it != _sorted_airtypes.end() ? *it : AIRTYPE_BEGIN;
+			rt = _sorted_airtypes.empty() ? AIRTYPE_BEGIN : _sorted_airtypes.front();
 			break;
 		}
 		case 1: {
 			/* Use last available type */
-			std::vector<AirType>::const_reverse_iterator it = std::find_if(_sorted_airtypes.rbegin(), _sorted_airtypes.rend(),
-					[](AirType r){ return HasAirTypeAvail(_local_company, r); });
-			rt = it != _sorted_airtypes.rend() ? *it : AIRTYPE_BEGIN;
+			rt = _sorted_airtypes.empty() ? AIRTYPE_BEGIN : _sorted_airtypes.back();
 			break;
 		}
 		default:

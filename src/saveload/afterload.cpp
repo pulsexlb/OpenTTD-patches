@@ -1842,7 +1842,6 @@ bool AfterLoadGame()
 	for (Company *c : Company::Iterate()) {
 		c->avail_railtypes = GetCompanyRailTypes(c->index);
 		c->avail_roadtypes = GetCompanyRoadTypes(c->index);
-		c->avail_airtypes = GetCompanyAirTypes(c->index);
 	}
 
 	AfterLoadStations();

@@ -31,27 +31,10 @@ enum AirType : uint8_t {
 	AIRTYPE_YELLOW   = 4,
 	AIRTYPE_END      = 16,   ///< Used for iterations
 	INVALID_AIRTYPE  = 0xFF, ///< Flag for invalid airtype
-
-	DEF_AIRTYPE_FIRST = AIRTYPE_END, ///< Default airtype: first available
-	DEF_AIRTYPE_LAST,                ///< Default airtype: last available
-	DEF_AIRTYPE_MOST_USED,           ///< Default airtype: most used
 };
 
 /** Allow incrementing of airtype variables */
 DECLARE_INCREMENT_DECREMENT_OPERATORS(AirType)
-
-/** The different airtypes we support, but then a bitmask of them.  */
-enum AirTypes : uint64_t {
-	AIRTYPES_NONE     = 0,                      ///< No rail types
-	AIRTYPES_GRAVEL   = 1 << AIRTYPE_GRAVEL,    ///< Gravel surface
-	AIRTYPES_ASPHALT  = 1 << AIRTYPE_ASPHALT,   ///< Asphalt surface
-	AIRTYPES_WATER    = 1 << AIRTYPE_WATER,     ///< Water surface
-	AIRTYPES_DARK     = 1 << AIRTYPE_DARK,      ///< Dark surface
-	AIRTYPES_YELLOW   = 1 << AIRTYPE_YELLOW,    ///< Yellow surface
-	AIRTYPES_ALL      = AIRTYPES_GRAVEL | AIRTYPES_ASPHALT | AIRTYPES_WATER | AIRTYPES_DARK | AIRTYPES_YELLOW,
-	INVALID_AIRTYPES  = UINT16_MAX,             ///< Invalid airtypes
-};
-DECLARE_ENUM_AS_BIT_SET(AirTypes)
 
 /** Types of tiles an airport can have. */
 enum AirportTileType : uint8_t {
