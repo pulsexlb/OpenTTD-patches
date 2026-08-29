@@ -182,6 +182,10 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	 * takes the claim over. Kept on the consist Primary. */
 	VehicleID couple_claimant = VehicleID::Invalid();
 	uint32_t couple_claim_cost = 0;
+	/* Transient couple state (not saved): the waiting consist has released
+	 * everything beyond its body once, so its partner can reserve up to the
+	 * contact point with the regular reservation machinery. */
+	bool couple_body_hold = false;
 
 	RailTypes railtypes{}; ///< On which rail types the train can run.
 	RailTypes compatible_railtypes{}; ///< With which rail types the train is compatible.

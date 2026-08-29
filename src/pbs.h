@@ -197,6 +197,10 @@ private:
 bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bool forbid_90deg = false, PBSWaitingPositionRestrictedSignalState *restricted_signal_state = nullptr);
 bool IsWaitingPositionFreeTraceRestrictExecute(const TraceRestrictProgram *prog, const Train *v, TileIndex tile, Trackdir trackdir);
 
+bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile);
+bool IsCouplePartnerTile(const Train *v, TileIndex tile);
+bool IsCoupleTargetBlockClear(const Train *v);
+
 Train *GetTrainForReservation(TileIndex tile, Track track);
 CommandCost CheckTrainReservationPreventsTrackModification(TileIndex tile, Track track);
 CommandCost CheckTrainReservationPreventsTrackModification(const Train *v);

@@ -180,9 +180,17 @@ private:
 	{
 		TileIndex     start = tile;
 		TileIndexDiff diff = TileOffsByDiagDir(dir);
+		const Train *v = Yapf().GetVehicle();
+
+		/* The strict couple semantics: the partner must be alone in its
+		 * signal block before anything is reserved towards it. */
+		if (v->current_order.IsType(OT_GOTO_COUPLE) && !IsCoupleTargetBlockClear(v)) return false;
 
 		do {
-			if (HasStationReservation(tile)) return false;
+			/* Only the tiles physically occupied by the claimed couple
+			 * partner are shared. Any other reservation on the platform
+			 * (another train standing in the same block) still blocks. */
+			if (HasStationReservation(tile) && !IsCouplePartnerVehicleTile(v, tile)) return false;
 			SetRailStationReservation(tile, true);
 			MarkTileDirtyByTile(tile, VMDF_NOT_MAP_MODE);
 			tile = TileAdd(tile, diff);
@@ -203,15 +211,18 @@ private:
 	 */
 	bool ReserveSingleTrack(TileIndex tile, Trackdir td)
 	{
+		const bool dbg = Yapf().GetVehicle()->current_order.IsType(OT_GOTO_COUPLE);
 		if (IsRailStationTile(tile)) {
 			if (!ReserveRailStationPlatform(tile, TrackdirToExitdir(ReverseTrackdir(td)))) {
 				/* Platform could not be reserved, undo. */
+				if (dbg) fprintf(stderr, "[COUPLE] res-path: platform reserve failed at (%d,%d)\n", TileX(tile), TileY(tile));
 				this->res_fail_tile = tile;
 				this->res_fail_td = td;
 			}
 		} else {
 			if (!TryReserveRailTrackdir(Yapf().GetVehicle(), tile, td)) {
 				/* Tile couldn't be reserved, undo. */
+				if (dbg) fprintf(stderr, "[COUPLE] res-path: tile reserve failed at (%d,%d)\n", TileX(tile), TileY(tile));
 				this->res_fail_tile = tile;
 				this->res_fail_td = td;
 				return false;
@@ -238,8 +249,10 @@ private:
 		if (IsRailStationTile(tile)) {
 			TileIndex     start = tile;
 			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
+			const Train *v = Yapf().GetVehicle();
 			while ((tile != this->res_fail_tile || td != this->res_fail_td) && IsCompatibleTrainStationTile(tile, start)) {
-				SetRailStationReservation(tile, false);
+				/* Never clear the tiles the claimed couple partner holds. */
+				if (!IsCouplePartnerVehicleTile(v, tile)) SetRailStationReservation(tile, false);
 				tile = TileAdd(tile, diff);
 			}
 		} else if (tile != this->res_fail_tile || td != this->res_fail_td) {
@@ -317,7 +330,16 @@ public:
 		/* Don't bother if the target is reserved. */
 		PBSWaitingPositionRestrictedSignalState restricted_signal_state;
 		restricted_signal_state.defer_test_if_slot_conditional = true;
-		if (!unsafe_pos && !IsWaitingPositionFree(Yapf().GetVehicle(), this->res_dest_tile, this->res_dest_td, false, &restricted_signal_state)) return false;
+		if (Yapf().GetVehicle()->current_order.IsType(OT_GOTO_COUPLE)) {
+			fprintf(stderr, "[COUPLE] res-path: target=(%d,%d) td=%d unsafe_pos=%d\n",
+					TileX(this->res_dest_tile), TileY(this->res_dest_tile), (int)this->res_dest_td, unsafe_pos ? 1 : 0);
+		}
+		if (!unsafe_pos && !IsWaitingPositionFree(Yapf().GetVehicle(), this->res_dest_tile, this->res_dest_td, false, &restricted_signal_state)) {
+			if (Yapf().GetVehicle()->current_order.IsType(OT_GOTO_COUPLE)) {
+				fprintf(stderr, "[COUPLE] res-path: target (%d,%d) not free, aborting\n", TileX(this->res_dest_tile), TileY(this->res_dest_tile));
+			}
+			return false;
+		}
 
 		/* The temporary slot state only needs to be pushed to the stack (i.e. activated) on first use */
 		static TraceRestrictSlotTemporaryState temporary_slot_state;
@@ -359,6 +381,9 @@ public:
 			});
 			if (!unsafe_pos && this->res_fail_tile != INVALID_TILE) {
 				/* Reservation failed, undo. */
+				if (Yapf().GetVehicle()->current_order.IsType(OT_GOTO_COUPLE)) {
+					fprintf(stderr, "[COUPLE] res-path: FAILED at (%d,%d), undoing\n", TileX(this->res_fail_tile), TileY(this->res_fail_tile));
+				}
 				Node *fail_node = this->res_dest_node;
 				TileIndex stop_tile = this->res_fail_tile;
 				do {
@@ -847,6 +872,7 @@ public:
 	{
 		if (target != nullptr) target->tile = INVALID_TILE;
 		if (dest != nullptr) *dest = INVALID_TILE;
+		const bool dbg = v->current_order.IsType(OT_GOTO_COUPLE);
 
 		/* set origin and destination nodes */
 		PBSTileInfo origin = FollowTrainReservation(v, nullptr, FollowTrainReservationFlag::OkayUnused);
@@ -856,6 +882,17 @@ public:
 
 		/* find the best path */
 		path_found = Yapf().FindPath(v);
+		if (dbg) {
+			Node *bn = Yapf().GetBestNode();
+			fprintf(stderr, "[COUPLE] yapf-path: consist=%d origin=(%d,%d) found=%d best=%s\n",
+					v->index.base(), TileX(origin.tile), TileY(origin.tile), path_found ? 1 : 0,
+					bn != nullptr ? "yes" : "no");
+			if (bn != nullptr) {
+				fprintf(stderr, "[COUPLE] yapf-path: best last=(%d,%d) td=%d dest_tile=(%d,%d)\n",
+						TileX(bn->GetLastTile()), TileY(bn->GetLastTile()), (int)bn->GetLastTrackdir(),
+						TileX(v->dest_tile), TileY(v->dest_tile));
+			}
+		}
 
 		/* if path not found - return INVALID_TRACKDIR */
 		Trackdir next_trackdir = INVALID_TRACKDIR;
@@ -887,7 +924,8 @@ public:
 
 			if (reserve_track && path_found) {
 				if (dest != nullptr) *dest = Yapf().GetBestNode()->GetLastTile();
-				this->TryReservePath(target, node->GetLastTile());
+				bool reserved = this->TryReservePath(target, node->GetLastTile());
+				if (dbg) fprintf(stderr, "[COUPLE] yapf-path: reserve result=%d\n", reserved ? 1 : 0);
 			}
 		}
 

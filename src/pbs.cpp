@@ -116,6 +116,11 @@ bool IsRailStationPlatformFree(const Train *v, TileIndex start, DiagDirection di
 bool TryReserveRailTrackdir(const Train *v, TileIndex tile, Trackdir td, bool trigger_stations)
 {
 	bool success = TryReserveRailTrack(tile, TrackdirToTrack(td), trigger_stations);
+	if (!success && v->current_order.IsType(OT_GOTO_COUPLE)) {
+		fprintf(stderr, "[COUPLE] res-trackdir: consist=%d FAILED (%d,%d) td=%d station_res=%d\n",
+				v->index.base(), TileX(tile), TileY(tile), (int)td,
+				IsRailStationTile(tile) && HasStationReservation(tile) ? 1 : 0);
+	}
 	if (success && HasPbsSignalOnTrackdir(tile, td)) {
 		SetSignalStateByTrackdir(tile, td, SignalState::Green);
 		MarkSingleSignalDirty(tile, td);
@@ -1541,9 +1546,172 @@ bool TrainReservationPassesThroughTile(const Train *v, TileIndex search_tile)
  * @param forbid_90deg Don't allow trains to make 90 degree turns
  * @return True if it is a safe position
  */
+/**
+ * Check whether a vehicle of the couple partner of \a v stands on \a tile.
+ * Only meaningful for trains with a goto-couple order and a claimed target.
+ */
+bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile)
+{
+	if (!v->current_order.IsType(OT_GOTO_COUPLE)) return false;
+	const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
+	if (tgt == nullptr) return false;
+	const Train *partner = tgt->Primary();
+	for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
+		if (u->Primary() == partner) return true;
+	}
+	return false;
+}
+
+/**
+ * Check whether \a tile belongs to the couple partner of \a v: either a
+ * vehicle of the partner stands on it, or it is a station tile of the same
+ * platform as (one of the body tiles of) the partner.
+ */
+bool IsCouplePartnerTile(const Train *v, TileIndex tile)
+{
+	if (IsCouplePartnerVehicleTile(v, tile)) return true;
+	if (!v->current_order.IsType(OT_GOTO_COUPLE) || !IsRailStationTile(tile)) return false;
+	const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
+	if (tgt == nullptr) return false;
+	for (const Train *u = tgt->Primary()->First(); u != nullptr; u = u->Next()) {
+		if (u->track == TRACK_BIT_WORMHOLE) continue;
+		if (IsRailStationTile(u->tile) && IsCompatibleTrainStationTile(tile, u->tile)) return true;
+	}
+	return false;
+}
+
+/** Worklist entry for the couple target block flood fill. */
+struct CoupleFloodEntry {
+	TileIndex tile;
+	Trackdir td;
+};
+
+/** Tile budget for the couple target block flood fill. */
+static constexpr uint COUPLE_FLOOD_BUDGET = 256;
+
+/**
+ * Check whether the signal block containing the claimed couple partner holds
+ * no train other than the partner itself. The block is flood filled from the
+ * partner's body, bounded by signals and a tile budget.
+ * @param v the approaching consist with a goto-couple order.
+ * @return true iff the partner is alone in its block.
+ */
+bool IsCoupleTargetBlockClear(const Train *v)
+{
+	const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
+	if (tgt == nullptr) return false;
+	const Train *partner = tgt->Primary();
+	const Train *mover = v->Primary();
+
+	std::vector<TileIndex> visited;
+	std::vector<CoupleFloodEntry> todo;
+	bool budget_exceeded = false;
+
+	auto try_visit = [&](TileIndex t) {
+		for (const TileIndex vt : visited) {
+			if (vt == t) return;
+		}
+		if (visited.size() >= COUPLE_FLOOD_BUDGET) {
+			budget_exceeded = true;
+			return;
+		}
+		visited.push_back(t);
+	};
+
+	auto tracks_of = [&](TileIndex t) -> TrackBits {
+		if (IsRailStationTile(t)) return GetRailStationTrackBits(t);
+		if (IsTileType(t, TileType::Railway)) return GetTrackBits(t);
+		return TRACK_BIT_NONE;
+	};
+
+	/* Seed with the partner's body. */
+	for (const Train *u = partner->First(); u != nullptr; u = u->Next()) {
+		if (u->track == TRACK_BIT_WORMHOLE || u->track == TRACK_BIT_DEPOT) continue;
+		try_visit(u->tile);
+		for (Track tr : SetTrackBitIterator(tracks_of(u->tile))) {
+			for (DiagDirection dd = DiagDirection::Begin; dd < DiagDirection::End; dd++) {
+				if (!(DiagdirReachesTracks(dd) & TrackToTrackBits(tr))) continue;
+				todo.push_back({u->tile, TrackExitdirToTrackdir(tr, dd)});
+			}
+		}
+	}
+
+	CFollowTrackRail ft(v, v->GetIndirectCompatibleRailTypes());
+	while (!todo.empty() && !budget_exceeded) {
+		CoupleFloodEntry e = todo.back();
+		todo.pop_back();
+
+		/* An exit signal bounds the block. */
+		if (IsTileType(e.tile, TileType::Railway) && HasSignalOnTrackdir(e.tile, e.td)) continue;
+
+		if (!ft.Follow(e.tile, e.td)) continue;
+		if (IsRailDepotTile(ft.new_tile)) continue;
+
+		if (ft.is_station) {
+			/* The follower jumped across the platform: mark every strip tile. */
+			for (TileIndex t = ft.new_tile; IsCompatibleTrainStationTile(t, e.tile); t = TileAdd(t, TileOffsByDiagDir(ReverseDiagDir(TrackdirToExitdir(e.td))))) {
+				try_visit(t);
+			}
+		}
+		try_visit(ft.new_tile);
+		if (budget_exceeded) break;
+
+		TrackdirBits tdb = ft.new_td_bits & DiagdirReachesTrackdirs(ft.exitdir);
+		for (Trackdir ntd : SetTrackdirBitIterator(tdb)) {
+			/* An entry signal on the next tile bounds the block. */
+			if (IsTileType(ft.new_tile, TileType::Railway) && HasSignalOnTrackdir(ft.new_tile, ntd)) continue;
+			todo.push_back({ft.new_tile, ntd});
+		}
+	}
+
+	bool clear = true;
+	for (const TileIndex t : visited) {
+		for (const Train *w : VehiclesOnTile<VehicleType::Train>(t)) {
+			const Train *wp = w->Primary();
+			if (wp == partner || wp == mover) continue;
+			clear = false;
+		}
+	}
+	fprintf(stderr, "[COUPLE] block-clear: consist=%d partner=%d tiles=%d clear=%d%s\n",
+			v->index.base(), partner->index.base(), (int)visited.size(), clear ? 1 : 0,
+			budget_exceeded ? " (budget exceeded)" : "");
+	return clear;
+}
+
 bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bool include_line_end, bool forbid_90deg)
 {
 	if (IsRailDepotTile(tile)) return true;
+
+	/* A train going to couple may stop on its partner's platform: the tile
+	 * holding the partner, a tile of the same platform, or the tile directly
+	 * in front of the partner. The contact happens en route. */
+	if (v->current_order.IsType(OT_GOTO_COUPLE)) {
+		const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
+		if (tgt != nullptr) {
+			const Train *partner = tgt->Primary();
+			bool found = false;
+			for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
+				if (u->Primary() == partner) found = true;
+			}
+			if (!found && IsRailStationTile(tile)) {
+				for (const Train *u = partner->First(); u != nullptr && !found; u = u->Next()) {
+					if (u->track == TRACK_BIT_WORMHOLE) continue;
+					if (IsRailStationTile(u->tile) && IsCompatibleTrainStationTile(tile, u->tile)) found = true;
+				}
+			}
+			if (!found) {
+				CFollowTrackRail cft(v, v->GetIndirectCompatibleRailTypes());
+				if (cft.Follow(tile, trackdir)) {
+					for (const Train *u : VehiclesOnTile<VehicleType::Train>(cft.new_tile)) {
+						if (u->Primary() == partner) found = true;
+					}
+				}
+			}
+			fprintf(stderr, "[COUPLE] safe-pos: consist=%d tile=(%d,%d) partner=%d hit=%d\n",
+					v->index.base(), TileX(tile), TileY(tile), partner->index.base(), found ? 1 : 0);
+			if (found) return true;
+		}
+	}
 
 	/* For non-pbs signals, stop on the signal tile. */
 	if (HasBlockSignalOnTrackdir(tile, trackdir)) return true;
@@ -1643,9 +1811,15 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 {
 	Track     track = TrackdirToTrack(trackdir);
 	TrackBits reserved = GetReservedTrackbits(tile);
+	const bool dbg = v->current_order.IsType(OT_GOTO_COUPLE);
+	if (dbg) fprintf(stderr, "[COUPLE] pos-free: consist=%d tile=(%d,%d) td=%d reserved=%d\n",
+			v->index.base(), TileX(tile), TileY(tile), (int)trackdir, (int)reserved);
 
 	/* Tile reserved? Can never be a free waiting position. */
-	if (TrackOverlapsTracks(reserved, track)) return false;
+	if (TrackOverlapsTracks(reserved, track)) {
+		if (dbg) fprintf(stderr, "[COUPLE] pos-free: NOT FREE (tile itself reserved)\n");
+		return false;
+	}
 
 	/* Not reserved and depot or not a pbs signal -> free. */
 	if (IsRailDepotTile(tile)) return true;
@@ -1697,15 +1871,28 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 	ft.new_td_bits &= DiagdirReachesTrackdirs(ft.exitdir);
 	if (Rail90DegTurnDisallowedTilesFromTrackdir(ft.old_tile, ft.new_tile, ft.old_td, forbid_90deg)) ft.new_td_bits &= ~TrackdirCrossesTrackdirs(trackdir);
 
-	if (HasReservedTracks(ft.new_tile, TrackdirBitsToTrackBits(ft.new_td_bits))) return false;
+	if (HasReservedTracks(ft.new_tile, TrackdirBitsToTrackBits(ft.new_td_bits))) {
+		/* The tile held by the claimed couple partner is the contact point:
+		 * stopping there is allowed iff the partner is alone in its block. */
+		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerVehicleTile(v, ft.new_tile)) {
+			bool clear = IsCoupleTargetBlockClear(v);
+			if (dbg) fprintf(stderr, "[COUPLE] pos-free: next tile is the partner, block clear=%d\n", clear ? 1 : 0);
+			return clear;
+		}
+		if (dbg) fprintf(stderr, "[COUPLE] pos-free: NOT FREE (next tile (%d,%d) reserved)\n", TileX(ft.new_tile), TileY(ft.new_tile));
+		return false;
+	}
 
 	if (ft.new_td_bits != TRACKDIR_BIT_NONE && KillFirstBit(ft.new_td_bits) == TRACKDIR_BIT_NONE) {
 		Trackdir td = FindFirstTrackdir(ft.new_td_bits);
 		/* PBS signal on next trackdir? */
 		if (HasPbsSignalOnTrackdir(ft.new_tile, td)) {
-			return pbs_res_end_wait_test(ft.new_tile, td, false);
+			bool free = pbs_res_end_wait_test(ft.new_tile, td, false);
+			if (dbg) fprintf(stderr, "[COUPLE] pos-free: next tile is PBS signal, free=%d\n", free ? 1 : 0);
+			return free;
 		}
 	}
 
+	if (dbg) fprintf(stderr, "[COUPLE] pos-free: FREE\n");
 	return true;
 }
