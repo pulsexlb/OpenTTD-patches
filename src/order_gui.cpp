@@ -1784,8 +1784,9 @@ private:
 		DP_COND_AUX4_REFIT_MODE = 0, ///< Display refit mode button
 
 		/* WID_O_SEL_BOTTOM_MIDDLE */
-		DP_BOTTOM_MIDDLE_DELETE       = 0, ///< Display 'delete' in the middle button of the bottom row of the vehicle order window.
-		DP_BOTTOM_MIDDLE_STOP_SHARING = 1, ///< Display 'stop sharing' in the middle button of the bottom row of the vehicle order window.
+		DP_BOTTOM_MIDDLE_DELETE        = 0, ///< Display 'delete' in the middle button of the bottom row of the vehicle order window.
+		DP_BOTTOM_MIDDLE_STOP_SHARING  = 1, ///< Display 'stop sharing' in the middle button of the bottom row of the vehicle order window.
+		DP_BOTTOM_MIDDLE_EXIT_EXECUTE  = 2, ///< Display 'exit execution' in the middle button of the bottom row of the vehicle order window.
 
 		/* WID_O_SEL_SHARED */
 		DP_SHARED_LIST       = 0, ///< Display shared order list button
@@ -2594,9 +2595,12 @@ public:
 		/* skip */
 		this->SetWidgetDisabledState(WID_O_SKIP, !this->HasVehicle() || NumOrders() <= 1);
 
-		/* delete / stop sharing */
+		/* delete / stop sharing / exit execution */
 		NWidgetStacked *delete_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_BOTTOM_MIDDLE);
-		if (shared_orders && this->selected_order == NumOrders()) {
+		if (this->HasVehicle() && this->vehicle->IsExecutingSchedule() && this->selected_order == NumOrders()) {
+			/* The 'End of executed schedule' order is selected, show the 'exit execution' button. */
+			delete_sel->SetDisplayedPlane(DP_BOTTOM_MIDDLE_EXIT_EXECUTE);
+		} else if (shared_orders && this->selected_order == NumOrders()) {
 			/* The 'End of Shared Orders' order is selected, show the 'stop sharing' button. */
 			delete_sel->SetDisplayedPlane(DP_BOTTOM_MIDDLE_STOP_SHARING);
 		} else {
@@ -3048,7 +3052,15 @@ public:
 		}
 
 		if (this->vscroll->IsVisible(i)) {
-			StringID str = (this->HasVehicle() && this->vehicle->IsOrderListShared()) ? STR_ORDERS_END_OF_SHARED_ORDERS : STR_ORDERS_END_OF_ORDERS;
+			std::string str;
+			if (this->HasVehicle() && this->vehicle->IsExecutingSchedule()) {
+				/* The vehicle is away executing another schedule: show which one ends here. */
+				const OrderList *executed = this->vehicle->orders;
+				std::string name = executed->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, executed->index.base() + 1) : executed->GetName();
+				str = GetString(STR_ORDERS_END_OF_EXECUTE_SCHEDULE, name);
+			} else {
+				str = GetString((this->HasVehicle() && this->vehicle->IsOrderListShared()) ? STR_ORDERS_END_OF_SHARED_ORDERS : STR_ORDERS_END_OF_ORDERS);
+			}
 			DrawString(rtl ? ir.left : middle, rtl ? middle : ir.right, y, str, (i == this->selected_order) ? TextColour::White : TextColour::Black);
 		}
 	}
@@ -3536,6 +3548,12 @@ public:
 
 			case WID_O_STOP_SHARING:
 				this->OrderClick_StopSharing();
+				break;
+
+			case WID_O_EXIT_EXECUTE:
+				if (this->HasVehicle() && this->vehicle->IsExecutingSchedule()) {
+					Command<Commands::ExitExecuteSchedule>::Post(STR_ERROR_CAN_T_EXIT_EXECUTE_SCHEDULE, this->vehicle->tile, this->vehicle->index);
+				}
 				break;
 
 			case WID_O_NON_STOP:
@@ -4565,6 +4583,12 @@ public:
 			case WID_O_STOP_SHARING:
 				this->OrderClick_StopSharing();
 				break;
+
+			case WID_O_EXIT_EXECUTE:
+				if (this->HasVehicle() && this->vehicle->IsExecutingSchedule()) {
+					Command<Commands::ExitExecuteSchedule>::Post(STR_ERROR_CAN_T_EXIT_EXECUTE_SCHEDULE, this->vehicle->tile, this->vehicle->index);
+				}
+				break;
 		}
 
 		ResetObjectToPlace();
@@ -5002,6 +5026,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 														SetStringTip(STR_ORDERS_DELETE_BUTTON, STR_ORDERS_DELETE_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_STOP_SHARING), SetMinimalSize(100, 12), SetFill(1, 0),
 														SetStringTip(STR_ORDERS_STOP_SHARING_BUTTON, STR_ORDERS_STOP_SHARING_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_EXIT_EXECUTE), SetMinimalSize(100, 12), SetFill(1, 0),
+														SetStringTip(STR_ORDERS_EXIT_EXECUTE_BUTTON, STR_ORDERS_EXIT_EXECUTE_TOOLTIP), SetResize(1, 0),
 			EndContainer(),
 			NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_GOTO), SetMinimalSize(100, 12), SetFill(1, 0),
 													SetStringTip(STR_ORDERS_GO_TO_BUTTON, STR_ORDERS_GO_TO_TOOLTIP_EXTRA), SetResize(1, 0),
@@ -5173,6 +5199,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_widgets = {
 													SetStringTip(STR_ORDERS_DELETE_BUTTON, STR_ORDERS_DELETE_TOOLTIP), SetResize(1, 0),
 			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_STOP_SHARING), SetMinimalSize(100, 12), SetFill(1, 0),
 													SetStringTip(STR_ORDERS_STOP_SHARING_BUTTON, STR_ORDERS_STOP_SHARING_TOOLTIP), SetResize(1, 0),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_EXIT_EXECUTE), SetMinimalSize(100, 12), SetFill(1, 0),
+													SetStringTip(STR_ORDERS_EXIT_EXECUTE_BUTTON, STR_ORDERS_EXIT_EXECUTE_TOOLTIP), SetResize(1, 0),
 		EndContainer(),
 		NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_GOTO), SetMinimalSize(100, 12), SetFill(1, 0),
 											SetStringTip(STR_ORDERS_GO_TO_BUTTON, STR_ORDERS_GO_TO_TOOLTIP_EXTRA), SetResize(1, 0),

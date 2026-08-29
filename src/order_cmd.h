@@ -62,6 +62,7 @@ DEF_CMD_TUPLE_LT (Commands::CreateOrderList,        CmdCreateOrderList,         
 DEF_CMD_TUPLE_LT (Commands::RenameOrderList,        CmdRenameOrderList,                 {}, CommandType::RouteManagement, CmdDataT<OrderListID, std::string>)
 DEF_CMD_TUPLE_NT (Commands::DeleteOrderList,        CmdDeleteOrderList,                 {}, CommandType::RouteManagement, CmdDataT<OrderListID>)
 DEF_CMD_TUPLE_NT (Commands::SetOrderListPublic,     CmdSetOrderListPublic,              {}, CommandType::RouteManagement, CmdDataT<OrderListID, bool>)
+DEF_CMD_TUPLE_LT (Commands::ExitExecuteSchedule,    CmdExitExecuteSchedule,             {}, CommandType::RouteManagement, CmdDataT<VehicleID>)
 
 /** Invalidate every GUI that displays a standalone player-created order list. */
 void InvalidateStandaloneOrderGUIs();

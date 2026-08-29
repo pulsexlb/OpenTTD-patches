@@ -2304,6 +2304,39 @@ CommandCost CmdSkipToOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 }
 
 /**
+ * Stop executing the assigned schedule immediately and return to the vehicle's
+ * own order list, without waiting for the current pass of the schedule to end.
+ * @param flags operation to perform
+ * @param veh the vehicle to exit the schedule for
+ * @return the cost of this operation or an error
+ */
+CommandCost CmdExitExecuteSchedule(DoCommandFlags flags, VehicleID veh)
+{
+	Vehicle *v = Vehicle::GetIfValid(veh);
+	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
+
+	CommandCost ret = CheckOwnership(v->owner);
+	if (ret.Failed()) return ret;
+
+	if (!v->IsExecutingSchedule()) return CMD_ERROR;
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		/* If the vehicle is loading at a station of the executed schedule,
+		 * start departing before switching back to its own orders. */
+		if (v->current_order.IsAnyLoadingType()) v->LeaveStation();
+
+		v->ReturnFromExecuteSchedule();
+
+		InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);
+
+		/* We have an aircraft/ship, they have a mini-schedule, so update them all */
+		if (v->type == VehicleType::Aircraft || v->type == VehicleType::Ship) DirtyVehicleListWindowForVehicle(v);
+	}
+
+	return CommandCost();
+}
+
+/**
  * Move an order inside the orderlist
  * @param flags operation to perform
  * @param flags operation to perform

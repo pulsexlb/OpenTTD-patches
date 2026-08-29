@@ -23,6 +23,7 @@ enum OrderWidgets : WidgetID {
 	WID_O_MGMT_LIST_BTN,             ///< Management list button.
 	WID_O_DELETE,                    ///< Delete selected order.
 	WID_O_STOP_SHARING,              ///< Stop sharing orders.
+	WID_O_EXIT_EXECUTE,              ///< Exit the currently executed schedule.
 	WID_O_NON_STOP,                  ///< Goto non-stop to destination.
 	WID_O_DEPOT_UNBUNCHING,          ///< Toggle unbunching.
 	WID_O_GOTO,                      ///< Goto destination.

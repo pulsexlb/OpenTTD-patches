@@ -1796,6 +1796,10 @@ STR_ORDER_EXECUTE_SCHEDULE_BUTTON                               :执行调度计
 STR_ORDER_EXECUTE_SCHEDULE                                      :执行调度计划：{RAW_STRING}
 STR_ORDER_EXECUTE_SCHEDULE_UNDEFINED                             :执行调度计划：{STRING}
 STR_ORDER_EXECUTE_SCHEDULE_TOOLTIP                              :{BLACK}到达该指令后要执行的调度计划
+STR_ORDERS_END_OF_EXECUTE_SCHEDULE                              :--{RAW_STRING}执行结束--
+STR_ORDERS_EXIT_EXECUTE_BUTTON                                  :{BLACK}退出当前执行
+STR_ORDERS_EXIT_EXECUTE_TOOLTIP                                 :{BLACK}退出当前正在执行的调度计划，返回本载具自己的调度计划
+STR_ERROR_CAN_T_EXIT_EXECUTE_SCHEDULE                           :{WHITE}不能退出调度计划执行……
 STR_ORDER_RELEASE_SLOT_BUTTON                                   :返还路签
 STR_ORDER_RELEASE_SLOT_GROUP_BUTTON                             :返还路签组路签
 STR_ORDER_CHANGE_COUNTER_BUTTON                                 :更改计数器
