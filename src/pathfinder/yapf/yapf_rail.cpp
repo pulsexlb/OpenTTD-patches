@@ -187,10 +187,12 @@ private:
 		if (v->current_order.IsType(OT_GOTO_COUPLE) && !IsCoupleTargetBlockClear(v)) return false;
 
 		do {
-			/* Only the tiles physically occupied by the claimed couple
-			 * partner are shared. Any other reservation on the platform
-			 * (another train standing in the same block) still blocks. */
-			if (HasStationReservation(tile) && !IsCouplePartnerVehicleTile(v, tile)) return false;
+			/* Tiles of the claimed couple partner's own platform are shared:
+			 * the partner's arrival reservation covers the whole strip, also
+			 * the empty tiles in front of and behind its body. Any other
+			 * reservation on the platform (another train standing in the same
+			 * block) still blocks. */
+			if (HasStationReservation(tile) && !IsCouplePartnerTile(v, tile)) return false;
 			SetRailStationReservation(tile, true);
 			MarkTileDirtyByTile(tile, VMDF_NOT_MAP_MODE);
 			tile = TileAdd(tile, diff);
@@ -251,8 +253,9 @@ private:
 			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
 			const Train *v = Yapf().GetVehicle();
 			while ((tile != this->res_fail_tile || td != this->res_fail_td) && IsCompatibleTrainStationTile(tile, start)) {
-				/* Never clear the tiles the claimed couple partner holds. */
-				if (!IsCouplePartnerVehicleTile(v, tile)) SetRailStationReservation(tile, false);
+				/* Never clear the tiles of the claimed couple partner's own
+				 * platform: its arrival reservation must stay intact. */
+				if (!IsCouplePartnerTile(v, tile)) SetRailStationReservation(tile, false);
 				tile = TileAdd(tile, diff);
 			}
 		} else if (tile != this->res_fail_tile || td != this->res_fail_td) {

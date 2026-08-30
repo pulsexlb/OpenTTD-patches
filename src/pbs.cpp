@@ -1563,9 +1563,42 @@ bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile)
 }
 
 /**
+ * Check whether the continuous station platform strip containing \a tile
+ * also holds a vehicle of \a partner. Two parallel platforms of the same
+ * station are separate strips: walking along the track axis from \a tile
+ * can never reach a different platform, unlike a mere compatibility check
+ * (which only compares station, axis and direction).
+ */
+static bool CouplePlatformStripHasPartner(const Train *partner, TileIndex tile)
+{
+	if (!IsRailStationTile(tile)) return false;
+	Track tr = GetRailStationTrack(tile);
+
+	auto strip_tile_has_partner = [&](TileIndex t) {
+		for (const Train *u : VehiclesOnTile<VehicleType::Train>(t)) {
+			if (u->Primary() == partner) return true;
+		}
+		return false;
+	};
+
+	if (strip_tile_has_partner(tile)) return true;
+
+	for (DiagDirection dd = DiagDirection::Begin; dd < DiagDirection::End; dd++) {
+		if (!(DiagdirReachesTracks(dd) & TrackToTrackBits(tr))) continue;
+		TileIndex t = tile;
+		for (;;) {
+			t = TileAdd(t, TileOffsByDiagDir(dd));
+			if (!IsRailStationTile(t) || !IsCompatibleTrainStationTile(t, tile)) break;
+			if (strip_tile_has_partner(t)) return true;
+		}
+	}
+	return false;
+}
+
+/**
  * Check whether \a tile belongs to the couple partner of \a v: either a
  * vehicle of the partner stands on it, or it is a station tile of the same
- * platform as (one of the body tiles of) the partner.
+ * continuous platform strip as (one of the body tiles of) the partner.
  */
 bool IsCouplePartnerTile(const Train *v, TileIndex tile)
 {
@@ -1573,11 +1606,7 @@ bool IsCouplePartnerTile(const Train *v, TileIndex tile)
 	if (!v->current_order.IsType(OT_GOTO_COUPLE) || !IsRailStationTile(tile)) return false;
 	const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
 	if (tgt == nullptr) return false;
-	for (const Train *u = tgt->Primary()->First(); u != nullptr; u = u->Next()) {
-		if (u->track == TRACK_BIT_WORMHOLE) continue;
-		if (IsRailStationTile(u->tile) && IsCompatibleTrainStationTile(tile, u->tile)) return true;
-	}
-	return false;
+	return CouplePlatformStripHasPartner(tgt->Primary(), tile);
 }
 
 /** Worklist entry for the couple target block flood fill. */
@@ -1683,22 +1712,14 @@ bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bo
 	if (IsRailDepotTile(tile)) return true;
 
 	/* A train going to couple may stop on its partner's platform: the tile
-	 * holding the partner, a tile of the same platform, or the tile directly
-	 * in front of the partner. The contact happens en route. */
+	 * holding the partner, a tile of the same continuous platform strip, or
+	 * the tile directly in front of the partner. The contact happens en
+	 * route. */
 	if (v->current_order.IsType(OT_GOTO_COUPLE)) {
 		const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
 		if (tgt != nullptr) {
 			const Train *partner = tgt->Primary();
-			bool found = false;
-			for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
-				if (u->Primary() == partner) found = true;
-			}
-			if (!found && IsRailStationTile(tile)) {
-				for (const Train *u = partner->First(); u != nullptr && !found; u = u->Next()) {
-					if (u->track == TRACK_BIT_WORMHOLE) continue;
-					if (IsRailStationTile(u->tile) && IsCompatibleTrainStationTile(tile, u->tile)) found = true;
-				}
-			}
+			bool found = CouplePlatformStripHasPartner(partner, tile);
 			if (!found) {
 				CFollowTrackRail cft(v, v->GetIndirectCompatibleRailTypes());
 				if (cft.Follow(tile, trackdir)) {
@@ -1872,11 +1893,13 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 	if (Rail90DegTurnDisallowedTilesFromTrackdir(ft.old_tile, ft.new_tile, ft.old_td, forbid_90deg)) ft.new_td_bits &= ~TrackdirCrossesTrackdirs(trackdir);
 
 	if (HasReservedTracks(ft.new_tile, TrackdirBitsToTrackBits(ft.new_td_bits))) {
-		/* The tile held by the claimed couple partner is the contact point:
-		 * stopping there is allowed iff the partner is alone in its block. */
-		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerVehicleTile(v, ft.new_tile)) {
+		/* A tile of the claimed couple partner's platform is the contact
+		 * point: stopping there is allowed iff the partner is alone in its
+		 * block. This includes tiles the partner reserved without standing
+		 * on them (the empty parts of its platform). */
+		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, ft.new_tile)) {
 			bool clear = IsCoupleTargetBlockClear(v);
-			if (dbg) fprintf(stderr, "[COUPLE] pos-free: next tile is the partner, block clear=%d\n", clear ? 1 : 0);
+			if (dbg) fprintf(stderr, "[COUPLE] pos-free: next tile is the partner's platform, block clear=%d\n", clear ? 1 : 0);
 			return clear;
 		}
 		if (dbg) fprintf(stderr, "[COUPLE] pos-free: NOT FREE (next tile (%d,%d) reserved)\n", TileX(ft.new_tile), TileY(ft.new_tile));

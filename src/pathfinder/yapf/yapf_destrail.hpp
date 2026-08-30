@@ -130,6 +130,8 @@ protected:
 	TrackdirBits dest_trackdirs;
 	StationID dest_station_id;
 	bool any_depot;
+	bool couple_dest; ///< goto-couple order with a plain-track partner: detect the partner anywhere in the segment
+	bool couple_station_dest = false; ///< goto-couple order with a station partner: only the partner's own platform counts as the destination
 
 	/** @copydoc CYapfBaseT::Yapf */
 	Tpf &Yapf()
@@ -138,9 +140,12 @@ protected:
 	}
 
 public:
+	typedef typename Types::TrackFollower TrackFollower; ///< track follower, needed for node tile iteration
+
 	void SetDestination(const Train *v)
 	{
 		this->any_depot = false;
+		this->couple_station_dest = false;
 		switch (v->current_order.GetType()) {
 			case OT_GOTO_WAYPOINT:
 				if (!Waypoint::Get(v->current_order.GetDestination().ToStationID())->IsSingleTile()) {
@@ -159,6 +164,29 @@ public:
 				this->dest_trackdirs = INVALID_TRACKDIR_BIT;
 				break;
 
+			case OT_GOTO_COUPLE: {
+				/* The destination is the claimed partner's position. When the
+				 * partner stands on a station, only its own continuous
+				 * platform strip counts as the destination — another platform
+				 * of the same station (compatible but a separate strip) must
+				 * not be accepted; this is checked in PfDetectDestination via
+				 * IsCouplePartnerTile. On plain track the partner is detected
+				 * anywhere in the segment. */
+				this->dest_tile = (v->dest_tile == INVALID_TILE) ? TileIndex{} : v->dest_tile;
+				const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
+				if (tgt != nullptr && IsRailStationTile(tgt->tile)) {
+					this->dest_station_id = GetStationIndex(tgt->tile);
+					this->dest_trackdirs = INVALID_TRACKDIR_BIT;
+					this->couple_dest = false;
+					this->couple_station_dest = true;
+				} else {
+					this->dest_station_id = StationID::Invalid();
+					this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TRANSPORT_RAIL, 0);
+					this->couple_dest = true;
+				}
+				break;
+			}
+
 			case OT_GOTO_DEPOT:
 				if (v->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) {
 					this->any_depot = true;
@@ -169,6 +197,7 @@ public:
 				this->dest_tile = (v->dest_tile == INVALID_TILE) ? TileIndex{} : v->dest_tile;
 				this->dest_station_id = StationID::Invalid();
 				this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TRANSPORT_RAIL, 0);
+				this->couple_dest = false;
 				break;
 		}
 		this->CYapfDestinationRailBase::SetDestination(v);
@@ -177,6 +206,20 @@ public:
 	/** @copydoc CYapfBaseT::PfDetectDestinationFunc */
 	inline bool PfDetectDestination(Node &n)
 	{
+		if (this->couple_dest) {
+			/* Plain-track couple partner: it stands mid-block, so the
+			 * destination must be detected on any tile of the segment. */
+			const Train *v = Yapf().GetVehicle();
+			bool found = false;
+			n.template IterateTiles<CYapfDestinationTileOrStationRailT<Types>>(v, Yapf(), [&](TileIndex tile, Trackdir) {
+				if (IsCouplePartnerVehicleTile(v, tile)) {
+					found = true;
+					return false;
+				}
+				return true;
+			});
+			return found;
+		}
 		return this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir());
 	}
 
@@ -184,9 +227,13 @@ public:
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
 		if (this->dest_station_id != StationID::Invalid()) {
-			return HasStationTileRail(tile)
-				&& (GetStationIndex(tile) == this->dest_station_id)
-				&& (GetRailStationTrack(tile) == TrackdirToTrack(td));
+			if (!HasStationTileRail(tile) || GetStationIndex(tile) != this->dest_station_id) return false;
+			if (GetRailStationTrack(tile) != TrackdirToTrack(td)) return false;
+			/* For a goto-couple order only the partner's own continuous
+			 * platform strip is the destination; another platform of the same
+			 * station passes the checks above but is a separate strip. */
+			if (this->couple_station_dest) return IsCouplePartnerTile(Yapf().GetVehicle(), tile);
+			return true;
 		}
 
 		if (this->any_depot) {
@@ -199,7 +246,9 @@ public:
 	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */
 	inline bool PfCalcEstimate(Node &n)
 	{
-		if (this->PfDetectDestination(n)) {
+		/* The cheap tile-based check only: the segment-scanning couple
+		 * detection runs when the node is evaluated as the best node. */
+		if (this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir())) {
 			n.estimate = n.cost;
 			return true;
 		}
