@@ -3030,9 +3030,12 @@ public:
 			this->SetWidgetLoweredState(WID_O_COND_AUX_VIA, this->goto_type == OPOS_COND_VIA);
 			this->SetWidgetLoweredState(WID_O_COND_AUX_STATION, this->goto_type == OPOS_COND_STATION);
 			{
-				const Order *sel_order = OrderAt(this->OrderGetSel());
-				this->SetWidgetLoweredState(WID_O_COUPLE_STATION, this->goto_type == OPOS_COUPLE_STATION
-						|| (sel_order != nullptr && sel_order->IsType(OT_GOTO_COUPLE) && sel_order->HasCoupleStation()));
+				/* The couple widgets only exist in the ground-vehicle window layout. */
+				if (this->widget_lookup.find(WID_O_COUPLE_STATION) != this->widget_lookup.end()) {
+					const Order *sel_order = OrderAt(this->OrderGetSel());
+					this->SetWidgetLoweredState(WID_O_COUPLE_STATION, this->goto_type == OPOS_COUPLE_STATION
+							|| (sel_order != nullptr && sel_order->IsType(OT_GOTO_COUPLE) && sel_order->HasCoupleStation()));
+				}
 			}
 			this->SetWidgetLoweredState(WID_O_MGMT_BTN, this->goto_type == OPOS_CONDITIONAL_RETARGET);
 		}
