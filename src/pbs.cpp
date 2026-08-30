@@ -1825,6 +1825,12 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 
 	/* Tile reserved? Can never be a free waiting position. */
 	if (TrackOverlapsTracks(reserved, track)) {
+		/* A train going to couple may stop on a tile of its partner's
+		 * platform: the partner's own reservation covers the strip, also
+		 * the empty tiles. Allowed iff the partner is alone in its block. */
+		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, tile)) {
+			if (IsCoupleTargetBlockClear(v)) return true;
+		}
 		return false;
 	}
 
@@ -1884,8 +1890,7 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		 * block. This includes tiles the partner reserved without standing
 		 * on them (the empty parts of its platform). */
 		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, ft.new_tile)) {
-			bool clear = IsCoupleTargetBlockClear(v);
-			return clear;
+			return IsCoupleTargetBlockClear(v);
 		}
 		return false;
 	}
@@ -1894,8 +1899,7 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		Trackdir td = FindFirstTrackdir(ft.new_td_bits);
 		/* PBS signal on next trackdir? */
 		if (HasPbsSignalOnTrackdir(ft.new_tile, td)) {
-			bool free = pbs_res_end_wait_test(ft.new_tile, td, false);
-			return free;
+			return pbs_res_end_wait_test(ft.new_tile, td, false);
 		}
 	}
 

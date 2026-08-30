@@ -4585,6 +4585,18 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 			 * a wrong path not leading to our next destination. */
 			if (HasReservedTracks(ft.new_tile, TrackdirBitsToTrackBits(TrackdirReachesTrackdirs(ft.old_td)))) {
 				if (!IsCouplePartnerTile(v, ft.new_tile)) {
+					if (v->current_order.IsType(OT_GOTO_COUPLE)) {
+						/* The couple partner is not claimed yet (the target
+						 * search only runs after the extend), so the holder
+						 * may well be the waiting partner standing on its
+						 * platform. Don't fail here: hand the choice over to
+						 * the couple pathfinder, which claims the target and
+						 * lets the reservation machinery decide with the
+						 * partner exemptions active. */
+						if (new_tracks != nullptr) *new_tracks = TrackdirBitsToTrackBits(ft.new_td_bits);
+						if (enterdir != nullptr) *enterdir = ft.exitdir;
+						return PBSTileInfo(ft.new_tile, ft.old_td, false);
+					}
 					break;
 				}
 			}
@@ -6067,13 +6079,6 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear)
 	NormaliseTrainHead(dec_head, CCF_COUPLE);
 	NormaliseTrainHead(consist_head, CCF_COUPLE);
 
-	/* Both parts get a collision grace period: they overlap on the platform
-	 * right after the split and must not crash into each other while
-	 * separating. The exemption ends once both parts have left station tiles
-	 * (cleared by the collision check). */
-	v->flags.Set(VehicleRailFlag::DecoupleCollisionExempt);
-	dec_head->Primary()->flags.Set(VehicleRailFlag::DecoupleCollisionExempt);
-
 	/* The split created a new chain front; invalidate the vehicle tick caches
 	 * so both parts are ticked from now on (same as couple/flip do). */
 	InvalidateVehicleTickCaches();
@@ -7027,19 +7032,6 @@ static uint TrainCrashed(Train *v)
 }
 
 /**
- * Check whether any vehicle of a consist part still stands on a station tile.
- * @param prim primary of the part.
- * @return true when a member is on a rail station tile.
- */
-static bool PartOnStationTile(Train *prim)
-{
-	for (Train *w = prim->First(); w != nullptr; w = w->Next()) {
-		if (IsRailStationTile(w->tile)) return true;
-	}
-	return false;
-}
-
-/**
  * Collision test function.
  * @param v The %Train vehicle we may have collided with.
  * @param moving_front The %Train vehicle being examined.
@@ -7063,17 +7055,6 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 		/* If self-collision is disabled, skip all wagons of the same train.
 		 * If enabled, only skip immediate neighbors. */
 		if (!_settings_game.vehicle.train_self_collision || v == moving_front->Next() || v == moving_front->Previous()) return 0;
-	}
-
-	/* The two parts of a recent decouple overlap while separating on the
-	 * platform; exempt them from crashing until both have left the station. */
-	Train *v_prim = v->Primary();
-	Train *mf_prim = moving_front->Primary();
-	if (v_prim->flags.Test(VehicleRailFlag::DecoupleCollisionExempt) && mf_prim->flags.Test(VehicleRailFlag::DecoupleCollisionExempt)) {
-		if (PartOnStationTile(v_prim) || PartOnStationTile(mf_prim)) return 0;
-		/* Both parts are clear of the station: the grace period is over. */
-		v_prim->flags.Reset(VehicleRailFlag::DecoupleCollisionExempt);
-		mf_prim->flags.Reset(VehicleRailFlag::DecoupleCollisionExempt);
 	}
 
 	int x_diff = v->x_pos - moving_front->x_pos;

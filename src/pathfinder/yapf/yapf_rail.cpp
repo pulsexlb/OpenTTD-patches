@@ -902,7 +902,7 @@ public:
 
 			if (reserve_track && path_found) {
 				if (dest != nullptr) *dest = Yapf().GetBestNode()->GetLastTile();
-				bool reserved = this->TryReservePath(target, node->GetLastTile());
+				this->TryReservePath(target, node->GetLastTile());
 			}
 		}
 
