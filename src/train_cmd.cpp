@@ -2050,19 +2050,26 @@ static void InsertInConsist(Train *dst, Train *chain)
  * Normalise the dual heads in the train, i.e. if one is
  * missing move that one to this train.
  * @param t the train to normalise.
+ * @param pull_in_free_cars Whether free cars between the front half and the
+ *                          next engine are pulled inside the dual-head block
+ *                          (vanilla depot semantics). Must be false while
+ *                          coupling: the absorbed consist's wagons belong
+ *                          outside the block and pulling them in corrupts a
+ *                          consist that is not safely stopped in a depot.
  */
-static void NormaliseDualHeads(Train *t)
+static void NormaliseDualHeads(Train *t, bool pull_in_free_cars)
 {
 	for (; t != nullptr; t = t->GetNextVehicle()) {
 		if (!t->IsMultiheaded() || !t->IsEngine()) continue;
 
 		/* Make sure that there are no free cars before next engine.
-		 * Stop at the other dual-head half as well: unlike vanilla the rear
-		 * half may not carry the engine flag, and overshooting it made the
-		 * walk insert the rear half past vehicles that belong outside the
-		 * dual-head block. */
+		 * With pull_in_free_cars the walk overshoots the other dual-head half
+		 * (the rear half carries no engine flag), so the rear half is
+		 * re-inserted right before the next engine and any free cars in
+		 * between end up inside the dual-head block. Without it the walk
+		 * stops at the rear half and the surrounding cars keep their place. */
 		Train *u;
-		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine() && u->Next() != t->other_multiheaded_part; u = u->Next()) {}
+		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine() && (pull_in_free_cars || u->Next() != t->other_multiheaded_part); u = u->Next()) {}
 
 		if (u == t->other_multiheaded_part) continue;
 
@@ -2266,8 +2273,10 @@ static CommandCost ValidateTrains(Train *original_dst, Train *dst, Train *origin
  * @param src_head   The source chain of the to be moved vehicle.
  * @param src        The to be moved vehicle.
  * @param move_chain Whether to move all vehicles after src or not.
+ * @param pull_in_free_cars Whether dual-head normalisation may pull free cars
+ *                          inside the dual-head block; false while coupling.
  */
-static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train *src, bool move_chain)
+static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train *src, bool move_chain, bool pull_in_free_cars = true)
 {
 	/* First determine the front of the two resulting trains */
 	if (*src_head == *dst_head) {
@@ -2299,8 +2308,8 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
 
 	/* Now normalise the dual heads, that is move the dual heads around in such
 	 * a way that the head and rear of a dual head are in the same train */
-	NormaliseDualHeads(*src_head);
-	NormaliseDualHeads(*dst_head);
+	NormaliseDualHeads(*src_head, pull_in_free_cars);
+	NormaliseDualHeads(*dst_head, pull_in_free_cars);
 }
 
 /**
@@ -5784,7 +5793,7 @@ static bool TryTrainDecouple(Train *v, Train *u)
 
 	Train *first_param = nullptr;
 
-	ArrangeTrains(&first_param, nullptr, &v, u, true);
+	ArrangeTrains(&first_param, nullptr, &v, u, true, false);
 
 	bool ok = true;
 	CommandCost ret = ValidateTrains(nullptr, u, v, v, true);
@@ -6251,7 +6260,7 @@ bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 	Train *v = v_phys;
 	Train *v_last = v_phys->Last();
 
-	ArrangeTrains(&v, v_last, &u_head, u_phys, true);
+	ArrangeTrains(&v, v_last, &u_head, u_phys, true, false);
 
 	bool ok = !CheckTrainAttachment(v).Failed();
 	ok &= v->CanConsistChange(CCF_ARRANGE_CHECK);
@@ -6276,7 +6285,7 @@ static bool TryTrainCouple(Train *v, Train *u)
 	Train *u_head = u;
 	Train *v_last = v->Last();
 
-	ArrangeTrains(&v, v_last, &u_head, u, true);
+	ArrangeTrains(&v, v_last, &u_head, u, true, false);
 
 	CommandCost ret = CheckTrainAttachment(v);
 	bool ok = v->CanConsistChange(CCF_ARRANGE_CHECK);
