@@ -2328,8 +2328,6 @@ static void MaterialiseTrainPrimary(Train *head)
 	 * chain -- vanilla surgery (e.g. NormaliseSubtypes) strips it from every
 	 * non-head vehicle without knowing about primary pointers. */
 	if (prim->IsEngine()) prim->SetFrontEngine();
-	if (head->index.base() <= 40) {
-	}
 }
 
 static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
@@ -2677,7 +2675,10 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, bool backup_order, ClientID user)
 {
 	Train *v = Train::From(t)->GetFirstEnginePart();
-	Train *first = v->Primary();
+	/* The primary (consist info carrier) may sit anywhere in the chain; all
+	 * chain surgery below must be anchored at the physical chain head. */
+	Train *first = v->First();
+	Train *primary = v->Primary();
 
 	if (v->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
 
@@ -2694,14 +2695,14 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 	ArrangeTrains(&sell_head, nullptr, &new_head, v, sell_chain);
 
 	/* We don't need to validate the second train; it's going to be sold. */
-	CommandCost ret = ValidateTrains(nullptr, nullptr, first, new_head, !flags.Test(DoCommandFlag::AutoReplace));
+	CommandCost ret = ValidateTrains(nullptr, nullptr, primary, new_head, !flags.Test(DoCommandFlag::AutoReplace));
 	if (ret.Failed()) {
 		/* Restore the train we had. */
 		RestoreTrainBackup(original);
 		return ret;
 	}
 
-	if (first->orders == nullptr && !OrderList::CanAllocateItem()) {
+	if (primary->orders == nullptr && !OrderList::CanAllocateItem()) {
 		/* Restore the train we had. */
 		RestoreTrainBackup(original);
 		return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
@@ -2715,24 +2716,39 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 		/* First normalise the sub types of the chain. */
 		NormaliseSubtypes(new_head);
 
-		if (v == first && !sell_chain && new_head != nullptr && new_head->IsFrontEngine()) {
-			if (v->IsEngine()) {
-				/* We are selling the front engine. In this case we want to
-				 * 'give' the order, unit number and such to the new head. */
-				new_head->orders = first->orders;
-				new_head->primary_order = first->primary_order;
-				new_head->primary_order_index = first->primary_order_index;
-				new_head->AddToShared(first);
-				DeleteVehicleOrders(first);
-
-				/* Copy other important data from the front engine */
-				new_head->CopyVehicleConfigAndStatistics(first);
-				new_head->speed_restriction = first->speed_restriction;
-				Train::From(new_head)->flags.Set(VehicleRailFlag::SpeedAdaptationExempt, Train::From(first)->flags.Test(VehicleRailFlag::SpeedAdaptationExempt));
+		/* Does the sold part contain the consist info carrier? The carrier may
+		 * sit anywhere in the chain, so selling a part around it can split the
+		 * consist identity off the surviving chain. */
+		bool primary_sold = false;
+		for (Train *part = sell_head; part != nullptr; part = part->Next()) {
+			if (part == primary) {
+				primary_sold = true;
+				break;
 			}
-			GroupStatistics::CountVehicle(new_head, 1); // after copying over the profit, if required
-		} else if (v->IsPrimaryVehicle() && backup_order) {
-			OrderBackup::Backup(v, user);
+		}
+
+		if (primary_sold && new_head != nullptr) {
+			/* The info carrier is sold but the consist survives: materialise
+			 * the surviving chain's own carrier and transfer the consist
+			 * identity (orders, unit number, statistics) to it, so the
+			 * surviving chain keeps running as the same train. */
+			MaterialiseTrainPrimary(new_head);
+			Train *new_primary = new_head->Primary();
+
+			new_primary->orders = primary->orders;
+			new_primary->primary_order = primary->primary_order;
+			new_primary->primary_order_index = primary->primary_order_index;
+			new_primary->AddToShared(primary);
+			DeleteVehicleOrders(primary);
+
+			/* Copy other important data from the old carrier */
+			new_primary->CopyVehicleConfigAndStatistics(primary);
+			new_primary->speed_restriction = primary->speed_restriction;
+			Train::From(new_primary)->flags.Set(VehicleRailFlag::SpeedAdaptationExempt, Train::From(primary)->flags.Test(VehicleRailFlag::SpeedAdaptationExempt));
+
+			GroupStatistics::CountVehicle(new_primary, 1); // after copying over the profit, if required
+		} else if (primary->IsPrimaryVehicle() && backup_order) {
+			OrderBackup::Backup(primary, user);
 		}
 
 		/* We need to update the information about the train. */
