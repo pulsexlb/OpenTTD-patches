@@ -165,7 +165,7 @@ private:
 			if (!TryReserveRailTrack(tile, TrackdirToTrack(td))) {
 				return false;
 			}
-			UnreserveRailTrack(tile, TrackdirToTrack(td));
+			UnreserveRailTrack(tile, TrackdirToTrack(td), "yapf");
 		}
 		return true;
 	}
@@ -259,7 +259,7 @@ private:
 				tile = TileAdd(tile, diff);
 			}
 		} else if (tile != this->res_fail_tile || td != this->res_fail_td) {
-			UnreserveRailTrackdir(tile, td);
+			UnreserveRailTrackdir(tile, td, "yapf");
 		}
 		return (tile != this->res_dest_tile || td != this->res_dest_td) && (tile != this->res_fail_tile || td != this->res_fail_td);
 	}
