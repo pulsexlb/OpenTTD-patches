@@ -5208,6 +5208,26 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 			}
 
 			if (!long_reserve) {
+				/* For a goto-couple order reaching a safe waiting position is
+				 * not success: without a PBS signal ahead the couple target
+				 * search below would never run, so a consist whose partner
+				 * has vanished would quick-exit forever without ever being
+				 * marked stuck. Verify a target still exists first. */
+				if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
+					Train *couple_target = nullptr;
+					uint32_t couple_cost = 0;
+					DoTrainCouplePathfind(consist, false, &couple_target, &couple_cost);
+					if (couple_target == nullptr) {
+						fprintf(stderr, "[COUPLE] choose: quick exit NO TARGET -> stuck\n");
+						if (mark_stuck) MarkTrainAsStuck(consist);
+						FreeTrainTrackReservation(consist);
+						if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SignalState::Red);
+						return { FindFirstTrack(origin_tracks), result_flags };
+					}
+					consist->couple_target = couple_target->index;
+					ClaimCoupleTarget(consist, couple_target->Primary(), couple_cost);
+					consist->SetDestTile(couple_target->tile);
+				}
 				/* Got a valid reservation that ends at a safe target, quick exit. */
 				result_flags |= CTTRF_RESERVATION_MADE;
 				if (consist->current_order.IsType(OT_GOTO_COUPLE)) fprintf(stderr, "[COUPLE] choose: quick exit (extend okay, no long reserve)\n");
