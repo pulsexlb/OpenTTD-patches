@@ -617,6 +617,45 @@ CommandCost CmdRefitVehicle(DoCommandFlags flags, VehicleID veh_id, CargoType ne
 }
 
 /**
+ * Evaluate the CBID_VEHICLE_START_STOP_CHECK NewGRF callback for a consist.
+ * The callback is evaluated on the primary vehicle, so for hypothetical
+ * couple/decouple results this must be the would-be front engine.
+ * @param v the (would-be) primary vehicle of the consist
+ * @return failed when the NewGRF forbids starting/stopping the consist
+ */
+CommandCost CheckVehicleStartStopCallback(const Vehicle *v)
+{
+	/* Check if this vehicle can be started/stopped. Failure means 'allow'. */
+	uint16_t callback = GetVehicleCallback(CBID_VEHICLE_START_STOP_CHECK, 0, 0, v->engine_type, v);
+	StringID error = STR_NULL;
+	if (callback != CALLBACK_FAILED) {
+		if (v->GetGRF()->grf_version < 8) {
+			/* 8 bit result 0xFF means 'allow' */
+			if (callback < 0x400 && GB(callback, 0, 8) != 0xFF) error = GetGRFStringID(v->GetGRF(), GRFSTR_MISC_GRF_TEXT + callback);
+		} else {
+			if (callback < 0x400) {
+				error = GetGRFStringID(v->GetGRF(), GRFSTR_MISC_GRF_TEXT + callback);
+			} else {
+				switch (callback) {
+					case 0x400: // allow
+						break;
+
+					case 0x40F:
+						error = GetGRFStringID(v->GetGRFID(), static_cast<GRFStringID>(GetRegister(0x100)));
+						break;
+
+					default: // unknown reason -> disallow
+						error = STR_ERROR_INCOMPATIBLE_RAIL_TYPES;
+						break;
+				}
+			}
+		}
+	}
+	if (error != STR_NULL) return CommandCost(error);
+	return CommandCost();
+}
+
+/**
  * Start/Stop a vehicle
  * @param flags type of operation
  * @param veh_id vehicle to start/stop, don't forget to change CcStartStopVehicle if you modify this!
@@ -656,33 +695,8 @@ CommandCost CmdStartStopVehicle(DoCommandFlags flags, VehicleID veh_id, bool eva
 	}
 
 	if (evaluate_startstop_cb) {
-		/* Check if this vehicle can be started/stopped. Failure means 'allow'. */
-		uint16_t callback = GetVehicleCallback(CBID_VEHICLE_START_STOP_CHECK, 0, 0, v->engine_type, v);
-		StringID error = STR_NULL;
-		if (callback != CALLBACK_FAILED) {
-			if (v->GetGRF()->grf_version < 8) {
-				/* 8 bit result 0xFF means 'allow' */
-				if (callback < 0x400 && GB(callback, 0, 8) != 0xFF) error = GetGRFStringID(v->GetGRF(), GRFSTR_MISC_GRF_TEXT + callback);
-			} else {
-				if (callback < 0x400) {
-					error = GetGRFStringID(v->GetGRF(), GRFSTR_MISC_GRF_TEXT + callback);
-				} else {
-					switch (callback) {
-						case 0x400: // allow
-							break;
-
-						case 0x40F:
-							error = GetGRFStringID(v->GetGRFID(), static_cast<GRFStringID>(GetRegister(0x100)));
-							break;
-
-						default: // unknown reason -> disallow
-							error = STR_ERROR_INCOMPATIBLE_RAIL_TYPES;
-							break;
-					}
-				}
-			}
-		}
-		if (error != STR_NULL) return CommandCost(error);
+		CommandCost ret_cb = CheckVehicleStartStopCallback(v);
+		if (ret_cb.Failed()) return ret_cb;
 	}
 
 	if (flags.Test(DoCommandFlag::Execute)) {

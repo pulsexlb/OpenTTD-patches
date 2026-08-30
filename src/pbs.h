@@ -23,8 +23,8 @@ bool IsRailStationPlatformFree(const Train *v, TileIndex start, DiagDirection di
 
 bool TryReserveRailTrack(TileIndex tile, Track t, bool trigger_stations = true);
 bool TryReserveRailTrackdir(const Train *v, TileIndex tile, Trackdir td, bool trigger_stations = true);
-void UnreserveRailTrack(TileIndex tile, Track t, const char *src = "other");
-void UnreserveRailTrackdir(TileIndex tile, Trackdir td, const char *src = "other");
+void UnreserveRailTrack(TileIndex tile, Track t);
+void UnreserveRailTrackdir(TileIndex tile, Trackdir td);
 
 /** This struct contains information about the end of a reserved path. */
 struct PBSTileInfo {

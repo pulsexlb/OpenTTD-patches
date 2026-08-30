@@ -116,16 +116,6 @@ bool IsRailStationPlatformFree(const Train *v, TileIndex start, DiagDirection di
 bool TryReserveRailTrackdir(const Train *v, TileIndex tile, Trackdir td, bool trigger_stations)
 {
 	bool success = TryReserveRailTrack(tile, TrackdirToTrack(td), trigger_stations);
-	if (success) {
-		fprintf(stderr, "[RES] resv: consist=%d (%d,%d) td=%d\n", v->index.base(), TileX(tile), TileY(tile), (int)td);
-	} else {
-		Train *owner = HasReservedTracks(tile, TrackToTrackBits(TrackdirToTrack(td))) ? GetTrainForReservation(tile, TrackdirToTrack(td)) : nullptr;
-		fprintf(stderr, "[RES] resv-fail: consist=%d (%d,%d) td=%d reserved=%d station_res=%d owner=%d\n",
-				v->index.base(), TileX(tile), TileY(tile), (int)td,
-				(int)GetReservedTrackbits(tile),
-				IsRailStationTile(tile) && HasStationReservation(tile) ? 1 : 0,
-				owner != nullptr ? owner->index.base() : -1);
-	}
 	if (success && HasPbsSignalOnTrackdir(tile, td)) {
 		SetSignalStateByTrackdir(tile, td, SignalState::Green);
 		MarkSingleSignalDirty(tile, td);
@@ -226,25 +216,23 @@ bool TryReserveRailTrack(TileIndex tile, Track track, bool trigger_stations)
  * @param tile the tile
  * @param t the track
  */
-void UnreserveRailTrackdir(TileIndex tile, Trackdir td, const char *src)
+void UnreserveRailTrackdir(TileIndex tile, Trackdir td)
 {
 	if (HasPbsSignalOnTrackdir(tile, td)) {
 		SetSignalStateByTrackdir(tile, td, SignalState::Red);
 		MarkSingleSignalDirty(tile, td);
 	}
-	UnreserveRailTrack(tile, TrackdirToTrack(td), src);
+	UnreserveRailTrack(tile, TrackdirToTrack(td));
 }
 
 /**
  * Lift the reservation of a specific track on a tile
  * @param tile the tile
  * @param t the track
- * @param src debug log source tag
  */
-void UnreserveRailTrack(TileIndex tile, Track t, const char *src)
+void UnreserveRailTrack(TileIndex tile, Track t)
 {
 	assert_msg_tile(TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TRANSPORT_RAIL, 0)) & TrackToTrackBits(t), tile, "track: {:X}", t);
-	fprintf(stderr, "[RES] unreserve[%s]: (%d,%d) track=%d\n", src, TileX(tile), TileY(tile), (int)t);
 
 	switch (GetTileType(tile)) {
 		case TileType::Railway:
@@ -1000,11 +988,6 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 			CheckTrainsOnTrack(ftoti, GetOtherTunnelBridgeEnd(ftoti.res.tile));
 			if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
 		}
-		if (*train_on_res != nullptr && *train_on_res != v) {
-			fprintf(stderr, "[RES] follow: veh=%d end=(%d,%d) okay=%d other=%d\n",
-					v->index.base(), TileX(ftoti.res.tile), TileY(ftoti.res.tile), ftoti.res.okay ? 1 : 0,
-					(*train_on_res)->index.base());
-		}
 	}
 	return ftoti.res;
 }
@@ -1412,11 +1395,7 @@ Train *GetTrainForReservation(TileIndex tile, Track track)
 	ftoti.res = FollowReservation(GetTileOwner(tile), rts, tile, trackdir, FRF_IGNORE_ONEWAY, nullptr, nullptr);
 
 	CheckTrainsOnTrack(ftoti, ftoti.res.tile);
-	if (ftoti.best != nullptr) {
-		fprintf(stderr, "[RES] owner: tile=(%d,%d) -> train=%d end=(%d,%d)\n",
-				TileX(tile), TileY(tile), ftoti.best->index.base(), TileX(ftoti.res.tile), TileY(ftoti.res.tile));
-		return ftoti.best;
-	}
+	if (ftoti.best != nullptr) return ftoti.best;
 
 		/* Special case for stations: check the whole platform for a vehicle. */
 		if (IsRailStationTile(ftoti.res.tile)) {
@@ -1717,9 +1696,6 @@ bool IsCoupleTargetBlockClear(const Train *v)
 			clear = false;
 		}
 	}
-	fprintf(stderr, "[COUPLE] block-clear: consist=%d partner=%d tiles=%d clear=%d%s\n",
-			v->index.base(), partner->index.base(), (int)visited.size(), clear ? 1 : 0,
-			budget_exceeded ? " (budget exceeded)" : "");
 	return clear;
 }
 
@@ -1744,8 +1720,6 @@ bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bo
 					}
 				}
 			}
-			fprintf(stderr, "[COUPLE] safe-pos: consist=%d tile=(%d,%d) partner=%d hit=%d\n",
-					v->index.base(), TileX(tile), TileY(tile), partner->index.base(), found ? 1 : 0);
 			if (found) return true;
 		}
 	}
@@ -1848,14 +1822,9 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 {
 	Track     track = TrackdirToTrack(trackdir);
 	TrackBits reserved = GetReservedTrackbits(tile);
-	const bool dbg = v->current_order.IsType(OT_GOTO_COUPLE);
-	if (dbg) fprintf(stderr, "[COUPLE] pos-free: consist=%d tile=(%d,%d) td=%d reserved=%d\n",
-			v->index.base(), TileX(tile), TileY(tile), (int)trackdir, (int)reserved);
 
 	/* Tile reserved? Can never be a free waiting position. */
 	if (TrackOverlapsTracks(reserved, track)) {
-		fprintf(stderr, "[RES] pos-free: consist=%d NOT FREE (tile (%d,%d) itself reserved=%d)\n",
-				v->index.base(), TileX(tile), TileY(tile), (int)reserved);
 		return false;
 	}
 
@@ -1916,11 +1885,8 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		 * on them (the empty parts of its platform). */
 		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, ft.new_tile)) {
 			bool clear = IsCoupleTargetBlockClear(v);
-			if (dbg) fprintf(stderr, "[COUPLE] pos-free: next tile is the partner's platform, block clear=%d\n", clear ? 1 : 0);
 			return clear;
 		}
-		fprintf(stderr, "[RES] pos-free: consist=%d NOT FREE (next tile (%d,%d) reserved=%d)\n",
-				v->index.base(), TileX(ft.new_tile), TileY(ft.new_tile), (int)GetReservedTrackbits(ft.new_tile));
 		return false;
 	}
 
@@ -1929,11 +1895,9 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		/* PBS signal on next trackdir? */
 		if (HasPbsSignalOnTrackdir(ft.new_tile, td)) {
 			bool free = pbs_res_end_wait_test(ft.new_tile, td, false);
-			if (dbg) fprintf(stderr, "[COUPLE] pos-free: next tile is PBS signal, free=%d\n", free ? 1 : 0);
 			return free;
 		}
 	}
 
-	if (dbg) fprintf(stderr, "[COUPLE] pos-free: FREE\n");
 	return true;
 }
