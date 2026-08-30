@@ -2131,7 +2131,10 @@ static CommandCost CheckNewTrain(Train *original_dst, Train *dst, Train *origina
 
 	/* Get a free unit number and check whether it's within the bounds.
 	 * There will always be a maximum of one new train. */
-	if (GetFreeUnitNumber(VehicleType::Train) <= _settings_game.vehicle.max_trains) return CommandCost();
+	/* Pass the owner explicitly: consist surgery such as decoupling also runs
+	 * outside command context, where _current_company is not usable. */
+	Owner owner = src != nullptr ? src->owner : (dst != nullptr ? dst->owner : _current_company);
+	if (GetFreeUnitNumber(VehicleType::Train, owner) <= _settings_game.vehicle.max_trains) return CommandCost();
 
 	return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
 }
@@ -5768,8 +5771,9 @@ static bool TryTrainDecouple(Train *v, Train *u)
 	CommandCost ret = ValidateTrains(nullptr, u, v, v, true);
 	ok &= !ret.Failed();
 
-	ok &= u->CanConsistChange(CCF_ARRANGE_CHECK);
-	ok &= v->CanConsistChange(CCF_ARRANGE_CHECK);
+	bool cc_u = u->CanConsistChange(CCF_ARRANGE_CHECK);
+	bool cc_v = v->CanConsistChange(CCF_ARRANGE_CHECK);
+	ok &= cc_u && cc_v;
 
 	/* Both resulting parts must satisfy the NewGRF start/stop check. */
 	CommandCost cb_front = CheckVehicleStartStopCallback(GetStartStopCheckVehicle(v));
@@ -5781,7 +5785,8 @@ static bool TryTrainDecouple(Train *v, Train *u)
 		RestoreTrainBackup(original_src);
 		v->ConsistChanged(CCF_ARRANGE_STATION);
 		return false;
-	}	/* Splitting creates a new train front; invalidate the tick caches or the new front will not be ticked. */
+	}
+	/* Splitting creates a new train front; invalidate the tick caches or the new front will not be ticked. */
 	InvalidateVehicleTickCaches();
 	return true;
 }
@@ -5926,12 +5931,27 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 		case ODOF_KEEP_ORDERS_NO_LOAD:
 			v->IncrementImplicitOrderIndex();
 			break;
-		case ODOF_LOAD_AND_WAIT:
-			/* Load/unload at this station, then wait for a couple. */
+		case ODOF_LOAD_AND_WAIT: {
+			/* Mirror the second part's flow: a plain go-to-station order for
+			 * this station followed by wait-for-couple. The station order lets
+			 * the regular loading flow complete; with only a wait-for-couple
+			 * order the consist would stay in the loading state forever. */
 			load_trains |= DECOUPLE_LOAD_FIRST;
+
+			/* v is the consist part's primary whose last-station record was set
+			 * to this station at TrainEnterStation entry. */
+			Order station_order;
+			station_order.MakeGoToStation(v->last_station_visited);
+
+			Order wait_for_couple_order;
+			wait_for_couple_order.MakeWaitCouple();
+
+			if (v->orders == nullptr && !OrderList::CanAllocateItem()) break;
 			DeleteVehicleOrders(v, false, true);
-			CreateWaitForCoupleOrder(v);
+			InsertOrder(v, std::move(station_order), 0);
+			InsertOrder(v, std::move(wait_for_couple_order), 1);
 			break;
+		}
 		case ODOF_WAIT_FOR_COUPLE:
 			DeleteVehicleOrders(v, false, true);
 			CreateWaitForCoupleOrder(v);
@@ -5946,10 +5966,15 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 
 /**
  * Decouple the rear part of the consist at the current station.
- * @return The new front of the decoupled part, or \c v if decoupling failed.
+ * @param v The consist.
+ * @param[out] consist_in_rear Set to true when the consist carrier ended up in
+ *                             the rear physical part (engine-less head side),
+ *                             i.e. the decoupled part is the physical front.
+ * @return The head of the decoupled part, or \c v if decoupling failed.
  */
-static Train *DecoupleTrain(Train *v)
+static Train *DecoupleTrain(Train *v, bool &consist_in_rear)
 {
+	consist_in_rear = false;
 	if (!CanDecouple(v)) {
 		Debug(desync, 1, "DecoupleTrain: veh={} CANNOT decouple tile=({},{})", v->index, TileX(v->tile), TileY(v->tile));
 		return v;
@@ -5972,7 +5997,6 @@ static Train *DecoupleTrain(Train *v)
 	 * engine-less, the primary sits in the rear part and the roles swap: the
 	 * front part is the one that gets split off, while the primary's part
 	 * keeps the original orders. */
-	bool consist_in_rear = false;
 	for (Train *w = u; w != nullptr; w = w->Next()) {
 		if (w == v) {
 			consist_in_rear = true;
@@ -5981,7 +6005,6 @@ static Train *DecoupleTrain(Train *v)
 	}
 	Train *dec_head = consist_in_rear ? front_head : u;
 	Train *consist_head = consist_in_rear ? u : front_head;
-
 	/* This train stays at the station and keeps on running the original orders. */
 	v->decouple_part = 1;
 	/* The decoupled part now runs a separate schedule: mark it as the second part. */
@@ -6043,6 +6066,13 @@ static Train *DecoupleTrain(Train *v)
 	 * too; normalising from the mid-chain primary would leave them stale. */
 	NormaliseTrainHead(dec_head, CCF_COUPLE);
 	NormaliseTrainHead(consist_head, CCF_COUPLE);
+
+	/* Both parts get a collision grace period: they overlap on the platform
+	 * right after the split and must not crash into each other while
+	 * separating. The exemption ends once both parts have left station tiles
+	 * (cleared by the collision check). */
+	v->flags.Set(VehicleRailFlag::DecoupleCollisionExempt);
+	dec_head->Primary()->flags.Set(VehicleRailFlag::DecoupleCollisionExempt);
 
 	/* The split created a new chain front; invalidate the vehicle tick caches
 	 * so both parts are ticked from now on (same as couple/flip do). */
@@ -6737,16 +6767,23 @@ static void TrainEnterStation(Train *consist, StationID station)
 	bool want_decouple = consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE;
 	Debug(desync, 1, "TrainEnterStation: veh={} st={} tile=({},{}) want_decouple={} ordertype={}", consist->index, station, TileX(consist->tile), TileY(consist->tile), want_decouple, (int)consist->current_order.GetType());
 	if (want_decouple) {
-		u = DecoupleTrain(consist);
+		bool consist_in_rear = false;
+		u = DecoupleTrain(consist, consist_in_rear);
 		/* All further handling of the rear part (orders, loading, windows)
 		 * must operate on its primary vehicle, not the physical chain head. */
 		if (u != nullptr) u = u->Primary();
 		if (u != nullptr)
 		Debug(desync, 1, "TrainEnterStation: veh={} decoupled u={}", consist->index, u != nullptr ? u->index.base() : -1);
-		/* If the front was driving backwards, the decoupled part is in front of it.
-		 * Reverse it now so it drives away from the decoupled part, then forbid
-		 * reversing until it has left the station. */
-		if (consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards)) {
+		/* After the split, whichever part trails in the movement direction must
+		 * be reversed so the two parts drive away from each other. With
+		 * chain-forward movement the rear physical part trails; when driving
+		 * backwards the front physical part does. The consist part is the
+		 * rear physical part exactly when the decoupled head-side part was
+		 * engine-less (consist_in_rear), so the trailer cannot be derived from
+		 * the decouple roles alone. */
+		bool backwards = consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards);
+		Train *trailer = (backwards != consist_in_rear) ? consist : u;
+		if (trailer == consist) {
 			ReverseTrainDirection(consist);
 			consist = consist->Primary();
 		}
@@ -6755,7 +6792,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * the front part), reverse it now so it drives away from the front part, then
 		 * forbid reversing until it leaves the station. */
 		if (u != nullptr && u != consist) {
-			if (!u->vehicle_flags.Test(VehicleFlag::DrivingBackwards)) {
+			if (trailer == u) {
 				ReverseTrainDirection(u);
 				u = u->Primary();
 			}
@@ -6764,6 +6801,11 @@ static void TrainEnterStation(Train *consist, StationID station)
 		SplitOrders(consist, u, load_trains);
 		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);
 		if (u != nullptr && u->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(u);
+		/* ProcessOrders inside SplitOrders runs GetOrderStationLocation, which
+		 * clears last_station_visited when the (new) destination equals it.
+		 * Both parts are still standing at this station and BeginLoading below
+		 * needs the station id, so restore it. */
+		consist->last_station_visited = station;
 		u->last_station_visited = station;
 		if (u != nullptr) {
 		}
@@ -6985,6 +7027,19 @@ static uint TrainCrashed(Train *v)
 }
 
 /**
+ * Check whether any vehicle of a consist part still stands on a station tile.
+ * @param prim primary of the part.
+ * @return true when a member is on a rail station tile.
+ */
+static bool PartOnStationTile(Train *prim)
+{
+	for (Train *w = prim->First(); w != nullptr; w = w->Next()) {
+		if (IsRailStationTile(w->tile)) return true;
+	}
+	return false;
+}
+
+/**
  * Collision test function.
  * @param v The %Train vehicle we may have collided with.
  * @param moving_front The %Train vehicle being examined.
@@ -7008,6 +7063,17 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 		/* If self-collision is disabled, skip all wagons of the same train.
 		 * If enabled, only skip immediate neighbors. */
 		if (!_settings_game.vehicle.train_self_collision || v == moving_front->Next() || v == moving_front->Previous()) return 0;
+	}
+
+	/* The two parts of a recent decouple overlap while separating on the
+	 * platform; exempt them from crashing until both have left the station. */
+	Train *v_prim = v->Primary();
+	Train *mf_prim = moving_front->Primary();
+	if (v_prim->flags.Test(VehicleRailFlag::DecoupleCollisionExempt) && mf_prim->flags.Test(VehicleRailFlag::DecoupleCollisionExempt)) {
+		if (PartOnStationTile(v_prim) || PartOnStationTile(mf_prim)) return 0;
+		/* Both parts are clear of the station: the grace period is over. */
+		v_prim->flags.Reset(VehicleRailFlag::DecoupleCollisionExempt);
+		mf_prim->flags.Reset(VehicleRailFlag::DecoupleCollisionExempt);
 	}
 
 	int x_diff = v->x_pos - moving_front->x_pos;
