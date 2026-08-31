@@ -5379,7 +5379,7 @@ bool ProcessOrders(Vehicle *v)
 	 * will be reset to nothing. (That also happens if no order, but in that case
 	 * it won't hit the point in code where may_reverse is checked)
 	 */
-	bool may_reverse = v->current_order.IsType(OT_NOTHING) || v->current_order.IsType(OT_GOTO_COUPLE);
+	bool may_reverse = v->current_order.IsType(OT_NOTHING) || v->current_order.IsType(OT_GOTO_COUPLE) || v->current_order.IsType(OT_WAIT_COUPLE);
 	Vehicle *moving_front = v->GetMovingFront();
 
 	v->vehicle_flags.Reset(VehicleFlag::ConditionalOrderWait);

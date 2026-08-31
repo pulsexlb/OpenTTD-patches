@@ -4441,6 +4441,8 @@ static void HoldWaitingTrainBody(Train *consist)
 		if (GetValidCoupleClaimant(consist) != nullptr) return;
 		consist->couple_body_hold = true;
 
+		consist->lookahead.reset();
+
 		/* Only clear outward from the moving front, i.e. in the drive-away
 		 * direction. Beyond the moving back lies the path of the just
 		 * decoupled partner part (the original consist's forward reservation
