@@ -22,6 +22,8 @@
 
 uint8_t AirportSpec::GetAirportNoise(AirType airtype) const
 {
+	/* Without a known surface there is no runway/base noise to add. */
+	if (airtype == INVALID_AIRTYPE) return this->num_aprons + this->num_helipads + this->num_heliports;
 	const AirTypeInfo *ati = GetAirTypeInfo(airtype);
 	return this->num_aprons + this->num_helipads + this->num_heliports + this->num_runways * ati->runway_noise_level + ati->base_noise_level;
 }

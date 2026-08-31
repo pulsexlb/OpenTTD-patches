@@ -1633,13 +1633,15 @@ CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airpor
 	const AirportSpec *as = AirportSpec::Get(airport_type);
 	if (air_type == INVALID_AIRTYPE) air_type = as->airtype;
 
-	if (_settings_game.station.allow_modify_airports &&
-			as->min_runway_length > 0 &&
-			as->min_runway_length < GetAirTypeInfo(air_type)->min_runway_length)
-		return CommandCost(STR_ERROR_AIRPORT_RUNWAY_TOO_SHORT);
-
+	/* Validate before any use; an invalid surface must fail the command
+	 * instead of tripping an assert in GetAirTypeInfo below. */
 	if (!ValParamAirType(air_type)) return CommandCost(STR_ERROR_AIRPORT_INCORRECT_AIRTYPE);
 	const AirTypeInfo *ati = GetAirTypeInfo(air_type);
+
+	if (_settings_game.station.allow_modify_airports &&
+			as->min_runway_length > 0 &&
+			as->min_runway_length < ati->min_runway_length)
+		return CommandCost(STR_ERROR_AIRPORT_RUNWAY_TOO_SHORT);
 
 	if (as->has_hangar && !Depot::CanAllocateItem()) return CMD_ERROR;
 	if (!as->IsAvailable()) return CMD_ERROR;
@@ -1675,7 +1677,7 @@ CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airpor
 	Town *post_town = nullptr;
 	uint pre_noise;
 	uint post_noise = as->GetAirportNoise(air_type);
-	if (st != nullptr && st->facilities.Test(StationFacility::Airport)) post_noise -= GetAirTypeInfo(st->airport.air_type)->base_noise_level;
+	if (st != nullptr && st->facilities.Test(StationFacility::Airport) && st->airport.air_type != INVALID_AIRTYPE) post_noise -= GetAirTypeInfo(st->airport.air_type)->base_noise_level;
 
 	ret = CheckTownAuthorityForAirports(tile, st, new_airport_tiles, &pre_town, &post_town, pre_noise, post_noise);
 	if (ret.Failed()) return ret;

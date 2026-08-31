@@ -797,6 +797,9 @@ void ClearExtraStationNames()
 
 uint Airport::AirportCatchmentRadius() const
 {
+	/* The surface type is derived from the tiles and may not be known yet
+	 * (e.g. right after loading or when the airport has no tiles left). */
+	if (this->air_type == INVALID_AIRTYPE) return 0;
 	const AirTypeInfo *ati = GetAirTypeInfo(this->air_type);
 	assert(ati->catchment_radius <= MAX_CATCHMENT);
 	return ati->catchment_radius;

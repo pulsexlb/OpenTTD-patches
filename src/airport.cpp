@@ -31,8 +31,8 @@ std::vector<AirType> _sorted_airtypes;
 bool _show_airport_tracks = false;
 
 
-const AirportSpec AirportSpec::dummy = {{APC_BEGIN, 0}, {}, INVALID_AIRTYPE, 0, 0, 0, 0, 0, CalTime::MIN_YEAR, CalTime::MIN_YEAR, STR_NULL, ATP_TTDP_LARGE, 0, false, false, false, SubstituteGRFFileProps(AT_INVALID)};
-const AirportSpec AirportSpec::custom = {{APC_CUSTOM, 0}, {}, INVALID_AIRTYPE, 0, 0, 0, 0, 0, CalTime::MIN_YEAR, CalTime::MIN_YEAR, STR_AIRPORT_CUSTOM, ATP_TTDP_LARGE, 0, false, false, false, SubstituteGRFFileProps(AT_INVALID)};
+const AirportSpec AirportSpec::dummy = {{APC_BEGIN, 0}, {}, AIRTYPE_GRAVEL, 0, 0, 0, 0, 0, CalTime::MIN_YEAR, CalTime::MIN_YEAR, STR_NULL, ATP_TTDP_LARGE, 0, false, false, false, SubstituteGRFFileProps(AT_INVALID)};
+const AirportSpec AirportSpec::custom = {{APC_CUSTOM, 0}, {}, AIRTYPE_GRAVEL, 0, 0, 0, 0, 0, CalTime::MIN_YEAR, CalTime::MIN_YEAR, STR_AIRPORT_CUSTOM, ATP_TTDP_LARGE, 0, false, false, false, SubstituteGRFFileProps(AT_INVALID)};
 
 
 /**
