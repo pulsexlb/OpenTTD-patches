@@ -6415,6 +6415,13 @@ static void AdoptCoupleWaitingSchedule(Train *v, Train *u)
 	v->vehicle_flags.Set(VehicleFlag::AutomateTimetable, u->vehicle_flags.Test(VehicleFlag::AutomateTimetable));
 	v->vehicle_flags.Set(VehicleFlag::SeparationActive, u->vehicle_flags.Test(VehicleFlag::SeparationActive));
 
+	/* The taken-over position sits on the order the waiting consist was held
+	 * at -- usually 'wait for couple'. Advance past it, otherwise the merged
+	 * consist would re-enter the wait and never continue. */
+	if (u->current_order.IsType(OT_WAIT_COUPLE)) {
+		v->IncrementRealOrderIndex();
+	}
+
 	/* Let the next ProcessOrders pick up the order at the taken-over position. */
 	v->current_order.Free();
 	v->SetDestTile(INVALID_TILE);
