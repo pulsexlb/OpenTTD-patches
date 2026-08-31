@@ -3669,7 +3669,8 @@ public:
 					}
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_TEXT_BUTTON, ODDI_LABEL_TEXT, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_DEPARTURES_VIA_BUTTON, ODDI_LABEL_DEPARTURES_VIA, false));
-					if (this->HasVehicle() && this->vehicle->type == VehicleType::Train) {
+					if (this->RefType() == VehicleType::Train) {
+						/* Real trains and standalone (player-created) lists, which act like trains. */
 						list.push_back(MakeDropDownListStringItem(STR_ORDER_WAIT_FOR_COUPLE, ODDI_WAIT_FOR_COUPLE, false));
 						list.push_back(MakeDropDownListStringItem(STR_ORDERS_GO_TO_COUPLE, ODDI_GO_TO_COUPLE, false));
 					}
