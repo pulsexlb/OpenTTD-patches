@@ -6609,10 +6609,18 @@ static void Couple(Train *v, Train *u)
 	 * blindly (and may end up in a depot) until it hits a PBS signal. */
 	v->Primary()->lookahead.reset();
 	if (u != nullptr) u->lookahead.reset();
-	TryPathReserve(v->Primary());
-	{
-		const Train *prim = v_phys->Primary();
+	if (adopt_waiting_schedule) {
+		/* AdoptCoupleWaitingSchedule took over u's schedule and freed
+		 * current_order, only fixing the order index. Load the successor
+		 * order now so the reservation and reversal checks below operate on
+		 * the adopted destination instead of leaving the merged consist
+		 * orderless. Otherwise a head-couple is oriented by no order at all
+		 * and its first forward reservation fails, reporting the consist as
+		 * lost before it ever departs. This mirrors the adopt-off path, where
+		 * the ProcessOrders in Couple() already loaded the next order. */
+		ProcessOrders(v);
 	}
+	TryPathReserve(v->Primary());
 	InvalidateWindowClassesData(WindowClass::TrainList);
 	/* The physical chain order is now correct (orientation is fixed before
 	 * the merge), so give the consist the usual chance to reverse in the
