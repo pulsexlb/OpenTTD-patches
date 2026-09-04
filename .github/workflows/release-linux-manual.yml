@@ -1,0 +1,50 @@
+name: Release (Linux, manual)
+
+# Manually build a release of the Linux (Generic) target from the latest
+# commit of the default branch (or an explicitly selected ref), including the
+# source package. Nothing is published as a GitHub release: the source archive
+# and the Linux bundles are simply stored as workflow artifacts so they can be
+# downloaded from the run page.
+#
+# This intentionally stops before the "Publish" job of release.yml, which is
+# the only part that creates an actual GitHub Release (and only runs for tag
+# pushes). Use this workflow when you want release-grade binaries/source of a
+# commit without cutting a release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Ref to build. Leave empty to build the latest commit of the default branch.'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: release-linux-manual-${{ inputs.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Package the source and generate the release metadata (version, survey key).
+  # The "Manual" checkout in release-source.yml uses github.event.inputs.ref,
+  # which is the empty string here, so actions/checkout falls back to the ref
+  # that triggered the dispatch (the default branch HEAD = latest commit).
+  source:
+    name: Source
+    uses: ./.github/workflows/release-source.yml
+    secrets: inherit
+
+  # Build the Linux (Generic) release bundle from the source archive produced
+  # by the source job (it consumes the "internal-source" artifact).
+  linux:
+    name: Linux (Generic)
+    needs: source
+    uses: ./.github/workflows/release-linux.yml
+    secrets: inherit
+    with:
+      survey_key: ${{ needs.source.outputs.survey_key }}
+
+# Results are left as two separate workflow artifacts on the run page, which
+# is all that is needed for a non-publishing manual build:
+#   - "openttd-source"        (uploaded by the source job; xz/zip + metadata)
+#   - "openttd-linux-generic" (uploaded by the Linux job; cpack bundles)
