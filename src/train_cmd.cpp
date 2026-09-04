@@ -4869,6 +4869,17 @@ public:
 		TrainReservationLookAhead *lookahead = this->v->lookahead.get();
 		if (lookahead == nullptr) return;
 
+		/* For a goto-couple order the train couples at the platform of its
+		 * claimed partner; reserve up to that station and stop there, exactly
+		 * like a train stopping at a station on a goto-station order. */
+		StationID couple_station = StationID::Invalid();
+		if (this->v->current_order.IsType(OT_GOTO_COUPLE)) {
+			const Train *ct = Train::GetIfValid(this->v->couple_target);
+			if (ct != nullptr && IsRailStationTile(ct->tile)) {
+				couple_station = GetStationIndex(ct->tile);
+			}
+		}
+
 		for (size_t i = state.order_items_start; i < lookahead->items.size(); i++) {
 			const TrainReservationLookAheadItem &item = lookahead->items[i];
 			switch (item.type) {
@@ -4900,6 +4911,21 @@ public:
 					break;
 			}
 		}
+
+		/* A goto-couple order has exactly one stop target (its partner's
+		 * platform), so detect it across the whole lookahead, not just from
+		 * order_items_start: the reservation may be rebuilt after the train
+		 * was held at a signal, which can put the station item at an index
+		 * the watermark has already passed. */
+		if (this->v->current_order.IsType(OT_GOTO_COUPLE) && couple_station != StationID::Invalid() && !HasBit(state.flags, CTTLASF_STOP_FOUND)) {
+			for (const TrainReservationLookAheadItem &item : lookahead->items) {
+				if (item.type == TRLIT_STATION && static_cast<StationID>(item.data_id) == couple_station) {
+					SetBit(state.flags, CTTLASF_STOP_FOUND);
+					break;
+				}
+			}
+		}
+
 		state.order_items_start = (uint)lookahead->items.size();
 	}
 };
@@ -5435,6 +5461,11 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 		}
 		if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
 			FillTrainReservationLookAhead(consist);
+			/* The just-extended reservation may have reached the couple platform.
+			 * STOP_FOUND was only evaluated against the old (shorter) lookahead,
+			 * so re-run the lookahead order advance now to catch it before we
+			 * decide whether to extend the reservation any further. */
+			if (consist->current_order.IsType(OT_GOTO_COUPLE)) orders.AdvanceOrdersFromLookahead(lookahead_state);
 			if (consist->lookahead != nullptr) lookahead_state.order_items_start = (uint)consist->lookahead->items.size();
 		}
 		TryLongReserveChooseTrainTrack(consist, res_dest.tile, res_dest.trackdir, (flags & CTTF_FORCE_RES), lookahead_state);
