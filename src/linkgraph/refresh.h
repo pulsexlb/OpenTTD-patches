@@ -63,6 +63,7 @@ protected:
 		VehicleOrderID to;    ///< Next order to be processed.
 		CargoType cargo;      ///< Cargo the consist is probably carrying or INVALID_CARGO if unknown.
 		RefreshFlags flags;   ///< Flags, for branches
+		uint32_t lists;       ///< Identifier of the order lists of "from" and "to", to disambiguate hops crossing into executed schedules.
 
 		/**
 		 * Default constructor should not be called but has to be visible for
@@ -76,7 +77,8 @@ protected:
 		 * @param to Second order of the hop.
 		 * @param cargo Cargo the consist is probably carrying when passing the hop.
 		 */
-		Hop(VehicleOrderID from, VehicleOrderID to, CargoType cargo, RefreshFlags flags = {}) : from(from), to(to), cargo(cargo), flags(flags) {}
+		Hop(VehicleOrderID from, VehicleOrderID to, CargoType cargo, RefreshFlags flags = {}, uint32_t lists = 0) :
+			from(from), to(to), cargo(cargo), flags(flags), lists(lists) {}
 
 		constexpr auto operator<=>(const Hop &) const noexcept = default;
 	};
@@ -99,12 +101,14 @@ protected:
 
 	Vehicle *vehicle;           ///< Vehicle for which the links should be refreshed.
 	CargoArray capacities{};    ///< Current added capacities per cargo ID in the consist.
-	RefitList refit_capacities; ///< Current state of capacity remaining from previous refits versus overall capacity per vehicle in the consist.
+	RefitList refit_capacities; ///< Current state of capacity remaining from previous refit orders versus overall capacity per vehicle in the consist.
 	HopSet *seen_hops;          ///< Hops already seen. If the same hop is seen twice we stop the algorithm. This is shared between all Refreshers of the same run.
 	CargoType cargo;            ///< Cargo given in last refit order.
 	bool allow_merge;           ///< If the refresher is allowed to merge or extend link graphs.
 	bool is_full_loading;       ///< If the vehicle is full loading.
 	CargoTypes cargo_mask;      ///< Bit-mask of cargo IDs to refresh.
+	OrderList *walk_orders;     ///< Order list currently being walked: the vehicle's own list, or the target list of an execute-schedule order.
+	const Order *resume_order;  ///< Order to resume at in the vehicle's own list after one full pass of an executed schedule; nullptr when not executing one.
 
 	LinkRefresher(Vehicle *v, HopSet *seen_hops, bool allow_merge, bool is_full_loading, CargoTypes cargo_mask);
 

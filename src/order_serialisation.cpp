@@ -491,6 +491,10 @@ std::string OrderListToJSONString(const OrderList *ol)
 	};
 
 	const Vehicle *veh = ol->GetFirstSharedVehicle();
+	if (veh == nullptr) { // player-created schedule list without vehicles
+		json["error"] = "Orderlist has no vehicles";
+		return json;
+	}
 	VehicleType vt = veh->type;
 	const Group *group = Group::GetIfValid(veh->group_id);
 

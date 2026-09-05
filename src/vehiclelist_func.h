@@ -27,7 +27,8 @@ void FindVehiclesWithOrder(VehiclePredicate veh_pred, OrderPredicate ord_pred, V
 
 		/* We assume all vehicles sharing an order list match the condition. */
 		const Vehicle *v = orderlist->GetFirstSharedVehicle();
-		if (!veh_pred(v)) continue;
+		/* Player-created schedule lists may have no vehicles at all. */
+		if (v == nullptr || !veh_pred(v)) continue;
 
 		/* Vehicle is a candidate, search for a matching order. */
 		for (const Order *order : orderlist->Orders()) {

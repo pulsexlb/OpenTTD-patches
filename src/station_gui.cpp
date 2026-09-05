@@ -468,7 +468,9 @@ protected:
 		robin_hood::unordered_flat_set<StationID> seen_stations;
 		for (const OrderList *l : OrderList::Iterate()) {
 			if (facilities != StationFacilities{ StationFacility::Train, StationFacility::TruckStop, StationFacility::BusStop, StationFacility::Airport, StationFacility::Dock }) {
-				if (!can_vehicle_use_facility(l->GetFirstSharedVehicle())) continue;
+				/* Player-created schedule lists may have no vehicles at all. */
+				const Vehicle *first_shared = l->GetFirstSharedVehicle();
+				if (first_shared == nullptr || !can_vehicle_use_facility(first_shared)) continue;
 			}
 
 			seen_stations.clear();

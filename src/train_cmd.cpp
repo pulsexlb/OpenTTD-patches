@@ -5851,6 +5851,52 @@ static void RefreshTrainUserDefData(Train *head)
 	}
 }
 
+/**
+ * Make every vehicle's last-loading-station record authoritative before
+ * couple/decouple surgery. When the consist does not carry the
+ * LastLoadStationSeparate flag only the primary's record is maintained and the
+ * per-vehicle values may be stale; propagate the primary's record so that
+ * after the split each part keeps a correct, per-vehicle attribution. With
+ * the flag already set every vehicle's record is authoritative and is kept.
+ */
+static void PropagateLastLoadingStation(Train *primary)
+{
+	if (primary->vehicle_flags.Test(VehicleFlag::LastLoadStationSeparate)) return;
+	StationID station = primary->last_loading_station;
+	StateTicks tick = primary->last_loading_tick;
+	for (Train *w = primary->First(); w != nullptr; w = w->Next()) {
+		w->last_loading_station = station;
+		w->last_loading_tick = tick;
+	}
+}
+
+/**
+ * Normalize the last-loading-station records of a resulting consist part after
+ * couple/decouple surgery: when all vehicles agree on the record the part can
+ * keep the compact (non-separate) representation, otherwise per-vehicle records
+ * are used via LastLoadStationSeparate so VehicleIncreaseStats attributes each
+ * wagon's link to the station it actually loaded at.
+ */
+static void NormalizeLastLoadingStation(Train *primary)
+{
+	Train *head = primary->First();
+	StationID first = head->last_loading_station;
+	bool differ = false;
+	for (Train *w = head; w != nullptr; w = w->Next()) {
+		if (w->last_loading_station != first) {
+			differ = true;
+			break;
+		}
+	}
+	if (!differ) {
+		primary->last_loading_station = first;
+		primary->last_loading_tick = head->last_loading_tick;
+		primary->vehicle_flags.Reset(VehicleFlag::LastLoadStationSeparate);
+	} else {
+		primary->vehicle_flags.Set(VehicleFlag::LastLoadStationSeparate);
+	}
+}
+
 static bool TryTrainDecouple(Train *v, Train *u)
 {
 	/* v and u are the physical chain heads of the front and rear parts of the
@@ -6095,6 +6141,11 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear)
 	 * physical heads, never at the primary. */
 	Train *front_head = v->First();
 
+	/* Preserve each wagon's last-loading-station attribution across the split
+	 * instead of dropping it: the decoupled part keeps recording links from
+	 * the station it actually loaded at on its very first trip. */
+	PropagateLastLoadingStation(v);
+
 	if (!TryTrainDecouple(front_head, u)) {
 		return v;
 	}
@@ -6158,6 +6209,10 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear)
 			 * mid-chain engine tick independently and drag the consist apart. */
 			dec_head->ClearFrontWagon();
 		}
+		/* Keep the last-loading-station records valid on both resulting parts
+		 * instead of invalidating them; see PropagateLastLoadingStation. */
+		NormalizeLastLoadingStation(dec_prim);
+		NormalizeLastLoadingStation(v);
 		dec_prim->decouple_part = 2;
 	}
 
@@ -6630,6 +6685,13 @@ static void Couple(Train *v, Train *u)
 
 	Train *v_last = v_phys->Last();
 
+	/* Preserve each part's last-loading-station attribution across the merge:
+	 * after coupling, VehicleIncreaseStats can keep attributing every wagon's
+	 * links to the station it actually loaded at, even though the two parts
+	 * may have loaded at different stations. */
+	PropagateLastLoadingStation(v);
+	PropagateLastLoadingStation(u);
+
 	if (!TryTrainCouple(v_phys, u_phys)) {
 		if (v->owner == _local_company) {
 			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
@@ -6645,6 +6707,10 @@ static void Couple(Train *v, Train *u)
 	for (Train *w = v->First(); w != nullptr; w = w->Next()) {
 		w->SetPrimary(v_prim);
 	}
+	/* The merged consist keeps the last-loading-station records of both parts;
+	 * switch to per-vehicle attribution when they loaded at different
+	 * stations. */
+	NormalizeLastLoadingStation(v_prim);
 
 	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
 

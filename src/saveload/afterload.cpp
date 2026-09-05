@@ -4483,7 +4483,10 @@ bool AfterLoadGame()
 				if (!(ds.GetScheduledDispatchStartTick() >= 0 && ds.IsScheduledDispatchValid()) && ds.GetScheduledDispatch().empty()) {
 					order_list->GetScheduledDispatchScheduleSet().clear();
 				} else {
-					VehicleOrderID idx = order_list->GetFirstSharedVehicle()->GetFirstWaitingLocation(false);
+					const Vehicle *first_shared = order_list->GetFirstSharedVehicle();
+					/* Player-created schedule lists may have no vehicles at all. */
+					if (first_shared == nullptr) continue;
+					VehicleOrderID idx = first_shared->GetFirstWaitingLocation(false);
 					if (idx != INVALID_VEH_ORDER_ID) {
 						order_list->GetOrderAt(idx)->SetDispatchScheduleIndex(0);
 					}

@@ -4583,7 +4583,10 @@ void DeleteStaleLinks(Station *from)
 							}
 						}
 						if (!found_to || !found_from) continue;
-						vehicles.push_back(l->GetFirstSharedVehicle());
+						Vehicle *first_shared = l->GetFirstSharedVehicle();
+						/* Player-created schedule lists may have no vehicles at all. */
+						if (first_shared == nullptr) continue;
+						vehicles.push_back(first_shared);
 					}
 
 					auto iter = vehicles.begin();

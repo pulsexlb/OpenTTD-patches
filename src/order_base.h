@@ -1482,8 +1482,8 @@ public:
 	 */
 	inline VehicleOrderID GetNumManualOrders() const { return this->num_manual_orders; }
 
-	CargoMaskedStationIDVector GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first = nullptr, uint hops = 0) const;
-	std::vector<const Order *> GetNextStoppingOrder(const Vehicle *v, const Order *first = nullptr, uint hops = 0) const;
+	CargoMaskedStationIDVector GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first = nullptr, uint hops = 0, bool in_schedule = false) const;
+	std::vector<const Order *> GetNextStoppingOrder(const Vehicle *v, const Order *first = nullptr, uint hops = 0, bool in_schedule = false) const;
 	const Order *GetNextDecisionNode(const Order *next, uint hops, CargoTypes &cargo_mask) const;
 
 	void InsertOrderAt(Order &&new_order, VehicleOrderID index);
