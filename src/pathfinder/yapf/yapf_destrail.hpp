@@ -130,7 +130,7 @@ protected:
 	TrackdirBits dest_trackdirs;
 	StationID dest_station_id;
 	bool any_depot;
-	bool couple_dest; ///< goto-couple order with a plain-track partner: detect the partner anywhere in the segment
+	bool couple_dest = false; ///< goto-couple order with a plain-track partner: detect the partner anywhere in the segment
 	bool couple_station_dest = false; ///< goto-couple order with a station partner: only the partner's own platform counts as the destination
 
 	/** @copydoc CYapfBaseT::Yapf */
