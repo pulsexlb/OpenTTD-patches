@@ -6891,8 +6891,13 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * the decouple roles alone. */
 		bool backwards = consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards);
 		Train *trailer = (backwards != consist_in_rear) ? consist : u;
+		/* DecoupleTrain returns the consist itself when the split failed; the
+		 * trailer reversal below assumes a successful split into two parts, so
+		 * skip it entirely then: physically flipping a still-moving consist
+		 * mid-station-entry is only valid for an actual trailer part. */
+		bool decoupled = (u != nullptr && u != consist);
 		if (trailer == consist) {
-			ReverseTrainDirection(consist);
+			if (decoupled) ReverseTrainDirection(consist);
 			consist = consist->Primary();
 		}
 		consist->flags.Set(VehicleRailFlag::JustDecoupled);
