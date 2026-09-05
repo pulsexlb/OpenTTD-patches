@@ -5657,23 +5657,84 @@ static bool CheckReverseTrain(const Train *consist)
 }
 
 /**
+ * Push every vehicle of a chain-ordered range one pixel forward along its own
+ * facing, one vehicle at a time. Deliberately does NOT use TrainController's
+ * segment walk: that follows GetMovingNext(), which honours each vehicle's
+ * DrivingBackwards flag. A freshly merged consist can carry mixed flags, and
+ * a segment walk would then turn around mid-chain, miss its nomove bound and
+ * run off the end of the chain, crashing on the null vehicle.
+ * @param first first vehicle to push.
+ * @param last last vehicle to push, or nullptr to push up to the chain end.
+ */
+static void CoupleAdvanceVehicles(Train *first, Train *last)
+{
+	for (Train *w = first; w != nullptr; w = w->Next()) {
+		/* nomove = w's own moving-next stops the walk after exactly w. */
+		TrainController(w, w->GetMovingNext());
+		if (w == last) break;
+	}
+}
+
+static int CoupleJointOffset(uint8_t front_len, uint8_t back_len, bool front_driving_backwards);
+
+/**
+ * Pixel step of a vehicle's motion. Vehicles flagged DrivingBackwards move
+ * against their facing, so their motion delta is the negated direction delta.
+ */
+static TileIndexDiffC CoupleMotionDelta(const Train *w)
+{
+	TileIndexDiffC dd = TileIndexDiffCByDir(w->direction);
+	if (w->IsDrivingBackwards()) {
+		dd.x = -dd.x;
+		dd.y = -dd.y;
+	}
+	return dd;
+}
+
+/**
+ * Expected centre distance of the chain-adjacent pair (\a a, \a a->Next()).
+ * CalcNextVehicleOffset() cannot be used here: for DrivingBackwards vehicles
+ * it pairs the vehicle with GetMovingNext() (its chain predecessor), not with
+ * its chain successor.
+ */
+static int CouplePairOffset(const Train *a)
+{
+	return CoupleJointOffset(a->gcache.cached_veh_length, a->Next()->gcache.cached_veh_length, a->IsDrivingBackwards());
+}
+
+/**
  * Advance the wagons of the consist after coupling, so that they are positioned
  * correctly on the track.
  */
 static void AdvanceWagonsAfterCouple(Train *v)
 {
-	int difference = v->CalcNextVehicleOffset();
+	int difference = CouplePairOffset(v);
 	int diff_x = abs(v->x_pos - v->Next()->x_pos);
 	int diff_y = abs(v->y_pos - v->Next()->y_pos);
 	int real_diff = std::max(diff_x, diff_y) - difference;
 
-	/* Crash-exemption couples can meet with the wagons already a pixel or two
-	 * overlapped (the approach distance check was skipped by a too-large step).
-	 * real_diff < 0 means the coupled chain is too close, not too far: do not
-	 * push it anywhere, the regular movement loop fixes the spacing as soon as
-	 * the consist starts moving. */
+	/* Contact coupling can land a pixel or two inside the partner when the
+	 * approach step jumps over the exact-contact sample. real_diff < 0 means
+	 * the joint pair is too close: open the gap by advancing one half of the
+	 * merged consist. After the orientation phase both halves face the same
+	 * direction, so the half that leads along that direction moves away from
+	 * the joint when pushed forward, while the trailing half would close the
+	 * gap further. Decide which half to push from the sign of the dot product
+	 * between the shared facing and the joint vector. */
 	if (real_diff > 0) {
-		for (int i = 0; i < real_diff; i++) TrainController(v->Next(), nullptr);
+		CoupleAdvanceVehicles(v->Next(), nullptr);
+	} else if (real_diff < 0) {
+		Train *u_first = v->Next();
+		TileIndexDiffC dd = CoupleMotionDelta(u_first);
+		int dot = (u_first->x_pos - v->x_pos) * dd.x + (u_first->y_pos - v->y_pos) * dd.y;
+		/* Push the leading half (dot > 0: u half ahead of the joint along the
+		 * shared motion direction) without a bound; push the trailing half
+		 * only up to the joint vehicle. */
+		if (dot > 0) {
+			CoupleAdvanceVehicles(u_first, nullptr);
+		} else {
+			CoupleAdvanceVehicles(v->First(), v);
+		}
 	}
 
 }
@@ -6399,6 +6460,49 @@ static bool TryTrainCouple(Train *v, Train *u)
 }
 
 /**
+ * Re-space the vehicles of a consist half that was just mirrored by
+ * ReverseTrainNoSwapVehicles(). Mirroring re-pairs the adjacent vehicles, and
+ * with variable-length consists the rounding that governs each pair's spacing
+ * swaps with the pairing, so some pairs end up a pixel too tight or too wide.
+ *
+ * After the flip every vehicle of the half faces the same way, and vehicles
+ * can only be nudged forward along that direction. Each pair is corrected by
+ * pushing the chunk on one side of it (a chunk moves rigidly, so pairs inside
+ * it and already-corrected pairs are not disturbed). The pair spanning the
+ * joint to the other consist is deliberately left alone; Couple() fixes the
+ * joint gap afterwards via AdvanceWagonsAfterCouple().
+ * @param half_first first vehicle of the flipped half
+ * @param half_last last vehicle of the flipped half
+ */
+static void FixFlippedHalfSpacing(Train *half_first, Train *half_last)
+{
+	if (half_first == half_last) return;
+
+	for (Train *a = half_first; a != half_last; a = a->Next()) {
+		Train *b = a->Next();
+		int err = std::max(abs(b->x_pos - a->x_pos), abs(b->y_pos - a->y_pos)) - CouplePairOffset(a);
+		if (err == 0) continue;
+
+		/* Is b downstream of a along the shared motion direction? Pushing the
+		 * upstream chunk moves it towards the partner, pushing the downstream
+		 * chunk moves it away. */
+		TileIndexDiffC dd = CoupleMotionDelta(a);
+		bool b_downstream = (b->x_pos - a->x_pos) * dd.x + (b->y_pos - a->y_pos) * dd.y > 0;
+		bool push_b_chunk = (err < 0) == b_downstream;
+
+		for (int i = 0; i < abs(err); i++) {
+			if (push_b_chunk) {
+				/* [b .. half_last]: b is the chain tail side. */
+				CoupleAdvanceVehicles(b, half_last);
+			} else {
+				/* [half_first .. a]: stop before b. */
+				CoupleAdvanceVehicles(half_first, a);
+			}
+		}
+	}
+}
+
+/**
  * Reverse a train for coupling by flipping the consist in place.
  *
  * Single vehicles keep their physical position and only turn around; the chain
@@ -6413,6 +6517,10 @@ static void ReverseTrainForCouple(Train *v)
 	 * the primary vehicle which can sit mid-chain. */
 	v = v->First();
 	ReverseTrainNoSwapVehicles(v);
+	/* The flip reverses the chain order, so the local pointer now sits
+	 * mid-chain; re-anchor at the new chain head before re-spacing. */
+	v = v->First();
+	FixFlippedHalfSpacing(v, v->Last());
 }
 
 /**
@@ -6655,59 +6763,6 @@ static int CoupleJointOffset(uint8_t front_len, uint8_t back_len, bool front_dri
 {
 	uint8_t rounding = front_driving_backwards ? 1 : 0;
 	return (front_len + rounding) / 2 + (back_len + 1 - rounding) / 2;
-}
-
-/**
- * Find the train waiting to be coupled with, at the current position.
- */
-static Train *GetCouplePosition(Train *v, bool &reverse)
-{
-	Vehicle *other_vehicle = nullptr;
-	FollowTrainReservation(v, &other_vehicle);
-
-	if (other_vehicle == nullptr) return nullptr;
-	if (other_vehicle->Primary()->index == v->index) return nullptr;
-	Train *u = Train::From(other_vehicle)->Primary();
-	if (ValidateCoupleCandidate(v, u->First(), other_vehicle->tile) == nullptr) {
-		return nullptr;
-	}
-
-	DirDiff dir_diff = DirDifference(v->direction, u->direction);
-	reverse = dir_diff == DirDiff::Same || dir_diff == DirDiff::Right45 || dir_diff == DirDiff::Left45;
-
-	Train *z;
-	if (reverse) {
-		z = u->Last();
-	} else {
-		z = u;
-	}
-	int x_diff = abs(v->x_pos - z->x_pos);
-	int y_diff = abs(v->y_pos - z->y_pos);
-
-	int diff = std::max(x_diff, y_diff);
-
-	uint8_t v_length = v->gcache.cached_veh_length;
-	uint8_t u_length = reverse ? u->Last()->gcache.cached_veh_length : u->gcache.cached_veh_length;
-	int expected = CoupleJointOffset(v_length, u_length, v->IsDrivingBackwards());
-
-	if (diff == expected) {
-		return u;
-	}
-
-	return nullptr;
-}
-
-/**
- * Handle coupling with another train at the current position.
- * @return true if the train was coupled with another train.
- */
-static bool TrainCoupleHandler(Train *v)
-{
-	bool reverse;
-	Train *u = GetCouplePosition(v, reverse);
-	if (u == nullptr) return false;
-	Couple(v, u);
-	return true;
 }
 
 /**
@@ -7126,7 +7181,11 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 
 	/* Slower check using multiplication */
 	int min_diff = CoupleJointOffset(moving_front->gcache.cached_veh_length, v->gcache.cached_veh_length, moving_front->IsDrivingBackwards());
-	if (x_diff * x_diff + y_diff * y_diff >= min_diff * min_diff) return 0;
+	int dist_sq = x_diff * x_diff + y_diff * y_diff;
+
+	/* Touching counts too: a homing couple train must couple on first contact,
+	 * before the collision point (strictly inside min_diff) is ever reached. */
+	if (dist_sq > min_diff * min_diff) return 0;
 
 	/* Happens when there is a train under bridge next to bridge head */
 	if (abs(v->z_pos - moving_front->z_pos) > 5) return 0;
@@ -7143,6 +7202,10 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 		moving_front->progress = 0;
 		return 0;
 	}
+
+	/* Exactly touching but not a valid couple: bumpers meet, nothing overlaps,
+	 * so this is still not a crash (same semantics as the vanilla check). */
+	if (dist_sq >= min_diff * min_diff) return 0;
 
 	/* Crash both trains. Two statements required to guarantee execution
 	 * order because RandomRange() is involved. */
@@ -8853,19 +8916,10 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			j -= adv_spd;
 			TrainController(moving_front, nullptr);
 			moving_front = moving_front->GetMovingFront();
-			/* Couple now? The order lives on the primary vehicle (First). When
-			 * driving backwards, moving_front is the physical front (Last), which
-			 * for an articulated train is a non-primary part carrying no current
-			 * order, so test the primary's order instead. */
-			if (moving_front->Primary()->current_order.IsType(OT_GOTO_COUPLE)) {
-				if (TrainCoupleHandler(moving_front)) {
-					moving_front->cur_speed = 0;
-					moving_front->progress = 0;
-					break;
-				}
-			}
-			/* Don't continue to move if the train crashed. */
-			if (CheckTrainCollision(moving_front)) break;
+				/* Don't continue to move if the train crashed. Coupling is handled
+				 * inside CheckTrainCollision, which fires as soon as the consists
+				 * touch. */
+				if (CheckTrainCollision(moving_front)) break;
 			/* Determine distance to next map position */
 			adv_spd = moving_front->GetAdvanceDistance();
 
