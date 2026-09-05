@@ -85,7 +85,7 @@ static uint32_t ScheduleHopLists(const OrderList *from, const OrderList *to)
  */
 LinkRefresher::LinkRefresher(Vehicle *vehicle, HopSet *seen_hops, bool allow_merge, bool is_full_loading, CargoTypes cargo_mask) :
 	vehicle(vehicle), seen_hops(seen_hops), cargo(INVALID_CARGO), allow_merge(allow_merge),
-	is_full_loading(is_full_loading), cargo_mask(cargo_mask), walk_orders(vehicle->orders), resume_order(nullptr)
+	is_full_loading(is_full_loading), cargo_mask(cargo_mask), walk_orders(vehicle->orders)
 {
 	/* Assemble list of capacities and set last loading stations to 0. */
 	for (Vehicle *v = this->vehicle; v != nullptr; v = v->Next()) {
@@ -291,23 +291,24 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 		const Order *current = next;
 		const Order *following = this->walk_orders->GetNext(current);
 		bool list_changed = false;
-		if (this->resume_order != nullptr && this->walk_orders != this->vehicle->orders
+		if (!this->resume_stack.empty() && this->walk_orders != this->vehicle->orders
 				&& this->walk_orders->GetIndexOfOrder(following) == 0) {
 			/* One full pass of the executed schedule is finished: return to the
-			 * vehicle's own order list, mirroring ReturnFromExecuteSchedule. */
-			this->walk_orders = this->vehicle->orders;
-			following = this->resume_order;
-			this->resume_order = nullptr;
+			 * suspended list, mirroring ReturnFromExecuteSchedule. */
+			this->walk_orders = this->resume_stack.back().first;
+			following = this->resume_stack.back().second;
+			this->resume_stack.pop_back();
 			list_changed = true;
 		}
-		if (following->IsExecuteScheduleOrder() && this->resume_order == nullptr) {
+		if (following->IsExecuteScheduleOrder() && this->resume_stack.size() < 8) {
 			/* The vehicle will jump into the target schedule: continue the
-			 * prediction there. Nested execute-schedule orders are skipped at
-			 * runtime, so no jump is performed while already inside one. */
+			 * prediction there, suspending the current list. The depth limit
+			 * only guards against runaway recursion; cycles in the executed
+			 * schedules are broken by the seen-hop check. */
 			OrderList *target = OrderList::GetIfValid(following->GetDestination().ToOrderListID());
 			if (target != nullptr && target != this->walk_orders && target->GetNumOrders() > 0
 					&& target->IsPlayerCreated() && target->IsVisibleToCompany(this->vehicle->owner)) {
-				this->resume_order = this->walk_orders->GetNext(following);
+				this->resume_stack.emplace_back(this->walk_orders, this->walk_orders->GetNext(following));
 				this->walk_orders = target;
 				following = target->GetFirstOrder();
 				list_changed = true;
@@ -444,12 +445,12 @@ void LinkRefresher::RefreshLinks(const Order *cur, const Order *next, TimetableT
 		}
 
 		std::tie(next, travel) = this->PredictNextOrder(cur, next, travel, flags, num_hops);
-		if (next == nullptr && this->resume_order != nullptr) {
+		if (next == nullptr && !this->resume_stack.empty()) {
 			/* The executed schedule had no stops at all: the vehicle passes
-			 * through it and resumes its own list. */
-			this->walk_orders = this->vehicle->orders;
-			next = this->resume_order;
-			this->resume_order = nullptr;
+			 * through it and resumes the suspended list. */
+			this->walk_orders = this->resume_stack.back().first;
+			next = this->resume_stack.back().second;
+			this->resume_stack.pop_back();
 		}
 		if (next == nullptr) break;
 		/* "cur" may still belong to the vehicle's own list right after jumping

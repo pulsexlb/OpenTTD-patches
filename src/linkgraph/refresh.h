@@ -108,7 +108,8 @@ protected:
 	bool is_full_loading;       ///< If the vehicle is full loading.
 	CargoTypes cargo_mask;      ///< Bit-mask of cargo IDs to refresh.
 	OrderList *walk_orders;     ///< Order list currently being walked: the vehicle's own list, or the target list of an execute-schedule order.
-	const Order *resume_order;  ///< Order to resume at in the vehicle's own list after one full pass of an executed schedule; nullptr when not executing one.
+	///< Stack of (order list, resume order) states of the lists suspended by execute-schedule jumps; empty when not inside one.
+	std::vector<std::pair<OrderList *, const Order *>> resume_stack;
 
 	LinkRefresher(Vehicle *v, HopSet *seen_hops, bool allow_merge, bool is_full_loading, CargoTypes cargo_mask);
 

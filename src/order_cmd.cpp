@@ -738,7 +738,7 @@ const Order *OrderList::GetNextDecisionNode(const Order *next, uint hops, CargoT
  * @pre The vehicle is currently loading and v->last_station_visited is meaningful.
  * @note This function may draw a random number. Don't use it from the GUI.
  */
-CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first, uint hops, bool in_schedule) const
+CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first, uint hops) const
 {
 	/* Seen orders are keyed by (order list, order index) so that prediction can
 	 * traverse into executed schedule lists without mixing up indexes. */
@@ -746,9 +746,6 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 	if (hops == 0) {
 		if (this->GetNumOrders() == 0) return CargoMaskedStationIDVector(cargo_mask); // No orders at all
 		seen_orders_container.clear();
-		/* While the vehicle is executing a schedule, nested execute-schedule
-		 * orders are skipped at runtime; mirror that. */
-		in_schedule |= v->IsExecutingSchedule();
 	}
 
 	auto seen_order = [&](const Order *o) -> bool & {
@@ -775,17 +772,28 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 
 		/* An execute-schedule order makes the vehicle jump to the target list
 		 * and stop at its first station, so predict inside the target instead
-		 * of continuing in this list. Nested jumps are skipped at runtime and
-		 * so are they here. */
-		if (next->IsExecuteScheduleOrder() && !in_schedule) {
+		 * of continuing in this list. Cycles between lists are broken by the
+		 * seen-checks. */
+		if (next->IsExecuteScheduleOrder()) {
 			OrderList *target = OrderList::GetIfValid(next->GetDestination().ToOrderListID());
-			if (target != nullptr && target != this && target->GetNumOrders() > 0 && target->IsPlayerCreated() && target->IsVisibleToCompany(v->owner)
-					&& !seen_order(target->GetFirstOrder())) {
-				seen_order(next) = true;
-				CargoMaskedStationIDVector st = target->GetNextStoppingStation(v, cargo_mask, target->GetFirstOrder(), hops + 1, true);
-				if (!st.station.empty()) return st;
-				/* The target list has no stops of its own: the vehicle passes
-				 * through it and resumes this list, so skip the order. */
+			if (target != nullptr && target != this && target->GetNumOrders() > 0 && target->IsPlayerCreated() && target->IsVisibleToCompany(v->owner)) {
+				/* Skip a leading stop at the station the vehicle is standing at:
+				 * at runtime such an order resolves instantly without travelling,
+				 * and predicting it here would run into the seen-check right
+				 * after the same-station skip below. */
+				const Order *start = target->GetFirstOrder();
+				for (uint skipped = 0; skipped < target->GetNumOrders(); ++skipped) {
+					if (!(start->IsType(OT_GOTO_STATION) || start->IsType(OT_IMPLICIT))) break;
+					if (start->GetDestination() != v->last_station_visited) break;
+					start = target->GetNext(start);
+				}
+				if (!seen_order(start)) {
+					seen_order(next) = true;
+					CargoMaskedStationIDVector st = target->GetNextStoppingStation(v, cargo_mask, start, hops + 1);
+					if (!st.station.empty()) return st;
+					/* The target list has no stops of its own: the vehicle passes
+					 * through it and resumes this list, so skip the order. */
+				}
 			}
 		}
 
@@ -811,9 +819,9 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 			} else if (skip_to == nullptr || skip_to == first || seen_order(skip_to)) {
 				next = (advance == first) ? nullptr : advance;
 			} else {
-				CargoMaskedStationIDVector st1 = this->GetNextStoppingStation(v, cargo_mask, skip_to, hops, in_schedule);
+				CargoMaskedStationIDVector st1 = this->GetNextStoppingStation(v, cargo_mask, skip_to, hops);
 				cargo_mask &= st1.cargo_mask;
-				CargoMaskedStationIDVector st2 = this->GetNextStoppingStation(v, cargo_mask, advance, hops, in_schedule);
+				CargoMaskedStationIDVector st2 = this->GetNextStoppingStation(v, cargo_mask, advance, hops);
 				st1.cargo_mask &= st2.cargo_mask;
 				st1.station.insert(st1.station.end(), st2.station.begin(), st2.station.end());
 				return st1;
@@ -849,11 +857,9 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
  * @param hops Number of hops already made (to prevent endless recursion).
  * @return The next stopping order(s), or an empty vector if none.
  */
-std::vector<const Order *> OrderList::GetNextStoppingOrder(const Vehicle *v, const Order *first, uint hops, bool in_schedule) const
+std::vector<const Order *> OrderList::GetNextStoppingOrder(const Vehicle *v, const Order *first, uint hops) const
 {
 	CargoTypes cargo_mask{}; // No cargo filter (all cargoes).
-
-	if (hops == 0) in_schedule |= v->IsExecutingSchedule();
 
 	const Order *next = first;
 	if (first == nullptr) {
@@ -872,12 +878,19 @@ std::vector<const Order *> OrderList::GetNextStoppingOrder(const Vehicle *v, con
 
 	do {
 		/* An execute-schedule order makes the vehicle jump to the target list;
-		 * predict inside the target instead. Nested jumps are skipped at
-		 * runtime and so are they here. */
-		if (next != nullptr && next->IsExecuteScheduleOrder() && !in_schedule) {
+		 * predict inside the target instead. */
+		if (next != nullptr && next->IsExecuteScheduleOrder()) {
 			OrderList *target = OrderList::GetIfValid(next->GetDestination().ToOrderListID());
 			if (target != nullptr && target != this && target->GetNumOrders() > 0 && target->IsPlayerCreated() && target->IsVisibleToCompany(v->owner)) {
-				return target->GetNextStoppingOrder(v, target->GetFirstOrder(), hops + 1, true);
+				/* Skip a leading stop at the station the vehicle is standing at,
+				 * mirroring the runtime behaviour (see GetNextStoppingStation). */
+				const Order *start = target->GetFirstOrder();
+				for (uint skipped = 0; skipped < target->GetNumOrders(); ++skipped) {
+					if (!(start->IsType(OT_GOTO_STATION) || start->IsType(OT_IMPLICIT))) break;
+					if (start->GetDestination() != v->last_station_visited) break;
+					start = target->GetNext(start);
+				}
+				return target->GetNextStoppingOrder(v, start, hops + 1);
 			}
 		}
 
@@ -895,8 +908,8 @@ std::vector<const Order *> OrderList::GetNextStoppingOrder(const Vehicle *v, con
 			} else if (skip_to == nullptr || skip_to == first) {
 				next = (advance == first) ? nullptr : advance;
 			} else {
-				std::vector<const Order *> or1 = this->GetNextStoppingOrder(v, skip_to, hops, in_schedule);
-				std::vector<const Order *> or2 = this->GetNextStoppingOrder(v, advance, hops, in_schedule);
+				std::vector<const Order *> or1 = this->GetNextStoppingOrder(v, skip_to, hops);
+				std::vector<const Order *> or2 = this->GetNextStoppingOrder(v, advance, hops);
 				or1.insert(or1.end(), or2.rbegin(), or2.rend());
 				return or1;
 			}
@@ -5304,18 +5317,25 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			assert(!pbs_look_ahead);
 			{
 				OrderList *target = OrderList::GetIfValid(order->GetDestination().ToOrderListID());
-				if (target != nullptr && target != v->orders && !v->IsExecutingSchedule() && target->IsPlayerCreated() && target->IsVisibleToCompany(v->owner)) {
+				if (target != nullptr && target != v->orders && target->IsPlayerCreated() && target->IsVisibleToCompany(v->owner)) {
 					/* Execute the target order list: switch this vehicle to it (shared list).
-					 * The vehicle's own list is kept as the primary order list; after one
-					 * full pass of the target list the vehicle returns to it and resumes
-					 * where it left. Nested execute-schedule orders are skipped while
-					 * already executing. */
+					 * The primary order list is kept as-is; after one full pass of the
+					 * target list the vehicle returns to it and resumes where it left.
+					 * Nested execute-schedule orders jump the same way without touching
+					 * the primary list. */
 					OrderList *home = v->orders;
-					/* Step past this execute-schedule order; the resulting position is
-					 * where execution of our own list resumes after the detour. */
-					v->IncrementRealOrderIndex();
-					v->primary_order = home->index;
-					v->primary_order_index = v->cur_real_order_index;
+					if (!v->IsExecutingSchedule()) {
+						/* Step past this execute-schedule order; the resulting position
+						 * is where execution of our own list resumes after the detour.
+						 * This must not be done while already executing a schedule:
+						 * stepping past an order at the end of the list would wrap and
+						 * return the vehicle home before the jump, so nested jumps at
+						 * the end of an executed list would never happen. The wrap is
+						 * inert here because the vehicle is not executing a schedule. */
+						v->IncrementRealOrderIndex();
+						v->primary_order = home->index;
+						v->primary_order_index = v->cur_real_order_index;
+					}
 
 					/* Remember the home list's dispatch/separation state if it is not
 					 * mirrored by the list itself, so we can restore it when returning. */
