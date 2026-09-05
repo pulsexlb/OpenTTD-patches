@@ -3184,6 +3184,15 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 	 * otherwise tick-cache rebuilds pick wrong chain fronts. */
 	ResetChainNonFrontMarkers(new_first);
 
+	/* Every vehicle had its physical direction reversed, so flip the visible
+	 * direction flag of each vehicle too: the two reversals cancel out in
+	 * Train::GetImage() and every vehicle keeps its previous sprite, only the
+	 * physical heading changes. */
+	for (Train *u = new_first; u != nullptr; u = u->Next()) {
+		u->flags.Flip(VehicleRailFlag::Flipped);
+		u->InvalidateImageCache();
+	}
+
 	/* CCF_COUPLE (not CCF_ARRANGE): ARRANGE includes DepotDirection which
 	 * would overwrite the per-vehicle directions we just reversed. */
 	new_first->ConsistChanged(CCF_COUPLE);
