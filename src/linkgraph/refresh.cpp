@@ -293,11 +293,13 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 		bool list_changed = false;
 		if (!this->resume_stack.empty() && this->walk_orders != this->vehicle->orders
 				&& this->walk_orders->GetIndexOfOrder(following) == 0) {
-			/* One full pass of the executed schedule is finished: return to the
-			 * suspended list, mirroring ReturnFromExecuteSchedule. */
-			this->walk_orders = this->resume_stack.back().first;
-			following = this->resume_stack.back().second;
-			this->resume_stack.pop_back();
+			/* One full pass of the executed schedule is finished: the vehicle
+			 * returns to its primary order list (ReturnFromExecuteSchedule uses
+			 * the outermost home, not the immediately suspended list), so
+			 * unwind the whole stack and resume at the bottom entry. */
+			this->walk_orders = this->resume_stack.front().first;
+			following = this->resume_stack.front().second;
+			this->resume_stack.clear();
 			list_changed = true;
 		}
 		if (following->IsExecuteScheduleOrder() && this->resume_stack.size() < 8) {
@@ -447,10 +449,10 @@ void LinkRefresher::RefreshLinks(const Order *cur, const Order *next, TimetableT
 		std::tie(next, travel) = this->PredictNextOrder(cur, next, travel, flags, num_hops);
 		if (next == nullptr && !this->resume_stack.empty()) {
 			/* The executed schedule had no stops at all: the vehicle passes
-			 * through it and resumes the suspended list. */
-			this->walk_orders = this->resume_stack.back().first;
-			next = this->resume_stack.back().second;
-			this->resume_stack.pop_back();
+			 * through it and resumes its primary order list. */
+			this->walk_orders = this->resume_stack.front().first;
+			next = this->resume_stack.front().second;
+			this->resume_stack.clear();
 		}
 		if (next == nullptr) break;
 		/* "cur" may still belong to the vehicle's own list right after jumping
