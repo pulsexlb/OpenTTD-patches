@@ -8824,6 +8824,24 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	/* exit if train is stopped */
 	if (consist->vehstatus.Test(VehState::Stopped) && consist->cur_speed == 0) return true;
 
+	/* Synthetic station arrival: a train that is fully inside its destination
+	 * station and standing still begins loading/unloading right away, without
+	 * having to move across the platform end tile that the normal arrival
+	 * path (VehicleEnterTile -> TrainEnterStation) requires. This covers e.g.
+	 * re-arriving at the station the train is already standing on after order
+	 * changes or order-list jumps, and engine-less decoupled parts standing in
+	 * the station (those carry JustDecoupled until they leave the station and
+	 * have last_station_visited restored to the decouple station, so neither
+	 * may gate this bypass). */
+	if (consist->cur_speed == 0 && consist->current_order.IsType(OT_GOTO_STATION)
+			&& !(consist->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)
+			&& IsRailStationTile(consist->tile)) {
+		StationID station = GetStationIndex(consist->tile);
+		if (consist->current_order.GetDestination().ToStationID() == station && TrainFitStation(consist)) {
+			TrainEnterStation(consist, station);
+		}
+	}
+
 	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL) && !consist->current_order.IsExecuteScheduleOrder();
 	if (ProcessOrders(consist) && CheckReverseTrain(consist)) {
 		consist->wait_counter = 0;
