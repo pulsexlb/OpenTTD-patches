@@ -738,7 +738,7 @@ const Order *OrderList::GetNextDecisionNode(const Order *next, uint hops, CargoT
  * @pre The vehicle is currently loading and v->last_station_visited is meaningful.
  * @note This function may draw a random number. Don't use it from the GUI.
  */
-CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first, uint hops) const
+CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first, uint hops, bool in_target) const
 {
 	/* Seen orders are keyed by (order list, order index) so that prediction can
 	 * traverse into executed schedule lists without mixing up indexes. */
@@ -746,11 +746,21 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 	if (hops == 0) {
 		if (this->GetNumOrders() == 0) return CargoMaskedStationIDVector(cargo_mask); // No orders at all
 		seen_orders_container.clear();
+		/* The top-level call always runs on the vehicle's own order list: when
+		 * it is executing a schedule, this list is the executed target. */
+		in_target = v->IsExecutingSchedule();
 	}
 
 	auto seen_order = [&](const Order *o) -> bool & {
 		return seen_orders_container[{static_cast<uint32_t>(this->index.base()), this->GetIndexOfOrder(o)}];
 	};
+
+	/* Returning from an executed schedule is modelled when the prediction
+	 * advances from the last order of the list back to its first one, which is
+	 * exactly where the runtime calls ReturnFromExecuteSchedule. Track the
+	 * index the current position was advanced from. */
+	const VehicleOrderID last_index = this->GetNumOrders() - 1;
+	VehicleOrderID prev_index = INVALID_VEH_ORDER_ID;
 
 	const Order *next = first;
 	if (first == nullptr) {
@@ -762,6 +772,7 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 			/* GetNext never returns nullptr if there is a valid station in the list.
 			 * As the given "next" is already valid and a station in the list, we
 			 * don't have to check for nullptr here. */
+			prev_index = this->GetIndexOfOrder(next);
 			next = this->GetNext(next);
 			assert(next != nullptr);
 		}
@@ -769,6 +780,25 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 
 	do {
 		if (seen_order(next)) return CargoMaskedStationIDVector(cargo_mask); // Already handled
+
+		const VehicleOrderID cur_index = this->GetIndexOfOrder(next);
+
+		/* The walk advanced from the last order back to the first one: at
+		 * runtime the vehicle returns to its primary order list here
+		 * (ReturnFromExecuteSchedule) and resumes at the remembered position,
+		 * so predict the primary's next stop instead of looping this list. */
+		if (in_target && prev_index != INVALID_VEH_ORDER_ID && cur_index == 0 && prev_index == last_index) {
+			OrderList *primary = OrderList::GetIfValid(v->primary_order);
+			if (primary != nullptr && primary != this && primary->GetNumOrders() > 0) {
+				const Order *resume = primary->GetOrderAt(v->primary_order_index);
+				if (resume != nullptr && !seen_order(resume)) {
+					CargoMaskedStationIDVector st = primary->GetNextStoppingStation(v, cargo_mask, resume, hops + 1);
+					if (!st.station.empty()) return st;
+				}
+			}
+			/* The return could not be modelled: fall through and keep walking
+			 * this list like a plain cyclic list. */
+		}
 
 		/* An execute-schedule order makes the vehicle jump to the target list
 		 * and stop at its first station, so predict inside the target instead
@@ -789,7 +819,7 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 				}
 				if (!seen_order(start)) {
 					seen_order(next) = true;
-					CargoMaskedStationIDVector st = target->GetNextStoppingStation(v, cargo_mask, start, hops + 1);
+					CargoMaskedStationIDVector st = target->GetNextStoppingStation(v, cargo_mask, start, hops + 1, true);
 					if (!st.station.empty()) return st;
 					/* The target list has no stops of its own: the vehicle passes
 					 * through it and resumes this list, so skip the order. */
@@ -819,9 +849,9 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 			} else if (skip_to == nullptr || skip_to == first || seen_order(skip_to)) {
 				next = (advance == first) ? nullptr : advance;
 			} else {
-				CargoMaskedStationIDVector st1 = this->GetNextStoppingStation(v, cargo_mask, skip_to, hops);
+				CargoMaskedStationIDVector st1 = this->GetNextStoppingStation(v, cargo_mask, skip_to, hops, in_target);
 				cargo_mask &= st1.cargo_mask;
-				CargoMaskedStationIDVector st2 = this->GetNextStoppingStation(v, cargo_mask, advance, hops);
+				CargoMaskedStationIDVector st2 = this->GetNextStoppingStation(v, cargo_mask, advance, hops, in_target);
 				st1.cargo_mask &= st2.cargo_mask;
 				st1.station.insert(st1.station.end(), st2.station.begin(), st2.station.end());
 				return st1;
@@ -843,6 +873,9 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 			});
 			if (invalid) return CargoMaskedStationIDVector(cargo_mask);
 		}
+
+		/* The next iteration advances from the position we are on now. */
+		prev_index = cur_index;
 	} while (next->IsType(OT_GOTO_DEPOT) || next->IsSlotCounterOrder() || next->IsType(OT_DUMMY) || next->IsType(OT_LABEL) || next->IsExecuteScheduleOrder()
 			|| (next->IsBaseStationOrder() && next->GetDestination() == v->last_station_visited));
 
