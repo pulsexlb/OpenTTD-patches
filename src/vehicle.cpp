@@ -3890,6 +3890,11 @@ static bool ShouldVehicleContinueWaiting(Vehicle *v)
 	if (v->cur_implicit_order_index < v->GetNumOrders() && v->GetOrder(v->cur_implicit_order_index)->IsType(OT_IMPLICIT)) return false;
 
 	/* If conditional orders lead back to this order, just keep waiting without leaving the order */
+	/* Advancing past the end of the list is a normal pass-end wrap, not a
+	 * conditional self-loop: without this check a one-order list would always
+	 * be treated as "the next order leads back here" and the vehicle would
+	 * never depart (and, while executing a schedule, never return home). */
+	if (v->cur_implicit_order_index + 1 >= v->GetNumOrders()) return false;
 	bool loop = AdvanceOrderIndexDeferred(v, v->cur_implicit_order_index + 1) == v->cur_implicit_order_index;
 	FlushAdvanceOrderIndexDeferred(v, loop);
 	if (loop) v->vehicle_flags.Set(VehicleFlag::ConditionalOrderWait);
