@@ -3467,7 +3467,10 @@ void Vehicle::DeleteUnreachedImplicitOrders()
  */
 static void VehicleIncreaseStats(const Vehicle *front)
 {
-	for (const Vehicle *v = front; v != nullptr; v = v->Next()) {
+	/* The primary may sit mid-chain or at the physical tail (decoupled parts
+	 * driving away reversed), so start at the physical head to cover the
+	 * whole consist. */
+	for (const Vehicle *v = front->First(); v != nullptr; v = v->Next()) {
 		StationID last_loading_station = front->vehicle_flags.Test(VehicleFlag::LastLoadStationSeparate) ? v->last_loading_station : front->last_loading_station;
 		StateTicks loading_tick = front->vehicle_flags.Test(VehicleFlag::LastLoadStationSeparate) ? v->last_loading_tick : front->last_loading_tick;
 		if (v->refit_cap > 0 &&
@@ -3495,6 +3498,9 @@ static void VehicleIncreaseStats(const Vehicle *front)
  */
 void Vehicle::BeginLoading()
 {
+	fprintf(stderr, "BeginLoad: veh=%u ordtype=%d dest=%u visited=%u\n",
+			this->index.base(), static_cast<int>(this->current_order.GetType()),
+			this->current_order.GetDestination().value, this->last_station_visited.base());
 	if (this->type == VehicleType::Train) {
 #ifdef WITH_ASSERT
 		[[maybe_unused]] TileIndex station_tile = Train::From(this)->GetStationLoadingVehicle()->tile;
@@ -3654,7 +3660,9 @@ CargoTypes Vehicle::GetLastLoadingStationValidCargoMask() const
 		return (this->last_loading_station != StationID::Invalid()) ? ALL_CARGOTYPES : CargoTypes{};
 	} else {
 		CargoTypes cargo_mask{};
-		for (const Vehicle *u = this; u != nullptr; u = u->Next()) {
+		/* The primary may sit mid-chain or at the physical tail, so start at
+		 * the physical head to cover the whole consist. */
+		for (const Vehicle *u = this->First(); u != nullptr; u = u->Next()) {
 			if (u->cargo_type < NUM_CARGO && u->last_loading_station != StationID::Invalid()) {
 				cargo_mask.Set(u->cargo_type);
 			}
@@ -3681,7 +3689,9 @@ void Vehicle::LeaveStation()
 
 	if (this->type == VehicleType::Train) {
 		station_tile = Train::From(this)->GetStationLoadingVehicle()->tile;
-		for (Train *v = Train::From(this); v != nullptr; v = v->Next()) {
+		/* Start at the physical head: the primary may sit mid-chain or at the
+		 * physical tail of a decoupled part. */
+		for (Train *v = Train::From(this)->First(); v != nullptr; v = v->Next()) {
 			v->flags.Reset({VehicleRailFlag::BeyondPlatformEnd, VehicleRailFlag::NotYetInPlatform});
 			v->vehicle_flags.Reset(VehicleFlag::CargoUnloading);
 		}

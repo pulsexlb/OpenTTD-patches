@@ -718,6 +718,11 @@ bool VehicleCargoList::Stage(bool accepted, StationID current_station, std::span
 			if (transfer_cargodist_mode && action == MoveToAction::Keep) {
 				handle_forced_transfer();
 			}
+			fprintf(stderr, "Stage: cur=%u src=%u next=%u restr=%d acc=%d act=%d nst=",
+					current_station.base(), cp->first_station.base(), cargo_next.base(),
+					restricted ? 1 : 0, accepted ? 1 : 0, static_cast<int>(action));
+			for (StationID st_id : next_station) fprintf(stderr, "%u ", st_id.base());
+			fprintf(stderr, "\n");
 		}
 		Money share;
 		switch (action) {
