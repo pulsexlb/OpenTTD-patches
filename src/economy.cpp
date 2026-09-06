@@ -1545,29 +1545,15 @@ void PrepareUnload(Vehicle *front_v)
 	front_v->cargo_payment = CargoPayment::Create(front_v);
 
 	CargoStationIDVectorSet next_station = front_v->GetNextStoppingStation();
-	fprintf(stderr, "PUGate: front=%u orders=%p ordtype=%d frontunld=%d visited=%u\n",
-			front_v->index.base(), (void *)front_v->orders,
-			static_cast<int>(front_v->current_order.GetType()),
-			static_cast<int>(front_v->current_order.GetUnloadType()),
-			front_v->last_station_visited.base());
 	if (front_v->orders == nullptr || (front_v->current_order.GetUnloadType() != OrderUnloadType::NoUnload)) {
 		Station *st = Station::Get(front_v->last_station_visited);
 		/* The primary may sit mid-chain or at the physical tail (decoupled parts
 		 * driving away reversed), so start at the physical head to cover the
 		 * whole consist. */
 		for (Vehicle *v = front_v->First(); v != nullptr; v = v->Next()) {
-			fprintf(stderr, "PULoop: veh=%u prim=%u unld=%d cap=%u cnt=%u\n",
-					v->index.base(), v->Primary()->index.base(),
-					static_cast<int>(GetUnloadType(v)), v->cargo_cap, v->cargo.TotalCount());
 			if (GetUnloadType(v) == OrderUnloadType::NoUnload) continue;
 			const GoodsEntry *ge = &st->goods[v->cargo_type];
 			if (v->cargo_cap > 0 && v->cargo.TotalCount() > 0) {
-				fprintf(stderr, "PrepareUnload: veh=%u ord=%d unld=%d cargo=%d cnt=%u acc=%d next=",
-						v->index.base(), static_cast<int>(v->Primary()->current_order.GetType()),
-						static_cast<int>(GetUnloadType(v)), static_cast<int>(v->cargo_type),
-						v->cargo.TotalCount(), ge->status.Test(GoodsEntry::State::Acceptance) ? 1 : 0);
-				for (StationID st_id : next_station.Get(v->cargo_type)) fprintf(stderr, "%u ", st_id.base());
-				fprintf(stderr, "\n");
 				v->cargo.Stage(
 						ge->status.Test(GoodsEntry::State::Acceptance),
 						front_v->last_station_visited, next_station.Get(v->cargo_type),

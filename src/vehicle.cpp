@@ -3498,9 +3498,6 @@ static void VehicleIncreaseStats(const Vehicle *front)
  */
 void Vehicle::BeginLoading()
 {
-	fprintf(stderr, "BeginLoad: veh=%u ordtype=%d dest=%u visited=%u\n",
-			this->index.base(), static_cast<int>(this->current_order.GetType()),
-			this->current_order.GetDestination().value, this->last_station_visited.base());
 	if (this->type == VehicleType::Train) {
 #ifdef WITH_ASSERT
 		[[maybe_unused]] TileIndex station_tile = Train::From(this)->GetStationLoadingVehicle()->tile;
@@ -3644,7 +3641,9 @@ void Vehicle::BeginLoading()
  */
 void Vehicle::CancelReservation(StationID next, Station *st)
 {
-	for (Vehicle *v = this; v != nullptr; v = v->next) {
+	/* Start at the physical head: the primary may sit mid-chain or at the
+	 * physical tail of a decoupled part. */
+	for (Vehicle *v = this->First(); v != nullptr; v = v->next) {
 		VehicleCargoList &cargo = v->cargo;
 		if (cargo.ActionCount(VehicleCargoList::MoveToAction::Load) > 0) {
 			Debug(misc, 1, "cancelling cargo reservation");
@@ -3737,7 +3736,9 @@ void Vehicle::LeaveStation()
 			/* NB: this is saved here as we overwrite it on the first iteration of the loop below */
 			StationID head_last_loading_station = this->last_loading_station;
 			StateTicks head_last_loading_tick = this->last_loading_tick;
-			for (Vehicle *u = this; u != nullptr; u = u->Next()) {
+			/* Start at the physical head: the primary may sit mid-chain or at
+			 * the physical tail of a decoupled part. */
+			for (Vehicle *u = this->First(); u != nullptr; u = u->Next()) {
 				StationID last_loading_station = this->vehicle_flags.Test(VehicleFlag::LastLoadStationSeparate) ? u->last_loading_station : head_last_loading_station;
 				StateTicks last_loading_tick = this->vehicle_flags.Test(VehicleFlag::LastLoadStationSeparate) ? u->last_loading_tick : head_last_loading_tick;
 				if (u->cargo_type < NUM_CARGO && cargoes_can_load_unload.Test(u->cargo_type)) {

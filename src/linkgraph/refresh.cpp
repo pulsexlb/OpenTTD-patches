@@ -87,8 +87,12 @@ LinkRefresher::LinkRefresher(Vehicle *vehicle, HopSet *seen_hops, bool allow_mer
 	vehicle(vehicle), seen_hops(seen_hops), cargo(INVALID_CARGO), allow_merge(allow_merge),
 	is_full_loading(is_full_loading), cargo_mask(cargo_mask), walk_orders(vehicle->orders)
 {
-	/* Assemble list of capacities and set last loading stations to 0. */
-	for (Vehicle *v = this->vehicle; v != nullptr; v = v->Next()) {
+	/* Assemble list of capacities and set last loading stations to 0.
+	 * The primary may sit mid-chain or at the physical tail (decoupled parts
+	 * driving away reversed), so start at the physical head to cover the
+	 * whole consist; otherwise the capacities stay empty and RefreshStats
+	 * would skip every cargo. */
+	for (Vehicle *v = this->vehicle->First(); v != nullptr; v = v->Next()) {
 		this->refit_capacities.push_back(RefitDesc(v->cargo_type, v->cargo_cap, v->refit_cap));
 		if (v->refit_cap > 0) {
 			assert(v->cargo_type < NUM_CARGO);
@@ -107,7 +111,8 @@ bool LinkRefresher::HandleRefit(CargoType refit_cargo)
 	this->cargo = refit_cargo;
 	RefitList::iterator refit_it = this->refit_capacities.begin();
 	bool any_refit = false;
-	for (Vehicle *v = this->vehicle; v != nullptr; v = v->Next()) {
+	/* See the constructor: cover the whole physical consist. */
+	for (Vehicle *v = this->vehicle->First(); v != nullptr; v = v->Next()) {
 		const Engine *e = Engine::Get(v->engine_type);
 		if (!e->info.refit_mask.Test(this->cargo)) {
 			++refit_it;
