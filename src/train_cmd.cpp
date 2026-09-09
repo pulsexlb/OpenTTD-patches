@@ -3557,7 +3557,15 @@ static void ReverseTrainDirection(Train *consist, bool no_swap = false)
 	}
 
 	/* Clear path reservation in front if train is not stuck. */
-	if (!consist->flags.Test(VehicleRailFlag::Stuck) && !no_near_end_unreserve && !no_far_end_unreserve) {
+	if (no_swap) {
+		/* A decoupled part is flipped to face away from its partner, so the
+		 * reservation ahead of it still belongs to the partner part and must
+		 * not be released: with no signal in front of the station the walk
+		 * would follow the platform past the partner and eat that reservation.
+		 * Drop only our own lookahead and let both parts re-reserve in their
+		 * new directions. */
+		consist->lookahead.reset();
+	} else if (!consist->flags.Test(VehicleRailFlag::Stuck) && !no_near_end_unreserve && !no_far_end_unreserve) {
 		FreeTrainTrackReservation(consist);
 	} else {
 		consist->lookahead.reset();
