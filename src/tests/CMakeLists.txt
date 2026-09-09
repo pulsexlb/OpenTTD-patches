@@ -24,5 +24,6 @@ add_test_files(
     test_script_admin.cpp
     test_window_desc.cpp
     tilearea.cpp
+    train_decouple.cpp
     utf8.cpp
 )

@@ -113,11 +113,41 @@ void CheckBreakdownFlags(Train *v);
 void GetTrainSpriteSize(EngineID engine, uint &width, uint &height, int &xoffs, int &yoffs, EngineImageType image_type);
 bool TrainFitStation(const Train *v);
 bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys);
+
+/** First rule which rejects a train as a coupling candidate. */
+enum class CoupleCandidateResult : uint8_t {
+	Valid,
+	NotCoupleOrder,
+	NotWaiting,
+	Claimed,
+	Crashed,
+	Stopped,
+	Owner,
+	Load,
+	Cargo,
+	UnitCount,
+	Slot,
+	Station,
+	Platform,
+	Arrangement,
+};
+
+CoupleCandidateResult GetCoupleCandidateResult(const Train *moving, const Order &order,
+		Train *waiting_first, TileIndex contact_tile, bool respect_claim = false, uint32_t claim_cost = 0);
 Train *ValidateCoupleCandidate(const Train *moving, Train *waiting_first, TileIndex contact_tile,
 		bool respect_claim = false, uint32_t claim_cost = 0);
 Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir td,
 		bool respect_claim = false, uint32_t claim_cost = 0);
 void ClaimCoupleTarget(Train *moving, Train *carrier, uint32_t claim_cost);
+const Train *GetCoupleClaimant(const Train *carrier);
+Train *GetDecoupleVehicleForCount(Train *v, uint num_keep);
+
+/** An order value and its actual physical split boundary (legacy order units). */
+struct DecoupleCut {
+	uint8_t num_keep;
+	const Train *vehicle;
+};
+std::vector<DecoupleCut> GetDecoupleCuts(Train *v);
 
 bool TrainOnCrossing(TileIndex tile);
 void NormalizeTrainVehInDepot(const Train *u);
@@ -226,6 +256,7 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	void GetImage(Direction direction, EngineImageType image_type, VehicleSpriteSeq *result) const override;
 	int GetDisplaySpeed() const override { return this->gcache.last_speed; }
 	int GetDisplayMaxSpeed() const override { return this->vcache.cached_max_speed; }
+	uint16_t GetDisplayPower() const { return this->GetPower() + this->GetPoweredPartPower(); }
 	Money GetRunningCost() const override;
 	int GetCursorImageOffset() const;
 	int GetDisplayImageWidth(Point *offset = nullptr) const;

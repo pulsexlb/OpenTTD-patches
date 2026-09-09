@@ -942,6 +942,7 @@ STR_NEWS_AIRCRAFT_DEST_TOO_FAR                                  :{WHITE}{VEHICLE
 
 STR_NEWS_ORDER_REFIT_FAILED                                     :{WHITE}{VEHICLE} stopped because an ordered refit failed
 STR_NEWS_ORDER_DECOUPLE_FAILED                                  :{WHITE}Failed to decouple {VEHICLE}
+STR_NEWS_ORDER_DECOUPLE_FAILED_REASON                           :{WHITE}Failed to decouple {VEHICLE}: {STRING}
 STR_NEWS_ORDER_COUPLE_FAILED                                    :{WHITE}Failed to couple {VEHICLE} and {VEHICLE}
 STR_VEHICLE_STATUS_HEADING_FOR_COUPLE_VEL                       :{LTBLUE}Heading for couple, {VELOCITY}
 STR_VEHICLE_STATUS_DECOUPLING                                    :{LTBLUE}Decoupling
@@ -989,6 +990,34 @@ STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :(Keep orders wi
 STR_ORDER_DECOUPLE_LOAD_AND_WAIT                               :(Load and wait for couple)
 STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :(Wait for couple)
 STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :(Use schedule {RAW_STRING})
+STR_COUPLE_DIAGNOSTIC_BUTTON                                   :{BLACK}Diagnostics
+STR_COUPLE_DIAGNOSTIC_TOOLTIP                                  :{BLACK}Show the current coupling target, claim and candidate rejection reasons
+STR_COUPLE_DIAGNOSTIC_CAPTION                                  :{WHITE}Coupling diagnostics
+STR_COUPLE_DIAGNOSTIC_TARGET                                   :Current target: {VEHICLE}
+STR_COUPLE_DIAGNOSTIC_CLAIM_SELF                               :Claim: reserved for this train
+STR_COUPLE_DIAGNOSTIC_CLAIM_OTHER                              :Claim: reserved for {VEHICLE}
+STR_COUPLE_DIAGNOSTIC_CLAIM_NONE                               :Claim: none
+STR_COUPLE_DIAGNOSTIC_PATH_UNKNOWN                             :Matching trains exist; path status is unknown
+STR_COUPLE_DIAGNOSTIC_NO_CANDIDATE                             :No matching train was found
+STR_COUPLE_DIAGNOSTIC_REJECTION                                :{STRING}: {COMMA}
+STR_COUPLE_DIAGNOSTIC_NOT_WAITING                              :Not waiting for coupling
+STR_COUPLE_DIAGNOSTIC_CLAIMED                                  :Reserved by another train
+STR_COUPLE_DIAGNOSTIC_CRASHED                                  :Crashed
+STR_COUPLE_DIAGNOSTIC_STOPPED                                  :Manually stopped
+STR_COUPLE_DIAGNOSTIC_OWNER                                    :Ownership does not allow coupling
+STR_COUPLE_DIAGNOSTIC_LOAD                                     :Empty/full-load filter does not match
+STR_COUPLE_DIAGNOSTIC_CARGO                                    :Cargo type does not match
+STR_COUPLE_DIAGNOSTIC_UNIT_COUNT                               :Unit count does not match
+STR_COUPLE_DIAGNOSTIC_SLOT                                     :Slot does not match
+STR_COUPLE_DIAGNOSTIC_STATION                                  :Station does not match
+STR_COUPLE_DIAGNOSTIC_PLATFORM                                 :Train does not fit on one station platform
+STR_COUPLE_DIAGNOSTIC_ARRANGEMENT                              :Consist or NewGRF compatibility check failed
+STR_COUPLE_DIAGNOSTIC_NOT_ACTIVE                               :Selected order is not currently executing; showing its candidate filters only
+STR_ORDERS_DECOUPLE_PREVIEW_TOOLTIP                            :{BLACK}Click a white marker to select the split, or click the retained count to enter it manually. Ctrl+click restores automatic decoupling. Cargo stays with its vehicles.
+STR_DECOUPLE_DIAGNOSTIC_PLATFORM                              :the train is not fully contained by one station platform
+STR_DECOUPLE_DIAGNOSTIC_TOO_SHORT                             :the train has fewer than two separable vehicle units
+STR_DECOUPLE_DIAGNOSTIC_CUT                                   :the selected cut would split an articulated or multiheaded unit
+STR_DECOUPLE_DIAGNOSTIC_ARRANGEMENT                           :a consist or NewGRF compatibility check failed
 STR_NEWS_VEHICLE_AUTORENEW_FAILED                               :{WHITE}Autorenew failed on {VEHICLE}{}{STRING1}
 
 STR_NEWS_NEW_VEHICLE_NOW_AVAILABLE                              :{BIG_FONT}{BLACK}New {STRING} now available!
@@ -6199,3 +6228,5 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Badge Fi
 STR_BADGE_CONFIG_PREVIEW                                        :Preview Image
 STR_BADGE_CONFIG_NAME                                           :Name
 STR_BADGE_FILTER_ANY_LABEL                                      :Any {STRING}
+
+STR_DECOUPLE_PREVIEW_COUNT                                    :Retain {COMMA} units (click to enter; 0 = automatic).

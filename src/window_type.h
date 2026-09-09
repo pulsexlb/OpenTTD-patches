@@ -227,6 +227,8 @@ enum class WindowClass : uint16_t {
 	 */
 	VehicleDetails,
 
+	/** Visual editor for a train decoupling order; window number is #VehicleID. */
+
 	/**
 	 * Vehicle refit; %Window numbers:
 	 *   - #VehicleID = #VehicleRefitWidgets
