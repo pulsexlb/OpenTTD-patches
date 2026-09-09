@@ -2852,6 +2852,16 @@ void Train::UpdateDeltaXY()
  */
 static void MarkTrainAsStuck(Train *consist, bool waiting_restriction = false)
 {
+	/* A consist without any powered vehicle (an engine-less decoupled part, or
+	 * free wagons) cannot move on its own and never owns a path reservation
+	 * (the track follower refuses to follow with no compatible rail type), so
+	 * it would be reported as stuck forever although it is just waiting for a
+	 * couple. Never mark such a consist. */
+	if (consist->compatible_railtypes.None()) {
+		consist->flags.Reset(VehicleRailFlag::Stuck);
+		return;
+	}
+
 	if (!consist->flags.Test(VehicleRailFlag::Stuck)) {
 		/* It is the first time the problem occurred, set the "train stuck" flag. */
 		consist->flags.Set(VehicleRailFlag::Stuck);
