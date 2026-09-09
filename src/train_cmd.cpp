@@ -3486,11 +3486,16 @@ static bool IsWholeTrainInsideDepot(const Train *v)
 	return true;
 }
 
+static void ReverseTrainForCouple(Train *v);
+
 /**
  * Turn a train around.
  * @param consist %Train to turn around.
+ * @param no_swap When flipping, reverse in place without swapping vehicle
+ *                positions (see ReverseTrainNoSwapVehicles) instead of the
+ *                vanilla full swap.
  */
-static void ReverseTrainDirection(Train *consist)
+static void ReverseTrainDirection(Train *consist, bool no_swap = false)
 {
 	Train *first = consist->First();
 	Train *moving_front = consist->GetMovingFront();
@@ -3597,6 +3602,12 @@ static void ReverseTrainDirection(Train *consist)
 		}
 		/* We may have entered a depot and stopped driving backwards. */
 		std::swap(moving_front, moving_back);
+	} else if (no_swap) {
+		/* The train will flip in place without swapping vehicle positions. */
+		ReverseTrainForCouple(first);
+		/* The flip reversed the chain order, so the chain head moved to the
+		 * former tail; re-anchor before updating the consist from the head. */
+		first = first->First();
 	} else {
 		/* The train will flip. */
 		AdvanceWagonsBeforeSwap(moving_front);
@@ -3620,7 +3631,7 @@ static void ReverseTrainDirection(Train *consist)
 	first->ConsistChanged(CCF_TRACK);
 
 	/* update all images */
-	for (Train *u = consist; u != nullptr; u = u->Next()) u->UpdateViewport(false, false);
+	for (Train *u = first; u != nullptr; u = u->Next()) u->UpdateViewport(false, false);
 
 	/* update crossing we were approaching */
 	if (crossing != INVALID_TILE) UpdateLevelCrossing(crossing);
@@ -6963,7 +6974,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * mid-station-entry is only valid for an actual trailer part. */
 		bool decoupled = (u != nullptr && u != consist);
 		if (trailer == consist) {
-			if (decoupled) ReverseTrainDirection(consist);
+			if (decoupled) ReverseTrainDirection(consist, true);
 			consist = consist->Primary();
 		}
 		consist->flags.Set(VehicleRailFlag::JustDecoupled);
@@ -6972,7 +6983,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * forbid reversing until it leaves the station. */
 		if (u != nullptr && u != consist) {
 			if (trailer == u) {
-				ReverseTrainDirection(u);
+				ReverseTrainDirection(u, true);
 				u = u->Primary();
 			}
 			u->flags.Set(VehicleRailFlag::JustDecoupled);
