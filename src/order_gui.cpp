@@ -610,21 +610,33 @@ static const StringID _order_decouple_orders_drowdown[] = {
 	 * retired ODOF_INHERIT_ORDERS and is not selectable). */
 	STR_ORDERS_DECOUPLE_KEEP_ORDERS,          // 0
 	STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD,  // 1
+	STR_ORDERS_DECOUPLE_LOAD_AND_WAIT,        // 2
 	STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE,      // 3
-	STR_ORDERS_DECOUPLE_LOAD_AND_WAIT,        // 4
-	STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE,     // 5
+	STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE,     // 4
 };
 
 /* Dropdown index -> OrderDecoupleOrdersFlags; the dropdown skips the retired value 2. */
 static const OrderDecoupleOrdersFlags _order_decouple_orders_drowdown_flags[] = {
 	ODOF_KEEP_ORDERS,
 	ODOF_KEEP_ORDERS_NO_LOAD,
-	ODOF_WAIT_FOR_COUPLE,
 	ODOF_LOAD_AND_WAIT,
+	ODOF_WAIT_FOR_COUPLE,
 	ODOF_EXECUTE_SCHEDULE,
 };
 
 static_assert(lengthof(_order_decouple_orders_drowdown) == lengthof(_order_decouple_orders_drowdown_flags));
+
+/**
+ * Get the dropdown index of a decouple orders flag, so the current selection
+ * can be marked when the dropdown is opened.
+ */
+static int DecoupleOrdersDropdownIndex(OrderDecoupleOrdersFlags flag)
+{
+	for (uint i = 0; i < lengthof(_order_decouple_orders_drowdown_flags); i++) {
+		if (_order_decouple_orders_drowdown_flags[i] == flag) return i;
+	}
+	return 0; // Unreachable: the order accessors clamp to a valid flag.
+}
 
 static const StringID _order_manage_list_dropdown[] = {
 	STR_ORDER_REVERSE_ORDER_LIST,
@@ -4146,7 +4158,7 @@ public:
 			case WID_O_COUPLE_VALUE: {
 				const Order *order = OrderAt(this->OrderGetSel());
 				this->query_text_widget = widget;
-				ShowQueryString(GetString(STR_JUST_INT, order->GetNumCouple()), STR_ORDER_DECOUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
+				ShowQueryString(GetString(STR_JUST_INT, order->GetNumCouple()), STR_ORDER_COUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
 				break;
 			}
 
@@ -4173,22 +4185,18 @@ public:
 			}
 
 			case WID_O_ORDERS_FIRST:
-				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
-					this->OrderClick_OrdersFirst(0);
-				} else {
-					this->decouple_schedule_part = -1;
-					ShowDropDownMenu(this, _order_decouple_orders_drowdown, 0, WID_O_ORDERS_FIRST, 0, 0);
+			case WID_O_ORDERS_SECOND: {
+				/* Clicking anywhere opens the dropdown; the selection is only changed there. */
+				this->decouple_schedule_part = -1;
+				const Order *order = OrderAt(this->OrderGetSel());
+				int selected = 0;
+				if (order != nullptr && order->IsType(OT_DECOUPLE)) {
+					OrderDecoupleOrdersFlags flag = (widget == WID_O_ORDERS_FIRST) ? order->GetDecoupleFirstOrdersType() : order->GetDecoupleSecondOrdersType();
+					selected = DecoupleOrdersDropdownIndex(flag);
 				}
+				ShowDropDownMenu(this, _order_decouple_orders_drowdown, selected, widget, 0, 0);
 				break;
-
-			case WID_O_ORDERS_SECOND:
-				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
-					this->OrderClick_OrdersSecond(0);
-				} else {
-					this->decouple_schedule_part = -1;
-					ShowDropDownMenu(this, _order_decouple_orders_drowdown, 0, WID_O_ORDERS_SECOND, 0, 0);
-				}
-				break;
+			}
 		}
 	}
 
@@ -5070,23 +5078,23 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 			NWidget(WWT_PANEL, Colours::Grey), SetFill(1, 0), SetResize(1, 0), EndContainer(),
 			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
 				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_COUPLE_LOAD), SetMinimalSize(112, 12), SetFill(1, 0),
-														SetStringTip(STR_ORDER_TOGGLE_COUPLE_LOAD, STR_ORDER_CONDITIONAL_VARIABLE_TOOLTIP), SetResize(1, 0),
+														SetStringTip(STR_ORDER_TOGGLE_COUPLE_LOAD, STR_ORDER_COUPLE_LOAD_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_TEXTBTN, Colours::Grey, WID_O_COUPLE_CARGO), SetMinimalSize(112, 12), SetFill(1, 0),
-												SetStringTip(STR_ORDER_CARGO_TYPE_BUTTON, STR_ORDER_CONDITIONAL_COMPARATOR_TOOLTIP), SetResize(1, 0),
+												SetStringTip(STR_ORDER_CARGO_TYPE_BUTTON, STR_ORDER_COUPLE_CARGO_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_COUPLE_SLOT), SetMinimalSize(112, 12), SetFill(1, 0),
 												SetStringTip(STR_ORDER_COUPLE_SLOT_BUTTON, STR_ORDER_COUPLE_SLOT_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_VALUE), SetMinimalSize(112, 12), SetFill(1, 0),
-														SetStringTip(STR_ORDERS_COUPLE_VALUE_BUTTON, STR_ORDER_CONDITIONAL_VALUE_TOOLTIP), SetResize(1, 0),
+														SetStringTip(STR_ORDERS_COUPLE_VALUE_BUTTON, STR_ORDER_COUPLE_VALUE_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_STATION), SetMinimalSize(112, 12), SetFill(1, 0),
 														SetStringTip(STR_ORDER_COUPLE_STATION_BUTTON, STR_ORDER_COUPLE_STATION_TOOLTIP), SetResize(1, 0),
 			EndContainer(),
 			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
 				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_ORDERS_FIRST), SetMinimalSize(124, 12), SetFill(1, 0),
-														SetStringTip(STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON, STR_ORDER_CONDITIONAL_VARIABLE_TOOLTIP), SetResize(1, 0),
+														SetStringTip(STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON, STR_ORDER_DECOUPLE_FIRST_ORDERS_TOOLTIP), SetResize(1, 0),
 				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_ORDERS_SECOND), SetMinimalSize(124, 12), SetFill(1, 0),
-														SetStringTip(STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON, STR_ORDER_CONDITIONAL_COMPARATOR_TOOLTIP), SetResize(1, 0),
+														SetStringTip(STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON, STR_ORDER_DECOUPLE_SECOND_ORDERS_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_DECOUPLE_VALUE), SetMinimalSize(124, 12), SetFill(1, 0),
-														SetStringTip(STR_ORDERS_DECOUPLE_VALUE_BUTTON, STR_ORDER_CONDITIONAL_VALUE_TOOLTIP), SetResize(1, 0),
+														SetStringTip(STR_ORDERS_DECOUPLE_VALUE_BUTTON, STR_ORDER_DECOUPLE_VALUE_TOOLTIP), SetResize(1, 0),
 			EndContainer(),
 		EndContainer(),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_SHARED),
