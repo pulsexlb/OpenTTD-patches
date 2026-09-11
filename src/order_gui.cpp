@@ -612,7 +612,8 @@ static const StringID _order_decouple_orders_drowdown[] = {
 	STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD,  // 1
 	STR_ORDERS_DECOUPLE_LOAD_AND_WAIT,        // 2
 	STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE,      // 3
-	STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE,     // 4
+	STR_ORDERS_DECOUPLE_LOAD_AND_SCHEDULE,    // 4
+	STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE,     // 5
 };
 
 /* Dropdown index -> OrderDecoupleOrdersFlags; the dropdown skips the retired value 2. */
@@ -621,6 +622,7 @@ static const OrderDecoupleOrdersFlags _order_decouple_orders_drowdown_flags[] = 
 	ODOF_KEEP_ORDERS_NO_LOAD,
 	ODOF_LOAD_AND_WAIT,
 	ODOF_WAIT_FOR_COUPLE,
+	ODOF_LOAD_AND_SCHEDULE,
 	ODOF_EXECUTE_SCHEDULE,
 };
 
@@ -1493,10 +1495,11 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 					case ODOF_KEEP_ORDERS_NO_LOAD: return GetString(STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD);
 					case ODOF_WAIT_FOR_COUPLE: return GetString(STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE);
 					case ODOF_LOAD_AND_WAIT: return GetString(STR_ORDER_DECOUPLE_LOAD_AND_WAIT);
-					case ODOF_EXECUTE_SCHEDULE: {
+					case ODOF_EXECUTE_SCHEDULE:
+					case ODOF_LOAD_AND_SCHEDULE: {
 						const OrderList *ol = OrderList::GetIfValid(schedule_id);
 						std::string name = (ol == nullptr || ol->GetName().empty()) ? GetString(STR_ORDER_LIST_DEFAULT_NAME, schedule_id.base() + 1) : ol->GetName();
-						return GetString(STR_ORDER_DECOUPLE_USE_SCHEDULE, name);
+						return GetString(type == ODOF_LOAD_AND_SCHEDULE ? STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE : STR_ORDER_DECOUPLE_USE_SCHEDULE, name);
 					}
 					default: NOT_REACHED();
 				}
@@ -1840,6 +1843,7 @@ private:
 	int current_value_plane = 0;
 	int current_mgmt_plane = 0;
 	int decouple_schedule_part = -1; ///< While the decouple schedule picker is open: 0 for the first train part, 1 for the second, -1 otherwise.
+	OrderDecoupleOrdersFlags decouple_schedule_orders_type = ODOF_EXECUTE_SCHEDULE; ///< Decouple orders type the open schedule picker applies.
 	OrderListID list_id = OrderListID::Invalid(); ///< Target list id when editing a standalone (player-created) order list.
 
 private:
@@ -2076,6 +2080,18 @@ private:
 	}
 
 	/**
+	 * Get the modify-order flag storing the pending schedule picker selection.
+	 * @param first true for the first part of the train, false for the second
+	 */
+	ModifyOrderFlags DecoupleScheduleMof(bool first) const
+	{
+		if (this->decouple_schedule_orders_type == ODOF_LOAD_AND_SCHEDULE) {
+			return first ? MOF_DECOUPLE_FIRST_LOAD_SCHEDULE : MOF_DECOUPLE_SECOND_LOAD_SCHEDULE;
+		}
+		return first ? MOF_DECOUPLE_FIRST_SCHEDULE : MOF_DECOUPLE_SECOND_SCHEDULE;
+	}
+
+	/**
 	 * Handle a selection in the decouple orders dropdown.
 	 * @param index the selected dropdown index
 	 * @param first true for the first part of the train, false for the second
@@ -2084,9 +2100,10 @@ private:
 	{
 		if (index < 0 || (uint)index >= lengthof(_order_decouple_orders_drowdown_flags)) return;
 		OrderDecoupleOrdersFlags flag = _order_decouple_orders_drowdown_flags[index];
-		if (flag == ODOF_EXECUTE_SCHEDULE) {
+		if (flag == ODOF_EXECUTE_SCHEDULE || flag == ODOF_LOAD_AND_SCHEDULE) {
 			/* Show the schedule picker for this part. */
 			this->decouple_schedule_part = first ? 0 : 1;
+			this->decouple_schedule_orders_type = flag;
 			this->ShowDecoupleScheduleDropdown(first ? WID_O_ORDERS_FIRST : WID_O_ORDERS_SECOND);
 			return;
 		}
@@ -4375,7 +4392,7 @@ public:
 			case WID_O_ORDERS_FIRST:
 				if (this->decouple_schedule_part == 0) {
 					this->decouple_schedule_part = -1;
-					this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_FIRST_SCHEDULE, index);
+					this->ModifyOrder(this->OrderGetSel(), this->DecoupleScheduleMof(true), index);
 					break;
 				}
 				this->OrderClick_OrdersFirst(index);
@@ -4384,7 +4401,7 @@ public:
 			case WID_O_ORDERS_SECOND:
 				if (this->decouple_schedule_part == 1) {
 					this->decouple_schedule_part = -1;
-					this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_SECOND_SCHEDULE, index);
+					this->ModifyOrder(this->OrderGetSel(), this->DecoupleScheduleMof(false), index);
 					break;
 				}
 				this->OrderClick_OrdersSecond(index);

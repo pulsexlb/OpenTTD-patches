@@ -6003,24 +6003,45 @@ static void CreateWaitForCoupleOrder(Train *v)
  * schedule: both its orders and its primary order list become the schedule.
  * @param part the train part
  * @param schedule_id the schedule to adopt
+ * @param load_at_station when valid, load/unload at this station on the first
+ *                       pass only before running the schedule
  * @return true when the schedule was adopted
  */
-static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id)
+static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id, StationID load_at_station = StationID::Invalid())
 {
 	OrderList *ol = OrderList::GetIfValid(schedule_id);
 	if (ol == nullptr || !ol->IsPlayerCreated()) return false;
 
-	/* Build a wrapper schedule holding a single execute-schedule order for the
-	 * target schedule; the part will run the target through the regular
+	/* Build a wrapper schedule holding an execute-schedule order for the target
+	 * schedule; the part will run the target through the regular
 	 * execute-schedule mechanism, restarting it after every full pass. The
 	 * wrapper is a vehicle-owned list, so it is freed automatically when the
 	 * part's orders are replaced or removed. */
+	std::vector<Order> wrapper_orders;
+
+	const bool load_before_schedule = load_at_station != StationID::Invalid();
+	if (load_before_schedule) {
+		Order station_order;
+		station_order.MakeGoToStation(load_at_station);
+		wrapper_orders.push_back(std::move(station_order));
+	}
+
+	/* Also the jump target of the unconditional jump appended below. */
+	VehicleOrderID execute_index = static_cast<VehicleOrderID>(wrapper_orders.size());
+
 	Order execute_order;
 	execute_order.MakeExecuteSchedule();
 	execute_order.SetDestination(ol->index);
-
-	std::vector<Order> wrapper_orders;
 	wrapper_orders.push_back(std::move(execute_order));
+
+	if (load_before_schedule) {
+		/* Jump straight back to the execute-schedule order, so the station order
+		 * above is only run on the first pass. */
+		Order repeat_order;
+		repeat_order.MakeConditional(execute_index);
+		repeat_order.SetConditionVariable(OrderConditionVariable::Unconditionally);
+		wrapper_orders.push_back(std::move(repeat_order));
+	}
 
 	if (!OrderList::CanAllocateItem()) return false;
 
@@ -6097,6 +6118,12 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 			case ODOF_EXECUTE_SCHEDULE:
 				AdoptDecoupleSchedule(u, after_decouple_flags->GetDecoupleSecondScheduleID());
 				break;
+			case ODOF_LOAD_AND_SCHEDULE:
+				/* Load/unload at this station once, then run the schedule, skipping
+				 * the station order on all later passes. */
+				load_trains |= DECOUPLE_LOAD_SECOND;
+				AdoptDecoupleSchedule(u, after_decouple_flags->GetDecoupleSecondScheduleID(), v->last_station_visited);
+				break;
 			default: NOT_REACHED();
 		}
 		ProcessOrders(u);
@@ -6139,6 +6166,12 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 			break;
 		case ODOF_EXECUTE_SCHEDULE:
 			AdoptDecoupleSchedule(v, after_decouple_flags->GetDecoupleFirstScheduleID());
+			break;
+		case ODOF_LOAD_AND_SCHEDULE:
+			/* Load/unload at this station once, then run the schedule, skipping
+			 * the station order on all later passes. */
+			load_trains |= DECOUPLE_LOAD_FIRST;
+			AdoptDecoupleSchedule(v, after_decouple_flags->GetDecoupleFirstScheduleID(), v->last_station_visited);
 			break;
 		default: NOT_REACHED();
 	}

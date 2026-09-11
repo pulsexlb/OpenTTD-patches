@@ -958,8 +958,9 @@ STR_ORDER_DECOUPLE_SECOND_ORDERS_TOOLTIP                        :{BLACK}What the
 STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :Load and keep orders
 STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :Keep orders without loading
 STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :Wait for couple without loading
+STR_ORDERS_DECOUPLE_LOAD_AND_SCHEDULE                           :Load and use a schedule
 STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                               :Load and wait for couple
-STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :Use a schedule
+STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :Use a schedule without loading
 STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}Units couple
 STR_ORDER_COUPLE_SLOT_BUTTON                                   :{BLACK}Slot
 STR_ORDER_COUPLE_SLOT_TOOLTIP                                 :{BLACK}The trace restrict slot the train must couple with
@@ -995,6 +996,7 @@ STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :(Load and keep 
 STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :(Keep orders without loading)
 STR_ORDER_DECOUPLE_LOAD_AND_WAIT                                :(Load and wait for couple)
 STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :(Wait for couple without loading)
+STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE                            :(Load and use schedule {RAW_STRING})
 STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :(Use schedule {RAW_STRING})
 STR_NEWS_VEHICLE_AUTORENEW_FAILED                               :{WHITE}Autorenew failed on {VEHICLE}{}{STRING1}
 
