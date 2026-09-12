@@ -414,6 +414,12 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
 		Aircraft *u = Aircraft::Create(); // shadow
 		*ret = v;
 
+		/* Set the subtype and state before anything else uses them; UpdateDeltaXY() and the
+		 * position updates below depend on them being valid. */
+		v->subtype = (avi->subtype & AIR_CTOL ? AIR_AIRCRAFT : AIR_HELICOPTER);
+		v->state = AS_HANGAR;
+		u->subtype = AIR_SHADOW;
+
 		v->tile = tile;
 		v->dest_tile = TileIndex{};
 		v->next_trackdir = INVALID_TRACKDIR;
@@ -423,6 +429,11 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
 
 		v->owner = u->owner = _current_company;
 		v->SetNext(u);
+
+		v->UpdateDeltaXY();
+		u->UpdateDeltaXY();
+
+		v->next_pos = AircraftPosition{AP_DEFAULT, 0, 0};
 		v->UpdateNextTile(tile);
 
 		uint x = TileX(tile) * TILE_SIZE + 8;
@@ -468,17 +479,9 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
 		v->engine_type = e->index;
 		u->engine_type = e->index;
 
-		v->subtype = (avi->subtype & AIR_CTOL ? AIR_AIRCRAFT : AIR_HELICOPTER);
-		v->UpdateDeltaXY();
-
-		u->subtype = AIR_SHADOW;
-		u->UpdateDeltaXY();
-
 		v->reliability = e->reliability;
 		v->reliability_spd_dec = e->reliability_spd_dec;
 		v->max_age = e->GetLifeLengthInDays();
-
-		v->state = AS_HANGAR;
 
 		v->targetairport = GetStationIndex(tile);
 		v->SetServiceInterval(Company::Get(_current_company)->settings.vehicle.servint_aircraft);

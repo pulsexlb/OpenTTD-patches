@@ -175,9 +175,9 @@ DECLARE_ENUM_AS_ADDABLE(AircraftPos)
  * that an aircraft must reach calculated from its destination tile.
  */
 struct AircraftPosition {
-	AircraftPos pos;
-	int x;
-	int y;
+	AircraftPos pos = AP_DEFAULT;
+	int x = 0;
+	int y = 0;
 };
 
 struct AircraftPathChoice {
@@ -213,7 +213,7 @@ struct Aircraft final : public SpecializedVehicle<Aircraft, VehicleType::Aircraf
 	AircraftPathChoice path;       ///< Cached path choices
 	uint16_t crashed_counter;      ///< Timer for handling crash animations.
 	Trackdir trackdir;             ///< Current trackdir while aircraft is on land.
-	AircraftState state;           ///< Current aircraft state. @see AircraftState
+	AircraftState state = AS_HANGAR; ///< Current aircraft state. @see AircraftState
 	StationID targetairport;       ///< Airport to go to next.
 
 	Trackdir next_trackdir;        ///< Desired trackdir when rotating at airport, or entry trackdir to an airport while flying.
