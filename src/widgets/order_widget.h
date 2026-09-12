@@ -74,12 +74,17 @@ enum OrderWidgets : WidgetID {
 	WID_O_OCCUPANCY_LIST,            ///< Occupancy list panel.
 	WID_O_OCCUPANCY_TOGGLE,          ///< Toggle display of occupancy measures.
 	WID_O_DECOUPLE,                  ///< Decouple at station.
+	WID_O_SEL_DECOUPLE_VALUE,        ///< Numeric fallback for standalone schedules.
 	WID_O_DECOUPLE_VALUE,            ///< Select number of units for decoupling.
+	WID_O_SEL_DECOUPLE_PREVIEW,      ///< Show consist preview for a selected decouple order.
+	WID_O_DECOUPLE_PREVIEW,          ///< Click a coupling to change the retained count.
+	WID_O_DECOUPLE_SCROLLBAR,        ///< Scroll the decoupling consist preview.
 	WID_O_COUPLE_LOAD,               ///< Select couple load.
 	WID_O_COUPLE_CARGO,              ///< Select cargotype for coupling.
 	WID_O_COUPLE_SLOT,               ///< Select trace restrict slot for coupling.
 	WID_O_COUPLE_VALUE,              ///< Select number of units for coupling.
 	WID_O_COUPLE_STATION,            ///< Select the station to couple at.
+	WID_O_COUPLE_DIAGNOSTICS,        ///< Show coupling target and candidate diagnostics.
 	WID_O_ORDERS_FIRST,              ///< Select orders for first part of decoupled train.
 	WID_O_ORDERS_SECOND,             ///< Select orders for second part of decoupled train.
 };

@@ -5835,17 +5835,13 @@ static uint GetDecoupleVehicleAuto(Train *v)
 /**
  * Find the vehicle where the consist should be split.
  */
-static Train *GetDecoupleVehicle(Train *v)
+Train *GetDecoupleVehicleForCount(Train *v, uint num_decouple)
 {
-	/* Order data lives on the primary vehicle; the unit walk must start at the
-	 * physical chain head, which may be a different vehicle when the primary
-	 * sits mid-chain after a couple. */
-	Train *prim = v->Primary();
-	Order *decouple_order = prim->orders->GetOrderAt(prim->cur_implicit_order_index + 1);
-	uint num_decouple = decouple_order->GetNumDecouple();
 	if (num_decouple == 0) num_decouple = GetDecoupleVehicleAuto(v);
 	Train *head = v->First();
 	Train *ret = head->GetNextVehicle();
+	/* The editor can query single-unit consists, unlike the execution caller. */
+	if (ret == nullptr) return nullptr;
 	bool multihead_front = head->IsMultiheaded();
 
 	for (uint i = 1; i < num_decouple && ret->GetNextVehicle() != nullptr; i++) {
@@ -5858,6 +5854,27 @@ static Train *GetDecoupleVehicle(Train *v)
 	}
 	if (multihead_front) return nullptr;
 	return ret;
+}
+
+/** Enumerate representable cuts using exactly the execution order's counting rules. */
+std::vector<DecoupleCut> GetDecoupleCuts(Train *v)
+{
+	std::vector<DecoupleCut> cuts;
+	uint count = 1;
+	for (Train *next = v->First()->GetNextVehicle(); next != nullptr && count <= 127; next = next->GetNextVehicle(), count++) {
+		if (GetDecoupleVehicleForCount(v, count) == next) cuts.push_back({static_cast<uint8_t>(count), next});
+	}
+	return cuts;
+}
+
+static Train *GetDecoupleVehicle(Train *v)
+{
+	/* Order data lives on the primary vehicle; the unit walk must start at the
+	 * physical chain head, which may be a different vehicle when the primary
+	 * sits mid-chain after a couple. */
+	Train *prim = v->Primary();
+	Order *decouple_order = prim->orders->GetOrderAt(prim->cur_implicit_order_index + 1);
+	return GetDecoupleVehicleForCount(v, decouple_order->GetNumDecouple());
 }
 
 /**
@@ -6194,17 +6211,22 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
  *                             i.e. the decoupled part is the physical front.
  * @return The head of the decoupled part, or \c v if decoupling failed.
  */
-static Train *DecoupleTrain(Train *v, bool &consist_in_rear)
+static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_reason)
 {
 	consist_in_rear = false;
+	failure_reason = STR_NULL;
 	if (!CanDecouple(v)) {
+		failure_reason = !TrainFitStation(v) ? STR_DECOUPLE_DIAGNOSTIC_PLATFORM : STR_DECOUPLE_DIAGNOSTIC_TOO_SHORT;
 		Debug(desync, 1, "DecoupleTrain: veh={} CANNOT decouple tile=({},{})", v->index, TileX(v->tile), TileY(v->tile));
 		return v;
 	}
 
 	Train *u = GetDecoupleVehicle(v);
 	Debug(desync, 1, "DecoupleTrain: veh={} split u={} num={}", v->index, u != nullptr ? u->index.base() : -1, v->orders != nullptr ? v->orders->GetOrderAt(v->cur_implicit_order_index + 1)->GetNumDecouple() : -1);
-	if (u == nullptr) return v;
+	if (u == nullptr) {
+		failure_reason = STR_DECOUPLE_DIAGNOSTIC_CUT;
+		return v;
+	}
 
 	/* The physical chain head of the front part. The consist carrier may sit
 	 * mid-chain (engine-less head side), so all surgery is anchored at the
@@ -6217,6 +6239,7 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear)
 	PropagateLastLoadingStation(v);
 
 	if (!TryTrainDecouple(front_head, u)) {
+		failure_reason = STR_DECOUPLE_DIAGNOSTIC_ARRANGEMENT;
 		return v;
 	}
 
@@ -6390,6 +6413,11 @@ static Train *GetValidCoupleClaimant(const Train *carrier)
 	return claimant;
 }
 
+const Train *GetCoupleClaimant(const Train *carrier)
+{
+	return GetValidCoupleClaimant(carrier->Primary());
+}
+
 /**
  * Check whether a waiting consist is claimed by another approaching consist
  * whose claim the given challenger cannot beat. The best (cheapest path)
@@ -6440,24 +6468,32 @@ void ClaimCoupleTarget(Train *moving, Train *carrier, uint32_t claim_cost)
  * @param claim_cost path cost of the moving consist's route when selecting.
  * @return the contact-end vehicle of the waiting train, or nullptr if invalid.
  */
+CoupleCandidateResult GetCoupleCandidateResult(const Train *moving, const Order &order,
+		Train *rep, TileIndex contact_tile, bool respect_claim, uint32_t claim_cost)
+{
+	Train *carrier = rep->Primary();
+
+	if (!order.IsType(OT_GOTO_COUPLE)) return CoupleCandidateResult::NotCoupleOrder;
+	if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) return CoupleCandidateResult::NotWaiting;
+	if (respect_claim && CoupleClaimBlocks(carrier, moving, claim_cost)) return CoupleCandidateResult::Claimed;
+	if (carrier->vehstatus.Test(VehState::Crashed)) return CoupleCandidateResult::Crashed;
+	if (carrier->vehstatus.Test(VehState::Stopped)) return CoupleCandidateResult::Stopped;
+	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return CoupleCandidateResult::Owner;
+	if (!CoupleOrderLoadOk(order, rep)) return CoupleCandidateResult::Load;
+	if (!CoupleCargoOk(order, rep)) return CoupleCandidateResult::Cargo;
+	if (!CoupleNumOk(order, rep)) return CoupleCandidateResult::UnitCount;
+	if (!CoupleSlotOk(order, carrier)) return CoupleCandidateResult::Slot;
+	if (!CoupleStationOk(order, contact_tile)) return CoupleCandidateResult::Station;
+	if (!TrainFitStation(rep)) return CoupleCandidateResult::Platform;
+	if (!IsCoupleArrangementValid(const_cast<Train *>(moving), rep)) return CoupleCandidateResult::Arrangement;
+	return CoupleCandidateResult::Valid;
+}
+
 Train *ValidateCoupleCandidate(const Train *moving, Train *rep, TileIndex contact_tile,
 		bool respect_claim, uint32_t claim_cost)
 {
 	const Order &order = moving->Primary()->current_order;
-	Train *carrier = rep->Primary();
-
-	if (!order.IsType(OT_GOTO_COUPLE)) return nullptr;
-	if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
-	if (respect_claim && CoupleClaimBlocks(carrier, moving, claim_cost)) return nullptr;
-	if (carrier->vehstatus.Test(VehState::Stopped)) return nullptr;
-	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return nullptr;
-	if (!CoupleOrderLoadOk(order, rep)) return nullptr;
-	if (!CoupleCargoOk(order, rep)) return nullptr;
-	if (!CoupleNumOk(order, rep)) return nullptr;
-	if (!CoupleSlotOk(order, carrier)) return nullptr;
-	if (!CoupleStationOk(order, contact_tile)) return nullptr;
-	if (!TrainFitStation(rep)) return nullptr;
-	if (!IsCoupleArrangementValid(const_cast<Train *>(moving), rep)) return nullptr;
+	if (GetCoupleCandidateResult(moving, order, rep, contact_tile, respect_claim, claim_cost) != CoupleCandidateResult::Valid) return nullptr;
 
 	/* The waiting train's closest end to the contact point is met first. */
 	Train *first = rep;
@@ -6505,6 +6541,20 @@ bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 	MakeTrainBackup(original_src, v_phys);
 	MakeTrainBackup(original_dst, u_phys);
 
+	/* Callbacks evaluate a trial consist on the live vehicles. Chain backups
+	 * alone do not restore the user data and caches populated by that trial. */
+	struct TrialCache {
+		Train *vehicle;
+		NewGRFCache grf_cache;
+		uint8_t user_def_data;
+		uint8_t cached_veh_flags;
+	};
+	std::vector<TrialCache> caches;
+	for (const TrainList *chain : {&original_src, &original_dst}) {
+		for (Train *t : *chain) caches.push_back({t, t->grf_cache, t->tcache.user_def_data, t->vcache.cached_veh_flags});
+	}
+	GameRandomSeedChecker random_checker;
+
 	Train *u_head = u_phys;
 	Train *v = v_phys;
 	Train *v_last = v_phys->Last();
@@ -6527,6 +6577,13 @@ bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 
 	RestoreTrainBackup(original_src);
 	RestoreTrainBackup(original_dst);
+
+	for (const TrialCache &cache : caches) {
+		cache.vehicle->grf_cache = cache.grf_cache;
+		cache.vehicle->tcache.user_def_data = cache.user_def_data;
+		cache.vehicle->vcache.cached_veh_flags = cache.cached_veh_flags;
+	}
+	assert(random_checker.Check());
 
 	return ok;
 }
@@ -7012,7 +7069,8 @@ static void TrainEnterStation(Train *consist, StationID station)
 	Debug(desync, 1, "TrainEnterStation: veh={} st={} tile=({},{}) want_decouple={} ordertype={}", consist->index, station, TileX(consist->tile), TileY(consist->tile), want_decouple, (int)consist->current_order.GetType());
 	if (want_decouple) {
 		bool consist_in_rear = false;
-		u = DecoupleTrain(consist, consist_in_rear);
+		StringID decouple_failure_reason;
+		u = DecoupleTrain(consist, consist_in_rear, decouple_failure_reason);
 		/* All further handling of the rear part (orders, loading, windows)
 		 * must operate on its primary vehicle, not the physical chain head. */
 		if (u != nullptr) u = u->Primary();
@@ -7064,7 +7122,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 		if (u != nullptr) {
 		}
 		if (u == consist && consist->owner == _local_company) {
-			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED, consist->index), consist->index);
+			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED_REASON, consist->index, decouple_failure_reason), consist->index);
 		}
 	} else {
 		load_trains = DECOUPLE_LOAD_FIRST;

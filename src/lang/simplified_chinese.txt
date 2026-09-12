@@ -874,6 +874,7 @@ STR_NEWS_AIRCRAFT_CAN_T_LAND                                    :{WHITE}{VEHICLE
 STR_NEWS_AIRCRAFT_CRASH                                         :{BIG_FONT}{BLACK}飞机坠毁！{}{COMMA} 人在 {STATION} 的事故中罹难！
 STR_NEWS_PLANE_CRASH_OUT_OF_FUEL                                :{BIG_FONT}{BLACK}飞机坠毁！{}燃油不足，{COMMA} 人在事故中罹难！
 STR_NEWS_ORDER_DECOUPLE_FAILED                                  :{WHITE}无法解挂 {VEHICLE}
+STR_NEWS_ORDER_DECOUPLE_FAILED_REASON                           :{WHITE}无法解挂 {VEHICLE}：{STRING}
 STR_NEWS_ORDER_COUPLE_FAILED                                    :{WHITE}无法连接 {VEHICLE} 和 {VEHICLE}
 
 STR_NEWS_DISASTER_ZEPPELIN                                      :{BIG_FONT}{BLACK}齐柏林飞艇在 {STATION} 失事！
@@ -4928,6 +4929,34 @@ STR_ORDER_DECOUPLE_LOAD_AND_WAIT                                :（装卸并等
 STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :（等待连接不装卸）
 STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE                            :（装卸并使用调度计划 {STRING}）
 STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :（使用调度计划 {STRING}）
+STR_COUPLE_DIAGNOSTIC_BUTTON                                   :{BLACK}诊断
+STR_COUPLE_DIAGNOSTIC_TOOLTIP                                  :{BLACK}显示当前接挂目标、预约关系和候选排除原因
+STR_COUPLE_DIAGNOSTIC_CAPTION                                  :{WHITE}接挂诊断
+STR_COUPLE_DIAGNOSTIC_TARGET                                   :当前目标：{VEHICLE}
+STR_COUPLE_DIAGNOSTIC_CLAIM_SELF                               :预约：已为本列车保留
+STR_COUPLE_DIAGNOSTIC_CLAIM_OTHER                              :预约：已为 {VEHICLE} 保留
+STR_COUPLE_DIAGNOSTIC_CLAIM_NONE                               :预约：无
+STR_COUPLE_DIAGNOSTIC_PATH_UNKNOWN                             :存在符合筛选条件的列车；路径状态未知
+STR_COUPLE_DIAGNOSTIC_NO_CANDIDATE                             :未找到符合条件的列车
+STR_COUPLE_DIAGNOSTIC_REJECTION                                :{STRING}：{COMMA}
+STR_COUPLE_DIAGNOSTIC_NOT_WAITING                              :未处于等待接挂状态
+STR_COUPLE_DIAGNOSTIC_CLAIMED                                  :已被其他列车预约
+STR_COUPLE_DIAGNOSTIC_CRASHED                                  :列车已损毁
+STR_COUPLE_DIAGNOSTIC_STOPPED                                  :列车已手动停车
+STR_COUPLE_DIAGNOSTIC_OWNER                                    :所有权不允许接挂
+STR_COUPLE_DIAGNOSTIC_LOAD                                     :空车或满载筛选不匹配
+STR_COUPLE_DIAGNOSTIC_CARGO                                    :货种不匹配
+STR_COUPLE_DIAGNOSTIC_UNIT_COUNT                               :节数不匹配
+STR_COUPLE_DIAGNOSTIC_SLOT                                     :槽位不匹配
+STR_COUPLE_DIAGNOSTIC_STATION                                  :车站不匹配
+STR_COUPLE_DIAGNOSTIC_PLATFORM                                 :列车未完整容纳在同一站台
+STR_COUPLE_DIAGNOSTIC_ARRANGEMENT                              :编组或 NewGRF 兼容性检查失败
+STR_COUPLE_DIAGNOSTIC_NOT_ACTIVE                               :所选订单尚未执行；仅显示该订单的候选筛选结果
+STR_ORDERS_DECOUPLE_PREVIEW_TOOLTIP                            :{BLACK}点击白色标记选择切点，或点击保留数量手动输入。Ctrl+点击恢复自动解挂。客货仍随原车厢保留。
+STR_DECOUPLE_DIAGNOSTIC_PLATFORM                              :列车未完整容纳在同一站台
+STR_DECOUPLE_DIAGNOSTIC_TOO_SHORT                             :列车不足两个可拆分车辆单位
+STR_DECOUPLE_DIAGNOSTIC_CUT                                   :所选切点会拆开铰接或多头车辆单位
+STR_DECOUPLE_DIAGNOSTIC_ARRANGEMENT                           :编组或 NewGRF 兼容性检查失败
 
 STR_INVALID_ORDER                                               :{RED}（无效命令）
 
@@ -6182,3 +6211,5 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}筛选�
 STR_BADGE_CONFIG_PREVIEW                                        :预览图
 STR_BADGE_CONFIG_NAME                                           :名称
 STR_BADGE_FILTER_ANY_LABEL                                      :{STRING}：所有
+
+STR_DECOUPLE_PREVIEW_COUNT                                    :保留 {COMMA} 节（点击手动输入；0 为自动）
