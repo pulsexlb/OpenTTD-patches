@@ -2852,6 +2852,16 @@ void Train::UpdateDeltaXY()
  */
 static void MarkTrainAsStuck(Train *consist, bool waiting_restriction = false)
 {
+	/* A consist without any powered vehicle (an engine-less decoupled part, or
+	 * free wagons) cannot move on its own and never owns a path reservation
+	 * (the track follower refuses to follow with no compatible rail type), so
+	 * it would be reported as stuck forever although it is just waiting for a
+	 * couple. Never mark such a consist. */
+	if (consist->compatible_railtypes.None()) {
+		consist->flags.Reset(VehicleRailFlag::Stuck);
+		return;
+	}
+
 	if (!consist->flags.Test(VehicleRailFlag::Stuck)) {
 		/* It is the first time the problem occurred, set the "train stuck" flag. */
 		consist->flags.Set(VehicleRailFlag::Stuck);
@@ -3486,11 +3496,16 @@ static bool IsWholeTrainInsideDepot(const Train *v)
 	return true;
 }
 
+static void ReverseTrainForCouple(Train *v);
+
 /**
  * Turn a train around.
  * @param consist %Train to turn around.
+ * @param no_swap When flipping, reverse in place without swapping vehicle
+ *                positions (see ReverseTrainNoSwapVehicles) instead of the
+ *                vanilla full swap.
  */
-static void ReverseTrainDirection(Train *consist)
+static void ReverseTrainDirection(Train *consist, bool no_swap = false)
 {
 	Train *first = consist->First();
 	Train *moving_front = consist->GetMovingFront();
@@ -3552,7 +3567,15 @@ static void ReverseTrainDirection(Train *consist)
 	}
 
 	/* Clear path reservation in front if train is not stuck. */
-	if (!consist->flags.Test(VehicleRailFlag::Stuck) && !no_near_end_unreserve && !no_far_end_unreserve) {
+	if (no_swap) {
+		/* A decoupled part is flipped to face away from its partner, so the
+		 * reservation ahead of it still belongs to the partner part and must
+		 * not be released: with no signal in front of the station the walk
+		 * would follow the platform past the partner and eat that reservation.
+		 * Drop only our own lookahead and let both parts re-reserve in their
+		 * new directions. */
+		consist->lookahead.reset();
+	} else if (!consist->flags.Test(VehicleRailFlag::Stuck) && !no_near_end_unreserve && !no_far_end_unreserve) {
 		FreeTrainTrackReservation(consist);
 	} else {
 		consist->lookahead.reset();
@@ -3597,6 +3620,12 @@ static void ReverseTrainDirection(Train *consist)
 		}
 		/* We may have entered a depot and stopped driving backwards. */
 		std::swap(moving_front, moving_back);
+	} else if (no_swap) {
+		/* The train will flip in place without swapping vehicle positions. */
+		ReverseTrainForCouple(first);
+		/* The flip reversed the chain order, so the chain head moved to the
+		 * former tail; re-anchor before updating the consist from the head. */
+		first = first->First();
 	} else {
 		/* The train will flip. */
 		AdvanceWagonsBeforeSwap(moving_front);
@@ -3620,7 +3649,7 @@ static void ReverseTrainDirection(Train *consist)
 	first->ConsistChanged(CCF_TRACK);
 
 	/* update all images */
-	for (Train *u = consist; u != nullptr; u = u->Next()) u->UpdateViewport(false, false);
+	for (Train *u = first; u != nullptr; u = u->Next()) u->UpdateViewport(false, false);
 
 	/* update crossing we were approaching */
 	if (crossing != INVALID_TILE) UpdateLevelCrossing(crossing);
@@ -4936,6 +4965,14 @@ static bool IsReservationLookAheadLongEnough(const Train *v, const ChooseTrainTr
 
 	if (v->current_order.IsAnyLoadingType() || v->current_order.IsType(OT_WAITING)) return true;
 
+	/* A part that has just decoupled is still standing in the station it
+	 * decoupled at. Long reserving here would make it hold the block beyond
+	 * the station, on the side it came from, while it is only about to start
+	 * loading there. Loading itself already blocks long reserving (above);
+	 * this closes the window between the decouple and the start of loading.
+	 * The flag is cleared once the train leaves the station. */
+	if (v->flags.Test(VehicleRailFlag::JustDecoupled)) return true;
+
 	if (HasBit(lookahead_state.flags, CTTLASF_STOP_FOUND) || v->lookahead->flags.Test(TrainReservationLookAheadFlag::DepotEnd)) return true;
 
 	if (v->reverse_distance >= 1) {
@@ -5991,24 +6028,45 @@ static void CreateWaitForCoupleOrder(Train *v)
  * schedule: both its orders and its primary order list become the schedule.
  * @param part the train part
  * @param schedule_id the schedule to adopt
+ * @param load_at_station when valid, load/unload at this station on the first
+ *                       pass only before running the schedule
  * @return true when the schedule was adopted
  */
-static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id)
+static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id, StationID load_at_station = StationID::Invalid())
 {
 	OrderList *ol = OrderList::GetIfValid(schedule_id);
 	if (ol == nullptr || !ol->IsPlayerCreated()) return false;
 
-	/* Build a wrapper schedule holding a single execute-schedule order for the
-	 * target schedule; the part will run the target through the regular
+	/* Build a wrapper schedule holding an execute-schedule order for the target
+	 * schedule; the part will run the target through the regular
 	 * execute-schedule mechanism, restarting it after every full pass. The
 	 * wrapper is a vehicle-owned list, so it is freed automatically when the
 	 * part's orders are replaced or removed. */
+	std::vector<Order> wrapper_orders;
+
+	const bool load_before_schedule = load_at_station != StationID::Invalid();
+	if (load_before_schedule) {
+		Order station_order;
+		station_order.MakeGoToStation(load_at_station);
+		wrapper_orders.push_back(std::move(station_order));
+	}
+
+	/* Also the jump target of the unconditional jump appended below. */
+	VehicleOrderID execute_index = static_cast<VehicleOrderID>(wrapper_orders.size());
+
 	Order execute_order;
 	execute_order.MakeExecuteSchedule();
 	execute_order.SetDestination(ol->index);
-
-	std::vector<Order> wrapper_orders;
 	wrapper_orders.push_back(std::move(execute_order));
+
+	if (load_before_schedule) {
+		/* Jump straight back to the execute-schedule order, so the station order
+		 * above is only run on the first pass. */
+		Order repeat_order;
+		repeat_order.MakeConditional(execute_index);
+		repeat_order.SetConditionVariable(OrderConditionVariable::Unconditionally);
+		wrapper_orders.push_back(std::move(repeat_order));
+	}
 
 	if (!OrderList::CanAllocateItem()) return false;
 
@@ -6085,6 +6143,12 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 			case ODOF_EXECUTE_SCHEDULE:
 				AdoptDecoupleSchedule(u, after_decouple_flags->GetDecoupleSecondScheduleID());
 				break;
+			case ODOF_LOAD_AND_SCHEDULE:
+				/* Load/unload at this station once, then run the schedule, skipping
+				 * the station order on all later passes. */
+				load_trains |= DECOUPLE_LOAD_SECOND;
+				AdoptDecoupleSchedule(u, after_decouple_flags->GetDecoupleSecondScheduleID(), v->last_station_visited);
+				break;
 			default: NOT_REACHED();
 		}
 		ProcessOrders(u);
@@ -6127,6 +6191,12 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 			break;
 		case ODOF_EXECUTE_SCHEDULE:
 			AdoptDecoupleSchedule(v, after_decouple_flags->GetDecoupleFirstScheduleID());
+			break;
+		case ODOF_LOAD_AND_SCHEDULE:
+			/* Load/unload at this station once, then run the schedule, skipping
+			 * the station order on all later passes. */
+			load_trains |= DECOUPLE_LOAD_FIRST;
+			AdoptDecoupleSchedule(v, after_decouple_flags->GetDecoupleFirstScheduleID(), v->last_station_visited);
 			break;
 		default: NOT_REACHED();
 	}
@@ -7020,20 +7090,25 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * skip it entirely then: physically flipping a still-moving consist
 		 * mid-station-entry is only valid for an actual trailer part. */
 		bool decoupled = (u != nullptr && u != consist);
+		/* Both parts are marked before the reversal: reversing re-reserves the
+		 * part's path, and a part that is still standing in the station it
+		 * decoupled at must not long-reserve (see IsReservationLookAheadLongEnough),
+		 * otherwise the reversal makes it hold the block past the station, on the
+		 * side the train arrived from. */
+		consist->flags.Set(VehicleRailFlag::JustDecoupled);
+		if (decoupled) u->flags.Set(VehicleRailFlag::JustDecoupled);
 		if (trailer == consist) {
-			if (decoupled) ReverseTrainDirection(consist);
+			if (decoupled) ReverseTrainDirection(consist, true);
 			consist = consist->Primary();
 		}
-		consist->flags.Set(VehicleRailFlag::JustDecoupled);
 		/* For the decoupled part, do the opposite: if it is driving forward (towards
 		 * the front part), reverse it now so it drives away from the front part, then
 		 * forbid reversing until it leaves the station. */
 		if (u != nullptr && u != consist) {
 			if (trailer == u) {
-				ReverseTrainDirection(u);
+				ReverseTrainDirection(u, true);
 				u = u->Primary();
 			}
-			u->flags.Set(VehicleRailFlag::JustDecoupled);
 		}
 		SplitOrders(consist, u, load_trains);
 		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);

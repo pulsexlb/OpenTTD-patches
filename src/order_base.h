@@ -709,11 +709,11 @@ public:
 	inline void SetDecoupleFirstOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 0, 3, to_underlying(orders_type)); }
 	/** Set what orders second part should get */
 	inline void SetDecoupleSecondOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 4, 3, to_underlying(orders_type)); }
-	/** Get the schedule the first part adopts after decoupling (ODOF_EXECUTE_SCHEDULE only). */
+	/** Get the schedule the first part adopts after decoupling (ODOF_EXECUTE_SCHEDULE and ODOF_LOAD_AND_SCHEDULE only). */
 	inline OrderListID GetDecoupleFirstScheduleID() const { return OrderListID{(uint16_t)this->GetXData()}; }
 	/** Set the schedule the first part adopts after decoupling. */
 	inline void SetDecoupleFirstScheduleID(OrderListID id) { SB(this->GetXDataRef(), 0, 16, id.base()); }
-	/** Get the schedule the second part adopts after decoupling (ODOF_EXECUTE_SCHEDULE only). */
+	/** Get the schedule the second part adopts after decoupling (ODOF_EXECUTE_SCHEDULE and ODOF_LOAD_AND_SCHEDULE only). */
 	inline OrderListID GetDecoupleSecondScheduleID() const { return OrderListID{(uint16_t)this->GetXData2Low()}; }
 	/** Set the schedule the second part adopts after decoupling. */
 	inline void SetDecoupleSecondScheduleID(OrderListID id) { this->SetXData2Low(id.base()); }

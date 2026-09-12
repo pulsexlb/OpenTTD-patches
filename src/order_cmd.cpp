@@ -2784,7 +2784,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				break;
 
 			case OT_DECOUPLE:
-				if (mof != MOF_FIRST_ORDERS && mof != MOF_SECOND_ORDERS && mof != MOF_DECOUPLE_VALUE && mof != MOF_DECOUPLE_FIRST_SCHEDULE && mof != MOF_DECOUPLE_SECOND_SCHEDULE) return CMD_ERROR;
+				if (mof != MOF_FIRST_ORDERS && mof != MOF_SECOND_ORDERS && mof != MOF_DECOUPLE_VALUE && mof != MOF_DECOUPLE_FIRST_SCHEDULE && mof != MOF_DECOUPLE_SECOND_SCHEDULE && mof != MOF_DECOUPLE_FIRST_LOAD_SCHEDULE && mof != MOF_DECOUPLE_SECOND_LOAD_SCHEDULE) return CMD_ERROR;
 				break;
 
 			case OT_SLOT:
@@ -3096,7 +3096,9 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			break;
 
 		case MOF_DECOUPLE_FIRST_SCHEDULE:
-		case MOF_DECOUPLE_SECOND_SCHEDULE: {
+		case MOF_DECOUPLE_SECOND_SCHEDULE:
+		case MOF_DECOUPLE_FIRST_LOAD_SCHEDULE:
+		case MOF_DECOUPLE_SECOND_LOAD_SCHEDULE: {
 			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
 			if (order->GetType() != OT_DECOUPLE) return CMD_ERROR;
 			const OrderList *target = OrderList::GetIfValid(OrderListID(data));
@@ -3570,6 +3572,16 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 			case MOF_DECOUPLE_SECOND_SCHEDULE:
 				order->SetDecoupleSecondOrdersType(ODOF_EXECUTE_SCHEDULE);
+				order->SetDecoupleSecondScheduleID(OrderListID{(uint16_t)data});
+				break;
+
+			case MOF_DECOUPLE_FIRST_LOAD_SCHEDULE:
+				order->SetDecoupleFirstOrdersType(ODOF_LOAD_AND_SCHEDULE);
+				order->SetDecoupleFirstScheduleID(OrderListID{(uint16_t)data});
+				break;
+
+			case MOF_DECOUPLE_SECOND_LOAD_SCHEDULE:
+				order->SetDecoupleSecondOrdersType(ODOF_LOAD_AND_SCHEDULE);
 				order->SetDecoupleSecondScheduleID(OrderListID{(uint16_t)data});
 				break;
 

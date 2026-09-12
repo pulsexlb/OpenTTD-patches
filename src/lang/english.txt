@@ -952,18 +952,25 @@ STR_ORDER_TOGGLE_COUPLE_LOAD                                    :{BLACK}Couple e
 STR_ORDERS_COUPLE_LOAD_ANY                                      :Couple any
 STR_ORDERS_COUPLE_LOAD_EMPTY                                    :Couple empty
 STR_ORDERS_COUPLE_LOAD_FULL                                     :Couple full
-STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON                    :{BLACK}First: Keep orders
-STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON                   :{BLACK}Second: Keep orders
-STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :Keep orders
-STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :Keep and no loading
-STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :Wait for couple
-STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                              :Load and wait for couple
-STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :Use a schedule
+STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON                    :{BLACK}First: orders after decoupling
+STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON                   :{BLACK}Second: orders after decoupling
+STR_ORDER_DECOUPLE_FIRST_ORDERS_TOOLTIP                         :{BLACK}What the first part does after decoupling
+STR_ORDER_DECOUPLE_SECOND_ORDERS_TOOLTIP                        :{BLACK}What the second part does after decoupling
+STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :Load and keep orders
+STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :Keep orders without loading
+STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :Wait for couple without loading
+STR_ORDERS_DECOUPLE_LOAD_AND_SCHEDULE                           :Load and use a schedule
+STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                               :Load and wait for couple
+STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :Use a schedule without loading
 STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}Units couple
 STR_ORDER_COUPLE_SLOT_BUTTON                                   :{BLACK}Slot
 STR_ORDER_COUPLE_SLOT_TOOLTIP                                 :{BLACK}The trace restrict slot the train must couple with
 STR_ORDER_COUPLE_STATION_BUTTON                                :{BLACK}Station
 STR_ORDER_COUPLE_STATION_TOOLTIP                               :{BLACK}Select a station on the map to restrict coupling to. Click again to clear
+STR_ORDER_COUPLE_LOAD_TOOLTIP                                   :{BLACK}Which trains this train may couple with: any, empty or full
+STR_ORDER_COUPLE_CARGO_TOOLTIP                                  :{BLACK}Restrict coupling to a train that can carry the selected cargo type. Click again to clear
+STR_ORDER_COUPLE_VALUE_TOOLTIP                                  :{BLACK}Restrict coupling to a train with this many units (0 for any)
+STR_ORDER_DECOUPLE_VALUE_TOOLTIP                                :{BLACK}How many units stay in this train after decoupling
 STR_ORDER_COUPLE_USE_WAITING_SCHEDULE                          :Use the waiting train's schedule
 STR_ORDER_COUPLE_USE_WAITING_SCHEDULE_SUFFIX                   :(and use the waiting train's schedule)
 STR_ORDERS_DECOUPLE_VALUE_BUTTON                                :{BLACK}Units decouple
@@ -971,6 +978,7 @@ STR_ORDERS_DECOUPLE_BUTTON                                      :{BLACK}Decouple
 STR_ORDERS_DECOUPLE_DROP                                        :Decouple
 STR_ORDERS_DECOUPLE_VALUE                                       :Units decouple
 STR_ORDERS_DECOUPLE_TOOLTIP                                     :{BLACK}Decouple train at the station
+STR_ORDER_COUPLE_VALUE_CAPT                                     :{WHITE}Enter how many units the train to couple with must have
 STR_ORDER_DECOUPLE_VALUE_CAPT                                   :{WHITE}Enter how many units will stay in train after decoupling
 STR_ORDERS_GO_TO_COUPLE                                         :Go to couple
 STR_ORDER_WAIT_FOR_COUPLE                                       :Wait for couple
@@ -985,10 +993,11 @@ STR_ORDER_DECOUPLE                                              :(Decouple)
 STR_ORDER_DECOUPLE_DETAILS                                      :[Decouple and keep {COMMA} units] First part {RAW_STRING} Second part {RAW_STRING}
 STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[Decouple and keep {COMMA}(auto) units] First part {RAW_STRING} Second part {RAW_STRING}
 STR_ORDER_COUPLE_UNITS                                          :(with {COMMA} units)
-STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :(Keep orders)
-STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :(Keep orders without loading/unloading)
-STR_ORDER_DECOUPLE_LOAD_AND_WAIT                               :(Load and wait for couple)
-STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :(Wait for couple)
+STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :(Load and keep orders)
+STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :(Keep orders without loading)
+STR_ORDER_DECOUPLE_LOAD_AND_WAIT                                :(Load and wait for couple)
+STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :(Wait for couple without loading)
+STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE                            :(Load and use schedule {RAW_STRING})
 STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :(Use schedule {RAW_STRING})
 STR_COUPLE_DIAGNOSTIC_BUTTON                                   :{BLACK}Diagnostics
 STR_COUPLE_DIAGNOSTIC_TOOLTIP                                  :{BLACK}Show the current coupling target, claim and candidate rejection reasons

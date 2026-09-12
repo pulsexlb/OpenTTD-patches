@@ -4884,19 +4884,23 @@ STR_ORDER_TOGGLE_COUPLE_LOAD                                    :{BLACK}连接�
 STR_ORDERS_COUPLE_LOAD_ANY                                      :连接任意
 STR_ORDERS_COUPLE_LOAD_EMPTY                                    :连接空车
 STR_ORDERS_COUPLE_LOAD_FULL                                     :连接满载
-STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON                    :{BLACK}第一部分：保留调度计划
-STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON                   :{BLACK}第二部分：保留调度计划
-STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :保留调度计划
+STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON                    :{BLACK}第一部分：解挂后调度计划
+STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON                   :{BLACK}第二部分：解挂后调度计划
+STR_ORDER_DECOUPLE_FIRST_ORDERS_TOOLTIP                         :{BLACK}第一部分在解挂后要执行的调度计划
+STR_ORDER_DECOUPLE_SECOND_ORDERS_TOOLTIP                        :{BLACK}第二部分在解挂后要执行的调度计划
+STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :装卸并保留调度计划
 STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :保留调度计划不装卸
-STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :等待连接
-STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                              :装卸并等待连接
-STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :使用调度计划
+STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :等待连接不装卸
+STR_ORDERS_DECOUPLE_LOAD_AND_SCHEDULE                           :装卸并使用调度计划
+STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                               :装卸并等待连接
+STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :使用调度计划不装卸
 STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}连接数量
 STR_ORDERS_DECOUPLE_VALUE_BUTTON                                :{BLACK}解挂数量
 STR_ORDERS_DECOUPLE_BUTTON                                      :{BLACK}解挂
 STR_ORDERS_DECOUPLE_DROP                                        :解挂
 STR_ORDERS_DECOUPLE_VALUE                                       :解挂数量
 STR_ORDERS_DECOUPLE_TOOLTIP                                     :{BLACK}在车站解挂列车
+STR_ORDER_COUPLE_VALUE_CAPT                                     :{WHITE}输入要连接的列车应该具有的车厢数量
 STR_ORDER_DECOUPLE_VALUE_CAPT                                   :{WHITE}输入解挂后列车保留的车厢数量
 STR_ORDERS_GO_TO_COUPLE                                         :前往连接
 STR_ORDER_WAIT_FOR_COUPLE                                       :等待连接
@@ -4908,6 +4912,10 @@ STR_ORDER_COUPLE_FULL                                           :满载
 STR_ORDER_COUPLE_SLOT                                          :且有路签 {STRING}
 STR_ORDER_COUPLE_STATION_BUTTON                                :{BLACK}车站
 STR_ORDER_COUPLE_STATION_TOOLTIP                               :{BLACK}在地图上选择一个车站作为对接目标车站。再次点击清除
+STR_ORDER_COUPLE_LOAD_TOOLTIP                                   :{BLACK}选择可以连接的列车：任意、空车或满载
+STR_ORDER_COUPLE_CARGO_TOOLTIP                                  :{BLACK}限制只连接能运载所选货物类型的列车。再次点击清除
+STR_ORDER_COUPLE_VALUE_TOOLTIP                                  :{BLACK}限制只连接具有指定车厢数量的列车（0 表示不限）
+STR_ORDER_DECOUPLE_VALUE_TOOLTIP                                :{BLACK}解挂后本列车保留的车厢数量
 STR_ORDER_COUPLE_USE_WAITING_SCHEDULE                          :使用等待对接列车的调度计划
 STR_ORDER_COUPLE_USE_WAITING_SCHEDULE_SUFFIX                   :（并使用等待对接列车的调度计划）
 STR_ORDER_COUPLE_ANY_SLOT                                     :任意路签
@@ -4915,10 +4923,11 @@ STR_ORDER_DECOUPLE                                              :（解挂）
 STR_ORDER_DECOUPLE_DETAILS                                      :[解挂并保留 {COMMA} 节车厢] 第一部分 {STRING} 第二部分 {STRING}
 STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[解挂并保留 {COMMA}(自动) 节车厢] 第一部分 {STRING} 第二部分 {STRING}
 STR_ORDER_COUPLE_UNITS                                          :（{COMMA} 节车厢）
-STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :（保留调度计划）
+STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :（装卸并保留调度计划）
 STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :（保留调度计划不装卸）
-STR_ORDER_DECOUPLE_LOAD_AND_WAIT                               :（装卸并等待连接）
-STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :（等待连接)
+STR_ORDER_DECOUPLE_LOAD_AND_WAIT                                :（装卸并等待连接）
+STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :（等待连接不装卸）
+STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE                            :（装卸并使用调度计划 {STRING}）
 STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :（使用调度计划 {STRING}）
 STR_COUPLE_DIAGNOSTIC_BUTTON                                   :{BLACK}诊断
 STR_COUPLE_DIAGNOSTIC_TOOLTIP                                  :{BLACK}显示当前接挂目标、预约关系和候选排除原因

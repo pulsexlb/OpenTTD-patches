@@ -131,7 +131,8 @@ enum OrderDecoupleOrdersFlags : uint8_t {
 	ODOF_WAIT_FOR_COUPLE     = 3, ///< Wait for a couple.
 	ODOF_LOAD_AND_WAIT       = 4, ///< Load/unload at this station, then wait for a couple.
 	ODOF_EXECUTE_SCHEDULE    = 5, ///< Adopt a player-created order list as the part's own schedule.
-	ODOF_END                 = 6,
+	ODOF_LOAD_AND_SCHEDULE   = 6, ///< Load/unload at this station once, then adopt a player-created order list as the part's own schedule.
+	ODOF_END                 = 7,
 };
 
 enum OrderSlotSubType : uint8_t {
@@ -352,6 +353,8 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_EXECUTE_SCHEDULE, ///< Change the target order list of an execute-schedule order.
 	MOF_DECOUPLE_FIRST_SCHEDULE,  ///< Change the schedule the first part adopts after decoupling.
 	MOF_DECOUPLE_SECOND_SCHEDULE, ///< Change the schedule the second part adopts after decoupling.
+	MOF_DECOUPLE_FIRST_LOAD_SCHEDULE,  ///< Change the schedule the first part adopts after loading at the decouple station.
+	MOF_DECOUPLE_SECOND_LOAD_SCHEDULE, ///< Change the schedule the second part adopts after loading at the decouple station.
 	MOF_END
 };
 
