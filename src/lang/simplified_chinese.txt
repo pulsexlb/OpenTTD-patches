@@ -5636,8 +5636,8 @@ STR_ERROR_NO_STOP_ARTICULATED_VEHICLE                           :{WHITE}铰接�
 STR_ERROR_AIRPORT_NO_PLANES                                     :{WHITE}这架飞机不能降落在这个直升机场
 STR_ERROR_AIRPORT_NO_HELICOPTERS                                :{WHITE}这架直升机不能降落在这个机场
 STR_BUILD_HELIPORT_CAPTION                                      :{WHITE}直升机场方向
-STR_BUILD_AIRPORT_INFRA_NO_CATCH_CAPTION                    :{WHITE}无货运吸引范围的基础设施
-STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION                  :{WHITE}有货运吸引范围的基础设施
+STR_BUILD_AIRPORT_INFRA_NO_CATCH_CAPTION                    :{WHITE}机场基础设施
+STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION                  :{WHITE}机场航站楼
 STR_BUILD_AIRPORT_INFRA_TOOLTIP                             :{BLACK}选择一段基础设施及其方向
 STR_BUILD_HANGAR_CAPTION                                    :{WHITE}机库方向
 STR_BUILD_HELIPORT_ORIENTATION_TOOLTIP                          :{BLACK}选择直升机场方向
@@ -6183,25 +6183,25 @@ STR_TOOLBAR_AIRPORT_WATER_MENU_TEXT                             :水上机场建
 STR_TOOLBAR_AIRPORT_DARK_MENU_TEXT                              :深色机场建设
 STR_TOOLBAR_AIRPORT_YELLOW_MENU_TEXT                            :划线跑道机场建设
 STR_TOOLBAR_AIRPORT_CAPTION                                    :{WHITE}机场
-STR_TOOLBAR_AIRPORT_BUILD_AIRPORT_TOOLTIP                      :{BLACK}建设机场。Ctrl+点击选择另一个车站加入。按 Shift 仅显示费用估算
-STR_TOOLBAR_AIRPORT_ADD_TILES                                  :{BLACK}向机场添加或移除图块
-STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_CATCHMENT                   :{BLACK}设为有货运吸引范围的基础设施
-STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_NO_CATCHMENT                :{BLACK}设为无货运吸引范围的基础设施
-STR_TOOLBAR_AIRPORT_SET_TRACKS                                 :{BLACK}设置跑道
-STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_LANDING                      :{BLACK}定义为允许降落的跑道
-STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_NO_LANDING                   :{BLACK}定义为禁止降落的跑道
+STR_TOOLBAR_AIRPORT_BUILD_AIRPORT_TOOLTIP                      :{BLACK}建设机场。Ctrl+点击选择另一个车站合并。按 Shift 仅显示费用估算
+STR_TOOLBAR_AIRPORT_ADD_TILES                                  :{BLACK}设置机场范围
+STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_CATCHMENT                   :{BLACK}建设航站楼
+STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_NO_CATCHMENT                :{BLACK}建设机场基础设施
+STR_TOOLBAR_AIRPORT_SET_TRACKS                                 :{BLACK}设置滑行道
+STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_LANDING                      :{BLACK}建设起降跑道
+STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_NO_LANDING                   :{BLACK}建设起飞跑道
 STR_TOOLBAR_AIRPORT_BUILD_APRON                                :{BLACK}建设停机坪
 STR_TOOLBAR_AIRPORT_BUILD_HELIPAD                              :{BLACK}建设直升机停机坪
 STR_TOOLBAR_AIRPORT_BUILD_HELIPORT                             :{BLACK}建设直升机场
 STR_TOOLBAR_AIRPORT_BUILD_HANGAR_STANDARD                      :{BLACK}建设标准机库
 STR_TOOLBAR_AIRPORT_BUILD_HANGAR_EXTENDED                      :{BLACK}建设扩建机库
-STR_TOOLBAR_AIRPORT_TOGGLE_BUILD_REMOVE                        :{BLACK}切换机场图块、基础设施、停机坪和机库的建设/移除模式
+STR_TOOLBAR_AIRPORT_TOGGLE_BUILD_REMOVE                        :{BLACK}切换机场区域、基础设施、停机坪和机库的建设/移除模式
 STR_TOOLBAR_AIRPORT_BUILD_PRE_AIRPORT_TOOLTIP                  :{BLACK}建设预定义的机场布局。Ctrl 启用加入车站。Shift 切换建设/显示费用估算
-STR_TOOLBAR_AIRPORT_CHANGE_AIRTYPE                             :{BLACK}更改机场的航空类型
+STR_TOOLBAR_AIRPORT_CHANGE_AIRTYPE                             :{BLACK}更改机场类型
 STR_TOOLBAR_AIRPORT_ROTATE_GRAPHICS                            :{BLACK}更改地面图形
-STR_TOOLBAR_AIRPORT_ROTATE_GRAPHICS_TOOLTIP                    :{BLACK}点击简单机场图块以更改其图形（实验性功能；仅适用于划线跑道航空类型）
+STR_TOOLBAR_AIRPORT_ROTATE_GRAPHICS_TOOLTIP                    :{BLACK}点击机场区域以更改其图形
 STR_TOOLBAR_AIRPORT_TOGGLE_GROUND                              :{BLACK}切换地面硬化
-STR_TOOLBAR_AIRPORT_TOGGLE_GROUND_TOOLBAR                      :{BLACK}点击简单机场图块以显示或隐藏航空类型地面精灵。
+STR_TOOLBAR_AIRPORT_TOGGLE_GROUND_TOOLBAR                      :{BLACK}点击机场地面切换地面硬化
 
 STR_BADGE_NAME_LIST                                             :{STRING}：{GOLD}{STRING}
 STR_BADGE_CONFIG_MENU_TOOLTIP                                   :开启徽章设定
