@@ -79,8 +79,11 @@ DestinationID GetTargetDestination(const Order &o, bool is_aircraft)
 			if (is_aircraft) {
 				const Depot *hangar = GetOrderHangar(o);
 				if (hangar != nullptr) return DestinationID(GetStationIndex(hangar->xy));
-				assert(Station::IsValidID(destination_id.ToStationID()));
-				return destination_id;
+
+				/* Orders to the nearest depot, or orders to a hangar which no longer exists, do not
+				 * resolve to a hangar. Fall back to the station the order names, if any. */
+				if (Station::IsValidID(destination_id.ToStationID())) return destination_id;
+				return DestinationID{StationID::Invalid()};
 			}
 			assert(Depot::IsValidID(destination_id.ToDepotID()));
 			return destination_id;
@@ -164,6 +167,25 @@ void Order::Free()
 	this->flags = 0;
 	this->dest  = 0;
 	DeAllocExtraInfo();
+}
+
+/**
+ * Convert the order type field to the current bit layout, from the layout used by savegames which
+ * store it in a single byte, i.e. savegames which do not have the XSLFI_ORDER_DECOUPLE feature.
+ *
+ * Old layout: order type bits 0..3, stop location bits 4..5, condition comparator bits 5..7,
+ * non-stop type bits 6..7; the latter two overlap, as only one of them is used per order type.
+ * Current layout: order type bits 0..4, stop location bits 5..6, non-stop type bits 7..8,
+ * condition comparator bits 9..11.
+ */
+void Order::ConvertLegacyTypeLayout()
+{
+	const uint16_t old = this->type;
+	this->type = 0;
+	SB(this->type, 0, 5, GB(old, 0, 4));
+	SB(this->type, 5, 2, GB(old, 4, 2));
+	SB(this->type, 7, 2, GB(old, 6, 2));
+	SB(this->type, 9, 3, GB(old, 5, 3));
 }
 
 /**
@@ -5277,8 +5299,9 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 					/* PBS reservations cannot reverse */
 					if (pbs_look_ahead && closest_depot.reverse) return false;
 
-					v->SetDestTile(closest_depot.location);
+					/* Set the order's destination first: SetDestTile derives the target airport from it. */
 					v->current_order.SetDestination(closest_depot.destination);
+					v->SetDestTile(closest_depot.location);
 
 					/* If there is no depot in front, reverse automatically (trains only) */
 					if (v->type == VehicleType::Train && closest_depot.reverse) Command<Commands::ReverseTrainDirection>::Do(DoCommandFlag::Execute, v->index, false);

@@ -733,8 +733,11 @@ void FixupTrainLengths()
 	}
 }
 
+/** Value of _pos for savegames which do not store the legacy aircraft position. */
+static constexpr uint8_t LEGACY_AIRCRAFT_POS_NONE = 0xFF;
+
 static uint8_t  _cargo_periods;
-static uint8_t  _pos;             ///< Current aircraft position (used for old saves).
+static uint8_t  _pos;             ///< Current aircraft position (used for old saves), or LEGACY_AIRCRAFT_POS_NONE.
 static uint8_t  _old_state;       ///< Old aircraft state (used for old saves).
 static uint16_t _cargo_source;
 static uint32_t _cargo_source_xy;
@@ -1094,11 +1097,12 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		/* This next line is for version 4 and prior compatibility.. it temporarily reads
 		 type and flags (which were both 4 bits) into type. Later on this is
 		 converted correctly */
-		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_UINT16,                  SL_MIN_VERSION, SLV_5)),
+		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_FILE_U8 | SLE_VAR_U16,   SL_MIN_VERSION, SLV_5)),
 		NSL("current_order.dest",         SLE_CONDVAR(Vehicle, current_order.dest,        SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 
 		/* Orders for version 5 and on */
-		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_UINT16,                  SLV_5, SL_MAX_VERSION)),
+		NSL("current_order.type",        SLE_CONDVAR_X(Vehicle, current_order.type,        SLE_FILE_U8 | SLE_VAR_U16,   SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 0, 0))),
+		NSL("current_order.type",        SLE_CONDVAR_X(Vehicle, current_order.type,        SLE_UINT16,                  SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 1))),
 		NSL("current_order.flags",      SLE_CONDVAR_X(Vehicle, current_order.flags,       SLE_FILE_U8 | SLE_VAR_U16,  SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 0, 0))),
 		NSL("current_order.flags",      SLE_CONDVAR_X(Vehicle, current_order.flags,       SLE_UINT16,                 SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 1))),
 		NSL("current_order.dest",         SLE_CONDVAR(Vehicle, current_order.dest,        SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),
@@ -1286,6 +1290,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("next_pos.pos",               SLE_CONDVAR(Aircraft, next_pos.pos,            SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("crashed_counter",           SLE_VAR(Aircraft, crashed_counter,            SLE_UINT16)),
 		NSL("aircraft_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION)),
+		NSL("pos",                       SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SL_MIN_VERSION, SL_MAX_VERSION)), // legacy aircraft position, LEGACY_AIRCRAFT_POS_NONE for savegames using the new aircraft controller
 
 		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,          SLE_FILE_U8  | SLE_VAR_U16,  SL_MIN_VERSION, SLV_5)),
 		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,          SLE_UINT16,                  SLV_5, SL_MAX_VERSION)),
@@ -1404,6 +1409,9 @@ static const NamedSaveLoad _table_vehicle_desc[] = {
 /** Will be called when the vehicles need to be saved. */
 static void Save_VEHS()
 {
+	/* The legacy aircraft position is not stored by the new aircraft controller. */
+	_pos = LEGACY_AIRCRAFT_POS_NONE;
+
 	SaveLoadTableData slt = SlTableHeader(_table_vehicle_desc);
 
 	/* Write the vehicles */
@@ -1433,6 +1441,9 @@ static void Save_VEHS()
 void Load_VEHS()
 {
 	_cargo_count = 0;
+
+	/* Assume the savegame uses the new aircraft controller until a legacy aircraft position is read. */
+	_pos = LEGACY_AIRCRAFT_POS_NONE;
 
 	_cpp_packets.clear();
 	_veh_cpp_packets.clear();
@@ -1495,6 +1506,11 @@ void Load_VEHS()
 			 *  in those versions, they both were 4 bits big) to type and flags */
 			v->current_order.flags = GB(v->current_order.type, 4, 4);
 			v->current_order.type &= 0x0F;
+		}
+
+		if (!IsSavegameVersionBefore(SLV_5) && SlXvIsFeatureMissing(XSLFI_ORDER_DECOUPLE)) {
+			/* Savegames from before the order type field was widened use the old bit layout. */
+			v->current_order.ConvertLegacyTypeLayout();
 		}
 
 		/* Advanced vehicle lists got added */
@@ -1901,6 +1917,15 @@ void Load_VUBS()
 		v->unbunch_state.reset(new VehicleUnbunchState());
 		SlObjectLoadFiltered(v->unbunch_state.get(), unbunch_desc);
 	}
+}
+
+/**
+ * Whether the loaded savegame stores the legacy aircraft position, i.e. predates the new aircraft controller.
+ * @return true iff the savegame uses the legacy aircraft controller data.
+ */
+bool DidLoadLegacyAircraftData()
+{
+	return _pos != LEGACY_AIRCRAFT_POS_NONE;
 }
 
 static const ChunkHandler veh_chunk_handlers[] = {

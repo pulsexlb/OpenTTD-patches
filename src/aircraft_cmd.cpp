@@ -1765,12 +1765,15 @@ void HandleAircraftFlying(Aircraft *v)
 				// revise
 				//if (!IsAirportTile(v->tile) || !IsApron(v->tile)) return;
 				assert(v->IsAircraftFlying());
-				TileIndex landing_tile;
-				Trackdir trackdir;
+				TileIndex landing_tile = INVALID_TILE;
+				Trackdir trackdir = INVALID_TRACKDIR;
 				if (can_land) {
 					landing_tile = FindClosestFreeLandingTile(v);
-					trackdir = GetFreeAirportTrackdir(landing_tile, DiagDirToDiagTrackdir(DirToDiagDir(v->direction)));
-					can_land = trackdir != INVALID_TRACKDIR;
+					can_land = landing_tile != INVALID_TILE;
+					if (can_land) {
+						trackdir = GetFreeAirportTrackdir(landing_tile, DiagDirToDiagTrackdir(DirToDiagDir(v->direction)));
+						can_land = trackdir != INVALID_TRACKDIR;
+					}
 				}
 
 				if (can_land) {
@@ -1786,7 +1789,7 @@ void HandleAircraftFlying(Aircraft *v)
 			} else {
 				assert(IsValidTrackdir(v->trackdir));
 				TileIndex landing_tile = FindClosestLandingTile(v);
-				if (can_land && CanRunwayBeReserved(landing_tile)) {
+				if (can_land && landing_tile != TileIndex{} && IsValidTile(landing_tile) && CanRunwayBeReserved(landing_tile)) {
 					assert(IsRunwayStart(landing_tile));
 					v->trackdir = DiagDirToDiagTrackdir(GetRunwayExtremeDirection(landing_tile));
 					SetRunwayReservation(landing_tile, true);
@@ -2405,8 +2408,8 @@ void AircraftUpdateNextPos(Aircraft *v)
 TileIndex FindClosestLandingTile(Aircraft *v)
 {
 	v->targetairport = GetTargetDestination(v->current_order, true).ToStationID();
-	assert(Station::IsValidID(v->targetairport));
 	Station *st = Station::GetIfValid(v->targetairport);
+	if (st == nullptr) return INVALID_TILE; // the order does not resolve to an airport
 
 	if (!CanAircraftUseAirport(v, st)) {
 		/* The ordered airport cannot be used by this aircraft: divert to the
@@ -2509,7 +2512,7 @@ TileIndex FindClosestLandingTile(Aircraft *v)
  */
 TileIndex FindClosestFreeLandingTile(Aircraft *v) {
 	TileIndex tile = FindClosestLandingTile(v);
-	if (tile == 0) return INVALID_TILE;
+	if (tile == TileIndex{} || !IsValidTile(tile)) return INVALID_TILE;
 	if (HasAirportTrackReserved(tile)) return INVALID_TILE;
 	return tile;
 }
@@ -2550,7 +2553,7 @@ bool IsReachableDest(Aircraft *v)
 	Station *st = Station::Get(v->targetairport);
 
 	TileIndex closest_landing = FindClosestLandingTile(v);
-	if (closest_landing == 0 || !CanVehicleUseStation(v, st)) {
+	if (closest_landing == TileIndex{} || !IsValidTile(closest_landing) || !CanVehicleUseStation(v, st)) {
 		if (!HasBit(v->flags, VAF_CAN_T_LAND)) {
 			SetBit(v->flags, VAF_CAN_T_LAND);
 			v->SetWaitTime(AIRCRAFT_WAIT_FREE_PATH_TICKS);

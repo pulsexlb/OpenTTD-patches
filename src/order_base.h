@@ -271,6 +271,12 @@ public:
 	void InvalidateGuiOnRemove();
 	void Free();
 
+	/**
+	 * Convert the order type field from the layout used by savegames which store it in a single
+	 * byte, i.e. savegames which do not have the XSLFI_ORDER_DECOUPLE feature.
+	 */
+	void ConvertLegacyTypeLayout();
+
 	void MakeGoToStation(StationID destination);
 	void MakeGoToDepot(DestinationID destination, OrderDepotTypeFlags order, OrderNonStopFlags non_stop_type = ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS, OrderDepotActionFlags action = ODATF_SERVICE_ONLY, CargoType cargo = CARGO_NO_REFIT);
 	void MakeGoToWaypoint(StationID destination);

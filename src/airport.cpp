@@ -144,7 +144,7 @@ void ConvertOldAirportData(Station *st) {
 		/* OpenGRF+Airports includes airport types from NEW_AIRPORT_OFFSET to 23.
 		 * Do not try to convert a completely unknown airport type. */
 		Debug(misc, 0, "Unknown airport type: station {} airport type {}", st->index, st->airport.type);
-		NOT_REACHED();
+		return;
 	}
 }
 
@@ -156,6 +156,8 @@ void AfterLoadSetAirportTileTypes()
 	for (Station *st : Station::Iterate()) {
 		ConvertOldAirportData(st);
 		st->LoadAirportTilesFromSpec(st->airport, (DiagDirection)st->airport.rotation, st->airport.air_type);
+		/* The tiles are in the new format now, so derive the airport data (and the hangar depot) from them. */
+		st->UpdateAirportDataStructure();
 	}
 }
 
@@ -353,7 +355,12 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 		uint pos = RotatedAirportSpecPosition(t, ta, rotation);
 		const AirportTileTable *airport_tile_desc = &as->layouts[this->airport.layout].tiles[pos];
 		if (airport_tile_desc->type == ATT_INVALID) continue;
-		assert(this->TileBelongsToAirport(t));
+		if (!this->TileBelongsToAirport(t)) {
+			/* Not every tile in the airport spec area is an airport tile of this station, e.g. the
+			 * heliport of an oil rig, or a tile of another station. Cannot be rewritten from the spec. */
+			Debug(misc, 4, "Station {}: not rewriting tile {} ({}, {}) as it is not an airport tile of this station", this->index, (uint)t, TileX(t), TileY(t));
+			continue;
+		}
 
 		t.m5() = 0;
 

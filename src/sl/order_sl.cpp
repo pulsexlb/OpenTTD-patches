@@ -172,7 +172,8 @@ struct OrderExtraDataStructHandler final : public TypedSaveLoadStructHandler<Ord
 NamedSaveLoadTable GetOrderDescription()
 {
 	static const NamedSaveLoad _order_desc[] = {
-		NSL("type",                SLE_VAR(Order, type,               SLE_UINT16)),
+		NSL("type",         SLE_CONDVAR_X(Order, type,               SLE_FILE_U8 | SLE_VAR_U16,    SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 0, 0))),
+		NSL("type",         SLE_CONDVAR_X(Order, type,               SLE_UINT16,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 1))),
 		NSL("decouple_flags",      SLE_CONDVAR(Order, decouple_flags,    SLE_UINT8,  SL_MIN_VERSION, SL_MAX_VERSION)),
 		NSL("flags",         SLE_CONDVAR_X(Order, flags,              SLE_FILE_U8 | SLE_VAR_U16,    SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 0, 0))),
 		NSL("flags",         SLE_CONDVAR_X(Order, flags,              SLE_UINT16,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 1))),
@@ -255,6 +256,10 @@ static void Load_ORDR()
 		while ((index = SlIterateArray()) != -1) {
 			OrderPoolItem *item = OrderPoolItem::CreateAtIndex(OrderID(index));
 			SlObjectLoadFiltered(&item->order, slt);
+
+			/* Savegames from before the order type field was widened use the old bit layout. */
+			if (SlXvIsFeatureMissing(XSLFI_ORDER_DECOUPLE)) item->order.ConvertLegacyTypeLayout();
+
 			item->next_ref = _order_item_ref;
 		}
 	}
@@ -454,6 +459,9 @@ struct OrderVectorStructHandlerBase : public SaveLoadStructHandler {
 		orders.resize(SlGetStructListLength(UINT32_MAX));
 		for (Order &order : orders) {
 			SlObjectLoadFiltered(&order, this->GetLoadDescription());
+
+			/* Savegames from before the order type field was widened use the old bit layout. */
+			if (SlXvIsFeatureMissing(XSLFI_ORDER_DECOUPLE)) order.ConvertLegacyTypeLayout();
 		}
 	}
 };

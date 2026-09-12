@@ -147,6 +147,9 @@ enum TTDPAircraftMovementStates : uint8_t {
  */
 uint8_t MapAircraftMovementState(const Aircraft *v)
 {
+	/* Rotors and shadows have no movement state of their own. */
+	if (!v->IsNormalAircraft()) return AMS_TTDP_HANGAR;
+
 	const Station *st = GetTargetAirportIfValid(v);
 	if (st == nullptr) return AMS_TTDP_FLIGHT_TO_TOWER;
 
@@ -202,6 +205,7 @@ uint8_t MapAircraftMovementState(const Aircraft *v)
 
 		case AS_ON_HOLD_APPROACHING:
 		case AS_FLYING:
+		case AS_FLYING_FALLING:
 		case AS_FLYING_NO_DEST:
 		case AS_ON_HOLD_WAITING:
 			return v->IsHelicopter() ? AMS_TTDP_FLIGHT_TO_TOWER : AMS_TTDP_FLIGHT_APPROACH;

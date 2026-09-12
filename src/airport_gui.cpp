@@ -673,6 +673,10 @@ static WindowDesc _air_nontile_toolbar_desc(__FILE__, __LINE__,
 Window *ShowBuildAirToolbar(AirType airtype)
 {
 	if (!Company::IsValidID(_local_company)) return nullptr;
+
+	/* Constructing airports tile by tile is only possible when they may be modified. */
+	if (!_settings_game.station.allow_modify_airports) airtype = INVALID_AIRTYPE;
+
 	if (airtype != INVALID_AIRTYPE && !ValParamAirType(airtype)) return nullptr;
 
 	CloseWindowByClass(WindowClass::BuildToolbar);

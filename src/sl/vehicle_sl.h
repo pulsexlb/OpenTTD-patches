@@ -21,4 +21,10 @@ struct DispatchRecordsStructHandlerBase : public SaveLoadStructHandler {
 	void LoadDispatchRecords(btree::btree_map<uint16_t, LastDispatchRecord> &records) const;
 };
 
+/**
+ * Whether the loaded savegame stores the legacy aircraft position, i.e. predates the new aircraft controller.
+ * @return true iff the savegame uses the legacy aircraft controller data.
+ */
+bool DidLoadLegacyAircraftData();
+
 #endif /* SL_NEWGRF_SL_H */
