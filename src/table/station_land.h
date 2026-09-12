@@ -1457,8 +1457,10 @@ extern const DrawTileSpriteSpan _airport_infra_with_catchment[] = {
 };
 
 extern const DrawTileSpriteSpan _airtype_display_datas_aprons[] = {
-	TILE_SPRITE_LINE(0,              _airtype_display_apron) // plane apron
-	TILE_SPRITE_LINE(0,              _airtype_display_heliport) // heliport
+	TILE_SPRITE_LINE(0,              _airtype_display_apron) // plane apron (APRON_APRON)
+	TILE_SPRITE_LINE(0,              _airtype_display_helipad) // helipad (APRON_HELIPAD)
+	TILE_SPRITE_LINE(0,              _airtype_display_heliport) // heliport (APRON_HELIPORT)
+	TILE_SPRITE_LINE(0,              _station_display_nothing) // APRON_BUILTIN_HELIPORT, drawn by the tile itself
 };
 
 extern const DrawTileSpriteSpan _airtype_display_datas_hangars[] = {

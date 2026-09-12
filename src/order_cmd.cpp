@@ -53,6 +53,22 @@
 #include "safeguards.h"
 
 
+/**
+ * Get the hangar an aircraft's depot order refers to.
+ * An aircraft's depot order names a hangar (a DepotID); orders written before that
+ * encoding name the destination airport's StationID. Both are resolved to the hangar.
+ * @param o the order, which must be an aircraft's depot order.
+ * @return the hangar, or \c nullptr if the order does not resolve to one.
+ */
+const Depot *GetOrderHangar(const Order &o)
+{
+	const Depot *depot = Depot::GetIfValid(o.GetDestination().ToDepotID());
+	if (depot != nullptr && IsAirportTile(depot->xy)) return depot;
+
+	const Station *st = Station::GetIfValid(o.GetDestination().ToStationID());
+	return (st != nullptr) ? st->airport.hangar : nullptr;
+}
+
 DestinationID GetTargetDestination(const Order &o, bool is_aircraft)
 {
 	DestinationID destination_id = o.GetDestination();
@@ -60,12 +76,13 @@ DestinationID GetTargetDestination(const Order &o, bool is_aircraft)
 		case OT_GOTO_STATION:
 			return destination_id;
 		case OT_GOTO_DEPOT:
-			assert(Depot::IsValidID(destination_id.ToDepotID()));
 			if (is_aircraft) {
-				Depot *dep = Depot::Get(destination_id.ToDepotID());
-				destination_id = GetStationIndex(dep->xy);
+				const Depot *hangar = GetOrderHangar(o);
+				if (hangar != nullptr) return DestinationID(GetStationIndex(hangar->xy));
 				assert(Station::IsValidID(destination_id.ToStationID()));
+				return destination_id;
 			}
+			assert(Depot::IsValidID(destination_id.ToDepotID()));
 			return destination_id;
 		default:
 			return DestinationID{StationID::Invalid()};
@@ -1168,11 +1185,19 @@ TileIndex Order::GetLocation(const Vehicle *v, bool airport) const
 			if (airport && v != nullptr && v->type == VehicleType::Aircraft) return Station::Get(this->GetDestination().ToStationID())->airport.tile;
 			return BaseStation::Get(this->GetDestination().ToStationID())->xy;
 
-		case OT_GOTO_DEPOT:
+		case OT_GOTO_DEPOT: {
 			if (this->GetDepotActionType() & ODATFB_NEAREST_DEPOT) return INVALID_TILE;
 			if (this->GetDestination() == DepotID::Invalid()) return INVALID_TILE;
-			return (v != nullptr && v->type == VehicleType::Aircraft) ? Station::Get(this->GetDestination().ToStationID())->xy : Depot::Get(this->GetDestination().ToDepotID())->xy;
 
+			if (v != nullptr && v->type == VehicleType::Aircraft) {
+				const Depot *hangar = GetOrderHangar(*this);
+				if (hangar == nullptr) return INVALID_TILE;
+				const Station *st = Station::GetIfValid(GetStationIndex(hangar->xy));
+				return st != nullptr ? st->xy : INVALID_TILE;
+			}
+			const Depot *depot = Depot::GetIfValid(this->GetDestination().ToDepotID());
+			return depot != nullptr ? depot->xy : INVALID_TILE;
+		}
 		default:
 			return INVALID_TILE;
 	}
@@ -5271,8 +5296,7 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 					v->SetDestTile(Depot::Get(order->GetDestination().ToDepotID())->xy);
 				} else {
 					Aircraft *a = Aircraft::From(v);
-					Depot *dep = Depot::Get(a->current_order.GetDestination().ToDepotID());
-					StationID station_id = GetStationIndex(dep->xy);
+					const StationID station_id = GetTargetDestination(a->current_order, true).ToStationID();
 					if (a->targetairport != station_id) {
 						/* The aircraft is now heading for a different hangar than the next in the orders */
 						a->SetDestTile(a->GetOrderStationLocation(station_id));

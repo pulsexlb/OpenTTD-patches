@@ -64,4 +64,6 @@ const char *GetOrderTypeName(OrderType order_type);
 
 #endif /* ORDER_FUNC_H */
 
+struct Depot;
+const Depot *GetOrderHangar(const Order &o);
 DestinationID GetTargetDestination(const Order &o, bool is_aircraft);

@@ -1378,10 +1378,12 @@ void UpdateAircraftState(Aircraft *v)
 			break;
 		}
 
-		case OT_GOTO_DEPOT:
+		case OT_GOTO_DEPOT: {
 			next_state = AS_HANGAR;
-			dest_tile = v->GetOrderHangarLocation(v->current_order.GetDestination().ToDepotID());
+			const Depot *hangar = GetOrderHangar(v->current_order);
+			dest_tile = (hangar != nullptr) ? v->GetOrderHangarLocation(hangar->index) : INVALID_TILE;
 			break;
+		}
 
 		case OT_NOTHING:
 			if (cur_station == StationID::Invalid()) {

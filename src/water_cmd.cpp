@@ -776,13 +776,14 @@ bool IsWateredTile(TileIndex tile, Direction from)
 
 				return IsTileOnWater(tile);
 			}
+			if (IsAirportTile(tile)) return IsTileOnWater(tile);
 			return (IsDock(tile) && IsTileFlat(tile)) || IsBuoy(tile);
 
 		case TileType::Industry: {
 			/* Do not draw waterborders inside of industries.
 			 * Note: There is no easy way to detect the industry of an oilrig tile. */
 			TileIndex src_tile = tile + TileOffsByDir(from);
-			if ((IsTileType(src_tile, TileType::Station) && IsOilRig(src_tile)) ||
+			if ((IsTileType(src_tile, TileType::Station) && (IsOilRig(src_tile) || IsBuiltInHeliportTile(src_tile))) ||
 			    (IsTileType(src_tile, TileType::Industry) && GetIndustryIndex(src_tile) == GetIndustryIndex(tile))) return true;
 
 			return IsTileOnWater(tile);

@@ -137,7 +137,15 @@ static bool OrderDestinationIsAllowed(const Order *order, const Vehicle *v, Owne
 			break;
 		case OT_GOTO_DEPOT:
 			if ((order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0) return true;
-			dest_owner = (v->type == VehicleType::Aircraft) ? Station::Get(order->GetDestination().ToStationID())->owner : GetTileOwner(Depot::Get(order->GetDestination().ToDepotID())->xy);
+			if (v->type == VehicleType::Aircraft) {
+				const Depot *hangar = GetOrderHangar(*order);
+				if (hangar == nullptr) return true;
+				dest_owner = GetTileOwner(hangar->xy);
+			} else {
+				const Depot *depot = Depot::GetIfValid(order->GetDestination().ToDepotID());
+				if (depot == nullptr) return true;
+				dest_owner = GetTileOwner(depot->xy);
+			}
 			break;
 		case OT_LOADING_ADVANCE:
 		case OT_LOADING:
