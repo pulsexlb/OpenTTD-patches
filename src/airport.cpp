@@ -154,6 +154,10 @@ void ConvertOldAirportData(Station *st) {
 void AfterLoadSetAirportTileTypes()
 {
 	for (Station *st : Station::Iterate()) {
+		/* Old savegames stored the taken airport blocks in this field, using the last block to flag
+		 * the airport as closed. The blocks are meaningless here, so keep only the closed state. */
+		st->airport.flags = HasBit(st->airport.flags, 63) ? AF_CLOSED_MANUAL : AF_NONE;
+
 		ConvertOldAirportData(st);
 		st->LoadAirportTilesFromSpec(st->airport, (DiagDirection)st->airport.rotation, st->airport.air_type);
 		/* The tiles are in the new format now, so derive the airport data (and the hangar depot) from them. */
