@@ -4965,6 +4965,14 @@ static bool IsReservationLookAheadLongEnough(const Train *v, const ChooseTrainTr
 
 	if (v->current_order.IsAnyLoadingType() || v->current_order.IsType(OT_WAITING)) return true;
 
+	/* A part that has just decoupled is still standing in the station it
+	 * decoupled at. Long reserving here would make it hold the block beyond
+	 * the station, on the side it came from, while it is only about to start
+	 * loading there. Loading itself already blocks long reserving (above);
+	 * this closes the window between the decouple and the start of loading.
+	 * The flag is cleared once the train leaves the station. */
+	if (v->flags.Test(VehicleRailFlag::JustDecoupled)) return true;
+
 	if (HasBit(lookahead_state.flags, CTTLASF_STOP_FOUND) || v->lookahead->flags.Test(TrainReservationLookAheadFlag::DepotEnd)) return true;
 
 	if (v->reverse_distance >= 1) {
@@ -7024,11 +7032,17 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * skip it entirely then: physically flipping a still-moving consist
 		 * mid-station-entry is only valid for an actual trailer part. */
 		bool decoupled = (u != nullptr && u != consist);
+		/* Both parts are marked before the reversal: reversing re-reserves the
+		 * part's path, and a part that is still standing in the station it
+		 * decoupled at must not long-reserve (see IsReservationLookAheadLongEnough),
+		 * otherwise the reversal makes it hold the block past the station, on the
+		 * side the train arrived from. */
+		consist->flags.Set(VehicleRailFlag::JustDecoupled);
+		if (decoupled) u->flags.Set(VehicleRailFlag::JustDecoupled);
 		if (trailer == consist) {
 			if (decoupled) ReverseTrainDirection(consist, true);
 			consist = consist->Primary();
 		}
-		consist->flags.Set(VehicleRailFlag::JustDecoupled);
 		/* For the decoupled part, do the opposite: if it is driving forward (towards
 		 * the front part), reverse it now so it drives away from the front part, then
 		 * forbid reversing until it leaves the station. */
@@ -7037,7 +7051,6 @@ static void TrainEnterStation(Train *consist, StationID station)
 				ReverseTrainDirection(u, true);
 				u = u->Primary();
 			}
-			u->flags.Set(VehicleRailFlag::JustDecoupled);
 		}
 		SplitOrders(consist, u, load_trains);
 		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);
