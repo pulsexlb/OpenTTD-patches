@@ -168,6 +168,7 @@ void AfterLoadSetAirportTileTypes()
 /** Clear data about infrastructure of airport */
 void Station::ClearAirportDataInfrastructure() {
 	this->airport.Clear();
+	this->airport.num_tiles = 0;
 	this->airport.air_type = INVALID_AIRTYPE;
 	this->airport.aprons.clear();
 	this->airport.helipads.clear();
@@ -471,6 +472,7 @@ void Station::UpdateAirportDataStructure()
 	for (TileIndex t : airport_area) {
 		if (!this->TileBelongsToAirport(t)) continue;
 		this->airport.Add(t);
+		this->airport.num_tiles++;
 
 		assert(this->airport.air_type == GetAirType(t));
 

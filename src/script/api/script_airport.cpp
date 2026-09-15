@@ -138,7 +138,7 @@
 
 extern CommandCost AddAirportTileTableToBitmapTileArea(const AirportTileLayout &atl, BitmapTileArea *bta, DiagDirection rotation, uint cost_multiplier);
 extern Town *AirportGetNearestTown(BitmapTileArea bta, uint &mindist);
-extern uint8_t GetAirportNoiseLevelForDistance(uint noise_level, uint distance);
+extern uint16_t GetAirportNoiseLevelForDistance(uint noise_level, uint distance);
 
 /* static */ SQInteger ScriptAirport::GetNoiseLevelIncrease(TileIndex tile, AirportType type)
 {

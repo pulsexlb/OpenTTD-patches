@@ -747,6 +747,7 @@ struct Airport : public TileArea {
 	std::vector<TileIndex> heliports;  ///< NOSAVE: heliports of this airport (cannot move through the airport without flying).
 	std::vector<TileIndex> runways;    ///< NOSAVE: runways of this airport.
 
+	uint32_t num_tiles = 0;            ///< NOSAVE: number of tiles of this airport, used for the noise of custom airports.
 	PersistentStorage *psa = nullptr; ///< Persistent storage for NewGRF airports.
 
 	uint AirportCatchmentRadius() const;
