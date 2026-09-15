@@ -5805,6 +5805,9 @@ static bool CanDecouple(Train *v)
  */
 static uint GetDecoupleVehicleAuto(Train *v)
 {
+	/* The cut is applied relative to the physical chain head, so the count has to
+	 * start there as well; the consist carrier may sit mid-chain after a couple. */
+	v = v->First();
 	uint engines_front = 0;
 	uint engines_back = 0;
 	uint pos = 1;
