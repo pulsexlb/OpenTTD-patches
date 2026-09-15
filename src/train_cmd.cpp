@@ -9082,7 +9082,13 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			if (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetDestination() == station_id &&
 					!(consist->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)) {
 				consist->last_station_visited = station_id;
-				consist->BeginLoading();
+				if (consist->current_order.GetDecouple() == ODF_DECOUPLE) {
+					/* A decouple order needs the full station-arrival handling; just staying in the
+					 * station and starting to load again would silently skip the decoupling. */
+					TrainEnterStation(consist, station_id);
+				} else {
+					consist->BeginLoading();
+				}
 				return true;
 			}
 		}

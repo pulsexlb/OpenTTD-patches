@@ -815,6 +815,17 @@ static int DepotActionStringIndex(const Order *order)
 	}
 }
 
+/**
+ * With the train_no_depot_temporary_stop setting every train always stops in a depot, so the
+ * depot action of a train order is fixed to "stop" and cannot be changed by the player.
+ */
+static bool IsDepotActionFixedToStop(const Vehicle *v, const Order *order)
+{
+	return _settings_game.vehicle.train_no_depot_temporary_stop &&
+			v != nullptr && v->type == VehicleType::Train &&
+			order != nullptr && order->IsType(OT_GOTO_DEPOT);
+}
+
 static const StringID _order_refit_action_dropdown[] = {
 	STR_ORDER_DROP_REFIT_AUTO,
 	STR_ORDER_DROP_REFIT_AUTO_ANY,
@@ -1007,7 +1018,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				AppendStringInPlace(line, STR_ORDER_SELL_ORDER);
 			} else {
 				/* Do not show stopping in the depot in the timetable window. */
-				if (!timetable && (order->GetDepotActionType() & ODATFB_HALT)) {
+				if (!timetable && ((order->GetDepotActionType() & ODATFB_HALT) || IsDepotActionFixedToStop(v, order))) {
 					AppendStringInPlace(line, STR_ORDER_STOP_ORDER);
 				}
 
@@ -2900,6 +2911,7 @@ public:
 					break;
 
 				case OT_GOTO_DEPOT:
+					this->SetWidgetDisabledState(WID_O_DEPOT_ACTION, IsDepotActionFixedToStop(this->vehicle, order));
 					if (row_sel != nullptr) {
 						row_sel->SetDisplayedPlane(DP_ROW_DEPOT);
 					} else {
@@ -3514,6 +3526,7 @@ public:
 				VehicleOrderID sel = this->OrderGetSel();
 				const Order *order = OrderAt(sel);
 				if (order == nullptr || !order->IsType(OT_GOTO_DEPOT)) return {};
+				if (IsDepotActionFixedToStop(this->vehicle, order)) return GetString(STR_ORDER_DROP_HALT_DEPOT);
 
 				/* Select the current action selected in the dropdown. The flags don't match the dropdown so we can't just use an index. */
 				if (order->GetDepotActionType() & ODATFB_SELL) {
