@@ -88,7 +88,9 @@ static void PlaceAirport(TileIndex tile)
 {
 	if (_selected_airport_index == -1) return;
 
-	uint8_t airport_type = AirportClass::Get(_selected_airport_class)->GetSpec(_selected_airport_index)->GetIndex();
+	const AirportSpec *as = AirportClass::Get(_selected_airport_class)->GetSpec(_selected_airport_index);
+	if (as == nullptr || as->layouts.empty()) return;
+	uint8_t airport_type = as->GetIndex();
 	uint8_t layout = _selected_airport_layout;
 	bool adjacent = _ctrl_pressed;
 
@@ -743,7 +745,7 @@ public:
 		bool selectFirstAirport = true;
 		if (_selected_airport_index != -1) {
 			const AirportSpec *as = ac->GetSpec(_selected_airport_index);
-			if (as->IsAvailable(_cur_airtype)) {
+			if (as != nullptr && as->IsAvailable(_cur_airtype)) {
 				/* Ensure the airport layout is valid. */
 				_selected_airport_layout = Clamp<uint8_t>(_selected_airport_layout, 0, (uint8_t)as->layouts.size() - 1);
 				_selected_rotation = (DiagDirection)Clamp<uint>(static_cast<uint>(_selected_rotation), 0, 3);
@@ -767,9 +769,9 @@ public:
 			case WID_AP_CLASS_DROPDOWN:
 				return GetString(AirportClass::Get(_selected_airport_class)->name);
 
-			case WID_AP_LAYOUT_NUM:
-				if (_selected_airport_index != -1) {
-					const AirportSpec *as = AirportClass::Get(_selected_airport_class)->GetSpec(_selected_airport_index);
+			case WID_AP_LAYOUT_NUM: {
+				const AirportSpec *as = this->GetSelectedAirportSpec();
+				if (as != nullptr) {
 					StringID string = GetAirportTextCallback(as, _selected_airport_layout, CBID_AIRPORT_LAYOUT_NAME);
 					if (string != STR_UNDEFINED) {
 						return GetString(string);
@@ -778,6 +780,7 @@ public:
 					}
 				}
 				return GetString(STR_EMPTY);
+			}
 
 			case WID_AP_ROTATION:
 				if (_selected_airport_index != -1) {
@@ -878,9 +881,9 @@ public:
 				}
 				break;
 
-			case WID_AP_EXTRA_TEXT:
-				if (_selected_airport_index != -1) {
-					const AirportSpec *as = AirportClass::Get(_selected_airport_class)->GetSpec(_selected_airport_index);
+			case WID_AP_EXTRA_TEXT: {
+				const AirportSpec *as = this->GetSelectedAirportSpec();
+				if (as != nullptr) {
 					StringID string = GetAirportTextCallback(as, _selected_airport_layout, CBID_AIRPORT_ADDITIONAL_TEXT);
 					if (string != STR_UNDEFINED) {
 						DrawStringMultiLine(r, GetString(string), TextColour::Black);
@@ -889,6 +892,7 @@ public:
 					}
 				}
 				break;
+			}
 		}
 	}
 
@@ -899,8 +903,8 @@ public:
 		Rect r = this->GetWidget<NWidgetBase>(WID_AP_ACCEPTANCE)->GetCurrentRect();
 		int top = r.top;
 
-		if (_selected_airport_index != -1) {
-			const AirportSpec *as = AirportClass::Get(_selected_airport_class)->GetSpec(_selected_airport_index);
+		const AirportSpec *as = GetSelectedAirportSpec();
+		if (as != nullptr) {
 			AirType airtype = _settings_game.station.allow_modify_airports ? _cur_airtype : as->airtype;
 			const AirTypeInfo *ati = GetAirTypeInfo(airtype);
 			int rad = _settings_game.station.modified_catchment ? ati->catchment_radius : (uint)CA_UNMODIFIED;
@@ -934,16 +938,28 @@ public:
 		this->SetDirty();
 	}
 
+	/**
+	 * Get the spec of the currently selected airport, or \c nullptr if there is no valid selection.
+	 * The index is relative to the selected airport class, which may have been emptied by a change
+	 * in the loaded NewGRF files, and an airport without layouts cannot be built at all.
+	 */
+	const AirportSpec *GetSelectedAirportSpec() const
+	{
+		if (_selected_airport_index == -1) return nullptr;
+		const AirportSpec *as = AirportClass::Get(_selected_airport_class)->GetSpec(_selected_airport_index);
+		return (as != nullptr && !as->layouts.empty()) ? as : nullptr;
+	}
+
 	void UpdateSelectSize()
 	{
-		if (_selected_airport_index == -1) {
+		const AirportSpec *as = GetSelectedAirportSpec();
+		if (as == nullptr) {
 			SetTileSelectSize(1, 1);
 			this->DisableWidget(WID_AP_LAYOUT_DECREASE);
 			this->DisableWidget(WID_AP_LAYOUT_INCREASE);
 			this->DisableWidget(WID_AP_ROTATION_DECREASE);
 			this->DisableWidget(WID_AP_ROTATION_INCREASE);
 		} else {
-			const AirportSpec *as = AirportClass::Get(_selected_airport_class)->GetSpec(_selected_airport_index);
 			int w = as->layouts[_selected_airport_layout].size_x;
 			int h = as->layouts[_selected_airport_layout].size_y;
 			if (static_cast<uint>(_selected_rotation) % 2 != 0) std::swap(w, h);
@@ -971,7 +987,7 @@ public:
 				int32_t num_clicked = this->vscroll->GetScrolledRowFromWidget(pt.y, this, widget, 0, this->line_height);
 				if (num_clicked == INT32_MAX) break;
 				const AirportSpec *as = AirportClass::Get(_selected_airport_class)->GetSpec(num_clicked);
-				if (as->IsAvailable(_cur_airtype)) this->SelectOtherAirport(num_clicked);
+				if (as != nullptr && as->IsAvailable(_cur_airtype)) this->SelectOtherAirport(num_clicked);
 				break;
 			}
 
@@ -1034,7 +1050,7 @@ public:
 					if (as->IsAvailable(_cur_airtype)) {
 						_selected_airport_class = cls.Index();
 						this->vscroll->SetCount(cls.GetSpecCount());
-						this->SelectOtherAirport(as->GetIndex());
+						this->SelectOtherAirport(as->index);
 						return;
 					}
 				}

@@ -97,6 +97,8 @@ AirportSpec AirportSpec::specs[NUM_AIRPORTS]; ///< Airport specifications.
  */
 bool AirportSpec::IsAvailable(AirType air_type) const
 {
+	/* An airport without layouts cannot be built. */
+	if (this->layouts.empty()) return false;
 	if (!this->enabled) return false;
 	if (CalTime::CurYear() < this->min_year) return false;
 
