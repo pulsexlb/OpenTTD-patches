@@ -3496,7 +3496,7 @@ static bool IsWholeTrainInsideDepot(const Train *v)
 	return true;
 }
 
-static void ReverseTrainForCouple(Train *v);
+static void ReverseTrainForCouple(Train *v, bool joint_at_tail);
 
 /**
  * Turn a train around.
@@ -3621,8 +3621,9 @@ static void ReverseTrainDirection(Train *consist, bool no_swap = false)
 		/* We may have entered a depot and stopped driving backwards. */
 		std::swap(moving_front, moving_back);
 	} else if (no_swap) {
-		/* The train will flip in place without swapping vehicle positions. */
-		ReverseTrainForCouple(first);
+		/* The train will flip in place without swapping vehicle positions. The
+		 * chain tail is kept in place while the front is re-spaced. */
+		ReverseTrainForCouple(first, true);
 		/* The flip reversed the chain order, so the chain head moved to the
 		 * former tail; re-anchor before updating the consist from the head. */
 		first = first->First();
@@ -6636,44 +6637,79 @@ static bool TryTrainCouple(Train *v, Train *u)
 }
 
 /**
- * Re-space the vehicles of a consist half that was just mirrored by
- * ReverseTrainNoSwapVehicles(). Mirroring re-pairs the adjacent vehicles, and
- * with variable-length consists the rounding that governs each pair's spacing
- * swaps with the pairing, so some pairs end up a pixel too tight or too wide.
- *
- * After the flip every vehicle of the half faces the same way, and vehicles
- * can only be nudged forward along that direction. Each pair is corrected by
- * pushing the chunk on one side of it (a chunk moves rigidly, so pairs inside
- * it and already-corrected pairs are not disturbed). The pair spanning the
- * joint to the other consist is deliberately left alone; Couple() fixes the
- * joint gap afterwards via AdvanceWagonsAfterCouple().
- * @param half_first first vehicle of the flipped half
- * @param half_last last vehicle of the flipped half
+ * Move a train vehicle to the given pixel position, keeping its tile, height and
+ * vehicle hash consistent with the new position.
+ * @param v vehicle to move.
+ * @param x new x position.
+ * @param y new y position.
  */
-static void FixFlippedHalfSpacing(Train *half_first, Train *half_last)
+static void MoveTrainToPosition(Train *v, int x, int y)
 {
-	if (half_first == half_last) return;
+	if (v->x_pos == x && v->y_pos == y) return;
 
-	for (Train *a = half_first; a != half_last; a = a->Next()) {
-		Train *b = a->Next();
-		int err = std::max(abs(b->x_pos - a->x_pos), abs(b->y_pos - a->y_pos)) - CouplePairOffset(a);
-		if (err == 0) continue;
+	TileIndex tile = TileVirtXY(x, y);
+	bool changed_tile = (tile != v->tile);
 
-		/* Is b downstream of a along the shared motion direction? Pushing the
-		 * upstream chunk moves it towards the partner, pushing the downstream
-		 * chunk moves it away. */
-		TileIndexDiffC dd = CoupleMotionDelta(a);
-		bool b_downstream = (b->x_pos - a->x_pos) * dd.x + (b->y_pos - a->y_pos) * dd.y > 0;
-		bool push_b_chunk = (err < 0) == b_downstream;
+	v->x_pos = x;
+	v->y_pos = y;
+	v->z_pos = GetSlopePixelZ(x, y, true);
+	v->tile = tile;
 
-		for (int i = 0; i < abs(err); i++) {
-			if (push_b_chunk) {
-				/* [b .. half_last]: b is the chain tail side. */
-				CoupleAdvanceVehicles(b, half_last);
-			} else {
-				/* [half_first .. a]: stop before b. */
-				CoupleAdvanceVehicles(half_first, a);
-			}
+	if (changed_tile) {
+		/* The vehicle changed tile: run the usual enter tile update. */
+		UpdateStatusAfterSwap(v, false);
+	} else {
+		/* Moved inside its tile: update the sprite and the vehicle hash without
+		 * re-entering the (unchanged) tile, like the single vehicle case of
+		 * ReverseTrainNoSwapVehicles(). */
+		v->InvalidateImageCache();
+		v->UpdateIsDrawn();
+		v->UpdatePosition();
+		v->UpdateViewport(true, true);
+	}
+}
+
+/**
+ * Re-space a consist half that was just mirrored in place by
+ * ReverseTrainNoSwapVehicles().
+ *
+ * Mirroring re-pairs the adjacent vehicles, and with variable length consists
+ * the rounding that governs each pair's spacing swaps with the pairing, so
+ * consecutive vehicles can end up a pixel too tight or too wide. Correcting
+ * that by pushing chunks around does not converge: a push moves every vehicle
+ * of the chunk, which disturbs pairs that were already correct, and for the half
+ * that trails at the joint every push is directed towards the partner consist,
+ * so the half creeps into it.
+ *
+ * Instead lay the half out in a single pass from the end that must not move (the
+ * joint end, where the partner consist is standing) towards the other end: every
+ * vehicle is placed at exactly the joint offset from its chain neighbour.
+ *
+ * @param half_first chain head of the flipped half.
+ * @param joint_at_tail whether the end that must keep its position is the chain
+ *                      tail (\c true, the moving consist: its tail meets the
+ *                      partner) or the chain head (\c false, the waiting consist:
+ *                      its head meets the partner).
+ */
+static void RespaceFlippedHalf(Train *half_first, bool joint_at_tail)
+{
+	if (joint_at_tail) {
+		/* Lay out towards the chain head: every predecessor takes its position
+		 * from its already placed successor. */
+		for (Train *b = half_first->Last(); b->Previous() != nullptr; b = b->Previous()) {
+			Train *a = b->Previous();
+			TileIndexDiffC dd = CoupleMotionDelta(a);
+			int offset = CouplePairOffset(a);
+			MoveTrainToPosition(a, b->x_pos + dd.x * offset, b->y_pos + dd.y * offset);
+		}
+	} else {
+		/* Lay out towards the chain tail: every successor takes its position from
+		 * its already placed predecessor. */
+		for (Train *a = half_first; a->Next() != nullptr; a = a->Next()) {
+			Train *b = a->Next();
+			TileIndexDiffC dd = CoupleMotionDelta(a);
+			int offset = CouplePairOffset(a);
+			MoveTrainToPosition(b, a->x_pos - dd.x * offset, a->y_pos - dd.y * offset);
 		}
 	}
 }
@@ -6687,7 +6723,7 @@ static void FixFlippedHalfSpacing(Train *half_first, Train *half_last)
  * positions inside the block). The primary vehicle is not moved, so the train
  * keeps its identity, orders and group.
  */
-static void ReverseTrainForCouple(Train *v)
+static void ReverseTrainForCouple(Train *v, bool joint_at_tail)
 {
 	/* Physical reversal always operates on the whole chain; callers may pass
 	 * the primary vehicle which can sit mid-chain. */
@@ -6696,7 +6732,7 @@ static void ReverseTrainForCouple(Train *v)
 	/* The flip reverses the chain order, so the local pointer now sits
 	 * mid-chain; re-anchor at the new chain head before re-spacing. */
 	v = v->First();
-	FixFlippedHalfSpacing(v, v->Last());
+	RespaceFlippedHalf(v, joint_at_tail);
 }
 
 /**
@@ -6785,14 +6821,16 @@ static void Couple(Train *v, Train *u)
 	 * backwards its tail meets u (no flip needed); otherwise its head meets
 	 * u, so v must be turned around and approach tail-first. */
 	if (!v->IsDrivingBackwards()) {
-		ReverseTrainForCouple(v);
+		/* Its tail meets the waiting consist after the flip. */
+		ReverseTrainForCouple(v, true);
 		v = v->Primary();
 	}
 
 	/* u must face the (possibly reversed) v within 45 degrees to couple as-is. */
 	DirDiff dir_diff = DirDifference(v->direction, u->direction);
 	if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
-		ReverseTrainForCouple(u);
+		/* The waiting consist's head is the end that meets the partner. */
+		ReverseTrainForCouple(u, false);
 		u = u->Primary();
 	} else {
 		u = u->Primary();
