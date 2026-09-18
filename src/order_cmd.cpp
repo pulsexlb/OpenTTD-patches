@@ -4516,6 +4516,33 @@ static void FreeOrphanedExecuteScheduleHome(OrderList *home)
 	home->FreeChain(false);
 }
 
+/** Attach a prepared private active-list copy without discarding execute-schedule context. */
+void SetDecoupleWaitOrderList(Vehicle *v, OrderList *orders)
+{
+	OrderList *old = v->orders;
+	const bool executing = v->IsExecutingSchedule();
+	const VehicleFlags flags = v->vehicle_flags;
+	const int32_t lateness = v->lateness_counter;
+	DeleteOrderWarnings(v);
+	if (old != nullptr) {
+		extern void UpdateDeparturesWindowVehicleFilter(const OrderList *order_list, bool remove);
+		UpdateDeparturesWindowVehicleFilter(old, false);
+		if (old->IsShared()) {
+			v->RemoveFromShared();
+		} else {
+			old->RemoveVehicle(v);
+		}
+	}
+	v->orders = orders;
+	if (!executing) v->primary_order = orders->index;
+	orders->Initialize(v);
+	v->vehicle_flags = flags;
+	v->lateness_counter = lateness;
+	FreeOrphanedExecuteScheduleHome(old);
+	ClearOrderDestinationRefcountMap();
+	InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);
+}
+
 /**
  * Delete all orders from a vehicle
  * @param v                   Vehicle whose orders to reset
@@ -5255,6 +5282,10 @@ void Vehicle::ReturnFromExecuteSchedule()
 
 	this->current_order.Free();
 	this->SetDestTile(INVALID_TILE);
+	if (!target->IsPlayerCreated()) {
+		FreeOrphanedExecuteScheduleHome(target);
+		ClearOrderDestinationRefcountMap();
+	}
 	InvalidateVehicleOrder(this, VIWD_MODIFY_ORDERS);
 }
 
@@ -5445,6 +5476,10 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 					}
 					v->orders = target;
 					target->AssignVehicle(v);
+					if (!home->IsPlayerCreated() && v->primary_order != home->index) {
+						FreeOrphanedExecuteScheduleHome(home);
+						ClearOrderDestinationRefcountMap();
+					}
 					/* Adopt the list's dispatch/separation state (shared state). */
 					v->vehicle_flags.Set(VehicleFlag::ScheduledDispatch, target->IsDispatchEnabled());
 					v->vehicle_flags.Set(VehicleFlag::TimetableSeparation, target->IsSeparationEnabled());

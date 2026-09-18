@@ -998,6 +998,7 @@ struct OrderPoolItem : OrderPool::PoolItem<&_order_pool> {
 };
 
 void InsertOrder(Vehicle *v, Order &&new_o, VehicleOrderID sel_ord);
+void SetDecoupleWaitOrderList(Vehicle *v, OrderList *orders);
 void DeleteOrder(Vehicle *v, VehicleOrderID sel_ord);
 
 struct CargoMaskedStationIDVector {

@@ -6006,27 +6006,53 @@ static constexpr uint8_t DECOUPLE_NO_LOAD     = 0; ///< Neither part loads.
 static constexpr uint8_t DECOUPLE_LOAD_FIRST  = 1; ///< Load the first part.
 static constexpr uint8_t DECOUPLE_LOAD_SECOND = 2; ///< Load the second part.
 
-/**
- * Copy the orders to the new rear part of the consist, so it can wait for
- * a couple at the next station.
- */
-
-/**
- * Create a wait-for-couple order at the start of the order list.
- */
-static void CreateWaitForCoupleOrder(Train *v)
+static bool IsDecoupleWaitMode(OrderDecoupleOrdersFlags mode)
 {
-	if (v->orders == nullptr && !OrderList::CanAllocateItem()) return;
-
-	Order wait_for_couple_order;
-	wait_for_couple_order.MakeWaitCouple();
-	InsertOrder(v, std::move(wait_for_couple_order), 0);
+	return mode == ODOF_LOAD_AND_WAIT || mode == ODOF_WAIT_FOR_COUPLE;
 }
 
-/**
- * Split the orders between the two parts of the consist after decoupling.
- * @param load_trains Whether the first/second part should load.
- */
+/** Prepare both copies before splitting or changing either part's orders. */
+static StringID PrepareDecoupleWaitOrders(const Train *v, std::unique_ptr<OrderList> (&copies)[2])
+{
+	const Order *decouple = v->GetOrder(v->cur_implicit_order_index + 1);
+	const OrderDecoupleOrdersFlags modes[] = {decouple->GetDecoupleFirstOrdersType(), decouple->GetDecoupleSecondOrdersType()};
+	if (!IsDecoupleWaitMode(modes[0]) && !IsDecoupleWaitMode(modes[1])) return STR_NULL;
+	if (v->GetNumOrders() >= MAX_VEH_ORDER_ID) return STR_ERROR_TOO_MANY_ORDERS;
+
+	uint needed = 0;
+	for (uint i = 0; i < 2; ++i) {
+		if (IsDecoupleWaitMode(modes[i])) {
+			++needed;
+		} else if (modes[i] == ODOF_EXECUTE_SCHEDULE || modes[i] == ODOF_LOAD_AND_SCHEDULE) {
+			const OrderList *schedule = OrderList::GetIfValid(i == 0 ? decouple->GetDecoupleFirstScheduleID() : decouple->GetDecoupleSecondScheduleID());
+			if (schedule != nullptr && schedule->IsPlayerCreated()) ++needed;
+		}
+	}
+	if (!OrderList::CanAllocateItem(needed)) return STR_ERROR_NO_MORE_SPACE_FOR_ORDERS;
+
+	for (uint i = 0; i < 2; ++i) {
+		if (!IsDecoupleWaitMode(modes[i])) continue;
+		copies[i].reset(OrderList::Create());
+		OrderList *copy = copies[i].get();
+		copy->GetOrderVector().reserve(v->GetNumOrders() + 1);
+		for (const Order *order : v->Orders()) copy->GetOrderVector().emplace_back(*order);
+		copy->GetScheduledDispatchScheduleSet() = v->orders->GetScheduledDispatchScheduleSet();
+		copy->SetRouteOverlayColour(v->orders->GetRouteOverlayColour());
+		copy->SetDispatchEnabled(v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch));
+		copy->SetSeparationEnabled(v->vehicle_flags.Test(VehicleFlag::TimetableSeparation));
+	}
+	return STR_NULL;
+}
+
+/** Install the independent copy and insert a new wait after this decouple, never deduplicating. */
+static void InsertDecoupleWaitOrder(Train *v, std::unique_ptr<OrderList> &copy, VehicleOrderID wait_index)
+{
+	SetDecoupleWaitOrderList(v, copy.release());
+	Order wait;
+	wait.MakeWaitCouple();
+	InsertOrder(v, std::move(wait), wait_index);
+}
+
 /**
  * Make a decoupled train part adopt a player-created order list as its own
  * schedule: both its orders and its primary order list become the schedule.
@@ -6091,23 +6117,20 @@ static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id, StationI
 	return true;
 }
 
-static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
+static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_ptr<OrderList> (&wait_orders)[2])
 {
-	Order *after_decouple_flags = v->orders->GetOrderAt(v->cur_implicit_order_index + 1);
-	assert(after_decouple_flags->GetType() == OT_DECOUPLE);
+	const Order after_decouple_flags = *v->orders->GetOrderAt(v->cur_implicit_order_index + 1);
+	assert(after_decouple_flags.GetType() == OT_DECOUPLE);
+	const VehicleOrderID wait_index = v->cur_implicit_order_index + 2;
+	const BaseConsist order_state = *v;
 
 	if (v != u) {
-		switch (after_decouple_flags->GetDecoupleSecondOrdersType()) {
+		switch (after_decouple_flags.GetDecoupleSecondOrdersType()) {
+			case ODOF_LOAD_AND_WAIT:
 			case ODOF_KEEP_ORDERS:
 				load_trains |= DECOUPLE_LOAD_SECOND;
-				u->orders = v->orders;
-				u->primary_order = v->primary_order;
-				u->primary_order_index = v->primary_order_index;
-				u->AddToShared(v);
-				u->cur_real_order_index = v->cur_real_order_index;
-				u->cur_implicit_order_index = v->cur_implicit_order_index;
-				u->current_order = v->current_order;
-				break;
+				[[fallthrough]];
+			case ODOF_WAIT_FOR_COUPLE:
 			case ODOF_KEEP_ORDERS_NO_LOAD:
 				u->orders = v->orders;
 				u->primary_order = v->primary_order;
@@ -6116,42 +6139,29 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 				u->cur_real_order_index = v->cur_real_order_index;
 				u->cur_implicit_order_index = v->cur_implicit_order_index;
 				u->current_order = v->current_order;
-				u->IncrementImplicitOrderIndex();
-				break;
-			case ODOF_LOAD_AND_WAIT: {
-				/* Generate [GOTO_STATION(this station), WAIT_FOR_COUPLE]: the
-				 * part stays on its platform, loads/unloads through the regular
-				 * loading flow, and falls into the wait-for-couple hold once
-				 * loading finishes. */
-				load_trains |= DECOUPLE_LOAD_SECOND;
-
-				Order station_order;
-				/* v is the front part's primary whose last-station record was set
-				 * to this station at TrainEnterStation entry -- the only reliable
-				 * source for "the station we are decoupling at". MakeGoToStation
-				 * resets all flags/markers, producing a plain station order. */
-				station_order.MakeGoToStation(v->last_station_visited);
-
-				Order wait_for_couple_order;
-				wait_for_couple_order.MakeWaitCouple();
-
-				if (u->orders == nullptr && !OrderList::CanAllocateItem()) break;
-				DeleteVehicleOrders(u, false, true);
-				InsertOrder(u, std::move(station_order), 0);
-				InsertOrder(u, std::move(wait_for_couple_order), 1);
-				break;
-			}
-			case ODOF_WAIT_FOR_COUPLE:
-				CreateWaitForCoupleOrder(u);
+				if (wait_orders[1] != nullptr) {
+					u->cur_timetable_order_index = order_state.cur_timetable_order_index;
+					u->current_order_time = order_state.current_order_time;
+					u->lateness_counter = order_state.lateness_counter;
+					u->timetable_start = order_state.timetable_start;
+					u->dispatch_records = order_state.dispatch_records;
+					for (VehicleFlag flag : {VehicleFlag::TimetableStarted, VehicleFlag::AutofillTimetable,
+							VehicleFlag::AutofillPreserveWaitTime, VehicleFlag::ScheduledDispatch,
+							VehicleFlag::TimetableSeparation, VehicleFlag::AutomateTimetable}) {
+						u->vehicle_flags.Set(flag, order_state.vehicle_flags.Test(flag));
+					}
+					InsertDecoupleWaitOrder(u, wait_orders[1], wait_index);
+				}
+				if (!(load_trains & DECOUPLE_LOAD_SECOND)) u->IncrementImplicitOrderIndex();
 				break;
 			case ODOF_EXECUTE_SCHEDULE:
-				AdoptDecoupleSchedule(u, after_decouple_flags->GetDecoupleSecondScheduleID());
+				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID());
 				break;
 			case ODOF_LOAD_AND_SCHEDULE:
 				/* Load/unload at this station once, then run the schedule, skipping
 				 * the station order on all later passes. */
 				load_trains |= DECOUPLE_LOAD_SECOND;
-				AdoptDecoupleSchedule(u, after_decouple_flags->GetDecoupleSecondScheduleID(), v->last_station_visited);
+				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID(), v->last_station_visited);
 				break;
 			default: NOT_REACHED();
 		}
@@ -6161,46 +6171,25 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains)
 	for (const Train *w = u->First(); w != nullptr; w = w->Next()) {
 	}
 
-	switch (after_decouple_flags->GetDecoupleFirstOrdersType()) {
+	/* A failed physical split must not insert a wait or replace the original list. */
+	if (v != u && wait_orders[0] != nullptr) InsertDecoupleWaitOrder(v, wait_orders[0], wait_index);
+	switch (after_decouple_flags.GetDecoupleFirstOrdersType()) {
+		case ODOF_LOAD_AND_WAIT:
 		case ODOF_KEEP_ORDERS:
 			load_trains |= DECOUPLE_LOAD_FIRST;
 			break;
+		case ODOF_WAIT_FOR_COUPLE:
 		case ODOF_KEEP_ORDERS_NO_LOAD:
 			v->IncrementImplicitOrderIndex();
 			break;
-		case ODOF_LOAD_AND_WAIT: {
-			/* Mirror the second part's flow: a plain go-to-station order for
-			 * this station followed by wait-for-couple. The station order lets
-			 * the regular loading flow complete; with only a wait-for-couple
-			 * order the consist would stay in the loading state forever. */
-			load_trains |= DECOUPLE_LOAD_FIRST;
-
-			/* v is the consist part's primary whose last-station record was set
-			 * to this station at TrainEnterStation entry. */
-			Order station_order;
-			station_order.MakeGoToStation(v->last_station_visited);
-
-			Order wait_for_couple_order;
-			wait_for_couple_order.MakeWaitCouple();
-
-			if (v->orders == nullptr && !OrderList::CanAllocateItem()) break;
-			DeleteVehicleOrders(v, false, true);
-			InsertOrder(v, std::move(station_order), 0);
-			InsertOrder(v, std::move(wait_for_couple_order), 1);
-			break;
-		}
-		case ODOF_WAIT_FOR_COUPLE:
-			DeleteVehicleOrders(v, false, true);
-			CreateWaitForCoupleOrder(v);
-			break;
 		case ODOF_EXECUTE_SCHEDULE:
-			AdoptDecoupleSchedule(v, after_decouple_flags->GetDecoupleFirstScheduleID());
+			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID());
 			break;
 		case ODOF_LOAD_AND_SCHEDULE:
 			/* Load/unload at this station once, then run the schedule, skipping
 			 * the station order on all later passes. */
 			load_trains |= DECOUPLE_LOAD_FIRST;
-			AdoptDecoupleSchedule(v, after_decouple_flags->GetDecoupleFirstScheduleID(), v->last_station_visited);
+			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID(), v->last_station_visited);
 			break;
 		default: NOT_REACHED();
 	}
@@ -7108,7 +7097,12 @@ static void TrainEnterStation(Train *consist, StationID station)
 	uint8_t load_trains = DECOUPLE_NO_LOAD;
 	bool want_decouple = consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE;
 	Debug(desync, 1, "TrainEnterStation: veh={} st={} tile=({},{}) want_decouple={} ordertype={}", consist->index, station, TileX(consist->tile), TileY(consist->tile), want_decouple, (int)consist->current_order.GetType());
-	if (want_decouple) {
+	std::unique_ptr<OrderList> wait_orders[2];
+	const StringID order_failure = want_decouple ? PrepareDecoupleWaitOrders(consist, wait_orders) : STR_NULL;
+	if (order_failure != STR_NULL && consist->owner == _local_company) {
+		AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED_REASON, consist->index, order_failure), consist->index);
+	}
+	if (want_decouple && order_failure == STR_NULL) {
 		bool consist_in_rear = false;
 		StringID decouple_failure_reason;
 		u = DecoupleTrain(consist, consist_in_rear, decouple_failure_reason);
@@ -7151,7 +7145,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 				u = u->Primary();
 			}
 		}
-		SplitOrders(consist, u, load_trains);
+		SplitOrders(consist, u, load_trains, wait_orders);
 		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);
 		if (u != nullptr && u->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(u);
 		/* ProcessOrders inside SplitOrders runs GetOrderStationLocation, which
