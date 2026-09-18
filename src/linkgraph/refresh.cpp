@@ -321,6 +321,39 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 				list_changed = true;
 			}
 		}
+		if (following->IsType(OT_DECOUPLE)) {
+			/* The consist splits here: each part may adopt a player-created
+			 * schedule afterwards. Refresh cargo links into both referenced
+			 * schedules while the whole consist is still standing at this
+			 * station, so the schedules' own stations are part of the link
+			 * graph even before the split happens. The front part keeps
+			 * walking this list below (GetNextDecisionNode skips the decouple
+			 * order), so the stations after the decouple are still visited. */
+			for (OrderListID schedule_id : { following->GetDecoupleFirstScheduleID(), following->GetDecoupleSecondScheduleID() }) {
+				OrderList *target = OrderList::GetIfValid(schedule_id);
+				if (target == nullptr || target == this->walk_orders || target->GetNumOrders() == 0
+						|| !target->IsPlayerCreated() || !target->IsVisibleToCompany(this->vehicle->owner)) continue;
+
+				/* Skip a leading stop at the station the consist currently stands at. */
+				const Order *start = target->GetFirstOrder();
+				if (cur->IsType(OT_GOTO_STATION) || cur->IsType(OT_IMPLICIT)) {
+					const StationID cur_station = cur->GetDestination().ToStationID();
+					for (uint skipped = 0; skipped < target->GetNumOrders(); ++skipped) {
+						if (!(start->IsType(OT_GOTO_STATION) || start->IsType(OT_IMPLICIT))) break;
+						if (start->GetDestination() != cur_station) break;
+						start = target->GetNext(start);
+					}
+				}
+
+				CargoTypes sched_cargo_mask = this->cargo_mask;
+				const Order *first_target = target->GetNextDecisionNode(start, num_hops, sched_cargo_mask);
+				if (first_target == nullptr) continue;
+
+				LinkRefresher branch(*this);
+				branch.walk_orders = target;
+				branch.RefreshLinks(cur, first_target, { 0, TimetableTravelTimeFlag::NoWaitTime }, flags, num_hops + 1);
+			}
+		}
 		next = this->walk_orders->GetNextDecisionNode(following, num_hops++, this_cargo_mask);
 		assert(this_cargo_mask == this->cargo_mask);
 
