@@ -1247,6 +1247,7 @@ static const SpriteID SPR_CARGO_TOFFEE                = 4320;
 static const SpriteID SPR_CARGO_BUBBLES               = 4321;
 static const SpriteID SPR_CARGO_PLASTIC               = 4322;
 static const SpriteID SPR_CARGO_BATTERIES             = 4323;
+static const SpriteID SPR_CARGO_VEHICLES              = 4302;  // placeholder: shares the goods sprite until dedicated graphics exist
 static const SpriteID SPR_CARGO_NOTHING               = SPR_ASCII_SPACE; // Placeholder for void cargo slots.
 
 /* Effect vehicles */

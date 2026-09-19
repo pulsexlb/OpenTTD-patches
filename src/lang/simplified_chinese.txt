@@ -56,6 +56,7 @@ STR_CARGO_PLURAL_TOFFEE                                         :太妃糖
 STR_CARGO_PLURAL_BATTERIES                                      :电池
 STR_CARGO_PLURAL_PLASTIC                                        :塑料
 STR_CARGO_PLURAL_FIZZY_DRINKS                                   :汽水
+STR_CARGO_PLURAL_VEHICLES                                        :载具（汽车）
 
 # Singular cargo name
 STR_CARGO_SINGULAR_NOTHING                                      :
@@ -90,6 +91,7 @@ STR_CARGO_SINGULAR_TOFFEE                                       :太妃糖
 STR_CARGO_SINGULAR_BATTERY                                      :电池
 STR_CARGO_SINGULAR_PLASTIC                                      :塑料
 STR_CARGO_SINGULAR_FIZZY_DRINK                                  :汽水
+STR_CARGO_SINGULAR_VEHICLE                                       :汽车
 
 # Quantity of cargo
 STR_QUANTITY_NOTHING                                            :
@@ -124,6 +126,7 @@ STR_QUANTITY_TOFFEE                                             :{WEIGHT_LONG}�
 STR_QUANTITY_BATTERIES                                          :{COMMA}{NBSP}箱电池
 STR_QUANTITY_PLASTIC                                            :{VOLUME_LONG}塑料
 STR_QUANTITY_FIZZY_DRINKS                                       :{COMMA}{NBSP}瓶汽水
+STR_QUANTITY_VEHICLES                                            :{WEIGHT_LONG}的道路载具
 STR_QUANTITY_N_A                                                :不适用
 
 # Two letter abbreviation of cargo name
@@ -159,6 +162,7 @@ STR_ABBREV_TOFFEE                                               :太
 STR_ABBREV_BATTERIES                                            :电
 STR_ABBREV_PLASTIC                                              :塑
 STR_ABBREV_FIZZY_DRINKS                                         :汽
+STR_ABBREV_VEHICLES                                              :载具
 STR_ABBREV_ALL                                                  :全
 
 # 'Mode' of transport for cargoes

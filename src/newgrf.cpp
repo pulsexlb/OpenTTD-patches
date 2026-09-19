@@ -963,6 +963,13 @@ static void CalculateRefitMasks()
 					}
 				}
 			}
+
+			/* Road vehicle transport: trains, ships and aircraft can always be refitted to the
+			 * dedicated "Vehicles (Road)" cargo. */
+			if (e->type == VehicleType::Train || e->type == VehicleType::Ship || e->type == VehicleType::Aircraft) {
+				CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
+				if (IsValidCargoType(vehicles_cargo)) ei->refit_mask.Set(vehicles_cargo);
+			}
 		}
 
 		/* Clear invalid cargoslots (from default vehicles or pre-NewCargo GRFs) */

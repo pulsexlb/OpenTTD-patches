@@ -56,6 +56,7 @@ STR_CARGO_PLURAL_TOFFEE                                         :Toffee
 STR_CARGO_PLURAL_BATTERIES                                      :Batteries
 STR_CARGO_PLURAL_PLASTIC                                        :Plastic
 STR_CARGO_PLURAL_FIZZY_DRINKS                                   :Fizzy Drinks
+STR_CARGO_PLURAL_VEHICLES                                        :Road Vehicles
 
 # Singular cargo name
 STR_CARGO_SINGULAR_NOTHING                                      :
@@ -90,6 +91,7 @@ STR_CARGO_SINGULAR_TOFFEE                                       :Toffee
 STR_CARGO_SINGULAR_BATTERY                                      :Battery
 STR_CARGO_SINGULAR_PLASTIC                                      :Plastic
 STR_CARGO_SINGULAR_FIZZY_DRINK                                  :Fizzy Drink
+STR_CARGO_SINGULAR_VEHICLE                                       :Road Vehicle
 
 # Quantity of cargo
 STR_QUANTITY_NOTHING                                            :
@@ -124,6 +126,7 @@ STR_QUANTITY_TOFFEE                                             :{WEIGHT_LONG} o
 STR_QUANTITY_BATTERIES                                          :{COMMA} batter{P y ies}
 STR_QUANTITY_PLASTIC                                            :{VOLUME_LONG} of plastic
 STR_QUANTITY_FIZZY_DRINKS                                       :{COMMA} fizzy drink{P "" s}
+STR_QUANTITY_VEHICLES                                            :{WEIGHT_LONG} of road vehicles
 STR_QUANTITY_N_A                                                :N/A
 
 # Two letter abbreviation of cargo name
@@ -159,6 +162,7 @@ STR_ABBREV_TOFFEE                                               :TF
 STR_ABBREV_BATTERIES                                            :BA
 STR_ABBREV_PLASTIC                                              :PL
 STR_ABBREV_FIZZY_DRINKS                                         :FZ
+STR_ABBREV_VEHICLES                                              :RV
 STR_ABBREV_ALL                                                  :ALL
 
 # 'Mode' of transport for cargoes
