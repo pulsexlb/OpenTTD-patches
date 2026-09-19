@@ -3196,6 +3196,19 @@ CommandCost CmdOrderRefit(DoCommandFlags flags, VehicleID veh, VehicleOrderID or
 	CommandCost ret = CheckOwnership(v->owner);
 	if (ret.Failed()) return ret;
 
+	/* Road vehicle transport: the dedicated "Vehicles (Road)" cargo may only be selected as an order
+	 * refit target for a chain that is currently fully configured for road vehicle transport (i.e.
+	 * refitting it to itself), mirroring what the refit window offers. */
+	if (cargo == GetCargoTypeByLabel(CT_VEHICLES)) {
+		bool has_vehicles = false;
+		bool has_normal = false;
+		for (const Vehicle *w = v->First(); w != nullptr; w = w->Next()) {
+			if (w->cargo_cap <= 0) continue;
+			if (w->cargo_type == cargo) has_vehicles = true; else has_normal = true;
+		}
+		if (!has_vehicles || has_normal) return CMD_ERROR;
+	}
+
 	Order *order = v->GetOrder(order_number);
 	if (order == nullptr) return CMD_ERROR;
 

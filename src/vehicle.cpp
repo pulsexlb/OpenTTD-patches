@@ -2786,19 +2786,28 @@ void VehicleEnterDepot(Vehicle *v)
 		}
 
 		if (v->current_order.IsRefit()) {
-			AutoRestoreBackup cur_company(_current_company, v->owner);
-			CommandCost cost = Command<Commands::RefitVehicle>::Do(DoCommandFlag::Execute, v->index, v->current_order.GetRefitCargo(), 0xFF, false, false, 0);
+			/* Road vehicle transport: refitting to or from the dedicated "Vehicles (Road)" cargo is
+			 * only done manually in a depot. Silently skip such an order refit (e.g. set before the
+			 * vehicle was refitted) and continue with the depot order. */
+			CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
+			if (IsValidCargoType(vehicles_cargo) &&
+					(vehicles_cargo == v->current_order.GetRefitCargo() || vehicles_cargo == GetOverallCargoOfArticulatedVehicle(v))) {
+				/* Skip the refit. */
+			} else {
+				AutoRestoreBackup cur_company(_current_company, v->owner);
+				CommandCost cost = Command<Commands::RefitVehicle>::Do(DoCommandFlag::Execute, v->index, v->current_order.GetRefitCargo(), 0xFF, false, false, 0);
 
-			if (cost.Failed()) {
-				_vehicles_to_autoreplace[v->index] = false;
-				if (v->owner == _local_company) {
-					/* Notify the user that we stopped the vehicle */
-					AddVehicleAdviceNewsItem(AdviceType::RefitFailed, GetEncodedString(STR_NEWS_ORDER_REFIT_FAILED, v->index), v->index);
-				}
-			} else if (cost.GetCost() != 0) {
-				v->profit_this_year -= cost.GetCost() << 8;
-				if (v->owner == _local_company) {
-					ShowCostOrIncomeAnimation(v->x_pos, v->y_pos, v->z_pos, cost.GetCost());
+				if (cost.Failed()) {
+					_vehicles_to_autoreplace[v->index] = false;
+					if (v->owner == _local_company) {
+						/* Notify the user that we stopped the vehicle */
+						AddVehicleAdviceNewsItem(AdviceType::RefitFailed, GetEncodedString(STR_NEWS_ORDER_REFIT_FAILED, v->index), v->index);
+					}
+				} else if (cost.GetCost() != 0) {
+					v->profit_this_year -= cost.GetCost() << 8;
+					if (v->owner == _local_company) {
+						ShowCostOrIncomeAnimation(v->x_pos, v->y_pos, v->z_pos, cost.GetCost());
+					}
 				}
 			}
 		}

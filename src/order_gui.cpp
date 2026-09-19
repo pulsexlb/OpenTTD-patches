@@ -3010,11 +3010,11 @@ public:
 					this->SetWidgetLoweredState(WID_O_FULL_LOAD, order->GetLoadType() == OrderLoadType::FullLoadAny);
 					this->SetWidgetLoweredState(WID_O_UNLOAD, order->GetUnloadType() == OrderUnloadType::Unload);
 
-					/* Can only do refitting when stopping at the destination and loading cargo.
-					 * Also enable the button if a refit is already set to allow clearing it. */
-					this->SetWidgetDisabledState(WID_O_REFIT_DROPDOWN,
-							order->GetLoadType() == OrderLoadType::NoLoad || (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) ||
-							((!this->can_do_refit || !this->can_do_autorefit) && !order->IsRefit()));
+				/* Can only do refitting when stopping at the destination and loading cargo.
+				 * Also enable the button if a refit is already set to allow clearing it. */
+				this->SetWidgetDisabledState(WID_O_REFIT_DROPDOWN,
+						order->GetLoadType() == OrderLoadType::NoLoad || (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) ||
+						((!this->can_do_refit || !this->can_do_autorefit) && !order->IsRefit()));
 
 					break;
 
@@ -3046,11 +3046,11 @@ public:
 						this->EnableWidget(WID_O_NON_STOP);
 						this->SetWidgetLoweredState(WID_O_NON_STOP, order->GetNonStopType() & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);
 					}
-					/* Disable refit button if the order is no 'always go' order.
-					 * However, keep the service button enabled for refit-orders to allow clearing refits (without knowing about ctrl). */
-					this->SetWidgetDisabledState(WID_O_REFIT,
-							order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service) || (order->GetDepotActionType() & ODATFB_HALT) ||
-							(!this->can_do_refit && !order->IsRefit()));
+				/* Disable refit button if the order is no 'always go' order.
+				 * However, keep the service button enabled for refit-orders to allow clearing refits (without knowing about ctrl). */
+				this->SetWidgetDisabledState(WID_O_REFIT,
+						order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service) || (order->GetDepotActionType() & ODATFB_HALT) ||
+						(!this->can_do_refit && !order->IsRefit()));
 					break;
 
 				case OT_CONDITIONAL: {

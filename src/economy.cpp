@@ -1794,11 +1794,15 @@ static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist
 
 	bool is_auto_refit = new_cid == CARGO_AUTO_REFIT;
 	bool check_order = (v->First()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad);
+	/* Road vehicle transport: refitting to or from the dedicated "Vehicles (Road)" cargo is only
+	 * done manually in a depot, never automatically at a station. */
+	const CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
 	if (is_auto_refit) {
 		/* Get a refittable cargo type with waiting cargo for next_station or StationID::Invalid(). */
 		new_cid = v_start->cargo_type;
 		for (CargoType cid : refit_mask) {
 			if (check_order && v->First()->current_order.GetCargoLoadType(cid) == OrderLoadType::NoLoad) continue;
+			if (cid == vehicles_cargo) continue;
 			if (st->goods[cid].data != nullptr && st->goods[cid].data->cargo.HasCargoFor(next_station.Get(cid))) {
 				/* Try to find out if auto-refitting would succeed. In case the refit is allowed,
 				 * the returned refit capacity will be greater than zero. */
@@ -1818,8 +1822,9 @@ static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist
 		}
 	}
 
-	/* Refit if given a valid cargo. */
-	if (new_cid < NUM_CARGO && new_cid != GetOverallCargoOfArticulatedVehicle(v_start)) {
+	/* Refit if given a valid cargo (never to or from the road vehicle transport cargo, see above). */
+	if (new_cid < NUM_CARGO && new_cid != GetOverallCargoOfArticulatedVehicle(v_start) &&
+			new_cid != vehicles_cargo && GetOverallCargoOfArticulatedVehicle(v_start) != vehicles_cargo) {
 		/* StationID::Invalid() because in the DistributionType::Manual case that's correct and in the DistributionType::Asymmetric/DistributionType::Symmetric
 		 * cases the next hop of the vehicle doesn't really tell us anything if the cargo had been
 		 * "via any station" before reserving. We rather produce some more "any station" cargo than
