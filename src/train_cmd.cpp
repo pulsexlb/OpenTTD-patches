@@ -519,9 +519,16 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 		/* If the consist is changed while in a depot, the vehicle view window must be invalidated to update the availability of refitting. */
 		InvalidateWindowData(WindowClass::VehicleView, this->index, VIWD_CONSIST_CHANGED);
 	}
-	/* Broadcast the consist-level caches to every vehicle of the chain. They
-	 * are computed on the chain head, but any vehicle (e.g. a primary vehicle
-	 * that is not the chain head) may read its own copies at any time. */
+	this->BroadcastConsistCaches();
+}
+
+/**
+ * Broadcast the consist-level caches to every vehicle of the chain. They
+ * are computed on the chain head, but any vehicle (e.g. a primary vehicle
+ * that is not the chain head) may read its own copies at any time.
+ */
+void Train::BroadcastConsistCaches()
+{
 	for (Train *u = this->Next(); u != nullptr; u = u->Next()) {
 		u->compatible_railtypes = this->compatible_railtypes;
 		u->vcache.cached_max_speed = this->vcache.cached_max_speed;
@@ -6995,6 +7002,10 @@ void Train::MarkDirty()
 	/* need to update acceleration and cached values since the goods on the train changed. */
 	this->First()->CargoChanged();
 	this->First()->UpdateAcceleration();
+	/* CargoChanged()/UpdateAcceleration() only write the consist-level caches
+	 * of the chain head; re-broadcast them or every other vehicle keeps its
+	 * stale copy and network peers diverge. */
+	this->First()->BroadcastConsistCaches();
 }
 
 /**

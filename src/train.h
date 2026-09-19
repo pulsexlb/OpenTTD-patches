@@ -277,6 +277,14 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	void ConsistChanged(ConsistChangeFlags allowed_changes);
 
 	/**
+	 * Copy the consist-level caches from this chain head to every other
+	 * vehicle of the chain. Must be called whenever the head's copies are
+	 * (re)computed outside ConsistChanged, or the per-vehicle copies go stale
+	 * and diverge between network peers.
+	 */
+	void BroadcastConsistCaches();
+
+	/**
 	 * Check whether the consist changes described by #allowed_changes would be possible,
 	 * without actually applying any of them. Used e.g. to verify a consist can be
 	 * (re)arranged before coupling trains.
