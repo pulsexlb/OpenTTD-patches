@@ -61,7 +61,7 @@
  */
 uint GetEngineListHeight(VehicleType type)
 {
-	return std::max<uint>(GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.matrix.Vertical(), GetVehicleImageCellSize(type, EIT_PURCHASE).height);
+	return std::max<uint>(GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.matrix.Vertical(), GetVehicleImageCellSize(type, EngineImageType::Purchase).height);
 }
 
 /* Normal layout for roadvehicles, ships and airplanes. */
@@ -679,7 +679,7 @@ static GUIEngineList::FilterFunction * const _engine_filter_funcs[] = {
 static uint GetCargoWeight(const CargoArray &cap, VehicleType vtype)
 {
 	uint weight = 0;
-	for (CargoType cargo{}; cargo < NUM_CARGO; ++cargo) {
+	for (CargoType cargo : EnumRange(NUM_CARGO)) {
 		if (cap[cargo] != 0) {
 			if (vtype == VehicleType::Train) {
 				weight += CargoSpec::Get(cargo)->WeightOfNUnitsInTrain(cap[cargo]);
@@ -794,7 +794,7 @@ static int DrawRailEnginePurchaseInfo(int left, int right, int y, EngineID engin
 	y += GetCharacterHeight(FontSize::Normal);
 
 	/* Max tractive effort - not applicable if old acceleration or maglev */
-	if (_settings_game.vehicle.train_acceleration_model != AM_ORIGINAL) {
+	if (_settings_game.vehicle.train_acceleration_model != AccelerationModel::Original) {
 		bool is_maglev = true;
 		for (RailType rt : rvi->railtypes) {
 			is_maglev &= GetRailTypeInfo(rt)->acceleration_type == VehicleAccelerationModel::Maglev;
@@ -825,7 +825,7 @@ static int DrawRoadVehPurchaseInfo(int left, int right, int y, EngineID engine_n
 {
 	const Engine *e = Engine::Get(engine_number);
 
-	if (_settings_game.vehicle.roadveh_acceleration_model != AM_ORIGINAL) {
+	if (_settings_game.vehicle.roadveh_acceleration_model != AccelerationModel::Original) {
 		/* Purchase Cost */
 		if (te.cost != 0) {
 			DrawString(left, right, y, GetString(STR_PURCHASE_INFO_COST_REFIT, e->GetCost() + te.cost, te.cost));
@@ -1125,8 +1125,8 @@ void DrawEngineList(VehicleType type, const Rect &r, const GUIEngineList &eng_li
 
 	bool rtl = _current_text_dir == TD_RTL;
 	int step_size = GetEngineListHeight(type);
-	int sprite_left  = GetVehicleImageCellSize(type, EIT_PURCHASE).extend_left;
-	int sprite_right = GetVehicleImageCellSize(type, EIT_PURCHASE).extend_right;
+	int sprite_left  = GetVehicleImageCellSize(type, EngineImageType::Purchase).extend_left;
+	int sprite_right = GetVehicleImageCellSize(type, EngineImageType::Purchase).extend_right;
 	int sprite_width = sprite_left + sprite_right;
 	int circle_width = std::max(GetScaledSpriteSize(SPR_CIRCLE_FOLDED).width, GetScaledSpriteSize(SPR_CIRCLE_UNFOLDED).width);
 	PixelColour linecolour = GetColourGradient(Colours::Orange, Shade::Normal);
@@ -1200,7 +1200,7 @@ void DrawEngineList(VehicleType type, const Rect &r, const GUIEngineList &eng_li
 		}
 
 		int sprite_x = tr.WithWidth(sprite_width, rtl).left + sprite_left;
-		DrawVehicleEngine(r.left, r.right, sprite_x, tr.top + sprite_y_offset, item.engine_id, pal, EIT_PURCHASE);
+		DrawVehicleEngine(r.left, r.right, sprite_x, tr.top + sprite_y_offset, item.engine_id, pal, EngineImageType::Purchase);
 
 		tr = tr.Indent(sprite_width + WidgetDimensions::scaled.hsep_wide, rtl);
 
@@ -1363,13 +1363,13 @@ void DisplayVehicleSortDropDown(Window *w, VehicleType vehicle_type, int selecte
 {
 	uint32_t hidden_mask = 0;
 	/* Disable sorting by power or tractive effort when the original acceleration model for road vehicles is being used. */
-	if (vehicle_type == VehicleType::Road && _settings_game.vehicle.roadveh_acceleration_model == AM_ORIGINAL) {
+	if (vehicle_type == VehicleType::Road && _settings_game.vehicle.roadveh_acceleration_model == AccelerationModel::Original) {
 		SetBit(hidden_mask, 3); // power
 		SetBit(hidden_mask, 4); // tractive effort
 		SetBit(hidden_mask, 8); // power by running costs
 	}
 	/* Disable sorting by tractive effort when the original acceleration model for trains is being used. */
-	if (vehicle_type == VehicleType::Train && _settings_game.vehicle.train_acceleration_model == AM_ORIGINAL) {
+	if (vehicle_type == VehicleType::Train && _settings_game.vehicle.train_acceleration_model == AccelerationModel::Original) {
 		SetBit(hidden_mask, 4); // tractive effort
 	}
 	ShowDropDownMenu(w, GetEngineSortNames(vehicle_type), selected, button, 0, hidden_mask);
@@ -1524,7 +1524,7 @@ struct BuildVehicleWindowBase : Window {
 			}
 		} else if (!this->listview_mode) {
 			/* Query for cost and refitted capacity */
-			CommandCost ret = Command<Commands::BuildVehicle>::Do(DoCommandFlag::QueryCost, TileIndex(this->window_number), engine, true, cargo, INVALID_CLIENT_ID);
+			CommandCost ret = Command<Commands::BuildVehicle>::Do(DoCommandFlag::QueryCost, TileIndex(this->window_number), engine, true, cargo, ClientID::Invalid);
 			if (ret.Succeeded()) {
 				te.cost          = ret.GetCost() - e->GetCost();
 				te.capacity      = _returned_refit_capacity;
@@ -2032,11 +2032,11 @@ struct BuildVehicleWindow : BuildVehicleWindowBase {
 		CargoType cargo = this->cargo_filter_criteria;
 		if (cargo == CargoFilterCriteria::CF_ANY || cargo == CargoFilterCriteria::CF_ENGINES || cargo == CargoFilterCriteria::CF_NONE) cargo = INVALID_CARGO;
 		if (this->virtual_train_mode) {
-			Command<Commands::BuildVirtualRailVehicle>::Post(GetCmdBuildVehMsg(VehicleType::Train), CommandCallback::AddVirtualEngine, sel_eng, cargo, INVALID_CLIENT_ID, this->GetNewVirtualEngineMoveTarget());
+			Command<Commands::BuildVirtualRailVehicle>::Post(GetCmdBuildVehMsg(VehicleType::Train), CommandCallback::AddVirtualEngine, sel_eng, cargo, ClientID::Invalid, this->GetNewVirtualEngineMoveTarget());
 		} else {
 			CommandCallback callback = (this->vehicle_type == VehicleType::Train && RailVehInfo(sel_eng)->railveh_type == RailVehicleType::Wagon)
 					? CommandCallback::BuildWagon : CommandCallback::BuildPrimaryVehicle;
-			Command<Commands::BuildVehicle>::Post(GetCmdBuildVehMsg(this->vehicle_type), callback, TileIndex(this->window_number), sel_eng, true, cargo, INVALID_CLIENT_ID);
+			Command<Commands::BuildVehicle>::Post(GetCmdBuildVehMsg(this->vehicle_type), callback, TileIndex(this->window_number), sel_eng, true, cargo, ClientID::Invalid);
 		}
 
 		/* Update last used variant in hierarchy and refresh if necessary. */
@@ -2162,7 +2162,7 @@ struct BuildVehicleWindow : BuildVehicleWindowBase {
 		if (!gui_scope) return;
 		/* When switching to original acceleration model for road vehicles, clear the selected sort criteria if it is not available now. */
 		if (this->vehicle_type == VehicleType::Road &&
-				_settings_game.vehicle.roadveh_acceleration_model == AM_ORIGINAL &&
+				_settings_game.vehicle.roadveh_acceleration_model == AccelerationModel::Original &&
 				this->sort_criteria > 7) {
 			this->sort_criteria = 0;
 			_engine_sort_last_criteria[VehicleType::Road] = 0;
@@ -2213,7 +2213,7 @@ struct BuildVehicleWindow : BuildVehicleWindowBase {
 			case WID_BV_LIST:
 				fill.height = resize.height = GetEngineListHeight(this->vehicle_type);
 				size.height = 3 * resize.height;
-				size.width = std::max(size.width, this->badge_classes.GetTotalColumnsWidth() + GetVehicleImageCellSize(this->vehicle_type, EIT_PURCHASE).extend_left + GetVehicleImageCellSize(this->vehicle_type, EIT_PURCHASE).extend_right + 165) + padding.width;
+				size.width = std::max(size.width, this->badge_classes.GetTotalColumnsWidth() + GetVehicleImageCellSize(this->vehicle_type, EngineImageType::Purchase).extend_left + GetVehicleImageCellSize(this->vehicle_type, EngineImageType::Purchase).extend_right + 165) + padding.width;
 				break;
 
 			case WID_BV_PANEL:
@@ -2276,7 +2276,7 @@ struct BuildVehicleWindow : BuildVehicleWindowBase {
 				break;
 
 			case WID_BV_SORT_ASCENDING_DESCENDING:
-				this->DrawSortButtonState(WID_BV_SORT_ASCENDING_DESCENDING, this->descending_sort_order ? SBS_DOWN : SBS_UP);
+				this->DrawSortButton(WID_BV_SORT_ASCENDING_DESCENDING, this->descending_sort_order);
 				break;
 		}
 	}
@@ -2388,13 +2388,13 @@ struct BuildVehicleWindow : BuildVehicleWindowBase {
 			case BVHK_FOCUS_FILTER_BOX:
 				this->SetFocusedWidget(WID_BV_FILTER);
 				SetFocusedWindow(this); // The user has asked to give focus to the text box, so make sure this window is focused.
-				return ES_HANDLED;
+				return EventState::Handled;
 
 			default:
-				return ES_NOT_HANDLED;
+				return EventState::NotHandled;
 		}
 
-		return ES_HANDLED;
+		return EventState::Handled;
 	}
 
 	static inline HotkeyList hotkeys{"buildvehicle", {
@@ -2467,7 +2467,7 @@ void DisplayLocomotiveSortDropDown(Window *w, int selected)
 {
 	uint32_t hidden_mask = 0;
 	/* Disable sorting by tractive effort when the original acceleration model for trains is being used. */
-	if (_settings_game.vehicle.train_acceleration_model == AM_ORIGINAL) {
+	if (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Original) {
 		SetBit(hidden_mask, 4); // tractive effort
 	}
 	ShowDropDownMenu(w, _sort_listing_loco, selected, WID_BV_SORT_DROPDOWN_LOCO, 0, hidden_mask);
@@ -2862,11 +2862,11 @@ struct BuildVehicleWindowTrainAdvanced final : BuildVehicleWindowBase {
 		if (selected != EngineID::Invalid()) {
 			if (cargo == CargoFilterCriteria::CF_ANY || cargo == CargoFilterCriteria::CF_ENGINES || cargo == CargoFilterCriteria::CF_NONE) cargo = INVALID_CARGO;
 			if (this->virtual_train_mode) {
-				Command<Commands::BuildVirtualRailVehicle>::Post(GetCmdBuildVehMsg(VehicleType::Train), CommandCallback::AddVirtualEngine, selected, cargo, INVALID_CLIENT_ID, this->GetNewVirtualEngineMoveTarget());
+				Command<Commands::BuildVirtualRailVehicle>::Post(GetCmdBuildVehMsg(VehicleType::Train), CommandCallback::AddVirtualEngine, selected, cargo, ClientID::Invalid, this->GetNewVirtualEngineMoveTarget());
 			} else {
 				CommandCallback callback = (this->vehicle_type == VehicleType::Train && RailVehInfo(selected)->railveh_type == RailVehicleType::Wagon)
 						? CommandCallback::BuildWagon : CommandCallback::BuildPrimaryVehicle;
-				Command<Commands::BuildVehicle>::Post(GetCmdBuildVehMsg(this->vehicle_type), callback, TileIndex(this->window_number), selected, true, cargo, INVALID_CLIENT_ID);
+				Command<Commands::BuildVehicle>::Post(GetCmdBuildVehMsg(this->vehicle_type), callback, TileIndex(this->window_number), selected, true, cargo, ClientID::Invalid);
 			}
 
 			/* Update last used variant in hierarchy and refresh if necessary. */
@@ -3292,7 +3292,7 @@ struct BuildVehicleWindowTrainAdvanced final : BuildVehicleWindowBase {
 			}
 
 			case WID_BV_SORT_ASCENDING_DESCENDING_LOCO: {
-				this->DrawSortButtonState(WID_BV_SORT_ASCENDING_DESCENDING_LOCO, this->loco.descending_sort_order ? SBS_DOWN : SBS_UP);
+				this->DrawSortButton(WID_BV_SORT_ASCENDING_DESCENDING_LOCO, this->loco.descending_sort_order);
 				break;
 			}
 
@@ -3305,7 +3305,7 @@ struct BuildVehicleWindowTrainAdvanced final : BuildVehicleWindowBase {
 			}
 
 			case WID_BV_SORT_ASCENDING_DESCENDING_WAGON: {
-				this->DrawSortButtonState(WID_BV_SORT_ASCENDING_DESCENDING_WAGON, this->wagon.descending_sort_order ? SBS_DOWN : SBS_UP);
+				this->DrawSortButton(WID_BV_SORT_ASCENDING_DESCENDING_WAGON, this->wagon.descending_sort_order);
 				break;
 			}
 		}
@@ -3481,13 +3481,13 @@ struct BuildVehicleWindowTrainAdvanced final : BuildVehicleWindowBase {
 			case BVHK_FOCUS_FILTER_BOX:
 				this->SetFocusedWidget(this->wagon_selected ? WID_BV_FILTER_WAGON : WID_BV_FILTER_LOCO);
 				SetFocusedWindow(this); // The user has asked to give focus to the text box, so make sure this window is focused.
-				return ES_HANDLED;
+				return EventState::Handled;
 
 			default:
-				return ES_NOT_HANDLED;
+				return EventState::NotHandled;
 		}
 
-		return ES_HANDLED;
+		return EventState::Handled;
 	}
 
 	DropDownList BuildBadgeConfigurationList() const
@@ -3509,7 +3509,7 @@ void CcAddVirtualEngine(const CommandCost &result)
 		Train *train = Train::Get(*result_id);
 		window->AddVirtualEngine(train);
 	} else {
-		Command<Commands::SellVirtualVehicle>::Post(*result_id, SellVehicleFlags::None, INVALID_CLIENT_ID);
+		Command<Commands::SellVirtualVehicle>::Post(*result_id, SellVehicleFlags::None, ClientID::Invalid);
 	}
 }
 

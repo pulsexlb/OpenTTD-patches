@@ -17,6 +17,7 @@
 #include "gui.h"
 #include "goal_base.h"
 #include "goal_cmd.h"
+#include "goal_gui.h"
 #include "core/geometry_func.hpp"
 #include "company_func.h"
 #include "company_base.h"
@@ -101,30 +102,30 @@ struct GoalListWindow : public Window {
 		/* Determine dst coordinate for goal and try to scroll to it. */
 		TileIndex xy;
 		switch (s->type) {
-			case GT_NONE: return;
+			case GoalType::None: return;
 
-			case GT_COMPANY:
+			case GoalType::Company:
 				/* s->dst here is not a tile, but a CompanyID.
 				 * Show the window with the overview of the company instead. */
 				ShowCompany((CompanyID)s->dst);
 				return;
 
-			case GT_TILE:
+			case GoalType::Tile:
 				if (!IsValidTile(TileIndex(s->dst))) return;
 				xy = TileIndex{s->dst};
 				break;
 
-			case GT_INDUSTRY:
+			case GoalType::Industry:
 				if (!Industry::IsValidID(s->dst)) return;
 				xy = Industry::Get(s->dst)->location.tile;
 				break;
 
-			case GT_TOWN:
+			case GoalType::Town:
 				if (!Town::IsValidID(s->dst)) return;
 				xy = Town::Get(s->dst)->xy;
 				break;
 
-			case GT_STORY_PAGE: {
+			case GoalType::StoryPage: {
 				if (!StoryPage::IsValidID(s->dst)) return;
 
 				/* Verify that:
@@ -317,46 +318,39 @@ void ShowGoalsList(CompanyID company)
 
 /** Ask a question about a goal. */
 struct GoalQuestionWindow : public Window {
-	EncodedString question{}; ///< Question to ask (private copy).
-	int buttons = 0; ///< Number of valid buttons in #button.
-	std::array<int, 3> button{}; ///< Buttons to display.
-	TextColour colour{}; ///< Colour of the question text.
+	EncodedString question; ///< Question to ask (private copy).
+	GoalQuestionButtons buttons; ///< Buttons to display.
+	TextColour colour; ///< Colour of the question text.
 
-	GoalQuestionWindow(WindowDesc &desc, WindowNumber window_number, TextColour colour, uint32_t button_mask, const EncodedString &question) : Window(desc), colour(colour)
+	/**
+	 * Construct a new Goal Question Window.
+	 * @param desc Window description.
+	 * @param window_number Number for the window.
+	 * @param colour Colour of the question text.
+	 * @param buttons Buttons to display.
+	 * @param question Question to ask.
+	 */
+	GoalQuestionWindow(WindowDesc &desc, WindowNumber window_number, TextColour colour, GoalQuestionButtons buttons, const EncodedString &question)
+		: Window(desc), question(question), buttons(buttons), colour(colour)
 	{
-		this->question = question;
-
-		/* Figure out which buttons we have to enable. */
-		int n = 0;
-		for (uint bit : SetBitIterator(button_mask)) {
-			if (bit >= GOAL_QUESTION_BUTTON_COUNT) break;
-			this->button[n++] = bit;
-			if (n == 3) break;
-		}
-		this->buttons = n;
-		assert(this->buttons < 4);
+		assert(this->buttons.Count() < 4);
 
 		this->CreateNestedTree();
-		if (this->buttons == 0) {
+		if (this->buttons.None()) {
 			this->GetWidget<NWidgetStacked>(WID_GQ_BUTTONS)->SetDisplayedPlane(SZSP_HORIZONTAL);
 		} else {
-			this->GetWidget<NWidgetStacked>(WID_GQ_BUTTONS)->SetDisplayedPlane(this->buttons - 1);
+			this->GetWidget<NWidgetStacked>(WID_GQ_BUTTONS)->SetDisplayedPlane(CountBits(this->buttons) - 1);
 		}
 		this->FinishInitNested(window_number);
 	}
-
 
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		switch (widget) {
 			case WID_GQ_BUTTON_1:
-				return GetString(STR_GOAL_QUESTION_BUTTON_CANCEL + this->button[0]);
-
 			case WID_GQ_BUTTON_2:
-				return GetString(STR_GOAL_QUESTION_BUTTON_CANCEL + this->button[1]);
-
 			case WID_GQ_BUTTON_3:
-				return GetString(STR_GOAL_QUESTION_BUTTON_CANCEL + this->button[2]);
+				return GetString(STR_GOAL_QUESTION_BUTTON_CANCEL + to_underlying(this->buttons.GetNthSetBit(widget - WID_GQ_BUTTON_1).value_or(GoalQuestionButton::Cancel)));
 
 			default:
 				return this->Window::GetWidgetString(widget, stringid);
@@ -367,17 +361,9 @@ struct GoalQuestionWindow : public Window {
 	{
 		switch (widget) {
 			case WID_GQ_BUTTON_1:
-				Command<Commands::GoalQuestionAnswer>::Post(this->window_number, this->button[0]);
-				this->Close();
-				break;
-
 			case WID_GQ_BUTTON_2:
-				Command<Commands::GoalQuestionAnswer>::Post(this->window_number, this->button[1]);
-				this->Close();
-				break;
-
 			case WID_GQ_BUTTON_3:
-				Command<Commands::GoalQuestionAnswer>::Post(this->window_number, this->button[2]);
+				Command<Commands::GoalQuestionAnswer>::Post(this->window_number, this->buttons.GetNthSetBit(widget - WID_GQ_BUTTON_1).value_or(GoalQuestionButton::Cancel));
 				this->Close();
 				break;
 		}
@@ -439,7 +425,7 @@ static constexpr auto _nested_goal_question_widgets_warning  = NestedGoalWidgets
 static constexpr auto _nested_goal_question_widgets_error    = NestedGoalWidgets<Colours::Red,        Colours::Yellow,     STR_GOAL_QUESTION_CAPTION_ERROR>::widgetparts;
 
 /** Window definitions for the goal question windows. */
-static WindowDesc _goal_question_list_desc[] = {
+static EnumIndexArray<WindowDesc, GoalQuestionType, GoalQuestionType::End> _goal_question_list_desc{{{
 	{
 		__FILE__, __LINE__,
 		WindowPosition::Center, nullptr, 0, 0,
@@ -468,17 +454,17 @@ static WindowDesc _goal_question_list_desc[] = {
 		WindowDefaultFlag::Construction,
 		_nested_goal_question_widgets_error,
 	},
-};
+}}};
 
 /**
  * Display a goal question.
  * @param id Window number to use.
  * @param type Type of question.
- * @param button_mask Buttons to display.
+ * @param buttons Buttons to display.
  * @param question Question to ask.
  */
-void ShowGoalQuestion(uint16_t id, uint8_t type, uint32_t button_mask, const EncodedString &question)
+void ShowGoalQuestion(uint16_t id, GoalQuestionType type, GoalQuestionButtons buttons, const EncodedString &question)
 {
-	assert(type < GQT_END);
-	new GoalQuestionWindow(_goal_question_list_desc[type], id, type == 3 ? TextColour::White : TextColour::Black, button_mask, question);
+	assert(type < GoalQuestionType::End);
+	new GoalQuestionWindow(_goal_question_list_desc[type], id, type == GoalQuestionType::Error ? TextColour::White : TextColour::Black, buttons, question);
 }

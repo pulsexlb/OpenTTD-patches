@@ -724,7 +724,7 @@ void NetworkClose(bool close_admins)
 		}
 
 		for (NetworkClientSocket *cs : NetworkClientSocket::Iterate()) {
-			cs->CloseConnection(NETWORK_RECV_STATUS_CLIENT_QUIT);
+			cs->CloseConnection(NetworkRecvStatus::ClientQuit);
 		}
 		ServerNetworkGameSocketHandler::CloseListeners();
 		ServerNetworkAdminSocketHandler::CloseListeners();
@@ -733,7 +733,7 @@ void NetworkClose(bool close_admins)
 	} else {
 		if (MyClient::my_client != nullptr) {
 			MyClient::SendQuit();
-			MyClient::my_client->CloseConnection(NETWORK_RECV_STATUS_CLIENT_QUIT);
+			MyClient::my_client->CloseConnection(NetworkRecvStatus::ClientQuit);
 		}
 
 		_network_coordinator_client.CloseAllConnections();
@@ -793,7 +793,7 @@ public:
 	void OnFailure() override
 	{
 		NetworkGame *item = NetworkGameListAddItem(connection_string);
-		item->status = NGLS_OFFLINE;
+		item->status = NetworkGameStatus::Offline;
 		item->refreshing = false;
 
 		UpdateNetworkGameWindow();
@@ -981,7 +981,7 @@ static void NetworkInitServerClientInfo()
 {
 	/* There should be always space for the server. */
 	assert(NetworkClientInfo::CanAllocateItem());
-	NetworkClientInfo *ci = NetworkClientInfo::Create(CLIENT_ID_SERVER);
+	NetworkClientInfo *ci = NetworkClientInfo::Create(ClientID::Server);
 	ci->client_playas = _network_dedicated ? COMPANY_SPECTATOR : GetDefaultLocalCompany();
 
 	ci->client_name = _settings_client.network.client_name;
@@ -1068,7 +1068,7 @@ bool NetworkServerStart()
 	_frame_counter_server = 0;
 	_frame_counter_max = 0;
 	_last_sync_frame = 0;
-	_network_own_client_id = CLIENT_ID_SERVER;
+	_network_own_client_id = ClientID::Server;
 
 	_network_sync_records.clear();
 	_network_sync_record_counts.clear();
@@ -1107,7 +1107,7 @@ void NetworkOnGameStart()
 
 	if (!_network_dedicated) {
 		Company *c = Company::GetIfValid(_local_company);
-		NetworkClientInfo *ci = NetworkClientInfo::GetByClientID(CLIENT_ID_SERVER);
+		NetworkClientInfo *ci = NetworkClientInfo::GetByClientID(ClientID::Server);
 		if (c != nullptr && ci != nullptr) {
 			/*
 			 * If the company has not been named yet, the company was just started.

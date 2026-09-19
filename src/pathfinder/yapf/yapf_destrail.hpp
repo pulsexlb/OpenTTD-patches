@@ -181,7 +181,7 @@ public:
 					this->couple_station_dest = true;
 				} else {
 					this->dest_station_id = StationID::Invalid();
-					this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TRANSPORT_RAIL, 0);
+					this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TransportType::Rail, 0);
 					this->couple_dest = true;
 				}
 				break;
@@ -196,7 +196,7 @@ public:
 			default:
 				this->dest_tile = (v->dest_tile == INVALID_TILE) ? TileIndex{} : v->dest_tile;
 				this->dest_station_id = StationID::Invalid();
-				this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TRANSPORT_RAIL, 0);
+				this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TransportType::Rail, 0);
 				this->couple_dest = false;
 				break;
 		}

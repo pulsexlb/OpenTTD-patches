@@ -62,7 +62,7 @@ static void ShowNetworkStartServerWindow();
 
 static const int NETWORK_LIST_REFRESH_DELAY = 30; ///< Time, in seconds, between updates of the network list.
 
-static ClientID _admin_client_id = INVALID_CLIENT_ID; ///< For what client a confirmation window is open.
+static ClientID _admin_client_id = ClientID::Invalid; ///< For what client a confirmation window is open.
 static CompanyID _admin_company_id = CompanyID::Invalid(); ///< For what company a confirmation window is open.
 
 /**
@@ -385,7 +385,7 @@ protected:
 		DrawString(name.left, name.right, y + text_y_offset, cur_item->info.server_name, TextColour::Black);
 
 		/* only draw details if the server is online */
-		if (cur_item->status == NGLS_ONLINE) {
+		if (cur_item->status == NetworkGameStatus::Online) {
 			if (const NWidgetBase *nwid = this->GetWidget<NWidgetBase>(WID_NG_CLIENTS); nwid->current_x != 0) {
 				Rect clients = nwid->GetCurrentRect();
 				DrawString(clients.left, clients.right, y + text_y_offset,
@@ -572,7 +572,7 @@ public:
 			case WID_NG_DATE:
 			case WID_NG_YEARS:
 			case WID_NG_INFO:
-				if (widget - WID_NG_NAME == this->servers.SortType()) this->DrawSortButtonState(widget, this->servers.IsDescSortOrder() ? SBS_DOWN : SBS_UP);
+				if (widget - WID_NG_NAME == this->servers.SortType()) this->DrawSortButton(widget, this->servers.IsDescSortOrder());
 				break;
 		}
 	}
@@ -592,7 +592,7 @@ public:
 		this->SetWidgetDisabledState(WID_NG_REFRESH, sel == nullptr);
 		/* 'Join' button disabling conditions */
 		this->SetWidgetDisabledState(WID_NG_JOIN, sel == nullptr || // no Selected Server
-				sel->status != NGLS_ONLINE || // Server offline
+				sel->status != NetworkGameStatus::Online || // Server offline
 				sel->info.clients_on >= sel->info.clients_max || // Server full
 				!sel->info.compatible); // Revision mismatch
 
@@ -600,8 +600,8 @@ public:
 
 		/* 'NewGRF Settings' button invisible if no NewGRF is used */
 		bool changed = false;
-		changed |= this->GetWidget<NWidgetStacked>(WID_NG_NEWGRF_SEL)->SetDisplayedPlane(sel == nullptr || sel->status != NGLS_ONLINE || sel->info.grfconfig.empty() ? SZSP_NONE : 0);
-		changed |= this->GetWidget<NWidgetStacked>(WID_NG_NEWGRF_MISSING_SEL)->SetDisplayedPlane(sel == nullptr || sel->status != NGLS_ONLINE || sel->info.grfconfig.empty() || !sel->info.version_compatible || sel->info.compatible ? SZSP_NONE : 0);
+		changed |= this->GetWidget<NWidgetStacked>(WID_NG_NEWGRF_SEL)->SetDisplayedPlane(sel == nullptr || sel->status != NetworkGameStatus::Online || sel->info.grfconfig.empty() ? SZSP_NONE : 0);
+		changed |= this->GetWidget<NWidgetStacked>(WID_NG_NEWGRF_MISSING_SEL)->SetDisplayedPlane(sel == nullptr || sel->status != NetworkGameStatus::Online || sel->info.grfconfig.empty() || !sel->info.version_compatible || sel->info.compatible ? SZSP_NONE : 0);
 		if (changed) {
 			this->ReInit();
 			return;
@@ -625,11 +625,11 @@ public:
 	{
 		if (this->server == nullptr) return STR_NETWORK_SERVER_LIST_GAME_INFO;
 		switch (this->server->status) {
-			case NGLS_OFFLINE: return STR_NETWORK_SERVER_LIST_SERVER_OFFLINE;
-			case NGLS_ONLINE: return STR_NETWORK_SERVER_LIST_GAME_INFO;
-			case NGLS_FULL: return STR_NETWORK_SERVER_LIST_SERVER_FULL;
-			case NGLS_BANNED: return STR_NETWORK_SERVER_LIST_SERVER_BANNED;
-			case NGLS_TOO_OLD: return STR_NETWORK_SERVER_LIST_SERVER_TOO_OLD;
+			case NetworkGameStatus::Offline: return STR_NETWORK_SERVER_LIST_SERVER_OFFLINE;
+			case NetworkGameStatus::Online: return STR_NETWORK_SERVER_LIST_GAME_INFO;
+			case NetworkGameStatus::Full: return STR_NETWORK_SERVER_LIST_SERVER_FULL;
+			case NetworkGameStatus::Banned: return STR_NETWORK_SERVER_LIST_SERVER_BANNED;
+			case NetworkGameStatus::TooOld: return STR_NETWORK_SERVER_LIST_SERVER_TOO_OLD;
 			default: NOT_REACHED();
 		}
 	}
@@ -659,7 +659,7 @@ public:
 		if (sel == nullptr) return;
 
 		hr.top = DrawStringMultiLine(hr, sel->info.server_name, TextColour::Orange, SA_HOR_CENTER); // game name
-		if (sel->status != NGLS_ONLINE) {
+		if (sel->status != NetworkGameStatus::Online) {
 			tr.top = DrawStringMultiLine(tr, header_msg, TextColour::FromString, SA_HOR_CENTER);
 		} else { // show game info
 			tr.top = DrawStringMultiLine(tr, GetString(STR_NETWORK_SERVER_LIST_CLIENTS, sel->info.clients_on, sel->info.clients_max, sel->info.companies_on, sel->info.companies_max));
@@ -796,11 +796,11 @@ public:
 
 	EventState OnKeyPress(char32_t key, uint16_t keycode) override
 	{
-		EventState state = ES_NOT_HANDLED;
+		EventState state = EventState::NotHandled;
 
 		/* handle up, down, pageup, pagedown, home and end */
-		if (this->vscroll->UpdateListPositionOnKeyPress(this->list_pos, keycode) == ES_HANDLED) {
-			if (this->list_pos == SLP_INVALID) return ES_HANDLED;
+		if (this->vscroll->UpdateListPositionOnKeyPress(this->list_pos, keycode) == EventState::Handled) {
+			if (this->list_pos == SLP_INVALID) return EventState::Handled;
 
 			this->server = this->servers[this->list_pos];
 
@@ -809,7 +809,7 @@ public:
 
 			/* redraw window */
 			this->SetDirty();
-			return ES_HANDLED;
+			return EventState::Handled;
 		}
 
 		if (this->server != nullptr) {
@@ -1347,7 +1347,7 @@ static void AdminCompanyResetCallback(Window *, bool confirmed)
 {
 	if (confirmed) {
 		if (NetworkCompanyHasClients(_admin_company_id)) return;
-		Command<Commands::CompanyControl>::Post(CompanyCtrlAction::Delete, _admin_company_id, CompanyRemoveReason::Manual, INVALID_CLIENT_ID, {});
+		Command<Commands::CompanyControl>::Post(CompanyCtrlAction::Delete, _admin_company_id, CompanyRemoveReason::Manual, ClientID::Invalid, {});
 	}
 }
 
@@ -1574,7 +1574,7 @@ public:
 		SpriteID player_icon = 0;
 		if (ci->client_id == _network_own_client_id) {
 			player_icon = SPR_PLAYER_SELF;
-		} else if (ci->client_id == CLIENT_ID_SERVER) {
+		} else if (ci->client_id == ClientID::Server) {
 			player_icon = SPR_PLAYER_HOST;
 		}
 
@@ -1597,7 +1597,7 @@ public:
 			if (ci != nullptr) {
 				if (ci->client_id == _network_own_client_id) {
 					return GetEncodedString(STR_NETWORK_CLIENT_LIST_PLAYER_ICON_SELF_TOOLTIP);
-				} else if (ci->client_id == CLIENT_ID_SERVER) {
+				} else if (ci->client_id == ClientID::Server) {
 					return GetEncodedString(STR_NETWORK_CLIENT_LIST_PLAYER_ICON_HOST_TOOLTIP);
 				}
 			}
@@ -1655,7 +1655,7 @@ private:
 	static void OnClickCompanyJoin(NetworkClientListWindow *w, Point, CompanyID company_id)
 	{
 		if (_network_server) {
-			NetworkServerDoMove(CLIENT_ID_SERVER, company_id);
+			NetworkServerDoMove(ClientID::Server, company_id);
 			MarkWholeScreenDirty();
 		} else if (NetworkCompanyIsPassworded(company_id)) {
 			w->query_widget = WID_CL_COMPANY_JOIN;
@@ -1723,7 +1723,7 @@ private:
 	 */
 	static void OnClickClientChat(NetworkClientListWindow *, Point, ClientID client_id)
 	{
-		ShowNetworkChatQueryWindow(NetworkChatDestinationType::Client, client_id);
+		ShowNetworkChatQueryWindow(NetworkChatDestinationType::Client, to_underlying(client_id));
 	}
 
 	/**
@@ -1865,10 +1865,10 @@ public:
 				return GetString(STR_NETWORK_SERVER_VISIBILITY_LOCAL + to_underlying(_settings_client.network.server_game_type));
 
 			case WID_CL_SERVER_INVITE_CODE:
-				return _network_server_connection_type == CONNECTION_TYPE_UNKNOWN ? std::string{} : _network_server_invite_code;
+				return _network_server_connection_type == ConnectionType::Unknown ? std::string{} : _network_server_invite_code;
 
 			case WID_CL_SERVER_CONNECTION_TYPE:
-				return GetString(STR_NETWORK_CLIENT_LIST_SERVER_CONNECTION_TYPE_UNKNOWN + _network_server_connection_type);
+				return GetString(STR_NETWORK_CLIENT_LIST_SERVER_CONNECTION_TYPE_UNKNOWN + to_underlying(_network_server_connection_type));
 
 			case WID_CL_CLIENT_NAME: {
 				const NetworkClientInfo *own_ci = NetworkClientInfo::GetByClientID(_network_own_client_id);
@@ -2156,8 +2156,8 @@ struct NetworkJoinStatusWindow : Window {
 		switch (widget) {
 			case WID_NJS_PROGRESS_BAR:
 				/* Account for the statuses */
-				for (uint i = 0; i < to_underlying(NetworkJoinStatus::End); i++) {
-					size = maxdim(size, GetStringBoundingBox(STR_NETWORK_CONNECTING_1 + i));
+				for (NetworkJoinStatus i : EnumRange(NetworkJoinStatus::End)) {
+					size = maxdim(size, GetStringBoundingBox(STR_NETWORK_CONNECTING_1 + to_underlying(i)));
 				}
 				/* For the number of waiting (other) players */
 				size = maxdim(size, GetStringBoundingBox(GetString(STR_NETWORK_CONNECTING_WAITING, GetParamMaxValue(MAX_CLIENTS))));

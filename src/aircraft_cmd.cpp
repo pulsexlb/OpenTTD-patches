@@ -81,7 +81,7 @@ void Aircraft::MarkDirty()
 	this->UpdateViewport(true, false);
 	if (this->subtype == AIR_HELICOPTER) {
 		Aircraft *rotor = this->Next()->Next();
-		GetRotorImage(this, EIT_ON_MAP, &rotor->sprite_seq);
+		GetRotorImage(this, EngineImageType::OnMap, &rotor->sprite_seq);
 		rotor->UpdateSpriteSeqBound();
 	}
 }
@@ -654,7 +654,9 @@ void SetAircraftPosition(Aircraft *v, int x, int y, int z)
 	v->UpdatePosition();
 	v->UpdateViewport(true, false);
 	if (v->subtype == AIR_HELICOPTER) {
-		GetRotorImage(v, EIT_ON_MAP, &v->Next()->Next()->sprite_seq);
+		Aircraft *rotor = v->Next()->Next();
+		GetRotorImage(v, EngineImageType::OnMap, &rotor->sprite_seq);
+		rotor->UpdateSpriteSeqBound();
 	}
 
 	Aircraft *u = v->Next();
@@ -945,12 +947,12 @@ static void HandleHelicopterRotor(Aircraft *v)
 	VehicleSpriteSeq seq;
 	if (spd == 0) {
 		u->state = HRS_ROTOR_STOPPED;
-		GetRotorImage(v, EIT_ON_MAP, &seq);
+		GetRotorImage(v, EngineImageType::OnMap, &seq);
 		if (u->sprite_seq == seq) return;
 	} else if (tick >= spd) {
 		u->tick_counter = 0;
 		u->state = (AircraftState)((u->state % HRS_ROTOR_NUM_STATES) + 1);
-		GetRotorImage(v, EIT_ON_MAP, &seq);
+		GetRotorImage(v, EngineImageType::OnMap, &seq);
 	} else {
 		return;
 	}
@@ -3067,7 +3069,7 @@ bool Aircraft::Tick()
 {
 	if (!this->IsNormalAircraft()) return true;
 
-	PerformanceAccumulator framerate(PFE_GL_AIRCRAFT);
+	PerformanceAccumulator framerate(PerformanceElement::GameLoopAircraft);
 
 	this->tick_counter++;
 

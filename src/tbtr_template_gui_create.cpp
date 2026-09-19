@@ -159,7 +159,7 @@ public:
 		this->sell_hovered = false;
 
 		if (to_edit != nullptr) {
-			Command<Commands::VirtualTrainFromTemplate>::Post(STR_TMPL_CANT_CREATE, CommandCallback::SetVirtualTrain, to_edit->index, INVALID_CLIENT_ID);
+			Command<Commands::VirtualTrainFromTemplate>::Post(STR_TMPL_CANT_CREATE, CommandCallback::SetVirtualTrain, to_edit->index, ClientID::Invalid);
 		}
 
 		this->resize.step_height = 1;
@@ -270,7 +270,7 @@ public:
 		}
 
 		// create a new one
-		Command<Commands::VirtualTrainFromTrain>::Post(STR_TMPL_CANT_CREATE, CommandCallback::SetVirtualTrain, v->index, INVALID_CLIENT_ID);
+		Command<Commands::VirtualTrainFromTrain>::Post(STR_TMPL_CANT_CREATE, CommandCallback::SetVirtualTrain, v->index, ClientID::Invalid);
 		this->ToggleWidgetLoweredState(TCW_CLONE);
 		ResetObjectToPlace();
 		this->SetDirty();
@@ -291,7 +291,7 @@ public:
 		switch (widget) {
 			case TCW_NEW_TMPL_PANEL: {
 				if (this->virtual_train) {
-					DrawTrainImage(this->virtual_train, r.Shrink(TRAIN_FRONT_SPACE, 2, 25, 0), this->sel, EIT_IN_DEPOT, this->hscroll->GetPosition(), this->vehicle_over);
+					DrawTrainImage(this->virtual_train, r.Shrink(TRAIN_FRONT_SPACE, 2, 25, 0), this->sel, EngineImageType::InDepot, this->hscroll->GetPosition(), this->vehicle_over);
 					DrawString(r.left, r.right, r.top, GetString(STR_JUST_DECIMAL, CeilDiv(this->virtual_train->gcache.cached_total_length * 10, TILE_SIZE), 1), TextColour::Black, SA_RIGHT, false, FontSize::Small);
 				}
 				break;
@@ -335,7 +335,7 @@ public:
 					y += GetCharacterHeight(FontSize::Normal);
 
 					/* Draw vehicle performance info */
-					const bool original_acceleration = (_settings_game.vehicle.train_acceleration_model == AM_ORIGINAL ||
+					const bool original_acceleration = (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Original ||
 							GetAccelerationTypeRailTypes(VehicleAccelerationModel::Maglev).All(this->virtual_train->railtypes));
 					const GroundVehicleCache *gcache = this->virtual_train->GetGroundVehicleCache();
 					DrawString(left, right, y, GetString(original_acceleration ? STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED : STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED_MAX_TE,
@@ -371,7 +371,7 @@ public:
 						y += GetCharacterHeight(FontSize::Normal);
 					}
 
-					if (_settings_game.vehicle.train_acceleration_model != AM_ORIGINAL) {
+					if (_settings_game.vehicle.train_acceleration_model != AccelerationModel::Original) {
 						DrawString(left, right, y, GetString(STR_VEHICLE_INFO_MAX_SPEED_LOADED,
 								GetTrainEstimatedMaxAchievableSpeed(this->virtual_train, gcache->cached_weight + full_cargo_weight, this->virtual_train->GetDisplayMaxSpeed())));
 						y += GetCharacterHeight(FontSize::Normal);
@@ -444,9 +444,9 @@ public:
 
 		/* Show tooltip window */
 		if (whole_chain) {
-			GuiShowTooltips(this, GetEncodedString(STR_DEPOT_VEHICLE_TOOLTIP_CHAIN, num, details), TCC_RIGHT_CLICK);
+			GuiShowTooltips(this, GetEncodedString(STR_DEPOT_VEHICLE_TOOLTIP_CHAIN, num, details), TooltipCloseCondition::RightClick);
 		} else {
-			GuiShowTooltips(this, GetEncodedString(STR_DEPOT_VEHICLE_TOOLTIP, v->engine_type, details), TCC_RIGHT_CLICK);
+			GuiShowTooltips(this, GetEncodedString(STR_DEPOT_VEHICLE_TOOLTIP, v->engine_type, details), TooltipCloseCondition::RightClick);
 		}
 
 		return true;
@@ -492,7 +492,7 @@ public:
 				}
 
 				SellVehicleFlags sell_flags = _ctrl_pressed ? SellVehicleFlags::SellChain : SellVehicleFlags::None;
-				Command<Commands::SellVirtualVehicle>::Post(STR_ERROR_CAN_T_SELL_TRAIN, CommandCallback::DeleteVirtualTrain, this->sel, sell_flags, INVALID_CLIENT_ID);
+				Command<Commands::SellVirtualVehicle>::Post(STR_ERROR_CAN_T_SELL_TRAIN, CommandCallback::DeleteVirtualTrain, this->sel, sell_flags, ClientID::Invalid);
 
 				this->sel = VehicleID::Invalid();
 
@@ -574,7 +574,7 @@ public:
 			}
 			if (!buildable) height += GetCharacterHeight(FontSize::Normal);
 			if (full_cargo_weight > 0 || _settings_client.gui.show_train_weight_ratios_in_details) height += GetCharacterHeight(FontSize::Normal);
-			if (_settings_game.vehicle.train_acceleration_model != AM_ORIGINAL) height += GetCharacterHeight(FontSize::Normal);
+			if (_settings_game.vehicle.train_acceleration_model != AccelerationModel::Original) height += GetCharacterHeight(FontSize::Normal);
 
 			for (CargoType i{}; i < NUM_CARGO; ++i) {
 				if (cargo_caps[i] > 0) {
@@ -642,7 +642,7 @@ public:
 			TrainDepotMoveVehicle(v, sel, gdvp.head);
 		} else if (v != nullptr) {
 			SetObjectToPlaceWnd(SPR_CURSOR_MOUSE, PAL_NONE, HT_DRAG, this);
-			SetMouseCursorVehicle(v, EIT_IN_DEPOT);
+			SetMouseCursorVehicle(v, EngineImageType::InDepot);
 			_cursor.vehchain = _ctrl_pressed;
 
 			this->sel = v->index;
@@ -655,10 +655,10 @@ public:
 		if (this->sel != VehicleID::Invalid()) {
 			_cursor.vehchain = _ctrl_pressed;
 			this->SetWidgetDirty(TCW_NEW_TMPL_PANEL);
-			return ES_HANDLED;
+			return EventState::Handled;
 		}
 
-		return ES_NOT_HANDLED;
+		return EventState::NotHandled;
 	}
 
 	void VirtualVehicleDeleted(VehicleID id)

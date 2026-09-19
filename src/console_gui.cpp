@@ -175,14 +175,14 @@ struct IConsoleWindow : Window
 		/* If the text is longer than the window, don't show the starting ']' */
 		int delta = this->width - WidgetDimensions::scaled.frametext.right - cursor_width - this->line_offset - _iconsole_cmdline.pixels - ICON_RIGHT_BORDERWIDTH;
 		if (delta > 0) {
-			DrawString(WidgetDimensions::scaled.frametext.left, right, this->height - this->line_height, "]", (TextColour)CC_COMMAND, SA_LEFT | SA_FORCE);
+			DrawString(WidgetDimensions::scaled.frametext.left, right, this->height - this->line_height, "]", CC_COMMAND, SA_LEFT | SA_FORCE);
 			delta = 0;
 		}
 
 		/* If we have a marked area, draw a background highlight. */
 		if (_iconsole_cmdline.marklength != 0) GfxFillRect(this->line_offset + delta + _iconsole_cmdline.markxoffs, this->height - this->line_height, this->line_offset + delta + _iconsole_cmdline.markxoffs + _iconsole_cmdline.marklength, this->height - 1, PC_DARK_RED);
 
-		DrawString(this->line_offset + delta, right, this->height - this->line_height, _iconsole_cmdline.GetText(), static_cast<TextColour>(CC_COMMAND), SA_LEFT | SA_FORCE);
+		DrawString(this->line_offset + delta, right, this->height - this->line_height, _iconsole_cmdline.GetText(), CC_COMMAND, SA_LEFT | SA_FORCE);
 
 		if (_focused_window == this && _iconsole_cmdline.caret) {
 			DrawString(this->line_offset + delta + _iconsole_cmdline.caretxoffs, right, this->height - this->line_height, "_", TextColour::White, SA_LEFT | SA_FORCE);
@@ -210,7 +210,7 @@ struct IConsoleWindow : Window
 
 	EventState OnKeyPress(char32_t key, uint16_t keycode) override
 	{
-		if (_focused_window != this) return ES_NOT_HANDLED;
+		if (_focused_window != this) return EventState::NotHandled;
 
 		const int scroll_height = (this->height / this->line_height) - 1;
 		switch (keycode) {
@@ -276,11 +276,11 @@ struct IConsoleWindow : Window
 					IConsoleResetHistoryPos();
 					this->SetDirty();
 				} else {
-					return ES_NOT_HANDLED;
+					return EventState::NotHandled;
 				}
 				break;
 		}
-		return ES_HANDLED;
+		return EventState::Handled;
 	}
 
 	void InsertTextString(WidgetID, std::string_view str, bool marked, std::optional<size_t> caret, std::optional<size_t> insert_location, std::optional<size_t> replacement_end) override
@@ -590,7 +590,7 @@ bool IsValidConsoleColour(ExtendedTextColour c)
 
 	/* A text colour from the palette is used; must be the company
 	 * colour gradient, so it must be one of those. */
-	for (Colours i = Colours::Begin; i < Colours::End; i++) {
+	for (Colours i : EnumRange(Colours::End)) {
 		if (ExtendedTextColour{GetColourGradient(i, Shade::Normal)} == c) return true;
 	}
 

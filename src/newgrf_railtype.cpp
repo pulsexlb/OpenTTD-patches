@@ -353,7 +353,7 @@ void ConvertRailTypes()
 				break;
 
 			case TileType::TunnelBridge:
-				if (GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL) {
+				if (GetTunnelBridgeTransportType(t) == TransportType::Rail) {
 					convert(t);
 				}
 				break;
@@ -369,7 +369,7 @@ void SetCurrentRailTypeLabelList()
 {
 	_railtype_list.clear();
 
-	for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
+	for (RailType rt : EnumRange(RAILTYPE_END)) {
 		_railtype_list.emplace_back(GetRailTypeInfo(rt)->label, 0);
 	}
 }

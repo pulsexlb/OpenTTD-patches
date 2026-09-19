@@ -718,7 +718,7 @@ public:
 			case WID_SL_SORT_BYNAME:
 			case WID_SL_SORT_BYDATE:
 				if ((_savegame_sorter == SavegameSorter::Name) == (widget == WID_SL_SORT_BYNAME)) {
-					this->DrawSortButtonState(widget, _savegame_sorter_ascending ? SBS_UP : SBS_DOWN);
+					this->DrawSortButton(widget, !_savegame_sorter_ascending);
 				}
 				break;
 
@@ -1087,10 +1087,10 @@ public:
 	{
 		if (keycode == WKC_ESC) {
 			this->Close();
-			return ES_HANDLED;
+			return EventState::Handled;
 		}
 
-		return ES_NOT_HANDLED;
+		return EventState::NotHandled;
 	}
 
 	void OnTimeout() override

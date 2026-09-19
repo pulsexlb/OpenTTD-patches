@@ -87,17 +87,17 @@ enum class WindowClass : uint16_t {
 
 	/**
 	 * Build toolbar; %Window numbers:
-	 *   - #TRANSPORT_RAIL = #RailToolbarWidgets
-	 *   - #TRANSPORT_AIR = #AirportToolbarWidgets
-	 *   - #TRANSPORT_WATER = #DockToolbarWidgets
-	 *   - #TRANSPORT_ROAD = #RoadToolbarWidgets
+	 *   - #TransportType::Rail = #RailToolbarWidgets
+	 *   - #TransportType::Air = #AirportToolbarWidgets
+	 *   - #TransportType::Water = #DockToolbarWidgets
+	 *   - #TransportType::Road = #RoadToolbarWidgets
 	 */
 	BuildToolbar,
 
 	/**
 	 * Scenario build toolbar; %Window numbers:
-	 *   - #TRANSPORT_WATER = #DockToolbarWidgets
-	 *   - #TRANSPORT_ROAD = #RoadToolbarWidgets
+	 *   - #TransportType::Water = #DockToolbarWidgets
+	 *   - #TransportType::Road = #RoadToolbarWidgets
 	 */
 	ScenarioBuildToolbar,
 
@@ -115,7 +115,7 @@ enum class WindowClass : uint16_t {
 
 	/**
 	 * Build signal toolbar; %Window numbers:
-	 *   - #TRANSPORT_RAIL = #BuildSignalWidgets
+	 *   - #TransportType::Rail = #BuildSignalWidgets
 	 */
 	BuildSignal,
 
@@ -456,9 +456,9 @@ enum class WindowClass : uint16_t {
 
 	/**
 	 * Build station; %Window numbers:
-	 *   - #TRANSPORT_AIR = #AirportPickerWidgets
-	 *   - #TRANSPORT_WATER = #DockToolbarWidgets
-	 *   - #TRANSPORT_RAIL = #BuildRailStationWidgets
+	 *   - #TransportType::Air = #AirportPickerWidgets
+	 *   - #TransportType::Water = #DockToolbarWidgets
+	 *   - #TransportType::Rail = #BuildRailStationWidgets
 	 */
 	BuildStation,
 	BuildHeliport,                 ///< Build heliport window.
@@ -467,27 +467,27 @@ enum class WindowClass : uint16_t {
 
 	/**
 	 * Build bus station; %Window numbers:
-	 *   - #TRANSPORT_ROAD = #BuildRoadStationWidgets
+	 *   - #TransportType::Road = #BuildRoadStationWidgets
 	 */
 	BuildBusStation,
 
 	/**
 	 * Build truck station; %Window numbers:
-	 *   - #TRANSPORT_ROAD = #BuildRoadStationWidgets
+	 *   - #TransportType::Road = #BuildRoadStationWidgets
 	 */
 	BuildTruckStation,
 
 	/**
 	 * Build depot; %Window numbers:
-	 *   - #TRANSPORT_WATER = #BuildDockDepotWidgets
-	 *   - #TRANSPORT_RAIL = #BuildRailDepotWidgets
-	 *   - #TRANSPORT_ROAD = #BuildRoadDepotWidgets
+	 *   - #TransportType::Water = #BuildDockDepotWidgets
+	 *   - #TransportType::Rail = #BuildRailDepotWidgets
+	 *   - #TransportType::Road = #BuildRoadDepotWidgets
 	 */
 	BuildDepot,
 
 	/**
 	 * Build waypoint; %Window numbers:
-	 *   - #TRANSPORT_RAIL = #BuildRailWaypointWidgets
+	 *   - #TransportType::Rail = #BuildRailWaypointWidgets
 	 */
 	BuildWaypoint,
 
@@ -952,9 +952,9 @@ public:
 };
 
 /** State of handling an event. */
-enum EventState : uint8_t {
-	ES_HANDLED,     ///< The passed event is handled.
-	ES_NOT_HANDLED, ///< The passed event is not handled.
+enum class EventState : uint8_t {
+	Handled, ///< The passed event is handled.
+	NotHandled, ///< The passed event is not handled.
 };
 
 struct WindowTokenTag : public StrongType::TypedefTraits<uint64_t, StrongType::Compare> {};

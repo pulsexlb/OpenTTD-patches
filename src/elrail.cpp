@@ -119,7 +119,7 @@ static DualTrackBits GetRailTrackBitsUniversal(TileIndex t, DiagDirections *over
 		}
 
 		case TileType::TunnelBridge: {
-			if (GetTunnelBridgeTransportType(t) != TRANSPORT_RAIL) break;
+			if (GetTunnelBridgeTransportType(t) != TransportType::Rail) break;
 			TrackBits primary_bits = GetPrimaryTunnelBridgeTrackBits(t);
 			TrackBits secondary_bits = GetSecondaryTunnelBridgeTrackBits(t);
 			if (HasRailCatenary(GetRailType(t))) {
@@ -166,7 +166,7 @@ static TrackBits MaskWireBits(TileIndex t, TrackBits tracks)
 	if (!IsPlainRailTile(t)) return tracks;
 
 	TrackdirBits neighbour_tdb = TRACKDIR_BIT_NONE;
-	for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
+	for (DiagDirection d : EnumRange(DiagDirection::End)) {
 		/* If the neighbour tile is either not electrified or has no tracks that can be reached
 		 * from this tile, mark all trackdirs that can be reached from the neighbour tile
 		 * as needing no catenary. We make an exception for blocked station tiles with a matching
@@ -174,7 +174,7 @@ static TrackBits MaskWireBits(TileIndex t, TrackBits tracks)
 		TileIndex next_tile = TileAddByDiagDir(t, d);
 		RailType rt = GetTileRailTypeByEntryDir(next_tile, d);
 		if (rt == INVALID_RAILTYPE || !HasRailCatenary(rt) ||
-				((TrackdirBitsToTrackBits(GetTileTrackdirBits(next_tile, TRANSPORT_RAIL, 0)) & DiagdirReachesTracks(d)) == TRACK_BIT_NONE &&
+				((TrackdirBitsToTrackBits(GetTileTrackdirBits(next_tile, TransportType::Rail, 0)) & DiagdirReachesTracks(d)) == TRACK_BIT_NONE &&
 				(!HasStationTileRail(next_tile) || GetRailStationAxis(next_tile) != DiagDirToAxis(d) || !CanStationTileHaveWires(next_tile)))) {
 			neighbour_tdb |= DiagdirReachesTrackdirs(ReverseDiagDir(d));
 		}
@@ -379,7 +379,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 		}
 	};
 
-	for (DiagDirection i = DiagDirection::Begin; i < DiagDirection::End; i++) {
+	for (DiagDirection i : EnumRange(DiagDirection::End)) {
 		SpriteID pylon_base = get_pylon_sprite(i, halftile_corner != CORNER_INVALID && HasBit(InclinedSlope(i), halftile_corner));
 		TileIndex neighbour = ti->tile + TileOffsByDiagDir(i);
 		int elevation = GetPCPElevation(ti->tile, i);
@@ -489,7 +489,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 				(!HasStationTileRail(ti->tile) || CanStationTileHavePylons(ti->tile))) {
 
 			const auto &ppp_orders = _ppp_order[i][GetTileLocationGroup(ti->tile)];
-			for (Direction k = Direction::Begin; k < Direction::End; k++) {
+			for (Direction k : EnumRange(Direction::End)) {
 				Direction temp = ppp_orders[k];
 
 				if (ppp_allowed[i].Test(temp)) {

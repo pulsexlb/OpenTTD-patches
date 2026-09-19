@@ -417,7 +417,7 @@ void DrawFoundation(TileInfo *ti, Foundation f)
 		if (!IsNonContinuousFoundation(f)) {
 			/* Lower part of foundation */
 			static constexpr SpriteBounds bounds{{}, {TILE_SIZE, TILE_SIZE, TILE_HEIGHT - 1}, {}};
-			AddSortableSpriteToDraw(leveled_base + (ti->tileh & ~SLOPE_STEEP), PAL_NONE, *ti, bounds);
+			AddSortableSpriteToDraw(leveled_base + RemoveSteepSlope(ti->tileh), PAL_NONE, *ti, bounds);
 		}
 
 		Corner highest_corner = GetHighestSlopeCorner(ti->tileh);
@@ -508,10 +508,10 @@ void DoClearSquare(TileIndex tile)
 /**
  * Returns information about trackdirs and signal states.
  * If there is any trackbit at 'side', return all trackdirbits.
- * For TRANSPORT_ROAD, return no trackbits if there is no roadbit (of given subtype) at given side.
+ * For TransportType::Road, return no trackbits if there is no roadbit (of given subtype) at given side.
  * @param tile tile to get info about
  * @param mode transport type
- * @param sub_mode for TRANSPORT_ROAD, roadtypes to check
+ * @param sub_mode for TransportType::Road, roadtypes to check
  * @param side side we are entering from, DiagDirection::Invalid to return all trackbits
  * @return trackdirbits and other info depending on 'mode'
  */
@@ -772,7 +772,7 @@ void RunTileLoop(bool apply_day_length)
 		count = 1 << (Map::LogX() + Map::LogY() - TILE_UPDATE_FREQUENCY_LOG);
 	}
 
-	PerformanceAccumulator framerate(PFE_GL_LANDSCAPE);
+	PerformanceAccumulator framerate(PerformanceElement::GameLoopLandscape);
 
 	const uint32_t feedback = GetTileLoopFeedback();
 
@@ -809,7 +809,7 @@ void RunAuxiliaryTileLoop()
 	/* At day lengths <= 4, flooding is handled by main tile loop */
 	if (DayLengthFactor() <= 4 || (_scaled_tick_counter % 4) != 0) return;
 
-	PerformanceAccumulator framerate(PFE_GL_LANDSCAPE);
+	PerformanceAccumulator framerate(PerformanceElement::GameLoopLandscape);
 
 	const uint32_t feedback = GetTileLoopFeedback();
 	uint count = 1 << (Map::LogX() + Map::LogY() - 8);
@@ -1070,7 +1070,7 @@ static bool FindSpring(TileIndex tile)
 	};
 
 	uint num_hills = 0;
-	for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
+	for (DiagDirection d : EnumRange(DiagDirection::End)) {
 		TileIndex check_tile = tile;
 		for (uint i = 0; i < max_hill_distance; i++) {
 			check_tile = TileAddByDiagDir(check_tile, d);
@@ -1133,7 +1133,7 @@ static void MakeLakeHandler(TileIndex tile, const MakeLakeData *data)
 	/* Check if inside ellipse */
 	if ((a_delta * a_delta) + ((data->secondary_axis_scale * b_delta * b_delta) >> 16) > ((int64_t)(max_distance * max_distance) << 16)) return;
 
-	for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
+	for (DiagDirection d : EnumRange(DiagDirection::End)) {
 		TileIndex t2 = tile + TileOffsByDiagDir(d);
 		if (IsWaterTile(t2)) {
 			MakeRiverAndModifyDesertZoneAround(tile);
@@ -1279,7 +1279,7 @@ static void River_GetNeighbours(AyStar *aystar, OpenListNode *current)
 	TileIndex tile = current->path.node.tile;
 
 	aystar->num_neighbours = 0;
-	for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
+	for (DiagDirection d : EnumRange(DiagDirection::End)) {
 		TileIndex t = tile + TileOffsByDiagDir(d);
 		if (IsValidTile(t) && FlowsDown(tile, t)) {
 			aystar->neighbours[aystar->num_neighbours].tile = t;
@@ -1387,7 +1387,7 @@ static bool CountConnectedSeaTiles(TileIndex start_tile, std::vector<TileIndex> 
 		if (sea.size() > limit) break;
 
 		/* Queue adjacent tiles which have not already been queued. */
-		for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
+		for (DiagDirection d : EnumRange(DiagDirection::End)) {
 			TileIndex t = tile + TileOffsByDiagDir(d);
 			if (IsValidTile(t)) {
 				auto res = seen_tiles.insert(t);
@@ -1460,7 +1460,7 @@ static bool FlowRiver(TileIndex spring, TileIndex begin, uint min_river_length)
 			}
 		}
 
-		for (DiagDirection d = DiagDirection::Begin; d < DiagDirection::End; d++) {
+		for (DiagDirection d : EnumRange(DiagDirection::End)) {
 			TileIndex t = end + TileOffsByDiagDir(d);
 			if (IsValidTile(t) && !marks.contains(t) && FlowsDown(end, t)) {
 				marks.insert(t);
@@ -1594,7 +1594,7 @@ static uint CalculateCoverageLine(uint coverage, uint edge_multiplier)
 
 		if (edge_multiplier != 0) {
 			/* Check if any of our neighbours is below us. */
-			for (DiagDirection dir = DiagDirection::Begin; dir != DiagDirection::End; dir++) {
+			for (DiagDirection dir : EnumRange(DiagDirection::End)) {
 				TileIndex neighbour_tile = AddTileIndexDiffCWrap(tile, TileIndexDiffCByDiagDir(dir));
 				if (IsValidTile(neighbour_tile) && TileHeight(neighbour_tile) < h) {
 					edge_histogram[h]++;
@@ -1653,7 +1653,7 @@ static void CalculateSnowLine()
 {
 	if (_settings_game.game_creation.climate_threshold_mode == 0) {
 		/* We do not have snow sprites on coastal tiles, so never allow "1" as height. */
-		_settings_game.game_creation.snow_line_height = std::max(CalculateCoverageLine(_settings_game.game_creation.snow_coverage, 0), 2u);
+		_settings_game.game_creation.snow_line_height = std::max<uint8_t>(CalculateCoverageLine(_settings_game.game_creation.snow_coverage, 0), 2u);
 	}
 	UpdateCachedSnowLine();
 	UpdateCachedSnowLineBounds();
@@ -1782,7 +1782,7 @@ void OnTick_Industry();
 void CallLandscapeTick()
 {
 	{
-		PerformanceAccumulator framerate(PFE_GL_LANDSCAPE);
+		PerformanceAccumulator framerate(PerformanceElement::GameLoopLandscape);
 
 		OnTick_Town();
 		RecordSyncEvent(NSRE_TOWN);

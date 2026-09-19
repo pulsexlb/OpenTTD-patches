@@ -766,7 +766,7 @@ public:
 			}
 
 			case WID_GL_SORT_BY_ORDER:
-				this->DrawSortButtonState(WID_GL_SORT_BY_ORDER, this->vehgroups.IsDescSortOrder() ? SBS_DOWN : SBS_UP);
+				this->DrawSortButton(WID_GL_SORT_BY_ORDER, this->vehgroups.IsDescSortOrder());
 				break;
 
 			case WID_GL_LIST_VEHICLE:
@@ -930,7 +930,7 @@ public:
 						}
 
 						SetObjectToPlaceWnd(SPR_CURSOR_MOUSE, PAL_NONE, HT_DRAG, this);
-						SetMouseCursorVehicle(v, EIT_IN_LIST);
+						SetMouseCursorVehicle(v, EngineImageType::InList);
 						_cursor.vehchain = true;
 
 						this->SetDirty();
@@ -1121,9 +1121,9 @@ public:
 
 				std::string name = GenerateAutoNameForVehicleGroup(v);
 
-				VehicleListType vli_type = VL_SINGLE_VEH;
+				VehicleListType vli_type = VehicleListType::SingleVehicle;
 				if (_ctrl_pressed) {
-					vli_type = VL_SHARED_ORDERS;
+					vli_type = VehicleListType::VehicleSharedOrders;
 					v = v->FirstShared();
 				}
 				Command<Commands::CreateGroupFromList>::Post(STR_ERROR_GROUP_CAN_T_CREATE, VehicleListIdentifier(vli_type, v->type, v->owner, v->index), CargoFilterCriteria::CF_ANY, name);
@@ -1413,7 +1413,7 @@ static void ShowCompanyGroupInternal(CompanyID company, VehicleType vehicle_type
 	if (!Company::IsValidID(company)) return;
 
 	assert(to_underlying(vehicle_type) < std::size(_vehicle_group_desc));
-	VehicleListIdentifier vli(VL_GROUP_LIST, vehicle_type, company);
+	VehicleListIdentifier vli(VehicleListType::Group, vehicle_type, company);
 	VehicleGroupWindow *w = AllocateWindowDescFront<VehicleGroupWindow, Tneed_existing_window>(_vehicle_group_desc[to_underlying(vehicle_type)], vli.ToWindowNumber(), vli);
 	if (w != nullptr) w->SelectGroup(group);
 }
@@ -1446,7 +1446,7 @@ void ShowCompanyGroupForVehicle(const Vehicle *v)
  */
 static inline VehicleGroupWindow *FindVehicleGroupWindow(VehicleType vt, Owner owner)
 {
-	return dynamic_cast<VehicleGroupWindow *>(FindWindowById(GetWindowClassForVehicleType(vt), VehicleListIdentifier(VL_GROUP_LIST, vt, owner).ToWindowNumber()));
+	return dynamic_cast<VehicleGroupWindow *>(FindWindowById(GetWindowClassForVehicleType(vt), VehicleListIdentifier(VehicleListType::Group, vt, owner).ToWindowNumber()));
 }
 
 /**
@@ -1493,7 +1493,7 @@ void DeleteGroupHighlightOfVehicle(const Vehicle *v)
 	/* If we haven't got any vehicles on the mouse pointer, we haven't got any highlighted in any group windows either
 	 * If that is the case, we can skip looping though the windows and save time
 	 */
-	if (_special_mouse_mode != WSM_DRAGDROP) return;
+	if (_special_mouse_mode != SpecialMouseMode::DragDrop) return;
 
 	VehicleGroupWindow *w = FindVehicleGroupWindow(v->type, v->owner);
 	if (w != nullptr) w->UnselectVehicle(v->index);

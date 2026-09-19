@@ -71,10 +71,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_town_authority_widge
 		NWidget(WWT_STICKYBOX, Colours::Brown),
 	EndContainer(),
 	NWidget(WWT_PANEL, Colours::Brown, WID_TA_RATING_INFO), SetMinimalSize(317, 92), SetResize(1, 1), EndContainer(),
-	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_PANEL, Colours::Brown, WID_TA_COMMAND_LIST), SetMinimalSize(305, 52), SetResize(1, 0), SetToolTip(STR_LOCAL_AUTHORITY_ACTIONS_TOOLTIP), SetScrollbar(WID_TA_SCROLLBAR), EndContainer(),
-		NWidget(NWID_VSCROLLBAR, Colours::Brown, WID_TA_SCROLLBAR),
-	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Brown, WID_TA_COMMAND_LIST), SetMinimalSize(317, 52), SetResize(1, 0), SetToolTip(STR_LOCAL_AUTHORITY_ACTIONS_TOOLTIP), EndContainer(),
 	NWidget(WWT_PANEL, Colours::Brown, WID_TA_ACTION_INFO), SetMinimalSize(317, 52), SetResize(1, 0), EndContainer(),
 	NWidget(NWID_HORIZONTAL),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_TA_BTN_SEL),
@@ -90,8 +87,8 @@ struct TownAuthorityWindow : Window {
 private:
 	Town *town = nullptr; ///< Town being displayed.
 	int sel_index = -1; ///< Currently selected town action, \c 0 to \c TACT_COUNT-1, \c -1 means no action selected.
-	Scrollbar *vscroll = nullptr;
-	TownActions displayed_actions_on_previous_painting{}; ///< Actions that were available on the previous call to OnPaint()
+	TownActions displayed_actions{}; ///< Actions currently displayed
+	uint displayed_action_row_count = 0;
 
 	Dimension icon_size{}; ///< Dimensions of company icon
 	Dimension exclusive_size{}; ///< Dimensions of exclusive icon
@@ -124,13 +121,28 @@ private:
 
 	static const uint SETTING_OVERRIDE_COUNT = 6;
 
+	inline void UpdateActionMask(bool update_window)
+	{
+		const TownActions old_buttons = this->displayed_actions;
+		const uint old_row_count = this->displayed_action_row_count;
+		this->displayed_actions = GetMaskOfTownActions(_local_company, this->town);
+		this->displayed_action_row_count = std::max<uint>(old_row_count, 1 + SETTING_OVERRIDE_COUNT + std::max<uint>(CountBits(this->displayed_actions), 4)); // 1 for title row
+
+		if (update_window) {
+			if (old_row_count != this->displayed_action_row_count) {
+				this->ReInit(0, GetCharacterHeight(FontSize::Normal), false);
+			} else if (old_buttons != this->displayed_actions) {
+				this->SetDirty();
+			}
+		}
+	}
+
 public:
-	TownAuthorityWindow(WindowDesc &desc, WindowNumber window_number) : Window(desc), sel_index(-1), displayed_actions_on_previous_painting(0)
+	TownAuthorityWindow(WindowDesc &desc, WindowNumber window_number) : Window(desc)
 	{
 		this->town = Town::Get(window_number);
+		this->UpdateActionMask(false);
 		this->InitNested(window_number);
-		this->vscroll = this->GetScrollbar(WID_TA_SCROLLBAR);
-		this->vscroll->SetCapacity((this->GetWidget<NWidgetBase>(WID_TA_COMMAND_LIST)->current_y - WidgetDimensions::scaled.framerect.Vertical()) / GetCharacterHeight(FontSize::Normal));
 	}
 
 	void OnInit() override
@@ -141,14 +153,9 @@ public:
 
 	void OnPaint() override
 	{
-		TownActions buttons = GetMaskOfTownActions(_local_company, this->town);
-		uint numact = CountBits(buttons.base()) + SETTING_OVERRIDE_COUNT;
-		if (buttons != displayed_actions_on_previous_painting) this->SetDirty();
-		displayed_actions_on_previous_painting = buttons;
+		this->UpdateActionMask(true);
 
-		this->vscroll->SetCount(numact + 1);
-
-		if (this->sel_index != -1 && this->sel_index < 0x100 && !HasBit(buttons.base(), this->sel_index)) {
+		if (this->sel_index != -1 && this->sel_index < 0x100 && !HasBit(this->displayed_actions.base(), this->sel_index)) {
 			this->sel_index = -1;
 		}
 
@@ -317,67 +324,62 @@ public:
 				uint buttons = GetMaskOfTownActions(_local_company, this->town).base();
 				Rect ir = r.Shrink(WidgetDimensions::scaled.framerect);
 				int y = ir.top;
-				int pos = this->vscroll->GetPosition();
 
-				if (--pos < 0) {
-					DrawString(ir.left, ir.right, y, STR_LOCAL_AUTHORITY_ACTIONS_TITLE);
-					y += GetCharacterHeight(FontSize::Normal);
-				}
+				DrawString(ir.left, ir.right, y, STR_LOCAL_AUTHORITY_ACTIONS_TITLE);
+				y += GetCharacterHeight(FontSize::Normal);
 
 				for (int i = 0; buttons; i++, buttons >>= 1) {
-					if ((buttons & 1) && --pos < 0) {
+					if (buttons & 1) {
 						DrawString(ir.left, ir.right, y,
 								STR_LOCAL_AUTHORITY_ACTION_SMALL_ADVERTISING_CAMPAIGN + i, this->sel_index == i ? TextColour::White : TextColour::Orange);
 						y += GetCharacterHeight(FontSize::Normal);
 					}
 				}
 				for (int i = 0; i < (int)SETTING_OVERRIDE_COUNT; i++) {
-					if (--pos < 0) {
-						const bool disabled = ChangeSettingsDisabled();
-						const bool selected = (this->sel_index == (0x100 + i));
-						const ExtendedTextColour tc = disabled ? ExtendedTextColour{selected ? TextColour::Silver : TextColour::Grey, ExtendedTextColourFlag::NoShade} : (selected ? TextColour::White : TextColour::Orange);
-						const bool overridden = HasBit(this->town->override_flags, i);
+					const bool disabled = ChangeSettingsDisabled();
+					const bool selected = (this->sel_index == (0x100 + i));
+					const ExtendedTextColour tc = disabled ? ExtendedTextColour{selected ? TextColour::Silver : TextColour::Grey, ExtendedTextColourFlag::NoShade} : (selected ? TextColour::White : TextColour::Orange);
+					const bool overridden = HasBit(this->town->override_flags, i);
 
-						format_buffer buf;
-						auto set_text = [&](StringID str, StringParameter param = {}) {
-							AppendStringInPlace(buf, STR_LOCAL_AUTHORITY_SETTING_OVERRIDE_STR,
-									STR_LOCAL_AUTHORITY_SETTING_OVERRIDE_ALLOW_ROADS + i,
-									overridden ? STR_JUST_STRING1 : STR_LOCAL_AUTHORITY_SETTING_OVERRIDE_DEFAULT,
-									str, std::move(param));
-						};
+					format_buffer buf;
+					auto set_text = [&](StringID str, StringParameter param = {}) {
+						AppendStringInPlace(buf, STR_LOCAL_AUTHORITY_SETTING_OVERRIDE_STR,
+								STR_LOCAL_AUTHORITY_SETTING_OVERRIDE_ALLOW_ROADS + i,
+								overridden ? STR_JUST_STRING1 : STR_LOCAL_AUTHORITY_SETTING_OVERRIDE_DEFAULT,
+								str, std::move(param));
+					};
 
-						switch (i) {
-							case TSOF_OVERRIDE_BUILD_ROADS:
-								set_text(this->town->GetAllowBuildRoads() ? STR_CONFIG_SETTING_ON : STR_CONFIG_SETTING_OFF);
-								break;
+					switch (i) {
+						case TSOF_OVERRIDE_BUILD_ROADS:
+							set_text(this->town->GetAllowBuildRoads() ? STR_CONFIG_SETTING_ON : STR_CONFIG_SETTING_OFF);
+							break;
 
-							case TSOF_OVERRIDE_BUILD_LEVEL_CROSSINGS:
-								set_text(this->town->GetAllowBuildLevelCrossings() ? STR_CONFIG_SETTING_ON : STR_CONFIG_SETTING_OFF);
-								break;
+						case TSOF_OVERRIDE_BUILD_LEVEL_CROSSINGS:
+							set_text(this->town->GetAllowBuildLevelCrossings() ? STR_CONFIG_SETTING_ON : STR_CONFIG_SETTING_OFF);
+							break;
 
-							case TSOF_OVERRIDE_BUILD_TUNNELS: {
-								TownTunnelMode tunnel_mode = this->town->GetBuildTunnelMode();
-								set_text(STR_CONFIG_SETTING_TOWN_TUNNELS_FORBIDDEN + tunnel_mode);
-								break;
-							}
-
-							case TSOF_OVERRIDE_BUILD_INCLINED_ROADS: {
-								uint8_t max_slope = this->town->GetBuildMaxRoadSlope();
-								set_text(STR_CONFIG_SETTING_TOWN_MAX_ROAD_SLOPE_VALUE + ((max_slope == 0) ? 1 : 0), max_slope);
-								break;
-							}
-
-							case TSOF_OVERRIDE_GROWTH:
-								set_text(this->town->IsTownGrowthDisabledByOverride() ? STR_CONFIG_SETTING_TOWN_GROWTH_NONE : STR_CONFIG_SETTING_DEFAULT_ALLOW_TOWN_GROWTH_ALLOWED);
-								break;
-
-							case TSOF_OVERRIDE_BUILD_BRIDGES:
-								set_text(this->town->GetAllowBuildBridges() ? STR_CONFIG_SETTING_ON : STR_CONFIG_SETTING_OFF);
-								break;
+						case TSOF_OVERRIDE_BUILD_TUNNELS: {
+							TownTunnelMode tunnel_mode = this->town->GetBuildTunnelMode();
+							set_text(STR_CONFIG_SETTING_TOWN_TUNNELS_FORBIDDEN + tunnel_mode);
+							break;
 						}
-						DrawString(ir.left, ir.right, y, buf, tc);
-						y += GetCharacterHeight(FontSize::Normal);
+
+						case TSOF_OVERRIDE_BUILD_INCLINED_ROADS: {
+							uint8_t max_slope = this->town->GetBuildMaxRoadSlope();
+							set_text(STR_CONFIG_SETTING_TOWN_MAX_ROAD_SLOPE_VALUE + ((max_slope == 0) ? 1 : 0), max_slope);
+							break;
+						}
+
+						case TSOF_OVERRIDE_GROWTH:
+							set_text(this->town->IsTownGrowthDisabledByOverride() ? STR_CONFIG_SETTING_TOWN_GROWTH_NONE : STR_CONFIG_SETTING_DEFAULT_ALLOW_TOWN_GROWTH_ALLOWED);
+							break;
+
+						case TSOF_OVERRIDE_BUILD_BRIDGES:
+							set_text(this->town->GetAllowBuildBridges() ? STR_CONFIG_SETTING_ON : STR_CONFIG_SETTING_OFF);
+							break;
 					}
+					DrawString(ir.left, ir.right, y, buf, tc);
+					y += GetCharacterHeight(FontSize::Normal);
 				}
 				break;
 			}
@@ -390,7 +392,7 @@ public:
 			case WID_TA_ACTION_INFO: {
 				assert(size.width > padding.width && size.height > padding.height);
 				Dimension d = {0, 0};
-				for (TownAction i = {}; i != TownAction::End; ++i) {
+				for (TownAction i : EnumRange(TownAction::End)) {
 					auto [text, _] = this->PrepareActionInfoString(to_underlying(i));
 					d = maxdim(d, GetStringMultiLineBoundingBox(text, size));
 				}
@@ -405,9 +407,9 @@ public:
 			}
 
 			case WID_TA_COMMAND_LIST:
-				size.height = (5 + SETTING_OVERRIDE_COUNT) * GetCharacterHeight(FontSize::Normal) + padding.height;
+				size.height = this->displayed_action_row_count * GetCharacterHeight(FontSize::Normal) + padding.height;
 				size.width = GetStringBoundingBox(STR_LOCAL_AUTHORITY_ACTIONS_TITLE).width;
-				for (TownAction i = {}; i != TownAction::End; ++i) {
+				for (TownAction i : EnumRange(TownAction::End)) {
 					size.width = std::max(size.width, GetStringBoundingBox(STR_LOCAL_AUTHORITY_ACTION_SMALL_ADVERTISING_CAMPAIGN + to_underlying(i)).width + padding.width);
 				}
 				size.width += padding.width;
@@ -443,7 +445,7 @@ public:
 
 				const uint setting_override_offset = 32 - SETTING_OVERRIDE_COUNT;
 
-				y = GetNthSetBit(GetMaskOfTownActions(_local_company, this->town).base() | (UINT32_MAX << setting_override_offset), y + this->vscroll->GetPosition() - 1);
+				y = GetNthSetBit(GetMaskOfTownActions(_local_company, this->town).base() | (UINT32_MAX << setting_override_offset), y - 1);
 				if (y >= (int)setting_override_offset) {
 					this->sel_index = y + 0x100 - setting_override_offset;
 					this->SetDirty();
@@ -627,7 +629,7 @@ public:
 		}
 
 		bool first = true;
-		for (TownAcceptanceEffect i = TownAcceptanceEffect::Begin; i < TownAcceptanceEffect::End; i++) {
+		for (TownAcceptanceEffect i : EnumRange(TownAcceptanceEffect::End)) {
 			if (this->town->goal[i] == 0) continue;
 			if (this->town->goal[i] == TOWN_GROWTH_WINTER && (TileHeight(this->town->xy) < LowestSnowLine() || this->town->cache.population <= 90)) continue;
 			if (this->town->goal[i] == TOWN_GROWTH_DESERT && (GetTropicZone(this->town->xy) != TropicZone::Desert || this->town->cache.population <= 60)) continue;
@@ -756,7 +758,7 @@ public:
 		uint aimed_height = static_cast<uint>(1 + CountBits(CargoSpec::town_production_cargo_mask[TownProductionEffect::Passengers] | CargoSpec::town_production_cargo_mask[TownProductionEffect::Mail])) * GetCharacterHeight(FontSize::Normal);
 
 		bool first = true;
-		for (TownAcceptanceEffect i = TownAcceptanceEffect::Begin; i < TownAcceptanceEffect::End; i++) {
+		for (TownAcceptanceEffect i : EnumRange(TownAcceptanceEffect::End)) {
 			if (this->town->goal[i] == 0) continue;
 			if (this->town->goal[i] == TOWN_GROWTH_WINTER && (TileHeight(this->town->xy) < LowestSnowLine() || this->town->cache.population <= 90)) continue;
 			if (this->town->goal[i] == TOWN_GROWTH_DESERT && (GetTropicZone(this->town->xy) != TropicZone::Desert || this->town->cache.population <= 60)) continue;
@@ -1121,7 +1123,7 @@ public:
 	{
 		switch (widget) {
 			case WID_TD_SORT_ORDER:
-				this->DrawSortButtonState(widget, this->towns.IsDescSortOrder() ? SBS_DOWN : SBS_UP);
+				this->DrawSortButton(widget, this->towns.IsDescSortOrder());
 				break;
 
 			case WID_TD_LIST: {

@@ -658,7 +658,7 @@ struct TimetableWindow : GeneralVehicleWindow {
 	{
 		this->UpdateSelectionStates();
 		this->SetDirty();
-		return ES_NOT_HANDLED;
+		return EventState::NotHandled;
 	}
 
 		void SetButtonDisabledStates()
@@ -1120,7 +1120,7 @@ struct TimetableWindow : GeneralVehicleWindow {
 					ShowQueryString({}, STR_TIMETABLE_START_SECONDS_QUERY, 6, this, CS_NUMERAL, QueryStringFlag::AcceptUnchanged);
 				} else if (_settings_time.time_in_minutes && _settings_client.gui.timetable_start_text_entry) {
 					this->set_start_date_all = set_all;
-					ShowQueryString(GetString(STR_JUST_INT, _settings_time.NowInTickMinutes().ClockHHMM()), STR_TIMETABLE_START, 31, this, CS_NUMERAL, QueryStringFlag::AcceptUnchanged);
+					ShowQueryString(fmt::format("{:04}", _settings_time.NowInTickMinutes().ClockHHMM()), STR_TIMETABLE_START, 31, this, CS_NUMERAL, QueryStringFlag::AcceptUnchanged);
 				} else {
 					ShowSetDateWindow(this, this->TargetId(), _state_ticks, EconTime::CurYear(), EconTime::CurYear() + 15,
 							ChangeTimetableStartCallback, reinterpret_cast<void *>(static_cast<uintptr_t>(set_all ? 1 : 0)));
@@ -1354,7 +1354,7 @@ struct TimetableWindow : GeneralVehicleWindow {
 			}
 
 			case WID_VT_ADD_VEH_GROUP: {
-				Command<Commands::CreateGroupFromList>::Post(STR_ERROR_GROUP_CAN_T_CREATE, VehicleListIdentifier(VL_SINGLE_VEH, v->type, v->owner, v->index), CargoFilterCriteria::CF_ANY, *str);
+				Command<Commands::CreateGroupFromList>::Post(STR_ERROR_GROUP_CAN_T_CREATE, VehicleListIdentifier(VehicleListType::SingleVehicle, v->type, v->owner, v->index), CargoFilterCriteria::CF_ANY, *str);
 				break;
 			}
 		}

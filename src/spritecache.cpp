@@ -438,7 +438,7 @@ static bool ResizeSprites(SpriteLoader::SpriteCollection &sprite, LowZoomLevels 
 	if (!PadSprites(sprite, sprite_avail, encoder)) return false;
 
 	/* Create other missing zoom levels */
-	for (ZoomLevel zoom = ZoomLevel::In2x; zoom != ZoomLevel::SpriteEnd; zoom++) {
+	for (ZoomLevel zoom : EnumRange(ZoomLevel::In2x, ZoomLevel::SpriteEnd)) {
 		if (sprite_avail.Test(zoom)) {
 			/* Check that size and offsets match the fully zoomed image. */
 			[[maybe_unused]] const auto &root_sprite = sprite[ZoomLevel::Min];
@@ -786,12 +786,16 @@ void DupSprite(SpriteID old_spr, SpriteID new_spr)
 	SpriteCache *scnew = AllocateSpriteCache(new_spr); // may reallocate: so put it first
 	SpriteCache *scold = GetSpriteCache(old_spr);
 
+	scnew->Clear();
 	scnew->file = scold->file;
 	scnew->file_pos = scold->file_pos;
 	scnew->id = scold->id;
 	scnew->SetType(scold->GetType());
 	scnew->flags = scold->flags;
 	scnew->SetWarned(false);
+	if (scold->GetType() == SpriteType::Recolour) {
+		scnew->AssignRecolourSpriteData(scold->GetPtr());
+	}
 }
 
 static size_t GetSpriteCacheUsage()

@@ -58,6 +58,7 @@ AirType _last_built_airtype = AIRTYPE_BEGIN;
 #include "highscore.h"
 #include "game/game.hpp"
 #include "goal_base.h"
+#include "goal_gui.h"
 #include "story_base.h"
 #include "plans_func.h"
 #include "orderlist_gui.h"
@@ -648,7 +649,7 @@ static CallBackFunction MenuClickCompany(int index)
 
 			case CTMN_SPECTATE:
 				if (_network_server) {
-					NetworkServerDoMove(CLIENT_ID_SERVER, COMPANY_SPECTATOR);
+					NetworkServerDoMove(ClientID::Server, COMPANY_SPECTATOR);
 					MarkWholeScreenDirty();
 				} else {
 					NetworkClientRequestMove(COMPANY_SPECTATOR);
@@ -1202,15 +1203,15 @@ static void UsePickerTool(TileIndex tile)
 
 		case TileType::TunnelBridge:
 			switch (GetTunnelBridgeTransportType(tile)) {
-				case TRANSPORT_RAIL:
+				case TransportType::Rail:
 					ShowBuildRailToolbarFromTile(tile);
 					break;
 
-				case TRANSPORT_ROAD:
+				case TransportType::Road:
 					ShowBuildRoadToolbarFromTile(tile);
 					break;
 
-				case TRANSPORT_WATER:
+				case TransportType::Water:
 					ShowBuildDocksToolbarFromTile(tile);
 					break;
 
@@ -2336,10 +2337,10 @@ struct MainToolbarWindow : Window {
 			case MTHK_TEMPLATE_REPLACEMENT: ShowTemplateReplaceWindow(); break;
 			case MTHK_TRAIN_SLOTS: ShowTraceRestrictSlotWindow(_local_company, VehicleType::Train); break;
 			case MTHK_TRAIN_COUNTERS: ShowTraceRestrictCounterWindow(_local_company); break;
-			default: return ES_NOT_HANDLED;
+			default: return EventState::NotHandled;
 		}
 		if (cbf != CallBackFunction::None) _last_started_action = cbf;
-		return ES_HANDLED;
+		return EventState::Handled;
 	}
 
 	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override
@@ -2734,13 +2735,13 @@ struct ScenarioEditorToolbarWindow : Window {
 				case MainToolbarEditorHotkeys::GenerateTown: ShowFoundTownWindow(); break;
 				case MainToolbarEditorHotkeys::BuildRoad: ToolbarScenBuildRoadClick(this); break;
 				case MainToolbarEditorHotkeys::BuildTram: ToolbarScenBuildTramClick(this); break;
-				default: return ES_NOT_HANDLED;
+				default: return EventState::NotHandled;
 			}
 			if (cbf != CallBackFunction::None) _last_started_action = cbf;
 		} else {
 			this->OnClick({}, hotkey, 0);
 		}
-		return ES_HANDLED;
+		return EventState::Handled;
 	}
 
 	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override

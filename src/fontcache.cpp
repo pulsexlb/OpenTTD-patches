@@ -68,7 +68,7 @@ EnumIndexArray<int, FontSize, FontSize::End> font_height_cache;
 
 void UpdateFontHeightCache()
 {
-	for (FontSize fs = FontSize::Begin; fs != FontSize::End; fs++) {
+	for (FontSize fs : EnumRange(FontSize::End)) {
 		font_height_cache[fs] = FontCache::Get(fs)->GetHeight();
 	}
 }
@@ -80,7 +80,7 @@ void UpdateFontHeightCache()
  */
 /* static */ void FontCache::InitializeFontCaches()
 {
-	for (FontSize fs = FontSize::Begin; fs != FontSize::End; fs++) {
+	for (FontSize fs : EnumRange(FontSize::End)) {
 		if (FontCache::Get(fs) != nullptr) continue;
 		FontCache::Register(FontProviderManager::LoadFont(fs, FontType::Sprite, false, {}, {}));
 	}
@@ -115,7 +115,7 @@ void SetFont(FontSize fontsize, const std::string &font, uint size)
 	if (fontsize != FontSize::Monospace) {
 		/* Try to reload only the modified font. */
 		FontCacheSettings backup = _fcsettings;
-		for (FontSize fs = FontSize::Begin; fs < FontSize::End; fs++) {
+		for (FontSize fs : EnumRange(FontSize::End)) {
 			if (fs == fontsize) continue;
 			FontCache *fc = FontCache::Get(fs);
 			GetFontCacheSubSetting(fs)->font = fc->HasParent() ? fc->GetFontName() : "";

@@ -50,14 +50,6 @@
 
 #include "safeguards.h"
 
-/** Values for _settings_client.gui.auto_scrolling */
-enum ViewportAutoscrolling : uint8_t {
-	VA_DISABLED,                  //!< Do not autoscroll when mouse is at edge of viewport.
-	VA_MAIN_VIEWPORT_FULLSCREEN,  //!< Scroll main viewport at edge when using fullscreen.
-	VA_MAIN_VIEWPORT,             //!< Scroll main viewport at edge.
-	VA_EVERY_VIEWPORT,            //!< Scroll all viewports at their edges.
-};
-
 static Point _drag_delta; ///< delta between mouse cursor and upper left corner of dragged window
 static Window *_mouseover_last_w = nullptr; ///< Window of the last OnMouseOver event.
 static Window *_last_scroll_window = nullptr; ///< Window of the last scroll event.
@@ -620,17 +612,17 @@ void Window::SetWidgetDirty(WidgetID widget_index)
 /**
  * A hotkey has been pressed.
  * @param hotkey  Hotkey index, by default a widget index of a button or editbox.
- * @return #ES_HANDLED if the key press has been handled, and the hotkey is not unavailable for some reason.
+ * @return #EventState::Handled if the key press has been handled, and the hotkey is not unavailable for some reason.
  */
 EventState Window::OnHotkey(int hotkey)
 {
-	if (hotkey < 0) return ES_NOT_HANDLED;
+	if (hotkey < 0) return EventState::NotHandled;
 
 	NWidgetCore *nw = this->GetWidget<NWidgetCore>(hotkey);
-	if (nw == nullptr || nw->IsDisabled()) return ES_NOT_HANDLED;
+	if (nw == nullptr || nw->IsDisabled()) return EventState::NotHandled;
 
 	if (nw->type == WWT_EDITBOX) {
-		if (this->IsShaded()) return ES_NOT_HANDLED;
+		if (this->IsShaded()) return EventState::NotHandled;
 
 		/* Focus editbox */
 		this->SetFocusedWidget(hotkey);
@@ -639,7 +631,7 @@ EventState Window::OnHotkey(int hotkey)
 		/* Click button */
 		this->OnClick(Point(), hotkey, 1);
 	}
-	return ES_HANDLED;
+	return EventState::Handled;
 }
 
 /**
@@ -830,8 +822,8 @@ static void DispatchRightClickEvent(Window *w, int x, int y)
 	} else if (_settings_client.gui.right_click_wnd_close == RightClickClose::YesExceptSticky && !w->flags.Test(WindowFlag::Sticky) && !w->window_desc.flags.Test(WindowDefaultFlag::NoClose)) {
 		/* Right-click close is enabled, but excluding sticky windows. */
 		w->Close();
-	} else if (_settings_client.gui.hover_delay_ms == 0 && !w->OnTooltip(pt, wid->GetIndex(), TCC_RIGHT_CLICK) && wid->GetToolTip() != STR_NULL) {
-		GuiShowTooltips(w, GetEncodedString(wid->GetToolTip()), TCC_RIGHT_CLICK);
+	} else if (_settings_client.gui.hover_delay_ms == 0 && !w->OnTooltip(pt, wid->GetIndex(), TooltipCloseCondition::RightClick) && wid->GetToolTip() != STR_NULL) {
+		GuiShowTooltips(w, GetEncodedString(wid->GetToolTip()), TooltipCloseCondition::RightClick);
 	}
 }
 
@@ -851,8 +843,8 @@ static void DispatchHoverEvent(Window *w, int x, int y)
 	Point pt = { x, y };
 
 	/* Show the tooltip if there is any */
-	if (!w->OnTooltip(pt, wid->GetIndex(), TCC_HOVER) && wid->GetToolTip() != STR_NULL) {
-		GuiShowTooltips(w, GetEncodedString(wid->GetToolTip()), TCC_HOVER);
+	if (!w->OnTooltip(pt, wid->GetIndex(), TooltipCloseCondition::Hover) && wid->GetToolTip() != STR_NULL) {
+		GuiShowTooltips(w, GetEncodedString(wid->GetToolTip()), TooltipCloseCondition::Hover);
 		return;
 	}
 
@@ -2143,7 +2135,7 @@ static void DecreaseWindowCounters()
 
 static void HandlePlacePresize()
 {
-	if (_special_mouse_mode != WSM_PRESIZE) return;
+	if (_special_mouse_mode != SpecialMouseMode::Presize) return;
 
 	Window *w = _thd.GetCallbackWnd();
 	if (w == nullptr) return;
@@ -2158,14 +2150,14 @@ static void HandlePlacePresize()
 }
 
 /**
- * Handle dragging and dropping in mouse dragging mode (#WSM_DRAGDROP).
+ * Handle dragging and dropping in mouse dragging mode (#SpecialMouseMode::DragDrop).
  * @return State of handling the event.
  */
 static EventState HandleMouseDragDrop()
 {
-	if (_special_mouse_mode != WSM_DRAGDROP) return ES_NOT_HANDLED;
+	if (_special_mouse_mode != SpecialMouseMode::DragDrop) return EventState::NotHandled;
 
-	if (_left_button_down && _cursor.delta.x == 0 && _cursor.delta.y == 0) return ES_HANDLED; // Dragging, but the mouse did not move.
+	if (_left_button_down && _cursor.delta.x == 0 && _cursor.delta.y == 0) return EventState::Handled; // Dragging, but the mouse did not move.
 
 	Window *w = _thd.GetCallbackWnd();
 	if (w != nullptr) {
@@ -2181,7 +2173,7 @@ static EventState HandleMouseDragDrop()
 	}
 
 	if (!_left_button_down) ResetObjectToPlace(); // Button released, finished dragging.
-	return ES_HANDLED;
+	return EventState::Handled;
 }
 
 /** Report position of the mouse to the underlying window. */
@@ -2208,9 +2200,9 @@ static void HandleMouseOver()
 }
 
 /** Direction for moving the window. */
-enum PreventHideDirection : uint8_t {
-	PHD_UP,   ///< Above v is a safe position.
-	PHD_DOWN, ///< Below v is a safe position.
+enum class PreventHideDirection : uint8_t {
+	Up, ///< Above v is a safe position.
+	Down, ///< Below v is a safe position.
 };
 
 /**
@@ -2231,7 +2223,7 @@ static void PreventHiding(int *nx, int *ny, const Rect &rect, const Window *v, i
 
 	int v_bottom = v->top + v->height - 1;
 	int v_right = v->left + v->width - 1;
-	int safe_y = (dir == PHD_UP) ? (v->top - min_visible - rect.top) : (v_bottom + min_visible - rect.bottom); // Compute safe vertical position.
+	int safe_y = (dir == PreventHideDirection::Up) ? (v->top - min_visible - rect.top) : (v_bottom + min_visible - rect.bottom); // Compute safe vertical position.
 
 	if (*ny + rect.top <= v->top - min_visible) return; // Above v is enough space
 	if (*ny + rect.bottom >= v_bottom + min_visible) return; // Below v is enough space
@@ -2277,8 +2269,8 @@ static void EnsureVisibleCaption(Window *w, int nx, int ny)
 		ny = Clamp(ny, 0, _screen.height - min_visible);
 
 		/* Make sure the title bar isn't hidden behind the main tool bar or the status bar. */
-		PreventHiding(&nx, &ny, caption_rect, FindWindowById(WindowClass::MainToolbar, 0), w->left, PHD_DOWN);
-		PreventHiding(&nx, &ny, caption_rect, FindWindowById(WindowClass::Statusbar, 0), w->left, PHD_UP);
+		PreventHiding(&nx, &ny, caption_rect, FindWindowById(WindowClass::MainToolbar, 0), w->left, PreventHideDirection::Down);
+		PreventHiding(&nx, &ny, caption_rect, FindWindowById(WindowClass::Statusbar, 0), w->left, PreventHideDirection::Up);
 	}
 
 	if (w->viewport != nullptr) {
@@ -2373,10 +2365,10 @@ static bool _dragging_window; ///< A window is being dragged or resized.
 static EventState HandleWindowDragging()
 {
 	/* Get out immediately if no window is being dragged at all. */
-	if (!_dragging_window) return ES_NOT_HANDLED;
+	if (!_dragging_window) return EventState::NotHandled;
 
 	/* If button still down, but cursor hasn't moved, there is nothing to do. */
-	if (_left_button_down && _cursor.delta.x == 0 && _cursor.delta.y == 0) return ES_HANDLED;
+	if (_left_button_down && _cursor.delta.x == 0 && _cursor.delta.y == 0) return EventState::Handled;
 
 	/* Otherwise find the window... */
 	for (Window *w : Window::IterateFromBack()) {
@@ -2474,7 +2466,7 @@ static EventState HandleWindowDragging()
 			EnsureVisibleCaption(w, nx, ny);
 
 			w->SetDirty();
-			return ES_HANDLED;
+			return EventState::Handled;
 		} else if (w->flags.Test(WindowFlag::SizingLeft) || w->flags.Test(WindowFlag::SizingRight)) {
 			/* Stop the sizing if the left mouse button was released */
 			if (!_left_button_down) {
@@ -2518,7 +2510,7 @@ static EventState HandleWindowDragging()
 			}
 
 			/* Window already on size */
-			if (x == 0 && y == 0) return ES_HANDLED;
+			if (x == 0 && y == 0) return EventState::Handled;
 
 			/* Now find the new cursor pos.. this is NOT _cursor, because we move in steps. */
 			_drag_delta.y += y;
@@ -2533,12 +2525,12 @@ static EventState HandleWindowDragging()
 
 			/* ResizeWindow sets both pre- and after-size to dirty for redrawing */
 			ResizeWindow(w, x, y);
-			return ES_HANDLED;
+			return EventState::Handled;
 		}
 	}
 
 	_dragging_window = false;
-	return ES_HANDLED;
+	return EventState::Handled;
 }
 
 /**
@@ -2626,7 +2618,7 @@ static EventState HandleActiveWidget()
 			if (!_left_button_down) {
 				w->SetWidgetDirty(w->mouse_capture_widget);
 				w->mouse_capture_widget = INVALID_WIDGET;
-				return ES_HANDLED;
+				return EventState::Handled;
 			}
 
 			/* Handle scrollbar internally, or dispatch click event */
@@ -2635,16 +2627,16 @@ static EventState HandleActiveWidget()
 				HandleScrollbarScrolling(w);
 			} else {
 				/* If cursor hasn't moved, there is nothing to do. */
-				if (_cursor.delta.x == 0 && _cursor.delta.y == 0) return ES_HANDLED;
+				if (_cursor.delta.x == 0 && _cursor.delta.y == 0) return EventState::Handled;
 
 				Point pt = { _cursor.pos.x - w->left, _cursor.pos.y - w->top };
 				w->OnClick(pt, w->mouse_capture_widget, 0);
 			}
-			return ES_HANDLED;
+			return EventState::Handled;
 		}
 	}
 
-	return ES_NOT_HANDLED;
+	return EventState::NotHandled;
 }
 
 /**
@@ -2655,7 +2647,7 @@ static EventState HandleViewportScroll()
 {
 	bool scrollwheel_scrolling = _settings_client.gui.scrollwheel_scrolling == ScrollWheelScrolling::ScrollMap && _cursor.wheel_moved;
 
-	if (_scrolling_viewport == nullptr) return ES_NOT_HANDLED;
+	if (_scrolling_viewport == nullptr) return EventState::NotHandled;
 
 	/* When we don't have a last scroll window we are starting to scroll.
 	 * When the last scroll window and this are not the same we went
@@ -2667,14 +2659,14 @@ static EventState HandleViewportScroll()
 		_scrolling_viewport = nullptr;
 		_last_scroll_window = nullptr;
 		UpdateActiveScrollingViewport(nullptr);
-		return ES_NOT_HANDLED;
+		return EventState::NotHandled;
 	}
 
 	if (_last_scroll_window == GetMainWindow() && _last_scroll_window->viewport->follow_vehicle != VehicleID::Invalid()) {
 		/* If the main window is following a vehicle, then first let go of it! */
 		const Vehicle *veh = Vehicle::Get(_last_scroll_window->viewport->follow_vehicle)->GetMovingFront();
 		ScrollMainWindowTo(veh->x_pos, veh->y_pos, veh->z_pos, true); // This also resets follow_vehicle
-		return ES_NOT_HANDLED;
+		return EventState::NotHandled;
 	}
 
 	Point delta;
@@ -2703,7 +2695,7 @@ static EventState HandleViewportScroll()
 	_cursor.delta.x = 0;
 	_cursor.delta.y = 0;
 	_cursor.wheel_moved = false;
-	return ES_HANDLED;
+	return EventState::Handled;
 }
 
 /**
@@ -2770,13 +2762,13 @@ static bool MaybeBringWindowToFront(Window *w)
  * @param wid Editbox widget.
  * @param key     the Unicode value of the key.
  * @param keycode the untranslated key code including shift state.
- * @return #ES_HANDLED if the key press has been handled and no other
+ * @return #EventState::Handled if the key press has been handled and no other
  *         window should receive the event.
  */
 EventState Window::HandleEditBoxKey(WidgetID wid, char32_t key, uint16_t keycode)
 {
 	QueryString *query = this->GetQueryString(wid);
-	if (query == nullptr) return ES_NOT_HANDLED;
+	if (query == nullptr) return EventState::NotHandled;
 
 	int action = QueryString::ACTION_NOTHING;
 
@@ -2813,7 +2805,7 @@ EventState Window::HandleEditBoxKey(WidgetID wid, char32_t key, uint16_t keycode
 			break;
 
 		case HKPR_NOT_HANDLED:
-			return ES_NOT_HANDLED;
+			return EventState::NotHandled;
 
 		default: break;
 	}
@@ -2838,7 +2830,7 @@ EventState Window::HandleEditBoxKey(WidgetID wid, char32_t key, uint16_t keycode
 			break;
 	}
 
-	return ES_HANDLED;
+	return EventState::Handled;
 }
 
 /**
@@ -2884,7 +2876,7 @@ void HandleToolbarHotkey(int hotkey)
 	Window *w = FindWindowById(WindowClass::MainToolbar, 0);
 	if (w != nullptr) {
 		if (w->window_desc.hotkeys != nullptr) {
-			if (hotkey >= 0 && w->OnHotkey(hotkey) == ES_HANDLED) return;
+			if (hotkey >= 0 && w->OnHotkey(hotkey) == EventState::Handled) return;
 		}
 	}
 }
@@ -2918,9 +2910,9 @@ void HandleKeypress(uint keycode, char32_t key)
 	if (EditBoxInGlobalFocus()) {
 		/* All input will in this case go to the focused editbox */
 		if (_focused_window->window_class == WindowClass::Console) {
-			if (_focused_window->OnKeyPress(key, keycode) == ES_HANDLED) return;
+			if (_focused_window->OnKeyPress(key, keycode) == EventState::Handled) return;
 		} else {
-			if (_focused_window->HandleEditBoxKey(_focused_window->nested_focus->GetIndex(), key, keycode) == ES_HANDLED) return;
+			if (_focused_window->HandleEditBoxKey(_focused_window->nested_focus->GetIndex(), key, keycode) == EventState::Handled) return;
 		}
 	}
 
@@ -2929,9 +2921,9 @@ void HandleKeypress(uint keycode, char32_t key)
 		if (w->window_class == WindowClass::MainToolbar) continue;
 		if (w->window_desc.hotkeys != nullptr) {
 			int hotkey = w->window_desc.hotkeys->CheckMatch(keycode);
-			if (hotkey >= 0 && w->OnHotkey(hotkey) == ES_HANDLED) return;
+			if (hotkey >= 0 && w->OnHotkey(hotkey) == EventState::Handled) return;
 		}
-		if (w->OnKeyPress(key, keycode) == ES_HANDLED) return;
+		if (w->OnKeyPress(key, keycode) == EventState::Handled) return;
 	}
 
 	Window *w = FindWindowById(WindowClass::MainToolbar, 0);
@@ -2939,9 +2931,9 @@ void HandleKeypress(uint keycode, char32_t key)
 	if (w != nullptr) {
 		if (w->window_desc.hotkeys != nullptr) {
 			int hotkey = w->window_desc.hotkeys->CheckMatch(keycode);
-			if (hotkey >= 0 && w->OnHotkey(hotkey) == ES_HANDLED) return;
+			if (hotkey >= 0 && w->OnHotkey(hotkey) == EventState::Handled) return;
 		}
-		if (w->OnKeyPress(key, keycode) == ES_HANDLED) return;
+		if (w->OnKeyPress(key, keycode) == EventState::Handled) return;
 	}
 
 	HandleGlobalHotkeys(key, keycode);
@@ -2955,7 +2947,7 @@ void HandleCtrlChanged()
 	/* Call the event, start with the uppermost window. */
 	bool handled = false;
 	for (Window *w : Window::IterateFromFront()) {
-		if (!handled && w->OnCTRLStateChange() == ES_HANDLED) {
+		if (!handled && w->OnCTRLStateChange() == EventState::Handled) {
 			handled = true;
 		}
 		w->OnCTRLStateChangeAlways();
@@ -3014,14 +3006,14 @@ void HandleTextInput(std::string_view str, bool marked, std::optional<size_t> ca
 static void HandleAutoscroll()
 {
 	if (_game_mode == GameMode::Menu || _game_mode == GameMode::Bootstrap || HasModalProgress()) return;
-	if (_settings_client.gui.auto_scrolling == VA_DISABLED) return;
-	if (_settings_client.gui.auto_scrolling == VA_MAIN_VIEWPORT_FULLSCREEN && !_fullscreen) return;
+	if (_settings_client.gui.auto_scrolling == ViewportAutoscrolling::Disabled) return;
+	if (_settings_client.gui.auto_scrolling == ViewportAutoscrolling::MainViewportFullscreen && !_fullscreen) return;
 
 	int x = _cursor.pos.x;
 	int y = _cursor.pos.y;
 	Window *w = FindWindowFromPt(x, y);
 	if (w == nullptr || w->flags.Test(WindowFlag::DisableVpScroll)) return;
-	if (_settings_client.gui.auto_scrolling != VA_EVERY_VIEWPORT && w->window_class != WindowClass::MainWindow) return;
+	if (_settings_client.gui.auto_scrolling != ViewportAutoscrolling::EveryViewport && w->window_class != WindowClass::MainWindow) return;
 
 	Viewport *vp = IsPtInWindowViewport(w, x, y);
 	if (vp == nullptr) return;
@@ -3048,12 +3040,13 @@ static void HandleAutoscroll()
 	}
 }
 
-enum MouseClick : uint8_t {
-	MC_NONE = 0,
-	MC_LEFT,
-	MC_RIGHT,
-	MC_DOUBLE_LEFT,
-	MC_HOVER,
+/** Mouse states during the \c MouseLoop. */
+enum class MouseClick : uint8_t {
+	None = 0, ///< No action to process.
+	Left, ///< A click with the left mouse button.
+	Right, ///< A click with the right mouse button.
+	DoubleLeft, ///< A double click with the left mouse button.
+	Hover, ///< The mouse started hovering.
 };
 
 static constexpr int MAX_OFFSET_DOUBLE_CLICK = 5; ///< How much the mouse is allowed to move to call it a double click
@@ -3130,23 +3123,23 @@ static void MouseLoop(MouseClick click, int mousewheel)
 	HandlePlacePresize();
 	UpdateTileSelection();
 
-	if (VpHandlePlaceSizingDrag()  == ES_HANDLED) return;
-	if (HandleMouseDragDrop()      == ES_HANDLED) return;
-	if (HandleWindowDragging()     == ES_HANDLED) return;
-	if (HandleActiveWidget()       == ES_HANDLED) return;
-	if (HandleViewportScroll()     == ES_HANDLED) return;
+	if (VpHandlePlaceSizingDrag()  == EventState::Handled) return;
+	if (HandleMouseDragDrop()      == EventState::Handled) return;
+	if (HandleWindowDragging()     == EventState::Handled) return;
+	if (HandleActiveWidget()       == EventState::Handled) return;
+	if (HandleViewportScroll()     == EventState::Handled) return;
 
 	HandleMouseOver();
 
 	bool scrollwheel_scrolling = _settings_client.gui.scrollwheel_scrolling == ScrollWheelScrolling::ScrollMap && _cursor.wheel_moved;
-	if (click == MC_NONE && mousewheel == 0 && !scrollwheel_scrolling) return;
+	if (click == MouseClick::None && mousewheel == 0 && !scrollwheel_scrolling) return;
 
 	int x = _cursor.pos.x;
 	int y = _cursor.pos.y;
 	Window *w = FindWindowFromPt(x, y);
 	if (w == nullptr) return;
 
-	if (click != MC_HOVER && !MaybeBringWindowToFront(w)) return;
+	if (click != MouseClick::Hover && !MaybeBringWindowToFront(w)) return;
 	Viewport *vp = IsPtInWindowViewport(w, x, y);
 
 	/* Don't allow any action in a viewport if either in menu or when having a modal progress window */
@@ -3172,11 +3165,11 @@ static void MouseLoop(MouseClick click, int mousewheel)
 		}
 
 		switch (click) {
-			case MC_DOUBLE_LEFT:
+			case MouseClick::DoubleLeft:
 				if (HandleViewportDoubleClicked(w, x, y)) break;
-				/* FALL THROUGH */
-			case MC_LEFT: {
-				HandleViewportClickedResult result = HandleViewportClicked(vp, x, y, click == MC_DOUBLE_LEFT);
+				[[fallthrough]];
+			case MouseClick::Left: {
+				HandleViewportClickedResult result = HandleViewportClicked(vp, x, y, click == MouseClick::DoubleLeft);
 				if (result == HVCR_DENY) return;
 				if (!w->flags.Test(WindowFlag::DisableVpScroll) &&
 						_settings_client.gui.scroll_mode == ViewportScrollMode::MapLMB) {
@@ -3188,7 +3181,7 @@ static void MouseLoop(MouseClick click, int mousewheel)
 				break;
 			}
 
-			case MC_RIGHT:
+			case MouseClick::Right:
 				if (!w->flags.Test(WindowFlag::DisableVpScroll) &&
 						_settings_client.gui.scroll_mode != ViewportScrollMode::MapLMB) {
 					_scrolling_viewport = w;
@@ -3205,9 +3198,9 @@ static void MouseLoop(MouseClick click, int mousewheel)
 	}
 
 	switch (click) {
-		case MC_LEFT:
-		case MC_DOUBLE_LEFT:
-			DispatchLeftClickEvent(w, x - w->left, y - w->top, click == MC_DOUBLE_LEFT ? 2 : 1);
+		case MouseClick::Left:
+		case MouseClick::DoubleLeft:
+			DispatchLeftClickEvent(w, x - w->left, y - w->top, click == MouseClick::DoubleLeft ? 2 : 1);
 			return;
 
 		default:
@@ -3216,11 +3209,11 @@ static void MouseLoop(MouseClick click, int mousewheel)
 			 * Simulate a right button click so we can get started. */
 			[[fallthrough]];
 
-		case MC_RIGHT:
+		case MouseClick::Right:
 			DispatchRightClickEvent(w, x - w->left, y - w->top);
 			return;
 
-		case MC_HOVER:
+		case MouseClick::Hover:
 			DispatchHoverEvent(w, x - w->left, y - w->top);
 			break;
 	}
@@ -3244,20 +3237,20 @@ void HandleMouseEvents()
 	static Point double_click_pos = {0, 0};
 
 	/* Mouse event? */
-	MouseClick click = MC_NONE;
+	MouseClick click = MouseClick::None;
 	if (_left_button_down && !_left_button_clicked) {
-		click = MC_LEFT;
+		click = MouseClick::Left;
 		if (std::chrono::steady_clock::now() <= double_click_time + TIME_BETWEEN_DOUBLE_CLICK &&
 				double_click_pos.x != 0 && abs(_cursor.pos.x - double_click_pos.x) < MAX_OFFSET_DOUBLE_CLICK  &&
 				double_click_pos.y != 0 && abs(_cursor.pos.y - double_click_pos.y) < MAX_OFFSET_DOUBLE_CLICK) {
-			click = MC_DOUBLE_LEFT;
+			click = MouseClick::DoubleLeft;
 		}
 		double_click_time = std::chrono::steady_clock::now();
 		double_click_pos = _cursor.pos;
 		_left_button_clicked = true;
 	} else if (_right_button_clicked) {
 		_right_button_clicked = false;
-		click = MC_RIGHT;
+		click = MouseClick::Right;
 	}
 
 	int mousewheel = 0;
@@ -3270,7 +3263,7 @@ void HandleMouseEvents()
 	static Point hover_pos = {0, 0};
 
 	if (_settings_client.gui.hover_delay_ms > 0) {
-		if (!_cursor.in_window || click != MC_NONE || mousewheel != 0 || _left_button_down || _right_button_down ||
+		if (!_cursor.in_window || click != MouseClick::None || mousewheel != 0 || _left_button_down || _right_button_down ||
 				hover_pos.x == 0 || abs(_cursor.pos.x - hover_pos.x) >= MAX_OFFSET_HOVER  ||
 				hover_pos.y == 0 || abs(_cursor.pos.y - hover_pos.y) >= MAX_OFFSET_HOVER) {
 			hover_pos = _cursor.pos;
@@ -3278,7 +3271,7 @@ void HandleMouseEvents()
 			_mouse_hovering = false;
 		} else if (!_mouse_hovering) {
 			if (std::chrono::steady_clock::now() > hover_time + std::chrono::milliseconds(_settings_client.gui.hover_delay_ms)) {
-				click = MC_HOVER;
+				click = MouseClick::Hover;
 				_mouse_hovering = true;
 				hover_time = std::chrono::steady_clock::now();
 			}
@@ -3287,7 +3280,7 @@ void HandleMouseEvents()
 		_mouse_hovering = false;
 	}
 
-	if (click == MC_LEFT && _newgrf_debug_sprite_picker.mode == SPM_WAIT_CLICK) {
+	if (click == MouseClick::Left && _newgrf_debug_sprite_picker.mode == SPM_WAIT_CLICK) {
 		/* Mark whole screen dirty, and wait for the next realtime tick, when drawing is finished. */
 		Blitter *blitter = BlitterFactory::GetCurrentBlitter();
 		_newgrf_debug_sprite_picker.clicked_pixel = blitter->MoveTo(_screen.dst_ptr, _cursor.pos.x, _cursor.pos.y);
@@ -3409,8 +3402,8 @@ void UpdateWindows()
 
 	last_time = std::chrono::steady_clock::now();
 
-	PerformanceMeasurer framerate(PFE_DRAWING);
-	PerformanceAccumulator::Reset(PFE_DRAWWORLD);
+	PerformanceMeasurer framerate(PerformanceElement::Drawing);
+	PerformanceAccumulator::Reset(PerformanceElement::ViewportDrawing);
 
 	ProcessPendingPerformanceMeasurements();
 

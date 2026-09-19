@@ -256,7 +256,7 @@ void ConvertRoadTypes()
 				break;
 
 			case TileType::TunnelBridge:
-				if (GetTunnelBridgeTransportType(t) == TRANSPORT_ROAD) {
+				if (GetTunnelBridgeTransportType(t) == TransportType::Road) {
 					if (RoadType rt = GetRoadTypeRoad(t); rt != INVALID_ROADTYPE) SetRoadTypeRoad(t, roadtype_conversion_map[rt]);
 					if (RoadType rt = GetRoadTypeTram(t); rt != INVALID_ROADTYPE) SetRoadTypeTram(t, roadtype_conversion_map[rt]);
 				}
@@ -272,7 +272,7 @@ void ConvertRoadTypes()
 void SetCurrentRoadTypeLabelList()
 {
 	_roadtype_list.clear();
-	for (RoadType rt = ROADTYPE_BEGIN; rt != ROADTYPE_END; rt++) {
+	for (RoadType rt : EnumRange(ROADTYPE_END)) {
 		_roadtype_list.emplace_back(GetRoadTypeInfo(rt)->label, to_underlying(GetRoadTramType(rt)));
 	}
 }

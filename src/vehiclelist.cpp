@@ -25,13 +25,13 @@
 uint32_t VehicleListIdentifier::Pack() const
 {
 	uint8_t c = this->company == OWNER_NONE ? 0xF : this->company.base();
-	assert(c             < (1 <<  4));
-	assert(to_underlying(this->vtype) < (1 <<  2));
-	assert(this->index   < (1 << 20));
-	assert(this->type    < VLT_END);
-	static_assert(VLT_END <= (1 <<  3));
+	assert(c < (1 << 4));
+	assert(to_underlying(this->vtype) < (1 << 2));
+	assert(this->index < (1 << 20));
+	assert(this->type < VehicleListType::End);
+	static_assert(to_underlying(VehicleListType::End) <= (1 << 3));
 
-	return c << 28 | this->type << 23 | to_underlying(this->vtype) << 26 | this->index;
+	return c << 28 | to_underlying(this->type) << 23 | to_underlying(this->vtype) << 26 | this->index;
 }
 
 /**
@@ -47,7 +47,7 @@ bool VehicleListIdentifier::UnpackIfValid(uint32_t data)
 	this->vtype   = (VehicleType)GB(data, 26, 2);
 	this->index   = GB(data, 0, 20);
 
-	return this->type < VLT_END;
+	return this->type < VehicleListType::End;
 }
 
 /**
@@ -154,7 +154,7 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 	};
 
 	switch (vli.type) {
-		case VL_STATION_LIST:
+		case VehicleListType::Station:
 			FindVehiclesWithOrder(
 				[&vli](const Vehicle *v) { return v->type == vli.vtype; },
 				[&vli](const Order *order) { return (order->IsType(OT_GOTO_STATION) || order->IsType(OT_GOTO_WAYPOINT) || order->IsType(OT_IMPLICIT)) && order->GetDestination() == vli.ToStationID(); },
@@ -162,7 +162,7 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 			);
 			break;
 
-		case VL_SHARED_ORDERS: {
+		case VehicleListType::VehicleSharedOrders: {
 			/* Add all vehicles from this vehicle's shared order list */
 			const Vehicle *v = Vehicle::GetIfValid(vli.ToVehicleID());
 			if (v == nullptr || v->type != vli.vtype || !v->First()->Primary()->IsPrimaryVehicle()) return false;
@@ -173,7 +173,7 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 			break;
 		}
 
-		case VL_GROUP_LIST:
+		case VehicleListType::Group:
 			if (vli.index != ALL_GROUP) {
 				for (const Vehicle *v : Vehicle::IterateTypeFrontOnly(vli.vtype)) {
 					if (!HasBit(v->subtype, GVSF_VIRTUAL) && v->First()->Primary()->IsPrimaryVehicle() &&
@@ -186,11 +186,11 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 			fill_all_vehicles();
 			break;
 
-		case VL_STANDARD:
+		case VehicleListType::Company:
 			fill_all_vehicles();
 			break;
 
-		case VL_DEPOT_LIST:
+		case VehicleListType::Depot:
 			FindVehiclesWithOrder(
 				[&vli](const Vehicle *v) { return v->type == vli.vtype; },
 				[&vli](const Order *order) { return order->IsType(OT_GOTO_DEPOT) && !(order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) && order->GetDestination() == vli.ToDestinationID(); },
@@ -198,7 +198,7 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 			);
 			break;
 
-		case VL_SLOT_LIST: {
+		case VehicleListType::Slot: {
 			if (vli.index == ALL_TRAINS_TRACE_RESTRICT_SLOT_ID) {
 				fill_all_vehicles();
 			} else {
@@ -211,7 +211,7 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 			break;
 		}
 
-		case VL_SINGLE_VEH: {
+		case VehicleListType::SingleVehicle: {
 			const Vehicle *v = Vehicle::GetIfValid(vli.index);
 			if (v != nullptr) add_veh(v);
 			break;

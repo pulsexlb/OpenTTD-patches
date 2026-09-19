@@ -22,7 +22,7 @@
 #include "date_func.h"
 #include "gfx_func.h"
 #include "core/geometry_func.hpp"
-#include "currency.h"
+#include "currency_func.h"
 #include "zoom_func.h"
 #include "unit_conversion.h"
 #include "core/math_func.hpp"
@@ -1978,7 +1978,7 @@ struct PerformanceRatingDetailWindow : Window {
 				size.height = this->bar_height + WidgetDimensions::scaled.matrix.Vertical();
 
 				uint score_info_width = 0;
-				for (ScoreID i = ScoreID::Begin; i < ScoreID::End; i++) {
+				for (ScoreID i : EnumRange(ScoreID::End)) {
 					score_info_width = std::max(score_info_width, GetStringBoundingBox(STR_PERFORMANCE_DETAIL_VEHICLES + to_underlying(i)).width);
 				}
 				score_info_width += GetStringBoundingBox(GetString(STR_JUST_COMMA, GetParamMaxValue(1000))).width + WidgetDimensions::scaled.hsep_wide;
@@ -2052,7 +2052,7 @@ struct PerformanceRatingDetailWindow : Window {
 
 		/* ScoreID::Total has its own rules ;) */
 		if (score_type == ScoreID::Total) {
-			for (ScoreID i = ScoreID::Begin; i < ScoreID::End; i++) score += _score_info[i].score;
+			for (ScoreID i : EnumRange(ScoreID::End)) score += _score_info[i].score;
 			needed = SCORE_MAX;
 		}
 

@@ -134,7 +134,7 @@ void SetupTemplateVehicleFromVirtual(TemplateVehicle *tmp, TemplateVehicle *prev
 		tmp->air_drag = gcache->cached_air_drag;
 	}
 
-	virt->GetImage(_current_text_dir == TD_RTL ? Direction::E : Direction::W, EIT_IN_DEPOT, &tmp->sprite_seq);
+	virt->GetImage(_current_text_dir == TD_RTL ? Direction::E : Direction::W, EngineImageType::InDepot, &tmp->sprite_seq);
 	tmp->image_dimensions.SetFromTrain(virt);
 	tmp->colourmap = GetUncachedTrainPaletteIgnoringGroup(virt);
 }
@@ -163,11 +163,11 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 Train *DeleteVirtualTrain(Train *chain, Train *to_del)
 {
 	if (chain != to_del) {
-		CmdSellRailWagon(DoCommandFlag::Execute, to_del, false, false, INVALID_CLIENT_ID);
+		CmdSellRailWagon(DoCommandFlag::Execute, to_del, false, false, ClientID::Invalid);
 		return chain;
 	} else {
 		chain = chain->GetNextUnit();
-		CmdSellRailWagon(DoCommandFlag::Execute, to_del, false, false, INVALID_CLIENT_ID);
+		CmdSellRailWagon(DoCommandFlag::Execute, to_del, false, false, ClientID::Invalid);
 		return chain;
 	}
 }
@@ -362,7 +362,7 @@ CommandCost TestBuyAllTemplateVehiclesInChain(const TemplateVehicle *tv, TileInd
 	CommandCost cost(ExpensesType::NewVehicles);
 
 	for (; tv != nullptr; tv = tv->GetNextUnit()) {
-		cost.AddCost(Command<Commands::BuildVehicle>::Do({}, tile, tv->engine_type, false, INVALID_CARGO, INVALID_CLIENT_ID));
+		cost.AddCost(Command<Commands::BuildVehicle>::Do({}, tile, tv->engine_type, false, INVALID_CARGO, ClientID::Invalid));
 	}
 
 	return cost;
@@ -425,7 +425,7 @@ void UpdateAllTemplateVehicleImages()
 				if (t_len == tv_len) {
 					Train *v = t;
 					for (TemplateVehicle *u = tv; u != nullptr; u = u->Next(), v = v->Next()) {
-						v->GetImage(_current_text_dir == TD_RTL ? Direction::E : Direction::W, EIT_IN_DEPOT, &u->sprite_seq);
+						v->GetImage(_current_text_dir == TD_RTL ? Direction::E : Direction::W, EngineImageType::InDepot, &u->sprite_seq);
 						u->image_dimensions.SetFromTrain(v);
 						u->colourmap = GetVehiclePalette(v);
 					}

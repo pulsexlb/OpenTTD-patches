@@ -94,8 +94,9 @@ static void GenerateDesertArea(TileIndex end, TileIndex start)
  * Scenario editor command that generates rocky areas.
  * @param end The end tile of the map drag.
  * @param start The start tile of the map drag.
+ * @param remove If true, remove rocks instead of placing them.
  */
-static void GenerateRockyArea(TileIndex end, TileIndex start)
+static void GenerateRockyArea(TileIndex end, TileIndex start, bool remove)
 {
 	if (_game_mode != GameMode::Editor) return;
 
@@ -106,10 +107,19 @@ static void GenerateRockyArea(TileIndex end, TileIndex start)
 		switch (GetTileType(tile)) {
 			case TileType::Trees:
 				if (GetTreeGround(tile) == TreeGround::Shore) continue;
-				[[fallthrough]];
+				if (!remove) {
+					MakeClear(tile, ClearGround::Rocks, 3);
+				}
+				break;
 
 			case TileType::Clear:
-				MakeClear(tile, ClearGround::Rocks, 3);
+				if (remove) {
+					if (GetClearGround(tile) == ClearGround::Rocks) {
+						MakeClear(tile, ClearGround::Grass, 3);
+					}
+				} else {
+					MakeClear(tile, ClearGround::Rocks, 3);
+				}
 				break;
 
 			default:
@@ -174,16 +184,16 @@ bool GUIPlaceProcDragXY(ViewportDragDropSelectionProcess proc, TileIndex start_t
 			break;
 		}
 		case DDSP_RAISE_AND_LEVEL_AREA:
-			Command<Commands::LevelLand>::Post(STR_ERROR_CAN_T_RAISE_LAND_HERE, CommandCallback::Terraform, end_tile, start_tile, _ctrl_pressed, LM_RAISE);
+			Command<Commands::LevelLand>::Post(STR_ERROR_CAN_T_RAISE_LAND_HERE, CommandCallback::Terraform, end_tile, start_tile, _ctrl_pressed, LevelMode::Raise);
 			break;
 		case DDSP_LOWER_AND_LEVEL_AREA:
-			Command<Commands::LevelLand>::Post(STR_ERROR_CAN_T_RAISE_LAND_HERE, CommandCallback::Terraform, end_tile, start_tile, _ctrl_pressed, LM_LOWER);
+			Command<Commands::LevelLand>::Post(STR_ERROR_CAN_T_RAISE_LAND_HERE, CommandCallback::Terraform, end_tile, start_tile, _ctrl_pressed, LevelMode::Lower);
 			break;
 		case DDSP_LEVEL_AREA:
-			Command<Commands::LevelLand>::Post(STR_ERROR_CAN_T_RAISE_LAND_HERE, CommandCallback::Terraform, end_tile, start_tile, _ctrl_pressed, LM_LEVEL);
+			Command<Commands::LevelLand>::Post(STR_ERROR_CAN_T_RAISE_LAND_HERE, CommandCallback::Terraform, end_tile, start_tile, _ctrl_pressed, LevelMode::Level);
 			break;
 		case DDSP_CREATE_ROCKS:
-			GenerateRockyArea(end_tile, start_tile);
+			GenerateRockyArea(end_tile, start_tile, _ctrl_pressed);
 			break;
 		case DDSP_CREATE_DESERT:
 			GenerateDesertArea(end_tile, start_tile);
@@ -371,13 +381,13 @@ struct TerraformToolbarWindow : Window {
 	/**
 	 * Handler for global hotkeys of the TerraformToolbarWindow.
 	 * @param hotkey Hotkey
-	 * @return ES_HANDLED if hotkey was accepted.
+	 * @return EventState::Handled if hotkey was accepted.
 	 */
 	static EventState TerraformToolbarGlobalHotkeys(int hotkey)
 	{
-		if (_game_mode != GameMode::Normal) return ES_NOT_HANDLED;
+		if (_game_mode != GameMode::Normal) return EventState::NotHandled;
 		Window *w = ShowTerraformToolbar(nullptr);
-		if (w == nullptr) return ES_NOT_HANDLED;
+		if (w == nullptr) return EventState::NotHandled;
 		return w->OnHotkey(hotkey);
 	}
 
@@ -939,6 +949,20 @@ struct ScenarioEditorLandscapeGenerationWindow : Window {
 		}
 	}
 
+	EventState OnCTRLStateChange() override
+	{
+		switch (this->last_user_action) {
+			case WID_ETT_PLACE_ROCKS:
+			case WID_ETT_PLACE_DESERT:
+				if (this->IsWidgetLowered(this->last_user_action)) {
+					SetSelectionRed(_ctrl_pressed);
+					return EventState::Handled;
+				}
+				break;
+		}
+		return EventState::NotHandled;
+	}
+
 	void OnPlaceObjectAbort() override
 	{
 		this->RaiseButtons();
@@ -967,13 +991,13 @@ struct ScenarioEditorLandscapeGenerationWindow : Window {
 	/**
 	 * Handler for global hotkeys of the ScenarioEditorLandscapeGenerationWindow.
 	 * @param hotkey Hotkey
-	 * @return ES_HANDLED if hotkey was accepted.
+	 * @return EventState::Handled if hotkey was accepted.
 	 */
 	static EventState TerraformToolbarEditorGlobalHotkeys(int hotkey)
 	{
-		if (_game_mode != GameMode::Editor) return ES_NOT_HANDLED;
+		if (_game_mode != GameMode::Editor) return EventState::NotHandled;
 		Window *w = ShowEditorTerraformToolbar();
-		if (w == nullptr) return ES_NOT_HANDLED;
+		if (w == nullptr) return EventState::NotHandled;
 		return w->OnHotkey(hotkey);
 	}
 

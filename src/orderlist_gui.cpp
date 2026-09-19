@@ -299,7 +299,7 @@ public:
 	{
 		switch (widget) {
 			case WID_OL_SORT_ORDER:
-				this->DrawSortButtonState(widget, this->orders.IsDescSortOrder() ? SBS_DOWN : SBS_UP);
+				this->DrawSortButton(widget, this->orders.IsDescSortOrder());
 				break;
 
 			case WID_OL_LIST: {

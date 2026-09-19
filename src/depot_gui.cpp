@@ -163,14 +163,14 @@ static uint _consistent_train_width;                                ///< Whether
  * Get the GUI cell size for a vehicle image.
  * @param type Vehicle type to get the size for.
  * @param image_type Image type to get size for.
- * @pre image_type == EIT_IN_DEPOT || image_type == EIT_PURCHASE
+ * @pre image_type == EngineImageType::InDepot || image_type == EngineImageType::Purchase
  * @return Cell dimensions for the vehicle and image type.
  */
 VehicleCellSize GetVehicleImageCellSize(VehicleType type, EngineImageType image_type)
 {
 	switch (image_type) {
-		case EIT_IN_DEPOT: return _base_block_sizes_depot[type];
-		case EIT_PURCHASE: return _base_block_sizes_purchase[type];
+		case EngineImageType::InDepot: return _base_block_sizes_depot[type];
+		case EngineImageType::Purchase: return _base_block_sizes_purchase[type];
 		default: NOT_REACHED();
 	}
 }
@@ -204,12 +204,12 @@ static void InitBlocksizeForVehicles(VehicleType type, EngineImageType image_typ
 	int max_extend = ScaleSpriteTrad(98);
 
 	switch (image_type) {
-		case EIT_IN_DEPOT:
+		case EngineImageType::InDepot:
 			_base_block_sizes_depot[type].height       = std::max<uint>(ScaleSpriteTrad(GetVehicleHeight(type)), max_height);
 			_base_block_sizes_depot[type].extend_left  = Clamp(max_extend_left, min_extend, max_extend);
 			_base_block_sizes_depot[type].extend_right = Clamp(max_extend_right, min_extend, max_extend);
 			break;
-		case EIT_PURCHASE:
+		case EngineImageType::Purchase:
 			_base_block_sizes_purchase[type].height       = std::max<uint>(ScaleSpriteTrad(GetVehicleHeight(type)), max_height);
 			_base_block_sizes_purchase[type].extend_left  = Clamp(max_extend_left, min_extend, max_extend);
 			_base_block_sizes_purchase[type].extend_right = Clamp(max_extend_right, min_extend, max_extend);
@@ -226,7 +226,7 @@ static void InitBlocksizeForVehicles(VehicleType type, EngineImageType image_typ
 void InitDepotWindowBlockSizes()
 {
 	if (IsHeadless()) {
-		for (VehicleType vt = VehicleType::Begin; vt < VehicleType::CompanyEnd; vt++) {
+		for (VehicleType vt : EnumRange(VehicleType::CompanyEnd)) {
 			_base_block_sizes_depot[vt] = {};
 			_base_block_sizes_purchase[vt] = {};
 		}
@@ -234,9 +234,9 @@ void InitDepotWindowBlockSizes()
 		return;
 	}
 
-	for (VehicleType vt = VehicleType::Begin; vt < VehicleType::CompanyEnd; vt++) {
-		InitBlocksizeForVehicles(vt, EIT_IN_DEPOT);
-		InitBlocksizeForVehicles(vt, EIT_PURCHASE);
+	for (VehicleType vt : EnumRange(VehicleType::CompanyEnd)) {
+		InitBlocksizeForVehicles(vt, EngineImageType::InDepot);
+		InitBlocksizeForVehicles(vt, EngineImageType::Purchase);
 	}
 
 	_consistent_train_width = TRAININFO_DEFAULT_VEHICLE_WIDTH;
@@ -314,7 +314,7 @@ struct DepotWindow : Window {
 	void Close([[maybe_unused]] int data = 0) override
 	{
 		CloseWindowById(WindowClass::BuildVehicle, this->window_number);
-		CloseWindowById(GetWindowClassForVehicleType(this->type), VehicleListIdentifier(VL_DEPOT_LIST, this->type, this->owner, this->GetDestinationIndex()).ToWindowNumber(), false);
+		CloseWindowById(GetWindowClassForVehicleType(this->type), VehicleListIdentifier(VehicleListType::Depot, this->type, this->owner, this->GetDestinationIndex()).ToWindowNumber(), false);
 		OrderBackup::Reset(TileIndex(this->window_number));
 		this->Window::Close();
 	}
@@ -370,7 +370,7 @@ struct DepotWindow : Window {
 						ScaleSpriteTrad(_consistent_train_width != 0 ? _consistent_train_width : TRAININFO_DEFAULT_VEHICLE_WIDTH) :
 						0;
 
-				DrawTrainImage(u, image.Indent(x_space, rtl), this->sel, EIT_IN_DEPOT, free_wagon ? 0 : this->hscroll->GetPosition(), this->vehicle_over);
+				DrawTrainImage(u, image.Indent(x_space, rtl), this->sel, EngineImageType::InDepot, free_wagon ? 0 : this->hscroll->GetPosition(), this->vehicle_over);
 
 				/* Length of consist in tiles with 1 fractional digit (rounded up) */
 				uint length = u->gcache.cached_total_length + this->CountDraggedLength(u);
@@ -381,9 +381,9 @@ struct DepotWindow : Window {
 				break;
 			}
 
-			case VehicleType::Road: DrawRoadVehImage(v, image, this->sel, EIT_IN_DEPOT); break;
-			case VehicleType::Ship: DrawShipImage(v, image, this->sel, EIT_IN_DEPOT); break;
-			case VehicleType::Aircraft: DrawAircraftImage(v, image, this->sel, EIT_IN_DEPOT); break;
+			case VehicleType::Road: DrawRoadVehImage(v, image, this->sel, EngineImageType::InDepot); break;
+			case VehicleType::Ship: DrawShipImage(v, image, this->sel, EngineImageType::InDepot); break;
+			case VehicleType::Aircraft: DrawAircraftImage(v, image, this->sel, EngineImageType::InDepot); break;
 			default: NOT_REACHED();
 		}
 
@@ -610,7 +610,7 @@ struct DepotWindow : Window {
 					TrainDepotMoveVehicle(v, sel, result.vehicle);
 				} else if (v != nullptr) {
 					SetObjectToPlaceWnd(SPR_CURSOR_MOUSE, PAL_NONE, HT_DRAG, this);
-					SetMouseCursorVehicle(v, EIT_IN_DEPOT);
+					SetMouseCursorVehicle(v, EngineImageType::InDepot);
 					_cursor.vehchain = _ctrl_pressed;
 
 					this->sel = v->index;
@@ -696,7 +696,7 @@ struct DepotWindow : Window {
 
 	void OnInit() override
 	{
-		this->cell_size = GetVehicleImageCellSize(this->type, EIT_IN_DEPOT);
+		this->cell_size = GetVehicleImageCellSize(this->type, EngineImageType::InDepot);
 		this->flag_size = maxdim(GetScaledSpriteSize(SPR_FLAG_VEH_STOPPED), GetScaledSpriteSize(SPR_FLAG_VEH_RUNNING));
 	}
 
@@ -855,7 +855,7 @@ struct DepotWindow : Window {
 
 			case WID_D_STOP_ALL:
 			case WID_D_START_ALL: {
-				VehicleListIdentifier vli(VL_DEPOT_LIST, this->type, this->owner);
+				VehicleListIdentifier vli(VehicleListType::Depot, this->type, this->owner);
 				Command<Commands::MassStartStop>::Post(TileIndex(this->window_number), widget == WID_D_START_ALL, false, vli, INVALID_CARGO);
 				break;
 			}
@@ -938,9 +938,9 @@ struct DepotWindow : Window {
 
 		/* Show tooltip window */
 		if (whole_chain) {
-			GuiShowTooltips(this, GetEncodedString(STR_DEPOT_VEHICLE_TOOLTIP_CHAIN, num, details), TCC_RIGHT_CLICK);
+			GuiShowTooltips(this, GetEncodedString(STR_DEPOT_VEHICLE_TOOLTIP_CHAIN, num, details), TooltipCloseCondition::RightClick);
 		} else {
-			GuiShowTooltips(this, GetEncodedString(STR_DEPOT_VEHICLE_TOOLTIP, v->engine_type, details), TCC_RIGHT_CLICK);
+			GuiShowTooltips(this, GetEncodedString(STR_DEPOT_VEHICLE_TOOLTIP, v->engine_type, details), TooltipCloseCondition::RightClick);
 		}
 
 		return true;
@@ -1144,7 +1144,7 @@ struct DepotWindow : Window {
 
 				SellVehicleFlags sell_flags = SellVehicleFlags::BackupOrder;
 				if (v->type == VehicleType::Train && (widget == WID_D_SELL_CHAIN || _ctrl_pressed)) sell_flags |= SellVehicleFlags::SellChain;
-				Command<Commands::SellVehicle>::Post(GetCmdSellVehMsg(v->type), v->tile, v->index, sell_flags, INVALID_CLIENT_ID);
+				Command<Commands::SellVehicle>::Post(GetCmdSellVehMsg(v->type), v->tile, v->index, sell_flags, ClientID::Invalid);
 				break;
 			}
 
@@ -1185,10 +1185,10 @@ struct DepotWindow : Window {
 		if (this->sel != VehicleID::Invalid()) {
 			_cursor.vehchain = _ctrl_pressed;
 			this->SetWidgetDirty(WID_D_MATRIX);
-			return ES_HANDLED;
+			return EventState::Handled;
 		}
 
-		return ES_NOT_HANDLED;
+		return EventState::NotHandled;
 	}
 
 	/**
@@ -1241,7 +1241,7 @@ void DeleteDepotHighlightOfVehicle(const Vehicle *v)
 	/* If we haven't got any vehicles on the mouse pointer, we haven't got any highlighted in any depots either
 	 * If that is the case, we can skip looping though the windows and save time
 	 */
-	if (_special_mouse_mode != WSM_DRAGDROP) return;
+	if (_special_mouse_mode != SpecialMouseMode::DragDrop) return;
 
 	w = dynamic_cast<DepotWindow*>(FindWindowById(WindowClass::VehicleDepot, v->tile.base()));
 	if (w != nullptr) {
@@ -1290,7 +1290,7 @@ void ShowDepotTooltip(Window *w, const TileIndex tile)
 
 	if (totals.total_vehicle_count == 0) {
 		if (totals.free_wagon_count > 0) {
-			GuiShowTooltips(w, GetEncodedString(STR_DEPOT_VIEW_FREE_WAGONS_TOOLTIP, totals.free_wagon_count), TCC_HOVER_VIEWPORT);
+			GuiShowTooltips(w, GetEncodedString(STR_DEPOT_VIEW_FREE_WAGONS_TOOLTIP, totals.free_wagon_count), TooltipCloseCondition::HoverViewport);
 		}
 		return;
 	}
@@ -1318,8 +1318,8 @@ void ShowDepotTooltip(Window *w, const TileIndex tile)
 	}
 
 	if (totals.free_wagon_count > 0) {
-		GuiShowTooltips(w, GetEncodedString(STR_DEPOT_VIEW_MIXED_CONTENTS_TOOLTIP, str, std::move(p1), STR_DEPOT_VIEW_FREE_WAGONS_TOOLTIP, totals.free_wagon_count), TCC_HOVER_VIEWPORT);
+		GuiShowTooltips(w, GetEncodedString(STR_DEPOT_VIEW_MIXED_CONTENTS_TOOLTIP, str, std::move(p1), STR_DEPOT_VIEW_FREE_WAGONS_TOOLTIP, totals.free_wagon_count), TooltipCloseCondition::HoverViewport);
 	} else {
-		GuiShowTooltips(w, GetEncodedString(str, std::move(p1)), TCC_HOVER_VIEWPORT);
+		GuiShowTooltips(w, GetEncodedString(str, std::move(p1)), TooltipCloseCondition::HoverViewport);
 	}
 }

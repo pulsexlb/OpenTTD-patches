@@ -234,7 +234,7 @@ CommandCost CmdBuildVehicle(DoCommandFlags flags, TileIndex tile, EngineID eid, 
 
 		/* If we are not in DoCommandFlag::Execute undo everything */
 		if (flags != subflags) {
-			Command<Commands::SellVehicle>::Do(DoCommandFlag::Execute, v->tile, v->index, SellVehicleFlags::None, INVALID_CLIENT_ID);
+			Command<Commands::SellVehicle>::Do(DoCommandFlag::Execute, v->tile, v->index, SellVehicleFlags::None, ClientID::Invalid);
 		}
 	}
 
@@ -581,7 +581,7 @@ CommandCost CmdRefitVehicle(DoCommandFlags flags, VehicleID veh_id, CargoType ne
 				break;
 			case VehicleType::Road:
 				RoadVehUpdateCache(RoadVehicle::From(front), auto_refit);
-				if (_settings_game.vehicle.roadveh_acceleration_model != AM_ORIGINAL) RoadVehicle::From(front)->CargoChanged();
+				if (_settings_game.vehicle.roadveh_acceleration_model != AccelerationModel::Original) RoadVehicle::From(front)->CargoChanged();
 				break;
 
 			case VehicleType::Ship:
@@ -792,7 +792,7 @@ CommandCost CmdDepotSellAllVehicles(DoCommandFlags flags, TileIndex tile, Vehicl
 	bool had_success = false;
 	for (const Vehicle *v : list) {
 		if (v->owner != _current_company) continue;
-		CommandCost ret = Command<Commands::SellVehicle>::Do(flags, v->tile, v->index, SellVehicleFlags::SellChain, INVALID_CLIENT_ID);
+		CommandCost ret = Command<Commands::SellVehicle>::Do(flags, v->tile, v->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 		if (ret.Succeeded()) {
 			cost.AddCost(ret.GetCost());
 			had_success = true;
@@ -1429,11 +1429,11 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 		DoCommandFlags build_flags = flags;
 		if (flags.Test(DoCommandFlag::Execute) && !v->IsPrimaryVehicle()) build_flags.Set(DoCommandFlag::AutoReplace);
 
-		CommandCost cost = Command<Commands::BuildVehicle>::Do(build_flags, tile, v->engine_type, false, INVALID_CARGO, INVALID_CLIENT_ID);
+		CommandCost cost = Command<Commands::BuildVehicle>::Do(build_flags, tile, v->engine_type, false, INVALID_CARGO, ClientID::Invalid);
 
 		if (cost.Failed()) {
 			/* Can't build a part, then sell the stuff we already made; clear up the mess */
-			if (w_front != nullptr) Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, INVALID_CLIENT_ID);
+			if (w_front != nullptr) Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 			return cost;
 		}
 
@@ -1459,8 +1459,8 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 				if (result.Failed()) {
 					/* The train can't be joined to make the same consist as the original.
 					 * Sell what we already made (clean up) and return an error.           */
-					Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, INVALID_CLIENT_ID);
-					Command<Commands::SellVehicle>::Do(flags, w->tile,       w->index,       SellVehicleFlags::SellChain, INVALID_CLIENT_ID);
+					Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, ClientID::Invalid);
+					Command<Commands::SellVehicle>::Do(flags, w->tile,       w->index,       SellVehicleFlags::SellChain, ClientID::Invalid);
 					return result; // return error and the message returned from Commands::MoveRailVehicle
 				}
 			} else {
@@ -1542,7 +1542,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 		CommandCost result = Command<Commands::CloneOrder>::Do(flags, (share_orders ? CO_SHARE : CO_COPY), w_front->index, v_front->index);
 		if (result.Failed()) {
 			/* The vehicle has already been bought, so now it must be sold again. */
-			Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, INVALID_CLIENT_ID);
+			Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 			return result;
 		}
 
@@ -1553,7 +1553,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 		 * check whether the company has enough money manually. */
 		if (!CheckCompanyHasMoney(total_cost)) {
 			/* The vehicle has already been bought, so now it must be sold again. */
-			Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, INVALID_CLIENT_ID);
+			Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 			return total_cost;
 		}
 	}
@@ -1587,7 +1587,7 @@ CommandCost CmdCloneVehicleFromTemplate(DoCommandFlags flags, TileIndex tile, Te
 		if (!flags.Test(DoCommandFlag::Execute)) RestoreRandomSeeds(saved_seeds);
 	});
 
-	ret = Command<Commands::VirtualTrainFromTemplate>::Do(DoCommandFlag::Execute, tv->index, INVALID_CLIENT_ID);
+	ret = Command<Commands::VirtualTrainFromTemplate>::Do(DoCommandFlag::Execute, tv->index, ClientID::Invalid);
 	if (ret.Failed()) return ret;
 
 	auto result_v = ret.GetResultData<VehicleID>();

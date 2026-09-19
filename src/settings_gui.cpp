@@ -8,7 +8,7 @@
 /** @file settings_gui.cpp GUI for settings. */
 
 #include "stdafx.h"
-#include "currency.h"
+#include "currency_func.h"
 #include "error.h"
 #include "settings_gui.h"
 #include "textbuf_gui.h"
@@ -497,24 +497,24 @@ struct GameOptionsWindow : Window {
 		DropDownList list;
 		switch (widget) {
 			case WID_GO_CURRENCY_DROPDOWN: { // Setup currencies dropdown
-				*selected_index = this->opt->locale.currency;
-				uint64_t disabled = _game_mode == GameMode::Menu ? 0LL : ~GetMaskOfAllowedCurrencies();
+				*selected_index = to_underlying(this->opt->locale.currency);
+				Currencies disabled = _game_mode == GameMode::Menu ? Currencies{} : GetMaskOfAllowedCurrencies().Flip();
 
 				/* Add non-custom currencies; sorted naturally */
-				for (const CurrencySpec &currency : _currency_specs) {
-					int i = &currency - _currency_specs.data();
-					if (i == CURRENCY_CUSTOM) continue;
+				for (Currency i : EnumRange(Currency::End)) {
+					if (i == Currency::Custom) continue;
+					CurrencySpec &currency = _currency_specs[i];
 					if (currency.code.empty()) {
-						list.push_back(MakeDropDownListStringItem(currency.name, i, HasBit(disabled, i)));
+						list.push_back(MakeDropDownListStringItem(currency.name, i, disabled.Test(i)));
 					} else {
-						list.push_back(MakeDropDownListStringItem(GetString(STR_GAME_OPTIONS_CURRENCY_CODE, currency.name, currency.code), i, HasBit(disabled, i)));
+						list.push_back(MakeDropDownListStringItem(GetString(STR_GAME_OPTIONS_CURRENCY_CODE, currency.name, currency.code), i, disabled.Test(i)));
 					}
 				}
 				std::sort(list.begin(), list.end(), DropDownListStringItem::NatSortFunc);
 
 				/* Append custom currency at the end */
 				list.push_back(MakeDropDownListDividerItem()); // separator line
-				list.push_back(MakeDropDownListStringItem(STR_GAME_OPTIONS_CURRENCY_CUSTOM, CURRENCY_CUSTOM, HasBit(disabled, CURRENCY_CUSTOM)));
+				list.push_back(MakeDropDownListStringItem(STR_GAME_OPTIONS_CURRENCY_CUSTOM, Currency::Custom, disabled.Test(Currency::Custom)));
 				break;
 			}
 
@@ -592,7 +592,7 @@ struct GameOptionsWindow : Window {
 				break;
 
 			case WID_GO_RESTRICT_DROPDOWN:
-				for (int mode = 0; mode != RM_END; mode++) {
+				for (RestrictionMode mode : EnumRange(RM_END)) {
 					/* If we are in adv. settings screen for the new game's settings,
 					 * we don't want to allow comparing with new game's settings. */
 					bool disabled = mode == RM_CHANGED_AGAINST_NEW && settings_ptr == &_settings_newgame;
@@ -1543,11 +1543,13 @@ struct GameOptionsWindow : Window {
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		switch (widget) {
-			case WID_GO_CURRENCY_DROPDOWN: // Currency
-				if (index == CURRENCY_CUSTOM) ShowCustCurrency();
-				this->opt->locale.currency = index;
+			case WID_GO_CURRENCY_DROPDOWN: { // Currency
+				Currency currency = static_cast<Currency>(index);
+				if (currency == Currency::Custom) ShowCustCurrency();
+				this->opt->locale.currency = currency;
 				ReInitAllWindows(false);
 				break;
+			}
 
 			case WID_GO_AUTOSAVE_DROPDOWN: // Autosave options
 				if (index == 5) {
@@ -1695,7 +1697,7 @@ struct GameOptionsWindow : Window {
 		this->SetWidgetDisabledState(WID_GO_BASE_SFX_OPEN_URL, BaseSounds::GetUsedSet() == nullptr || BaseSounds::GetUsedSet()->url.empty());
 		this->SetWidgetDisabledState(WID_GO_BASE_MUSIC_OPEN_URL, BaseMusic::GetUsedSet() == nullptr || BaseMusic::GetUsedSet()->url.empty());
 
-		for (TextfileType tft = TFT_CONTENT_BEGIN; tft < TFT_CONTENT_END; tft++) {
+		for (TextfileType tft : EnumRange(TFT_CONTENT_BEGIN, TFT_CONTENT_END)) {
 			this->SetWidgetDisabledState(WID_GO_BASE_GRF_TEXTFILE + tft, BaseGraphics::GetUsedSet() == nullptr || !BaseGraphics::GetUsedSet()->GetTextfile(tft).has_value());
 			this->SetWidgetDisabledState(WID_GO_BASE_SFX_TEXTFILE + tft, BaseSounds::GetUsedSet() == nullptr || !BaseSounds::GetUsedSet()->GetTextfile(tft).has_value());
 			this->SetWidgetDisabledState(WID_GO_BASE_MUSIC_TEXTFILE + tft, BaseMusic::GetUsedSet() == nullptr || !BaseMusic::GetUsedSet()->GetTextfile(tft).has_value());

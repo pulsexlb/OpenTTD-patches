@@ -1806,7 +1806,12 @@ STR_CONFIG_SETTING_TIMETABLE_SHOW_ARRIVAL_DEPARTURE_HELPTEXT    :열차 시간�
 STR_CONFIG_SETTING_QUICKGOTO                                    :빠른 행선지 설정: {STRING}
 STR_CONFIG_SETTING_QUICKGOTO_HELPTEXT                           :경로 창을 열면 자동으로 '행선지' 버튼을 선택하여 곧바로 행선지를 지정할 수 있도록 합니다.
 
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE                       :기본 선로, 도로, 전차 선로 종류 (새 게임/불러오기 이후): {STRING}
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_HELPTEXT              :게임을 시작하거나 불러온 이후에 선택할 선로, 도로, 전차 선로 종류입니다. '가장 오래된 것'을 선택하면 가장 오래된 종류를, '가장 최신 것'을 선택하면 가장 최신 것을, 그리고 '가장 많이 사용한 것'을 선택하면 현재 가장 많이 사용한 것을 선택합니다.
 ###length 3
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_FIRST                 :가장 오래된 것
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_LAST                  :가장 최신 것
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_MOST_USED             :가장 많이 사용한 것
 
 STR_CONFIG_SETTING_SHOW_TRACK_RESERVATION                       :차량의 다음 진행 경로 보여주기: {STRING}
 STR_CONFIG_SETTING_SHOW_TRACK_RESERVATION_HELPTEXT              :열차가 경로 탐색 기능 때문에 폐색으로 진입할 수 없는 문제를 해결하기 위해, 열차가 진행할 경로를 별도의 어두운 색으로 표시합니다.
@@ -3090,7 +3095,7 @@ STR_TREES_MODE_FOREST_LG_TOOLTIP                                :{BLACK}지면�
 
 # Land generation window (SE)
 STR_TERRAFORM_TOOLBAR_LAND_GENERATION_CAPTION                   :{WHITE}지형 만들기
-STR_TERRAFORM_TOOLTIP_PLACE_ROCKY_AREAS_ON_LANDSCAPE            :{BLACK}암석 지역을 지정합니다
+STR_TERRAFORM_TOOLTIP_PLACE_ROCKY_AREAS_ON_LANDSCAPE            :{BLACK}암석 지역을 지정합니다.{}CTRL+클릭하면 암석 지역을 제거합니다
 STR_TERRAFORM_TOOLTIP_DEFINE_DESERT_AREA                        :{BLACK}사막 지역을 지정합니다.{}CTRL+클릭하면 사막 지역을 제거할 수 있습니다
 STR_TERRAFORM_TOOLTIP_INCREASE_SIZE_OF_LAND_AREA                :{BLACK}지형 편집툴의 크기를 키움
 STR_TERRAFORM_TOOLTIP_DECREASE_SIZE_OF_LAND_AREA                :{BLACK}지형 편집툴의 크기를 줄임

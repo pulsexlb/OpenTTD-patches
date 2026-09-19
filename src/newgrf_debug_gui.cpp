@@ -97,9 +97,9 @@ struct InspectTargetId {
  * The type of a property to show. This is used to
  * provide an appropriate representation in the GUI.
  */
-enum NIType : uint8_t {
-	NIT_INT,   ///< The property is a simple integer
-	NIT_CARGO, ///< The property is a cargo
+enum class NIType : uint8_t {
+	Integer, ///< The property is a simple integer
+	Cargo, ///< The property is a cargo
 };
 
 using NIValueReaderProc = uint(*)(const void *, uint8_t);
@@ -137,7 +137,7 @@ struct NIProperty {
 	const char *name;                       ///< A (human readable) name for the property
 	NO_UNIQUE_ADDRESS NIValueReader reader; ///< Class value reader
 	uint8_t prop;                           ///< The number of the property
-	uint8_t type;
+	NIType type;                            ///< Type of property for chosing the appropriate representation.
 };
 
 
@@ -492,7 +492,7 @@ struct NewGRFInspectWindow final : Window {
 					size.height = GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.framerect.Vertical();
 					break;
 				}
-				size.height = std::max(size.height, GetVehicleImageCellSize(GetVehicleType(f), EIT_IN_DEPOT).height + 2 + WidgetDimensions::scaled.bevel.Vertical());
+				size.height = std::max(size.height, GetVehicleImageCellSize(GetVehicleType(f), EngineImageType::InDepot).height + 2 + WidgetDimensions::scaled.bevel.Vertical());
 				break;
 			}
 
@@ -573,9 +573,9 @@ struct NewGRFInspectWindow final : Window {
 				}
 
 				GrfSpecFeature f = this->target_id.grf_feature;
-				int h = GetVehicleImageCellSize(GetVehicleType(f), EIT_IN_DEPOT).height;
+				int h = GetVehicleImageCellSize(GetVehicleType(f), EngineImageType::InDepot).height;
 				int y = CentreBounds(br.top, br.bottom, h);
-				DrawVehicleImage(v->First(), br, VehicleID::Invalid(), EIT_IN_DETAILS, skip);
+				DrawVehicleImage(v->First(), br, VehicleID::Invalid(), EngineImageType::InDetails, skip);
 
 				/* Highlight the articulated part (this is different to the whole-vehicle highlighting of DrawVehicleImage */
 				if (_current_text_dir == TD_RTL) {
@@ -848,11 +848,11 @@ struct NewGRFInspectWindow final : Window {
 
 				format_buffer property_str;
 				switch (nip.type) {
-					case NIT_INT:
+					case NIType::Integer:
 						AppendStringInPlace(property_str, STR_JUST_INT, value);
 						break;
 
-					case NIT_CARGO:
+					case NIType::Cargo:
 						AppendStringInPlace(property_str, (value != to_underlying(INVALID_CARGO)) ? CargoSpec::Get(value)->name : STR_QUANTITY_N_A);
 						break;
 
@@ -1766,7 +1766,7 @@ struct SpriteAlignerWindow : Window {
 		}
 
 		SpriteAlignerWindow::zoom = Clamp(SpriteAlignerWindow::zoom, _settings_client.gui.zoom_min, _settings_client.gui.zoom_max);
-		for (ZoomLevel z = ZoomLevel::Begin; z < ZoomLevel::SpriteEnd; z++) {
+		for (ZoomLevel z : EnumRange(ZoomLevel::SpriteEnd)) {
 			this->SetWidgetsDisabledState(z < _settings_client.gui.zoom_min || z > _settings_client.gui.zoom_max, WID_SA_ZOOM + to_underlying(z));
 			this->SetWidgetsLoweredState(SpriteAlignerWindow::zoom == z, WID_SA_ZOOM + to_underlying(z));
 		}

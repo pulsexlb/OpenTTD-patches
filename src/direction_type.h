@@ -35,9 +35,10 @@ enum class Direction : uint8_t {
 	Invalid = 0xFF, ///< Flag for an invalid direction
 };
 
-/** Allow incrementing of Direction variables */
+/** Allow incrementing of Direction variables (fork: px code relies on it; upstream removed it in 16.0) */
 DECLARE_INCREMENT_DECREMENT_OPERATORS(Direction)
 
+/** Bitset of \c Direction elements. */
 using Directions = EnumBitSet<Direction, uint8_t>;
 
 /** All possible directions. */

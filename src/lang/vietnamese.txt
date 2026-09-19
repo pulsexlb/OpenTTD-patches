@@ -525,6 +525,7 @@ STR_AIRCRAFT_MENU_AIRPORT_CONSTRUCTION                          :Công trình s�
 STR_LANDSCAPING_MENU_LANDSCAPING                                :Phong cảnh
 STR_LANDSCAPING_MENU_PLANT_TREES                                :Trồng cây
 STR_LANDSCAPING_MENU_PLACE_SIGN                                 :Đặt ký hiệu
+STR_LANDSCAPING_MENU_PLACE_OBJECT                               :Đặt đối tượng
 
 # Music menu
 STR_TOOLBAR_SOUND_MUSIC                                         :Âm thanh/nhạc
@@ -1804,7 +1805,12 @@ STR_CONFIG_SETTING_TIMETABLE_SHOW_ARRIVAL_DEPARTURE_HELPTEXT    :Hiển thị th
 STR_CONFIG_SETTING_QUICKGOTO                                    :Tạo nhanh lộ trình cho phương tiện: {STRING}
 STR_CONFIG_SETTING_QUICKGOTO_HELPTEXT                           :Lựa chọn trước 'đi tới con trỏ' khi mở cửa số lập lộ trình
 
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE                       :Loại đường sắt, đường bộ và đường xe điện mặc định (sau khi tạo/tải trò chơi): {STRING}
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_HELPTEXT              :Loại đường sắt, đường bộ và đường xe điện sẽ được chọn sau khi bắt đầu hoặc tải trò chơi. Tùy chọn 'đầu tiên có sẵn' sẽ chọn loại đường cũ nhất, 'mới nhất có sẵn' sẽ chọn loại đường mới nhất, và 'dùng nhiều nhất' sẽ chọn loại đường hiện đang được sử dụng nhiều nhất trên bản đồ
 ###length 3
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_FIRST                 :Đầu tiên có sẵn
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_LAST                  :Mới nhất có sẵn
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_MOST_USED             :Dùng nhiều nhất
 
 STR_CONFIG_SETTING_SHOW_TRACK_RESERVATION                       :Hiện đường ray dành trước: {STRING}
 STR_CONFIG_SETTING_SHOW_TRACK_RESERVATION_HELPTEXT              :Lựa chọn đường dành riêng với màu khác để thấy rõ vấn đề với việc tài không vào khu vực tìm đường path-based
@@ -3088,10 +3094,12 @@ STR_TREES_MODE_FOREST_LG_TOOLTIP                                :{BLACK}Trồng 
 
 # Land generation window (SE)
 STR_TERRAFORM_TOOLBAR_LAND_GENERATION_CAPTION                   :{WHITE}San Lấp Đất
-STR_TERRAFORM_TOOLTIP_PLACE_ROCKY_AREAS_ON_LANDSCAPE            :{BLACK}Đặt các nền đá trong vùng
+STR_TERRAFORM_TOOLTIP_PLACE_ROCKY_AREAS_ON_LANDSCAPE            :{BLACK}Đặt các nền đá trong vùng.{}Ctrl+Click để phá bỏ nền đá
 STR_TERRAFORM_TOOLTIP_DEFINE_DESERT_AREA                        :{BLACK}Đặt tên hoang mạc.{}Ctrl + Click để xoá bỏ tên
 STR_TERRAFORM_TOOLTIP_INCREASE_SIZE_OF_LAND_AREA                :{BLACK}Tăng diện tích vùng đất để nâng/hạ
 STR_TERRAFORM_TOOLTIP_DECREASE_SIZE_OF_LAND_AREA                :{BLACK}Giảm diện tích vùng đất để nâng/hạ
+STR_TERRAFORM_TOOLTIP_LOWER_A_CORNER_OF_LAND                    :{BLACK}Hạ thấp một góc hoặc một vùng đất. Nếu kích thước là 1x1, Nhấp+Kéo để hạ thấp góc được chọn đầu tiên và san bằng vùng được chọn theo độ cao của góc mới. Ctrl+Nhấp+Kéo để chọn vùng theo đường chéo. Nhấn thêm phím Shift để chỉ hiển thị ước tính chi phí
+STR_TERRAFORM_TOOLTIP_RAISE_A_CORNER_OF_LAND                    :{BLACK}Nâng một góc hoặc một vùng đất. Nếu kích thước là 1x1, Nhấp+Kéo để nâng góc được chọn đầu tiên và san bằng vùng được chọn theo độ cao của góc mới. Ctrl+Nhấp+Kéo để chọn vùng theo đường chéo. Nhấn thêm phím Shift để chỉ hiển thị ước tính chi phí
 STR_TERRAFORM_TOOLTIP_GENERATE_RANDOM_LAND                      :{BLACK}Tạo vùng đất ngẫu nhiên
 STR_TERRAFORM_SE_NEW_WORLD                                      :{BLACK}Tạo màn chơi kịch bản mới
 STR_TERRAFORM_RESET_LANDSCAPE                                   :{BLACK}Thiết lập lại nền đất

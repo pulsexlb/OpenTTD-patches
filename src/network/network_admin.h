@@ -45,7 +45,7 @@ protected:
 	NetworkRecvStatus SendAuthRequest();
 	NetworkRecvStatus SendEnableEncryption();
 public:
-	std::array<AdminUpdateFrequencies, ADMIN_UPDATE_END> update_frequency{}; ///< Admin requested update intervals.
+	EnumIndexArray<AdminUpdateFrequencies, AdminUpdateType, AdminUpdateType::End> update_frequency{}; ///< Admin requested update intervals.
 	std::chrono::steady_clock::time_point connect_time{}; ///< Time of connection.
 	NetworkAddress address{}; ///< Address of the admin.
 
@@ -97,9 +97,9 @@ public:
 		/**
 		 * Check whether the given admin is active.
 		 * @param index The index of the admin.
-		 * @return \c true iff the admin's status is #ADMIN_STATUS_ACTIVE.
+		 * @return \c true iff the admin's status is #AdminStatus::Active.
 		 */
-		bool operator() (size_t index) { return ServerNetworkAdminSocketHandler::Get(index)->GetAdminStatus() == ADMIN_STATUS_ACTIVE; }
+		bool operator() (size_t index) { return ServerNetworkAdminSocketHandler::Get(index)->GetAdminStatus() == AdminStatus::Active; }
 	};
 
 	/**

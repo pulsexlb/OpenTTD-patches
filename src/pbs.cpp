@@ -45,7 +45,7 @@ TrackBits GetReservedTrackbits(TileIndex t)
 			break;
 
 		case TileType::TunnelBridge:
-			if (GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL) return GetTunnelBridgeReservationTrackBits(t);
+			if (GetTunnelBridgeTransportType(t) == TransportType::Rail) return GetTunnelBridgeReservationTrackBits(t);
 			break;
 
 		default:
@@ -137,8 +137,8 @@ bool TryReserveRailTrackdir(const Train *v, TileIndex tile, Trackdir td, bool tr
  */
 bool TryReserveRailTrack(TileIndex tile, Track track, bool trigger_stations)
 {
-	assert_msg_tile((TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TRANSPORT_RAIL, 0)) & TrackToTrackBits(track)) != 0, tile,
-			"{:X}, {:X}, {:X}", TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TRANSPORT_RAIL, 0)), track, TrackToTrackBits(track));
+	assert_msg_tile((TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0)) & TrackToTrackBits(track)) != 0, tile,
+			"{:X}, {:X}, {:X}", TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0)), track, TrackToTrackBits(track));
 
 	switch (GetTileType(tile)) {
 		case TileType::Railway:
@@ -191,7 +191,7 @@ bool TryReserveRailTrack(TileIndex tile, Track track, bool trigger_stations)
 			break;
 
 		case TileType::TunnelBridge:
-			if (GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL) {
+			if (GetTunnelBridgeTransportType(tile) == TransportType::Rail) {
 				if (IsTunnel(tile) && !HasTunnelReservation(tile)) {
 					SetTunnelReservation(tile, true);
 					MarkBridgeOrTunnelDirtyOnReservationChange(tile, VMDF_NOT_MAP_MODE);
@@ -232,7 +232,7 @@ void UnreserveRailTrackdir(TileIndex tile, Trackdir td)
  */
 void UnreserveRailTrack(TileIndex tile, Track t)
 {
-	assert_msg_tile(TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TRANSPORT_RAIL, 0)) & TrackToTrackBits(t), tile, "track: {:X}", t);
+	assert_msg_tile(TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0)) & TrackToTrackBits(t), tile, "track: {:X}", t);
 
 	switch (GetTileType(tile)) {
 		case TileType::Railway:
@@ -263,7 +263,7 @@ void UnreserveRailTrack(TileIndex tile, Track t)
 			break;
 
 		case TileType::TunnelBridge:
-			if (GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL) {
+			if (GetTunnelBridgeTransportType(tile) == TransportType::Rail) {
 				if (IsTunnel(tile)) {
 					SetTunnelReservation(tile, false);
 				} else {
@@ -926,7 +926,7 @@ bool ValidateLookAhead(const Train *v)
 	}
 	if (v->lookahead->flags.Test(TrainReservationLookAheadFlag::DepotEnd) && !IsRailDepotTile(tile)) return false;
 
-	TrackdirBits trackdirbits = GetTileTrackdirBits(tile, TRANSPORT_RAIL, 0);
+	TrackdirBits trackdirbits = GetTileTrackdirBits(tile, TransportType::Rail, 0);
 	if (!HasTrackdir(trackdirbits, trackdir)) return false;
 
 	return true;

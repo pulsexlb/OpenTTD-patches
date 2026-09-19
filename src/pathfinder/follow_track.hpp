@@ -29,13 +29,14 @@
  */
 template <TransportType Ttr_type_, typename VehicleType, bool T90deg_turns_allowed_ = true, bool Tmask_reserved_tracks = false>
 struct CFollowTrackT {
-	enum ErrorCode : uint8_t {
-		EC_NONE,
-		EC_OWNER,
-		EC_RAIL_ROAD_TYPE,
-		EC_90DEG,
-		EC_NO_WAY,
-		EC_RESERVED,
+	/** Errors encountered when attempting to follow tracks. */
+	enum class ErrorCode : uint8_t {
+		None, ///< No error.
+		Owner, ///< Wrong owner.
+		RailRoadType, ///< Incompatible rail or road type.
+		SharpTurn, ///< 90 degree turn.
+		NoWay, ///< Tile cannot be entered.
+		Reserved, ///< Path reserved track.
 	};
 
 	const VehicleType   *veh;          ///< moving vehicle
@@ -86,16 +87,16 @@ struct CFollowTrackT {
 		this->is_bridge = false;
 		this->is_tunnel = false;
 		this->tiles_skipped = 0;
-		this->err = EC_NONE;
+		this->err = ErrorCode::None;
 		this->railtypes = railtype_override;
 	}
 
 	[[debug_inline]] inline static TransportType TT() { return Ttr_type_; }
-	[[debug_inline]] inline static bool IsWaterTT() { return TT() == TRANSPORT_WATER; }
-	[[debug_inline]] inline static bool IsRailTT() { return TT() == TRANSPORT_RAIL; }
+	[[debug_inline]] inline static bool IsWaterTT() { return TT() == TransportType::Water; }
+	[[debug_inline]] inline static bool IsRailTT() { return TT() == TransportType::Rail; }
 	inline bool IsTram() const { return IsRoadTT() && RoadTypeIsTram(RoadVehicle::From(this->veh)->roadtype); }
-	[[debug_inline]] inline static bool IsRoadTT() { return TT() == TRANSPORT_ROAD; }
-	[[debug_inline]] inline static bool IsAirTT() { return TT() == TRANSPORT_AIR; }
+	[[debug_inline]] inline static bool IsRoadTT() { return TT() == TransportType::Road; }
+	[[debug_inline]] inline static bool IsAirTT() { return TT() == TransportType::Air; }
 	static inline bool Allow90degTurns() { return T90deg_turns_allowed_; }
 	static inline bool DoTrackMasking() { return Tmask_reserved_tracks; }
 
@@ -133,7 +134,7 @@ struct CFollowTrackT {
 	{
 		this->old_tile = old_tile;
 		this->old_td = old_td;
-		this->err = EC_NONE;
+		this->err = ErrorCode::None;
 
 		dbg_assert_tile([&]() {
 			if (this->IsTram() && GetSingleTramBit(this->old_tile) != DiagDirection::Invalid) return true; // Skip the check for single tram bits
@@ -164,16 +165,16 @@ struct CFollowTrackT {
 			if (IsRoadTT() && !this->IsTram() && this->TryReverse()) return true;
 
 			/* CanEnterNewTile already set a reason.
-			 * Do NOT overwrite it (important for example for EC_RAIL_ROAD_TYPE).
+			 * Do NOT overwrite it (important for example for ErrorCode::RailRoadType).
 			 * Only set a reason if CanEnterNewTile was not called */
-			if (this->new_td_bits == TRACKDIR_BIT_NONE) this->err = EC_NO_WAY;
+			if (this->new_td_bits == TRACKDIR_BIT_NONE) this->err = ErrorCode::NoWay;
 
 			return false;
 		}
 		if (this->tiles_skipped == 0 && ((!IsRailTT() && !Allow90degTurns()) || (IsRailTT() && Rail90DegTurnDisallowedTilesFromDiagDir(this->old_tile, this->new_tile, this->exitdir, !Allow90degTurns())))) {
 			this->new_td_bits &= ~TrackdirCrossesTrackdirs(this->old_td);
 			if (this->new_td_bits == TRACKDIR_BIT_NONE) {
-				this->err = EC_90DEG;
+				this->err = ErrorCode::SharpTurn;
 				return false;
 			}
 		}
@@ -190,7 +191,7 @@ struct CFollowTrackT {
 			for (TileIndex tile = this->new_tile - diff * this->tiles_skipped; tile != this->new_tile; tile += diff) {
 				if (HasStationReservation(tile)) {
 					this->new_td_bits = TRACKDIR_BIT_NONE;
-					this->err = EC_RESERVED;
+					this->err = ErrorCode::Reserved;
 					return false;
 				}
 			}
@@ -204,7 +205,7 @@ struct CFollowTrackT {
 			if (TracksOverlap(reserved | TrackToTrackBits(t))) this->new_td_bits &= ~TrackToTrackdirBits(t);
 		}
 		if (this->new_td_bits == TRACKDIR_BIT_NONE) {
-			this->err = EC_RESERVED;
+			this->err = ErrorCode::Reserved;
 			return false;
 		}
 		return true;
@@ -283,11 +284,11 @@ protected:
 			if (IsHangarTile(this->old_tile)) {
 				DiagDirection exitdir = GetHangarDirection(this->old_tile);
 				if (exitdir != this->exitdir) {
-					this->err = EC_NO_WAY;
+					this->err = ErrorCode::NoWay;
 					return false;
 				}
 			} else if (IsHeliportTile(this->old_tile)) {
-					this->err = EC_NO_WAY;
+					this->err = ErrorCode::NoWay;
 					return false;
 			}
 		}
@@ -296,7 +297,7 @@ protected:
 		if (IsRoadTT() && IsBayRoadStopTile(this->old_tile)) {
 			DiagDirection exitdir = GetBayRoadStopDir(this->old_tile);
 			if (exitdir != this->exitdir) {
-				this->err = EC_NO_WAY;
+				this->err = ErrorCode::NoWay;
 				return false;
 			}
 		}
@@ -305,7 +306,7 @@ protected:
 		if (this->IsTram()) {
 			DiagDirection single_tram = GetSingleTramBit(this->old_tile);
 			if (single_tram != DiagDirection::Invalid && single_tram != this->exitdir) {
-				this->err = EC_NO_WAY;
+				this->err = ErrorCode::NoWay;
 				return false;
 			}
 		}
@@ -314,7 +315,7 @@ protected:
 		if (IsRoadTT() && IsDepotTypeTile(this->old_tile, TT())) {
 			DiagDirection exitdir = GetRoadDepotDirection(this->old_tile);
 			if (exitdir != this->exitdir) {
-				this->err = EC_NO_WAY;
+				this->err = ErrorCode::NoWay;
 				return false;
 			}
 		}
@@ -331,12 +332,12 @@ protected:
 			/* road stop can be entered from one direction only unless it's a drive-through stop */
 			DiagDirection exitdir = GetBayRoadStopDir(this->new_tile);
 			if (ReverseDiagDir(exitdir) != this->exitdir) {
-				this->err = EC_NO_WAY;
+				this->err = ErrorCode::NoWay;
 				return false;
 			}
 			/* road stops shouldn't be entered unless allowed to */
 			if (!IsInfraTileUsageAllowed(::VehicleType::Road, this->veh_owner, this->new_tile)) {
-				this->err = EC_OWNER;
+				this->err = ErrorCode::Owner;
 				return false;
 			}
 		}
@@ -345,7 +346,7 @@ protected:
 		if (this->IsTram()) {
 			DiagDirection single_tram = this->GetSingleTramBit(this->new_tile);
 			if (single_tram != DiagDirection::Invalid && single_tram != ReverseDiagDir(this->exitdir)) {
-				this->err = EC_NO_WAY;
+				this->err = ErrorCode::NoWay;
 				return false;
 			}
 		}
@@ -354,19 +355,19 @@ protected:
 		if (IsRoadTT() && IsDepotTypeTile(this->new_tile, TT())) {
 			DiagDirection exitdir = GetRoadDepotDirection(this->new_tile);
 			if (ReverseDiagDir(exitdir) != this->exitdir) {
-				this->err = EC_NO_WAY;
+				this->err = ErrorCode::NoWay;
 				return false;
 			}
 			/* don't try to enter other company's depots if not allowed */
 			if (!IsInfraTileUsageAllowed(::VehicleType::Road, this->veh_owner, this->new_tile)) {
-				this->err = EC_OWNER;
+				this->err = ErrorCode::Owner;
 				return false;
 			}
 		}
 		if (IsRailTT() && IsDepotTypeTile(this->new_tile, TT())) {
 			DiagDirection exitdir = GetRailDepotDirection(this->new_tile);
 			if (ReverseDiagDir(exitdir) != this->exitdir) {
-				this->err = EC_NO_WAY;
+				this->err = ErrorCode::NoWay;
 				return false;
 			}
 			/* When trains are not allowed to temporarily stop in depots, make all depots impassable
@@ -379,7 +380,7 @@ protected:
 						(t->dest_tile == this->new_tile ||
 						 (t->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0);
 				if (!allow) {
-					this->err = EC_NO_WAY;
+					this->err = ErrorCode::NoWay;
 					return false;
 				}
 			}
@@ -388,7 +389,7 @@ protected:
 		/* rail transport is possible only on allowed tiles */
 		if (IsRailTT() && !IsInfraTileUsageAllowed(::VehicleType::Train, this->veh_owner, this->new_tile)) {
 			/* different owner */
-			this->err = EC_NO_WAY;
+			this->err = ErrorCode::NoWay;
 			return false;
 		}
 
@@ -397,7 +398,7 @@ protected:
 			RailType rail_type = GetTileRailTypeByEntryDir(this->new_tile, this->exitdir);
 			if (!this->railtypes.Test(rail_type)) {
 				/* incompatible rail type */
-				this->err = EC_RAIL_ROAD_TYPE;
+				this->err = ErrorCode::RailRoadType;
 				return false;
 			}
 		}
@@ -408,7 +409,7 @@ protected:
 			RoadType roadtype = GetRoadType(this->new_tile, GetRoadTramType(v->roadtype));
 			if (!v->compatible_roadtypes.Test(roadtype)) {
 				/* incompatible road type */
-				this->err = EC_RAIL_ROAD_TYPE;
+				this->err = ErrorCode::RailRoadType;
 				return false;
 			}
 		}
@@ -419,29 +420,29 @@ protected:
 				if (!this->is_tunnel) {
 					DiagDirection tunnel_enterdir = GetTunnelBridgeDirection(this->new_tile);
 					if (tunnel_enterdir != this->exitdir) {
-						this->err = EC_NO_WAY;
+						this->err = ErrorCode::NoWay;
 						return false;
 					}
 				}
 			} else { // IsBridge(this->new_tile)
 				DiagDirection ramp_enderdir = GetTunnelBridgeDirection(this->new_tile);
 				if (!this->is_bridge && ramp_enderdir == ReverseDiagDir(this->exitdir)) {
-					this->err = EC_NO_WAY;
+					this->err = ErrorCode::NoWay;
 					return false;
 				}
 				if (!this->is_bridge && IsRoadTT() && IsRoadCustomBridgeHeadTile(this->new_tile)) {
 					if ((DiagDirToRoadBits(ReverseDiagDir(this->exitdir)) & GetCustomBridgeHeadRoadBits(this->new_tile, this->IsTram() ? RoadTramType::Tram : RoadTramType::Road)).None()) {
-						this->err = EC_NO_WAY;
+						this->err = ErrorCode::NoWay;
 						return false;
 					}
 				} else if (!this->is_bridge && IsRailTT() && IsRailCustomBridgeHeadTile(this->new_tile)) {
 					if (!(DiagdirReachesTracks(this->exitdir) & GetCustomBridgeHeadTrackBits(this->new_tile))) {
-						this->err = EC_NO_WAY;
+						this->err = ErrorCode::NoWay;
 						return false;
 					}
 				} else if (!this->is_bridge) {
 					if (ramp_enderdir != this->exitdir) {
-						this->err = EC_NO_WAY;
+						this->err = ErrorCode::NoWay;
 						return false;
 					}
 				}
@@ -524,7 +525,7 @@ protected:
 				return true;
 			}
 		}
-		this->err = EC_NO_WAY;
+		this->err = ErrorCode::NoWay;
 		return false;
 	}
 
@@ -562,14 +563,14 @@ public:
 	}
 };
 
-typedef CFollowTrackT<TRANSPORT_WATER, Ship,        true > CFollowTrackWater;
-typedef CFollowTrackT<TRANSPORT_ROAD,  RoadVehicle, true > CFollowTrackRoad;
-typedef CFollowTrackT<TRANSPORT_RAIL,  Train,       true > CFollowTrackRail;
-typedef CFollowTrackT<TRANSPORT_AIR,   Aircraft,    true > CFollowTrackAirport;
+typedef CFollowTrackT<TransportType::Water, Ship, true> CFollowTrackWater;
+typedef CFollowTrackT<TransportType::Road, RoadVehicle, true> CFollowTrackRoad;
+typedef CFollowTrackT<TransportType::Rail, Train, true> CFollowTrackRail;
+typedef CFollowTrackT<TransportType::Air, Aircraft, true> CFollowTrackAirport;
 
-typedef CFollowTrackT<TRANSPORT_RAIL,  Train,       false> CFollowTrackRailNo90;
+typedef CFollowTrackT<TransportType::Rail, Train, false> CFollowTrackRailNo90;
 
-typedef CFollowTrackT<TRANSPORT_RAIL, Train, true,  true > CFollowTrackFreeRail;
-typedef CFollowTrackT<TRANSPORT_RAIL, Train, false, true > CFollowTrackFreeRailNo90;
+typedef CFollowTrackT<TransportType::Rail, Train, true, true> CFollowTrackFreeRail;
+typedef CFollowTrackT<TransportType::Rail, Train, false, true> CFollowTrackFreeRailNo90;
 
 #endif /* FOLLOW_TRACK_HPP */

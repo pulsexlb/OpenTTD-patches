@@ -333,6 +333,39 @@ CommandCost CmdSchDispatchResetLastDispatch(DoCommandFlags flags, OrderTargetTyp
 }
 
 /**
+ * Set scheduled dispatch last dispatch vehicle time
+ *
+ * @param flags Operation to perform.
+ * @param target_type Target type (vehicle or order list).
+ * @param id Target id.
+ * @param schedule_index Schedule index.
+ * @param last_dispatched_tick New last dispatched tick.
+ * @return the cost of this operation or an error
+ */
+CommandCost CmdSchDispatchSetLastDispatch(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, uint32_t schedule_index, StateTicks last_dispatched_tick)
+{
+	Vehicle *v = nullptr;
+	OrderList *ol = ResolveSchDispatchTarget(target_type, id, &v);
+	if (ol == nullptr) return CMD_ERROR;
+
+	CommandCost ret = CheckSchDispatchOwnership(target_type, ol, v);
+	if (ret.Failed()) return ret;
+
+	if (schedule_index >= ol->GetScheduledDispatchScheduleCount()) return CMD_ERROR;
+
+	DispatchSchedule &ds = ol->GetDispatchScheduleByIndex(schedule_index);
+	Ticks last_dispatched_offset = (last_dispatched_tick - ds.GetScheduledDispatchStartTick()).AsTicks();
+	if (last_dispatched_offset == INT32_MIN || last_dispatched_offset == INT32_MAX) return CMD_ERROR;
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		ds.SetScheduledDispatchLastDispatch(last_dispatched_offset);
+		SetTimetableWindowsDirty(v, STWDF_SCHEDULED_DISPATCH);
+	}
+
+	return CommandCost();
+}
+
+/**
  * Clear scheduled dispatch schedule
  *
  * @param flags Operation to perform.

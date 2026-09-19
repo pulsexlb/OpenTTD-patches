@@ -322,13 +322,13 @@ struct SignListWindow : Window, SignList {
 	/**
 	 * Handler for global hotkeys of the SignListWindow.
 	 * @param hotkey Hotkey
-	 * @return ES_HANDLED if hotkey was accepted.
+	 * @return EventState::Handled if hotkey was accepted.
 	 */
 	static EventState SignListGlobalHotkeys(int hotkey)
 	{
-		if (_game_mode == GameMode::Menu) return ES_NOT_HANDLED;
+		if (_game_mode == GameMode::Menu) return EventState::NotHandled;
 		Window *w = ShowSignList();
-		if (w == nullptr) return ES_NOT_HANDLED;
+		if (w == nullptr) return EventState::NotHandled;
 		return w->OnHotkey(hotkey);
 	}
 
@@ -494,7 +494,7 @@ struct SignWindow : Window, SignList {
 		if (widget == WID_QES_COLOUR) {
 			const Dimension square_size = GetSpriteSize(SPR_SQUARE);
 			const uint string_padding = square_size.width + WidgetDimensions::scaled.hsep_normal + padding.width;
-			for (Colours colour = Colours::Begin; colour != Colours::End; ++colour) {
+			for (Colours colour : EnumRange(Colours::End)) {
 				size.width = std::max(size.width, GetStringBoundingBox(STR_COLOUR_DARK_BLUE + to_underlying(colour)).width + string_padding);
 			}
 			size.width = std::max(size.width, GetStringBoundingBox(STR_COLOUR_DEFAULT).width + string_padding);
@@ -507,7 +507,7 @@ struct SignWindow : Window, SignList {
 	void ShowColourDropDownMenu()
 	{
 		DropDownList list;
-		for (Colours colour = Colours::Begin; colour != Colours::End; ++colour) {
+		for (Colours colour : EnumRange(Colours::End)) {
 			list.emplace_back(MakeDropDownListIconItem(SPR_SQUARE, GetColourPalette(colour), STR_COLOUR_DARK_BLUE + to_underlying(colour), colour));
 		}
 		const int selected = to_underlying(this->new_colour.value_or(Sign::Get(this->cur_sign)->text_colour));

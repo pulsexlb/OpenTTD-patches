@@ -471,7 +471,7 @@ static SigInfo ExploreSegment(Owner owner)
 					info.flags |= SF_JUNCTION;
 				}
 
-				for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) { // test all possible exit directions
+				for (DiagDirection dir : EnumRange(DiagDirection::End)) { // test all possible exit directions
 					if (dir != enterdir && (tracks & _enterdir_to_trackbits[dir])) { // any accessible track?
 						TileIndex newtile = tile + TileOffsByDiagDir(dir);  // new tile to check
 						DiagDirection newdir = ReverseDiagDir(dir); // direction we are entering from
@@ -507,7 +507,7 @@ static SigInfo ExploreSegment(Owner owner)
 
 			case TileType::TunnelBridge: {
 				if (!IsOneSignalBlock(owner, GetTileOwner(tile))) continue;
-				if (GetTunnelBridgeTransportType(tile) != TRANSPORT_RAIL) continue;
+				if (GetTunnelBridgeTransportType(tile) != TransportType::Rail) continue;
 				DiagDirection tunnel_bridge_dir = GetTunnelBridgeDirection(tile);
 
 				if (enterdir == tunnel_bridge_dir) continue;
@@ -746,7 +746,7 @@ uint8_t GetForwardAspectFollowingTrack(TileIndex tile, Trackdir trackdir)
 
 			case TileType::TunnelBridge: {
 				if (!IsOneSignalBlock(owner, GetTileOwner(tile))) return 0;
-				if (GetTunnelBridgeTransportType(tile) != TRANSPORT_RAIL) return 0;
+				if (GetTunnelBridgeTransportType(tile) != TransportType::Rail) return 0;
 				if ((enterdir == GetTunnelBridgeDirection(tile)) != wormhole) return 0;
 
 				TrackBits tracks = GetTunnelBridgeTrackBits(tile); // trackbits of tile
@@ -1070,7 +1070,7 @@ static SigSegState UpdateSignalsInBuffer(Owner owner)
 		switch (GetTileType(tile)) {
 			case TileType::TunnelBridge: {
 				/* 'optimization assert' - do not try to update signals when it is not needed */
-				assert_tile(GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL, tile);
+				assert_tile(GetTunnelBridgeTransportType(tile) == TransportType::Rail, tile);
 				if (IsTunnel(tile)) assert(dir == DiagDirection::Invalid || dir == ReverseDiagDir(GetTunnelBridgeDirection(tile)));
 				TrackBits across = GetAcrossTunnelBridgeTrackBits(tile);
 				if (dir == DiagDirection::Invalid || _enterdir_to_trackbits[dir] & across) {
@@ -1097,7 +1097,7 @@ static SigSegState UpdateSignalsInBuffer(Owner owner)
 
 			case TileType::Station:
 			case TileType::Road:
-				if ((TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TRANSPORT_RAIL, 0)) & _enterdir_to_trackbits[dir]) != TRACK_BIT_NONE) {
+				if ((TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0)) & _enterdir_to_trackbits[dir]) != TRACK_BIT_NONE) {
 					/* only add to set when there is some 'interesting' track */
 					_tbdset.Add(tile, dir);
 					_tbdset.Add(tile + TileOffsByDiagDir(dir), ReverseDiagDir(dir));
@@ -1109,7 +1109,7 @@ static SigSegState UpdateSignalsInBuffer(Owner owner)
 				/* jump to next tile */
 				tile = tile + TileOffsByDiagDir(dir);
 				dir = ReverseDiagDir(dir);
-				if ((TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TRANSPORT_RAIL, 0)) & _enterdir_to_trackbits[dir]) != TRACK_BIT_NONE) {
+				if ((TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0)) & _enterdir_to_trackbits[dir]) != TRACK_BIT_NONE) {
 					_tbdset.Add(tile, dir);
 					break;
 				}
@@ -1490,7 +1490,7 @@ void PropagateAspectChange(TileIndex tile, Trackdir trackdir, uint8_t aspect)
 
 			case TileType::TunnelBridge: {
 				if (!IsOneSignalBlock(owner, GetTileOwner(tile))) return;
-				if (GetTunnelBridgeTransportType(tile) != TRANSPORT_RAIL) return;
+				if (GetTunnelBridgeTransportType(tile) != TransportType::Rail) return;
 				if ((enterdir == GetTunnelBridgeDirection(tile)) != wormhole) return;
 
 				TrackBits tracks = GetTunnelBridgeTrackBits(tile); // trackbits of tile
@@ -1963,7 +1963,7 @@ static bool DetermineExtraAspectsVariable()
 	_enabled_new_signal_styles_mask = 1;
 
 	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
-		for (RailType r = RAILTYPE_BEGIN; r != RAILTYPE_END; r++) {
+		for (RailType r : EnumRange(RAILTYPE_END)) {
 			const RailTypeInfo *rti = GetRailTypeInfo(r);
 			new_extra_aspects = std::max<uint8_t>(new_extra_aspects, rti->signal_extra_aspects);
 			default_style_aspects = std::max<uint8_t>(default_style_aspects, rti->signal_extra_aspects);

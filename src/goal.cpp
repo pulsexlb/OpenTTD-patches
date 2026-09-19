@@ -19,7 +19,7 @@
 #include "company_base.h"
 #include "story_base.h"
 #include "string_func.h"
-#include "gui.h"
+#include "goal_gui.h"
 #include "network/network.h"
 #include "network/network_base.h"
 #include "network/network_func.h"
@@ -34,27 +34,27 @@ INSTANTIATE_POOL_METHODS(Goal)
 /* static */ bool Goal::IsValidGoalDestination(CompanyID company, GoalType type, GoalTypeID dest)
 {
 	switch (type) {
-		case GT_NONE:
+		case GoalType::None:
 			if (dest != 0) return false;
 			break;
 
-		case GT_TILE:
+		case GoalType::Tile:
 			if (!IsValidTile(TileIndex(dest))) return false;
 			break;
 
-		case GT_INDUSTRY:
+		case GoalType::Industry:
 			if (!Industry::IsValidID(dest)) return false;
 			break;
 
-		case GT_TOWN:
+		case GoalType::Town:
 			if (!Town::IsValidID(dest)) return false;
 			break;
 
-		case GT_COMPANY:
+		case GoalType::Company:
 			if (!Company::IsValidID(dest)) return false;
 			break;
 
-		case GT_STORY_PAGE: {
+		case GoalType::StoryPage: {
 			if (!StoryPage::IsValidID(dest)) return false;
 			CompanyID story_company = StoryPage::Get(dest)->company;
 			if (company == CompanyID::Invalid() ? story_company != CompanyID::Invalid() : story_company != CompanyID::Invalid() && story_company != company) return false;
@@ -237,20 +237,17 @@ CommandCost CmdSetGoalCompleted(DoCommandFlags flags, GoalID goal, bool complete
  * @param uniqueid Unique ID to use for this question.
  * @param target Company or client for which this question is.
  * @param is_client Question target: false - company, true - client.
- * @param button_mask Buttons of the question.
+ * @param buttons Buttons of the question.
  * @param type Question type.
  * @param text Text of the question.
  * @return the cost of this operation or an error
  */
-CommandCost CmdGoalQuestion(DoCommandFlags flags, uint16_t uniqueid, uint32_t target, bool is_client, uint32_t button_mask, GoalQuestionType type, const EncodedString &text)
+CommandCost CmdGoalQuestion(DoCommandFlags flags, uint16_t uniqueid, uint32_t target, bool is_client, GoalQuestionButtons buttons, GoalQuestionType type, const EncodedString &text)
 {
 	static_assert(sizeof(uint32_t) >= sizeof(CompanyID));
 	CompanyID company = (CompanyID)target;
 	static_assert(sizeof(uint32_t) >= sizeof(ClientID));
 	ClientID client = (ClientID)target;
-
-	static_assert(GOAL_QUESTION_BUTTON_COUNT < 29);
-	button_mask &= (1U << GOAL_QUESTION_BUTTON_COUNT) - 1;
 
 	if (_current_company != OWNER_DEITY) return CMD_ERROR;
 	if (text.empty()) return CMD_ERROR;
@@ -262,9 +259,10 @@ CommandCost CmdGoalQuestion(DoCommandFlags flags, uint16_t uniqueid, uint32_t ta
 	} else {
 		if (company != CompanyID::Invalid() && !Company::IsValidID(company)) return CMD_ERROR;
 	}
-	uint min_buttons = (type == GQT_QUESTION ? 1 : 0);
-	if (CountBits(button_mask) < min_buttons || CountBits(button_mask) > 3) return CMD_ERROR;
-	if (type >= GQT_END) return CMD_ERROR;
+	uint min_buttons = (type == GoalQuestionType::Question ? 1 : 0);
+	if (!buttons.IsValid()) return CMD_ERROR;
+	if (buttons.Count() < min_buttons || buttons.Count() > 3) return CMD_ERROR;
+	if (type >= GoalQuestionType::End) return CMD_ERROR;
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		if (is_client) {
@@ -273,7 +271,7 @@ CommandCost CmdGoalQuestion(DoCommandFlags flags, uint16_t uniqueid, uint32_t ta
 			if (company == CompanyID::Invalid() && !Company::IsValidID(_local_company)) return CommandCost();
 			if (company != CompanyID::Invalid() && company != _local_company) return CommandCost();
 		}
-		ShowGoalQuestion(uniqueid, type, button_mask, text);
+		ShowGoalQuestion(uniqueid, type, buttons, text);
 	}
 
 	return CommandCost();
@@ -286,9 +284,9 @@ CommandCost CmdGoalQuestion(DoCommandFlags flags, uint16_t uniqueid, uint32_t ta
  * @param button Button the company pressed
  * @return the cost of this operation or an error
  */
-CommandCost CmdGoalQuestionAnswer(DoCommandFlags flags, uint16_t uniqueid, uint8_t button)
+CommandCost CmdGoalQuestionAnswer(DoCommandFlags flags, uint16_t uniqueid, GoalQuestionButton button)
 {
-	if (button >= GOAL_QUESTION_BUTTON_COUNT) return CMD_ERROR;
+	if (button >= GoalQuestionButton::End) return CMD_ERROR;
 
 	if (_current_company == OWNER_DEITY) {
 		/* It has been requested to close this specific question on all clients */
@@ -303,7 +301,7 @@ CommandCost CmdGoalQuestionAnswer(DoCommandFlags flags, uint16_t uniqueid, uint8
 	}
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		Game::NewEvent(new ScriptEventGoalQuestionAnswer(uniqueid, _current_company, (ScriptGoal::QuestionButton)(1 << button)));
+		Game::NewEvent(new ScriptEventGoalQuestionAnswer(uniqueid, _current_company, static_cast<ScriptGoal::QuestionButton>(GoalQuestionButtons{button}.base())));
 	}
 
 	return CommandCost();

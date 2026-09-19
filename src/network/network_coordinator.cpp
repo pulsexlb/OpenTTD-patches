@@ -28,7 +28,7 @@
 
 static const auto NETWORK_COORDINATOR_DELAY_BETWEEN_UPDATES = std::chrono::seconds(30); ///< How many time between updates the server sends to the Game Coordinator.
 ClientNetworkCoordinatorSocketHandler _network_coordinator_client; ///< The connection to the Game Coordinator.
-ConnectionType _network_server_connection_type = CONNECTION_TYPE_UNKNOWN; ///< What type of connection the Game Coordinator detected we are on.
+ConnectionType _network_server_connection_type = ConnectionType::Unknown; ///< What type of connection the Game Coordinator detected we are on.
 std::string _network_server_invite_code = ""; ///< Our invite code as indicated by the Game Coordinator.
 
 /** Connect to a game server by IP:port. */
@@ -126,16 +126,16 @@ public:
 
 bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorError(Packet &p)
 {
-	NetworkCoordinatorErrorType error = (NetworkCoordinatorErrorType)p.Recv_uint8();
+	NetworkCoordinatorErrorType error = static_cast<NetworkCoordinatorErrorType>(p.Recv_uint8());
 	std::string detail = p.Recv_string(NETWORK_ERROR_DETAIL_LENGTH);
 
 
 	switch (error) {
-		case NETWORK_COORDINATOR_ERROR_UNKNOWN:
+		case NetworkCoordinatorErrorType::Unknown:
 			this->CloseConnection();
 			return false;
 
-		case NETWORK_COORDINATOR_ERROR_REGISTRATION_FAILED:
+		case NetworkCoordinatorErrorType::RegistrationFailed:
 			ShowErrorMessage(GetEncodedString(STR_NETWORK_ERROR_COORDINATOR_REGISTRATION_FAILED), {}, WarningLevel::Error);
 
 			/* To prevent that we constantly try to reconnect, switch to local game. */
@@ -144,7 +144,7 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorError(Packet &
 			this->CloseConnection();
 			return false;
 
-		case NETWORK_COORDINATOR_ERROR_INVALID_INVITE_CODE: {
+		case NetworkCoordinatorErrorType::InvalidInviteCode: {
 			auto connecter_pre_it = this->connecter_pre.find(detail);
 			if (connecter_pre_it != this->connecter_pre.end()) {
 				connecter_pre_it->second->SetFailure();
@@ -153,13 +153,13 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorError(Packet &
 
 			/* Mark the server as offline. */
 			NetworkGame *item = NetworkGameListAddItem(detail);
-			item->status = NGLS_OFFLINE;
+			item->status = NetworkGameStatus::Offline;
 
 			UpdateNetworkGameWindow();
 			return true;
 		}
 
-		case NETWORK_COORDINATOR_ERROR_REUSE_OF_INVITE_CODE:
+		case NetworkCoordinatorErrorType::ReuseOfInviteCode:
 			ShowErrorMessage(GetEncodedString(STR_NETWORK_ERROR_COORDINATOR_REUSE_OF_INVITE_CODE), {}, WarningLevel::Error);
 
 			/* To prevent that we constantly battle for the same invite-code, switch to local game. */
@@ -189,9 +189,9 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorRegisterAck(Pa
 
 	_settings_client.network.server_invite_code = p.Recv_string(NETWORK_INVITE_CODE_LENGTH);
 	_settings_client.network.server_invite_code_secret = p.Recv_string(NETWORK_INVITE_CODE_SECRET_LENGTH);
-	_network_server_connection_type = (ConnectionType)p.Recv_uint8();
+	_network_server_connection_type = static_cast<ConnectionType>(p.Recv_uint8());
 
-	if (_network_server_connection_type == CONNECTION_TYPE_ISOLATED) {
+	if (_network_server_connection_type == ConnectionType::Isolated) {
 		ShowErrorMessage(
 			GetEncodedString(STR_NETWORK_ERROR_COORDINATOR_ISOLATED),
 			GetEncodedString(STR_NETWORK_ERROR_COORDINATOR_ISOLATED_DETAIL),
@@ -208,18 +208,18 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorRegisterAck(Pa
 	SetWindowDirty(WindowClass::NetworkClientList, 0);
 
 	if (_network_dedicated) {
-		std::string connection_type;
+		std::string_view connection_type;
 		switch (_network_server_connection_type) {
-			case CONNECTION_TYPE_ISOLATED: connection_type = "Remote players can't connect"; break;
-			case CONNECTION_TYPE_DIRECT:   connection_type = "Public"; break;
-			case CONNECTION_TYPE_STUN:     connection_type = "Behind NAT"; break;
-			case CONNECTION_TYPE_TURN:     connection_type = "Via relay"; break;
+			case ConnectionType::Isolated: connection_type = "Remote players can't connect"; break;
+			case ConnectionType::Direct: connection_type = "Public"; break;
+			case ConnectionType::Stun: connection_type = "Behind NAT"; break;
+			case ConnectionType::Turn: connection_type = "Via relay"; break;
 
-			case CONNECTION_TYPE_UNKNOWN: // Never returned from Game Coordinator.
+			case ConnectionType::Unknown: // Never returned from Game Coordinator.
 			default: connection_type = "Unknown"; break; // Should never happen, but don't fail if it does.
 		}
 
-		std::string game_type;
+		std::string_view game_type;
 		switch (_settings_client.network.server_game_type) {
 			case ServerGameType::InviteOnly: game_type = "Invite only"; break;
 			case ServerGameType::Public: game_type = "Public"; break;
@@ -284,7 +284,7 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorListing(Packet
 		/* Check for compatibility with the client. */
 		CheckGameCompatibility(item->info);
 		/* Mark server as online. */
-		item->status = NGLS_ONLINE;
+		item->status = NetworkGameStatus::Online;
 		/* Mark the item as up-to-date. */
 		item->version = _network_game_list_version;
 	}
@@ -469,14 +469,14 @@ NetworkRecvStatus ClientNetworkCoordinatorSocketHandler::CloseConnection(bool er
 	this->CloseSocket();
 	this->connecting = false;
 
-	_network_server_connection_type = CONNECTION_TYPE_UNKNOWN;
+	_network_server_connection_type = ConnectionType::Unknown;
 	this->next_update = {};
 
 	this->CloseAllConnections();
 
 	SetWindowDirty(WindowClass::NetworkClientList, 0);
 
-	return NETWORK_RECV_STATUS_OKAY;
+	return NetworkRecvStatus::Okay;
 }
 
 /**
@@ -484,7 +484,7 @@ NetworkRecvStatus ClientNetworkCoordinatorSocketHandler::CloseConnection(bool er
  */
 void ClientNetworkCoordinatorSocketHandler::Register()
 {
-	_network_server_connection_type = CONNECTION_TYPE_UNKNOWN;
+	_network_server_connection_type = ConnectionType::Unknown;
 	this->next_update = {};
 
 	SetWindowDirty(WindowClass::NetworkClientList, 0);
@@ -818,12 +818,12 @@ void ClientNetworkCoordinatorSocketHandler::SendReceive()
 	this->reconnect_backoff = 1;
 	this->first_reconnect = true;
 
-	if (_network_server && _network_server_connection_type != CONNECTION_TYPE_UNKNOWN && std::chrono::steady_clock::now() > this->next_update) {
+	if (_network_server && _network_server_connection_type != ConnectionType::Unknown && std::chrono::steady_clock::now() > this->next_update) {
 		this->SendServerUpdate();
 	}
 
 	/* Periodically verify the Game Coordinator still knows our invite code. */
-	if (_network_server && _network_server_connection_type != CONNECTION_TYPE_UNKNOWN && _settings_client.network.invite_code_keepalive_interval > 0 && !this->invite_check_pending && std::chrono::steady_clock::now() > this->next_invite_check) {
+	if (_network_server && _network_server_connection_type != ConnectionType::Unknown && _settings_client.network.invite_code_keepalive_interval > 0 && !this->invite_check_pending && std::chrono::steady_clock::now() > this->next_invite_check) {
 		this->CheckInviteCodeRegistration();
 	}
 

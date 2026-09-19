@@ -1805,7 +1805,12 @@ STR_CONFIG_SETTING_TIMETABLE_SHOW_ARRIVAL_DEPARTURE_HELPTEXT    :Visa förvänta
 STR_CONFIG_SETTING_QUICKGOTO                                    :Snabbskapande av fordonsorder: {STRING}
 STR_CONFIG_SETTING_QUICKGOTO_HELPTEXT                           :Förvälj 'åk till'-pekaren när orderfönstret öppnas
 
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE                       :Standardtyp av järnvägsspår, väg och spårvagnsspår (efter nytt spel/inläst spel): {STRING}
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_HELPTEXT              :Den typ av järnvägsspår, väg och spårvagnsspår som ska väljas efter att ett spel har startats eller lästs in. 'först tillgängliga' väljer den äldsta typen av spår, 'senast tillgängliga' väljer den nyaste typen av spår och 'mest använd' väljer den typ som för närvarande är mest använd
 ###length 3
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_FIRST                 :Första tillgängliga
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_LAST                  :Senast tillgängliga
+STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_MOST_USED             :Mest använda
 
 STR_CONFIG_SETTING_SHOW_TRACK_RESERVATION                       :Visa reserverat spår: {STRING}
 STR_CONFIG_SETTING_SHOW_TRACK_RESERVATION_HELPTEXT              :Ge reserverade spår en avvikande färg för att underlätta lösning av problem med tåg som vägrar köra in i avancerade signalblock
@@ -3022,7 +3027,7 @@ STR_WATERWAYS_TOOLBAR_BUILD_DOCK_TOOLTIP                        :{BLACK}Bygg ham
 STR_WATERWAYS_TOOLBAR_BUOY_TOOLTIP                              :{BLACK}Placera en boj som kan som kan användas som riktmärke. Håll även in Shift för att endast visa uppskattad kostnad
 STR_WATERWAYS_TOOLBAR_BUILD_AQUEDUCT_TOOLTIP                    :{BLACK}Bygg akvedukt. Håll även in Shift för att endast visa uppskattad kostnad
 STR_WATERWAYS_TOOLBAR_CREATE_LAKE_TOOLTIP                       :{BLACK}Bygg en kanal. Ctrl+Klick vid havsnivå för att istället översvämma med havsvatten
-STR_WATERWAYS_TOOLBAR_CREATE_RIVER_TOOLTIP                      :{BLACK}Placera flod. Ctrl+Klick för att markera diagonalt
+STR_WATERWAYS_TOOLBAR_CREATE_RIVER_TOOLTIP                      :{BLACK}Placera flod. Ctrl+klicka för att markera diagonalt
 
 # Ship depot construction window
 STR_DEPOT_BUILD_SHIP_CAPTION                                    :{WHITE}Riktning för skeppsvarv
@@ -3077,7 +3082,7 @@ STR_OBJECT_CLASS_TRNS                                           :Sändare
 STR_PLANT_TREE_CAPTION                                          :{WHITE}Träd
 STR_PLANT_TREE_TOOLTIP                                          :{BLACK}Välj trädtyp att plantera. Om rutan redan har ett träd, kommer ytterliggare träd att vara av slumpmässig typ oberoende av vilken trädtyp som valts
 STR_TREES_RANDOM_TYPE                                           :{BLACK}Träd av slumpvald typ
-STR_TREES_RANDOM_TYPE_TOOLTIP                                   :{BLACK}Placera träd av slumpvald typ. Ctrl+Klick+Drag för att välja ytan diagonalt. Håll även in Shift för att endast visa uppskattad kostnad
+STR_TREES_RANDOM_TYPE_TOOLTIP                                   :{BLACK}Placera träd av slumpmässig typ. Ctrl+klicka+dra för att välja ytan diagonalt. Håll även in Shift för att endast visa uppskattad kostnad
 STR_TREES_RANDOM_TREES_BUTTON                                   :{BLACK}Slumpmässigt träd
 STR_TREES_RANDOM_TREES_TOOLTIP                                  :{BLACK}Plantera träd slumpmässigt över landskapet
 STR_TREES_MODE_NORMAL_BUTTON                                    :{BLACK}Normal
@@ -3089,7 +3094,7 @@ STR_TREES_MODE_FOREST_LG_TOOLTIP                                :{BLACK}Plantera
 
 # Land generation window (SE)
 STR_TERRAFORM_TOOLBAR_LAND_GENERATION_CAPTION                   :{WHITE}Skapa mark
-STR_TERRAFORM_TOOLTIP_PLACE_ROCKY_AREAS_ON_LANDSCAPE            :{BLACK}Placera stenar i landskapet
+STR_TERRAFORM_TOOLTIP_PLACE_ROCKY_AREAS_ON_LANDSCAPE            :{BLACK}Placera stenar i landskapet.{}Ctrl+klicka för att ta bort stenar
 STR_TERRAFORM_TOOLTIP_DEFINE_DESERT_AREA                        :{BLACK}Definiera ökenområde.{}Ctrl+Klick för att ta bort ökenområde
 STR_TERRAFORM_TOOLTIP_INCREASE_SIZE_OF_LAND_AREA                :{BLACK}Öka storlek på ytan som ska höjas/sänkas
 STR_TERRAFORM_TOOLTIP_DECREASE_SIZE_OF_LAND_AREA                :{BLACK}Minska storlek på ytan som ska höjas/sänkas
@@ -4213,7 +4218,7 @@ STR_BUY_VEHICLE_TRAM_VEHICLE_CAPTION                            :Nya spårvägsf
 STR_BUY_VEHICLE_TRAIN_ALL_CAPTION                               :Nya rälsfordon
 STR_BUY_VEHICLE_ROAD_VEHICLE_ALL_CAPTION                        :Nya vägfordon
 STR_BUY_VEHICLE_SHIP_CAPTION                                    :Nytt skepp
-STR_BUY_VEHICLE_AIRCRAFT_CAPTION                                :Nytt flygplan
+STR_BUY_VEHICLE_AIRCRAFT_CAPTION                                :Ny luftfarkost
 
 STR_PURCHASE_INFO_COST_WEIGHT                                   :{BLACK}Kostnad: {GOLD}{CURRENCY_LONG}{BLACK} Vikt: {GOLD}{WEIGHT_SHORT}
 STR_PURCHASE_INFO_COST_REFIT_WEIGHT                             :{BLACK}Kostnad: {GOLD}{CURRENCY_LONG}{BLACK} (Kostnad för anpassning: {GOLD}{CURRENCY_LONG}{BLACK}) Vikt: {GOLD}{WEIGHT_SHORT}
@@ -4266,13 +4271,13 @@ STR_CARGO_TYPE_FILTER_NONE                                      :Ingen
 STR_BUY_VEHICLE_TRAIN_LIST_TOOLTIP                              :{BLACK}Tågfordonslista. Klicka på fordon för information. Ctrl+Klick för att visa/dölja denna fordonstyp
 STR_BUY_VEHICLE_ROAD_VEHICLE_LIST_TOOLTIP                       :{BLACK}Vägfordonslista. Klicka på vägfordon för information. Ctrl+Klick för att visa/dölja denna vägfordonstyp
 STR_BUY_VEHICLE_SHIP_LIST_TOOLTIP                               :{BLACK}Skeppslista. Klicka på skepp för information. Ctrl+Klick för att visa/dölja denna skeppstyp
-STR_BUY_VEHICLE_AIRCRAFT_LIST_TOOLTIP                           :{BLACK}Flygfarkostslista. Klicka på flygfarkost för information. Ctrl+Klick för att visa/dölja denna flygfarkosttyp
+STR_BUY_VEHICLE_AIRCRAFT_LIST_TOOLTIP                           :{BLACK}Luftfarkostlista. Klicka på luftfarkost för information. Ctrl+klicka för att visa/dölja denna luftfarkosttyp
 
 ###length VEHICLE_TYPES
 STR_BUY_VEHICLE_TRAIN_BUY_VEHICLE_BUTTON                        :{BLACK}Köp fordon
 STR_BUY_VEHICLE_ROAD_VEHICLE_BUY_VEHICLE_BUTTON                 :{BLACK}Köp fordon
 STR_BUY_VEHICLE_SHIP_BUY_VEHICLE_BUTTON                         :{BLACK}Köp skepp
-STR_BUY_VEHICLE_AIRCRAFT_BUY_VEHICLE_BUTTON                     :{BLACK}Köp flygplan
+STR_BUY_VEHICLE_AIRCRAFT_BUY_VEHICLE_BUTTON                     :{BLACK}Köp luftfarkost
 
 ###length VEHICLE_TYPES
 STR_BUY_VEHICLE_TRAIN_BUY_REFIT_VEHICLE_BUTTON                  :{BLACK}Köp och anpassa fordon
@@ -4302,7 +4307,7 @@ STR_BUY_VEHICLE_AIRCRAFT_RENAME_BUTTON                          :{BLACK}Byt namn
 STR_BUY_VEHICLE_TRAIN_RENAME_TOOLTIP                            :{BLACK}Byt namn på tågvagn
 STR_BUY_VEHICLE_ROAD_VEHICLE_RENAME_TOOLTIP                     :{BLACK}Byt namn på vägfordonstyp
 STR_BUY_VEHICLE_SHIP_RENAME_TOOLTIP                             :{BLACK}Byt namn på skeppstyp
-STR_BUY_VEHICLE_AIRCRAFT_RENAME_TOOLTIP                         :{BLACK}Byt namn på flygplanstyp
+STR_BUY_VEHICLE_AIRCRAFT_RENAME_TOOLTIP                         :{BLACK}Byt namn på luftfarkosttyp
 
 ###length VEHICLE_TYPES
 STR_BUY_VEHICLE_TRAIN_HIDE_TOGGLE_BUTTON                        :{BLACK}Dölj
@@ -4340,7 +4345,7 @@ STR_DEPOT_VEHICLE_TOOLTIP_CHAIN                                 :{BLACK}{NUM} fo
 STR_DEPOT_VEHICLE_TOOLTIP_CARGO                                 :{}{CARGO_LONG} ({CARGO_SHORT})
 
 ###length VEHICLE_TYPES
-STR_DEPOT_TRAIN_LIST_TOOLTIP                                    :{BLACK}Tåg - drag vagn/lok med vänsterklick för att lägga till/ta bort från tåg, eller högerklick för information. Ctrl+Klick för att utföra respektive funktion på efterföljande kedja
+STR_DEPOT_TRAIN_LIST_TOOLTIP                                    :{BLACK}Tåg - dra vagn/lok med vänsterklick för att lägga till/ta bort från tåg, eller högerklick för information. Ctrl+klicka för att utföra respektive funktion på efterföljande kedja
 STR_DEPOT_ROAD_VEHICLE_LIST_TOOLTIP                             :{BLACK}Fordon - högerklicka på fordon för information
 STR_DEPOT_SHIP_LIST_TOOLTIP                                     :{BLACK}Skepp - högerklicka på skepp för information
 STR_DEPOT_AIRCRAFT_LIST_TOOLTIP                                 :{BLACK}Flygplan - högerklicka på flygplan för information
@@ -5433,7 +5438,7 @@ STR_ERROR_CAN_T_BUY_AIRCRAFT                                    :Kan inte köpa 
 STR_ERROR_CAN_T_RENAME_TRAIN_TYPE                               :Kan inte byta namn på tågets fordonstyp...
 STR_ERROR_CAN_T_RENAME_ROAD_VEHICLE_TYPE                        :Kan inte byta namn på vägfordonstyp...
 STR_ERROR_CAN_T_RENAME_SHIP_TYPE                                :Kan inte byta namn på skeppstyp...
-STR_ERROR_CAN_T_RENAME_AIRCRAFT_TYPE                            :Kan inte byta namn på flygplanstyp...
+STR_ERROR_CAN_T_RENAME_AIRCRAFT_TYPE                            :Kan inte byta namn på luftfarkosttyp...
 
 ###length VEHICLE_TYPES
 STR_ERROR_CAN_T_SELL_TRAIN                                      :Kan inte sälja järnvägsfordon...

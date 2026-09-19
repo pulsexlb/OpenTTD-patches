@@ -2755,7 +2755,7 @@ public:
 	virtual EventState OnCTRLStateChange() override
 	{
 		this->UpdateButtonState();
-		return ES_NOT_HANDLED;
+		return EventState::NotHandled;
 	}
 
 	void UpdateButtonState()
@@ -3170,7 +3170,7 @@ public:
 		DrawString(image.left, image.right, image.top, GetString(STR_DECOUPLE_PREVIEW_COUNT, order->GetNumDecouple()), TextColour::Black);
 		image.top += GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal;
 		DrawTrainImage(v->First(), image.WithHeight(ScaleGUITrad(GetVehicleHeight(VehicleType::Train)), false),
-				VehicleID::Invalid(), EIT_IN_DETAILS, this->decouple_scroll->GetPosition());
+				VehicleID::Invalid(), EngineImageType::InDetails, this->decouple_scroll->GetPosition());
 		auto draw_cut = [&](const Train *boundary, bool selected) {
 			int offset = GetCutPosition(v, boundary) - this->decouple_scroll->GetPosition();
 			int x = _current_text_dir == TD_RTL ? image.right - offset : image.left + offset;
@@ -4480,7 +4480,7 @@ public:
 		}
 
 		if (this->query_text_widget == WID_O_ADD_VEH_GROUP) {
-			Command<Commands::CreateGroupFromList>::Post(STR_ERROR_GROUP_CAN_T_CREATE, VehicleListIdentifier(VL_SINGLE_VEH, this->vehicle->type, this->vehicle->owner, this->vehicle->index), CargoFilterCriteria::CF_ANY, str.has_value() ? *str : std::string{});
+			Command<Commands::CreateGroupFromList>::Post(STR_ERROR_GROUP_CAN_T_CREATE, VehicleListIdentifier(VehicleListType::SingleVehicle, this->vehicle->type, this->vehicle->owner, this->vehicle->index), CargoFilterCriteria::CF_ANY, str.has_value() ? *str : std::string{});
 		}
 
 		if (this->query_text_widget == WID_O_TEXT_LABEL && str.has_value()) {
@@ -4905,7 +4905,7 @@ public:
 
 	EventState OnHotkey(int hotkey) override
 	{
-		if (!IsLocalTarget()) return ES_NOT_HANDLED;
+		if (!IsLocalTarget()) return EventState::NotHandled;
 
 		switch (hotkey) {
 			case OHK_SKIP:           this->OrderClick_Skip(); break;
@@ -4924,9 +4924,9 @@ public:
 			case OHK_DUPLICATE:      this->OrderClick_DuplicateHotkey(); break;
 			case OHK_RETARGET_JUMP:  this->OrderClick_RetargetJumpHotkey(); break;
 			case OHK_CLOSE:          this->Close(); break;
-			default: return ES_NOT_HANDLED;
+			default: return EventState::NotHandled;
 		}
-		return ES_HANDLED;
+		return EventState::Handled;
 	}
 
 	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override

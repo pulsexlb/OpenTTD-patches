@@ -8,7 +8,7 @@
 /** @file main_gui.cpp Handling of the main viewport. */
 
 #include "stdafx.h"
-#include "currency.h"
+#include "currency_type.h"
 #include "spritecache.h"
 #include "window_gui.h"
 #include "window_func.h"
@@ -66,7 +66,7 @@ void CcGiveMoney(const CommandCost &result, Money money, CompanyID dest_company)
 	if (!_network_server) {
 		NetworkClientSendChat(NetworkAction::GiveMoney, NetworkChatDestinationType::BroadcastSelfSend, dest_company.base(), msg, NetworkTextMessageData(result.GetCost(), auxdata));
 	} else {
-		NetworkServerSendChat(NetworkAction::GiveMoney, NetworkChatDestinationType::BroadcastSelfSend, dest_company.base(), msg, CLIENT_ID_SERVER, NetworkTextMessageData(result.GetCost(), auxdata));
+		NetworkServerSendChat(NetworkAction::GiveMoney, NetworkChatDestinationType::BroadcastSelfSend, dest_company.base(), msg, ClientID::Server, NetworkTextMessageData(result.GetCost(), auxdata));
 	}
 }
 
@@ -307,45 +307,45 @@ struct MainWindow : Window
 	{
 		if (hotkey == GHK_QUIT) {
 			HandleExitGameRequest();
-			return ES_HANDLED;
+			return EventState::Handled;
 		}
 
 		/* Disable all key shortcuts, except quit shortcuts when
 		 * generating the world, otherwise they create threading
 		 * problem during the generating, resulting in random
 		 * assertions that are hard to trigger and debug */
-		if (HasModalProgress()) return ES_NOT_HANDLED;
+		if (HasModalProgress()) return EventState::NotHandled;
 
 		switch (hotkey) {
 			case GHK_ABANDON:
 				/* No point returning from the main menu to itself */
-				if (_game_mode == GameMode::Menu) return ES_HANDLED;
+				if (_game_mode == GameMode::Menu) return EventState::Handled;
 				if (_settings_client.gui.autosave_on_exit) {
 					DoExitSave();
 					_switch_mode = SwitchMode::Menu;
 				} else {
 					AskExitToGameMenu();
 				}
-				return ES_HANDLED;
+				return EventState::Handled;
 
 			case GHK_CONSOLE:
 				IConsoleSwitch();
-				return ES_HANDLED;
+				return EventState::Handled;
 
 			case GHK_BOUNDING_BOXES:
 				ToggleBoundingBoxes();
-				return ES_HANDLED;
+				return EventState::Handled;
 
 			case GHK_DIRTY_BLOCKS:
 				ToggleDirtyBlocks();
-				return ES_HANDLED;
+				return EventState::Handled;
 
 			case GHK_WIDGET_OUTLINES:
 				ToggleWidgetOutlines();
-				return ES_HANDLED;
+				return EventState::Handled;
 		}
 
-		if (_game_mode == GameMode::Menu) return ES_NOT_HANDLED;
+		if (_game_mode == GameMode::Menu) return EventState::NotHandled;
 
 		switch (hotkey) {
 			case GHK_CENTER:
@@ -442,16 +442,16 @@ struct MainWindow : Window
 
 			case GHK_CHAT_SERVER: // send text to the server
 				if (_networking && !_network_server) {
-					ShowNetworkChatQueryWindow(NetworkChatDestinationType::Client, CLIENT_ID_SERVER);
+					ShowNetworkChatQueryWindow(NetworkChatDestinationType::Client, to_underlying(ClientID::Server));
 				}
 				break;
 
 			case GHK_CLOSE_NEWS: // close active news window
-				if (!HideActiveNewsMessage()) return ES_NOT_HANDLED;
+				if (!HideActiveNewsMessage()) return EventState::NotHandled;
 				break;
 
 			case GHK_CLOSE_ERROR: // close active error window
-				if (!HideActiveErrorMessage()) return ES_NOT_HANDLED;
+				if (!HideActiveErrorMessage()) return EventState::NotHandled;
 				break;
 
 			case GHK_CHANGE_MAP_MODE_PREV:
@@ -491,9 +491,9 @@ struct MainWindow : Window
 				break;
 			}
 
-			default: return ES_NOT_HANDLED;
+			default: return EventState::NotHandled;
 		}
-		return ES_HANDLED;
+		return EventState::Handled;
 	}
 
 	void OnScroll(Point delta) override
@@ -642,10 +642,10 @@ void ShowSelectGameWindow();
  */
 void SetupColoursAndInitialWindow()
 {
-	for (Colours i = Colours::Begin; i != Colours::End; i++) {
+	for (Colours i : EnumRange(Colours::End)) {
 		const uint8_t *b = GetNonSprite(GetColourPalette(i), SpriteType::Recolour);
 		assert(b != nullptr);
-		for (Shade j = Shade::Begin; j < Shade::End; j++) {
+		for (Shade j : EnumRange(Shade::End)) {
 			SetColourGradient(i, j, PixelColour{b[0xC6 + to_underlying(j)]});
 		}
 	}

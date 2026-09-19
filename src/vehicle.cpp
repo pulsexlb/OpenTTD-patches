@@ -666,12 +666,12 @@ CommandCost EnsureNoVehicleOnGround(TileIndex tile)
 			return CommandCost(STR_ERROR_TRAIN_IN_THE_WAY);
 		}
 	}
-	if (IsTileType(tile, TileType::Road) || IsAnyRoadStopTile(tile) || (IsTileType(tile, TileType::TunnelBridge) && GetTunnelBridgeTransportType(tile) == TRANSPORT_ROAD)) {
+	if (IsTileType(tile, TileType::Road) || IsAnyRoadStopTile(tile) || (IsTileType(tile, TileType::TunnelBridge) && GetTunnelBridgeTransportType(tile) == TransportType::Road)) {
 		if (GetFirstVehicleOnTile(tile, VehicleType::Road) != nullptr) {
 			return CommandCost(STR_ERROR_ROAD_VEHICLE_IN_THE_WAY);
 		}
 	}
-	if (HasTileWaterClass(tile) || (IsBridgeTile(tile) && GetTunnelBridgeTransportType(tile) == TRANSPORT_WATER)) {
+	if (HasTileWaterClass(tile) || (IsBridgeTile(tile) && GetTunnelBridgeTransportType(tile) == TransportType::Water)) {
 		if (GetFirstVehicleOnTile(tile, VehicleType::Ship) != nullptr) {
 			return CommandCost(STR_ERROR_SHIP_IN_THE_WAY);
 		}
@@ -1707,7 +1707,7 @@ void CallVehicleTicks()
 	RecordSyncEvent(NSRE_VEH_PERIODIC);
 
 	{
-		PerformanceMeasurer framerate(PFE_GL_ECONOMY);
+		PerformanceMeasurer framerate(PerformanceElement::GameLoopEconomy);
 		Station *si_st = nullptr;
 		SCOPE_INFO_FMT([&si_st], "CallVehicleTicks: LoadUnloadStation: {}", StationInfoDumper(si_st));
 		for (Station *st : Station::Iterate()) {
@@ -1742,7 +1742,7 @@ void CallVehicleTicks()
 	}
 	if (!_tick_effect_veh_cache.empty()) RecordSyncEvent(NSRE_VEH_EFFECT);
 	{
-		PerformanceMeasurer framerate(PFE_GL_TRAINS);
+		PerformanceMeasurer framerate(PerformanceElement::GameLoopTrains);
 		for (Train *front : _tick_train_front_cache) {
 			v = front;
 			if (!front->Train::Tick()) continue;
@@ -1755,7 +1755,7 @@ void CallVehicleTicks()
 	}
 	RecordSyncEvent(NSRE_VEH_TRAIN);
 	{
-		PerformanceMeasurer framerate(PFE_GL_ROADVEHS);
+		PerformanceMeasurer framerate(PerformanceElement::GameLoopRoadVehicles);
 		for (RoadVehicle *front : _tick_road_veh_front_cache) {
 			v = front;
 			if (!front->RoadVehicle::Tick()) continue;
@@ -1768,7 +1768,7 @@ void CallVehicleTicks()
 	}
 	if (!_tick_road_veh_front_cache.empty()) RecordSyncEvent(NSRE_VEH_ROAD);
 	{
-		PerformanceMeasurer framerate(PFE_GL_AIRCRAFT);
+		PerformanceMeasurer framerate(PerformanceElement::GameLoopAircraft);
 		for (Aircraft *front : _tick_aircraft_front_cache) {
 			v = front;
 			if (!front->Aircraft::Tick()) continue;
@@ -1780,7 +1780,7 @@ void CallVehicleTicks()
 	}
 	if (!_tick_aircraft_front_cache.empty()) RecordSyncEvent(NSRE_VEH_AIR);
 	{
-		PerformanceMeasurer framerate(PFE_GL_SHIPS);
+		PerformanceMeasurer framerate(PerformanceElement::GameLoopShips);
 		for (Ship *s : _tick_ship_front_cache) {
 			v = s;
 			if (!s->Ship::Tick()) continue;
@@ -1814,7 +1814,7 @@ void CallVehicleTicks()
 		int y = v->y_pos;
 		int z = v->z_pos;
 
-		CommandCost cost = Command<Commands::SellVehicle>::Do(DoCommandFlag::Execute, v->tile, v->index, SellVehicleFlags::SellChain, INVALID_CLIENT_ID);
+		CommandCost cost = Command<Commands::SellVehicle>::Do(DoCommandFlag::Execute, v->tile, v->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 		v = nullptr;
 		if (!cost.Succeeded()) continue;
 
@@ -1961,13 +1961,13 @@ void CallVehicleTicks()
 	_vehicles_to_pay_repair.clear();
 }
 
-void RemoveVirtualTrainsOfUser(uint32_t user)
+void RemoveVirtualTrainsOfUser(ClientID user)
 {
 	if (!_tick_caches_valid || HasChickenBit(DCBF_VEH_TICK_CACHE)) RebuildVehicleTickCaches();
 
 	AutoRestoreBackup cur_company(_current_company, AutoRestoreBackupNoNewValueTag{});
 	for (const Train *front : _tick_train_front_cache) {
-		if (front->IsVirtual() && front->motion_counter == user) {
+		if (front->IsVirtual() && front->motion_counter == to_underlying(user)) {
 			_current_company = front->owner;
 			Command<Commands::DeleteVirtualTrain>::Post(front->index);
 		}
@@ -1998,7 +1998,7 @@ static void DoDrawVehicle(const Vehicle *v)
 		Vehicle *v_mutable = const_cast<Vehicle *>(v);
 		if (HasBit(v_mutable->vcache.cached_veh_flags, VCF_IMAGE_REFRESH) && v_mutable->cur_image_valid_dir != Direction::Invalid) {
 			VehicleSpriteSeq seq;
-			v_mutable->GetImage(v_mutable->cur_image_valid_dir, EIT_ON_MAP, &seq);
+			v_mutable->GetImage(v_mutable->cur_image_valid_dir, EngineImageType::OnMap, &seq);
 			v_mutable->sprite_seq = seq;
 			v_mutable->UpdateSpriteSeqBound();
 			ClrBit(v_mutable->vcache.cached_veh_flags, VCF_IMAGE_REFRESH);
@@ -3423,10 +3423,10 @@ PaletteID GetUncachedTrainPaletteIgnoringGroup(const Train *v)
 void Vehicle::DeleteUnreachedImplicitOrders()
 {
 	if (this->IsGroundVehicle()) {
-		uint16_t &gv_flags = this->GetGroundVehicleFlags();
-		if (HasBit(gv_flags, GVF_SUPPRESS_IMPLICIT_ORDERS)) {
+		GroundVehicleFlags &gv_flags = this->GetGroundVehicleFlags();
+		if (gv_flags.Test(GroundVehicleFlag::SuppressImplicitOrders)) {
 			/* Do not delete orders, only skip them */
-			ClrBit(gv_flags, GVF_SUPPRESS_IMPLICIT_ORDERS);
+			gv_flags.Reset(GroundVehicleFlag::SuppressImplicitOrders);
 			this->cur_implicit_order_index = this->cur_real_order_index;
 			if (this->cur_timetable_order_index != this->cur_real_order_index) {
 				Order *real_timetable_order = this->cur_timetable_order_index != INVALID_VEH_ORDER_ID ? this->GetOrder(this->cur_timetable_order_index) : nullptr;
@@ -3535,7 +3535,7 @@ void Vehicle::BeginLoading()
 		if (this->IsGroundVehicle() &&
 				(in_list == nullptr || !in_list->IsType(OT_IMPLICIT) ||
 				in_list->GetDestination() != this->last_station_visited)) {
-			bool suppress_implicit_orders = HasBit(this->GetGroundVehicleFlags(), GVF_SUPPRESS_IMPLICIT_ORDERS);
+			bool suppress_implicit_orders = this->GetGroundVehicleFlags().Test(GroundVehicleFlag::SuppressImplicitOrders);
 			/* Do not create consecutive duplicates of implicit orders */
 			const Order *prev_order = this->cur_implicit_order_index > 0 ? this->GetOrder(this->cur_implicit_order_index - 1) : (this->GetNumOrders() > 1 ? this->GetLastOrder() : nullptr);
 			if (prev_order == nullptr ||
@@ -3601,9 +3601,8 @@ void Vehicle::BeginLoading()
 					if (this->cur_implicit_order_index > 0) --this->cur_implicit_order_index;
 
 					/* InsertOrder disabled creation of implicit orders for all vehicles with the same implicit order.
-					 * Re-enable it for this vehicle */
-					uint16_t &gv_flags = this->GetGroundVehicleFlags();
-					ClrBit(gv_flags, GVF_SUPPRESS_IMPLICIT_ORDERS);
+					 * Reenable it for this vehicle */
+					this->GetGroundVehicleFlags().Reset(GroundVehicleFlag::SuppressImplicitOrders);
 				}
 			}
 		}
@@ -4132,7 +4131,7 @@ CommandCost Vehicle::SendToDepot(DoCommandFlags flags, DepotCommandFlags command
 				int y = this->y_pos;
 				int z = this->z_pos;
 
-				CommandCost cost = Command<Commands::SellVehicle>::Do(flags, this->tile, this->index, SellVehicleFlags::SellChain, INVALID_CLIENT_ID);
+				CommandCost cost = Command<Commands::SellVehicle>::Do(flags, this->tile, this->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 				if (cost.Succeeded()) {
 					if (IsLocalCompany()) {
 						if (cost.GetCost() != 0) {
@@ -4157,8 +4156,7 @@ CommandCost Vehicle::SendToDepot(DoCommandFlags flags, DepotCommandFlags command
 			if (this->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders)) this->IncrementRealOrderIndex();
 
 			if (this->IsGroundVehicle()) {
-				uint16_t &gv_flags = this->GetGroundVehicleFlags();
-				SetBit(gv_flags, GVF_SUPPRESS_IMPLICIT_ORDERS);
+				this->GetGroundVehicleFlags().Set(GroundVehicleFlag::SuppressImplicitOrders);
 			}
 
 			/* We don't cancel a breakdown-related goto depot order, we only change whether to halt or not */
@@ -4236,8 +4234,7 @@ CommandCost Vehicle::SendToDepot(DoCommandFlags flags, DepotCommandFlags command
 		}
 
 		if (this->IsGroundVehicle() && this->GetNumManualOrders() > 0) {
-			uint16_t &gv_flags = this->GetGroundVehicleFlags();
-			SetBit(gv_flags, GVF_SUPPRESS_IMPLICIT_ORDERS);
+			this->GetGroundVehicleFlags().Set(GroundVehicleFlag::SuppressImplicitOrders);
 		}
 
 		this->SetDestTile(closest_depot.location);
@@ -4676,7 +4673,7 @@ void Vehicle::RemoveFromShared()
 	/* Remember if we were first and the old window number before RemoveVehicle()
 	 * as this changes first if needed. */
 	bool were_first = (this->FirstShared() == this);
-	VehicleListIdentifier vli(VL_SHARED_ORDERS, this->type, this->owner, this->FirstShared()->index);
+	VehicleListIdentifier vli(VehicleListType::VehicleSharedOrders, this->type, this->owner, this->FirstShared()->index);
 
 	this->orders->RemoveVehicle(this);
 
@@ -4757,12 +4754,12 @@ void DumpVehicleFlagsGeneric(const Vehicle *v, T dump, U dump_header)
 	dump('N', "VCF_IMAGE_REFRESH_NEXT",     HasBit(v->vcache.cached_veh_flags, VCF_IMAGE_REFRESH_NEXT));
 	dump('c', "VCF_IMAGE_CURVATURE",        HasBit(v->vcache.cached_veh_flags, VCF_IMAGE_CURVATURE));
 	if (v->IsGroundVehicle()) {
-		uint16_t gv_flags = v->GetGroundVehicleFlags();
+		GroundVehicleFlags gv_flags = v->GetGroundVehicleFlags();
 		dump_header("gvf:", "GroundVehicleFlags:");
-		dump('u', "GVF_GOINGUP_BIT",              HasBit(gv_flags, GVF_GOINGUP_BIT));
-		dump('d', "GVF_GOINGDOWN_BIT",            HasBit(gv_flags, GVF_GOINGDOWN_BIT));
-		dump('s', "GVF_SUPPRESS_IMPLICIT_ORDERS", HasBit(gv_flags, GVF_SUPPRESS_IMPLICIT_ORDERS));
-		dump('c', "GVF_CHUNNEL_BIT",              HasBit(gv_flags, GVF_CHUNNEL_BIT));
+		dump('u', "GoingUp",                gv_flags.Test(GroundVehicleFlag::GoingUp));
+		dump('d', "GoingDown",              gv_flags.Test(GroundVehicleFlag::GoingDown));
+		dump('s', "SuppressImplicitOrders", gv_flags.Test(GroundVehicleFlag::SuppressImplicitOrders));
+		dump('c', "Chunnel",                gv_flags.Test(GroundVehicleFlag::Chunnel));
 	}
 	if (v->type == VehicleType::Train) {
 		const Train *t = Train::From(v);

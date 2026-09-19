@@ -578,7 +578,7 @@ bool Engine::IsVariantHidden(CompanyID c) const
 void EngineOverrideManager::ResetToDefaultMapping()
 {
 	this->mappings.clear();
-	for (VehicleType type = VehicleType::Train; type <= VehicleType::Aircraft; type++) {
+	for (VehicleType type : EnumRange(VehicleType::CompanyEnd)) {
 		for (uint8_t internal_id = 0; internal_id < GetOriginalEngineCount(type); internal_id++) {
 			this->mappings.push_back({ INVALID_GRFID, internal_id, type, internal_id });
 		}
@@ -931,9 +931,9 @@ static void EnableEngineForCompany(EngineID eid, CompanyID company)
 
 		/* Update the toolbar. */
 		InvalidateWindowData(WindowClass::MainToolbar, 0);
-		if (e->type == VehicleType::Road) InvalidateWindowData(WindowClass::BuildToolbar, TRANSPORT_ROAD);
-		if (e->type == VehicleType::Ship) InvalidateWindowData(WindowClass::BuildToolbar, TRANSPORT_WATER);
-		if (e->type == VehicleType::Aircraft) InvalidateWindowData(WindowClass::BuildToolbar, TRANSPORT_AIR);
+		if (e->type == VehicleType::Road) InvalidateWindowData(WindowClass::BuildToolbar, TransportType::Road);
+		if (e->type == VehicleType::Ship) InvalidateWindowData(WindowClass::BuildToolbar, TransportType::Water);
+		if (e->type == VehicleType::Aircraft) InvalidateWindowData(WindowClass::BuildToolbar, TransportType::Air);
 	}
 }
 
@@ -1216,9 +1216,9 @@ static void NewVehicleAvailable(Engine *e)
 	}
 
 	/* Update the toolbar. */
-	if (e->type == VehicleType::Road) InvalidateWindowData(WindowClass::BuildToolbar, TRANSPORT_ROAD);
-	if (e->type == VehicleType::Ship) InvalidateWindowData(WindowClass::BuildToolbar, TRANSPORT_WATER);
-	if (e->type == VehicleType::Aircraft) InvalidateWindowData(WindowClass::BuildToolbar, TRANSPORT_AIR);
+	if (e->type == VehicleType::Road) InvalidateWindowData(WindowClass::BuildToolbar, TransportType::Road);
+	if (e->type == VehicleType::Ship) InvalidateWindowData(WindowClass::BuildToolbar, TransportType::Water);
+	if (e->type == VehicleType::Aircraft) InvalidateWindowData(WindowClass::BuildToolbar, TransportType::Air);
 
 	/* Remove from preview windows */
 	InvalidateWindowClassesData(WindowClass::EnginePreview);

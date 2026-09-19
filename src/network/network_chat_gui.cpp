@@ -276,7 +276,7 @@ static void SendChat(std::string_view buf, NetworkChatDestinationType type, int 
 	if (!_network_server) {
 		MyClient::SendChat(action, type, dest, buf, NetworkTextMessageData());
 	} else {
-		NetworkServerSendChat(action, type, dest, buf, CLIENT_ID_SERVER);
+		NetworkServerSendChat(action, type, dest, buf, ClientID::Server);
 	}
 }
 
@@ -477,10 +477,10 @@ struct NetworkChatWindow : public Window {
 
 	EventState OnKeyPress(char32_t key, uint16_t keycode) override
 	{
-		EventState state = ES_NOT_HANDLED;
+		EventState state = EventState::NotHandled;
 		if (keycode == WKC_TAB) {
 			ChatTabCompletion();
-			state = ES_HANDLED;
+			state = EventState::Handled;
 		}
 		return state;
 	}

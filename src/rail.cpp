@@ -42,7 +42,7 @@ RailType GetTileRailType(TileIndex tile)
 			break;
 
 		case TileType::TunnelBridge:
-			if (GetTunnelBridgeTransportType(tile) == TRANSPORT_RAIL) return GetRailType(tile);
+			if (GetTunnelBridgeTransportType(tile) == TransportType::Rail) return GetRailType(tile);
 			break;
 
 		default:
@@ -195,7 +195,7 @@ RailTypes AddDateIntroducedRailTypes(RailTypes current, CalTime::Date date)
 		date = std::min<CalTime::Date>(date, CalTime::ConvertYMDToDate(_settings_game.vehicle.no_introduce_vehicles_after, 0, 1) - 1);
 	}
 
-	for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
+	for (RailType rt : EnumRange(RAILTYPE_END)) {
 		const RailTypeInfo *rti = GetRailTypeInfo(rt);
 		/* Unused rail type. */
 		if (rti->label == 0) continue;

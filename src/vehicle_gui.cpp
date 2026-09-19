@@ -63,7 +63,7 @@
 #include "safeguards.h"
 
 
-static std::array<VehicleTypeIndexArray<BaseVehicleListWindow::GroupBy>, VLT_END> _grouping{};
+static EnumIndexArray<VehicleTypeIndexArray<BaseVehicleListWindow::GroupBy>, VehicleListType, VehicleListType::End> _grouping{};
 std::array<Sorting, BaseVehicleListWindow::GB_END> _sorting{};
 
 static BaseVehicleListWindow::VehicleIndividualSortFunction VehicleNumberSorter;
@@ -1185,7 +1185,7 @@ struct RefitWindow : public Window {
 			case WID_VR_VEHICLE_PANEL_DISPLAY: {
 				Vehicle *v = Vehicle::Get(this->window_number);
 				DrawVehicleImage(v, r.WithX(this->sprite_left, this->sprite_right),
-					VehicleID::Invalid(), EIT_IN_DETAILS, this->hscroll != nullptr ? this->hscroll->GetPosition() : 0);
+					VehicleID::Invalid(), EngineImageType::InDetails, this->hscroll != nullptr ? this->hscroll->GetPosition() : 0);
 
 				/* Highlight selected vehicles. */
 				if (this->order != INVALID_VEH_ORDER_ID) break;
@@ -1285,7 +1285,7 @@ struct RefitWindow : public Window {
 				this->BuildRefitList();
 
 				/* The vehicle width has changed too. */
-				this->vehicle_width = GetVehicleWidth(Vehicle::Get(this->window_number), EIT_IN_DETAILS);
+				this->vehicle_width = GetVehicleWidth(Vehicle::Get(this->window_number), EngineImageType::InDetails);
 				uint max_width = 0;
 
 				/* Check the width of all cargo information strings. */
@@ -1490,7 +1490,7 @@ struct RefitWindow : public Window {
 
 	void OnResize() override
 	{
-		this->vehicle_width = GetVehicleWidth(Vehicle::Get(this->window_number), EIT_IN_DETAILS);
+		this->vehicle_width = GetVehicleWidth(Vehicle::Get(this->window_number), EngineImageType::InDetails);
 		this->vscroll->SetCapacityFromWidget(this, WID_VR_MATRIX);
 		if (this->hscroll != nullptr) this->hscroll->SetCapacityFromWidget(this, WID_VR_VEHICLE_PANEL_DISPLAY);
 	}
@@ -2324,7 +2324,7 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 				}
 			}
 
-			DrawVehicleImage(v, {image_left, ir.top, image_right, ir.bottom}, selected_vehicle, EIT_IN_LIST, 0);
+			DrawVehicleImage(v, {image_left, ir.top, image_right, ir.bottom}, selected_vehicle, EngineImageType::InList, 0);
 			DrawString(tr.left, tr.right, ir.top + line_height - GetCharacterHeight(FontSize::Small) - WidgetDimensions::scaled.framerect.bottom - 1, GetStringWithArgs(str, params), TextColour::Black);
 
 			/* company colour stripe along vehicle description row */
@@ -2380,7 +2380,7 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 					DrawSprite(SPR_WARNING_SIGN, PAL_NONE, vehicle_button_x, ir.top + GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal + profit.height);
 				}
 
-				DrawVehicleImage(v, ir.WithX(image_left, image_right), selected_vehicle, EIT_IN_LIST, 0);
+				DrawVehicleImage(v, ir.WithX(image_left, image_right), selected_vehicle, EngineImageType::InList, 0);
 
 				if (_settings_client.gui.show_cargo_in_vehicle_lists) {
 					/* Get the cargoes the vehicle can carry */
@@ -2432,7 +2432,7 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 
 				for (int i = 0; i < static_cast<int>(vehgroup.NumVehicles()); ++i) {
 					if (image_left + WidgetDimensions::scaled.hsep_wide * i >= image_right) break; // Break if there is no more space to draw any more vehicles anyway.
-					DrawVehicleImage(vehgroup.vehicles_begin[i], ir.WithX(image_left + WidgetDimensions::scaled.hsep_wide * i, image_right), selected_vehicle, EIT_IN_LIST, 0);
+					DrawVehicleImage(vehgroup.vehicles_begin[i], ir.WithX(image_left + WidgetDimensions::scaled.hsep_wide * i, image_right), selected_vehicle, EngineImageType::InList, 0);
 				}
 
 				GroupID gid = vehgroup.vehicles_begin[0]->group_id;
@@ -2535,7 +2535,7 @@ uint BaseVehicleListWindow::GetSorterDisableMask(VehicleType type) const
 	uint mask = 0;
 	if (this->grouping == GB_NONE) {
 		if (type != VehicleType::Train && type != VehicleType::Road) mask |= (1 << VST_LENGTH);
-		if (type != VehicleType::Train || _settings_game.vehicle.train_acceleration_model == AM_ORIGINAL) mask |= (1 << VST_MAX_SPEED_LOADED);
+		if (type != VehicleType::Train || _settings_game.vehicle.train_acceleration_model == AccelerationModel::Original) mask |= (1 << VST_MAX_SPEED_LOADED);
 	}
 	return mask;
 }
@@ -2554,9 +2554,9 @@ private:
 
 	StringID GetChangeOrderStringID() const
 	{
-		if (VehicleListIdentifier::UnPack(this->window_number).type == VL_STATION_LIST) {
+		if (VehicleListIdentifier::UnPack(this->window_number).type == VehicleListType::Station) {
 			return (BaseStation::Get(this->vli.index)->facilities.Test(StationFacility::Waypoint)) ? STR_VEHICLE_LIST_CHANGE_ORDER_WAYPOINT : STR_VEHICLE_LIST_CHANGE_ORDER_STATION;
-		} else if (VehicleListIdentifier::UnPack(this->window_number).type == VL_DEPOT_LIST) {
+		} else if (VehicleListIdentifier::UnPack(this->window_number).type == VehicleListType::Depot) {
 			return STR_VEHICLE_LIST_CHANGE_ORDER_TRAIN_DEPOT + to_underlying(this->vli.vtype);
 		} else {
 			return 0;
@@ -2576,7 +2576,7 @@ public:
 
 		this->CreateNestedTree();
 
-		this->GetWidget<NWidgetStacked>(WID_VL_FILTER_BY_CARGO_SEL)->SetDisplayedPlane((this->vli.type == VL_SHARED_ORDERS || this->vli.type == VL_SINGLE_VEH) ? SZSP_NONE : 0);
+		this->GetWidget<NWidgetStacked>(WID_VL_FILTER_BY_CARGO_SEL)->SetDisplayedPlane((this->vli.type == VehicleListType::VehicleSharedOrders || this->vli.type == VehicleListType::SingleVehicle) ? SZSP_NONE : 0);
 
 		this->vscroll = this->GetScrollbar(WID_VL_SCROLLBAR);
 
@@ -2584,7 +2584,7 @@ public:
 		this->GetWidget<NWidgetCore>(WID_VL_LIST)->SetToolTip(STR_VEHICLE_LIST_TRAIN_LIST_TOOLTIP + to_underlying(this->vli.vtype));
 
 		NWidgetStacked *nwi = this->GetWidget<NWidgetStacked>(WID_VL_CAPTION_SELECTION);
-		if (this->vli.type == VL_SHARED_ORDERS) {
+		if (this->vli.type == VehicleListType::VehicleSharedOrders) {
 			this->GetWidget<NWidgetCore>(WID_VL_CAPTION_SHARED_ORDERS)->SetString(STR_VEHICLE_LIST_SHARED_ORDERS_LIST_CAPTION);
 			/* If we are in the shared orders window, then disable the group-by dropdown menu.
 			 * Remove this when the group-by dropdown menu has another option apart from grouping by shared orders. */
@@ -2651,7 +2651,7 @@ public:
 				break;
 
 			case WID_VL_MANAGE_VEHICLES_DROPDOWN: {
-				Dimension d = this->GetActionDropdownSize(this->vli.type == VL_STANDARD, false,
+				Dimension d = this->GetActionDropdownSize(this->vli.type == VehicleListType::Company, false,
 						this->vli.vtype == VehicleType::Train, this->GetChangeOrderStringID());
 				d.height += padding.height;
 				d.width  += padding.width;
@@ -2679,16 +2679,16 @@ public:
 			case WID_VL_CAPTION:
 			case WID_VL_CAPTION_SHARED_ORDERS: {
 				switch (this->vli.type) {
-					case VL_SHARED_ORDERS: // Shared Orders
+					case VehicleListType::VehicleSharedOrders: // Shared Orders
 						return GetString(stringid, this->vehicles.size());
 
-					case VL_STANDARD: // Company Name
+					case VehicleListType::Company: // Company Name
 						return GetString(stringid, STR_COMPANY_NAME, this->vli.ToCompanyID(), std::monostate{}, this->vehicles.size());
 
-					case VL_STATION_LIST: // Station/Waypoint Name
+					case VehicleListType::Station: // Station/Waypoint Name
 						return GetString(stringid, Station::IsExpected(BaseStation::Get(this->vli.ToStationID())) ? STR_STATION_NAME : STR_WAYPOINT_NAME, this->vli.ToStationID(), std::monostate{}, this->vehicles.size());
 
-					case VL_DEPOT_LIST:
+					case VehicleListType::Depot:
 						return GetString(stringid, STR_DEPOT_CAPTION, this->vli.vtype, this->vli.ToDestinationID(), this->vehicles.size());
 
 					default: NOT_REACHED();
@@ -2705,7 +2705,7 @@ public:
 		switch (widget) {
 			case WID_VL_SORT_ORDER:
 				/* draw arrow pointing up/down for ascending/descending sorting */
-				this->DrawSortButtonState(widget, this->vehgroups.IsDescSortOrder() ? SBS_DOWN : SBS_UP);
+				this->DrawSortButton(widget, this->vehgroups.IsDescSortOrder());
 				break;
 
 			case WID_VL_LIST:
@@ -2735,9 +2735,9 @@ public:
 			nwi->SetDirty(this);
 		}
 		if (show_buttons) {
-			this->SetWidgetDisabledState(WID_VL_AVAILABLE_VEHICLES, this->owner != _local_company || this->vli.type != VL_STANDARD);
+			this->SetWidgetDisabledState(WID_VL_AVAILABLE_VEHICLES, this->owner != _local_company || this->vli.type != VehicleListType::Company);
 			this->SetWidgetDisabledState(WID_VL_MANAGE_VEHICLES_DROPDOWN, !this->ShouldShowActionDropdownList());
-			this->SetWidgetsDisabledState(this->owner != _local_company || this->vehicles.empty() || (this->vli.type == VL_STANDARD && _settings_client.gui.disable_top_veh_list_mass_actions),
+			this->SetWidgetsDisabledState(this->owner != _local_company || this->vehicles.empty() || (this->vli.type == VehicleListType::Company && _settings_client.gui.disable_top_veh_list_mass_actions),
 				WID_VL_STOP_ALL,
 				WID_VL_START_ALL);
 		}
@@ -2758,7 +2758,7 @@ public:
 	{
 		switch (widget) {
 			case WID_VL_ORDER_VIEW: // Open the shared orders window
-				assert(this->vli.type == VL_SHARED_ORDERS);
+				assert(this->vli.type == VehicleListType::VehicleSharedOrders);
 				assert(!this->vehicles.empty());
 				ShowOrdersWindow(this->vehicles[0]);
 				break;
@@ -2831,8 +2831,8 @@ public:
 
 			case WID_VL_MANAGE_VEHICLES_DROPDOWN: {
 				VehicleListIdentifier vli = VehicleListIdentifier::UnPack(this->window_number);
-				DropDownList list = this->BuildActionDropdownList(vli.type == VL_STANDARD, false,
-						this->vli.vtype == VehicleType::Train, this->GetChangeOrderStringID(), true, vli.type == VL_STANDARD);
+				DropDownList list = this->BuildActionDropdownList(vli.type == VehicleListType::Company, false,
+						this->vli.vtype == VehicleType::Train, this->GetChangeOrderStringID(), true, vli.type == VehicleListType::Company);
 				ShowDropDownList(this, std::move(list), -1, WID_VL_MANAGE_VEHICLES_DROPDOWN);
 				break;
 			}
@@ -2921,7 +2921,7 @@ public:
 	{
 		/* check depot first */
 		if (IsDepotTile(tile) && GetDepotVehicleType(tile) == this->vli.vtype) {
-			if (this->vli.type != VL_DEPOT_LIST) return;
+			if (this->vli.type != VehicleListType::Depot) return;
 			if (!IsInfraTileUsageAllowed(this->vli.vtype, this->vli.company, tile)) return;
 			if (this->vli.vtype == VehicleType::Road && GetPresentRoadTramTypes(Depot::Get(this->vli.index)->xy) != GetPresentRoadTramTypes(tile)) return;
 
@@ -2935,7 +2935,7 @@ public:
 		if ((IsRailWaypointTile(tile) && this->vli.vtype == VehicleType::Train && IsInfraTileUsageAllowed(VehicleType::Train, this->vli.company, tile))
 				|| (IsRoadWaypointTile(tile) && this->vli.vtype == VehicleType::Road && IsInfraTileUsageAllowed(VehicleType::Road, this->vli.company, tile))
 				|| (IsBuoyTile(tile) && this->vli.vtype == VehicleType::Ship)) {
-			if (this->vli.type != VL_STATION_LIST) return;
+			if (this->vli.type != VehicleListType::Station) return;
 			if (!Station::Get(this->vli.index)->facilities.Test(StationFacility::Waypoint)) return;
 			Command<Commands::MassChangeOrder>::Post(this->vli.index, this->vli.vtype, OT_GOTO_WAYPOINT, this->GetCargoFilter(), GetStationIndex(tile));
 			ResetObjectToPlace();
@@ -2943,7 +2943,7 @@ public:
 		}
 
 		if (IsTileType(tile, TileType::Station)) {
-			if (this->vli.type != VL_STATION_LIST) return;
+			if (this->vli.type != VehicleListType::Station) return;
 			if (BaseStation::Get(this->vli.index)->facilities.Test(StationFacility::Waypoint)) return;
 
 			StationID st_index = GetStationIndex(tile);
@@ -2965,7 +2965,7 @@ public:
 	void OnGameTick() override
 	{
 		if (this->vehgroups.NeedResort()) {
-			StationID station = (this->vli.type == VL_STATION_LIST) ? this->vli.ToStationID() : StationID::Invalid();
+			StationID station = (this->vli.type == VehicleListType::Station) ? this->vli.ToStationID() : StationID::Invalid();
 
 			Debug(misc, 3, "Periodic resort {} list company {} at station {}", this->vli.vtype, this->owner, station);
 			this->SetDirty();
@@ -2984,7 +2984,7 @@ public:
 	 */
 	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
 	{
-		if (!gui_scope && HasBit(data, 31) && this->vli.type == VL_SHARED_ORDERS) {
+		if (!gui_scope && HasBit(data, 31) && this->vli.type == VehicleListType::VehicleSharedOrders) {
 			/* Needs to be done in command-scope, so everything stays valid */
 			this->vli.SetIndex(GB(data, 0, 20));
 			this->window_number = this->vli.ToWindowNumber();
@@ -2995,7 +2995,7 @@ public:
 		if (data == 0) {
 			/* This needs to be done in command-scope to enforce rebuilding before resorting invalid data */
 			this->vehgroups.ForceRebuild();
-			if (this->vli.type == VL_SHARED_ORDERS && !_settings_client.gui.enable_single_veh_shared_order_gui && this->vehicles.size() == 1) {
+			if (this->vli.type == VehicleListType::VehicleSharedOrders && !_settings_client.gui.enable_single_veh_shared_order_gui && this->vehicles.size() == 1) {
 				this->Close();
 				return;
 			}
@@ -3056,23 +3056,23 @@ void ShowVehicleListWindow(CompanyID company, VehicleType vehicle_type)
 	if ((_settings_client.gui.advanced_vehicle_list > (uint)(company != _local_company)) != _ctrl_pressed) {
 		ShowCompanyGroup(company, vehicle_type);
 	} else {
-		ShowVehicleListWindowLocal(company, VL_STANDARD, vehicle_type, company.base());
+		ShowVehicleListWindowLocal(company, VehicleListType::Company, vehicle_type, company.base());
 	}
 }
 
 void ShowVehicleListWindow(const Vehicle *v)
 {
-	ShowVehicleListWindowLocal(v->owner, VL_SHARED_ORDERS, v->type, v->FirstShared()->index.base());
+	ShowVehicleListWindowLocal(v->owner, VehicleListType::VehicleSharedOrders, v->type, v->FirstShared()->index.base());
 }
 
 void ShowVehicleListWindow(CompanyID company, VehicleType vehicle_type, StationID station)
 {
-	ShowVehicleListWindowLocal(company, VL_STATION_LIST, vehicle_type, station.base());
+	ShowVehicleListWindowLocal(company, VehicleListType::Station, vehicle_type, station.base());
 }
 
 void ShowVehicleListWindow(CompanyID company, VehicleType vehicle_type, TileIndex depot_tile)
 {
-	ShowVehicleListWindowLocal(company, VL_DEPOT_LIST, vehicle_type, GetDepotDestinationIndex(depot_tile).base());
+	ShowVehicleListWindowLocal(company, VehicleListType::Depot, vehicle_type, GetDepotDestinationIndex(depot_tile).base());
 }
 
 void DirtyVehicleListWindowForVehicle(const Vehicle *v)
@@ -3546,9 +3546,9 @@ struct VehicleDetailsWindow : Window {
 				/* Draw max speed */
 				uint64_t max_speed = PackVelocity(v->GetDisplayMaxSpeed(), v->type);
 				if (v->type == VehicleType::Train ||
-						(v->type == VehicleType::Road && _settings_game.vehicle.roadveh_acceleration_model != AM_ORIGINAL)) {
+						(v->type == VehicleType::Road && _settings_game.vehicle.roadveh_acceleration_model != AccelerationModel::Original)) {
 					const GroundVehicleCache *gcache = v->GetGroundVehicleCache();
-					if (v->type == VehicleType::Train && (_settings_game.vehicle.train_acceleration_model == AM_ORIGINAL ||
+					if (v->type == VehicleType::Train && (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Original ||
 							Train::From(v)->GetAccelerationType() == VehicleAccelerationModel::Maglev)) {
 						DrawString(tr, GetString(STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED, gcache->cached_weight, gcache->cached_power, max_speed));
 					} else {
@@ -3687,15 +3687,15 @@ struct VehicleDetailsWindow : Window {
 			case WID_VD_MIDDLE_DETAILS: {
 				/* For other vehicles, at the place of the matrix. */
 				bool rtl = _current_text_dir == TD_RTL;
-				uint sprite_width = GetSingleVehicleWidth(v, EIT_IN_DETAILS) + WidgetDimensions::scaled.framerect.Horizontal();
+				uint sprite_width = GetSingleVehicleWidth(v, EngineImageType::InDetails) + WidgetDimensions::scaled.framerect.Horizontal();
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
 
 				/* Articulated road vehicles use a complete line. */
 				if (v->type == VehicleType::Road && v->HasArticulatedPart()) {
-					DrawVehicleImage(v, tr.WithHeight(ScaleGUITrad(GetVehicleHeight(v->type)), false), VehicleID::Invalid(), EIT_IN_DETAILS, 0);
+					DrawVehicleImage(v, tr.WithHeight(ScaleGUITrad(GetVehicleHeight(v->type)), false), VehicleID::Invalid(), EngineImageType::InDetails, 0);
 				} else {
 					Rect sr = tr.WithWidth(sprite_width, rtl);
-					DrawVehicleImage(v, sr.WithHeight(ScaleGUITrad(GetVehicleHeight(v->type)), false), VehicleID::Invalid(), EIT_IN_DETAILS, 0);
+					DrawVehicleImage(v, sr.WithHeight(ScaleGUITrad(GetVehicleHeight(v->type)), false), VehicleID::Invalid(), EngineImageType::InDetails, 0);
 				}
 
 				DrawVehicleDetails(v, tr.Indent(sprite_width, rtl), 0, 0, this->tab);
@@ -4054,7 +4054,7 @@ void CcStartStopVehicle(const CommandCost &result, VehicleID veh_id, bool evalua
 	StringID msg = v->vehstatus.Test(VehState::Stopped) ? STR_VEHICLE_COMMAND_STOPPED : STR_VEHICLE_COMMAND_STARTED;
 	Vehicle *moving_front = v->GetMovingFront();
 	Point pt = RemapCoords(moving_front->x_pos, moving_front->y_pos, moving_front->z_pos);
-	AddTextEffect(msg, pt.x, pt.y, DAY_TICKS, TE_RISING);
+	AddTextEffect(msg, pt.x, pt.y, DAY_TICKS, TextEffectMode::Rising);
 }
 
 /**
@@ -4812,9 +4812,9 @@ public:
 		if (widget == WID_VV_GOTO_DEPOT && _settings_client.gui.hover_delay_ms == 0) {
 			const Vehicle *v = Vehicle::Get(this->window_number);
 			if (_settings_client.gui.show_depot_sell_gui && v->current_order.IsType(OT_GOTO_DEPOT)) {
-				GuiShowTooltips(this, GetEncodedString(STR_VEHICLE_VIEW_SEND_TO_DEPOT_MENU), TCC_RIGHT_CLICK);
+				GuiShowTooltips(this, GetEncodedString(STR_VEHICLE_VIEW_SEND_TO_DEPOT_MENU), TooltipCloseCondition::RightClick);
 			} else {
-				GuiShowTooltips(this, GetEncodedString(STR_VEHICLE_VIEW_SEND_TO_DEPOT_TOOLTIP_SHIFT, STR_VEHICLE_VIEW_TRAIN_SEND_TO_DEPOT_TOOLTIP + to_underlying(v->type)), TCC_RIGHT_CLICK);
+				GuiShowTooltips(this, GetEncodedString(STR_VEHICLE_VIEW_SEND_TO_DEPOT_TOOLTIP_SHIFT, STR_VEHICLE_VIEW_TRAIN_SEND_TO_DEPOT_TOOLTIP + to_underlying(v->type)), TooltipCloseCondition::RightClick);
 			}
 		}
 		return false;

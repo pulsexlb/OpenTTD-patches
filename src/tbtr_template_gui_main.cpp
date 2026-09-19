@@ -286,7 +286,7 @@ public:
 
 			case TRW_WIDGET_TRAIN_RAILTYPE_DROPDOWN: {
 				Dimension d = GetStringBoundingBox(STR_REPLACE_ALL_RAILTYPE);
-				for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
+				for (RailType rt : EnumRange(RAILTYPE_END)) {
 					const RailTypeInfo *rti = GetRailTypeInfo(rt);
 					// Skip rail type if it has no label
 					if (rti->label == 0) continue;
@@ -375,7 +375,7 @@ public:
 			uint max_columns = 2;
 
 			if (tmp->full_weight > tmp->empty_weight || _settings_client.gui.show_train_weight_ratios_in_details) height += GetCharacterHeight(FontSize::Normal);
-			if (_settings_game.vehicle.train_acceleration_model != AM_ORIGINAL) height += GetCharacterHeight(FontSize::Normal);
+			if (_settings_game.vehicle.train_acceleration_model != AccelerationModel::Original) height += GetCharacterHeight(FontSize::Normal);
 
 			for (const TemplateVehicle *u = tmp; u != nullptr; u = u->Next()) {
 				cargo_caps[u->cargo_type] += u->cargo_cap;
@@ -920,7 +920,7 @@ public:
 		top += GetCharacterHeight(FontSize::Normal);
 
 		/* Draw vehicle performance info */
-		const bool original_acceleration = (_settings_game.vehicle.train_acceleration_model == AM_ORIGINAL ||
+		const bool original_acceleration = (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Original ||
 				GetAccelerationTypeRailTypes(VehicleAccelerationModel::Maglev).All(tmp->railtypes));
 		DrawString(left, right, top, GetString(original_acceleration ? STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED : STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED_MAX_TE,
 				tmp->empty_weight, tmp->power, tmp->max_speed, tmp->max_te));
@@ -947,7 +947,7 @@ public:
 			}
 			DrawString(8, right, top, str);
 		}
-		if (_settings_game.vehicle.train_acceleration_model != AM_ORIGINAL) {
+		if (_settings_game.vehicle.train_acceleration_model != AccelerationModel::Original) {
 			top += GetCharacterHeight(FontSize::Normal);
 			DrawString(8, right, top, GetString(STR_VEHICLE_INFO_MAX_SPEED_LOADED,
 					GetTemplateVehicleEstimatedMaxAchievableSpeed(tmp, tmp->full_weight, tmp->max_speed)));

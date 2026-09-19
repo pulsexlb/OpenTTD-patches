@@ -1260,7 +1260,7 @@ static bool GrowTownWithExtraHouse(Town *t, TileIndex tile, TownExpandModes mode
 	uint counter = 0; // counts the house neighbour tiles
 
 	/* Check the tiles E,N,W and S of the current tile for houses */
-	for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
+	for (DiagDirection dir : EnumRange(DiagDirection::End)) {
 		/* Count both void and house tiles for checking whether there
 		 * are enough houses in the area. This to make it likely that
 		 * houses get build up to the edge of the map. */
@@ -1315,7 +1315,7 @@ static bool CanRoadContinueIntoNextTile(const Town *t, const TileIndex tile, con
 
 	/* If the next tile is a bridge or tunnel, allow if it's continuing in the same direction. */
 	if (IsTileType(next_tile, TileType::TunnelBridge)) {
-		return GetTunnelBridgeTransportType(next_tile) == TRANSPORT_ROAD && GetTunnelBridgeDirection(next_tile) == road_dir;
+		return GetTunnelBridgeTransportType(next_tile) == TransportType::Road && GetTunnelBridgeDirection(next_tile) == road_dir;
 	}
 
 	/* If the next tile is a station, allow if it's a road station facing the proper direction. Otherwise return false. */
@@ -1415,7 +1415,7 @@ static bool GrowTownWithBridge(const Town *t, const TileIndex tile, const DiagDi
 			if (!IsBridgeTile(search)) continue;
 
 			/* Only consider road bridges. */
-			if (GetTunnelBridgeTransportType(search) != TRANSPORT_ROAD) continue;
+			if (GetTunnelBridgeTransportType(search) != TransportType::Road) continue;
 
 			/* If the bridge is facing the same direction as the proposed bridge, we've found a redundant bridge. */
 			if (GetTileSlope(search) & InclinedSlope(ReverseDiagDir(bridge_dir))) return false;
@@ -1429,8 +1429,8 @@ static bool GrowTownWithBridge(const Town *t, const TileIndex tile, const DiagDi
 	for (;;) {
 		/* Can we actually build the bridge? */
 		RoadType rt = GetTownRoadType();
-		if (MayTownBuildBridgeType(bridge_type) && Command<Commands::BuildBridge>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildBridge>()), tile, bridge_tile, TRANSPORT_ROAD, bridge_type, rt, BuildBridgeFlags::None).Succeeded()) {
-			Command<Commands::BuildBridge>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildBridge>()).Set(DoCommandFlag::Execute), tile, bridge_tile, TRANSPORT_ROAD, bridge_type, rt, BuildBridgeFlags::None);
+		if (MayTownBuildBridgeType(bridge_type) && Command<Commands::BuildBridge>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildBridge>()), tile, bridge_tile, TransportType::Road, bridge_type, rt, BuildBridgeFlags::None).Succeeded()) {
+			Command<Commands::BuildBridge>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildBridge>()).Set(DoCommandFlag::Execute), tile, bridge_tile, TransportType::Road, bridge_type, rt, BuildBridgeFlags::None);
 			return true;
 		}
 
@@ -1518,8 +1518,8 @@ static bool GrowTownWithTunnel(const Town *t, const TileIndex tile, const DiagDi
 
 	/* Attempt to build the tunnel. Return false if it fails to let the town build a road instead. */
 	RoadType rt = GetTownRoadType();
-	if (Command<Commands::BuildTunnel>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildTunnel>()), tile, TRANSPORT_ROAD, rt).Succeeded()) {
-		Command<Commands::BuildTunnel>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildTunnel>()).Set(DoCommandFlag::Execute), tile, TRANSPORT_ROAD, rt);
+	if (Command<Commands::BuildTunnel>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildTunnel>()), tile, TransportType::Road, rt).Succeeded()) {
+		Command<Commands::BuildTunnel>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildTunnel>()).Set(DoCommandFlag::Execute), tile, TransportType::Road, rt);
 		return true;
 	}
 
@@ -1745,7 +1745,7 @@ static TownGrowthResult GrowTownInTile(TileIndex *tile_ptr, RoadBits cur_rb, Dia
 					/* cross the bridge */
 					*tile_ptr = GetOtherTunnelBridgeEnd(tile);
 				}
-			} else if (GetTunnelBridgeTransportType(tile) == TRANSPORT_ROAD && (target_dir != DiagDirection::End || Chance16(1, 2))) {
+			} else if (GetTunnelBridgeTransportType(tile) == TransportType::Road && (target_dir != DiagDirection::End || Chance16(1, 2))) {
 				*tile_ptr = GetOtherTunnelBridgeEnd(tile);
 			}
 			return TownGrowthResult::Continue;
@@ -1895,7 +1895,7 @@ static bool CanFollowRoad(TileIndex tile, DiagDirection dir, TownExpandModes mod
 				return IsDriveThroughStopTile(target_tile) && DiagDirToAxis(dir) == GetDriveThroughStopAxis(target_tile);
 
 			case TileType::TunnelBridge:
-				return GetTunnelBridgeTransportType(target_tile) == TRANSPORT_ROAD;
+				return GetTunnelBridgeTransportType(target_tile) == TransportType::Road;
 
 			case TileType::House:
 			case TileType::Industry:
@@ -2670,6 +2670,7 @@ static Town *CreateRandomTown(uint attempts, uint32_t townnameparts, TownSize si
 
 		Backup<CompanyID> cur_company(_current_company, OWNER_TOWN, FILE_LINE);
 		[[maybe_unused]] CommandCost rc = Command<Commands::DeleteTown>::Do(DoCommandFlag::Execute, t->index);
+		cur_company.Restore();
 		assert(rc.Succeeded());
 
 		/* We already know that we can allocate a single town when
@@ -4118,7 +4119,7 @@ TownActions GetMaskOfTownActions(CompanyID cid, const Town *t)
 
 		/* Check the action bits for validity and
 		 * if they are valid add them */
-		for (TownAction cur = {}; cur != TownAction::End; ++cur) {
+		for (TownAction cur : EnumRange(TownAction::End)) {
 
 			/* Is the company prohibited from bribing ? */
 			if (cur == TownAction::Bribe) {
@@ -4448,7 +4449,7 @@ static void UpdateTownGrowth(Town *t)
 
 	if (t->fund_buildings_months == 0) {
 		/* Check if all goals are reached for this town to grow (given we are not funding it) */
-		for (TownAcceptanceEffect i = TownAcceptanceEffect::Begin; i < TownAcceptanceEffect::End; i++) {
+		for (TownAcceptanceEffect i : EnumRange(TownAcceptanceEffect::End)) {
 			switch (t->goal[i]) {
 				case TOWN_GROWTH_WINTER:
 					if (TileHeight(t->xy) >= GetSnowLine() && t->received[i].old_act == 0 && t->cache.population > 90) return;
