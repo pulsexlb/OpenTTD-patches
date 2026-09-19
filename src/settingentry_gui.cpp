@@ -1275,6 +1275,7 @@ SettingsContainer &GetSettingsTree()
 		SettingsPage *network = main->Add(new SettingsPage(STR_CONFIG_SETTING_NETWORK));
 		{
 			network->Add(new SettingEntry("network.use_relay_service"));
+			network->Add(new SettingEntry("network.invite_code_keepalive_interval"));
 		}
 
 		main->Init();

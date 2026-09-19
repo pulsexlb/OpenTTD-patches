@@ -54,6 +54,9 @@
 class ClientNetworkCoordinatorSocketHandler : public NetworkCoordinatorSocketHandler {
 private:
 	std::chrono::steady_clock::time_point next_update; ///< When to send the next update (if server and public).
+	std::chrono::steady_clock::time_point next_invite_check; ///< When to run the next invite-code registration self-check (server only).
+	bool invite_check_pending; ///< Whether the in-flight GC_LISTING is an invite-code self-check.
+	bool invite_check_found; ///< Whether our own invite code was seen in the in-flight self-check listing.
 	std::map<std::string, std::pair<std::string, TCPServerConnecter *>, std::less<>> connecter; ///< Based on tokens, the current (invite-code, connecter) that are pending.
 	std::map<std::string, TCPServerConnecter *, std::less<>> connecter_pre; ///< Based on invite codes, the current connecters that are pending.
 	std::map<std::string, std::map<int, std::unique_ptr<ClientNetworkStunSocketHandler>>, std::less<>> stun_handlers; ///< All pending STUN handlers, stored by token:family.
@@ -82,7 +85,11 @@ public:
 	std::chrono::steady_clock::time_point last_activity;  ///< The last time there was network activity.
 	bool connecting; ///< Are we connecting to the Game Coordinator?
 
-	ClientNetworkCoordinatorSocketHandler() : connecting(false) {}
+	int reconnect_backoff = 1; ///< Current reconnect backoff, in seconds.
+	bool first_reconnect = true; ///< Whether the next reconnect is the first one (delayed to avoid thundering herd).
+	std::chrono::steady_clock::time_point last_reconnect_attempt; ///< When the last reconnect attempt was made.
+
+	ClientNetworkCoordinatorSocketHandler() : invite_check_pending(false), invite_check_found(false), connecting(false) {}
 
 	NetworkRecvStatus CloseConnection(bool error = true) override;
 	void SendReceive();
@@ -99,7 +106,8 @@ public:
 
 	void Register();
 	void SendServerUpdate();
-	void GetListing();
+	void GetListing(bool invite_check = false);
+	void CheckInviteCodeRegistration();
 
 	void ConnectToServer(std::string_view invite_code, TCPServerConnecter *connecter);
 	void StartTurnConnection(std::string_view token);

@@ -1919,6 +1919,12 @@ STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_VAL                 :{NUM}% normal g
 ###setting-zero-is-special
 STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_ZERO                :No limit (as fast as your computer allows)
 
+STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL               :Invite code keepalive check interval: {STRING2}
+STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_HELPTEXT      :How often the server verifies that the Game Coordinator still knows its invite code, by requesting the public server list. If the invite code is missing, the server reconnects and re-registers immediately. Lower values detect registration loss sooner at the cost of a small amount of extra traffic to the Game Coordinator
+STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_VAL           :{COMMA} minute{P "" s}
+###setting-zero-is-special
+STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_ZERO          :Disabled (do not verify invite code registration)
+
 STR_CONFIG_SETTING_SOUND_TICKER                                 :News ticker: {STRING2}
 STR_CONFIG_SETTING_SOUND_TICKER_HELPTEXT                        :Play sound for summarised news messages
 

@@ -1824,6 +1824,12 @@ STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_VAL                 :{NUM}% 正常�
 ###setting-zero-is-special
 STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_ZERO                :无限制（以计算机可行的最快速度）
 
+STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL               :邀请码保活检测间隔: {STRING}
+STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_HELPTEXT      :服务器多长时间向 OpenTTD 联机调度服务器确认邀请码状态依然有效。当邀请码检测到无效时服务器将重新向 OpenTTD 联机调度服务器注册邀请码。输入 0 不进行保活检测。
+STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_VAL           :{COMMA} 分钟{P "" s}
+###setting-zero-is-special
+STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_ZERO          :关闭
+
 STR_CONFIG_SETTING_SOUND_TICKER                                 :产业新闻：{STRING}
 STR_CONFIG_SETTING_SOUND_TICKER_HELPTEXT                        :每月初产业新闻音效
 

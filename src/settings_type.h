@@ -612,6 +612,7 @@ struct NetworkSettings {
 	uint8_t       max_clients;                            ///< maximum amount of clients
 	CalTime::Year restart_game_year;                      ///< year the server restarts
 	uint16_t      restart_hours;                          ///< number of hours to run the server before automatic restart
+	uint16_t      invite_code_keepalive_interval;         ///< interval, in minutes, of the invite-code registration self-check with the Game Coordinator; 0 disables the check
 	uint8_t       min_active_clients;                     ///< minimum amount of active clients to unpause the game
 	bool        reload_cfg;                               ///< reload the config file before restarting
 	std::string last_joined;                              ///< Last joined server

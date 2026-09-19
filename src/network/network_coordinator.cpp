@@ -129,6 +129,7 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorError(Packet &
 	NetworkCoordinatorErrorType error = (NetworkCoordinatorErrorType)p.Recv_uint8();
 	std::string detail = p.Recv_string(NETWORK_ERROR_DETAIL_LENGTH);
 
+
 	switch (error) {
 		case NETWORK_COORDINATOR_ERROR_UNKNOWN:
 			this->CloseConnection();
@@ -178,6 +179,13 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorRegisterAck(Pa
 {
 	/* Schedule sending an update. */
 	this->next_update = std::chrono::steady_clock::now();
+
+	/* Schedule the first invite-code self-check, and cancel any check that
+	 * was in flight (its result is no longer relevant after re-registration). */
+	if (_settings_client.network.invite_code_keepalive_interval > 0) {
+		this->next_invite_check = std::chrono::steady_clock::now() + std::chrono::minutes(_settings_client.network.invite_code_keepalive_interval);
+	}
+	this->invite_check_pending = false;
 
 	_settings_client.network.server_invite_code = p.Recv_string(NETWORK_INVITE_CODE_LENGTH);
 	_settings_client.network.server_invite_code_secret = p.Recv_string(NETWORK_INVITE_CODE_SECRET_LENGTH);
@@ -239,12 +247,32 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorListing(Packet
 
 	/* End of list; we can now remove all expired items from the list. */
 	if (servers == 0) {
+		/* If this listing was requested by the invite-code self-check, evaluate the result. */
+		if (this->invite_check_pending) {
+			this->invite_check_pending = false;
+
+			if (this->invite_check_found) {
+				Debug(net, 3, "Invite-code self-check: invite code '{}' is still registered with the Game Coordinator", _network_server_invite_code);
+			} else {
+				Debug(net, 3, "Invite-code self-check: invite code '{}' is NOT known to the Game Coordinator anymore; forcing reconnect to re-register", _network_server_invite_code);
+				/* The coordinator lost our registration (its TCP connection with us is
+				 * likely still alive, so it will never recover on its own). Close the
+				 * connection; SendReceive() reconnects servers and re-registers. */
+				this->CloseConnection();
+				return false;
+			}
+		}
+
 		NetworkGameListRemoveExpired();
 		return true;
 	}
 
 	for (; servers > 0; servers--) {
 		std::string connection_string = p.Recv_string(NETWORK_HOSTNAME_PORT_LENGTH);
+
+		if (this->invite_check_pending && connection_string == _network_server_invite_code) {
+			this->invite_check_found = true;
+		}
 
 		/* Now we know the connection string, we can add it to our list. */
 		NetworkGame *item = NetworkGameListAddItem(connection_string);
@@ -371,6 +399,7 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorTurnConnect(Pa
 	std::string ticket = p.Recv_string(NETWORK_TOKEN_LENGTH);
 	std::string connection_string = p.Recv_string(NETWORK_HOSTNAME_PORT_LENGTH);
 
+
 	/* Ensure all other pending connection attempts are killed. */
 	if (this->game_connecter != nullptr) {
 		this->game_connecter->Kill();
@@ -462,6 +491,9 @@ void ClientNetworkCoordinatorSocketHandler::Register()
 
 	this->Connect();
 
+	Debug(net, 3, "Registering with the Game Coordinator ({} invite code)...",
+		_settings_client.network.server_invite_code.empty() ? "requesting a new" : "reusing");
+
 	auto p = std::make_unique<Packet>(this, PacketCoordinatorType::ServerRegister);
 	p->Send_uint8(NETWORK_COORDINATOR_VERSION);
 	p->Send_uint8(to_underlying(_settings_client.network.server_game_type));
@@ -495,12 +527,19 @@ void ClientNetworkCoordinatorSocketHandler::SendServerUpdate()
 
 /**
  * Request a listing of all public servers.
+ * @param invite_check Whether this listing is requested by the invite-code self-check.
  */
-void ClientNetworkCoordinatorSocketHandler::GetListing()
+void ClientNetworkCoordinatorSocketHandler::GetListing(bool invite_check)
 {
 	this->Connect();
 
 	_network_game_list_version++;
+
+	if (invite_check) {
+		this->invite_check_pending = true;
+		this->invite_check_found = false;
+		Debug(net, 3, "Invite-code self-check: requesting server listing to verify invite code '{}'", _network_server_invite_code);
+	}
 
 	auto p = std::make_unique<Packet>(this, PacketCoordinatorType::ClientListing);
 	p->Send_uint8(NETWORK_COORDINATOR_VERSION);
@@ -519,6 +558,7 @@ void ClientNetworkCoordinatorSocketHandler::GetListing()
 void ClientNetworkCoordinatorSocketHandler::ConnectToServer(std::string_view invite_code, TCPServerConnecter *connecter)
 {
 	assert(invite_code.starts_with("+"));
+
 
 	if (this->connecter_pre.find(invite_code) != this->connecter_pre.end()) {
 		/* If someone is hammering the refresh key, one can sent out two
@@ -719,6 +759,19 @@ void ClientNetworkCoordinatorSocketHandler::CloseAllConnections()
 }
 
 /**
+ * Check whether the Game Coordinator still knows our invite code, by requesting
+ * a listing and looking for ourselves in the reply. If the invite code is gone,
+ * the registration is lost while our TCP connection to the Game Coordinator is
+ * likely still alive; in that case the situation will never recover on its own,
+ * so we reconnect to force a re-registration.
+ */
+void ClientNetworkCoordinatorSocketHandler::CheckInviteCodeRegistration()
+{
+	this->next_invite_check = std::chrono::steady_clock::now() + std::chrono::minutes(_settings_client.network.invite_code_keepalive_interval);
+	this->GetListing(true);
+}
+
+/**
  * Check whether we received/can send some data from/to the Game Coordinator server and
  * when that's the case handle it appropriately.
  */
@@ -732,9 +785,6 @@ void ClientNetworkCoordinatorSocketHandler::SendReceive()
 		return;
 	}
 
-	static int last_attempt_backoff = 1;
-	static bool first_reconnect = true;
-
 	if (this->sock == INVALID_SOCKET) {
 		static std::chrono::steady_clock::time_point last_attempt = {};
 
@@ -743,20 +793,20 @@ void ClientNetworkCoordinatorSocketHandler::SendReceive()
 		/* Don't reconnect if we are connecting. */
 		if (this->connecting) return;
 		/* Throttle how often we try to reconnect. */
-		if (std::chrono::steady_clock::now() < last_attempt + std::chrono::seconds(1) * last_attempt_backoff) return;
+		if (std::chrono::steady_clock::now() < last_attempt + std::chrono::seconds(1) * this->reconnect_backoff) return;
 
 		last_attempt = std::chrono::steady_clock::now();
 		/* Delay reconnecting with up to 32 seconds. */
-		if (last_attempt_backoff < 32) {
-			last_attempt_backoff *= 2;
+		if (this->reconnect_backoff < 32) {
+			this->reconnect_backoff *= 2;
 		}
 
 		/* Do not reconnect on the first attempt, but only initialize the
 		 * last_attempt variables.  Otherwise after an outage all servers
 		 * reconnect at the same time, potentially overwhelming the
 		 * Game Coordinator. */
-		if (first_reconnect) {
-			first_reconnect = false;
+		if (this->first_reconnect) {
+			this->first_reconnect = false;
 			return;
 		}
 
@@ -765,11 +815,16 @@ void ClientNetworkCoordinatorSocketHandler::SendReceive()
 		return;
 	}
 
-	last_attempt_backoff = 1;
-	first_reconnect = true;
+	this->reconnect_backoff = 1;
+	this->first_reconnect = true;
 
 	if (_network_server && _network_server_connection_type != CONNECTION_TYPE_UNKNOWN && std::chrono::steady_clock::now() > this->next_update) {
 		this->SendServerUpdate();
+	}
+
+	/* Periodically verify the Game Coordinator still knows our invite code. */
+	if (_network_server && _network_server_connection_type != CONNECTION_TYPE_UNKNOWN && _settings_client.network.invite_code_keepalive_interval > 0 && !this->invite_check_pending && std::chrono::steady_clock::now() > this->next_invite_check) {
+		this->CheckInviteCodeRegistration();
 	}
 
 	if (!_network_server && std::chrono::steady_clock::now() > this->last_activity + IDLE_TIMEOUT) {
