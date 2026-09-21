@@ -50,6 +50,10 @@
 
 #include "widgets/order_widget.h"
 
+#include "gfx_func.h"
+#include "window_func.h"
+#include "querystring_gui.h"
+#include "stringfilter_type.h"
 #include "table/strings.h"
 
 #include "safeguards.h"
@@ -650,6 +654,10 @@ static const StringID _order_manage_list_dropdown[] = {
 	STR_ORDER_IMPORT_ORDER_LIST_APPEND,
 	STR_ORDER_IMPORT_ORDER_LIST_APPEND_REVERSED
 };
+
+struct OrdersWindow;
+
+void ShowDecoupleSchedulePicker(OrdersWindow &w, bool first, OrderDecoupleOrdersFlags type);
 
 /** Variables for conditional orders; this defines the order of appearance in the dropdown box */
 static const OrderConditionVariable _order_conditional_variable[] = {
@@ -1857,15 +1865,16 @@ private:
 	std::array<int, 4> current_aux_planes{};
 	int current_value_plane = 0;
 	int current_mgmt_plane = 0;
-	int decouple_schedule_part = -1; ///< While the decouple schedule picker is open: 0 for the first train part, 1 for the second, -1 otherwise.
-	OrderDecoupleOrdersFlags decouple_schedule_orders_type = ODOF_EXECUTE_SCHEDULE; ///< Decouple orders type the open schedule picker applies.
 	OrderListID list_id = OrderListID::Invalid(); ///< Target list id when editing a standalone (player-created) order list.
+
+public:
+	/** Owner the picked schedule must be visible to. */
+	Owner TargetOwner() const { return this->HasVehicle() ? this->vehicle->owner : (this->order_list != nullptr ? this->order_list->GetCompany() : OWNER_NONE); }
 
 private:
 	/* ---- target mode helpers: order-content access goes through these ---- */
 	VehicleOrderID NumOrders() const { return this->HasVehicle() ? this->vehicle->GetNumOrders() : (this->order_list != nullptr ? this->order_list->GetNumOrders() : 0); }
 	const Order *OrderAt(VehicleOrderID i) const { return this->HasVehicle() ? this->vehicle->GetOrder(i) : (this->order_list != nullptr ? this->order_list->GetOrderAt(i) : nullptr); }
-	Owner TargetOwner() const { return this->HasVehicle() ? this->vehicle->owner : (this->order_list != nullptr ? this->order_list->GetCompany() : OWNER_NONE); }
 	bool IsLocalTarget() const { return this->TargetOwner() == _local_company; }
 	bool IsDispatchEnabled() const {
 		if (this->HasVehicle()) {
@@ -2155,16 +2164,29 @@ private:
 		this->OrderClick_OrdersType(index, false);
 	}
 
+public:
 	/**
-	 * Get the modify-order flag storing the pending schedule picker selection.
+	 * Get the modify-order flag storing a decouple schedule picker selection.
 	 * @param first true for the first part of the train, false for the second
+	 * @param type the decouple orders type the selection applies to
 	 */
-	ModifyOrderFlags DecoupleScheduleMof(bool first) const
+	ModifyOrderFlags DecoupleScheduleMof(bool first, OrderDecoupleOrdersFlags type) const
 	{
-		if (this->decouple_schedule_orders_type == ODOF_LOAD_AND_SCHEDULE) {
+		if (type == ODOF_LOAD_AND_SCHEDULE) {
 			return first ? MOF_DECOUPLE_FIRST_LOAD_SCHEDULE : MOF_DECOUPLE_SECOND_LOAD_SCHEDULE;
 		}
 		return first ? MOF_DECOUPLE_FIRST_SCHEDULE : MOF_DECOUPLE_SECOND_SCHEDULE;
+	}
+
+	/**
+	 * Apply a schedule picked in the decouple schedule picker window.
+	 * @param first true for the first part of the train, false for the second
+	 * @param type the decouple orders type the selection applies to
+	 * @param id the picked order list
+	 */
+	void DecoupleSchedulePicked(bool first, OrderDecoupleOrdersFlags type, OrderListID id)
+	{
+		this->ModifyOrder(this->OrderGetSel(), this->DecoupleScheduleMof(first, type), id.base());
 	}
 
 	/**
@@ -2177,35 +2199,14 @@ private:
 		if (index < 0 || (uint)index >= lengthof(_order_decouple_orders_drowdown_flags)) return;
 		OrderDecoupleOrdersFlags flag = _order_decouple_orders_drowdown_flags[index];
 		if (flag == ODOF_EXECUTE_SCHEDULE || flag == ODOF_LOAD_AND_SCHEDULE) {
-			/* Show the schedule picker for this part. */
-			this->decouple_schedule_part = first ? 0 : 1;
-			this->decouple_schedule_orders_type = flag;
-			this->ShowDecoupleScheduleDropdown(first ? WID_O_ORDERS_FIRST : WID_O_ORDERS_SECOND);
+			/* Open the schedule picker window for this part. */
+			ShowDecoupleSchedulePicker(*this, first, flag);
 			return;
 		}
 		this->ModifyOrder(this->OrderGetSel(), first ? MOF_FIRST_ORDERS : MOF_SECOND_ORDERS, to_underlying(flag));
 	}
 
-	/**
-	 * Show a filterable dropdown with all visible player-created order lists,
-	 * used to pick the schedule a decoupled train part adopts.
-	 * @param widget the widget to attach the dropdown to
-	 */
-	void ShowDecoupleScheduleDropdown(WidgetID widget)
-	{
-		DropDownList list;
-		for (const OrderList *ol : OrderList::Iterate()) {
-			if (!ol->IsPlayerCreated()) continue;
-			if (!ol->IsVisibleToCompany(this->TargetOwner())) continue;
-			std::string name = ol->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1) : ol->GetName();
-			list.push_back(MakeDropDownListStringItem(std::move(name), ol->index.base(), false));
-		}
-		if (list.empty()) {
-			ShowErrorMessage(GetEncodedString(STR_ERROR_NO_SCHEDULE_AVAILABLE), {}, WarningLevel::Warning);
-			return;
-		}
-		ShowDropDownList(this, std::move(list), -1, widget, 0, DropDownOption::Filterable, DDSF_SHARED);
-	}
+private:
 
 	/**
 	 * Handle the click on the full load button.
@@ -2596,6 +2597,7 @@ public:
 	{
 		CloseWindowById(WindowClass::VehicleCargoTypeLoadOrders, this->window_number, false);
 		CloseWindowById(WindowClass::VehicleCargoTypeUnloadOrders, this->window_number, false);
+		CloseWindowById(WindowClass::DecoupleSchedulePicker, this->window_number, false);
 		if (this->HasVehicle()) FocusWindowById(WindowClass::VehicleView, this->window_number);
 		this->GeneralVehicleWindow::Close();
 	}
@@ -4397,7 +4399,6 @@ public:
 			case WID_O_ORDERS_FIRST:
 			case WID_O_ORDERS_SECOND: {
 				/* Clicking anywhere opens the dropdown; the selection is only changed there. */
-				this->decouple_schedule_part = -1;
 				const Order *order = OrderAt(this->OrderGetSel());
 				int selected = 0;
 				if (order != nullptr && order->IsType(OT_DECOUPLE)) {
@@ -4583,20 +4584,10 @@ public:
 				break;
 
 			case WID_O_ORDERS_FIRST:
-				if (this->decouple_schedule_part == 0) {
-					this->decouple_schedule_part = -1;
-					this->ModifyOrder(this->OrderGetSel(), this->DecoupleScheduleMof(true), index);
-					break;
-				}
 				this->OrderClick_OrdersFirst(index);
 				break;
 
 			case WID_O_ORDERS_SECOND:
-				if (this->decouple_schedule_part == 1) {
-					this->decouple_schedule_part = -1;
-					this->ModifyOrder(this->OrderGetSel(), this->DecoupleScheduleMof(false), index);
-					break;
-				}
 				this->OrderClick_OrdersSecond(index);
 				break;
 
@@ -5161,6 +5152,185 @@ public:
 		Hotkey(0, "close", OHK_CLOSE),
 	}};
 };
+
+/** Nested widget definition for the decouple schedule picker popup. */
+static constexpr NWidgetPart _nested_decouple_schedule_picker_widgets[] = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_CLOSEBOX, Colours::Grey),
+		NWidget(WWT_CAPTION, Colours::Grey, WID_DSP_CAPTION), SetStringTip(STR_ORDER_PICK_SCHEDULE_CAPTION, STR_NULL),
+		NWidget(WWT_SHADEBOX, Colours::Grey),
+		NWidget(WWT_STICKYBOX, Colours::Grey),
+	EndContainer(),
+
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_EDITBOX, Colours::Grey, WID_DSP_FILTER), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_LIST_FILTER_OSKTITLE, STR_LIST_FILTER_TOOLTIP),
+	EndContainer(),
+
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PANEL, Colours::Grey),
+			NWidget(WWT_INSET, Colours::Grey, WID_DSP_LIST), SetFill(1, 1), SetPadding(2, 1, 2, 2), SetResize(1, 0), SetScrollbar(WID_DSP_SCROLL), SetToolTip(STR_ORDER_PICK_SCHEDULE_LIST_TOOLTIP),
+			EndContainer(),
+		EndContainer(),
+		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_DSP_SCROLL),
+	EndContainer(),
+};
+
+static WindowDesc _decouple_schedule_picker_desc(__FILE__, __LINE__,
+	WindowPosition::Manual, "decouple_schedule_picker", 320, 220,
+	WindowClass::DecoupleSchedulePicker, WindowClass::None,
+	WindowDefaultFlag::Construction,
+	_nested_decouple_schedule_picker_widgets
+);
+
+/**
+ * Window to pick the schedule a decoupled train part adopts after decoupling.
+ * Lists the same player-created, visible order lists the old attached dropdown
+ * offered, in its own popup window.
+ */
+struct DecoupleSchedulePickerWindow : Window {
+	OrdersWindow *orders_window = nullptr;  ///< Orders window the picked schedule is applied to; may be closed while the picker is open.
+	bool first = true;                      ///< True when picking for the first part of the train.
+	OrderDecoupleOrdersFlags orders_type = ODOF_EXECUTE_SCHEDULE; ///< Decouple orders type the picked schedule applies to.
+	Owner owner = OWNER_NONE;               ///< Owner the schedule must be visible to.
+	std::vector<OrderListID> list{};        ///< The translation table linking panel rows to their related OrderListID.
+	StringFilter string_filter;             ///< Filter for schedule names.
+	QueryString filter_editbox;             ///< Filter editbox.
+	Scrollbar *vscroll = nullptr;           ///< Vertical scrollbar of the list of order lists.
+
+	DecoupleSchedulePickerWindow(OrdersWindow *orders_window, bool first, OrderDecoupleOrdersFlags type, Owner owner)
+		: Window(_decouple_schedule_picker_desc), orders_window(orders_window), first(first), orders_type(type), owner(owner),
+		filter_editbox(64 * MAX_CHAR_LENGTH, 64)
+	{
+		this->CreateNestedTree();
+		this->vscroll = this->GetScrollbar(WID_DSP_SCROLL);
+		this->FinishInitNested(orders_window != nullptr ? (WindowNumber)(uint32_t)orders_window->window_number : (WindowNumber)0);
+
+		this->querystrings[WID_DSP_FILTER] = &this->filter_editbox;
+		this->filter_editbox.cancel_button = QueryString::ACTION_CLEAR;
+
+		this->RebuildList();
+	}
+
+	Point OnInitialPosition(int16_t sm_width, int16_t sm_height, int window_number) override
+	{
+		/* Open near the cursor. Prefer below-right; flip when that would go off screen. View is clamped
+		 * between the main toolbar and the status bar. */
+		int scr_top = GetMainViewTop();
+		int scr_bot = GetMainViewBottom();
+
+		Point pt;
+		pt.x = SoftClamp(_cursor.pos.x - (sm_width >> 1), 0, _screen.width - sm_width);
+		pt.y = _cursor.pos.y + 12;
+		if (pt.y + sm_height > scr_bot) pt.y = std::max(_cursor.pos.y - sm_height - 12, scr_top);
+		return pt;
+	}
+
+	void RebuildList()
+	{
+		this->list.clear();
+		for (const OrderList *ol : OrderList::Iterate()) {
+			if (!ol->IsPlayerCreated()) continue;
+			if (!ol->IsVisibleToCompany(this->owner)) continue;
+			if (!this->string_filter.IsEmpty()) {
+				this->string_filter.ResetState();
+				this->string_filter.AddLine(ol->GetName());
+				if (!this->string_filter.GetState()) continue;
+			}
+			this->list.push_back(ol->index);
+		}
+		this->vscroll->SetCount((uint)this->list.size());
+		this->SetDirty();
+	}
+
+	void UpdateWidgetSize(WidgetID widget, [[maybe_unused]] Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		switch (widget) {
+			case WID_DSP_LIST:
+				resize.height = GetCharacterHeight(FontSize::Normal);
+				break;
+		}
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		switch (widget) {
+			case WID_DSP_LIST: {
+				Rect ir = r.Shrink(WidgetDimensions::scaled.framerect);
+				uint y = ir.top;
+				if (this->vscroll->GetCount() == 0) {
+					DrawString(ir, STR_STATION_LIST_NONE);
+					return;
+				}
+				for (int32_t i = this->vscroll->GetPosition(); this->vscroll->IsVisible(i) && i < this->vscroll->GetCount(); i++) {
+					const OrderList *ol = OrderList::GetIfValid(this->list[i]);
+					if (ol != nullptr) {
+						std::string name = ol->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1) : ol->GetName();
+						DrawString(ir.left, ir.right, y + (this->resize.step_height - GetCharacterHeight(FontSize::Normal)) / 2, name, TextColour::White);
+					}
+					y += this->resize.step_height;
+				}
+				break;
+			}
+		}
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacityFromWidget(this, WID_DSP_LIST, WidgetDimensions::scaled.framerect.Vertical());
+	}
+
+	void OnClick(Point pt, WidgetID widget, int) override
+	{
+		switch (widget) {
+			case WID_DSP_LIST: {
+				int row = this->vscroll->GetScrolledRowFromWidget(pt.y, this, WID_DSP_LIST, WidgetDimensions::scaled.framerect.top);
+				if (row < 0 || (size_t)row >= this->list.size()) break;
+				OrderListID id = this->list[row];
+				if (!OrderList::IsValidID(id)) break;
+				if (this->orders_window != nullptr) this->orders_window->DecoupleSchedulePicked(this->first, this->orders_type, id);
+				this->Close();
+				break;
+			}
+		}
+	}
+
+	void OnEditboxChanged(WidgetID widget) override
+	{
+		if (widget != WID_DSP_FILTER) return;
+		this->string_filter.SetFilterTerm(this->filter_editbox.text.GetText());
+		this->RebuildList();
+	}
+
+	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
+	{
+		this->RebuildList();
+	}
+};
+
+/**
+ * Open the decouple schedule picker window for one part of a decoupled train.
+ * @param w the orders window the picker belongs to
+ * @param first true for the first part of the train, false for the second
+ * @param type the decouple orders type the picked schedule applies to
+ */
+void ShowDecoupleSchedulePicker(OrdersWindow &w, bool first, OrderDecoupleOrdersFlags type)
+{
+	/* Count visible schedules first; without any, warn instead of opening an empty picker. */
+	bool any = false;
+	for (const OrderList *ol : OrderList::Iterate()) {
+		if (ol->IsPlayerCreated() && ol->IsVisibleToCompany(w.TargetOwner())) {
+			any = true;
+			break;
+		}
+	}
+	if (!any) {
+		ShowErrorMessage(GetEncodedString(STR_ERROR_NO_SCHEDULE_AVAILABLE), {}, WarningLevel::Warning);
+		return;
+	}
+
+	CloseWindowById(WindowClass::DecoupleSchedulePicker, w.window_number, false);
+	new DecoupleSchedulePickerWindow(&w, first, type, w.TargetOwner());
+}
 
 void InvalidateOrderListWindowOnOrderMove(VehicleID veh, VehicleOrderID from, VehicleOrderID to, uint16_t count)
 {

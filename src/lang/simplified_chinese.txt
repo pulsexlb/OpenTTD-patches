@@ -4902,6 +4902,8 @@ STR_ORDERS_DECOUPLE_LOAD_AND_SCHEDULE                           :装卸并使用
 STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                               :装卸并等待连接
 STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :使用调度计划不装卸
 STR_ERROR_NO_SCHEDULE_AVAILABLE                                 :没有可选择的调度计划
+STR_ORDER_PICK_SCHEDULE_CAPTION                                 :{WHITE}选择调度计划
+STR_ORDER_PICK_SCHEDULE_LIST_TOOLTIP                            :{BLACK}选择解挂部分将使用的调度计划
 STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}连接数量
 STR_ORDERS_DECOUPLE_VALUE_BUTTON                                :{BLACK}解挂数量
 STR_ORDERS_DECOUPLE_BUTTON                                      :{BLACK}解挂

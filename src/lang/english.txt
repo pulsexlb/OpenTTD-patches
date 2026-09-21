@@ -963,6 +963,8 @@ STR_ORDERS_DECOUPLE_LOAD_AND_SCHEDULE                           :Load and use a 
 STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                               :Load and wait for couple
 STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :Use a schedule without loading
 STR_ERROR_NO_SCHEDULE_AVAILABLE                                 :There is no schedule to select
+STR_ORDER_PICK_SCHEDULE_CAPTION                                 :{WHITE}Select a schedule
+STR_ORDER_PICK_SCHEDULE_LIST_TOOLTIP                            :{BLACK}Select the schedule the decoupled part will use
 STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}Units couple
 STR_ORDER_COUPLE_SLOT_BUTTON                                   :{BLACK}Slot
 STR_ORDER_COUPLE_SLOT_TOOLTIP                                 :{BLACK}The trace restrict slot the train must couple with

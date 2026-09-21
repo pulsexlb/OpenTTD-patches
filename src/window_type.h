@@ -875,6 +875,12 @@ enum class WindowClass : uint16_t {
 	 */
 	OrderListSchedule,
 
+	/**
+	 * Decouple schedule picker popup; %Window numbers:
+	 *   - id = the #OrdersWindow window number the picker was opened from
+	 */
+	DecoupleSchedulePicker,
+
 	TemplateReplacementGuiMain,
 	BuildVirtualTrain,
 	TemplateReplacementCreateTemplate,

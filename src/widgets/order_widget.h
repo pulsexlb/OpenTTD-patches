@@ -105,4 +105,12 @@ enum CargoTypeOrdersWidgets : WidgetID {
 	WID_CTO_SELECT,                                                             ///< Right column select panel
 };
 
+/** Widgets of the #DecoupleSchedulePickerWindow class. */
+enum DecoupleSchedulePickerWidgets : WidgetID {
+	WID_DSP_CAPTION,  ///< Caption of the window.
+	WID_DSP_FILTER,   ///< Filter of name.
+	WID_DSP_LIST,     ///< List of order lists.
+	WID_DSP_SCROLL,   ///< Scrollbar of the list.
+};
+
 #endif /* WIDGETS_ORDER_WIDGET_H */
