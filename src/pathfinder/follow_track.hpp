@@ -376,9 +376,10 @@ protected:
 			 * this without a vehicle (veh == nullptr) and must not dereference it. */
 			if (_settings_game.vehicle.train_no_depot_temporary_stop && this->veh != nullptr) {
 				const Train *t = Train::From(this->veh);
-				const bool allow = t->current_order.IsType(OT_GOTO_DEPOT) &&
-						(t->dest_tile == this->new_tile ||
-						 (t->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0);
+				const bool allow = t->finding_manual_depot ||
+						(t->current_order.IsType(OT_GOTO_DEPOT) &&
+						 (t->dest_tile == this->new_tile ||
+						  (t->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0));
 				if (!allow) {
 					this->err = ErrorCode::NoWay;
 					return false;

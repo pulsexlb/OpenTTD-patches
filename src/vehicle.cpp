@@ -4219,7 +4219,14 @@ CommandCost Vehicle::SendToDepot(DoCommandFlags flags, DepotCommandFlags command
 		closest_depot.destination = (this->type == VehicleType::Aircraft) ? DestinationID(GetStationIndex(specific_depot)) : DestinationID(GetDepotIndex(specific_depot));
 		closest_depot.reverse = false;
 	} else {
+		/* The player manually ordered the train to a depot; the depot-impassability
+		 * rule (train_no_depot_temporary_stop) would reject every depot tile while
+		 * finding the nearest one, because the order is not set until after this
+		 * search. Flag the search so that rule lets depot tiles through. */
+		Train *train = (this->type == VehicleType::Train) ? Train::From(this) : nullptr;
+		if (train != nullptr) train->finding_manual_depot = true;
 		closest_depot = this->FindClosestDepot();
+		if (train != nullptr) train->finding_manual_depot = false;
 		if (!closest_depot.found) return CommandCost(no_depot[this->type]);
 	}
 

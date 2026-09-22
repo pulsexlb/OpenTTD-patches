@@ -216,6 +216,10 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	 * everything beyond its body once, so its partner can reserve up to the
 	 * contact point with the regular reservation machinery. */
 	bool couple_body_hold = false;
+	/* Transient state (not saved): the player manually ordered this train to
+	 * a depot and we are pathfinding for the nearest depot before the order
+	 * is set, so the depot-impassability rule must not block depot tiles. */
+	bool finding_manual_depot = false;
 
 	RailTypes railtypes{}; ///< On which rail types the train can run.
 	RailTypes compatible_railtypes{}; ///< With which rail types the train is compatible.
