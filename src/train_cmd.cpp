@@ -4434,6 +4434,7 @@ void FreeTrainTrackReservation(Train *consist, TileIndex origin, Trackdir orig_t
 }
 
 static Train *GetValidCoupleClaimant(const Train *carrier);
+static Train *GetClaimedCoupleTarget(const Train *moving);
 
 /**
  * A train waiting to be coupled holds only the reservation of the tiles its
@@ -5303,17 +5304,19 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 				 * has vanished would quick-exit forever without ever being
 				 * marked stuck. Verify a target still exists first. */
 				if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
-					Train *couple_target = nullptr;
-					uint32_t couple_cost = 0;
-					DoTrainCouplePathfind(consist, false, &couple_target, &couple_cost);
+					Train *couple_target = GetClaimedCoupleTarget(consist);
 					if (couple_target == nullptr) {
-						if (mark_stuck) MarkTrainAsStuck(consist);
-						FreeTrainTrackReservation(consist);
-						if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SignalState::Red);
-						return { FindFirstTrack(origin_tracks), result_flags };
+						uint32_t couple_cost = 0;
+						DoTrainCouplePathfind(consist, false, &couple_target, &couple_cost);
+						if (couple_target == nullptr) {
+							if (mark_stuck) MarkTrainAsStuck(consist);
+							FreeTrainTrackReservation(consist);
+							if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SignalState::Red);
+							return { FindFirstTrack(origin_tracks), result_flags };
+						}
+						consist->couple_target = couple_target->index;
+						ClaimCoupleTarget(consist, couple_target->Primary(), couple_cost);
 					}
-					consist->couple_target = couple_target->index;
-					ClaimCoupleTarget(consist, couple_target->Primary(), couple_cost);
 					consist->SetDestTile(couple_target->tile);
 				}
 				/* Got a valid reservation that ends at a safe target, quick exit. */
@@ -5351,17 +5354,21 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 	 * the regular machinery below, so the couple order reserves exactly like
 	 * any other order, one block at a time. */
 	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
-		Train *couple_target = nullptr;
-		uint32_t couple_cost = 0;
-		DoTrainCouplePathfind(consist, false, &couple_target, &couple_cost);
-		/* Track the concrete contact-end vehicle for approach braking; the
-		 * speed code re-validates it every tick. */
-		consist->couple_target = (couple_target != nullptr) ? couple_target->index : VehicleID::Invalid();
-		/* Register (or update) the claim on the waiting train so competing
-		 * approaching consists look for another partner. Must happen after
-		 * couple_target is set: the claim is only valid while it points here. */
+		Train *couple_target = GetClaimedCoupleTarget(consist);
+		if (couple_target == nullptr) {
+			uint32_t couple_cost = 0;
+			DoTrainCouplePathfind(consist, false, &couple_target, &couple_cost);
+			/* Track the concrete contact-end vehicle for approach braking; the
+			 * speed code re-validates it every tick. */
+			consist->couple_target = (couple_target != nullptr) ? couple_target->index : VehicleID::Invalid();
+			/* Register (or update) the claim on the waiting train so competing
+			 * approaching consists look for another partner. Must happen after
+			 * couple_target is set: the claim is only valid while it points here. */
+			if (couple_target != nullptr) {
+				ClaimCoupleTarget(consist, couple_target->Primary(), couple_cost);
+			}
+		}
 		if (couple_target != nullptr) {
-			ClaimCoupleTarget(consist, couple_target->Primary(), couple_cost);
 			/* Steer the regular pathfinder towards the partner's contact end. */
 			consist->SetDestTile(couple_target->tile);
 		} else {
@@ -6392,6 +6399,28 @@ static Train *GetValidCoupleClaimant(const Train *carrier)
 	if (tgt == nullptr || tgt->Primary() != carrier) return nullptr;
 
 	return claimant;
+}
+
+/**
+ * Get the couple target this moving consist has already validly claimed, if any.
+ * A consist that has claimed a waiting train keeps approaching it instead of
+ * re-running the couple pathfinder and re-claiming every tick; only when the
+ * claim is stale (target gone, not waiting, crashed, or no longer held by this
+ * consist) should the caller search afresh and re-claim.
+ * @param moving the approaching consist.
+ * @return the claimed contact-end vehicle, or nullptr when there is no valid claim.
+ */
+static Train *GetClaimedCoupleTarget(const Train *moving)
+{
+	Train *tgt = Train::GetIfValid(moving->couple_target);
+	if (tgt == nullptr) return nullptr;
+	Train *carrier = tgt->Primary();
+	/* The claim is only usable while the target is still a live, waiting consist
+	 * and the claim is still held by this moving consist. */
+	if (carrier->vehstatus.Test(VehState::Crashed)) return nullptr;
+	if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) return nullptr;
+	if (GetValidCoupleClaimant(carrier) != moving->Primary()) return nullptr;
+	return tgt;
 }
 
 const Train *GetCoupleClaimant(const Train *carrier)
