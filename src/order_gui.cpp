@@ -1066,8 +1066,8 @@ enum RVTransportDropDownResult {
 	RVDD_LOAD_WAIT     = 0x103, ///< Carrier: keep waiting until road vehicles have been loaded.
 	RVDD_UNLOAD        = 0x111, ///< Carrier: unload the road vehicles which want to get off here.
 	RVDD_UNLOAD_ALL    = 0x112, ///< Carrier: unload every road vehicle here.
-	RVDD_RV_WAIT       = 0x120, ///< Road vehicle: wait to be transported here.
-	RVDD_RV_UNLOAD     = 0x121, ///< Road vehicle: be unloaded here.
+	RVDD_RV_WAIT       = 0x500, ///< Road vehicle: wait to be transported here. Kept out of the 0x1xx/0x2xx/0x3xx ranges used by the order management menu.
+	RVDD_RV_UNLOAD     = 0x501, ///< Road vehicle: be unloaded here.
 };
 
 enum OrderDropDownID {
