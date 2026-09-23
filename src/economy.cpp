@@ -1951,6 +1951,10 @@ static void LoadUnloadVehicle(Vehicle *front)
 {
 	assert(front->current_order.IsType(OT_LOADING));
 
+	/* RoRo: the dedicated "Vehicles" cargo marks carrier parts which hold road vehicles; they are
+	 * skipped by the normal-cargo code below (see the part loop). */
+	const CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
+
 	StationID last_visited = front->last_station_visited;
 	Station *st = Station::Get(last_visited);
 
@@ -2033,7 +2037,8 @@ static void LoadUnloadVehicle(Vehicle *front)
 	/* RoRo: a carrier loads/unloads road vehicles according to its order parameter block.
 	 * Every part of a multi-part carrier (a multi-hold ship, for instance) is a vehicle of its own
 	 * which enters the station and runs this code, while the road vehicles it carries are attached to
-	 * the *front* vehicle, so always work with the front. */
+	 * the *front* vehicle, so always work with the front. A station order which does not set the
+	 * vehicle transport flags leaves the carrier's parts alone here; it loads/unloads normal cargo. */
 	if (front->type != VehicleType::Road) {
 		Vehicle *carrier = front->First();
 		const uint8_t rv_order_flags = carrier->current_order.GetRVTransportFlags();
@@ -2122,6 +2127,12 @@ static void LoadUnloadVehicle(Vehicle *front)
 			suppress_artic_load = false;
 		}
 		if (v->cargo_cap == 0) continue;
+
+		/* RoRo: a part refitted to the dedicated "Vehicles" cargo is a carrier part which holds road
+		 * vehicles, never normal cargo. It is left alone while this order loads/unloads normal cargo:
+		 * the road vehicles on it are handled by the vehicle transport code above (and a carried road
+		 * vehicle is not part of the cargo lists at all). */
+		if (v->cargo_type == vehicles_cargo) continue;
 		artic_part++;
 
 		/* ge and ged must both be changed together, when the cargo is changed (e.g. after HandleStationRefit) */

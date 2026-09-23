@@ -1688,8 +1688,8 @@ STR_VEHICLE_DETAILS_TRAIN_PERFORMANCE_TOOLTIP                   :{BLACK}显示�
 STR_VEHICLE_DETAIL_TAB_CARRIED                                  :{BLACK}载运
 STR_VEHICLE_DETAILS_TRAIN_CARRIED_TOOLTIP                       :{BLACK}显示这列车载运的道路载具。点某一行可打开那辆车的窗口
 
-STR_ORDER_DROP_CARGO_TYPE_LOAD                                  :以货物类型装载
-STR_ORDER_DROP_CARGO_TYPE_UNLOAD                                :以货物类型卸载
+STR_ORDER_DROP_CARGO_TYPE_LOAD                                  :以类型装载普通货物
+STR_ORDER_DROP_CARGO_TYPE_UNLOAD                                :以类型卸载普通货物
 
 STR_ORDER_REVERSE                                               :{BLACK}换向
 STR_ORDER_REVERSE_TOOLTIP                                       :{BLACK}改变选中命令的换向行为
@@ -1830,23 +1830,23 @@ STR_ORDERS_VEH_WITH_SHARED_ORDERS_LIST_TOOLTIP_EXTRA            :{STRING}{}{BLAC
 STR_ORDER_GO_TO_WAYPOINT_REVERSE                                :经由并在 {WAYPOINT} 掉头
 STR_ORDER_GO_NON_STOP_TO_WAYPOINT_REVERSE                       :直达经由并在 {WAYPOINT} 掉头
 STR_ORDER_SELL_ORDER                                            :（卖出载具）
-STR_ORDER_CARGO_TYPE_LOAD                                       :（以货物类型装载）
-STR_ORDER_UNLOAD_CARGO_TYPE_LOAD                                :（卸载，以货物类型装载）
-STR_ORDER_TRANSFER_CARGO_TYPE_LOAD                              :（联运，以货物类型装载）
-STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD                             :（不卸载，以货物类型装载）
-STR_ORDER_CARGO_TYPE_UNLOAD                                     :（以货物类型卸载）
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD                           :（以货物类型卸载，等待满载）
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY                       :（以货物类型卸载，等待任一货物满载）
-STR_ORDER_CARGO_TYPE_UNLOAD_NO_LOAD                             :（以货物类型卸载，空车离开）
-STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD                     :（以货物类型卸载，以货物类型装载）
-STR_ORDER_CARGO_TYPE_LOAD_REFIT                                 :（改装为运载{STRING}后以货物类型装载）
-STR_ORDER_UNLOAD_CARGO_TYPE_LOAD_REFIT                          :（卸载，改装为运载{STRING}后以货物类型装载）
-STR_ORDER_TRANSFER_CARGO_TYPE_LOAD_REFIT                        :（联运，改装为运载{STRING}后以货物类型装载）
-STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD_REFIT                       :（不卸载，改装为运载{STRING}后以货物类型装载）
-STR_ORDER_CARGO_TYPE_UNLOAD_REFIT                               :（以货物类型卸载，改装为运载{STRING}后装载）
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_REFIT                     :（以货物类型卸载，改装为运载{STRING}后等待满载）
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY_REFIT                 :（以货物类型卸载，改装为运载{STRING}后等待任一货物满载）
-STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD_REFIT               :（以货物类型卸载，改装为运载{STRING}后以货物类型装载）
+STR_ORDER_CARGO_TYPE_LOAD                                       :（以类型装载普通货物）
+STR_ORDER_UNLOAD_CARGO_TYPE_LOAD                                :（卸载全部普通货物，以类型装载普通货物）
+STR_ORDER_TRANSFER_CARGO_TYPE_LOAD                              :（联运普通货物，以类型装载普通货物）
+STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD                             :（不卸载普通货物，以类型装载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD                                     :（以类型卸载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD                           :（以类型卸载普通货物，等待普通货物满载）
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY                       :（以类型卸载普通货物，等待任一普通货物满载）
+STR_ORDER_CARGO_TYPE_UNLOAD_NO_LOAD                             :（以类型卸载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD                     :（以类型卸载普通货物，以类型装载普通货物）
+STR_ORDER_CARGO_TYPE_LOAD_REFIT                                 :（改装为运载{STRING}后以类型装载普通货物）
+STR_ORDER_UNLOAD_CARGO_TYPE_LOAD_REFIT                          :（卸载全部普通货物，改装为运载{STRING}后以类型装载普通货物）
+STR_ORDER_TRANSFER_CARGO_TYPE_LOAD_REFIT                        :（联运普通货物，改装为运载{STRING}后以类型装载普通货物）
+STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD_REFIT                       :（不卸载普通货物，改装为运载{STRING}后以类型装载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD_REFIT                               :（以类型卸载普通货物，改装为运载{STRING}后装载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_REFIT                     :（以类型卸载普通货物，改装为运载{STRING}后等待普通货物满载）
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY_REFIT                 :（以类型卸载普通货物，改装为运载{STRING}后等待任一普通货物满载）
+STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD_REFIT               :（以类型卸载普通货物，改装为运载{STRING}后以类型装载普通货物）
 
 STR_ORDER_RV_DIR_ANY                                            :[任意方向]
 STR_ORDER_RV_DIR_NE                                             :[东北方]

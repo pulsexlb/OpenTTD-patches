@@ -193,6 +193,28 @@ uint16_t RVTransportExtraCargoAmount(const Vehicle *part)
 	return (capacity > stored) ? static_cast<uint16_t>(capacity - stored) : 0;
 }
 
+/**
+ * Is this vehicle a dedicated road vehicle carrier: every cargo-carrying part of its chain is
+ * refitted to the dedicated "Vehicles" cargo? Such a vehicle never transports normal cargo, so its
+ * station orders default to (and its order buttons advertise) road vehicle transport. A vehicle
+ * with no cargo capacity at all, or with any normal-cargo part, is not dedicated, and its orders
+ * default to normal cargo.
+ */
+bool RVTransportVehicleCarriesOnlyVehicles(const Vehicle *v)
+{
+	if (v == nullptr) return false;
+	const CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
+	if (!IsValidCargoType(vehicles_cargo)) return false;
+
+	bool has_cargo_part = false;
+	for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+		if (u->cargo_cap == 0) continue;
+		has_cargo_part = true;
+		if (u->cargo_type != vehicles_cargo) return false;
+	}
+	return has_cargo_part;
+}
+
 /** Set or clear the "waiting to be transported" state; a waiting vehicle is stopped. */
 void RVTransportSetWaiting(Vehicle *rv, bool waiting)
 {

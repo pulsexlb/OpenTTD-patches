@@ -4710,10 +4710,10 @@ STR_ORDER_GO_NON_STOP_VIA                                       :直达经由
 STR_ORDER_TOOLTIP_NON_STOP                                      :{BLACK}修改当前命令在车站的停靠措施
 
 STR_ORDER_TOGGLE_FULL_LOAD                                      :{BLACK}满载任一货物
-STR_ORDER_DROP_LOAD_IF_POSSIBLE                                 :若有则装载
-STR_ORDER_DROP_FULL_LOAD_ALL                                    :满载所有货物
-STR_ORDER_DROP_FULL_LOAD_ANY                                    :满载任一货物
-STR_ORDER_DROP_NO_LOADING                                       :不装载
+STR_ORDER_DROP_LOAD_IF_POSSIBLE                                 :若有普通货物则装载
+STR_ORDER_DROP_FULL_LOAD_ALL                                    :满载所有普通货物
+STR_ORDER_DROP_FULL_LOAD_ANY                                    :满载任一普通货物
+STR_ORDER_DROP_NO_LOADING                                       :不装载普通货物
 STR_ORDER_DROP_LOAD_ROAD_VEHICLES                               :装载道路载具
 STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES                             :卸载道路载具
 STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES                         :卸载所有道路载具
@@ -4734,27 +4734,34 @@ STR_ORDER_RV_CARGO_CAN_CARRY                                    :可载货物：
 STR_ORDER_RV_CARGO_IS_CARRYING                                  :正载货物：
 STR_ORDER_RV_SLOT                                               :路签：{TRSLOT}
 STR_ORDER_DROP_RV_TRANSPORT                                     :道路载具运输…
+STR_ORDER_DROP_RV_LOAD_ANY                                       :装载任意载具
+STR_ORDER_DROP_RV_LOAD_NEXT                                      :装载去下一站的载具
+STR_ORDER_DROP_RV_LOAD_OPTIONS                                   :道路载具装载选项…
+STR_ORDER_RV_TRANSPORT_MORE_OPTIONS                             :（其他选项）
+STR_ORDER_RV_CARGO_LOAD_DEFAULT                                 :装载普通货物
+STR_ORDER_RV_CARGO_UNLOAD_DEFAULT                               :卸载普通货物
+STR_ERROR_RV_REFIT_SCHEDULE                                      :{WHITE}载具有调度计划时不能在“载具（汽车）”与普通货物之间互相改装，请先清空调度计划。
 STR_RV_TRANSPORT_CRITERIA_CAPTION                               :道路载具运输
 STR_RV_TRANSPORT_CRITERIA_LOAD_STATE                            :载货状态
 STR_RV_TRANSPORT_CRITERIA_CARGO                                 :货物
 STR_RV_TRANSPORT_CRITERIA_CARGO_MODE                            :货物判据
-STR_RV_TRANSPORT_CRITERIA_CAN_CARRY                             :能载
-STR_RV_TRANSPORT_CRITERIA_IS_CARRYING                           :正载
+STR_RV_TRANSPORT_CRITERIA_CAN_CARRY                             :必须可装载
+STR_RV_TRANSPORT_CRITERIA_IS_CARRYING                           :必须正装载
 STR_RV_TRANSPORT_CRITERIA_MIN_WAIT                              :最短等待
 STR_RV_TRANSPORT_CRITERIA_SLOT                                  :路签
 STR_RV_TRANSPORT_CRITERIA_SLOT_SET                              :已指定路签
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_ANY                        :载具条件：任意
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_EMPTY                      :载具条件：仅空车
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_FULL                       :载具条件：仅满载
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_NONE                         :最短等待：不限
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_DAYS                         :最短等待：{NUM} 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_1                            :最短等待：1 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_2                            :最短等待：2 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_5                            :最短等待：5 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_10                           :最短等待：10 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_30                           :最短等待：30 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_60                           :最短等待：60 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_CUSTOM                       :最短等待：自定义时间
+STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_ANY                        :任意
+STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_EMPTY                      :仅空车
+STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_FULL                       :仅满载
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_NONE                         :不限
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_DAYS                         :{NUM} 天
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_1                            :1 天
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_2                            :2 天
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_5                            :5 天
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_10                           :10 天
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_30                           :30 天
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_60                           :60 天
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_CUSTOM                       :自定义时间
 STR_RV_TRANSPORT_CRITERIA_MAX                                   :最多同时装载
 STR_RV_TRANSPORT_CRITERIA_MAX_ANY                               :不限数量
 STR_RV_TRANSPORT_CRITERIA_MAX_1                                 :最多 1 辆
@@ -4768,10 +4775,10 @@ STR_ORDER_RV_MAX_VEHICLES                                       :最多 {NUM} �
 STR_ORDER_TOOLTIP_FULL_LOAD                                     :{BLACK}修改当前命令在车站的装载措施
 
 STR_ORDER_TOGGLE_UNLOAD                                         :{BLACK}全部卸载
-STR_ORDER_DROP_UNLOAD_IF_ACCEPTED                               :若接受则卸载
-STR_ORDER_DROP_UNLOAD                                           :全部卸载
-STR_ORDER_DROP_TRANSFER                                         :转运
-STR_ORDER_DROP_NO_UNLOADING                                     :不卸载
+STR_ORDER_DROP_UNLOAD_IF_ACCEPTED                               :若接受则卸载普通货物
+STR_ORDER_DROP_UNLOAD                                           :卸载全部普通货物
+STR_ORDER_DROP_TRANSFER                                         :转运普通货物
+STR_ORDER_DROP_NO_UNLOADING                                     :不卸载普通货物
 STR_ORDER_TOOLTIP_UNLOAD                                        :{BLACK}修改当前命令在车站的卸载措施
 
 STR_ORDER_REFIT                                                 :{BLACK}改装
@@ -4868,34 +4875,34 @@ STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION                       :{PUSH_COLOUR}{R
 
 STR_ORDER_IMPLICIT                                              :（自动）
 
-STR_ORDER_FULL_LOAD                                             :（等待满载）
-STR_ORDER_FULL_LOAD_ANY                                         :（等待任一货物满载）
-STR_ORDER_NO_LOAD                                               :（不装载）
-STR_ORDER_UNLOAD                                                :（卸载，装载）
-STR_ORDER_UNLOAD_FULL_LOAD                                      :（卸载，等待满载）
-STR_ORDER_UNLOAD_FULL_LOAD_ANY                                  :（卸载，等待任一货物满载）
-STR_ORDER_UNLOAD_NO_LOAD                                        :（卸载，空车离开）
-STR_ORDER_TRANSFER                                              :（转运，装载）
-STR_ORDER_TRANSFER_FULL_LOAD                                    :（转运，等待满载）
-STR_ORDER_TRANSFER_FULL_LOAD_ANY                                :（转运，等待任一货物满载）
-STR_ORDER_TRANSFER_NO_LOAD                                      :（转运，空车离开）
-STR_ORDER_NO_UNLOAD                                             :（不卸载，装载）
-STR_ORDER_NO_UNLOAD_FULL_LOAD                                   :（不卸载，等待满载）
-STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY                               :（不卸载，等待任一货物满载）
-STR_ORDER_NO_UNLOAD_NO_LOAD                                     :（不卸载，不装载）
+STR_ORDER_FULL_LOAD                                             :（等待普通货物满载）
+STR_ORDER_FULL_LOAD_ANY                                         :（等待任一普通货物满载）
+STR_ORDER_NO_LOAD                                               :（不装载普通货物）
+STR_ORDER_UNLOAD                                                :（卸载全部普通货物，装载普通货物）
+STR_ORDER_UNLOAD_FULL_LOAD                                      :（卸载全部普通货物，等待普通货物满载）
+STR_ORDER_UNLOAD_FULL_LOAD_ANY                                  :（卸载全部普通货物，等待任一普通货物满载）
+STR_ORDER_UNLOAD_NO_LOAD                                        :（卸载全部普通货物）
+STR_ORDER_TRANSFER                                              :（转运普通货物，装载普通货物）
+STR_ORDER_TRANSFER_FULL_LOAD                                    :（转运普通货物，等待普通货物满载）
+STR_ORDER_TRANSFER_FULL_LOAD_ANY                                :（转运普通货物，等待任一普通货物满载）
+STR_ORDER_TRANSFER_NO_LOAD                                      :（转运普通货物）
+STR_ORDER_NO_UNLOAD                                             :（不卸载普通货物，装载普通货物）
+STR_ORDER_NO_UNLOAD_FULL_LOAD                                   :（不卸载普通货物，等待普通货物满载）
+STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY                               :（不卸载普通货物，等待任一普通货物满载）
+STR_ORDER_NO_UNLOAD_NO_LOAD                                     :（不卸载普通货物，不装载普通货物）
 
 STR_ORDER_AUTO_REFIT                                            :（改装为运载{STRING}）
-STR_ORDER_FULL_LOAD_REFIT                                       :（改装为运载{STRING}后等待满载）
-STR_ORDER_FULL_LOAD_ANY_REFIT                                   :（改装为运载{STRING}后等待任一货物满载）
-STR_ORDER_UNLOAD_REFIT                                          :（卸载，改装为运载{STRING}后装载）
-STR_ORDER_UNLOAD_FULL_LOAD_REFIT                                :（卸载，改装为运载{STRING}后等待满载）
-STR_ORDER_UNLOAD_FULL_LOAD_ANY_REFIT                            :（卸载，改装为运载{STRING}后等待任一货物满载）
-STR_ORDER_TRANSFER_REFIT                                        :（转运，改装为运载{STRING}后装载）
-STR_ORDER_TRANSFER_FULL_LOAD_REFIT                              :（转运，改装为运载{STRING}后等待满载）
-STR_ORDER_TRANSFER_FULL_LOAD_ANY_REFIT                          :（转运，改装为运载{STRING}后等待任一货物满载）
-STR_ORDER_NO_UNLOAD_REFIT                                       :（不卸载，改装为运载{STRING}后装载）
-STR_ORDER_NO_UNLOAD_FULL_LOAD_REFIT                             :（不卸载，改装为运载{STRING}后等待满载）
-STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY_REFIT                         :（不卸载，改装为运载{STRING}后等待任一货物满载）
+STR_ORDER_FULL_LOAD_REFIT                                       :（改装为运载{STRING}后等待普通货物满载）
+STR_ORDER_FULL_LOAD_ANY_REFIT                                   :（改装为运载{STRING}后等待任一普通货物满载）
+STR_ORDER_UNLOAD_REFIT                                          :（卸载全部普通货物，改装为运载{STRING}后装载普通货物）
+STR_ORDER_UNLOAD_FULL_LOAD_REFIT                                :（卸载全部普通货物，改装为运载{STRING}后等待普通货物满载）
+STR_ORDER_UNLOAD_FULL_LOAD_ANY_REFIT                            :（卸载全部普通货物，改装为运载{STRING}后等待任一普通货物满载）
+STR_ORDER_TRANSFER_REFIT                                        :（转运普通货物，改装为运载{STRING}后装载普通货物）
+STR_ORDER_TRANSFER_FULL_LOAD_REFIT                              :（转运普通货物，改装为运载{STRING}后等待普通货物满载）
+STR_ORDER_TRANSFER_FULL_LOAD_ANY_REFIT                          :（转运普通货物，改装为运载{STRING}后等待任一普通货物满载）
+STR_ORDER_NO_UNLOAD_REFIT                                       :（不卸载普通货物，改装为运载{STRING}后装载普通货物）
+STR_ORDER_NO_UNLOAD_FULL_LOAD_REFIT                             :（不卸载普通货物，改装为运载{STRING}后等待普通货物满载）
+STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY_REFIT                         :（不卸载普通货物，改装为运载{STRING}后等待任一普通货物满载）
 
 STR_ORDER_AUTO_REFIT_ANY                                        :可用货物
 

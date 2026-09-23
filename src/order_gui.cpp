@@ -437,11 +437,6 @@ void ShowCargoTypeOrdersWindow(const Vehicle *v, Window *parent, VehicleOrderID 
 /** Widgets of the #RVTransportWindow (road vehicle transport, RoRo). */
 enum RVTransportWidgets : WidgetID {
 	WID_RVT_CAPTION,          ///< Caption of the window.
-	WID_RVT_LOAD,             ///< Load road vehicles here (for a road vehicle: wait to be transported).
-	WID_RVT_MATCH_DEST,       ///< Only take road vehicles heading for the carrier's next stop.
-	WID_RVT_WAIT,             ///< Keep waiting until road vehicles have been loaded.
-	WID_RVT_UNLOAD,           ///< Unload road vehicles here (for a road vehicle: be unloaded here).
-	WID_RVT_UNLOAD_ALL,       ///< Unload every road vehicle here, whatever station it declares itself.
 	WID_RVT_LOAD_STATE_LABEL, ///< Label of the candidate load state criterion.
 	WID_RVT_LOAD_STATE,       ///< Candidate load state criterion.
 	WID_RVT_CARGO_LABEL,      ///< Label of the candidate cargo criterion.
@@ -459,6 +454,7 @@ enum RVTransportWidgets : WidgetID {
 
 /** Values used by the dropdowns of the road vehicle transport window. */
 static const int RVTC_CARGO_ANY = 0xFF;         ///< "Any cargo" entry of the cargo dropdown.
+static const int RVTC_CARGO_MODE_ANY = 2;        ///< Cargo criterion: unrestricted (entry of the cargo mode dropdown).
 static const int RVTC_CARGO_MODE_CAN_CARRY = 0; ///< Cargo criterion: the candidate must be able to carry the cargo.
 static const int RVTC_CARGO_MODE_CARRYING = 1;  ///< Cargo criterion: the candidate must currently carry the cargo.
 
@@ -562,51 +558,23 @@ private:
 		return s;
 	}
 
-	/** Is this a road vehicle's own order (rather than a carrier's)? */
-	bool IsRoadVehicleOrder() const { return this->vehicle->type == VehicleType::Road; }
-
 	/** Show the current settings on the buttons and dropdowns. */
 	void UpdateWidgetTexts()
 	{
-		const uint8_t rvf = this->order->GetRVTransportFlags();
-		const bool is_rv = this->IsRoadVehicleOrder();
-
-		this->SetWidgetLoweredState(WID_RVT_LOAD, (rvf & ORVTF_LOAD) != 0);
-		this->SetWidgetLoweredState(WID_RVT_MATCH_DEST, (rvf & ORVTF_MATCH_DEST) != 0);
-		this->SetWidgetLoweredState(WID_RVT_WAIT, (rvf & ORVTF_WAIT) != 0);
-		this->SetWidgetLoweredState(WID_RVT_UNLOAD, (rvf & ORVTF_UNLOAD) != 0);
-		this->SetWidgetLoweredState(WID_RVT_UNLOAD_ALL, (rvf & ORVTF_UNLOAD_ALL) != 0);
-
-		this->GetWidget<NWidgetCore>(WID_RVT_LOAD)->SetString(is_rv ? STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED : STR_ORDER_DROP_LOAD_ROAD_VEHICLES);
-		this->GetWidget<NWidgetCore>(WID_RVT_UNLOAD)->SetString(is_rv ? STR_ORDER_DROP_BE_UNLOADED_HERE : STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES);
-		/* A road vehicle "is unloaded here" itself; there is nothing for it to unload, so the option
-		 * to drop everything is only offered to carriers. */
-		this->SetWidgetDisabledState(WID_RVT_UNLOAD_ALL, is_rv);
-
-		/* The selection criteria only apply when road vehicles are loaded here, and a road vehicle's
-		 * own order has no use for them at all. */
-		const bool criteria_useful = !is_rv && (rvf & ORVTF_LOAD) != 0;
-		this->SetWidgetDisabledState(WID_RVT_MATCH_DEST, is_rv || (rvf & ORVTF_LOAD) == 0);
-		this->SetWidgetDisabledState(WID_RVT_WAIT, is_rv || (rvf & ORVTF_LOAD) == 0);
-		this->SetWidgetDisabledState(WID_RVT_LOAD_STATE, !criteria_useful);
-		this->SetWidgetDisabledState(WID_RVT_CARGO, !criteria_useful);
-		this->SetWidgetDisabledState(WID_RVT_CARGO_MODE, !criteria_useful);
-		this->SetWidgetDisabledState(WID_RVT_MIN_WAIT, !criteria_useful);
-		this->SetWidgetDisabledState(WID_RVT_SLOT, !criteria_useful);
-		/* The per-visit load limit only matters while road vehicles are loaded here. */
-		this->SetWidgetDisabledState(WID_RVT_MAX, !criteria_useful);
-
+		/* The window only contains the selection criteria; the load/unload toggles live in the
+		 * order window's load/unload dropdowns now. */
 		this->GetWidget<NWidgetCore>(WID_RVT_LOAD_STATE)->SetString(RVTransportLoadStateCriterionText(this->order->GetRVTransportLoadState()));
 
 		const uint8_t cargo_mode = this->order->GetRVTransportCargoMode();
 		const CargoType cargo = static_cast<CargoType>(this->order->GetRVTransportCargo());
 		if (cargo_mode == RVTC_ANY || !IsValidCargoType(cargo)) {
 			this->GetWidget<NWidgetCore>(WID_RVT_CARGO)->SetString(STR_ORDER_RV_LOAD_STATE_ANY);
-			this->GetWidget<NWidgetCore>(WID_RVT_CARGO_MODE)->SetString(STR_RV_TRANSPORT_CRITERIA_CAN_CARRY);
 		} else {
 			this->GetWidget<NWidgetCore>(WID_RVT_CARGO)->SetString(CargoSpec::Get(cargo)->name);
-			this->GetWidget<NWidgetCore>(WID_RVT_CARGO_MODE)->SetString(cargo_mode == RVTC_CAN_CARRY ? STR_RV_TRANSPORT_CRITERIA_CAN_CARRY : STR_RV_TRANSPORT_CRITERIA_IS_CARRYING);
 		}
+		/* The cargo mode dropdown names the current restriction, or "any" when there is none. */
+		this->GetWidget<NWidgetCore>(WID_RVT_CARGO_MODE)->SetString(cargo_mode == RVTC_ANY ? STR_ORDER_RV_LOAD_STATE_ANY :
+				(cargo_mode == RVTC_CAN_CARRY ? STR_RV_TRANSPORT_CRITERIA_CAN_CARRY : STR_RV_TRANSPORT_CRITERIA_IS_CARRYING));
 
 		this->GetWidget<NWidgetCore>(WID_RVT_MIN_WAIT)->SetString(RVTransportMinWaitCriterionText(this->order->GetRVTransportMinWait()));
 
@@ -636,13 +604,6 @@ private:
 		if (!this->CheckOrderStillValid()) return;
 		Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, this->vehicle->index,
 				this->order_id, mof, data, cargo, {});
-	}
-
-	/** Toggle one of the load/unload flags, keeping the combination meaningful. */
-	void ToggleFlag(uint8_t bit)
-	{
-		const uint8_t flags = RVTransportToggleOrderFlag(this->order->GetRVTransportFlags(), bit, this->IsRoadVehicleOrder());
-		this->ModifyOrder(MOF_RV_TRANSPORT, flags);
 	}
 
 	/** Currently selected cargo of the cargo criterion, or INVALID_CARGO when the criterion is off. */
@@ -682,7 +643,9 @@ private:
 	{
 		const uint8_t current = this->order->GetRVTransportCargoMode();
 		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current != RVTC_IS_CARRYING, STR_RV_TRANSPORT_CRITERIA_CAN_CARRY, RVTC_CARGO_MODE_CAN_CARRY));
+		list.push_back(MakeDropDownListCheckedItem(current == RVTC_ANY, STR_ORDER_RV_LOAD_STATE_ANY, RVTC_CARGO_MODE_ANY));
+		list.push_back(MakeDropDownListDividerItem());
+		list.push_back(MakeDropDownListCheckedItem(current == RVTC_CAN_CARRY, STR_RV_TRANSPORT_CRITERIA_CAN_CARRY, RVTC_CARGO_MODE_CAN_CARRY));
 		list.push_back(MakeDropDownListCheckedItem(current == RVTC_IS_CARRYING, STR_RV_TRANSPORT_CRITERIA_IS_CARRYING, RVTC_CARGO_MODE_CARRYING));
 		return list;
 	}
@@ -737,8 +700,10 @@ public:
 		this->order = v->GetOrder(order_id);
 
 		this->CreateNestedTree();
-		this->FinishInitNested(v->index);
+		/* Set the widget texts before the layout is computed, so that the dropdowns are sized to fit
+		 * their current value (there is no fixed minimum width for them). */
 		this->UpdateWidgetTexts();
+		this->FinishInitNested(v->index);
 		this->last_settings = this->GetSettings();
 		this->owner = v->owner;
 	}
@@ -759,6 +724,8 @@ public:
 		if (!(current == this->last_settings)) {
 			this->last_settings = current;
 			this->UpdateWidgetTexts();
+			/* Re-run the layout so the dropdowns fit the (possibly longer) new value. */
+			this->ReInit();
 			this->SetDirty();
 		}
 	}
@@ -777,12 +744,6 @@ public:
 		}
 
 		switch (widget) {
-			case WID_RVT_LOAD:       this->ToggleFlag(ORVTF_LOAD); break;
-			case WID_RVT_MATCH_DEST: this->ToggleFlag(ORVTF_MATCH_DEST); break;
-			case WID_RVT_WAIT:       this->ToggleFlag(ORVTF_WAIT); break;
-			case WID_RVT_UNLOAD:     this->ToggleFlag(ORVTF_UNLOAD); break;
-			case WID_RVT_UNLOAD_ALL: this->ToggleFlag(ORVTF_UNLOAD_ALL); break;
-
 			/* A dropdown widget has to open its list itself. */
 			case WID_RVT_LOAD_STATE:
 				ShowDropDownList(this, this->BuildLoadStateList(), -1, WID_RVT_LOAD_STATE, 0);
@@ -836,7 +797,10 @@ public:
 				break;
 
 			case WID_RVT_CARGO_MODE:
-				if (cargo == INVALID_CARGO) {
+				if (index == RVTC_CARGO_MODE_ANY) {
+					/* Unrestricted: clear the whole cargo criterion. */
+					this->ModifyOrder(MOF_RV_CARGO_MODE, RVTC_ANY, INVALID_CARGO);
+				} else if (cargo == INVALID_CARGO) {
 					/* A mode without a cargo is meaningless: start with the first cargo of the game. */
 					if (!_sorted_cargo_specs.empty()) {
 						this->ModifyOrder(MOF_RV_CARGO_MODE, (index == RVTC_CARGO_MODE_CARRYING) ? RVTC_IS_CARRYING : RVTC_CAN_CARRY,
@@ -875,6 +839,7 @@ public:
 		}
 		this->order = this->vehicle->GetOrder(this->order_id);
 		this->UpdateWidgetTexts();
+		this->ReInit();
 		this->SetDirty();
 	}
 };
@@ -887,13 +852,6 @@ static constexpr NWidgetPart _nested_rv_transport_widgets[] = {
 		NWidget(WWT_SHADEBOX, Colours::Grey),
 		NWidget(WWT_DEFSIZEBOX, Colours::Grey),
 		NWidget(WWT_STICKYBOX, Colours::Grey),
-	EndContainer(),
-	NWidget(WWT_PANEL, Colours::Grey),
-		NWidget(WWT_TEXTBTN, Colours::Grey, WID_RVT_LOAD), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_DROP_LOAD_ROAD_VEHICLES, STR_NULL),
-		NWidget(WWT_TEXTBTN, Colours::Grey, WID_RVT_MATCH_DEST), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_DROP_RV_MATCH_DEST, STR_NULL),
-		NWidget(WWT_TEXTBTN, Colours::Grey, WID_RVT_WAIT), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES, STR_NULL),
-		NWidget(WWT_TEXTBTN, Colours::Grey, WID_RVT_UNLOAD), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES, STR_NULL),
-		NWidget(WWT_TEXTBTN, Colours::Grey, WID_RVT_UNLOAD_ALL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES, STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES_TOOLTIP),
 	EndContainer(),
 	NWidget(WWT_PANEL, Colours::Grey),
 		NWidget(NWID_HORIZONTAL),
@@ -1096,12 +1054,20 @@ static const StringID _order_unload_dropdown[] = {
 };
 
 /**
- * Result values of the road vehicle transport (RoRo) entry which the order window appends to the
- * load and unload dropdowns. It must not collide with the OrderLoadType/OrderUnloadType values used
- * by the standard entries above.
+ * Result values of the road vehicle transport (RoRo) entries which the order window appends to the
+ * load and unload dropdowns, and to the manage-order dropdown of a road vehicle's own orders. The
+ * values must not collide with the OrderLoadType/OrderUnloadType values used by the standard
+ * entries.
  */
 enum RVTransportDropDownResult {
-	RVDD_TRANSPORT  = 0x100, ///< Open the window with all road vehicle transport (RoRo) settings.
+	RVDD_TRANSPORT     = 0x100, ///< Open the window with the road vehicle transport (RoRo) selection criteria.
+	RVDD_LOAD_ANY      = 0x101, ///< Carrier: load any road vehicles.
+	RVDD_LOAD_MATCH    = 0x102, ///< Carrier: only load road vehicles heading for the carrier's next stop.
+	RVDD_LOAD_WAIT     = 0x103, ///< Carrier: keep waiting until road vehicles have been loaded.
+	RVDD_UNLOAD        = 0x111, ///< Carrier: unload the road vehicles which want to get off here.
+	RVDD_UNLOAD_ALL    = 0x112, ///< Carrier: unload every road vehicle here.
+	RVDD_RV_WAIT       = 0x120, ///< Road vehicle: wait to be transported here.
+	RVDD_RV_UNLOAD     = 0x121, ///< Road vehicle: be unloaded here.
 };
 
 enum OrderDropDownID {
@@ -1352,6 +1318,72 @@ static StringID GetDepotOrderGoToString(const Order &order)
 }
 
 /**
+ * Append the "(...)" group which the order list shows for a station order of a road vehicle carrier:
+ * the road vehicle transport parts of the order (wait, load, unload) inside the parentheses,
+ * followed by a single "(other options)" marker when selection criteria are set, instead of listing
+ * every criterion in the order list. The group replaces the normal-cargo load/unload parentheses,
+ * which for a carrier order would only say "no loading / no unloading".
+ * @param line The line to append to.
+ * @param order The station order.
+ */
+/** Standalone text of a normal-cargo load type, for the road vehicle transport order summary. */
+static StringID RVTransportCargoLoadText(OrderLoadType load)
+{
+	switch (load) {
+		case OrderLoadType::FullLoad:      return STR_ORDER_DROP_FULL_LOAD_ALL;
+		case OrderLoadType::FullLoadAny:   return STR_ORDER_DROP_FULL_LOAD_ANY;
+		case OrderLoadType::NoLoad:        return STR_ORDER_DROP_NO_LOADING;
+		case OrderLoadType::CargoTypeLoad: return STR_ORDER_DROP_CARGO_TYPE_LOAD;
+		default:                           return STR_ORDER_RV_CARGO_LOAD_DEFAULT; // LoadIfPossible
+	}
+}
+
+/** Standalone text of a normal-cargo unload type, for the road vehicle transport order summary. */
+static StringID RVTransportCargoUnloadText(OrderUnloadType unload)
+{
+	switch (unload) {
+		case OrderUnloadType::Unload:          return STR_ORDER_DROP_UNLOAD;
+		case OrderUnloadType::Transfer:        return STR_ORDER_DROP_TRANSFER;
+		case OrderUnloadType::NoUnload:        return STR_ORDER_DROP_NO_UNLOADING;
+		case OrderUnloadType::CargoTypeUnload: return STR_ORDER_DROP_CARGO_TYPE_UNLOAD;
+		default:                               return STR_ORDER_RV_CARGO_UNLOAD_DEFAULT; // UnloadIfPossible
+	}
+}
+
+static void AppendRVTransportOrderSummary(format_buffer &line, const Order &order)
+{
+	const uint8_t rvf = order.GetRVTransportFlags();
+	line.push_back(' ');
+	line.push_back('(');
+	bool first = true;
+	auto part = [&](StringID str) {
+		if (str == INVALID_STRING_ID) return;
+		if (!first) line.append(", ");
+		first = false;
+		line.append(GetString(str));
+	};
+	if ((rvf & ORVTF_WAIT) != 0) part(STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES);
+	/* The load side is either road vehicles or normal cargo (they are mutually exclusive); the
+	 * normal-cargo side is shown with its own wording, so a mixed order shows both parts. */
+	if ((rvf & ORVTF_LOAD) != 0) {
+		part(((rvf & ORVTF_MATCH_DEST) != 0) ? STR_ORDER_DROP_RV_LOAD_NEXT : STR_ORDER_DROP_LOAD_ROAD_VEHICLES);
+	} else {
+		part(RVTransportCargoLoadText(order.GetLoadType()));
+	}
+	if ((rvf & ORVTF_UNLOAD) != 0) {
+		part(((rvf & ORVTF_UNLOAD_ALL) != 0) ? STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES : STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES);
+	} else {
+		part(RVTransportCargoUnloadText(order.GetUnloadType()));
+	}
+	if (order.GetRVTransportLoadState() != RVTLS_ANY || order.GetRVTransportCargoMode() != RVTC_ANY ||
+			order.GetRVTransportMinWait() != 0 || order.GetRVTransportSlot() != 0 || order.GetRVTransportMax() != 0) {
+		line.push_back(' ');
+		line.append(GetString(STR_ORDER_RV_TRANSPORT_MORE_OPTIONS));
+	}
+	line.push_back(')');
+}
+
+/**
  * Draws an order in order or timetable GUI
  * @param v Vehicle the order belongs to
  * @param order The order to draw
@@ -1423,13 +1455,23 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				timetable_wait_time_valid = true;
 			} else {
 				/* Show non-stop, refit and stop location only in the order window. */
+				const bool is_rv = (v->type == VehicleType::Road);
+				const uint8_t rvf = order->GetRVTransportFlags();
+				const bool rv_transport = !is_rv && (rvf & (ORVTF_LOAD | ORVTF_UNLOAD)) != 0;
+
 				if (!(order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)) {
-					StringID str = _station_load_types[order->IsRefit()][to_underlying(unload)][to_underlying(load)];
-					if (str != INVALID_STRING_ID) {
-						if (order->IsRefit()) {
-							AppendStringInPlace(line, str, order->IsAutoRefit() ? STR_ORDER_AUTO_REFIT_ANY : CargoSpec::Get(order->GetRefitCargo())->name);
-						} else {
-							AppendStringInPlace(line, str);
+					if (rv_transport) {
+						/* A road vehicle carrier's order shows its road vehicle transport parts
+						 * inside the parentheses instead of the normal-cargo load/unload text. */
+						AppendRVTransportOrderSummary(line, *order);
+					} else {
+						StringID str = _station_load_types[order->IsRefit()][to_underlying(unload)][to_underlying(load)];
+						if (str != INVALID_STRING_ID) {
+							if (order->IsRefit()) {
+								AppendStringInPlace(line, str, order->IsAutoRefit() ? STR_ORDER_AUTO_REFIT_ANY : CargoSpec::Get(order->GetRefitCargo())->name);
+							} else {
+								AppendStringInPlace(line, str);
+							}
 						}
 					}
 				}
@@ -1445,62 +1487,18 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 					AppendStringInPlace(line, STR_ORDER_RV_DIR_NE + to_underlying(order->GetRoadVehTravelDirection()));
 				}
 
-				/* RoRo: show every road vehicle transport part of this order (loading, unloading and,
-				 * for a carrier, the destination match and waiting). A road vehicle's own order never
-				 * uses the latter two. */
-				const uint8_t rvf = order->GetRVTransportFlags();
-				const bool is_rv = (v->type == VehicleType::Road);
-				if ((rvf & ORVTF_LOAD) != 0) {
-					line.push_back(' ');
-					AppendStringInPlace(line, is_rv ? STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED : STR_ORDER_DROP_LOAD_ROAD_VEHICLES);
-				}
-				if ((rvf & ORVTF_UNLOAD) != 0) {
-					line.push_back(' ');
-					AppendStringInPlace(line, is_rv ? STR_ORDER_DROP_BE_UNLOADED_HERE : STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES);
-				}
-				if (!is_rv && (rvf & ORVTF_UNLOAD_ALL) != 0) {
-					line.push_back(' ');
-					AppendStringInPlace(line, STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES);
-				}
-				if (!is_rv && (rvf & ORVTF_MATCH_DEST) != 0) {
-					line.push_back(' ');
-					AppendStringInPlace(line, STR_ORDER_DROP_RV_MATCH_DEST);
-				}
-				if (!is_rv && (rvf & ORVTF_WAIT) != 0) {
-					line.push_back(' ');
-					AppendStringInPlace(line, STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES);
-				}
-				/* RoRo: the selection criteria of a carrier's load order (they can also be set from
-				 * the game console, so show them even when the settings window is not used).
-				 * Everything is appended as already formatted text: passing a formatted string where a
-				 * {STRING} parameter is expected does not work (the parameter system expects a
-				 * StringID / a number and would read garbage instead), so only complete strings and
-				 * numeric parameters are used here. */
-				if (!is_rv) {
-					if (order->GetRVTransportLoadState() != RVTLS_ANY) {
+				/* RoRo: a road vehicle's own order shows its "wait to be transported" / "be unloaded
+				 * here" toggles as suffixes. A carrier's road vehicle transport parts are already in the
+				 * parentheses above, and its selection criteria are only shown as the "(other options)"
+				 * marker (see AppendRVTransportOrderSummary). */
+				if (is_rv) {
+					if ((rvf & ORVTF_LOAD) != 0) {
 						line.push_back(' ');
-						line.append(GetString(RVTransportLoadStateCriterionText(order->GetRVTransportLoadState())));
+						AppendStringInPlace(line, STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED);
 					}
-					if (order->GetRVTransportMinWait() != 0) {
+					if ((rvf & ORVTF_UNLOAD) != 0) {
 						line.push_back(' ');
-						line.append(GetString(STR_ORDER_DROP_RV_MIN_WAIT_NUM, order->GetRVTransportMinWait()));
-					}
-					if (order->GetRVTransportCargoMode() != RVTC_ANY && IsValidCargoType(static_cast<CargoType>(order->GetRVTransportCargo()))) {
-						const CargoSpec *cs = CargoSpec::Get(static_cast<CargoType>(order->GetRVTransportCargo()));
-						line.push_back(' ');
-						line.append(GetString(order->GetRVTransportCargoMode() == RVTC_CAN_CARRY ? STR_ORDER_RV_CARGO_CAN_CARRY : STR_ORDER_RV_CARGO_IS_CARRYING));
-						line.append(GetString(cs->name));
-					}
-					if (order->GetRVTransportSlot() != 0) {
-						const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{static_cast<uint16_t>(order->GetRVTransportSlot() - 1)});
-						if (slot != nullptr) {
-							line.push_back(' ');
-							line.append(GetString(STR_ORDER_RV_SLOT, slot->index.base()));
-						}
-					}
-					if (order->GetRVTransportMax() != 0) {
-						line.push_back(' ');
-						line.append(GetString(STR_ORDER_RV_MAX_VEHICLES, order->GetRVTransportMax()));
+						AppendStringInPlace(line, STR_ORDER_DROP_BE_UNLOADED_HERE);
 					}
 				}
 			}
@@ -2320,47 +2318,129 @@ private:
 	}
 
 	/**
-	 * Build the contents of the load dropdown: the standard load types, plus a single entry which
-	 * opens the window with all road vehicle transport settings (load/unload, waiting, criteria).
-	 * @return The dropdown list.
+	 * Is this vehicle a dedicated road vehicle carrier, i.e. every cargo-carrying part of its chain
+	 * is refitted to the dedicated road vehicle transport cargo? A dedicated carrier never
+	 * transports normal cargo, so its order buttons and dropdowns advertise (and its new orders
+	 * default to) road vehicle transport; every other vehicle defaults to the normal-cargo options.
 	 */
-	DropDownList BuildLoadDropDownList() const
+	bool IsVehicleOnlyCarrier() const
 	{
-		const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
+		return RVTransportVehicleCarriesOnlyVehicles(this->vehicle);
+	}
 
+	/**
+	 * Build the road vehicle transport entries of the load dropdown: the two load modes ("load any"
+	 * / "load for the next stop") as plain entries, the "wait for road vehicles" checkbox (it can be
+	 * active together with either load mode) and the entry which opens the selection criteria window.
+	 * "Wait" and the criteria-window entry are only usable while the order actually loads road
+	 * vehicles, as they are meaningful only in that mode.
+	 * @param order The selected station order.
+	 * @return The list of entries.
+	 */
+	DropDownList BuildRVLoadDropDown(const Order *order) const
+	{
 		DropDownList list;
-		for (uint i = 0; i < lengthof(_order_full_load_dropdown); i++) {
-			if (_order_full_load_dropdown[i] == STR_EMPTY) continue;
-			list.push_back(MakeDropDownListStringItem(_order_full_load_dropdown[i], i));
-		}
+		const uint8_t rvf = order->GetRVTransportFlags();
+		const bool loads = (rvf & ORVTF_LOAD) != 0;
+		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_RV_LOAD_ANY, RVDD_LOAD_ANY));
+		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_RV_LOAD_NEXT, RVDD_LOAD_MATCH));
+		list.push_back(MakeDropDownListCheckedItem((rvf & ORVTF_WAIT) != 0, STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES, RVDD_LOAD_WAIT, false, !loads));
+		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_RV_LOAD_OPTIONS, RVDD_TRANSPORT, false, !loads));
+		return list;
+	}
 
-		if (order != nullptr && order->IsType(OT_GOTO_STATION)) {
-			const bool active = order->GetRVTransportFlags() != 0 || RVTransportOrderHasCriteria(*order);
-			list.push_back(MakeDropDownListDividerItem());
-			list.push_back(MakeDropDownListCheckedItem(active, STR_ORDER_DROP_RV_TRANSPORT, RVDD_TRANSPORT));
+	/**
+	 * Build the road vehicle transport entries of the unload dropdown: the two unload options as
+	 * plain entries. There is no criteria entry because the selection criteria only concern loading.
+	 * @return The list of entries.
+	 */
+	DropDownList BuildRVUnloadDropDown() const
+	{
+		DropDownList list;
+		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES, RVDD_UNLOAD));
+		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES, RVDD_UNLOAD_ALL));
+		return list;
+	}
+
+	/**
+	 * Build the standard cargo load/unload dropdown entries.
+	 * @param unload Whether to build the unload entries (instead of the load entries).
+	 * @return The list of entries.
+	 */
+	DropDownList BuildCargoLoadUnloadDropDown(bool unload) const
+	{
+		DropDownList list;
+		const StringID *array = unload ? _order_unload_dropdown : _order_full_load_dropdown;
+		const uint count = unload ? lengthof(_order_unload_dropdown) : lengthof(_order_full_load_dropdown);
+		for (uint i = 0; i < count; i++) {
+			if (array[i] == STR_EMPTY) continue;
+			list.push_back(MakeDropDownListStringItem(array[i], i));
 		}
 		return list;
 	}
 
 	/**
-	 * Build the contents of the unload dropdown: the standard unload types, plus the same entry
-	 * which opens the road vehicle transport window.
+	 * Build the contents of the load dropdown.
+	 * Both the normal-cargo load types and the road vehicle transport options are offered, separated
+	 * by a divider; which group comes first depends on whether this vehicle is a dedicated road
+	 * vehicle carrier. The normal-cargo and road vehicle transport loads are mutually exclusive, so
+	 * choosing one clear the other.
+	 * @return The dropdown list.
+	 */
+	DropDownList BuildLoadDropDownList() const
+	{
+		const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
+		const bool station = (order != nullptr) && order->IsType(OT_GOTO_STATION);
+		const bool is_carrier = this->vehicle->type != VehicleType::Road;
+
+		DropDownList cargo_items = this->BuildCargoLoadUnloadDropDown(false);
+		/* The road vehicle transport options only apply to a carrier (train/ship/aircraft) order; a
+		 * road vehicle's own "wait to be transported" toggle lives in the manage-order menu. */
+		DropDownList rv_items = (station && is_carrier) ? this->BuildRVLoadDropDown(order) : DropDownList{};
+
+		DropDownList list;
+		if (this->IsVehicleOnlyCarrier()) {
+			/* A dedicated carrier presents the road vehicle transport options first. */
+			for (auto &i : rv_items) list.push_back(std::move(i));
+			if (!rv_items.empty()) list.push_back(MakeDropDownListDividerItem());
+			for (auto &i : cargo_items) list.push_back(std::move(i));
+		} else {
+			for (auto &i : cargo_items) list.push_back(std::move(i));
+			if (!rv_items.empty()) list.push_back(MakeDropDownListDividerItem());
+			for (auto &i : rv_items) list.push_back(std::move(i));
+		}
+		return list;
+	}
+
+	/**
+	 * Build the contents of the unload dropdown.
+	 * Both the normal-cargo unload types and the road vehicle transport options are offered, separated
+	 * by a divider; which group comes first depends on whether this vehicle is a dedicated road
+	 * vehicle carrier. The normal-cargo and road vehicle transport unloads are mutually exclusive, so
+	 * choosing one clear the other.
 	 * @return The dropdown list.
 	 */
 	DropDownList BuildUnloadDropDownList() const
 	{
 		const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
+		const bool station = (order != nullptr) && order->IsType(OT_GOTO_STATION);
+		const bool is_carrier = this->vehicle->type != VehicleType::Road;
+
+		DropDownList cargo_items = this->BuildCargoLoadUnloadDropDown(true);
+		/* The road vehicle transport options only apply to a carrier (train/ship/aircraft) order; a
+		 * road vehicle's own "be unloaded here" toggle lives in the manage-order menu. */
+		DropDownList rv_items = (station && is_carrier) ? this->BuildRVUnloadDropDown() : DropDownList{};
 
 		DropDownList list;
-		for (uint i = 0; i < lengthof(_order_unload_dropdown); i++) {
-			if (_order_unload_dropdown[i] == STR_EMPTY) continue;
-			list.push_back(MakeDropDownListStringItem(_order_unload_dropdown[i], i));
-		}
-
-		if (order != nullptr && order->IsType(OT_GOTO_STATION)) {
-			const bool active = order->GetRVTransportFlags() != 0 || RVTransportOrderHasCriteria(*order);
-			list.push_back(MakeDropDownListDividerItem());
-			list.push_back(MakeDropDownListCheckedItem(active, STR_ORDER_DROP_RV_TRANSPORT, RVDD_TRANSPORT));
+		if (this->IsVehicleOnlyCarrier()) {
+			/* A dedicated carrier presents the road vehicle transport options first. */
+			for (auto &i : rv_items) list.push_back(std::move(i));
+			if (!rv_items.empty()) list.push_back(MakeDropDownListDividerItem());
+			for (auto &i : cargo_items) list.push_back(std::move(i));
+		} else {
+			for (auto &i : cargo_items) list.push_back(std::move(i));
+			if (!rv_items.empty()) list.push_back(MakeDropDownListDividerItem());
+			for (auto &i : rv_items) list.push_back(std::move(i));
 		}
 		return list;
 	}
@@ -2403,6 +2483,15 @@ private:
 
 		if (order == nullptr) return;
 
+		/* RoRo: choosing a normal-cargo load leaves road vehicle transport - loading road vehicles
+		 * and its selection options (destination match, waiting) are mutually exclusive with loading
+		 * normal cargo. A road vehicle's own "wait to be transported" is a separate toggle and is not
+		 * touched here. */
+		if (order->IsType(OT_GOTO_STATION) && this->vehicle->type != VehicleType::Road) {
+			const uint8_t flags = order->GetRVTransportFlags() & ~(ORVTF_LOAD | ORVTF_MATCH_DEST | ORVTF_WAIT);
+			if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
+		}
+
 		if (toggle && order->GetLoadType() == load_type) {
 			load_type = OrderLoadType::LoadIfPossible; // reset to 'default'
 		}
@@ -2411,6 +2500,90 @@ private:
 		}
 
 		if (load_type == OrderLoadType::CargoTypeLoad) ShowCargoTypeOrdersWindow(this->vehicle, this, sel_ord, CTOWV_LOAD);
+	}
+
+	/**
+	 * Handle the click on the full load button of a road vehicle carrier: toggles between the
+	 * default "load any road vehicles" and "load road vehicles going to the next stop", like the
+	 * cargo button toggles the full load type.
+	 */
+	void OrderClick_RVLoadToggle()
+	{
+		VehicleOrderID sel_ord = this->OrderGetSel();
+		const Order *order = this->vehicle->GetOrder(sel_ord);
+		if (order == nullptr || !order->IsType(OT_GOTO_STATION)) return;
+
+		uint8_t flags = order->GetRVTransportFlags() | ORVTF_LOAD;
+		flags ^= ORVTF_MATCH_DEST;
+		if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
+
+		/* RoRo: loading road vehicles is mutually exclusive with loading normal cargo. */
+		if (order->GetLoadType() != OrderLoadType::NoLoad) {
+			this->ModifyOrder(sel_ord, MOF_LOAD, to_underlying(OrderLoadType::NoLoad));
+		}
+	}
+
+	/**
+	 * Handle the click on the unload button of a road vehicle carrier: toggles between the default
+	 * "unload the road vehicles which want to get off here" and "unload all road vehicles", like
+	 * the cargo button toggles the unload type.
+	 */
+	void OrderClick_RVUnloadToggle()
+	{
+		VehicleOrderID sel_ord = this->OrderGetSel();
+		const Order *order = this->vehicle->GetOrder(sel_ord);
+		if (order == nullptr || !order->IsType(OT_GOTO_STATION)) return;
+
+		uint8_t flags = order->GetRVTransportFlags() | ORVTF_UNLOAD;
+		flags ^= ORVTF_UNLOAD_ALL;
+		if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
+
+		/* RoRo: unloading road vehicles is mutually exclusive with unloading normal cargo. */
+		if (order->GetUnloadType() != OrderUnloadType::NoUnload) {
+			this->ModifyOrder(sel_ord, MOF_UNLOAD, to_underlying(OrderUnloadType::NoUnload));
+		}
+	}
+
+	/**
+	 * Handle a road vehicle transport load choice from the load dropdown: set the given vehicle
+	 * transport load flags, and (being mutually exclusive) stop loading normal cargo. The normal-cargo
+	 * load type is always reset, so that the two systems never load at the same station order.
+	 */
+	void OrderClick_RVLoad(uint8_t load_flags)
+	{
+		VehicleOrderID sel_ord = this->OrderGetSel();
+		const Order *order = this->vehicle->GetOrder(sel_ord);
+		if (order == nullptr || !order->IsType(OT_GOTO_STATION)) return;
+
+		/* Only the load-side bits change: unloading road vehicles is an independent choice which may
+		 * stay set on the same order (the mutual exclusion is only between loading and unloading
+		 * *normal cargo*). */
+		const uint8_t flags = (order->GetRVTransportFlags() & (ORVTF_UNLOAD | ORVTF_UNLOAD_ALL)) |
+				(load_flags & (ORVTF_LOAD | ORVTF_MATCH_DEST | ORVTF_WAIT));
+		if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
+		if (order->GetLoadType() != OrderLoadType::NoLoad) {
+			this->ModifyOrder(sel_ord, MOF_LOAD, to_underlying(OrderLoadType::NoLoad));
+		}
+	}
+
+	/**
+	 * Handle a road vehicle transport unload choice from the unload dropdown: set the given vehicle
+	 * transport unload flags, and (being mutually exclusive) stop unloading normal cargo.
+	 */
+	void OrderClick_RVUnload(uint8_t unload_flags)
+	{
+		VehicleOrderID sel_ord = this->OrderGetSel();
+		const Order *order = this->vehicle->GetOrder(sel_ord);
+		if (order == nullptr || !order->IsType(OT_GOTO_STATION)) return;
+
+		/* Only the unload-side bits change: loading road vehicles is an independent choice which may
+		 * stay set on the same order. */
+		const uint8_t flags = (order->GetRVTransportFlags() & (ORVTF_LOAD | ORVTF_MATCH_DEST | ORVTF_WAIT)) |
+				(unload_flags & (ORVTF_UNLOAD | ORVTF_UNLOAD_ALL));
+		if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
+		if (order->GetUnloadType() != OrderUnloadType::NoUnload) {
+			this->ModifyOrder(sel_ord, MOF_UNLOAD, to_underlying(OrderUnloadType::NoUnload));
+		}
 	}
 
 	/**
@@ -2508,6 +2681,14 @@ private:
 		const Order *order = this->vehicle->GetOrder(sel_ord);
 
 		if (order == nullptr) return;
+
+		/* RoRo: choosing a normal-cargo unload leaves road vehicle transport - unloading road vehicles
+		 * (and unload-all) is mutually exclusive with unloading normal cargo. A road vehicle's own
+		 * "be unloaded here" is a separate toggle and is not touched here. */
+		if (order->IsType(OT_GOTO_STATION) && this->vehicle->type != VehicleType::Road) {
+			const uint8_t flags = order->GetRVTransportFlags() & ~(ORVTF_UNLOAD | ORVTF_UNLOAD_ALL);
+			if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
+		}
 
 		if (toggle && order->GetUnloadType() == unload_type) {
 			unload_type = OrderUnloadType::UnloadIfPossible;
@@ -2984,15 +3165,21 @@ public:
 			this->SetWidgetDisabledState(WID_O_UNLOAD,    (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) != 0); // unload
 			this->EnableWidget(WID_O_MGMT_BTN);
 
-			/* RoRo: reflect the road vehicle transport setting of this order in the load and unload
-			 * buttons (each button shows the option of its own dropdown). */
+			/* RoRo: road vehicle carriers show their own load/unload option on the buttons; for a
+			 * road vehicle itself the toggles live in the manage-order menu now. */
 			{
-				const uint8_t rvf = order->GetRVTransportFlags();
 				const bool is_rv = (this->vehicle->type == VehicleType::Road);
-				this->GetWidget<NWidgetCore>(WID_O_FULL_LOAD)->SetString(((rvf & ORVTF_LOAD) != 0) ?
-						(is_rv ? STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED : STR_ORDER_DROP_LOAD_ROAD_VEHICLES) : STR_ORDER_TOGGLE_FULL_LOAD);
-				this->GetWidget<NWidgetCore>(WID_O_UNLOAD)->SetString(((rvf & ORVTF_UNLOAD) != 0) ?
-						(is_rv ? STR_ORDER_DROP_BE_UNLOADED_HERE : STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES) : STR_ORDER_TOGGLE_UNLOAD);
+				const bool is_vehicle_only = !is_rv && this->IsVehicleOnlyCarrier();
+				if (is_vehicle_only) {
+					/* Fixed labels, like the cargo buttons always show "full load any cargo" /
+					 * "unload all": the pressed state and the dropdown show which of the two
+					 * options (any / next stop, matching / unload all) is currently active. */
+					this->GetWidget<NWidgetCore>(WID_O_FULL_LOAD)->SetString(STR_ORDER_DROP_RV_LOAD_NEXT);
+					this->GetWidget<NWidgetCore>(WID_O_UNLOAD)->SetString(STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES);
+				} else {
+					this->GetWidget<NWidgetCore>(WID_O_FULL_LOAD)->SetString(STR_ORDER_TOGGLE_FULL_LOAD);
+					this->GetWidget<NWidgetCore>(WID_O_UNLOAD)->SetString(STR_ORDER_TOGGLE_UNLOAD);
+				}
 			}
 
 			switch (order->GetType()) {
@@ -3007,8 +3194,15 @@ public:
 						this->EnableWidget(WID_O_NON_STOP);
 						this->SetWidgetLoweredState(WID_O_NON_STOP, order->GetNonStopType() & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);
 					}
-					this->SetWidgetLoweredState(WID_O_FULL_LOAD, order->GetLoadType() == OrderLoadType::FullLoadAny);
-					this->SetWidgetLoweredState(WID_O_UNLOAD, order->GetUnloadType() == OrderUnloadType::Unload);
+					/* RoRo: a dedicated road vehicle carrier marks the "next stop" / "unload all" options
+					 * as pressed; every other vehicle shows the plain cargo pressed states. */
+					if (!this->IsVehicleOnlyCarrier()) {
+						this->SetWidgetLoweredState(WID_O_FULL_LOAD, order->GetLoadType() == OrderLoadType::FullLoadAny);
+						this->SetWidgetLoweredState(WID_O_UNLOAD, order->GetUnloadType() == OrderUnloadType::Unload);
+					} else {
+						this->SetWidgetLoweredState(WID_O_FULL_LOAD, (order->GetRVTransportFlags() & ORVTF_MATCH_DEST) != 0);
+						this->SetWidgetLoweredState(WID_O_UNLOAD, (order->GetRVTransportFlags() & ORVTF_UNLOAD_ALL) != 0);
+					}
 
 				/* Can only do refitting when stopping at the destination and loading cargo.
 				 * Also enable the button if a refit is already set to allow clearing it. */
@@ -3745,6 +3939,14 @@ public:
 					}
 				}
 
+				if (this->vehicle->type == VehicleType::Road && order->IsType(OT_GOTO_STATION)) {
+					/* RoRo: a road vehicle's own transport toggles live in this menu. */
+					const uint8_t rvf = order->GetRVTransportFlags();
+					list.push_back(MakeDropDownListDividerItem());
+					list.push_back(MakeDropDownListCheckedItem((rvf & ORVTF_LOAD) != 0, STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED, RVDD_RV_WAIT, false));
+					list.push_back(MakeDropDownListCheckedItem((rvf & ORVTF_UNLOAD) != 0, STR_ORDER_DROP_BE_UNLOADED_HERE, RVDD_RV_UNLOAD, false));
+				}
+
 				if (!order->IsType(OT_IMPLICIT)) {
 					list.push_back(MakeDropDownListDividerItem());
 					const Colours current_colour = order->GetColour();
@@ -3828,23 +4030,39 @@ public:
 
 			case WID_O_FULL_LOAD:
 				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
-					this->OrderClick_FullLoad(OrderLoadType::FullLoadAny, true);
+					if (this->IsVehicleOnlyCarrier()) {
+						this->OrderClick_RVLoadToggle();
+					} else {
+						this->OrderClick_FullLoad(OrderLoadType::FullLoadAny, true);
+					}
 				} else {
-					/* RoRo: the road vehicle transport entries are part of this list as well. */
+					/* RoRo: both the normal-cargo and the road vehicle transport options are listed; the
+					 * current selection marks whichever of the two the order uses at the moment. */
 					const Order *lo = this->vehicle->GetOrder(this->OrderGetSel());
-					ShowDropDownList(this, this->BuildLoadDropDownList(),
-							(lo != nullptr) ? to_underlying(lo->GetLoadType()) : 0, WID_O_FULL_LOAD, 0, DropDownOption::Persist);
+					int sel = (lo != nullptr) ? to_underlying(lo->GetLoadType()) : 0;
+					if (lo != nullptr && lo->IsType(OT_GOTO_STATION) && this->vehicle->type != VehicleType::Road && (lo->GetRVTransportFlags() & ORVTF_LOAD) != 0) {
+						sel = ((lo->GetRVTransportFlags() & ORVTF_MATCH_DEST) != 0) ? RVDD_LOAD_MATCH : RVDD_LOAD_ANY;
+					}
+					ShowDropDownList(this, this->BuildLoadDropDownList(), sel, WID_O_FULL_LOAD, 0);
 				}
 				break;
 
 			case WID_O_UNLOAD:
 				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
-					this->OrderClick_Unload(OrderUnloadType::Unload, true);
+					if (this->IsVehicleOnlyCarrier()) {
+						this->OrderClick_RVUnloadToggle();
+					} else {
+						this->OrderClick_Unload(OrderUnloadType::Unload, true);
+					}
 				} else {
-					/* RoRo: unloading road vehicles is part of this list. */
+					/* RoRo: both the normal-cargo and the road vehicle transport options are listed; the
+					 * current selection marks whichever of the two the order uses at the moment. */
 					const Order *lo = this->vehicle->GetOrder(this->OrderGetSel());
-					ShowDropDownList(this, this->BuildUnloadDropDownList(),
-							(lo != nullptr) ? to_underlying(lo->GetUnloadType()) : 0, WID_O_UNLOAD, 0, DropDownOption::Persist);
+					int sel = (lo != nullptr) ? to_underlying(lo->GetUnloadType()) : 0;
+					if (lo != nullptr && lo->IsType(OT_GOTO_STATION) && this->vehicle->type != VehicleType::Road && (lo->GetRVTransportFlags() & ORVTF_UNLOAD) != 0) {
+						sel = ((lo->GetRVTransportFlags() & ORVTF_UNLOAD_ALL) != 0) ? RVDD_UNLOAD_ALL : RVDD_UNLOAD;
+					}
+					ShowDropDownList(this, this->BuildUnloadDropDownList(), sel, WID_O_UNLOAD, 0);
 				}
 				break;
 
@@ -4364,21 +4582,41 @@ public:
 				break;
 
 			case WID_O_FULL_LOAD:
-				if (index == RVDD_TRANSPORT) {
-					/* RoRo: open the window with all road vehicle transport settings. */
-					HideDropDownMenu(this);
-					ShowRVTransportWindow(this->vehicle, this, this->OrderGetSel());
-					break;
+				switch (index) {
+					case RVDD_TRANSPORT:
+						/* RoRo: open the window with the road vehicle transport selection criteria. */
+						HideDropDownMenu(this);
+						ShowRVTransportWindow(this->vehicle, this, this->OrderGetSel());
+						return;
+					case RVDD_LOAD_ANY:
+						this->OrderClick_RVLoad(ORVTF_LOAD);
+						return;
+					case RVDD_LOAD_MATCH:
+						this->OrderClick_RVLoad(ORVTF_LOAD | ORVTF_MATCH_DEST);
+						return;
+					case RVDD_LOAD_WAIT: {
+						const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
+						if (o == nullptr) return;
+						uint8_t flags = (o->GetRVTransportFlags() | ORVTF_LOAD) ^ ORVTF_WAIT;
+						this->OrderClick_RVLoad(flags);
+						return;
+					}
+					default:
+						break;
 				}
 				this->OrderClick_FullLoad(static_cast<OrderLoadType>(index));
 				break;
 
 			case WID_O_UNLOAD:
-				if (index == RVDD_TRANSPORT) {
-					/* RoRo: open the window with all road vehicle transport settings. */
-					HideDropDownMenu(this);
-					ShowRVTransportWindow(this->vehicle, this, this->OrderGetSel());
-					break;
+				switch (index) {
+					case RVDD_UNLOAD:
+						this->OrderClick_RVUnload(ORVTF_UNLOAD);
+						return;
+					case RVDD_UNLOAD_ALL:
+						this->OrderClick_RVUnload(ORVTF_UNLOAD | ORVTF_UNLOAD_ALL);
+						return;
+					default:
+						break;
 				}
 				this->OrderClick_Unload(static_cast<OrderUnloadType>(index));
 				break;
@@ -4593,6 +4831,14 @@ public:
 				}
 				if (index >= 0x300 && index <= 0x300 + to_underlying(DiagDirection::Invalid)) {
 					this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRAVEL_DIR, index & 0xFF);
+					break;
+				}
+				if (index == RVDD_RV_WAIT || index == RVDD_RV_UNLOAD) {
+					/* RoRo: toggle a road vehicle's own "wait to be transported" / "be unloaded here". */
+					const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
+					if (o == nullptr) break;
+					const uint8_t bit = (index == RVDD_RV_WAIT) ? ORVTF_LOAD : ORVTF_UNLOAD;
+					this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRANSPORT, o->GetRVTransportFlags() ^ bit);
 					break;
 				}
 				switch (index) {

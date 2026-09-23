@@ -1745,8 +1745,8 @@ STR_VEHICLE_DETAILS_TRAIN_PERFORMANCE_TOOLTIP                   :{BLACK}Show tra
 STR_VEHICLE_DETAIL_TAB_CARRIED                                  :{BLACK}Carried
 STR_VEHICLE_DETAILS_TRAIN_CARRIED_TOOLTIP                       :{BLACK}Show the road vehicles this train carries. Click a line to open the window of that vehicle
 
-STR_ORDER_DROP_CARGO_TYPE_LOAD                                  :Load by cargo type
-STR_ORDER_DROP_CARGO_TYPE_UNLOAD                                :Unload by cargo type
+STR_ORDER_DROP_CARGO_TYPE_LOAD                                  :Load normal cargo by type
+STR_ORDER_DROP_CARGO_TYPE_UNLOAD                                :Unload normal cargo by type
 
 STR_ORDER_REVERSE                                               :{BLACK}Reverse
 STR_ORDER_REVERSE_TOOLTIP                                       :{BLACK}Change the reversing behaviour of the highlighted order.
@@ -1893,23 +1893,23 @@ STR_ORDERS_VEH_WITH_SHARED_ORDERS_LIST_TOOLTIP_EXTRA            :{STRING}{}{BLAC
 STR_ORDER_GO_TO_WAYPOINT_REVERSE                                :Go via and reverse at {WAYPOINT}
 STR_ORDER_GO_NON_STOP_TO_WAYPOINT_REVERSE                       :Go non-stop via and reverse at {WAYPOINT}
 STR_ORDER_SELL_ORDER                                            :{SPACE}(Sell vehicle)
-STR_ORDER_CARGO_TYPE_LOAD                                       :{SPACE}(Load by cargo type)
-STR_ORDER_UNLOAD_CARGO_TYPE_LOAD                                :{SPACE}(Unload and load by cargo type)
-STR_ORDER_TRANSFER_CARGO_TYPE_LOAD                              :{SPACE}(Transfer and load by cargo type)
-STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD                             :{SPACE}(No unloading and load by cargo type)
-STR_ORDER_CARGO_TYPE_UNLOAD                                     :{SPACE}(Unload by cargo type)
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD                           :{SPACE}(Unload by cargo type and wait for full load)
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY                       :{SPACE}(Unload by cargo type and wait for any full load)
-STR_ORDER_CARGO_TYPE_UNLOAD_NO_LOAD                             :{SPACE}(Unload by cargo type and no loading)
-STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD                     :{SPACE}(Unload by cargo type and load by cargo type)
-STR_ORDER_CARGO_TYPE_LOAD_REFIT                                 :{SPACE}(Load by cargo type with refit to {STRING})
-STR_ORDER_UNLOAD_CARGO_TYPE_LOAD_REFIT                          :{SPACE}(Unload and load by cargo type with refit to {STRING})
-STR_ORDER_TRANSFER_CARGO_TYPE_LOAD_REFIT                        :{SPACE}(Transfer and load by cargo type with refit to {STRING})
-STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD_REFIT                       :{SPACE}(No unloading and load by cargo type with refit to {STRING})
-STR_ORDER_CARGO_TYPE_UNLOAD_REFIT                               :{SPACE}(Unload by cargo type and take cargo with refit to {STRING})
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_REFIT                     :{SPACE}(Unload by cargo type and wait for full load with refit to {STRING})
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY_REFIT                 :{SPACE}(Unload by cargo type and wait for any full load with refit to {STRING})
-STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD_REFIT               :{SPACE}(Unload by cargo type and load by cargo type with refit to {STRING})
+STR_ORDER_CARGO_TYPE_LOAD                                       :{SPACE}(Load normal cargo by type)
+STR_ORDER_UNLOAD_CARGO_TYPE_LOAD                                :{SPACE}(Unload all normal cargo and load normal cargo by type)
+STR_ORDER_TRANSFER_CARGO_TYPE_LOAD                              :{SPACE}(Transfer normal cargo and load normal cargo by type)
+STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD                             :{SPACE}(No normal cargo unloading and load normal cargo by type)
+STR_ORDER_CARGO_TYPE_UNLOAD                                     :{SPACE}(Unload normal cargo by type)
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD                           :{SPACE}(Unload normal cargo by type and wait for full normal cargo load)
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY                       :{SPACE}(Unload normal cargo by type and wait for any full normal cargo load)
+STR_ORDER_CARGO_TYPE_UNLOAD_NO_LOAD                             :{SPACE}(Unload normal cargo by type)
+STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD                     :{SPACE}(Unload normal cargo by type and load normal cargo by type)
+STR_ORDER_CARGO_TYPE_LOAD_REFIT                                 :{SPACE}(Load normal cargo by type with refit to {STRING})
+STR_ORDER_UNLOAD_CARGO_TYPE_LOAD_REFIT                          :{SPACE}(Unload all normal cargo and load normal cargo by type with refit to {STRING})
+STR_ORDER_TRANSFER_CARGO_TYPE_LOAD_REFIT                        :{SPACE}(Transfer normal cargo and load normal cargo by type with refit to {STRING})
+STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD_REFIT                       :{SPACE}(No normal cargo unloading and load normal cargo by type with refit to {STRING})
+STR_ORDER_CARGO_TYPE_UNLOAD_REFIT                               :{SPACE}(Unload normal cargo by type and take normal cargo with refit to {STRING})
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_REFIT                     :{SPACE}(Unload normal cargo by type and wait for full normal cargo load with refit to {STRING})
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY_REFIT                 :{SPACE}(Unload normal cargo by type and wait for any full normal cargo load with refit to {STRING})
+STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD_REFIT               :{SPACE}(Unload normal cargo by type and load normal cargo by type with refit to {STRING})
 
 STR_ORDER_RV_DIR_ANY                                            :[any direction]
 STR_ORDER_RV_DIR_NE                                             :[north-east direction]

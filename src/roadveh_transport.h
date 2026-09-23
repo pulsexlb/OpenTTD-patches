@@ -30,6 +30,15 @@ static const uint8_t ORVTF_WAIT = 1 << 3;       ///< Keep waiting at this statio
 static const uint8_t ORVTF_UNLOAD_ALL = 1 << 4; ///< Unload every road vehicle here, ignoring the station each of them declares itself.
 
 /**
+ * Is this vehicle a dedicated road vehicle carrier: every cargo-carrying part of its chain is
+ * refitted to the dedicated "Vehicles" cargo? Such a vehicle never transports normal cargo, so its
+ * station orders default to (and its order buttons advertise) road vehicle transport. A vehicle
+ * with no cargo capacity at all, or with any normal-cargo part, is not dedicated, and its orders
+ * default to normal cargo.
+ */
+bool RVTransportVehicleCarriesOnlyVehicles(const Vehicle *v);
+
+/**
  * Which parts of a carrier (train wagons, ship holds, aircraft compartments) may carry road vehicles.
  * This is the "vehicle.rv_transport_carrier_parts" setting; a part always has to have room for the
  * vehicle's weight on top of this.

@@ -1410,7 +1410,18 @@ static CommandCost CmdInsertOrderIntl(DoCommandFlags flags, Vehicle *v, VehicleO
 	if (v->orders == nullptr && !OrderList::CanAllocateItem()) return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		InsertOrder(v, Order(new_order), sel_ord);
+		Order order(new_order);
+		/* RoRo: a dedicated road vehicle carrier (every cargo part refitted to the "Vehicles" cargo)
+		 * defaults newly added station orders to road vehicle transport: load the road vehicles going
+		 * to the next stop and unload every road vehicle which wants to get off here. Every other
+		 * vehicle keeps the normal-cargo defaults (load/unload if possible, no vehicle transport).
+		 * Orders copied from another vehicle already carry their own flags and are left alone. */
+		if (order.IsType(OT_GOTO_STATION) && order.GetRVTransportFlags() == 0 && RVTransportVehicleCarriesOnlyVehicles(v)) {
+			order.GetRVTransportFlagsRef() = ORVTF_LOAD | ORVTF_UNLOAD;
+			order.SetLoadType(OrderLoadType::NoLoad);
+			order.SetUnloadType(OrderUnloadType::NoUnload);
+		}
+		InsertOrder(v, std::move(order), sel_ord);
 	}
 
 	CommandCost cost;

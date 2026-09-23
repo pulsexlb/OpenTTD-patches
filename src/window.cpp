@@ -485,8 +485,14 @@ static void ReportOverwrittenFocusedWindow(const Window *corrupt, const Window *
 	fprintf(f, "  class %d number %u at %d,%d size %ux%u, nested_focus %p\n",
 			(int)corrupt->window_class, (unsigned)corrupt->window_number, corrupt->left, corrupt->top,
 			corrupt->width, corrupt->height, (const void *)corrupt->nested_focus);
-	fprintf(f, "  window getting the focus instead: class %d number %u\n",
-			(int)new_focus->window_class, (unsigned)new_focus->window_number);
+	if (new_focus != nullptr) {
+		fprintf(f, "  window getting the focus instead: class %d number %u\n",
+				(int)new_focus->window_class, (unsigned)new_focus->window_number);
+	} else {
+		/* SetFocusedWindow(nullptr) is a normal path (e.g. closing a dropdown), so there is no
+		 * window to name here. */
+		fprintf(f, "  window getting the focus instead: none\n");
+	}
 	fprintf(f, "  windows at that moment (front to back):\n");
 	for (const Window *w : Window::IterateFromFront()) {
 		fprintf(f, "  %s class %d number %u at %d,%d, first word %p\n", (w == corrupt) ? "->" : "  ",
@@ -516,7 +522,10 @@ static bool IsWindowPointerIntact(const Window *w)
 {
 	const uintptr_t vtable = *reinterpret_cast<const uintptr_t *>(w);
 	const uintptr_t module = reinterpret_cast<uintptr_t>(&_focused_window);
-	return vtable > module - 0x40000000 && vtable < module + 0x40000000;
+	/* Compare as signed differences: the executable may be linked below the 1 GiB mark, where the
+	 * unsigned `module - 0x40000000` would underflow and reject every valid vtable pointer. */
+	const intptr_t diff = static_cast<intptr_t>(vtable) - static_cast<intptr_t>(module);
+	return diff > -0x40000000 && diff < 0x40000000;
 }
 
 /**
