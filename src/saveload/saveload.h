@@ -225,8 +225,9 @@ enum VarTypes : uint16_t {
 	SLE_FILE_STRINGID =  9, ///< StringID offset into strings-array
 	SLE_FILE_STRING   = 10,
 	SLE_FILE_STRUCT   = 11,
-	SLE_FILE_U128     = 12, ///< 128 bit unsigned integer, used for bit sets which need more than 64 bits.
-	/* 3 more possible file-primitives */
+	SLE_FILE_U128     = 13, ///< 128 bit unsigned integer, used for bit sets which need more than 64 bits.
+	/* 2 more possible file-primitives. NOTE: the SLE_FILE_NNN values are stored in the savegame, so
+	 * they have to be identical to the ones in sl/saveload_types.h. */
 
 	SLE_FILE_TYPE_MASK = 0xf, ///< Mask to get the file-type (and not any flags).
 	SLE_FILE_HAS_LENGTH_FIELD = 1 << 4, ///< Bit stored in savegame to indicate field has a length field for each entry.
