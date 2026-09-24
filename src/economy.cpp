@@ -1796,7 +1796,7 @@ static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist
 	bool check_order = (v->First()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad);
 	/* Road vehicle transport: refitting to or from the dedicated "Vehicles (Road)" cargo is only
 	 * done manually in a depot, never automatically at a station. */
-	const CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
+	const CargoType vehicles_cargo = RV_TRANSPORT_CARGO_SLOT;
 	if (is_auto_refit) {
 		/* Get a refittable cargo type with waiting cargo for next_station or StationID::Invalid(). */
 		new_cid = v_start->cargo_type;
@@ -1953,7 +1953,7 @@ static void LoadUnloadVehicle(Vehicle *front)
 
 	/* RoRo: the dedicated "Vehicles" cargo marks carrier parts which hold road vehicles; they are
 	 * skipped by the normal-cargo code below (see the part loop). */
-	const CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
+	const CargoType vehicles_cargo = RV_TRANSPORT_CARGO_SLOT;
 
 	StationID last_visited = front->last_station_visited;
 	Station *st = Station::Get(last_visited);

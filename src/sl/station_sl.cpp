@@ -18,6 +18,7 @@
 #include "../core/math_func.hpp"
 
 #include "saveload.h"
+#include "extended_ver_sl.h"
 #include "saveload_buffer.h"
 #include "table/strings.h"
 
@@ -491,7 +492,7 @@ static void Load_STNS()
 	std::vector<SaveLoad> goods_desc = SlFilterNamedSaveLoadTable(GetGoodsDesc());
 	std::vector<SaveLoad> speclist_desc = SlFilterNamedSaveLoadTable(_station_speclist_desc);
 
-	uint num_cargo = IsSavegameVersionBefore(SLV_55) ? 12 : IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES) ? 32 : NUM_CARGO;
+	uint num_cargo = GetSavedCargoCount();
 	int index;
 	while ((index = SlIterateArray()) != -1) {
 		Station *st = Station::CreateAtIndex(StationID(index));
@@ -543,7 +544,7 @@ static void Ptrs_STNS()
 
 	std::vector<SaveLoad> goods_desc = SlFilterNamedSaveLoadTable(GetGoodsDesc());
 
-	uint num_cargo = IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES) ? 32 : NUM_CARGO;
+	uint num_cargo = GetSavedCargoCount();
 	for (Station *st : Station::Iterate()) {
 		if (!IsSavegameVersionBefore(SLV_68)) {
 			for (CargoType i{}; i < num_cargo; i++) {
@@ -637,7 +638,8 @@ struct BaseStationStructHandler final : public TypedSaveLoadStructHandler<BaseSt
 };
 
 static const NamedSaveLoad _station_cargo_history_desc[] = {
-	NSL("cargoes", SLTAG(SLTAG_CUSTOM_0,     SLE_CONDVAR_X(Station, station_cargo_history_cargoes, SLE_UINT64,                  SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_STATION_CARGO_HISTORY)))),
+	NSL("cargoes", SLTAG(SLTAG_CUSTOM_0,     SLE_CONDVAR_X(Station, station_cargo_history_cargoes, SLE_FILE_U64 | SLE_VAR_U128, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPES_128, 0, 0)))),
+	NSL("cargoes", SLTAG(SLTAG_CUSTOM_0,     SLE_CONDVAR_X(Station, station_cargo_history_cargoes, SLE_UINT128,                SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPES_128, 1)))),
 	NSL("history", SLTAG(SLTAG_CUSTOM_1, SLEG_CONDVARVEC_X(_station_history_data_dummy,            SLE_UINT16,                  SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_STATION_CARGO_HISTORY)))),
 };
 
@@ -714,9 +716,15 @@ struct StationCargoHistoryStructHandler final : public TypedSaveLoadStructHandle
 	void Save(Station *st) const override
 	{
 		MemoryDumper *dumper = MemoryDumper::GetCurrent();
-		RawMemoryDumper dump = dumper->BorrowRawWriteBytes(8 + SlGetMaxGammaLength() + (st->station_cargo_history.size() * MAX_STATION_CARGO_HISTORY_DAYS * 2));
+		const uint cargoes_size = SlXvIsFeaturePresent(XSLFI_CARGO_TYPES_128) ? 16 : 8;
+		RawMemoryDumper dump = dumper->BorrowRawWriteBytes(cargoes_size + SlGetMaxGammaLength() + (st->station_cargo_history.size() * MAX_STATION_CARGO_HISTORY_DAYS * 2));
 
-		dump.RawWriteUint64(st->station_cargo_history_cargoes.base());
+		if (cargoes_size == 16) {
+			dump.RawWriteUint64(st->station_cargo_history_cargoes.base().lo);
+			dump.RawWriteUint64(st->station_cargo_history_cargoes.base().hi);
+		} else {
+			dump.RawWriteUint64(st->station_cargo_history_cargoes.base().lo);
+		}
 		dump.RawWriteSimpleGamma(st->station_cargo_history.size() * MAX_STATION_CARGO_HISTORY_DAYS);
 
 		for (const auto &history : st->station_cargo_history) {
@@ -732,7 +740,11 @@ struct StationCargoHistoryStructHandler final : public TypedSaveLoadStructHandle
 
 	void Load(Station *st) const override
 	{
-		st->station_cargo_history_cargoes = static_cast<CargoTypes>(SlReadUint64());
+		if (SlXvIsFeaturePresent(XSLFI_CARGO_TYPES_128)) {
+			st->station_cargo_history_cargoes = CargoTypes{Uint128{SlReadUint64(), SlReadUint64()}};
+		} else {
+			st->station_cargo_history_cargoes = CargoTypes{Uint128{SlReadUint64()}};
+		}
 		st->station_cargo_history.resize(CountBits(st->station_cargo_history_cargoes));
 		if (SlReadSimpleGamma() != st->station_cargo_history.size() * MAX_STATION_CARGO_HISTORY_DAYS) {
 			SlErrorCorrupt("Station cargo history data of wrong size");
@@ -792,11 +804,12 @@ static const NamedSaveLoad _station_desc[] = {
 	NSL("",                                SLE_CONDNULL_X(1,                                                                   SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_JOKERPP))),
 	NSL("had_vehicle_of_type",                    SLE_VAR(Station, had_vehicle_of_type,           SLE_UINT8)),
 	NSL("loading_vehicles",                       SLE_VEC(Station, loading_vehicles,              REF_VEHICLE)),
-	NSL("always_accepted",                    SLE_CONDVAR(Station, always_accepted,               SLE_FILE_U32 | SLE_VAR_U64,  SLV_127,               SLV_EXTEND_CARGOTYPES)),
-	NSL("always_accepted",                    SLE_CONDVAR(Station, always_accepted,               SLE_UINT64,                  SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION)),
+	NSL("always_accepted",                    SLE_CONDVAR_X(Station, always_accepted,             SLE_FILE_U32 | SLE_VAR_U128, SLV_127,               SLV_EXTEND_CARGOTYPES, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPES_128, 0, 0))),
+	NSL("always_accepted",                    SLE_CONDVAR_X(Station, always_accepted,             SLE_FILE_U64 | SLE_VAR_U128, SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION,       SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPES_128, 0, 0))),
+	NSL("always_accepted",                    SLE_CONDVAR_X(Station, always_accepted,             SLE_UINT128,                 SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION,       SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPES_128, 1))),
 	NSL("",                                SLE_CONDNULL_X(32 * 24,                                                             SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_JOKERPP, SL_JOKER_1_22))),
 
-	NSL("",                                 SLE_CONDVAR_X(Station, station_cargo_history_cargoes, SLE_UINT64,                  SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_STATION_CARGO_HISTORY))),
+	NSL("",                                 SLE_CONDVAR_X(Station, station_cargo_history_cargoes, SLE_FILE_U64 | SLE_VAR_U128, SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_STATION_CARGO_HISTORY))),
 	NSLT_STRUCTLIST<StationGoodsStructHandler>("goods"),
 	NSLT_STRUCT<StationCargoHistoryStructHandler>("cargo_history"),
 };
@@ -1002,7 +1015,7 @@ static void Load_STNN()
 
 	std::unique_ptr<GoodsEntryData> spare_ged;
 
-	const uint num_cargo = IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES) ? 32 : NUM_CARGO;
+	const uint num_cargo = GetSavedCargoCount();
 	ReadBuffer *reader = ReadBuffer::GetCurrent();
 
 	const bool read_restricted = !IsSavegameVersionBefore(SLV_187);
@@ -1149,7 +1162,7 @@ static void Ptrs_STNN()
 		assert(filtered_goods_desc.size() == 0);
 	}
 
-	uint num_cargo = IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES) ? 32 : NUM_CARGO;
+	uint num_cargo = GetSavedCargoCount();
 	for (Station *st : Station::Iterate()) {
 		for (CargoType i{}; i < num_cargo; i++) {
 			GoodsEntry *ge = &st->goods[i];

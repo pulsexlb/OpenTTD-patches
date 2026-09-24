@@ -172,7 +172,7 @@ version 3) and does **not** bump `SAVEGAME_VERSION`:
 | GUI | `src/order_gui.cpp`, `src/vehicle_gui.cpp`, `src/lang/extra/*.txt` | dropdown entries, road-vehicle vs carrier wording, order-row markers, status strings |
 | Destruction | `src/vehicle.cpp` (`PreDestructor` → `RVTransportDestroyCarriedVehicles`) | a destroyed carrier takes the road vehicles it holds with it |
 | Position/lists | `src/roadveh_transport.cpp` (`RVTransportGetFollowVehicle`), `viewport.cpp`, `window.cpp`, `vehicle_gui.cpp`, `vehiclelist.cpp` | carried road vehicles stay listed and are followed/located at their carrier |
-| Setting | `src/table/settings/game_settings.ini`, `src/settings_type.h`, `src/settingentry_gui.cpp`, `src/roadveh_transport.h` | `vehicle.rv_transport_enabled` (bool, default on, expert category, own settings page) = master switch: with it off nothing is loaded any more, vehicles which are waiting stop waiting and carry on with their own schedule, vehicles which are already on board can still be put down (so nothing is stranded), and the sprite/cargo-amount lookups are skipped as well, so the feature costs nothing at all while it is off; `vehicle.rv_transport_carrier_parts` (enum, same page): `0` = any part with cargo capacity may carry, `1` = only a part whose cargo is in the *oversized* class may carry, `2` (**default**) = only a part whose cargo is bulk, *oversized*, or the NewGRF "Vehicles" cargo (label `VEHI`) may carry; `vehicle.rv_transport_unload_warn_days` (uint16, default 30, same page) = warn when a carried road vehicle was not unloaded for that many days (0 = no warning) |
+| Setting | `src/table/settings/game_settings.ini`, `src/settings_type.h`, `src/settingentry_gui.cpp`, `src/roadveh_transport.h` | `vehicle.rv_transport_enabled` (bool, default on, expert category, own settings page) = master switch: with it off nothing is loaded any more, vehicles which are waiting stop waiting and carry on with their own schedule, vehicles which are already on board can still be put down (so nothing is stranded), and the sprite/cargo-amount lookups are skipped as well, so the feature costs nothing at all while it is off; `vehicle.rv_transport_carrier_parts` (enum, same page): `0` = any part with cargo capacity may carry, `1` = only a part whose cargo is in the *oversized* class may carry, `2` (**default**) = only a part whose cargo is bulk, *oversized*, or the NewGRF "Vehicles" cargo (label `VEHC`) may carry; `vehicle.rv_transport_unload_warn_days` (uint16, default 30, same page) = warn when a carried road vehicle was not unloaded for that many days (0 = no warning) |
 
 ## Developer/debug console commands
 
@@ -297,13 +297,13 @@ Design decisions worth knowing when reviewing:
   |---|---|---|
   | 0 | any part with cargo capacity | every wagon/hold can carry a road vehicle |
   | 1 | only a part whose cargo is in the `oversized` class | nothing can carry (no default cargo is oversized) — needs a NewGRF which provides such cargo |
-  | **2 (default)** | only a part whose cargo is **bulk**, `oversized`, or the NewGRF "Vehicles" cargo (label `VEHI`) | bulk (hopper/open) wagons can carry — coal, ore, grain, fruit, sugar, toffee; wood/steel/goods vans, passenger carriages, mail vans, tank cars and aircraft do *not* |
+  | **2 (default)** | only a part whose cargo is **bulk**, `oversized`, or the NewGRF "Vehicles" cargo (label `VEHC`) | bulk (hopper/open) wagons can carry — coal, ore, grain, fruit, sugar, toffee; wood/steel/goods vans, passenger carriages, mail vans, tank cars and aircraft do *not* |
 
   Value 2 is the "GRF-aware" gate: it accepts the cargoes which can physically hold a road vehicle,
   namely bulk cargo (`CargoClass::Bulk`), cargo a NewGRF marks as oversized (`CargoClass::Oversized`,
-  the stake/flatbed wagon / car ferry case), and the dedicated `VEHI` ("Vehicles") cargo which car
+  the stake/flatbed wagon / car ferry case), and the dedicated `VEHC` ("Vehicles") cargo which car
   ferry and car carrier NewGRFs define for exactly this purpose. A stock game has neither an
-  `oversized` nor a `VEHI` cargo, so with it only bulk wagons (coal/ore/grain/…) qualify; a piece
+  `oversized` nor a `VEHC` cargo, so with it only bulk wagons (coal/ore/grain/…) qualify; a piece
   goods or liquid cargo such as Wood, Steel, Goods or Oil does *not*. Road vehicles are always
   *unloaded* regardless of the setting, so changing it never strands a vehicle which is already on
   board. The regression suite opens the gate explicitly (`setting

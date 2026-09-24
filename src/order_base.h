@@ -167,6 +167,18 @@ private:
 	}
 
 public:
+	/**
+	 * Move the per-cargo load/unload flags of one cargo slot to another one.
+	 * @param from The cargo slot to move the flags from.
+	 * @param to The cargo slot to move the flags to.
+	 */
+	inline void MoveCargoTypeFlags(CargoType from, CargoType to)
+	{
+		if (!this->extra) return;
+		this->extra->cargo_type_flags[to] = this->extra->cargo_type_flags[from];
+		this->extra->cargo_type_flags[from] = 0;
+	}
+
 	inline uint32_t GetXData() const
 	{
 		return this->extra != nullptr ? this->extra->xdata : 0;

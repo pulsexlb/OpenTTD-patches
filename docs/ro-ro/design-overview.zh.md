@@ -80,12 +80,12 @@
 > |---|---|---|
 > | 0 | 任何有载货容量的节（`cargo_cap > 0`） | 全部车厢/货舱都收车 |
 > | 1 | 该节当前货物属 `CargoClass::Oversized`（**原 D1 的门**） | **谁都装不上**（无 oversized 货）→ 需运车类 NewGRF |
-> | **2（默认）** | 该节货物满足 **散货 `Bulk`**、**`Oversized`**、或**货物标签为 `VEHI`（"运载工具"）**任意一条 | 散货（敞车/漏斗车：煤、矿石、谷物、水果、糖、太妃糖）收车；木材/钢材/货物/邮件/油/乘客都不收车 |
+> | **2（默认）** | 该节货物满足 **散货 `Bulk`**、**`Oversized`**、或**货物标签为 `VEHC`（"运载工具"）**任意一条 | 散货（敞车/漏斗车：煤、矿石、谷物、水果、糖、太妃糖）收车；木材/钢材/货物/邮件/油/乘客都不收车 |
 >
 > 档 2 是"**针对 GRF 特化**"的门（M11d 定稿，替换了中间尝试过的两种写法）：
 > 1. 原稿"只允许 Oversized"在原版内容下谁都装不上（无 oversized 货）；
 > 2. 中间尝试过的"子集判定（类别集合 ⊄ {乘客, 液体, 特殊}）"**实现上失效**——液体货物都额外带 `Potable`/`NonPotable` 口味位（原版 `Oil` = `{Liquid, NonPotable}`），子集判定会放行油罐车；改成"含乘客/液体即拒"虽能挡住罐车，但那是靠类别**排除法**猜意图，对 GRF 自定义货物仍不准；
-> 3. **现定稿：正面白名单** —— `IsCargoInClass(Bulk)` ∥ `IsCargoInClass(Oversized)` ∥ `CargoSpec::label == 'VEHI'`。运车类 NewGRF（汽车渡轮/汽车运输船/驮背车厢）按其本意提供三类之一的货物，引擎不需要猜；原版内容下只有散货车厢满足，其余（木材/钢材/货物/邮件/液体/乘客）一律拒绝。
+> 3. **现定稿：正面白名单** —— `IsCargoInClass(Bulk)` ∥ `IsCargoInClass(Oversized)` ∥ `CargoSpec::label == 'VEHC'`。运车类 NewGRF（汽车渡轮/汽车运输船/驮背车厢）按其本意提供三类之一的货物，引擎不需要猜；原版内容下只有散货车厢满足，其余（木材/钢材/货物/邮件/液体/乘客）一律拒绝。
 >
 > 判定只在**装载**时进行，**卸载不看此设置**（`RVTransportDetachAtStation` 不判容量门），所以中途切换设置不会把已在车上的 RV 丢在路上。三档均已用 `testrun\verify_carrier_parts.ps1` 无头验证（默认值为 2；同一节木材车厢在档 0 下 `rv_capacity=30t` 且 `attached=true`，档 1/2 下 `rv_capacity=0t` 且 `attached=false`）。**回归套件**在 `_common.ps1` 里统一先执行 `setting vehicle.rv_transport_carrier_parts 0`（测试存档的载体是木材车厢，属于被档 2 拒绝的货物）——即机制类脚本在"门全开"下跑，门本身由上面那支脚本覆盖。
 >

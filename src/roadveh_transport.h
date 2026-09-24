@@ -46,7 +46,7 @@ bool RVTransportVehicleCarriesOnlyVehicles(const Vehicle *v);
 enum class RVTransportCarrierParts : uint8_t {
 	AnyPart = 0,                ///< Any part with cargo capacity.
 	OversizedOnly = 1,          ///< Only parts whose current cargo belongs to CargoClass::Oversized.
-	BulkOversizedOrVehicles = 2, ///< Only parts whose cargo is bulk, oversized, or the NewGRF "Vehicles" cargo (label 'VEHI').
+	BulkOversizedOrVehicles = 2, ///< Only parts whose cargo is bulk, oversized, or the NewGRF "Vehicles" cargo (label 'VEHC').
 };
 
 /**

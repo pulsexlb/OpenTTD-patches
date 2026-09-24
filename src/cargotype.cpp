@@ -112,13 +112,12 @@ void SetupCargoForClimate(LandscapeType l)
 	std::fill(insert, std::end(CargoSpec::array), CargoSpec{});
 
 	/* Road vehicle transport: install the dedicated "Vehicles (Road)" cargo in its own slot,
-	 * after the climate slots, so trains can always refit to it (see CalculateRefitMasks). */
+	 * placed above the NewGRF-visible range so that a NewGRF can never claim it (see CalculateRefitMasks). */
 	{
 		CargoSpec &cs = CargoSpec::array[to_underlying(RV_TRANSPORT_CARGO_SLOT)];
 		cs = _rv_transport_cargo;
 		_cargo_mask.Set(cs.Index());
 		_default_cargo_labels.push_back(cs.label);
-		_climate_dependent_cargo_labels[cs.Index()] = cs.label;
 		_climate_independent_cargo_labels[cs.bitnum] = cs.label;
 	}
 

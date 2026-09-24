@@ -533,17 +533,17 @@ STR_CONFIG_SETTING_SHARING_ORDERS_TO_OTHERS                     :不能更改这
 STR_CONFIG_SETTING_TRAIN_SPEED_ADAPTATION                       :启用列车速度调整：{STRING}
 STR_CONFIG_SETTING_TRAIN_SPEED_ADAPTATION_HELPTEXT              :当开启后，较快的列车会在经过信号时调整速度以与前方较慢列车的速度相匹配。{}“速度调整”功能可能不适用于部分信号设置风格；此功能可以使用信号“寻路限制”功能针对特定列车手动启用或禁用
 
-STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS                   :道路载具运载：哪些车厢/货舱可以装载道路载具：{STRING}
-STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_HELPTEXT          :决定火车车厢、船舶货舱、飞机货舱中哪些可以接纳道路载具。{}除此之外，该节还必须装得下这辆车的重量。{}“任何具备载货容量的节”最宽松，客车厢与油罐车也会收车。{}“仅限装载超大件货物的节”用于运车车厢/滚装货舱，这类 NewGRF 会把其货物标为超大件；原版内容没有这类货物，选它会导致谁都装不上车。{}“散货、超大件或运载工具货物”（默认）只放行货物为散货（敞车/漏斗车：煤、矿石、谷物……）、被标为超大件的货物、或专用“运载工具”货物（标签 VEHI，汽车渡轮/汽车运输船用）的节：客车厢、邮件车、油罐车、棚车都不收车。{}卸载不受此设置影响：中途改设置不会让已经在车上的道路载具下不来。
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS                   :载具（汽车）运载：哪些车厢/货舱可以装载载具（汽车）：{STRING}
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_HELPTEXT          :决定火车车厢、船舶货舱、飞机货舱中哪些可以接纳载具（汽车）。{}除此之外，该节还必须装得下这辆车的重量。{}“任何具备载货容量的节”最宽松，客车厢与油罐车也会收车。{}“仅限装载超大件货物的节”用于运车车厢/滚装货舱，这类 NewGRF 会把其货物标为超大件；原版内容没有这类货物，选它会导致谁都装不上车。{}“散货、超大件或载具（汽车）货物”（默认）只放行货物为散货（敞车/漏斗车：煤、矿石、谷物……）、被标为超大件的货物、或专用“载具（汽车）”货物（标签 VEHC，汽车渡轮/汽车运输船用）的节：客车厢、邮件车、油罐车、棚车都不收车。{}卸载不受此设置影响：中途改设置不会让已经在车上的载具（汽车）下不来。
 STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_ANY               :任何具备载货容量的节
 STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_OVERSIZED         :仅限装载“超大件”货物的节
-STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_BULK_OVERSIZED_VEHI:散货、“超大件”或“运载工具”货物
-STR_CONFIG_SETTING_ROAD_VEHICLE_TRANSPORT                       :道路载具运载
-STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS                :道路载具运载：被运载的道路载具超过多久未卸下时告警：{STRING}
-STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS_HELPTEXT       :当一辆道路载具在载体上待满这么多天仍未在任何车站被放下时，发一条新闻提示。{}道路载具只会在**它自己的调度**要求"在此被卸下"的车站被放下，所以永远到不了这种车站的载体（或目的站被拆除的车）会把车一直带在身上——这条告警就是用来提示这种情况的。{}每趟只告警一次（下次被装上时可以再告警）。{}设为 0 表示不告警。
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_BULK_OVERSIZED_VEHI:散货、“超大件”或“载具（汽车）”货物
+STR_CONFIG_SETTING_ROAD_VEHICLE_TRANSPORT                       :载具（汽车）运载
+STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS                :载具（汽车）运载：被运载的载具（汽车）超过多久未卸下时告警：{STRING}
+STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS_HELPTEXT       :当一辆载具（汽车）在载体上待满这么多天仍未在任何车站被放下时，发一条新闻提示。{}载具（汽车）只会在**它自己的调度**要求"在此被卸下"的车站被放下，所以永远到不了这种车站的载体（或目的站被拆除的车）会把车一直带在身上——这条告警就是用来提示这种情况的。{}每趟只告警一次（下次被装上时可以再告警）。{}设为 0 表示不告警。
 STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS_VALUE           :{NUM} 天
-STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED                          :道路载具运载
-STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED_HELPTEXT                 :允许道路载具被装到火车/轮船/飞机上运输。{}关闭**不会**改动已经设好的订单：不再发生新的装载、正在"等待被运载"的车会结束等待并继续按自己的调度行驶，而**已经在车上的车仍然可以在目的站被放下**，所以不会把车卡死在车上。{}这是总开关；"哪些车厢/货舱可以装车"是另一个设置。
+STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED                          :载具（汽车）运载
+STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED_HELPTEXT                 :允许载具（汽车）被装到火车/轮船/飞机上运输。{}关闭**不会**改动已经设好的订单：不再发生新的装载、正在"等待被运载"的车会结束等待并继续按自己的调度行驶，而**已经在车上的车仍然可以在目的站被放下**，所以不会把车卡死在车上。{}这是总开关；"哪些车厢/货舱可以装车"是另一个设置。
 
 STR_CONFIG_SETTING_SLOW_ROAD_VEHICLES_IN_CURVES                 :道路车辆在转弯处减速：{STRING}
 STR_CONFIG_SETTING_SLOW_ROAD_VEHICLES_IN_CURVES_HELPTEXT        :当开启后，道路车辆将在转弯处减速（仅当真实加速开启时启用）
@@ -1686,7 +1686,7 @@ STR_VEHICLE_DETAILS_DECREASE_SERVICING_INTERVAL_TOOLTIP_PRODINT :{BLACK}将维�
 STR_VEHICLE_DETAIL_TAB_PERFORMANCE                              :{BLACK}性能
 STR_VEHICLE_DETAILS_TRAIN_PERFORMANCE_TOOLTIP                   :{BLACK}显示列车空载与满载性能
 STR_VEHICLE_DETAIL_TAB_CARRIED                                  :{BLACK}载运
-STR_VEHICLE_DETAILS_TRAIN_CARRIED_TOOLTIP                       :{BLACK}显示这列车载运的道路载具。点某一行可打开那辆车的窗口
+STR_VEHICLE_DETAILS_TRAIN_CARRIED_TOOLTIP                       :{BLACK}显示这列车载运的载具（汽车）。点某一行可打开那辆车的窗口
 
 STR_ORDER_DROP_CARGO_TYPE_LOAD                                  :以类型装载普通货物
 STR_ORDER_DROP_CARGO_TYPE_UNLOAD                                :以类型卸载普通货物

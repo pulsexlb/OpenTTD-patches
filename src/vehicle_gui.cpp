@@ -874,7 +874,7 @@ struct RefitWindow : public Window {
 		 * parts and normal cargo parts) offers no target at all. */
 		bool rv_lock_normal = false;   ///< Chain contains road vehicle transport parts: hide normal cargoes.
 		bool rv_chain_mixed = false;   ///< Chain contains both road vehicle transport and normal cargo parts.
-		CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
+		CargoType vehicles_cargo = RV_TRANSPORT_CARGO_SLOT;
 		if ((this->order != INVALID_VEH_ORDER_ID || this->auto_refit) && IsValidCargoType(vehicles_cargo)) {
 			bool has_vehicles = false;
 			bool has_normal = false;
@@ -912,7 +912,8 @@ struct RefitWindow : public Window {
 				 * as the current cargo of a fully road-vehicle-configured chain. Normal cargoes are
 				 * hidden while the chain contains road vehicle transport parts, and nothing at all is
 				 * offered for a mixed chain. */
-				if (cs->label == CT_VEHICLES && (this->order != INVALID_VEH_ORDER_ID || this->auto_refit) && !rv_lock_normal) continue;
+				/* The built-in cargo is identified by its slot: a NewGRF may define a cargo using the same label. */
+				if (cs->Index() == vehicles_cargo && (this->order != INVALID_VEH_ORDER_ID || this->auto_refit) && !rv_lock_normal) continue;
 				if (rv_lock_normal && (rv_chain_mixed || cargo_type != vehicles_cargo)) continue;
 
 				auto &list = this->refit_list[cargo_type];

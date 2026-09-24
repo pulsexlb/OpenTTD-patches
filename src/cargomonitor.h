@@ -40,12 +40,30 @@ constexpr uint8_t CCB_TOWN_IND_NUMBER_START = 0; ///< Start bit of the town or i
 constexpr uint8_t CCB_TOWN_IND_NUMBER_LENGTH = 16; ///< Number of bits of the town or industry number.
 constexpr uint8_t CCB_IS_INDUSTRY_BIT = 16; ///< Bit indicating the town/industry number is an industry.
 constexpr uint8_t CCB_CARGO_TYPE_START = 19; ///< Start bit of the cargo type field.
-constexpr uint8_t CCB_CARGO_TYPE_LENGTH = 6; ///< Number of bits of the cargo type field.
-constexpr uint8_t CCB_COMPANY_START = 25; ///< Start bit of the company field.
+constexpr uint8_t CCB_CARGO_TYPE_LENGTH = 7; ///< Number of bits of the cargo type field.
+constexpr uint8_t CCB_COMPANY_START = 26; ///< Start bit of the company field.
 constexpr uint8_t CCB_COMPANY_LENGTH = 4; ///< Number of bits of the company field.
 
 static_assert(NUM_CARGO     <= (1 << CCB_CARGO_TYPE_LENGTH));
 static_assert(MAX_COMPANIES <= (1 << CCB_COMPANY_LENGTH));
+static_assert(CCB_COMPANY_START + CCB_COMPANY_LENGTH <= 32);
+
+/**
+ * Convert a cargo monitor ID from the older packing, where the cargo type field was 6 bits
+ * wide and the company field started at bit 25, to the current packing.
+ * @param number The cargo monitor ID to convert.
+ * @return The converted cargo monitor ID.
+ */
+inline CargoMonitorID ConvertCargoMonitorIdV1(CargoMonitorID number)
+{
+	static constexpr uint8_t OLD_CARGO_TYPE_LENGTH = 6; ///< Number of bits of the cargo type field in the old packing.
+	static constexpr uint8_t OLD_COMPANY_START = 25; ///< Start bit of the company field in the old packing.
+
+	CargoMonitorID ret = number & ((1u << CCB_CARGO_TYPE_START) - 1);
+	ret |= ((number >> CCB_CARGO_TYPE_START) & ((1u << OLD_CARGO_TYPE_LENGTH) - 1)) << CCB_CARGO_TYPE_START;
+	ret |= ((number >> OLD_COMPANY_START) & ((1u << CCB_COMPANY_LENGTH) - 1)) << CCB_COMPANY_START;
+	return ret;
+}
 
 
 /**

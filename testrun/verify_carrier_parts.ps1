@@ -3,7 +3,7 @@
 # The setting has three values:
 #   0  any part with cargo capacity
 #   1  only parts whose cargo is in the 'oversized' class
-#   2  only parts whose cargo is bulk, 'oversized', or the NewGRF "Vehicles" cargo (label VEHI)
+#   2  only parts whose cargo is bulk, 'oversized', or the NewGRF "Vehicles" cargo (label VEHC)
 #      -- the default
 #
 # A part which may not carry is reported as rv_capacity=0t by `rvtransport parts` (that figure goes
@@ -32,7 +32,7 @@ $cmds = @(
     'rvtransport parts firsttrain',
     'rvtransport setwaiting firsttrain firstrv',
     'rvtransport loadfrom 7 firstrv',                  # refused: Wood is not oversized
-    'setting vehicle.rv_transport_carrier_parts 2',     # the default: bulk / oversized / VEHI only
+    'setting vehicle.rv_transport_carrier_parts 2',     # the default: bulk / oversized / VEHC only
     'rvtransport parts firsttrain',
     'rvtransport setwaiting firsttrain firstrv',
     'rvtransport loadfrom 7 firstrv',                  # refused: Wood is piece goods
@@ -50,7 +50,7 @@ $txt -split "`r?`n" | Where-Object { $_ -match 'rv_capacity|loadfrom: part|Curre
 
 if ($txt -match 'Assertion failed|crash encountered') { Write-Output 'RESULT: FAIL (crash/assertion)'; exit 1 }
 
-# The setting's default value must be 2 (bulk / 'oversized' / 'VEHI' cargo only).
+# The setting's default value must be 2 (bulk / 'oversized' / 'VEHC' cargo only).
 $defaultOk = ($txt -match "Current value for 'vehicle\.rv_transport_carrier_parts' is: '2' \(min: 0, max: 2, def: 2\)")
 
 # The carrier's own wagon (part 1) capacity per setting value, and whether loading worked.

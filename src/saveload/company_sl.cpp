@@ -215,9 +215,9 @@ public:
 		SLE_CONDVAR(CompanyEconomyEntry, company_value,       SLE_FILE_I32 | SLE_VAR_I64, SL_MIN_VERSION, SLV_2),
 		SLE_CONDVAR(CompanyEconomyEntry, company_value,       SLE_INT64,                  SLV_2, SL_MAX_VERSION),
 
-		SLE_CONDVAR(CompanyEconomyEntry, delivered_cargo[NUM_CARGO - 1], SLE_INT32,       SL_MIN_VERSION, SLV_170),
+		SLE_CONDVAR(CompanyEconomyEntry, delivered_cargo[31],        SLE_INT32,       SL_MIN_VERSION, SLV_170),
 		SLE_CONDARR(CompanyEconomyEntry, delivered_cargo,     SLE_UINT32, 32,           SLV_170, SLV_EXTEND_CARGOTYPES),
-		SLE_CONDARR(CompanyEconomyEntry, delivered_cargo,     SLE_UINT32, NUM_CARGO,    SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION),
+		SLE_CONDARR(CompanyEconomyEntry, delivered_cargo,     SLE_UINT32, NUM_GRF_CARGO, SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION),
 		    SLE_VAR(CompanyEconomyEntry, performance_history, SLE_INT32),
 	};
 	static inline const SaveLoadCompatTable compat_description = _company_economy_compat;

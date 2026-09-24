@@ -1730,7 +1730,14 @@ void AnalyseEngineCallbacks()
 				cb_refit_cap_values.emplace_back(ALL_CARGOTYPES, GetVehicleCallback(CBID_VEHICLE_REFIT_CAPACITY, 0, 0, e->index, nullptr));
 			} else {
 				const CargoType default_cb = e->info.cargo_type;
-				for (CargoType c{}; c < NUM_CARGO; c++) {
+				/* The per-cargo refit capacity is only needed for cargos the vehicle can be refitted to,
+				 * which includes internal cargos such as the dedicated "Vehicles (Road)" cargo. The
+				 * NewGRF-visible cargos are included as well, so that the callback is invoked for the
+				 * same set of cargos as it was before internal cargos above slot NUM_GRF_CARGO existed. */
+				CargoTypes refit_cargoes = e->info.refit_mask;
+				for (CargoType c{}; c < NUM_GRF_CARGO; c++) refit_cargoes.Set(c);
+
+				for (CargoType c : refit_cargoes) {
 					e->info.cargo_type = c;
 					set_cb_refit_cap_value(GetVehicleCallback(CBID_VEHICLE_REFIT_CAPACITY, 0, 0, e->index, nullptr), CargoTypes{c});
 				}

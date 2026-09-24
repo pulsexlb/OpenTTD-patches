@@ -24,7 +24,7 @@
 
 | 项 | 定稿 |
 |---|---|
-| 装载门 | **三档设置 `vehicle.rv_transport_carrier_parts`（M11d 修订 D1，默认档 2）**：0=任何有载货容量的节；1=该节 `cargo_type` 属 `CargoClass::Oversized`（`IsCargoInClass`，cargotype.h:245）；2（默认）=**正面白名单**：`IsCargoInClass(Bulk)` ∥ `IsCargoInClass(Oversized)` ∥ `CargoSpec::label == 'VEHI'`。判定集中在 `RVTransportPartCanCarry()`，**只在装载时生效** |
+| 装载门 | **三档设置 `vehicle.rv_transport_carrier_parts`（M11d 修订 D1，默认档 2）**：0=任何有载货容量的节；1=该节 `cargo_type` 属 `CargoClass::Oversized`（`IsCargoInClass`，cargotype.h:245）；2（默认）=**正面白名单**：`IsCargoInClass(Bulk)` ∥ `IsCargoInClass(Oversized)` ∥ `CargoSpec::label == 'VEHC'`。判定集中在 `RVTransportPartCanCarry()`，**只在装载时生效** |
 | 容量/重量 | 节容量换算成吨（`cargo_cap × CargoSpec::weight / 16`），RV 按整备重占用；按节判定；初期节内不混装普通货 |
 | 重量物理 | 仅火车/公路车；入口 `GroundVehicle::CargoChanged()` |
 | 配对 | 载体主导 + 条件表达式筛选 + 不匹配跳过（复用条件订单体系） |
@@ -112,7 +112,7 @@
 
 ### 4.4 容量/重量校验（收运事务的前置判定，逐节）
 
-- 装载门：见 §1 表"装载门"——`RVTransportPartCanCarry(part)` 按三档设置判定（默认档 2：散货 / oversized / 标签 `VEHI` 三类之一），档 1 才是只认 `IsCargoInClass(cargo_type, CargoClass::Oversized)`；`force` 参数可绕过（调试用）。
+- 装载门：见 §1 表"装载门"——`RVTransportPartCanCarry(part)` 按三档设置判定（默认档 2：散货 / oversized / 标签 `VEHC` 三类之一），档 1 才是只认 `IsCargoInClass(cargo_type, CargoClass::Oversized)`；`force` 参数可绕过（调试用）。
 - 节运载吨容量 = `cargo_cap × CargoSpec::Get(cargo_type)->weight / 16`；RV 占用吨 = 整备重（`GetWeight()` 不含货）+（可选开关：+自身载货重）。
 - 校验：`sum(transported_units_used) + 本RV占用 ≤ 节吨容量`；不满足→拒装（新闻串提示），RV 留队。
 - 铰接 RV 整组按一个候选判定与收运（原子）；一节装不下整组就不装。
@@ -247,7 +247,7 @@
 | **M11** | **评审实测 5 个问题的修复**：订单行字符串参数错配（`(invalid parameter)`，亦为那次崩溃最可信根因）、直通站单侧被占不能卸（改用站点自身的泊位/入口记账 + `Enter()` 记账配对）、卸载不区分车的调度（只卸"自己声明在本站下车"的车）、设置窗口按钮无交互反馈（改用 `OnRealtimeTick()` 轮询快照）、"卸不下就直接开走"补成可选的对称等待 | 全量回归 12 脚本全绿、0 断言 |
 | **M11b** | **等待状态在改命令后不消失**：跳到下一条调度/命令回库时清掉 `RVTF_WAITING` 与随之的 `Stopped`（放在 `RoadVehController()` 的停止判定之前，与进入等待的 `Vehicle::BeginLoading()` 条件对称） | 全量回归全绿；待评审复测 |
 | **M11c** | **重量记账 + 载重外观 + 载运清单**（评审实测反馈的三点）：①被运载车辆计入**载体自重**（`RVTransportGetCarriedWeightTonnes()` → `GroundVehicle::CargoChanged()`，装卸后 `Train::MarkDirty()` 重算）；②载体"看起来装满了"（原版火车按"货物过半即满"、NewGRF 车辆集按 `stored*totalsets/capacity`，另外从**货物量变量 0x3C/0x3D**取图的车辆集也会读成满载；只要该节载有道路载具就取满载图）；③**载运清单**：载体详情窗口列出所载车辆（火车在"信息"页末尾、可滚动，船/机在详情面板底部、窗口高度自动增减）。**附带修掉一次必崩**（详情窗"信息"页：循环把形参 `v` 走到 nullptr 后仍被使用，见 D.5 第 5 条） | `verify_attach.ps1` 重量断言 PASS（装卸前后 `carried=`/`total_incl_carried=`/`own=`）+ `verify_details.ps1` 行数记账 PASS + 全量回归 13 脚本 |
-| **M11d** | **"哪节可以装车"改为三档设置**（修订 D1，见《规划》§1.4 的 D1 修订框）：`vehicle.rv_transport_carrier_parts`（`enum class RVTransportCarrierParts`，`settings_type.h` + `game_settings.ini` 的 `[SDT_ENUM]` + `_rv_transport_carrier_parts[]` 枚举表，`SettingFlag::Patch`，**默认档 2 = 散货/`Oversized`/标签 `VEHI` 三选一**）；判定集中在 `RVTransportPartCanCarry()`；类别 `SC_EXPERT`，并在设置窗口里**单独开一页"道路车辆运输"**（`src/settingentry_gui.cpp`，`SettingsPage *rv_transport`）；英文/简中各 5 条新字符串，删掉旧的 `vehicle.rv_transport_require_oversized` 与其字符串。**只在装载时判定，卸载不看此设置**（切档不会把已在车上的车丢在路上）。回归套件在 `_common.ps1` 里统一先 `setting ... 0` 开门（测试存档载体是木材车厢，属档 2 拒绝的货物），`-CarrierParts -1` 可关掉这个前置 | `verify_carrier_parts.ps1` PASS：默认值 = 2；同一节木材车厢在档 0 下 `rv_capacity=30t`、`loadfrom ... attached=true`，档 1/2 下 `rv_capacity=0t`、`attached=false`（用 `setting vehicle.rv_transport_carrier_parts <0\|1\|2>` 在运行中切换） |
+| **M11d** | **"哪节可以装车"改为三档设置**（修订 D1，见《规划》§1.4 的 D1 修订框）：`vehicle.rv_transport_carrier_parts`（`enum class RVTransportCarrierParts`，`settings_type.h` + `game_settings.ini` 的 `[SDT_ENUM]` + `_rv_transport_carrier_parts[]` 枚举表，`SettingFlag::Patch`，**默认档 2 = 散货/`Oversized`/标签 `VEHC` 三选一**）；判定集中在 `RVTransportPartCanCarry()`；类别 `SC_EXPERT`，并在设置窗口里**单独开一页"道路车辆运输"**（`src/settingentry_gui.cpp`，`SettingsPage *rv_transport`）；英文/简中各 5 条新字符串，删掉旧的 `vehicle.rv_transport_require_oversized` 与其字符串。**只在装载时判定，卸载不看此设置**（切档不会把已在车上的车丢在路上）。回归套件在 `_common.ps1` 里统一先 `setting ... 0` 开门（测试存档载体是木材车厢，属档 2 拒绝的货物），`-CarrierParts -1` 可关掉这个前置 | `verify_carrier_parts.ps1` PASS：默认值 = 2；同一节木材车厢在档 0 下 `rv_capacity=30t`、`loadfrom ... attached=true`，档 1/2 下 `rv_capacity=0t`、`attached=false`（用 `setting vehicle.rv_transport_carrier_parts <0\|1\|2>` 在运行中切换） |
 
 追加项共同的收尾约束（与 M8 一致）：每个里程碑都要"可编译 + 最小场景可玩 + 回归不炸"，并同步规划/规格/手测文档。
 

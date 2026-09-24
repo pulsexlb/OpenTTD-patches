@@ -936,7 +936,7 @@ static void ProcessNewGRFStringControlCode(char32_t scc, StringConsumer &consume
 
 		case SCC_NEWGRF_PRINT_WORD_CARGO_NAME: {
 			CargoType cargo = GetCargoTranslation(stack.PopUnsignedWord(), stack.grffile);
-			params.emplace_back(cargo < NUM_CARGO ? 1ULL << cargo : 0);
+			params.emplace_back(cargo < NUM_GRF_CARGO ? 1ULL << cargo : 0);
 			break;
 		}
 	}

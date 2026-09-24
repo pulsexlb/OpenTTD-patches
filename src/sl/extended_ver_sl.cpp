@@ -45,6 +45,7 @@
 #include "../rev.h"
 #include "../strings_func.h"
 #include "../company_func.h"
+#include "../cargo_type.h"
 #include "../3rdparty/robin_hood/robin_hood.h"
 #include "table/strings.h"
 
@@ -113,7 +114,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_LINKGRAPH_DAY_SCALE,              XSCF_NULL,                7,   7, "linkgraph_day_scale",              nullptr, nullptr, nullptr          },
 	{ XSLFI_TEMPLATE_REPLACEMENT,             XSCF_NULL,               10,  10, "template_replacement",             nullptr, nullptr, "TRPL,TMPL"      },
 	{ XSLFI_MORE_RAIL_TYPES,                  XSCF_NULL,                0,   1, "more_rail_types",                  nullptr, nullptr, nullptr          },
-	{ XSLFI_CARGO_TYPE_ORDERS,                XSCF_NULL,                4,   4, "cargo_type_orders",                nullptr, nullptr, nullptr          },
+	{ XSLFI_CARGO_TYPE_ORDERS,                XSCF_NULL,                5,   5, "cargo_type_orders",                nullptr, nullptr, nullptr          },
 	{ XSLFI_EXTENDED_GAMELOG,                 XSCF_NULL,                2,   2, "extended_gamelog",                 nullptr, nullptr, nullptr          },
 	{ XSLFI_STATION_CATCHMENT_INC,            XSCF_NULL,                1,   1, "station_catchment_inc",            nullptr, nullptr, nullptr          },
 	{ XSLFI_CUSTOM_BRIDGE_HEADS,              XSCF_NULL,                4,   4, "custom_bridge_heads",              nullptr, nullptr, nullptr          },
@@ -199,7 +200,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_INDUSTRY_CARGO_TOTALS,            XSCF_NULL,                1,   1, "industry_cargo_totals",            nullptr, nullptr, nullptr          },
 	{ XSLFI_SIGNAL_SPECIAL_PROPAGATION_FLAG,  XSCF_IGNORABLE_ALL,       2,   2, "signal_special_propagation_flag",  nullptr, nullptr, nullptr          },
 	{ XSLFI_ORDER_VECTOR,                     XSCF_NULL,                1,   1, "order_vector",                     nullptr, nullptr, nullptr          },
-	{ XSLFI_ERNC_CHUNK,                       XSCF_IGNORABLE_ALL,       0,   1, "ernc_chunk",                       nullptr, nullptr, "ERNC"           },
+	{ XSLFI_ERNC_CHUNK,                       XSCF_IGNORABLE_ALL,       0,   2, "ernc_chunk",                       nullptr, nullptr, "ERNC"           },
 	{ XSLFI_STATION_CARGO_TRUNCATE,           XSCF_IGNORABLE_UNKNOWN,   1,   1, "station_cargo_truncate",           nullptr, nullptr, nullptr          },
 
 	{ XSLFI_SCRIPT_INT64,                     XSCF_NULL,                1,   1, "script_int64",                     nullptr, nullptr, nullptr          },
@@ -243,6 +244,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_TABLE_VEHICLE_SL,                 XSCF_NULL,                1,   1, "table_vehicle_sl",                 nullptr, nullptr, nullptr          },
 
 	{ XSLFI_ROAD_VEH_TRANSPORT,               XSCF_NULL,                3,   3, "road_veh_transport",               nullptr, nullptr, nullptr          },
+	{ XSLFI_CARGO_TYPES_128,                  XSCF_NULL,                1,   1, "cargo_types_128",                  nullptr, nullptr, nullptr          },
 };
 
 /**
@@ -334,7 +336,7 @@ void SlXvSetCurrentState()
 	if (IsNetworkServerSave()) {
 		_sl_xv_feature_versions[XSLFI_VENC_CHUNK] = 1;
 		_sl_xv_feature_versions[XSLFI_TNNC_CHUNK] = 1;
-		_sl_xv_feature_versions[XSLFI_ERNC_CHUNK] = 1;
+		_sl_xv_feature_versions[XSLFI_ERNC_CHUNK] = 2;
 	}
 }
 
@@ -348,6 +350,14 @@ void SlXvSetStaticCurrentVersions()
 	for (const SlxiSubChunkInfo &info : _sl_xv_sub_chunk_infos) {
 		_sl_xv_feature_static_versions[info.index] = info.save_version;
 	}
+}
+
+uint GetSavedCargoCount()
+{
+	if (IsSavegameVersionBefore(SLV_55)) return 12;
+	if (IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES)) return 32;
+	if (SlXvIsFeatureMissing(XSLFI_CARGO_TYPES_128)) return NUM_GRF_CARGO;
+	return NUM_CARGO;
 }
 
 /**

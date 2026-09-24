@@ -78,6 +78,7 @@
 #include "../timer/timer.h"
 #include "../timer/timer_game_tick.h"
 #include "../picker_func.h"
+#include "../linkgraph/linkgraph.h"
 #include "../pathfinder/water_regions.h"
 #include "../tile_cmd.h"
 
@@ -663,6 +664,82 @@ void IterateVehicleAndOrderListOrders(F func)
 }
 
 /**
+ * Cargo types have been extended from 64 to 128 slots and the built-in "Vehicles (Road)" cargo has
+ * moved from slot NUM_GRF_CARGO - 2 to slot RV_TRANSPORT_CARGO_SLOT. Savegames written before that
+ * change store the old slot, so remap all cargo references in them.
+ */
+static void FixupCargoTypes128()
+{
+	if (SlXvIsFeaturePresent(XSLFI_CARGO_TYPES_128)) return;
+	if (SlXvIsFeatureMissing(XSLFI_ROAD_VEH_TRANSPORT)) return;
+
+	static constexpr CargoType old_slot{NUM_GRF_CARGO - 2}; ///< Cargo slot the built-in "Vehicles (Road)" cargo used to occupy.
+	static constexpr CargoType new_slot{RV_TRANSPORT_CARGO_SLOT}; ///< Cargo slot the built-in "Vehicles (Road)" cargo occupies now.
+
+	/* If a NewGRF claims the old slot, it never held the built-in cargo in this savegame. */
+	if (CargoSpec::Get(old_slot)->grffile != nullptr) return;
+
+	auto remap = [](CargoType &cargo) {
+		if (cargo == old_slot) cargo = new_slot;
+	};
+
+	for (Vehicle *v : Vehicle::Iterate()) {
+		remap(v->cargo_type);
+	}
+
+	IterateVehicleAndOrderListOrders([&](Order *order) {
+		CargoType refit_cargo = order->GetRefitCargo();
+		if (refit_cargo == old_slot) order->SetRefit(new_slot);
+		order->MoveCargoTypeFlags(old_slot, new_slot);
+	});
+
+	for (Subsidy *s : Subsidy::Iterate()) remap(s->cargo_type);
+
+	for (LinkGraph *lg : LinkGraph::Iterate()) {
+		if (lg->Cargo() == old_slot) lg->SetCargo(new_slot);
+	}
+
+	for (Town *t : Town::Iterate()) {
+		for (Town::SuppliedCargo &sc : t->supplied) remap(sc.cargo);
+		for (Town::AcceptedCargo &ac : t->accepted) remap(ac.cargo);
+	}
+
+	for (Industry *i : Industry::Iterate()) {
+		for (uint j = 0; j < i->produced_cargo_count; j++) remap(i->produced[j].cargo);
+		for (uint j = 0; j < i->accepted_cargo_count; j++) remap(i->accepted[j].cargo);
+	}
+
+	for (Company *c : Company::Iterate()) {
+		std::swap(c->cur_economy.delivered_cargo[old_slot], c->cur_economy.delivered_cargo[new_slot]);
+		for (CompanyEconomyEntry &e : c->old_economy) {
+			std::swap(e.delivered_cargo[old_slot], e.delivered_cargo[new_slot]);
+		}
+	}
+
+	for (Station *st : Station::Iterate()) {
+		std::swap(st->goods[old_slot], st->goods[new_slot]);
+
+		if (st->always_accepted.Test(old_slot)) {
+			st->always_accepted.Reset(old_slot);
+			st->always_accepted.Set(new_slot);
+		}
+
+		if (st->station_cargo_history_cargoes.Test(old_slot)) {
+			/* The history of each cargo is stored in the order of the cargo slots, so the entry of
+			 * the old slot has to be moved to the position the new slot takes in that order. */
+			size_t rank = CountBits(st->station_cargo_history_cargoes.base() & ((Uint128{1} << to_underlying(old_slot)) - Uint128{1}));
+			if (rank < st->station_cargo_history.size()) {
+				auto entry = std::move(st->station_cargo_history[rank]);
+				st->station_cargo_history.erase(st->station_cargo_history.begin() + rank);
+				st->station_cargo_history.push_back(std::move(entry));
+			}
+			st->station_cargo_history_cargoes.Reset(old_slot);
+			st->station_cargo_history_cargoes.Set(new_slot);
+		}
+	}
+}
+
+/**
  * Perform a (large) amount of savegame conversion *magic* in order to
  * load older savegames and to fill the caches for various purposes.
  * @return True iff conversion went without a problem.
@@ -694,6 +771,8 @@ bool AfterLoadGame()
 
 	GamelogTestRevision();
 	GamelogTestMode();
+
+	FixupCargoTypes128();
 
 	RebuildTownKdtree();
 	RebuildStationKdtree();

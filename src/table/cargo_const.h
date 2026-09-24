@@ -102,17 +102,17 @@ static const CargoSpec _default_cargo[] = {
 };
 
 /**
- * Dedicated "Vehicles (Road)" cargo for road vehicle transport. Not part of _default_cargo above:
+ * Dedicated "Vehicles (Car)" cargo for road vehicle transport. Not part of _default_cargo above:
  * it is installed into its own CargoType slot by SetupCargoForClimate() so that its slot is stable
  * regardless of climate and of the original cargo numbering. Written out instead of via MK so the
  * town production effect can be set explicitly (towns never produce or accept it).
- * The Special class keeps it out of _standard_cargo_mask/_sorted_standard_cargo_specs, so it never
- * appears in cargo selection lists (order load/unload windows, filters, ...): it exists only as a
- * refit destination for vehicle transport.
+ * It is an ordinary (non-Special) cargo, so that it is listed and selectable wherever other cargoes
+ * are (cargo filters, cargo selection lists, graphs, ...); it only exists as a refit destination for
+ * vehicle transport, so nothing else in the game ever produces, accepts or waits for it.
  * Weight is 1 tonne per unit so a part's road vehicle capacity in tonnes equals its cargo capacity.
  */
 static const CargoSpec _rv_transport_cargo = {
-	CT_VEHICLES, 27, PixelColour{87}, PixelColour{87}, 16, 0x100, CargoClasses({CargoClass::Oversized, CargoClass::Special}), 5688, {0, 30}, true, TownAcceptanceEffect::None, TownProductionEffect::None, TOWN_PRODUCTION_DIVISOR, CargoCallbackMasks{},
+	CT_VEHICLES, 27, PixelColour{87}, PixelColour{87}, 16, 0x100, CargoClasses({CargoClass::Oversized}), 5688, {0, 30}, true, TownAcceptanceEffect::None, TownProductionEffect::None, TOWN_PRODUCTION_DIVISOR, CargoCallbackMasks{},
 	MK_STR_CARGO_PLURAL(VEHICLES), MK_STR_CARGO_SINGULAR(VEHICLE), STR_TONS, MK_STR_QUANTITY(VEHICLES), MK_STR_ABBREV(VEHICLES),
 	MK_SPRITE(VEHICLES), nullptr, nullptr, 0
 };

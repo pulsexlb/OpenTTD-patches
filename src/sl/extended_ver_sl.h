@@ -208,6 +208,7 @@ enum SlXvFeatureIndex {
 	XSLFI_CHILLPP,                                ///< This is a ChillPP game, use this for loading some settings
 
 	XSLFI_ROAD_VEH_TRANSPORT,                     ///< Road vehicles transported by other vehicles (RoRo)
+	XSLFI_CARGO_TYPES_128,                        ///< Cargo types extended from 64 to 128 slots, cargo ids above 64 in savegames need remapping
 
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
@@ -323,6 +324,12 @@ void SlXvSetCurrentState();
 void SlXvSetStaticCurrentVersions();
 
 bool SlXvCheckSpecialSavegameVersions();
+
+/**
+ * Get the number of per-cargo entries which are stored in the savegame currently being loaded.
+ * @return The number of per-cargo entries.
+ */
+uint GetSavedCargoCount();
 
 bool SlXvIsChunkDiscardable(uint32_t id);
 

@@ -124,7 +124,7 @@ function Invoke-RoRoTest
     if (-not $KeepProbe) { foreach ($path in $probePaths) { Remove-Item -LiteralPath $path -ErrorAction SilentlyContinue } }
 
     if ($ready) {
-        # The 'which carrier parts may carry' setting defaults to value 2 (bulk / 'oversized' / 'VEHI'
+        # The 'which carrier parts may carry' setting defaults to value 2 (bulk / 'oversized' / 'VEHC'
         # cargo only), which refuses the test savegame's wood wagon. The mechanics scripts want the
         # gate open, so they set it to 0 first; the gate itself is verified by verify_carrier_parts.ps1
         # (which switches all three values itself, so it passes -CarrierParts -1).

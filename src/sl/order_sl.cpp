@@ -14,6 +14,7 @@
 #include "../network/network.h"
 
 #include "saveload_internal.h"
+#include "extended_ver_sl.h"
 #include "vehicle_sl.h"
 
 #include "../safeguards.h"
@@ -138,7 +139,8 @@ NamedSaveLoadTable GetOrderExtraInfoDescription()
 {
 	static const NamedSaveLoad _order_extra_info_desc[] = {
 		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, 32,        SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 1, 2))),
-		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_CARGO, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 3))),
+		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_GRF_CARGO, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 3, 4))),
+		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_CARGO,     SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 5))),
 		NSL("xflags",           SLE_CONDVAR_X(OrderExtraInfo, xflags,           SLE_UINT8,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA))),
 		NSL("xdata",            SLE_CONDVAR_X(OrderExtraInfo, xdata,           SLE_UINT32,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_EXTRA_DATA))),
 		NSL("xdata2",           SLE_CONDVAR_X(OrderExtraInfo, xdata2,          SLE_UINT32,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_EXTRA_DATA, 3))),

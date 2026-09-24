@@ -126,7 +126,7 @@ STR_QUANTITY_TOFFEE                                             :{WEIGHT_LONG}�
 STR_QUANTITY_BATTERIES                                          :{COMMA}{NBSP}箱电池
 STR_QUANTITY_PLASTIC                                            :{VOLUME_LONG}塑料
 STR_QUANTITY_FIZZY_DRINKS                                       :{COMMA}{NBSP}瓶汽水
-STR_QUANTITY_VEHICLES                                            :{WEIGHT_LONG}的道路载具
+STR_QUANTITY_VEHICLES                                            :{WEIGHT_LONG}的载具（汽车）
 STR_QUANTITY_N_A                                                :不适用
 
 # Two letter abbreviation of cargo name
@@ -4554,11 +4554,11 @@ STR_VEHICLE_STATUS_WAITING_UNBUNCHING                           :{LTBLUE}等待�
 STR_VEHICLE_STATUS_CRASHED                                      :{RED}已撞毁！
 STR_VEHICLE_STATUS_WAITING_TO_BE_TRANSPORTED                    :{LTBLUE}等待被运载
 STR_VEHICLE_STATUS_BEING_TRANSPORTED                            :{LTBLUE}正在被运载
-STR_VEHICLE_STATUS_CARRYING_ROAD_VEHICLES                       :{LTBLUE}载有 {COMMA} 台道路载具
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLES                       :载运的道路载具：
+STR_VEHICLE_STATUS_CARRYING_ROAD_VEHICLES                       :{LTBLUE}载有 {COMMA} 台载具（汽车）
+STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLES                       :载运的载具（汽车）：
 STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE                        :{BLACK}{VEHICLE}
 STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE_EXTRA                  :{BLACK}（{COMMA} 吨）
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE_NONE                   :{LTBLUE}本列车没有载运道路载具
+STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE_NONE                   :{LTBLUE}本列车没有载运载具（汽车）
 STR_VEHICLE_STATUS_BROKEN_DOWN                                  :{RED}抛锚
 STR_VEHICLE_STATUS_STOPPED                                      :{RED}停运
 STR_VEHICLE_STATUS_TRAIN_STOPPING_VEL                           :{RED}{VELOCITY} - 正在停止
@@ -4714,12 +4714,12 @@ STR_ORDER_DROP_LOAD_IF_POSSIBLE                                 :若有普通货
 STR_ORDER_DROP_FULL_LOAD_ALL                                    :满载所有普通货物
 STR_ORDER_DROP_FULL_LOAD_ANY                                    :满载任一普通货物
 STR_ORDER_DROP_NO_LOADING                                       :不装载普通货物
-STR_ORDER_DROP_LOAD_ROAD_VEHICLES                               :装载道路载具
-STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES                             :卸载道路载具
-STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES                         :卸载所有道路载具
-STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES_TOOLTIP                 :{BLACK}无视每台车自己订单里声明的卸货站，把车上的道路载具全部卸在这里。不勾选时，只卸"自己的订单写着要在本站被卸下"的车。
-STR_ORDER_DROP_RV_MATCH_DEST                                    :只装载去下一站的道路载具
-STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES                           :等待道路载具
+STR_ORDER_DROP_LOAD_ROAD_VEHICLES                               :装载载具（汽车）
+STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES                             :卸载载具（汽车）
+STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES                         :卸载所有载具（汽车）
+STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES_TOOLTIP                 :{BLACK}无视每台车自己订单里声明的卸货站，把车上的载具（汽车）全部卸在这里。不勾选时，只卸"自己的订单写着要在本站被卸下"的车。
+STR_ORDER_DROP_RV_MATCH_DEST                                    :只装载去下一站的载具（汽车）
+STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES                           :等待载具（汽车）
 STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED                           :等待被运载
 STR_ORDER_DROP_BE_UNLOADED_HERE                                 :在此被卸下
 STR_ORDER_DROP_RV_LOAD_STATE                                    :载具条件：{STRING}
@@ -4733,15 +4733,15 @@ STR_ORDER_DROP_RV_MIN_WAIT_NUM                                  :最短等待：
 STR_ORDER_RV_CARGO_CAN_CARRY                                    :可载货物：
 STR_ORDER_RV_CARGO_IS_CARRYING                                  :正载货物：
 STR_ORDER_RV_SLOT                                               :路签：{TRSLOT}
-STR_ORDER_DROP_RV_TRANSPORT                                     :道路载具运输…
+STR_ORDER_DROP_RV_TRANSPORT                                     :载具（汽车）运输…
 STR_ORDER_DROP_RV_LOAD_ANY                                       :装载任意载具
 STR_ORDER_DROP_RV_LOAD_NEXT                                      :装载去下一站的载具
-STR_ORDER_DROP_RV_LOAD_OPTIONS                                   :道路载具装载选项…
+STR_ORDER_DROP_RV_LOAD_OPTIONS                                   :载具（汽车）装载选项…
 STR_ORDER_RV_TRANSPORT_MORE_OPTIONS                             :（其他选项）
 STR_ORDER_RV_CARGO_LOAD_DEFAULT                                 :装载普通货物
 STR_ORDER_RV_CARGO_UNLOAD_DEFAULT                               :卸载普通货物
 STR_ERROR_RV_REFIT_SCHEDULE                                      :{WHITE}载具有调度计划时不能在“载具（汽车）”与普通货物之间互相改装，请先清空调度计划。
-STR_RV_TRANSPORT_CRITERIA_CAPTION                               :道路载具运输
+STR_RV_TRANSPORT_CRITERIA_CAPTION                               :载具（汽车）运输
 STR_RV_TRANSPORT_CRITERIA_LOAD_STATE                            :载货状态
 STR_RV_TRANSPORT_CRITERIA_CARGO                                 :货物
 STR_RV_TRANSPORT_CRITERIA_CARGO_MODE                            :货物判据
@@ -5499,8 +5499,8 @@ STR_ERROR_CAN_T_RENAME_AIRCRAFT_TYPE                            :{WHITE}不能�
 ###length VEHICLE_TYPES
 STR_ERROR_CAN_T_SELL_TRAIN                                      :{WHITE}不能出售列车……
 STR_ERROR_CAN_T_SELL_ROAD_VEHICLE                               :{WHITE}不能出售汽车……
-STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIED                      :{WHITE}不能出售正在被运载的道路载具
-STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIER                      :{WHITE}请先卸下所运载的道路载具
+STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIED                      :{WHITE}不能出售正在被运载的载具（汽车）
+STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIER                      :{WHITE}请先卸下所运载的载具（汽车）
 STR_ERROR_CAN_T_SELL_SHIP                                       :{WHITE}不能出售船只……
 STR_ERROR_CAN_T_SELL_AIRCRAFT                                   :{WHITE}不能出售飞机……
 
@@ -5548,7 +5548,7 @@ STR_ERROR_TOO_MANY_ORDERS                                       :{WHITE}命令�
 STR_ERROR_CAN_T_INSERT_NEW_ORDER                                :{WHITE}不能插入新的调度计划……
 STR_ERROR_CAN_T_DELETE_THIS_ORDER                               :{WHITE}不能删除调度计划……
 STR_ERROR_CAN_T_MODIFY_THIS_ORDER                               :{WHITE}不能执行这个命令……
-STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY                       :{WHITE}道路载具运输只能设置在车站调度计划上
+STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY                       :{WHITE}载具（汽车）运输只能设置在车站调度计划上
 STR_ERROR_CAN_T_MOVE_THIS_ORDER                                 :{WHITE}不能移动这条命令……
 STR_ERROR_CAN_T_SKIP_ORDER                                      :{WHITE}不能跳过当前命令……
 STR_ERROR_CAN_T_SKIP_TO_ORDER                                   :{WHITE}不能跳转到选定的命令……

@@ -142,6 +142,13 @@ EncodedString GetEncodedStringWithArgs(StringID str, std::span<const StringParam
 			this->result.format("{:X}", arg);
 		}
 
+		/* The encoded string format stores a single number per parameter, so only the cargoes below
+		 * the 64 bit boundary can be stored here. */
+		void operator()(const CargoTypes &arg)
+		{
+			this->operator()(arg.base().lo);
+		}
+
 		void visit_string(std::string_view value)
 		{
 #ifdef WITH_ASSERT
@@ -1882,7 +1889,7 @@ static void FormatString(StringBuilder builder, std::string_view str_arg, String
 				}
 
 				case SCC_CARGO_LIST: { // {CARGO_LIST}
-					CargoTypes cmask = args.GetNextParameter<CargoTypes>();
+					CargoTypes cmask = args.GetNextParameterCargoTypes();
 					bool first = true;
 
 					std::string_view list_separator = GetListSeparator();

@@ -3210,7 +3210,7 @@ CommandCost CmdOrderRefit(DoCommandFlags flags, VehicleID veh, VehicleOrderID or
 	/* Road vehicle transport: the dedicated "Vehicles (Road)" cargo may only be selected as an order
 	 * refit target for a chain that is currently fully configured for road vehicle transport (i.e.
 	 * refitting it to itself), mirroring what the refit window offers. */
-	if (cargo == GetCargoTypeByLabel(CT_VEHICLES)) {
+	if (cargo == RV_TRANSPORT_CARGO_SLOT) {
 		bool has_vehicles = false;
 		bool has_normal = false;
 		for (const Vehicle *w = v->First(); w != nullptr; w = w->Next()) {

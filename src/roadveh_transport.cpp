@@ -47,8 +47,9 @@ uint32_t RVTransportGetVehicleWeightTonnes(const Vehicle *rv)
 /**
  * Cargo label of the dedicated "Vehicles" cargo which vehicle transporting NewGRFs use for the cargo
  * of their car ferries / car carriers (see RVTransportCarrierParts::BulkOversizedOrVehicles).
+ * This is the built-in cargo's own label, see CT_VEHICLES.
  */
-static constexpr CargoLabel RV_TRANSPORT_VEHICLES_CARGO_LABEL{'VEHI'};
+static constexpr CargoLabel RV_TRANSPORT_VEHICLES_CARGO_LABEL = CT_VEHICLES;
 
 /** Is this carrier part able to carry road vehicles? */
 bool RVTransportPartCanCarry(const Vehicle *part)
@@ -72,11 +73,11 @@ bool RVTransportPartCanCarry(const Vehicle *part)
 			 * hold one:
 			 *  - bulk cargo (open/hopper wagons: coal, ore, grain, ...),
 			 *  - a cargo the NewGRF marked as 'oversized' (stake/flatbed wagons, car ferries),
-			 *  - the dedicated "Vehicles" cargo (label 'VEHI') which vehicle transporting NewGRFs
+			 *  - the dedicated "Vehicles" cargo (label 'VEHC') which vehicle transporting NewGRFs
 			 *    (car ferries, car carriers) use for exactly this purpose.
 			 * Everything else is refused, so a passenger carriage, a mail van, a wood/steel/goods
 			 * van and a tank car never take a vehicle. The default content has no 'oversized' and
-			 * no 'VEHI' cargo, so with it only bulk wagons qualify. */
+			 * no 'VEHC' cargo, so with it only bulk wagons qualify. */
 			if (IsCargoInClass(part->cargo_type, CargoClass::Bulk)) return true;
 			if (IsCargoInClass(part->cargo_type, CargoClass::Oversized)) return true;
 			return CargoSpec::Get(part->cargo_type)->label == RV_TRANSPORT_VEHICLES_CARGO_LABEL;
@@ -203,7 +204,7 @@ uint16_t RVTransportExtraCargoAmount(const Vehicle *part)
 bool RVTransportVehicleCarriesOnlyVehicles(const Vehicle *v)
 {
 	if (v == nullptr) return false;
-	const CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
+	const CargoType vehicles_cargo = RV_TRANSPORT_CARGO_SLOT;
 	if (!IsValidCargoType(vehicles_cargo)) return false;
 
 	bool has_cargo_part = false;

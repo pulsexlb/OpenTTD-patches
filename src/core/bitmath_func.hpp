@@ -10,6 +10,7 @@
 #ifndef BITMATH_FUNC_HPP
 #define BITMATH_FUNC_HPP
 
+#include "uint128_type.hpp"
 #include <bit>
 #include <limits>
 #include <type_traits>
@@ -294,7 +295,7 @@ constexpr uint CountBits(T value)
 	if constexpr (std::is_enum_v<T>) {
 		return std::popcount<std::underlying_type_t<T>>(value);
 	} else if constexpr (BitsetTypeAsBase<T>) {
-		return std::popcount(value.base());
+		return CountBits(value.base());
 	} else {
 		return std::popcount(value);
 	}
@@ -388,8 +389,12 @@ struct SetBitIterator {
 		void Validate()
 		{
 			if (this->bitset != 0) {
-				typename std::make_unsigned<Tbitset>::type unsigned_value = this->bitset;
-				this->bitpos = static_cast<Tbitpos>(FindFirstBit(unsigned_value));
+				if constexpr (std::is_integral_v<Tbitset>) {
+					typename std::make_unsigned<Tbitset>::type unsigned_value = this->bitset;
+					this->bitpos = static_cast<Tbitpos>(FindFirstBit(unsigned_value));
+				} else {
+					this->bitpos = static_cast<Tbitpos>(FindFirstBit(this->bitset));
+				}
 			}
 		}
 		void Next()
@@ -407,6 +412,72 @@ struct SetBitIterator {
 private:
 	Tbitset bitset;
 };
+
+/**
+ * Uint128 overloads of the bit helpers above. These are non-template overloads,
+ * so they take precedence over the generic templates above (which only work for
+ * integral types).
+ * @{
+ */
+[[debug_inline]] inline constexpr bool HasBit(const Uint128 &x, const uint8_t y)
+{
+	return ((x >> y).lo & 1) != 0;
+}
+
+constexpr Uint128 SetBit(Uint128 &x, const uint8_t y)
+{
+	return x |= (Uint128{1} << y);
+}
+
+constexpr Uint128 ClrBit(Uint128 &x, const uint8_t y)
+{
+	return x &= ~(Uint128{1} << y);
+}
+
+constexpr Uint128 ToggleBit(Uint128 &x, const uint8_t y)
+{
+	return x ^= (Uint128{1} << y);
+}
+
+constexpr uint8_t FindFirstBit(const Uint128 &x)
+{
+	if (x.lo != 0) return static_cast<uint8_t>(std::countr_zero(x.lo));
+	if (x.hi != 0) return static_cast<uint8_t>(64 + std::countr_zero(x.hi));
+	return 0;
+}
+
+constexpr uint8_t FindLastBit(const Uint128 &x)
+{
+	if (x.hi != 0) return static_cast<uint8_t>(127 - std::countl_zero(x.hi));
+	if (x.lo != 0) return static_cast<uint8_t>(63 - std::countl_zero(x.lo));
+	return 0;
+}
+
+constexpr Uint128 KillFirstBit(Uint128 value)
+{
+	if (value.lo != 0) {
+		value.lo &= value.lo - 1;
+	} else if (value.hi != 0) {
+		value.hi &= value.hi - 1;
+	}
+	return value;
+}
+
+constexpr uint CountBits(const Uint128 &value)
+{
+	return static_cast<uint>(std::popcount(value.lo) + std::popcount(value.hi));
+}
+
+constexpr bool HasExactlyOneBit(const Uint128 &value)
+{
+	return CountBits(value) == 1;
+}
+
+constexpr bool HasAtMostOneBit(const Uint128 &value)
+{
+	return CountBits(value) <= 1;
+}
+/** @} */
 
 namespace std {
 	/**

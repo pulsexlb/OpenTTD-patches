@@ -821,7 +821,7 @@ static CargoLabel GetActiveCargoLabel(const std::variant<CargoLabel, MixedCargoT
 static void CalculateRefitMasks()
 {
 	CargoTypes original_known_cargoes{};
-	for (CargoType cargo_type{}; cargo_type != NUM_CARGO; ++cargo_type) {
+	for (CargoType cargo_type{}; cargo_type != NUM_GRF_CARGO; ++cargo_type) {
 		if (IsDefaultCargo(cargo_type)) original_known_cargoes.Set(cargo_type);
 	}
 
@@ -967,7 +967,7 @@ static void CalculateRefitMasks()
 			/* Road vehicle transport: trains, ships and aircraft can always be refitted to the
 			 * dedicated "Vehicles (Road)" cargo. */
 			if (e->type == VehicleType::Train || e->type == VehicleType::Ship || e->type == VehicleType::Aircraft) {
-				CargoType vehicles_cargo = GetCargoTypeByLabel(CT_VEHICLES);
+				CargoType vehicles_cargo = RV_TRANSPORT_CARGO_SLOT;
 				if (IsValidCargoType(vehicles_cargo)) ei->refit_mask.Set(vehicles_cargo);
 			}
 		}
