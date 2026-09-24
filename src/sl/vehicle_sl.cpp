@@ -1031,6 +1031,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("transported_by",            SLE_CONDVAR_X(Vehicle, transported_by,           SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
 		NSL("transported_host_part",     SLE_CONDVAR_X(Vehicle, transported_host_part,    SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
 		NSL("transported_weight",        SLE_CONDVAR_X(Vehicle, transported_weight,       SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
+		NSL("transported_from",          SLE_CONDVAR_X(Vehicle, transported_from,         SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
 		NSL("transport_wait_tick",       SLE_CONDVAR_X(Vehicle, transport_wait_tick,      SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
 		NSL("tile",                       SLE_CONDVAR(Vehicle, tile,                      SLE_FILE_U16 | SLE_VAR_U32, SL_MIN_VERSION, SLV_6)),
 		NSL("tile",                       SLE_CONDVAR(Vehicle, tile,                      SLE_UINT32,                 SLV_6, SL_MAX_VERSION)),

@@ -570,7 +570,12 @@ STR_CONFIG_SETTING_SHARING_FEE_RAIL                             :Daily track tol
 STR_CONFIG_SETTING_SHARING_FEE_ROAD                             :Stopping fee for road vehicles: {STRING2} per day
 STR_CONFIG_SETTING_SHARING_FEE_WATER                            :Docking fee for ships: {STRING2} per day
 STR_CONFIG_SETTING_SHARING_FEE_AIR                              :Terminal fee for aircraft: {STRING2} per day
+STR_CONFIG_SETTING_SHARING_FEE_RV                             :Vehicle transport fee: {STRING2}
+STR_CONFIG_SETTING_SHARING_FEE_RV_HELPTEXT                     :Charged to the company of the road vehicle when it is put down again, on the direct distance between the station it was loaded at and this one. The fee is per 1000 tonnes of the whole carrier ({STRING2}), over a distance of eight tiles.
+STR_CONFIG_SETTING_SHARING_FEE_RV_VALUE                         :{CURRENCY_SHORT}/1,000 tonnes per 8 tiles
 STR_CONFIG_SETTING_SHARING_FEE_HELPTEXT                         :This fee is paid per unscaled economy day (i.e. per 74 ticks).
+STR_CONFIG_SETTING_SHARING_RV                                 :Enable road vehicle transport between companies: {STRING2}
+STR_CONFIG_SETTING_SHARING_RV_HELPTEXT                         :When enabled, road vehicles may be loaded onto the trains, ships and aircraft of another company, and those carriers may load road vehicles of another company. The company of the road vehicle pays the vehicle transport fee for the ride.
 STR_CONFIG_SETTING_SHARING_PAYMENT_IN_DEBT                      :Allow companies in debt to pay sharing fees: {STRING2}
 STR_CONFIG_SETTING_SHARING_USED_BY_VEHICLES                     :Can't change this setting, vehicles are using shared infrastructure.
 STR_CONFIG_SETTING_SHARING_ORDERS_TO_OTHERS                     :Can't change this setting, vehicles have orders to destinations of others.

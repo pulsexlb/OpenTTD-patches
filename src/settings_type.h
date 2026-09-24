@@ -912,6 +912,8 @@ struct EconomySettings {
 	uint16_t town_noise_population[3];       ///< population to base decision on noise evaluation (@see town_council_tolerance)
 	bool     infrastructure_sharing[4];      ///< enable infrastructure sharing for rail/road/water/air
 	uint     sharing_fee[4];                 ///< fees for infrastructure sharing for rail/road/water/air
+	bool     infrastructure_sharing_rv;      ///< enable road vehicle transport between companies
+	uint     rv_sharing_fee;                 ///< fee for road vehicle transport between companies, per 1000 tonnes per 8 tiles
 	bool     sharing_payment_in_debt;        ///< allow fee payment for companies with more loan than money (switch off to prevent MP exploits)
 	bool     allow_town_level_crossings;     ///< towns are allowed to build level crossings
 	TownTunnelMode town_build_tunnels;       ///< if/when towns are allowed to build road tunnels

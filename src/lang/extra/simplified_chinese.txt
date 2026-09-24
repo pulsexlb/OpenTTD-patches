@@ -525,7 +525,12 @@ STR_CONFIG_SETTING_SHARING_FEE_RAIL                             :列车通行费
 STR_CONFIG_SETTING_SHARING_FEE_ROAD                             :车辆停放费：{STRING}/日
 STR_CONFIG_SETTING_SHARING_FEE_WATER                            :船舶停泊费：{STRING}/日
 STR_CONFIG_SETTING_SHARING_FEE_AIR                              :机场使用费：{STRING}/日
+STR_CONFIG_SETTING_SHARING_FEE_RV                             :载具运输费：{STRING}
+STR_CONFIG_SETTING_SHARING_FEE_RV_HELPTEXT                     :道路载具被卸下时向承运公司支付，按装载站到卸载站的直线距离计算。费用以载体总重（{STRING}）每 1000 吨、每 8 格计算
+STR_CONFIG_SETTING_SHARING_FEE_RV_VALUE                         :{CURRENCY_SHORT}/千吨每8格
 STR_CONFIG_SETTING_SHARING_FEE_HELPTEXT                         :本费用每 74 刻支付一次，即每一个未缩放的经济日支付一次
+STR_CONFIG_SETTING_SHARING_RV                                 :共享载具（汽车）运输：{STRING}
+STR_CONFIG_SETTING_SHARING_RV_HELPTEXT                         :开启后，道路载具可以被其他公司的火车、轮船和飞机装载，这些载体也可以装载其他公司的道路载具。道路载具所属公司按运费支付承运方
 STR_CONFIG_SETTING_SHARING_PAYMENT_IN_DEBT                      :允许公司支付费用时赊账：{STRING}
 STR_CONFIG_SETTING_SHARING_USED_BY_VEHICLES                     :不能更改这个设定，载具正在使用共享设施
 STR_CONFIG_SETTING_SHARING_ORDERS_TO_OTHERS                     :不能更改这个设定，载具有途径其他公司设施的调度计划

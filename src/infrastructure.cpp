@@ -35,7 +35,7 @@
  * @param infra_owner The owner of the infrastructure
  * @param cost Amount to transfer as money fraction (shifted 8 bits to the left)
  */
-static void PaySharingFee(Vehicle *v, Owner infra_owner, Money cost)
+void PaySharingFee(Vehicle *v, Owner infra_owner, Money cost)
 {
 	Company *c = Company::Get(v->owner);
 	if (!_settings_game.economy.sharing_payment_in_debt) {

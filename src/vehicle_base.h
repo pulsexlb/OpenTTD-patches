@@ -308,6 +308,7 @@ public:
 	VehicleID transported_by = VehicleID::Invalid();         ///< RoRo: host carrier front vehicle, valid when bit1 of #rv_transport_flags is set
 	VehicleID transported_host_part = VehicleID::Invalid();  ///< RoRo: host part (wagon/ship part/aircraft body) this vehicle occupies
 	uint16_t transported_weight = 0;                         ///< RoRo: weight in tonnes this vehicle occupies on the host part
+	StationID transported_from = StationID::Invalid();      ///< RoRo: station this vehicle was loaded on its host at (the transport fee is charged on the distance from there)
 	uint32_t transport_wait_tick = 0;                        ///< RoRo: tick when this vehicle started waiting to be transported
 
 	SpriteID colourmap{};                        ///< NOSAVE: cached colour mapping

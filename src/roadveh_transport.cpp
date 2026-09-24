@@ -12,6 +12,7 @@
 #include "roadveh_transport.h"
 
 #include "cargotype.h"
+#include "company_base.h"
 #include "console_func.h"
 #include "economy_base.h"   // CargoPayment must be complete: the station stop of a carried vehicle deletes its payment
 #include "order_func.h"
@@ -24,10 +25,12 @@
 #include "map_func.h"
 #include "news_func.h"
 #include "order_base.h"
+#include "infrastructure_func.h"
 #include "road_map.h"
 #include "roadstop_base.h"
 #include "pathfinder/yapf/yapf.h"
 #include "tracerestrict.h"
+#include "ground_vehicle.hpp"
 #include "roadveh.h"
 #include "settings_type.h"
 #include "station_base.h"
@@ -489,6 +492,10 @@ bool RVTransportAttach(Vehicle *carrier, Vehicle *part, Vehicle *rv, bool force)
 	if (part->First() != carrier) return false;          // part must belong to this carrier
 	if (!force && !RVTransportPartCanCarry(part)) return false;
 
+	/* Carrying a road vehicle of another company is infrastructure sharing of a sort, and is off by
+	 * default: a carrier only takes the road vehicles of its own company. */
+	if (!force && rv->owner != carrier->owner && !_settings_game.economy.infrastructure_sharing_rv) return false;
+
 	/* Articulated road vehicles are carried as a whole: cached_weight covers every part. */
 	uint32_t weight = RVTransportGetVehicleWeightTonnes(rv);
 	if (weight == 0) weight = 1;
@@ -510,6 +517,10 @@ bool RVTransportAttach(Vehicle *carrier, Vehicle *part, Vehicle *rv, bool force)
 		u->rv_transport_flags |= RVTF_TRANSPORTED;
 		u->transported_by = carrier->index;
 		u->transported_host_part = part->index;
+		/* The station it is loaded at: the vehicle transport fee is charged on the direct distance
+		 * from there to the station it is put down at again. A waiting vehicle is always at the
+		 * station it waits at. */
+		u->transported_from = rv->last_station_visited;
 		/* Only the front records the weight of the whole (articulated) vehicle. */
 		u->transported_weight = (u == rv) ? static_cast<uint16_t>(std::min<uint32_t>(weight, UINT16_MAX)) : 0;
 
@@ -878,6 +889,74 @@ bool RVTransportDebugStationLists(const Vehicle *v)
 
 #endif /* RORO_DEBUG_COMMANDS */
 
+/** How many tiles the vehicle transport fee charges for. */
+static const uint RVTRANSPORT_TILES_PER_FEE_UNIT = 8;
+
+/**
+ * Charge the vehicle transport fee for having carried a road vehicle of one company on a carrier of
+ * another one.
+ *
+ * The road vehicle's company pays its carrier's company when the vehicle is put down again. The
+ * charge is the direct distance between the station the vehicle was loaded at and this one, times the
+ * weight of the whole carrier, per 1000 tonnes and per eight tiles - the same per-1000-tonnes basis
+ * the fee for trains on foreign tracks uses, with the distance measured up front instead of over time.
+ * @param carrier         the carrier the vehicle was put down from
+ * @param rv              the road vehicle that was put down
+ * @param from_station_id station the vehicle was loaded at; this is passed in rather than read from
+ *                        the vehicle, which no longer carries it by the time this is called
+ * @param to_station      the station it was put down at
+ */
+/**
+ * Charge the vehicle transport fee for having carried a road vehicle of one company on a carrier of
+ * another one.
+ *
+ * The road vehicle's company pays its carrier's company when the vehicle is put down again. The
+ * charge is the direct distance between the station the vehicle was loaded at and this one, times the
+ * weight of the whole carrier, per 1000 tonnes and per eight tiles - the same per-1000-tonnes basis
+ * the fee for trains on foreign tracks uses, with the distance measured up front instead of over time.
+ * @param carrier         the carrier the vehicle was put down from
+ * @param rv              the road vehicle that was put down
+ * @param from_station_id station the vehicle was loaded at; this is passed in rather than read from
+ *                        the vehicle, which no longer carries it by the time this is called
+ * @param to_station      the station it was put down at
+ */
+static void RVTransportPayTransportFee(const Vehicle *carrier, const Vehicle *rv, StationID from_station_id, const Station *to_station)
+{
+	if (carrier == nullptr || rv == nullptr || to_station == nullptr) return;
+	if (carrier->owner == rv->owner) return;                         // own vehicle, nothing to pay for
+	if (!_settings_game.economy.infrastructure_sharing_rv) return;  // no shared transport, so no shared fee
+	if (_settings_game.economy.rv_sharing_fee == 0) return;
+
+	const Station *from_station = Station::GetIfValid(from_station_id);
+	if (from_station == nullptr || from_station == to_station) return;  // no known origin, or no distance covered
+
+	/* Direct distance between the two stations, in tiles. */
+	const int dx = std::abs(static_cast<int>(TileX(from_station->xy)) - static_cast<int>(TileX(to_station->xy)));
+	const int dy = std::abs(static_cast<int>(TileY(from_station->xy)) - static_cast<int>(TileY(to_station->xy)));
+	const uint distance = static_cast<uint>(std::max(dx, dy));
+
+	/* The weight the carrier has right now, which includes the road vehicle still on board. Nothing
+	 * on board changes while it is being carried: the road vehicle does not tick at all, and the
+	 * carrier's own cargo neither, so the weight at this moment is the weight for the whole ride. */
+	const Vehicle *front = carrier->First();
+	uint64_t weight = 0;
+	if (front->IsGroundVehicle()) {
+		weight = front->GetGroundVehicleCache()->cached_weight;
+	} else {
+		/* An aircraft has no consist weight cache and all of its parts share one engine, so that
+		 * engine is counted once. */
+		if (front->GetEngine() != nullptr) weight = front->GetEngine()->GetDisplayWeight();
+		weight += RVTransportGetCarriedWeightTonnes(front);
+	}
+	if (weight == 0) return;
+
+	Money cost = static_cast<Money>(_settings_game.economy.rv_sharing_fee) << 8;
+	cost = static_cast<Money>((static_cast<uint64_t>(cost) * distance * weight) / (1000 * RVTRANSPORT_TILES_PER_FEE_UNIT));
+	if (cost <= 0) return;
+
+	PaySharingFee(const_cast<Vehicle *>(rv), carrier->owner, cost);
+}
+
 /**
  * Unload road vehicles carried by this carrier at the given station.
  * @return true if at least one road vehicle reached the road network.
@@ -910,6 +989,7 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 		/* Remember how the vehicle was carried, in case the stop refuses it below. */
 		const VehicleID host_part = v->transported_host_part;
 		const uint16_t carried_weight = v->transported_weight;
+		const StationID transported_from = v->transported_from;
 
 		/* A bay is a dead end: the vehicle drives into it and reverses out again, so it has to be put
 		 * down travelling towards the station, exactly like a vehicle which just entered the tile.
@@ -925,6 +1005,7 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 			u->transported_by = VehicleID::Invalid();
 			u->transported_host_part = VehicleID::Invalid();
 			u->transported_weight = 0;
+			u->transported_from = StationID::Invalid();
 			u->transport_wait_tick = 0;
 
 			RoadVehicle *rv = RoadVehicle::From(u);
@@ -958,6 +1039,7 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 				u->transported_by = carrier->index;
 				u->transported_host_part = host_part;
 				u->transported_weight = carried_weight;
+				u->transported_from = transported_from;
 				u->vehstatus.Set(VehState::Stopped);
 				u->vehstatus.Set(VehState::Hidden);
 				u->cur_speed = 0;
@@ -982,6 +1064,8 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 				SetBit(RoadVehicle::From(u)->state, RVS_IN_DT_ROAD_STOP);
 			}
 		}
+
+		RVTransportPayTransportFee(carrier, v, transported_from, st);
 
 		carrier->MarkDirty();
 		RVTransportRefreshCarrier(carrier, Vehicle::GetIfValid(host_part));
@@ -1210,6 +1294,7 @@ void RVTransportValidateAfterLoad()
 			v->transported_by = VehicleID::Invalid();
 			v->transported_host_part = VehicleID::Invalid();
 			v->transported_weight = 0;
+			v->transported_from = StationID::Invalid();
 			continue;
 		}
 
