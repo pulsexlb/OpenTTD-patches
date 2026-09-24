@@ -458,6 +458,10 @@ static const int RVTC_CARGO_MODE_ANY = 2;        ///< Cargo criterion: unrestric
 static const int RVTC_CARGO_MODE_CAN_CARRY = 0; ///< Cargo criterion: the candidate must be able to carry the cargo.
 static const int RVTC_CARGO_MODE_CARRYING = 1;  ///< Cargo criterion: the candidate must currently carry the cargo.
 
+/** Value of the "any" entry of the trace restrict slot criterion. The slot list itself is built with
+ * trace restrict slot ids, which start at 0, so this needs a value no slot id can have. */
+static const int RVTC_SLOT_ANY = 0xFFFE;
+
 /** Waiting times which the "minimum waiting time" criterion offers (in days). */
 static const uint16_t _rv_transport_min_wait_presets[] = { 0, 1, 2, 5, 10, 30, 60 };
 
@@ -674,19 +678,31 @@ private:
 		return list;
 	}
 
-	/** Build the dropdown which selects the trace restrict slot criterion ("路签"). */
+	/**
+	 * Build the dropdown which selects the trace restrict slot criterion ("路签").
+	 *
+	 * This is the list the "try acquire trace restrict slot" order offers: a normal click shows the own
+	 * company's road vehicle slots, holding shift also shows the other companies' public ones grouped
+	 * per company, and holding control shows the recently used ones. The criterion needs an "any" entry
+	 * of its own, which takes the place of the entry which creates a new trace restrict slot - this
+	 * window cannot create one.
+	 */
 	DropDownList BuildSlotList() const
 	{
 		const uint16_t current = this->order->GetRVTransportSlot();
+		const TraceRestrictSlotID slot_id = (current == 0) ? TraceRestrictSlotID{} : TraceRestrictSlotID{static_cast<uint16_t>(current - 1)};
+
+		int selected;
+		DropDownList slots = GetSlotDropDownList(this->vehicle->owner, slot_id, selected, VehicleType::Road, false);
+
 		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == 0, STR_ORDER_RV_LOAD_STATE_ANY, 0));
-		list.push_back(MakeDropDownListDividerItem());
-		for (const TraceRestrictSlot *slot : TraceRestrictSlot::Iterate()) {
-			/* Only a road vehicle slot can be held by a road vehicle candidate. */
-			if (slot->vehicle_type != VehicleType::Road) continue;
-			if (!slot->IsUsableByOwner(this->vehicle->owner)) continue;
-			list.push_back(MakeDropDownListCheckedItem(current == slot->index.base() + 1,
-					GetString(STR_TRACE_RESTRICT_SLOT_NAME, slot->index), slot->index.base() + 1));
+		list.push_back(MakeDropDownListCheckedItem(current == 0, STR_ORDER_RV_LOAD_STATE_ANY, RVTC_SLOT_ANY));
+		for (auto &item : slots) {
+			/* Leave out the entry which creates a new trace restrict slot, and the divider which
+			 * separates it from the slots: the "any" entry above is in its place. */
+			if (item->result == NEW_TRACE_RESTRICT_SLOT_ID.base()) continue;
+			if (list.size() == 1 && item->result == -1) continue;
+			list.push_back(std::move(item));
 		}
 		return list;
 	}
@@ -758,7 +774,10 @@ public:
 				ShowDropDownList(this, this->BuildMinWaitList(), -1, WID_RVT_MIN_WAIT, 0);
 				return;
 			case WID_RVT_SLOT:
-				ShowDropDownList(this, this->BuildSlotList(), -1, WID_RVT_SLOT, 0);
+				/* The list works with trace restrict slot ids, the criterion stores them offset by one. */
+				ShowDropDownList(this, this->BuildSlotList(),
+						(this->order->GetRVTransportSlot() == 0) ? RVTC_SLOT_ANY : static_cast<int>(this->order->GetRVTransportSlot() - 1),
+						WID_RVT_SLOT, 0);
 				return;
 			case WID_RVT_MAX:
 				ShowDropDownList(this, this->BuildMaxList(), -1, WID_RVT_MAX, 0);
@@ -816,7 +835,14 @@ public:
 				break;
 
 			case WID_RVT_SLOT:
-				this->ModifyOrder(MOF_RV_SLOT, static_cast<uint16_t>(index));
+				/* The list works with trace restrict slot ids, the criterion stores them offset by one,
+				 * with 0 meaning "any". */
+				if (index == RVTC_SLOT_ANY) {
+					this->ModifyOrder(MOF_RV_SLOT, uint16_t{0});
+				} else if (index >= 0) {
+					TraceRestrictRecordRecentSlot(TraceRestrictSlotID{static_cast<uint16_t>(index)});
+					this->ModifyOrder(MOF_RV_SLOT, static_cast<uint16_t>(index + 1));
+				}
 				break;
 
 			case WID_RVT_MAX:
