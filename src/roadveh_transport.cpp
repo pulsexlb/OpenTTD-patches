@@ -577,6 +577,11 @@ bool FindFreeRoadStopTile(const Station *st, Vehicle *rv, TileIndex &out_tile, D
 		const TileArea &area = (pass == 0) ? st->bus_station : st->truck_station;
 		for (TileIndex t : area) {
 			if (!IsAnyRoadStopTile(t)) continue;
+			/* Only the road stops of the vehicle's own type: a bus needs a bus stop and a truck
+			 * needs a truck stop, like Station::GetPrimaryRoadStop() and CanVehicleUseStation()
+			 * do. RoadStop::Enter() only refuses busy, full and articulated vehicles, so without
+			 * this a bus would be put into the truck stop, where it can never drive out again. */
+			if (GetRoadStopType(t) != (RoadVehicle::From(rv)->IsBus() ? RoadStopType::Bus : RoadStopType::Truck)) continue;
 			RoadStop *rs = RoadStop::GetByTile(t, GetRoadStopType(t));
 			if (rs == nullptr) continue;
 
@@ -866,17 +871,36 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
  * Reading only the first order of the whole list would keep a vehicle which is carried more than once
  * (train from A to B, drive to C, ship from C to D) on board of every carrier after the first leg.
  *
+ * The order the vehicle is executing right now (current_order) is the authoritative answer and is
+ * used as such: the order list indices cannot be trusted for this. They are only brought in step
+ * with the executed order by ProcessOrders(), which runs from the vehicle's own controller - and a
+ * carried vehicle is stopped, so its controller returns before ever getting there. The indices can
+ * therefore lag behind (or run ahead of) the order the vehicle is really on, and scanning the list
+ * from them would skip the "be unloaded here" order and report some later station instead.
+ *
  * @return The station id, or an invalid id when the vehicle declares no destination.
  */
 StationID RVTransportGetDeclaredDestination(const Vehicle *rv)
 {
 	if (rv == nullptr) return StationID::Invalid();
+
+	/* Being loaded onto a carrier has advanced the vehicle to its "be unloaded here" order, which is
+	 * the order it is executing now: that is where it wants to get off. */
+	const Order &current = rv->current_order;
+	if ((current.IsType(OT_GOTO_STATION) || current.IsType(OT_GOTO_WAYPOINT)) &&
+			(current.GetRVTransportFlags() & ORVTF_UNLOAD) != 0) {
+		return current.GetDestination().ToStationID();
+	}
+
+	/* The vehicle has not been loaded yet, so its current order is the "wait to be transported" one
+	 * (or something else): the station it wants to get off at is the first "be unloaded here" order
+	 * from the order it is executing onwards. */
 	const VehicleOrderID num_orders = rv->GetNumOrders();
 	if (num_orders == 0) return StationID::Invalid();
 
-	const VehicleOrderID current = (rv->cur_real_order_index < num_orders) ? rv->cur_real_order_index : 0;
+	const VehicleOrderID current_index = (rv->cur_implicit_order_index < num_orders) ? rv->cur_implicit_order_index : 0;
 	for (VehicleOrderID i = 0; i < num_orders; i++) {
-		const Order *o = rv->GetOrder(static_cast<VehicleOrderID>((current + i) % num_orders));
+		const Order *o = rv->GetOrder(static_cast<VehicleOrderID>((current_index + i) % num_orders));
 		if (o == nullptr || !o->IsType(OT_GOTO_STATION)) continue;
 		if ((o->GetRVTransportFlags() & ORVTF_UNLOAD) != 0) return o->GetDestination().ToStationID();
 	}
