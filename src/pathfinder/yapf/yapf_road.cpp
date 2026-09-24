@@ -283,11 +283,8 @@ public:
 			this->dest_trackdirs = (dir == DiagDirection::Invalid) ? INVALID_TRACKDIR_BIT : TrackdirToTrackdirBits(DiagDirToDiagTrackdir(dir));
 		};
 		if (v->current_order.IsType(OT_GOTO_STATION)) {
-			this->dest_station   = v->current_order.GetDestination().ToStationID();
-			set_trackdirs();
-			this->station_type   = v->IsBus() ? StationType::Bus : StationType::Truck;
-			this->dest_tile      = CalcClosestStationTile(this->dest_station, v->tile, this->station_type);
-			this->non_artic      = !v->HasArticulatedPart();
+			this->SetDestinationStation(v, v->current_order.GetDestination().ToStationID(),
+					v->current_order.GetRoadVehTravelDirection(), v->tile);
 		} else if (v->current_order.IsType(OT_GOTO_WAYPOINT)) {
 			this->dest_station   = v->current_order.GetDestination().ToStationID();
 			set_trackdirs();
@@ -299,6 +296,24 @@ public:
 			this->dest_tile      = (v->dest_tile == INVALID_TILE) ? TileIndex{} : v->dest_tile;
 			this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TRANSPORT_ROAD, GetRoadTramType(v->roadtype));
 		}
+	}
+
+	/**
+	 * Drive to a station, measured from a reference tile of our own choosing rather than from the
+	 * vehicle's own tile. This is what a carried road vehicle needs: it is put down at a station, but
+	 * the leg it cares about is the one *after* that station, which is not the order it is executing.
+	 * @param v                the road vehicle the path is for
+	 * @param station          the station to drive to
+	 * @param travel_direction direction the vehicle must be travelling in on arrival
+	 * @param reference        tile the distance to the station is measured from
+	 */
+	void SetDestinationStation(const RoadVehicle *v, StationID station, DiagDirection travel_direction, TileIndex reference)
+	{
+		this->dest_station   = station;
+		this->dest_trackdirs = (travel_direction == DiagDirection::Invalid) ? INVALID_TRACKDIR_BIT : TrackdirToTrackdirBits(DiagDirToDiagTrackdir(travel_direction));
+		this->station_type   = v->IsBus() ? StationType::Bus : StationType::Truck;
+		this->dest_tile      = CalcClosestStationTile(this->dest_station, reference, this->station_type);
+		this->non_artic      = !v->HasArticulatedPart();
 	}
 
 	const Station *GetDestinationStation() const
@@ -385,6 +400,53 @@ public:
 	{
 		Tpf pf;
 		return pf.ChooseRoadTrack(v, tile, enterdir, path_found, path_cache);
+	}
+
+	/**
+	 * How expensive it is to drive from a road tile to a station. Unlike ChooseRoadTrack() this
+	 * neither reads nor writes anything of the vehicle: no path cache, no "pathfinder lost" handling.
+	 * It exists to compare several possible starting points (e.g. the road stops a carried road
+	 * vehicle could be put down at) cheaply.
+	 * @param v                the road vehicle the path is for
+	 * @param tile             the road tile to start from
+	 * @param enterdir         diagonal direction the vehicle enters that tile from
+	 * @param station          the station to drive to
+	 * @param travel_direction direction the vehicle must be travelling in on arrival
+	 * @param max_nodes        node budget for this search
+	 * @param cost            [out] cost of the path, only valid when this returns true
+	 * @return whether the station was reached; false means the node budget ran out or there is no
+	 *         path at all, and \a cost then does not describe the distance to the station
+	 */
+	static bool stProbeToStation(const RoadVehicle *v, TileIndex tile, DiagDirection enterdir, StationID station,
+			DiagDirection travel_direction, int max_nodes, int &cost)
+	{
+		Tpf pf;
+		return pf.ProbeToStation(v, tile, enterdir, station, travel_direction, max_nodes, cost);
+	}
+
+	inline bool ProbeToStation(const RoadVehicle *v, TileIndex tile, DiagDirection enterdir, StationID station,
+			DiagDirection travel_direction, int max_nodes, int &cost)
+	{
+		cost = 0;
+
+		TrackdirBits src_trackdirs = GetTrackdirBitsForRoad(tile, GetRoadTramType(v->roadtype));
+		src_trackdirs &= DiagdirReachesTrackdirs(enterdir);
+		if (src_trackdirs == TRACKDIR_BIT_NONE) return false;
+
+		Yapf().SetOrigin(tile, src_trackdirs);
+		Yapf().SetDestinationStation(v, station, travel_direction, tile);
+		Yapf().SetMaxSearchNodes(max_nodes);
+		Yapf().leader_targets[0] = INVALID_TILE;
+
+		/* Whether the station was really reached decides whether the cost means anything: when the
+		 * node budget runs out first, GetBestNode() is the best *partial* path, and how expensive that
+		 * is says more about how far the search got than about how far away the station is. */
+		if (!Yapf().FindPath(v)) return false;
+
+		Node *node = Yapf().GetBestNode();
+		if (node == nullptr) return false;
+		cost = node->GetCost();
+		return true;
 	}
 
 	inline Trackdir ChooseRoadTrack(const RoadVehicle *v, TileIndex tile, DiagDirection enterdir, bool &path_found, RoadVehPathCache &path_cache)
@@ -547,6 +609,12 @@ Trackdir YapfRoadVehicleChooseTrack(const RoadVehicle *v, TileIndex tile, DiagDi
 	Trackdir td_ret = CYapfRoad::stChooseRoadTrack(v, tile, enterdir, path_found, path_cache);
 
 	return (td_ret != INVALID_TRACKDIR) ? td_ret : (Trackdir)FindFirstBit(trackdirs);
+}
+
+bool YapfRoadVehicleProbeToStation(const RoadVehicle *v, TileIndex tile, DiagDirection enterdir, StationID station,
+		DiagDirection travel_direction, int max_nodes, int &cost)
+{
+	return CYapfRoad::stProbeToStation(v, tile, enterdir, station, travel_direction, max_nodes, cost);
 }
 
 FindDepotData YapfRoadVehicleFindNearestDepot(const RoadVehicle *v, int max_distance)

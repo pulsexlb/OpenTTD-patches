@@ -26,6 +26,7 @@
 #include "order_base.h"
 #include "road_map.h"
 #include "roadstop_base.h"
+#include "pathfinder/yapf/yapf.h"
 #include "tracerestrict.h"
 #include "roadveh.h"
 #include "settings_type.h"
@@ -563,16 +564,33 @@ bool RVTransportAttachAuto(Vehicle *carrier, Vehicle *rv, bool force)
 }
 
 /**
- * Find a road stop tile of this station where the given road vehicle can be put back on the road,
- * plus an exit direction which has road.
+ * A road stop of a station where a road vehicle could be put back on the road, plus the road tile it
+ * would end up on and the direction it would be travelling in when it gets there.
+ */
+struct RVTransportRoadStopCandidate {
+	TileIndex tile;             ///< road stop tile to put the vehicle on
+	DiagDirection dd;           ///< direction from that tile to the road outside the station
+	TileIndex exit_tile;        ///< the road tile the vehicle drives on to after leaving the station
+};
+
+/**
+ * Collect every road stop of this station where the given road vehicle can be put back on the road.
  *
  * The tile does not have to be empty: a drive-through stop has room per entry direction, so a tile
  * which is occupied on one side can still take a vehicle on the other side. Whole-tile emptiness is
  * only required for bay stops (whose bays are counted by the stop itself, but where a second vehicle
  * on the same tile would overlap).
+ *
+ * The candidates come in a fixed order (area order, then NE/SE/SW/NW per tile), which is used as the
+ * tie-break when several of them turn out to be equally good.
+ * @param st         station to look at
+ * @param rv         road vehicle to put down
+ * @param candidates [out] the candidates, in the order they were found
  */
-bool FindFreeRoadStopTile(const Station *st, Vehicle *rv, TileIndex &out_tile, DiagDirection &out_dd)
+void CollectFreeRoadStopTiles(const Station *st, Vehicle *rv, std::vector<RVTransportRoadStopCandidate> &candidates)
 {
+	const RoadStopType wanted = RoadVehicle::From(rv)->IsBus() ? RoadStopType::Bus : RoadStopType::Truck;
+
 	for (int pass = 0; pass < 2; pass++) {
 		const TileArea &area = (pass == 0) ? st->bus_station : st->truck_station;
 		for (TileIndex t : area) {
@@ -581,14 +599,17 @@ bool FindFreeRoadStopTile(const Station *st, Vehicle *rv, TileIndex &out_tile, D
 			 * needs a truck stop, like Station::GetPrimaryRoadStop() and CanVehicleUseStation()
 			 * do. RoadStop::Enter() only refuses busy, full and articulated vehicles, so without
 			 * this a bus would be put into the truck stop, where it can never drive out again. */
-			if (GetRoadStopType(t) != (RoadVehicle::From(rv)->IsBus() ? RoadStopType::Bus : RoadStopType::Truck)) continue;
-			RoadStop *rs = RoadStop::GetByTile(t, GetRoadStopType(t));
+			if (GetRoadStopType(t) != wanted) continue;
+			RoadStop *rs = RoadStop::GetByTile(t, wanted);
 			if (rs == nullptr) continue;
 
 			for (DiagDirection dd = DiagDirection::Begin; dd < DiagDirection::End; dd++) {
 				TileIndex next = TileAddByDiagDir(t, dd);
 				if (!IsValidTile(next)) continue;
 				if (!IsNormalRoadTile(next) && !IsAnyRoadStopTile(next)) continue;
+				/* The vehicle has to be able to drive on the road it leaves the station by, otherwise
+				 * it would be put down on a stop it can never leave. */
+				if (!HasTileAnyRoadType(next, RoadVehicle::From(rv)->compatible_roadtypes)) continue;
 
 				if (IsBayRoadStopTile(t)) {
 					/* Bay stops cannot hold articulated road vehicles, and each tile holds at most one
@@ -604,13 +625,122 @@ bool FindFreeRoadStopTile(const Station *st, Vehicle *rv, TileIndex &out_tile, D
 					if (entry.GetOccupied() + static_cast<int>(RoadVehicle::From(rv)->gcache.cached_total_length) > entry.GetLength()) continue;
 				}
 
-				out_tile = t;
-				out_dd = dd;
-				return true;
+				candidates.push_back({ t, dd, next });
 			}
 		}
 	}
-	return false;
+}
+
+/** Node budget for one road-stop probe; bounds the cost of choosing where to put a vehicle down. */
+static const int RVTRANSPORT_PROBE_MAX_NODES = 10000;
+
+/** The leg a road vehicle drives after being put down at a station, as far as its orders say. */
+struct RVTransportNextLeg {
+	StationID station = StationID::Invalid();      ///< station to drive to, invalid when there is none
+	DiagDirection travel_direction = DiagDirection::Invalid; ///< direction to arrive with, if the order asks for one
+};
+
+/**
+ * The station a road vehicle drives to once it has been put down at \a drop_st, and the direction it
+ * has to arrive with.
+ *
+ * The vehicle is executing its "be unloaded here" order while it is being put down, so the leg that
+ * matters starts *after* that order. As elsewhere in this file the order list indices cannot be
+ * trusted (a carried vehicle never runs ProcessOrders(), so they drift away from the order it is
+ * really on), so the order being executed is located by what it is rather than by index.
+ * @param rv      the road vehicle
+ * @param drop_st the station it is being put down at
+ * @return the next leg; \a station is invalid when the vehicle has nowhere to go afterwards
+ */
+static RVTransportNextLeg RVTransportGetNextLeg(const Vehicle *rv, StationID drop_st)
+{
+	RVTransportNextLeg leg;
+	if (rv == nullptr) return leg;
+
+	const VehicleOrderID num_orders = rv->GetNumOrders();
+	if (num_orders == 0) return leg;
+
+	/* Find the order the vehicle is on right now: the "be unloaded here" order for this station. */
+	VehicleOrderID start = 0;
+	bool found_current = false;
+	for (VehicleOrderID i = 0; i < num_orders; i++) {
+		const Order *o = rv->GetOrder(i);
+		if (o == nullptr || !o->IsType(OT_GOTO_STATION)) continue;
+		if (o->GetDestination().ToStationID() != drop_st) continue;
+		if ((o->GetRVTransportFlags() & ORVTF_UNLOAD) == 0) continue;
+		start = i + 1;
+		found_current = true;
+		break;
+	}
+	if (!found_current) {
+		/* No matching order (an edited schedule, for instance): fall back to the index the vehicle
+		 * is on, even though it can lag behind. */
+		start = (rv->cur_implicit_order_index < num_orders) ? rv->cur_implicit_order_index + 1 : 0;
+	}
+
+	for (VehicleOrderID i = 0; i < num_orders; i++) {
+		const Order *o = rv->GetOrder(static_cast<VehicleOrderID>((start + i) % num_orders));
+		if (o == nullptr) continue;
+		if (!o->IsType(OT_GOTO_STATION) && !o->IsType(OT_GOTO_WAYPOINT)) continue;
+		leg.station = o->GetDestination().ToStationID();
+		leg.travel_direction = o->GetRoadVehTravelDirection();
+		return leg;
+	}
+	return leg;
+}
+
+/**
+ * Find the road stop of this station where the given road vehicle should be put back on the road.
+ *
+ * When the vehicle has a station to drive to after this one, every candidate is scored by asking the
+ * road pathfinder how expensive it would be to get to that station from the road the vehicle would
+ * leave by, and the cheapest one wins. A candidate from which the next station cannot be reached at
+ * all is never chosen over one that can. Candidates that score equally keep the order in which they
+ * were found, so a station with a single stop behaves exactly as before.
+ * @param st      station to put the vehicle down at
+ * @param rv      road vehicle to put down
+ * @param out_tile [out] road stop tile to use
+ * @param out_dd   [out] direction from that tile to the road outside the station
+ * @return whether a road stop was found
+ */
+bool FindFreeRoadStopTile(const Station *st, Vehicle *rv, TileIndex &out_tile, DiagDirection &out_dd)
+{
+	std::vector<RVTransportRoadStopCandidate> candidates;
+	CollectFreeRoadStopTiles(st, rv, candidates);
+	if (candidates.empty()) return false;
+
+	const RVTransportNextLeg leg = RVTransportGetNextLeg(rv, st->index);
+
+	size_t best = 0;
+	if (leg.station != StationID::Invalid()) {
+		const RoadVehicle *road_rv = RoadVehicle::From(rv);
+		int best_cost = 0;
+		bool found_reachable = false;
+		for (size_t i = 0; i < candidates.size(); i++) {
+			/* The pathfinder wants the direction the vehicle is *travelling* in on that road tile (this
+			 * is what the road vehicle controller passes as 'enterdir'), which is the direction it
+			 * leaves the station in - the very direction of the candidate. A bay reverses out of the
+			 * station, but still travels away from it. */
+			const DiagDirection enterdir = candidates[i].dd;
+			int cost = 0;
+			const bool reachable = YapfRoadVehicleProbeToStation(road_rv, candidates[i].exit_tile, enterdir,
+					leg.station, leg.travel_direction, RVTRANSPORT_PROBE_MAX_NODES, cost);
+			/* A candidate the next station can be reached from always beats one it cannot, and only
+			 * among those does the cost decide. Ties keep the order the candidates were found in. */
+			if (!reachable) continue;
+			if (!found_reachable || cost < best_cost) {
+				found_reachable = true;
+				best_cost = cost;
+				best = i;
+			}
+		}
+		/* If no candidate could reach the next station, the first one is used anyway: this station is
+		 * where the vehicle asked to be put down, and the pathfinder sorts out the route from there. */
+	}
+
+	out_tile = candidates[best].tile;
+	out_dd = candidates[best].dd;
+	return true;
 }
 
 /* Debug helpers: only compiled in for a test build (RORO_DEBUG_COMMANDS), see console_cmds.cpp. */
