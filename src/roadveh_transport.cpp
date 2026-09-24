@@ -776,6 +776,13 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 		const VehicleID host_part = v->transported_host_part;
 		const uint16_t carried_weight = v->transported_weight;
 
+		/* A bay is a dead end: the vehicle drives into it and reverses out again, so it has to be put
+		 * down travelling towards the station, exactly like a vehicle which just entered the tile.
+		 * A drive-through stop is left through the road end, so the vehicle keeps travelling towards
+		 * it. Getting this wrong leaves the vehicle facing the wall of the bay, and it then drives
+		 * into that wall when it tries to leave. */
+		const DiagDirection travel_dd = IsBayRoadStopTile(tile) ? ReverseDiagDir(dd) : dd;
+
 		/* Put the whole road vehicle on that tile, in the same way a vehicle leaves a depot: every
 		 * part starts on the tile and spreads out while the vehicle drives off. */
 		for (Vehicle *u = v; u != nullptr; u = u->Next()) {
@@ -790,8 +797,8 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 			u->x_pos = TileX(tile) * TILE_SIZE + TILE_SIZE / 2;
 			u->y_pos = TileY(tile) * TILE_SIZE + TILE_SIZE / 2;
 			u->z_pos = GetSlopePixelZ(u->x_pos, u->y_pos);
-			u->direction = DiagDirToDir(dd);
-			rv->state = DiagDirToDiagTrackdir(dd);
+			u->direction = DiagDirToDir(travel_dd);
+			rv->state = DiagDirToDiagTrackdir(travel_dd);
 			rv->frame = 0;
 			u->progress = 0;
 			u->cur_speed = 0;
@@ -831,6 +838,15 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 		 * the vehicles which are really on the tiles (exactly what a savegame load does), so that a
 		 * vehicle which was put down can always drive out again. */
 		RVTransportRebuildRoadStop(tile);
+
+		/* RoadStop::Enter() only set the road stop state on the front. A drive-through stop also takes
+		 * articulated vehicles, and every part drives on the stop with that state, so give them all
+		 * the state the front got. */
+		if (IsDriveThroughStopTile(tile)) {
+			for (Vehicle *u = v->Next(); u != nullptr; u = u->Next()) {
+				SetBit(RoadVehicle::From(u)->state, RVS_IN_DT_ROAD_STOP);
+			}
+		}
 
 		carrier->MarkDirty();
 		RVTransportRefreshCarrier(carrier, Vehicle::GetIfValid(host_part));
