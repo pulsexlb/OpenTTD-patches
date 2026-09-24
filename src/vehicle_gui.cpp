@@ -866,25 +866,10 @@ struct RefitWindow : public Window {
 		this->refit_list.clear();
 		Vehicle *v = Vehicle::Get(this->window_number);
 
-		/* Road vehicle transport: when selecting a refit for an order (station/depot order refit or
-		 * auto-refit), a chain configured for road vehicle transport must not be refitted to any
-		 * normal cargo; that conversion is only possible by manually refitting in a depot.
-		 * Refitting to the current cargo itself stays available, so a fully road-vehicle-configured
-		 * chain still shows the "Vehicles (Road)" option. Only a mixed chain (both road vehicle
-		 * parts and normal cargo parts) offers no target at all. */
-		bool rv_lock_normal = false;   ///< Chain contains road vehicle transport parts: hide normal cargoes.
-		bool rv_chain_mixed = false;   ///< Chain contains both road vehicle transport and normal cargo parts.
-		CargoType vehicles_cargo = RV_TRANSPORT_CARGO_SLOT;
-		if ((this->order != INVALID_VEH_ORDER_ID || this->auto_refit) && IsValidCargoType(vehicles_cargo)) {
-			bool has_vehicles = false;
-			bool has_normal = false;
-			for (const Vehicle *w = v; w != nullptr; w = w->Next()) {
-				if (w->cargo_cap <= 0) continue;
-				if (w->cargo_type == vehicles_cargo) has_vehicles = true; else has_normal = true;
-			}
-			rv_lock_normal = has_vehicles;
-			rv_chain_mixed = has_vehicles && has_normal;
-		}
+		/* Road vehicle transport: the built-in "Vehicles (Car)" cargo is a normal cargo as far as
+		 * refitting goes, so it is offered here just like any other cargo, and a chain configured for
+		 * road vehicle transport can be refitted to a normal cargo and vice versa - also for
+		 * station/depot orders and auto-refit. */
 
 		/* Check only the selected vehicles. */
 		VehicleSet vehicles_to_refit;
@@ -907,14 +892,8 @@ struct RefitWindow : public Window {
 				CargoType cargo_type = cs->Index();
 				/* Skip cargo type if it's not listed */
 				if (!cmask.Test(cargo_type)) continue;
-				/* Road vehicle transport: the dedicated "Vehicles (Road)" cargo is only selectable when
-				 * manually refitting in a depot, never for station/depot orders or auto-refit — except
-				 * as the current cargo of a fully road-vehicle-configured chain. Normal cargoes are
-				 * hidden while the chain contains road vehicle transport parts, and nothing at all is
-				 * offered for a mixed chain. */
-				/* The built-in cargo is identified by its slot: a NewGRF may define a cargo using the same label. */
-				if (cs->Index() == vehicles_cargo && (this->order != INVALID_VEH_ORDER_ID || this->auto_refit) && !rv_lock_normal) continue;
-				if (rv_lock_normal && (rv_chain_mixed || cargo_type != vehicles_cargo)) continue;
+				/* Road vehicle transport: the built-in cargo is identified by its slot, as a NewGRF may
+				 * define a cargo using the same label. No special refit handling is needed. */
 
 				auto &list = this->refit_list[cargo_type];
 				bool first_vehicle = list.empty();
