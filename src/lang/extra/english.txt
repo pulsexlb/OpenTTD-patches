@@ -571,11 +571,11 @@ STR_CONFIG_SETTING_SHARING_FEE_ROAD                             :Stopping fee fo
 STR_CONFIG_SETTING_SHARING_FEE_WATER                            :Docking fee for ships: {STRING2} per day
 STR_CONFIG_SETTING_SHARING_FEE_AIR                              :Terminal fee for aircraft: {STRING2} per day
 STR_CONFIG_SETTING_SHARING_FEE_RV                             :Vehicle transport fee: {STRING2}
-STR_CONFIG_SETTING_SHARING_FEE_RV_HELPTEXT                     :Charged to the company of the road vehicle when it is put down again, on the direct distance between the station it was loaded at and this one. The fee is per 1000 tonnes of the whole carrier ({STRING2}), over a distance of eight tiles.
+STR_CONFIG_SETTING_SHARING_FEE_RV_HELPTEXT                     :Charged to the company of the vehicle when it is put down again, on the direct distance between the station it was loaded at and this one. The fee is per 1000 tonnes of the whole carrier, over a distance of eight tiles.
 STR_CONFIG_SETTING_SHARING_FEE_RV_VALUE                         :{CURRENCY_SHORT}/1,000 tonnes per 8 tiles
 STR_CONFIG_SETTING_SHARING_FEE_HELPTEXT                         :This fee is paid per unscaled economy day (i.e. per 74 ticks).
-STR_CONFIG_SETTING_SHARING_RV                                 :Enable road vehicle transport between companies: {STRING2}
-STR_CONFIG_SETTING_SHARING_RV_HELPTEXT                         :When enabled, road vehicles may be loaded onto the trains, ships and aircraft of another company, and those carriers may load road vehicles of another company. The company of the road vehicle pays the vehicle transport fee for the ride.
+STR_CONFIG_SETTING_SHARING_RV                                 :Enable vehicle transport between companies: {STRING2}
+STR_CONFIG_SETTING_SHARING_RV_HELPTEXT                         :When enabled, vehicles may be loaded onto the trains, ships and aircraft of another company, and those carriers may load vehicles of another company. The company of the vehicle pays the vehicle transport fee for the ride.
 STR_CONFIG_SETTING_SHARING_PAYMENT_IN_DEBT                      :Allow companies in debt to pay sharing fees: {STRING2}
 STR_CONFIG_SETTING_SHARING_USED_BY_VEHICLES                     :Can't change this setting, vehicles are using shared infrastructure.
 STR_CONFIG_SETTING_SHARING_ORDERS_TO_OTHERS                     :Can't change this setting, vehicles have orders to destinations of others.
@@ -583,17 +583,17 @@ STR_CONFIG_SETTING_SHARING_ORDERS_TO_OTHERS                     :Can't change th
 STR_CONFIG_SETTING_TRAIN_SPEED_ADAPTATION                       :Enable train speed adaptation: {STRING2}
 STR_CONFIG_SETTING_TRAIN_SPEED_ADAPTATION_HELPTEXT              :When enabled, faster trains adjust their speed when passing signals to attempt to match slower trains in front.{}This may not be appropriate for some signalling styles or layouts, and can be disabled and re-enabled on a per-train basis using signal routing restrictions.
 
-STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS                   :Vehicles (car) transport: carrier parts which may carry vehicles: {STRING2}
-STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_HELPTEXT          :Which parts of a train, ship or aircraft may take vehicles (car) on board.{}A part always needs room for the vehicle's weight as well.{}'Any part with cargo capacity' allows everything, including passenger carriages and tank cars.{}'Only parts carrying oversized cargo' is for vehicle-carrying wagons and ferry holds, whose NewGRF marks their cargo as oversized; the default game content has no such cargo, so nothing can carry with this choice.{}'Bulk, oversized or vehicles (car) cargo' (the default) allows a part whose cargo is bulk (open and hopper wagons: coal, ore, grain, ...), a cargo marked as oversized, or the dedicated "Vehicles (car)" cargo (label VEHC) which car ferries and car carriers use, so passenger carriages, mail vans, tank cars and covered vans never take a vehicle.{}Unloading is unaffected: changing this setting never strands a vehicle which is already on board.
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS                   :carrier parts which may carry vehicles: {STRING2}
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_HELPTEXT          :Which parts of a train, ship or aircraft may take vehicles on board.{}A part always needs room for the vehicle's weight as well.{}'Any part with cargo capacity' allows everything, including passenger carriages and tank cars.{}'Only parts carrying oversized cargo' is for vehicle-carrying wagons and ferry holds, whose NewGRF marks their cargo as oversized; the default game content has no such cargo, so nothing can carry with this choice.{}'Bulk, oversized or vehicles cargo' (the default) allows a part whose cargo is bulk (open and hopper wagons: coal, ore, grain, ...), a cargo marked as oversized, or the dedicated "Vehicles" cargo which car ferries and car carriers use, so passenger carriages, mail vans, tank cars and covered vans never take a vehicle.{}Unloading is unaffected: changing this setting never strands a vehicle which is already on board.
 STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_ANY               :any part with cargo capacity
 STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_OVERSIZED         :only parts carrying 'oversized' cargo
-STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_BULK_OVERSIZED_VEHI:bulk, 'oversized' or 'vehicles (car)' cargo
-STR_CONFIG_SETTING_ROAD_VEHICLE_TRANSPORT                       :Vehicles (car) transport
-STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS                :Vehicles (car) transport: warn when a carried vehicle (car) is not unloaded for: {STRING}
-STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS_HELPTEXT       :Show a news message when a vehicle (car) has been on board its carrier for this many days without being dropped off anywhere.{}Vehicles (car) are only put down at a station their own schedule asks for, so a carrier which never reaches such a station (or a vehicle (car) whose drop-off station was removed) keeps them on board; the warning points that out.{}The warning is shown once per trip (each time the vehicle is loaded again it may warn again).{}0 turns the warning off.
-STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS_VALUE           :{NUM} day{P "" s}
-STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED                          :Vehicles (car) transport
-STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED_HELPTEXT                 :Allow vehicles (car) to be loaded onto trains, ships and aircraft.{}Switching this off does not touch the orders which were set up: nothing new is loaded any more, vehicles which are waiting to be transported stop waiting (and carry on with their own schedule), and vehicles which are already on board can still be put down at their destination, so nothing gets stranded.{}This is the master switch; which carrier parts may take a vehicle is a separate setting.
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_BULK_OVERSIZED_VEHI:bulk, 'oversized' or 'vehicles' cargo
+STR_CONFIG_SETTING_ROAD_VEHICLE_TRANSPORT                       :Vehicles transport
+STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS                :warn when a carried vehicle is not unloaded for: {STRING2}
+STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS_HELPTEXT       :Show a news message when a vehicle has been on board its carrier for this many days without being dropped off anywhere.{}Vehicles are only put down at a station their own schedule asks for, so a carrier which never reaches such a station (or a vehicle (car) whose drop-off station was removed) keeps them on board; the warning points that out.{}The warning is shown once per trip (each time the vehicle is loaded again it may warn again).{}0 turns the warning off.
+STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS_VALUE           :{NUM} Day
+STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED                          :Vehicles transport
+STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED_HELPTEXT                 :Allow vehicles to be loaded onto trains, ships and aircraft.{}Switching this off does not touch the orders which were set up: nothing new is loaded any more, vehicles which are waiting to be transported stop waiting (and carry on with their own schedule), and vehicles which are already on board can still be put down at their destination, so nothing gets stranded.{}This is the master switch; which carrier parts may take a vehicle is a separate setting.
 
 STR_CONFIG_SETTING_SLOW_ROAD_VEHICLES_IN_CURVES                 :Road vehicles slow down in curves: {STRING2}
 STR_CONFIG_SETTING_SLOW_ROAD_VEHICLES_IN_CURVES_HELPTEXT        :When enabled, road vehicles slow down in curves. (Only with realistic acceleration)
@@ -1748,7 +1748,7 @@ STR_VEHICLE_DETAILS_DECREASE_SERVICING_INTERVAL_TOOLTIP_PRODINT :{BLACK}Decrease
 STR_VEHICLE_DETAIL_TAB_PERFORMANCE                              :{BLACK}Performance
 STR_VEHICLE_DETAILS_TRAIN_PERFORMANCE_TOOLTIP                   :{BLACK}Show train performance statistics when empty and fully loaded
 STR_VEHICLE_DETAIL_TAB_CARRIED                                  :{BLACK}Carried
-STR_VEHICLE_DETAILS_TRAIN_CARRIED_TOOLTIP                       :{BLACK}Show the vehicles (car) this train carries. Click a line to open the window of that vehicle
+STR_VEHICLE_DETAILS_TRAIN_CARRIED_TOOLTIP                       :{BLACK}Show the vehicles this train carries. Click a line to open the window of that vehicle
 
 STR_ORDER_DROP_CARGO_TYPE_LOAD                                  :Load normal cargo by type
 STR_ORDER_DROP_CARGO_TYPE_UNLOAD                                :Unload normal cargo by type
