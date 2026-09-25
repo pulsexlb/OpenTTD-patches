@@ -4860,11 +4860,22 @@ public:
 					break;
 				}
 				if (index == RVDD_RV_WAIT || index == RVDD_RV_UNLOAD) {
-					/* RoRo: toggle a road vehicle's own "wait to be transported" / "be unloaded here". */
+					/* RoRo: toggle a road vehicle's own "wait to be transported" / "be unloaded here". The
+					 * two are mutually exclusive - a vehicle cannot wait to be taken and be put down at the
+					 * same station - so switching one on switches the other off. Clicking the one that is
+					 * already set still turns it off again. */
 					const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
 					if (o == nullptr) break;
-					const uint8_t bit = (index == RVDD_RV_WAIT) ? ORVTF_LOAD : ORVTF_UNLOAD;
-					this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRANSPORT, o->GetRVTransportFlags() ^ bit);
+					const bool wait = (index == RVDD_RV_WAIT);
+					const uint8_t bit = wait ? ORVTF_LOAD : ORVTF_UNLOAD;
+					const uint8_t other = wait ? ORVTF_UNLOAD : ORVTF_LOAD;
+					uint8_t flags = o->GetRVTransportFlags();
+					if ((flags & bit) != 0) {
+						flags &= ~bit;
+					} else {
+						flags = (uint8_t)((flags & ~other) | bit);
+					}
+					if (flags != o->GetRVTransportFlags()) this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRANSPORT, flags);
 					break;
 				}
 				switch (index) {
