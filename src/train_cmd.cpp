@@ -6890,6 +6890,23 @@ static void Couple(Train *v, Train *u)
 	 * on departure runs with an invalid station and derails order advancement. */
 	v->last_station_visited = v->current_order.GetDestination().ToStationID();
 
+	/* The coupled consist's front (u) becomes a non-primary wagon of the merged
+	 * consist, so any trace restrict slot it held must be transferred to the
+	 * survivor front, otherwise the slot ends up pointing at a non-primary
+	 * vehicle. Same convention as autoreplace.
+	 *
+	 * This has to happen BEFORE the ProcessOrders below: a slot-release order
+	 * right after the couple ("return the slot") is executed there, and it
+	 * vacates the slot for the surviving consist's own primary. If the slot is
+	 * still registered under u at that point, the release is a no-op and the
+	 * merged consist would keep holding a slot that it already gave back. */
+	const bool transferred_slots = u->vehicle_flags.Test(VehicleFlag::HaveSlot);
+	if (transferred_slots) {
+		TraceRestrictTransferVehicleOccupantInAllSlots(u->index, v->index);
+		u->vehicle_flags.Reset(VehicleFlag::HaveSlot);
+		v->vehicle_flags.Set(VehicleFlag::HaveSlot);
+	}
+
 	v->IncrementImplicitOrderIndex();
 	ProcessOrders(v);
 
@@ -6911,6 +6928,12 @@ static void Couple(Train *v, Train *u)
 	if (!TryTrainCouple(v_phys, u_phys)) {
 		if (v->owner == _local_company) {
 			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
+		}
+		/* The couple did not happen, so give the waiting consist its slots back. */
+		if (transferred_slots && v->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
+			TraceRestrictTransferVehicleOccupantInAllSlots(v->index, u->index);
+			v->vehicle_flags.Reset(VehicleFlag::HaveSlot);
+			u->vehicle_flags.Set(VehicleFlag::HaveSlot);
 		}
 		return;
 	}
@@ -6973,16 +6996,6 @@ static void Couple(Train *v, Train *u)
 		w->flags.Reset(VehicleRailFlag::Reversed);
 	}
 	v->flags.Reset(VehicleRailFlag::Reversing);
-
-	/* The coupled train's front (u) becomes a non-primary wagon of the merged
-	 * consist, so any trace restrict slot it held must be transferred to the
-	 * survivor front, otherwise the slot ends up pointing at a non-primary
-	 * vehicle. Same convention as autoreplace. */
-	if (u->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
-		TraceRestrictTransferVehicleOccupantInAllSlots(u->index, v->Primary()->index);
-		u->vehicle_flags.Reset(VehicleFlag::HaveSlot);
-		v->Primary()->vehicle_flags.Set(VehicleFlag::HaveSlot);
-	}
 
 	/* If the absorbed consist was queued for loading/unloading at a station,
 	 * drop the stale entry: it can never leave the queue by itself anymore
