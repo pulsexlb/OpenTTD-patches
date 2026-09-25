@@ -357,6 +357,12 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_DECOUPLE_SECOND_SCHEDULE, ///< Change the schedule the second part adopts after decoupling.
 	MOF_DECOUPLE_FIRST_LOAD_SCHEDULE,  ///< Change the schedule the first part adopts after loading at the decouple station.
 	MOF_DECOUPLE_SECOND_LOAD_SCHEDULE, ///< Change the schedule the second part adopts after loading at the decouple station.
+	MOF_RV_TRANSPORT,    ///< Passes road vehicle transport (RoRo) load/unload flags for a station order.
+	MOF_RV_LOAD_STATE,   ///< Road vehicle transport (RoRo) selection criterion: load state of a candidate.
+	MOF_RV_CARGO_MODE,   ///< Road vehicle transport (RoRo) selection criterion: cargo mode of a candidate (CargoType is passed along).
+	MOF_RV_MIN_WAIT,     ///< Road vehicle transport (RoRo) selection criterion: minimum waiting time of a candidate.
+	MOF_RV_SLOT,         ///< Road vehicle transport (RoRo) selection criterion: trace restrict slot ("路签") a candidate must hold.
+	MOF_RV_MAX,          ///< Road vehicle transport (RoRo): most road vehicles to load in one visit (0 = no limit).
 	MOF_END
 };
 

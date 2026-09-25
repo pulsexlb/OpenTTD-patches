@@ -174,7 +174,7 @@ struct ValuesInterval {
 
 struct BaseGraphWindow : Window {
 protected:
-	static const int GRAPH_MAX_DATASETS     =  64;
+	static const int GRAPH_MAX_DATASETS     = 128;
 	static constexpr PixelColour GRAPH_BASE_COLOUR      =  GREY_SCALE(2);
 	static constexpr PixelColour GRAPH_GRID_COLOUR      =  GREY_SCALE(3);
 	static constexpr PixelColour GRAPH_AXIS_LINE_COLOUR =  GREY_SCALE(1);
@@ -225,7 +225,7 @@ protected:
 		return ReplaceWallclockMinutesUnit() ? MONTHLY_SCALE_WALLCLOCK_REPLACE : MONTHLY_SCALE_WALLCLOCK;
 	}
 
-	uint64_t excluded_data = 0; ///< bitmask of datasets hidden by the player.
+	Uint128 excluded_data = 0; ///< bitmask of datasets hidden by the player.
 	uint64_t excluded_range = 0; ///< bitmask of ranges hidden by the player.
 	uint64_t masked_range = 0; ///< bitmask of ranges that are not available for the current data.
 	uint8_t num_on_x_axis = 0;

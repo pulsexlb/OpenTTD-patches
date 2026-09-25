@@ -243,7 +243,7 @@ public:
 	{
 		if (IsSavegameVersionBefore(SLV_55)) return 12;
 		if (IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES)) return 32;
-		if (IsSavegameVersionBefore(SLV_SAVELOAD_LIST_LENGTH)) return NUM_CARGO;
+		if (IsSavegameVersionBefore(SLV_SAVELOAD_LIST_LENGTH)) return NUM_GRF_CARGO;
 		/* Read from the savegame how long the list is. */
 		return SlGetStructListLength(NUM_CARGO);
 	}
@@ -310,7 +310,7 @@ public:
 	{
 		Station *st = Station::From(bst);
 
-		size_t num_cargo = IsSavegameVersionBefore(SLV_55) ? 12 : IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES) ? 32 : NUM_CARGO;
+		size_t num_cargo = IsSavegameVersionBefore(SLV_55) ? 12 : IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES) ? 32 : NUM_GRF_CARGO;
 		auto end = std::next(std::begin(st->goods), std::min(num_cargo, std::size(st->goods)));
 		for (auto it = std::begin(st->goods); it != end; ++it) {
 			GoodsEntry &ge = *it;
@@ -413,8 +413,8 @@ public:
 		SLEG_VAR("last_vehicle_type", _old_last_vehicle_type, SLE_UINT8),
 		    SLE_VAR(Station, had_vehicle_of_type,        SLE_UINT8),
 		SLE_REFVECTOR(Station, loading_vehicles,         REF_VEHICLE),
-		SLE_CONDVAR(Station, always_accepted,            SLE_FILE_U32 | SLE_VAR_U64, SLV_127, SLV_EXTEND_CARGOTYPES),
-		SLE_CONDVAR(Station, always_accepted,            SLE_UINT64,                 SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION),
+		SLE_CONDVAR(Station, always_accepted,            SLE_FILE_U32 | SLE_VAR_U128, SLV_127, SLV_EXTEND_CARGOTYPES),
+		SLE_CONDVAR(Station, always_accepted,            SLE_FILE_U64 | SLE_VAR_U128, SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION),
 		SLEG_CONDSTRUCTLIST("speclist", SlRoadStopTileData,                          SLV_NEWGRF_ROAD_STOPS, SLV_ROAD_STOP_TILE_DATA),
 		SLEG_STRUCTLIST("goods", SlStationGoods),
 	};

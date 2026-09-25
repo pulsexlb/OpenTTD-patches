@@ -129,6 +129,12 @@ bool VehicleCargoFilter(const Vehicle *v, const CargoType cid)
 	}
 }
 
+/** Template/virtual vehicles (e.g. virtual trains) are not part of the player's vehicle lists. */
+static bool IsVirtualVehicle(const Vehicle *v)
+{
+	return HasBit(v->subtype, GVSF_VIRTUAL);
+}
+
 /**
  * Generate a list of vehicles based on window type.
  * @param list Pointer to list to add vehicles to
@@ -147,7 +153,9 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 
 	auto fill_all_vehicles = [&]() {
 		for (const Vehicle *v : Vehicle::IterateTypeFrontOnly(vli.vtype)) {
-			if (!HasBit(v->subtype, GVSF_VIRTUAL) && v->owner == vli.company && v->First()->Primary()->IsPrimaryVehicle()) {
+			/* RoRo: carried road vehicles are real player vehicles, so they stay in the list (their
+			 * status shows that they are being transported and locating them follows the carrier). */
+			if (!IsVirtualVehicle(v) && v->owner == vli.company && v->First()->Primary()->IsPrimaryVehicle()) {
 				add_veh(v);
 			}
 		}
@@ -176,7 +184,8 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 		case VehicleListType::Group:
 			if (vli.index != ALL_GROUP) {
 				for (const Vehicle *v : Vehicle::IterateTypeFrontOnly(vli.vtype)) {
-					if (!HasBit(v->subtype, GVSF_VIRTUAL) && v->First()->Primary()->IsPrimaryVehicle() &&
+					/* RoRo: carried road vehicles stay in their group's list as well. */
+					if (!IsVirtualVehicle(v) && v->First()->Primary()->IsPrimaryVehicle() &&
 						v->owner == vli.company && GroupIsInGroup(v->First()->Primary()->group_id, vli.ToGroupID())) {
 						add_veh(v);
 					}

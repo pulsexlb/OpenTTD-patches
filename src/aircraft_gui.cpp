@@ -59,6 +59,10 @@ void DrawAircraftDetails(const Aircraft *v, const Rect &r)
 
 	y += WidgetDimensions::scaled.vsep_normal;
 	DrawString(r.left, r.right, y, GetString(STR_VEHICLE_INFO_FEEDER_CARGO_VALUE, feeder_share));
+	y += GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal;
+
+	/* RoRo: road vehicles this aircraft carries. */
+	DrawCarriedRoadVehicles(v, r, y);
 }
 
 

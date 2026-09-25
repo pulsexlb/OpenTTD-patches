@@ -51,8 +51,8 @@ static ChangeInfoResult CargoReserveInfo(uint first, uint last, int prop, const 
 {
 	ChangeInfoResult ret = ChangeInfoResult::Success;
 
-	if (last > NUM_CARGO) {
-		GrfMsg(2, "CargoChangeInfo: Cargo type {} out of range (max {})", last, NUM_CARGO - 1);
+	if (last > NUM_GRF_CARGO) {
+		GrfMsg(2, "CargoChangeInfo: Cargo type {} out of range (max {})", last, NUM_GRF_CARGO - 1);
 		return ChangeInfoResult::InvalidId;
 	}
 

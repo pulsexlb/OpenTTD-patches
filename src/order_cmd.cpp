@@ -36,6 +36,7 @@
 #include "cheat_type.h"
 #include "viewport_func.h"
 #include "order_dest_func.h"
+#include "roadveh_transport.h"
 #include "vehiclelist.h"
 #include "tracerestrict.h"
 #include "train.h"
@@ -2049,7 +2050,18 @@ static CommandCost CmdInsertOrderIntl(DoCommandFlags flags, Vehicle *v, VehicleO
 	if (v->orders == nullptr && !OrderList::CanAllocateItem()) return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		InsertOrder(v, Order(new_order), sel_ord);
+		Order order(new_order);
+		/* RoRo: a dedicated road vehicle carrier (every cargo part refitted to the "Vehicles" cargo)
+		 * defaults newly added station orders to road vehicle transport: load the road vehicles going
+		 * to the next stop and unload every road vehicle which wants to get off here. Every other
+		 * vehicle keeps the normal-cargo defaults (load/unload if possible, no vehicle transport).
+		 * Orders copied from another vehicle already carry their own flags and are left alone. */
+		if (order.IsType(OT_GOTO_STATION) && order.GetRVTransportFlags() == 0 && RVTransportVehicleCarriesOnlyVehicles(v)) {
+			order.GetRVTransportFlagsRef() = ORVTF_LOAD | ORVTF_UNLOAD;
+			order.SetLoadType(OrderLoadType::NoLoad);
+			order.SetUnloadType(OrderUnloadType::NoUnload);
+		}
+		InsertOrder(v, std::move(order), sel_ord);
 	}
 
 	CommandCost cost;
@@ -2809,7 +2821,8 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 	} else {
 		switch (order->GetType()) {
 			case OT_GOTO_STATION:
-				if (mof != MOF_NON_STOP && mof != MOF_STOP_LOCATION && mof != MOF_UNLOAD && mof != MOF_LOAD && mof != MOF_CARGO_TYPE_UNLOAD && mof != MOF_CARGO_TYPE_LOAD && mof != MOF_RV_TRAVEL_DIR && mof != MOF_DECOUPLE) return CMD_ERROR;
+				if (mof != MOF_NON_STOP && mof != MOF_STOP_LOCATION && mof != MOF_UNLOAD && mof != MOF_LOAD && mof != MOF_CARGO_TYPE_UNLOAD && mof != MOF_CARGO_TYPE_LOAD && mof != MOF_RV_TRAVEL_DIR && mof != MOF_DECOUPLE
+						&& mof != MOF_RV_TRANSPORT && mof != MOF_RV_LOAD_STATE && mof != MOF_RV_CARGO_MODE && mof != MOF_RV_MIN_WAIT && mof != MOF_RV_SLOT && mof != MOF_RV_MAX) return CMD_ERROR;
 				break;
 
 			case OT_GOTO_DEPOT:
@@ -2913,6 +2926,47 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			if (data == to_underlying(order->GetLoadType())) return CommandCost();
 			if (IsFullLoadOrderLoadType(static_cast<OrderLoadType>(data)) && v->HasUnbunchingOrder()) return CommandCost(STR_ERROR_UNBUNCHING_NO_FULL_LOAD);
 			break;
+
+		case MOF_RV_TRANSPORT:
+			/* Road vehicle transport (RoRo): only meaningful for station orders, value = load/unload/match flags. */
+			if (!order->IsType(OT_GOTO_STATION)) return CommandCost(STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY);
+			if ((data & ~(ORVTF_LOAD | ORVTF_UNLOAD | ORVTF_MATCH_DEST | ORVTF_WAIT | ORVTF_UNLOAD_ALL)) != 0) return CMD_ERROR;
+			break;
+
+		case MOF_RV_LOAD_STATE:
+			/* RoRo selection criterion: load state of a candidate road vehicle. */
+			if (!order->IsType(OT_GOTO_STATION)) return CommandCost(STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY);
+			if (data > RVTLS_FULL) return CMD_ERROR;
+			break;
+
+		case MOF_RV_CARGO_MODE:
+			/* RoRo selection criterion: cargo of a candidate road vehicle; the cargo itself is passed along. */
+			if (!order->IsType(OT_GOTO_STATION)) return CommandCost(STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY);
+			if (data > RVTC_IS_CARRYING) return CMD_ERROR;
+			if (data != RVTC_ANY && !IsValidCargoType(cargo_id)) return CMD_ERROR;
+			break;
+
+		case MOF_RV_MIN_WAIT:
+			/* RoRo selection criterion: minimum waiting time of a candidate road vehicle (in days). */
+			if (!order->IsType(OT_GOTO_STATION)) return CommandCost(STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY);
+			break;
+
+		case MOF_RV_MAX:
+			/* RoRo: most road vehicles to load in one visit (0 = no limit). */
+			if (!order->IsType(OT_GOTO_STATION)) return CommandCost(STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY);
+			if (data > 0xFF) return CMD_ERROR;
+			break;
+
+		case MOF_RV_SLOT: {
+			/* RoRo selection criterion: trace restrict slot the candidate must hold (slot id + 1, 0 = any). */
+			if (!order->IsType(OT_GOTO_STATION)) return CommandCost(STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY);
+			if (data != 0) {
+				/* Only a road vehicle slot can be held by a road vehicle candidate. */
+				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{static_cast<uint16_t>(data - 1)});
+				if (slot == nullptr || slot->vehicle_type != VehicleType::Road) return CMD_ERROR;
+			}
+			break;
+		}
 
 		case MOF_DEPOT_ACTION:
 			if (data >= DA_END) return CMD_ERROR;
@@ -3298,6 +3352,31 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			case MOF_LOAD:
 				order->SetLoadType(static_cast<OrderLoadType>(data));
 				if (static_cast<OrderLoadType>(data) == OrderLoadType::NoLoad) order->SetRefit(CARGO_NO_REFIT);
+				break;
+
+			case MOF_RV_TRANSPORT:
+				order->GetRVTransportFlagsRef() = static_cast<uint8_t>(data);
+				break;
+
+			case MOF_RV_LOAD_STATE:
+				order->GetRVTransportLoadStateRef() = static_cast<uint8_t>(data);
+				break;
+
+			case MOF_RV_CARGO_MODE:
+				order->GetRVTransportCargoModeRef() = static_cast<uint8_t>(data);
+				order->GetRVTransportCargoRef() = (data == RVTC_ANY) ? INVALID_CARGO : static_cast<uint8_t>(cargo_id);
+				break;
+
+			case MOF_RV_MIN_WAIT:
+				order->GetRVTransportMinWaitRef() = static_cast<uint16_t>(data);
+				break;
+
+			case MOF_RV_SLOT:
+				order->GetRVTransportSlotRef() = static_cast<uint16_t>(data);
+				break;
+
+			case MOF_RV_MAX:
+				order->GetRVTransportMaxRef() = static_cast<uint8_t>(data);
 				break;
 
 			case MOF_CARGO_TYPE_LOAD:
@@ -4266,6 +4345,9 @@ CommandCost CmdOrderRefit(DoCommandFlags flags, VehicleID veh, VehicleOrderID or
 	CommandCost ret = CheckOwnership(v->owner);
 	if (ret.Failed()) return ret;
 
+	/* Road vehicle transport: the built-in "Vehicles (Car)" cargo is selectable as an order refit
+	 * target like any other cargo, and a chain may be converted from normal cargo to road vehicle
+	 * transport and back through station/depot orders as well. */
 	Order *order = v->GetOrder(order_number);
 	if (order == nullptr) return CMD_ERROR;
 
@@ -4320,7 +4402,7 @@ void CheckOrders(const Vehicle *v)
 
 	/* Only check every 20 days, so that we don't flood the message log */
 	/* The check is skipped entirely in case the current vehicle is virtual (a.k.a a 'template train') */
-	if (v->owner == _local_company && v->day_counter % 20 == 0 && !HasBit(v->subtype, GVSF_VIRTUAL)) {
+	if (v->owner == _local_company && v->day_counter % 20 == 0 && !v->IsVirtualOrCarried()) {
 		StringID message = INVALID_STRING_ID;
 
 		/* Check the order list */

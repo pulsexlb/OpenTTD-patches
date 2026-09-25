@@ -9,6 +9,7 @@
 
 #include "../stdafx.h"
 #include "../company_func.h"
+#include "extended_ver_sl.h"
 #include "../company_manager_face.h"
 #include "../fios.h"
 #include "../load_check.h"
@@ -203,9 +204,10 @@ static const NamedSaveLoad _company_economy_desc[] = {
 	NSL("company_value",       SLE_CONDVAR(CompanyEconomyEntry, company_value,       SLE_FILE_I32 | SLE_VAR_I64, SL_MIN_VERSION, SLV_2)),
 	NSL("company_value",       SLE_CONDVAR(CompanyEconomyEntry, company_value,       SLE_INT64,                  SLV_2, SL_MAX_VERSION)),
 
-	NSL("",                    SLE_CONDVAR(CompanyEconomyEntry, delivered_cargo[NUM_CARGO - 1], SLE_INT32,       SL_MIN_VERSION, SLV_170)),
+	NSL("",                    SLE_CONDVAR(CompanyEconomyEntry, delivered_cargo[31],        SLE_INT32,       SL_MIN_VERSION, SLV_170)),
 	NSL("delivered_cargo",     SLE_CONDARR(CompanyEconomyEntry, delivered_cargo,     SLE_UINT32, 32,           SLV_170, SLV_EXTEND_CARGOTYPES)),
-	NSL("delivered_cargo",     SLE_CONDARR(CompanyEconomyEntry, delivered_cargo,     SLE_UINT32, NUM_CARGO,    SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION)),
+	NSL("delivered_cargo",     SLE_CONDARR_X(CompanyEconomyEntry, delivered_cargo,   SLE_UINT32, NUM_GRF_CARGO, SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPES_128, 0, 0))),
+	NSL("delivered_cargo",     SLE_CONDARR_X(CompanyEconomyEntry, delivered_cargo,   SLE_UINT32, NUM_CARGO,     SLV_EXTEND_CARGOTYPES, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPES_128, 1))),
 	NSL("performance_history",     SLE_VAR(CompanyEconomyEntry, performance_history, SLE_INT32)),
 };
 

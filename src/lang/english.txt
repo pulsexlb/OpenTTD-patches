@@ -56,6 +56,7 @@ STR_CARGO_PLURAL_TOFFEE                                         :Toffee
 STR_CARGO_PLURAL_BATTERIES                                      :Batteries
 STR_CARGO_PLURAL_PLASTIC                                        :Plastic
 STR_CARGO_PLURAL_FIZZY_DRINKS                                   :Fizzy Drinks
+STR_CARGO_PLURAL_VEHICLES                                        :Vehicles (Car)
 
 # Singular cargo name
 STR_CARGO_SINGULAR_NOTHING                                      :
@@ -90,6 +91,7 @@ STR_CARGO_SINGULAR_TOFFEE                                       :Toffee
 STR_CARGO_SINGULAR_BATTERY                                      :Battery
 STR_CARGO_SINGULAR_PLASTIC                                      :Plastic
 STR_CARGO_SINGULAR_FIZZY_DRINK                                  :Fizzy Drink
+STR_CARGO_SINGULAR_VEHICLE                                       :Vehicle (Car)
 
 # Quantity of cargo
 STR_QUANTITY_NOTHING                                            :
@@ -124,6 +126,7 @@ STR_QUANTITY_TOFFEE                                             :{WEIGHT_LONG} o
 STR_QUANTITY_BATTERIES                                          :{COMMA} batter{P y ies}
 STR_QUANTITY_PLASTIC                                            :{VOLUME_LONG} of plastic
 STR_QUANTITY_FIZZY_DRINKS                                       :{COMMA} fizzy drink{P "" s}
+STR_QUANTITY_VEHICLES                                            :{WEIGHT_LONG} of vehicles (car)
 STR_QUANTITY_N_A                                                :N/A
 
 # Two letter abbreviation of cargo name
@@ -159,6 +162,7 @@ STR_ABBREV_TOFFEE                                               :TF
 STR_ABBREV_BATTERIES                                            :BA
 STR_ABBREV_PLASTIC                                              :PL
 STR_ABBREV_FIZZY_DRINKS                                         :FZ
+STR_ABBREV_VEHICLES                                              :VC
 STR_ABBREV_ALL                                                  :ALL
 
 # 'Mode' of transport for cargoes
@@ -936,6 +940,7 @@ STR_NEWS_VEHICLE_IS_GETTING_VERY_OLD                            :{WHITE}{VEHICLE
 STR_NEWS_VEHICLE_IS_GETTING_VERY_OLD_AND                        :{WHITE}{VEHICLE} is getting very old and urgently needs replacing
 STR_NEWS_TRAIN_IS_STUCK                                         :{WHITE}{VEHICLE} can't find a path to continue
 STR_NEWS_VEHICLE_IS_LOST                                        :{WHITE}{VEHICLE} is lost
+STR_NEWS_RV_TRANSPORT_UNLOAD_OVERDUE                            :{WHITE}{VEHICLE} has been carried for {NUM} days without being unloaded
 STR_NEWS_VEHICLE_UNPROFITABLE_YEAR                              :{WHITE}{VEHICLE}'s profit last year was {CURRENCY_LONG}
 STR_NEWS_VEHICLE_UNPROFITABLE_PERIOD                            :{WHITE}{VEHICLE}'s profit last period was {CURRENCY_LONG}
 STR_NEWS_AIRCRAFT_DEST_TOO_FAR                                  :{WHITE}{VEHICLE} can't get to the next destination because it is out of range
@@ -4722,6 +4727,13 @@ STR_VEHICLE_STATUS_LOADING_UNLOADING                            :{LTBLUE}Loading
 STR_VEHICLE_STATUS_LEAVING                                      :{LTBLUE}Leaving
 STR_VEHICLE_STATUS_WAITING_UNBUNCHING                           :{LTBLUE}Waiting to unbunch
 STR_VEHICLE_STATUS_CRASHED                                      :{RED}Crashed!
+STR_VEHICLE_STATUS_WAITING_TO_BE_TRANSPORTED                    :{LTBLUE}Waiting to be transported
+STR_VEHICLE_STATUS_BEING_TRANSPORTED                            :{LTBLUE}Being transported
+STR_VEHICLE_STATUS_CARRYING_ROAD_VEHICLES                       :{LTBLUE}Carrying {COMMA} vehicles (car)
+STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLES                       :Carried vehicles (car):
+STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE                        :{BLACK}{VEHICLE}
+STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE_EXTRA                  :{BLACK} ({COMMA}t)
+STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE_NONE                   :{LTBLUE}This train is not carrying any vehicle (car)
 STR_VEHICLE_STATUS_BROKEN_DOWN                                  :{RED}Broken down
 STR_VEHICLE_STATUS_STOPPED                                      :{RED}Stopped
 STR_VEHICLE_STATUS_TRAIN_STOPPING_VEL                           :{RED}{VELOCITY} - Stopping
@@ -4873,17 +4885,75 @@ STR_ORDER_GO_NON_STOP_VIA                                       :Go non-stop via
 STR_ORDER_TOOLTIP_NON_STOP                                      :{BLACK}Change the stopping behaviour of the highlighted order
 
 STR_ORDER_TOGGLE_FULL_LOAD                                      :{BLACK}Full load any cargo
-STR_ORDER_DROP_LOAD_IF_POSSIBLE                                 :Load if available
-STR_ORDER_DROP_FULL_LOAD_ALL                                    :Full load all cargo
-STR_ORDER_DROP_FULL_LOAD_ANY                                    :Full load any cargo
-STR_ORDER_DROP_NO_LOADING                                       :No loading
+STR_ORDER_DROP_LOAD_IF_POSSIBLE                                 :Load normal cargo if available
+STR_ORDER_DROP_FULL_LOAD_ALL                                    :Full load all normal cargo
+STR_ORDER_DROP_FULL_LOAD_ANY                                    :Full load any normal cargo
+STR_ORDER_DROP_NO_LOADING                                       :No normal cargo loading
+STR_ORDER_DROP_LOAD_ROAD_VEHICLES                               :Load vehicles (car)
+STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES                             :Unload vehicles (car)
+STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES                         :Unload all vehicles (car)
+STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES_TOOLTIP                 :{BLACK}Unload every vehicle (car) here, including the ones whose own schedule says they want to get off somewhere else. Without this, only the vehicles which name this station in their own orders are dropped here.
+STR_ORDER_DROP_RV_MATCH_DEST                                    :Only vehicles (car) for the next stop
+STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES                           :Wait for vehicles (car)
+STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED                           :Wait to be transported
+STR_ORDER_DROP_BE_UNLOADED_HERE                                 :Be unloaded here
+STR_ORDER_DROP_RV_LOAD_STATE                                    :Vehicles (car): {STRING}
+STR_ORDER_RV_LOAD_STATE_ANY                                     :any
+STR_ORDER_RV_LOAD_STATE_EMPTY                                   :empty only
+STR_ORDER_RV_LOAD_STATE_FULL                                    :full only
+STR_ORDER_DROP_RV_MIN_WAIT                                      :Wait at least: {STRING}
+STR_ORDER_RV_MIN_WAIT_NONE                                      :no minimum
+STR_ORDER_RV_MIN_WAIT_DAYS                                      :{NUM} day{P "" s}
+STR_ORDER_DROP_RV_MIN_WAIT_NUM                                  :Wait at least: {NUM} day{P "" s}
+STR_ORDER_RV_CARGO_CAN_CARRY                                    :Cargo: 
+STR_ORDER_RV_CARGO_IS_CARRYING                                  :Carrying: 
+STR_ORDER_RV_SLOT                                               :Slot: {TRSLOT}
+STR_ORDER_DROP_RV_TRANSPORT                                     :Vehicles (car) transport...
+STR_ORDER_DROP_RV_LOAD_ANY                                       :Load any vehicles (car)
+STR_ORDER_DROP_RV_LOAD_NEXT                                      :Load vehicles (car) going to the next stop
+STR_ORDER_DROP_RV_LOAD_OPTIONS                                   :Vehicles (car) loading options...
+STR_ORDER_RV_TRANSPORT_MORE_OPTIONS                             :(other options)
+STR_ORDER_RV_CARGO_LOAD_DEFAULT                                 :Load normal cargo
+STR_ORDER_RV_CARGO_UNLOAD_DEFAULT                               :Unload normal cargo
+STR_ERROR_RV_REFIT_SCHEDULE                                      :{WHITE}Can't convert between vehicles (car) transport and normal cargo while the vehicle has a schedule; clear its orders first.
+STR_RV_TRANSPORT_CRITERIA_CAPTION                               :Vehicles (car) transport
+STR_RV_TRANSPORT_CRITERIA_LOAD_STATE                            :Load state
+STR_RV_TRANSPORT_CRITERIA_CARGO                                 :Cargo
+STR_RV_TRANSPORT_CRITERIA_CARGO_MODE                            :Cargo criterion
+STR_RV_TRANSPORT_CRITERIA_CAN_CARRY                             :must be able to carry
+STR_RV_TRANSPORT_CRITERIA_IS_CARRYING                           :must be carrying
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT                              :Minimum waiting time
+STR_RV_TRANSPORT_CRITERIA_SLOT                                  :Trace restrict slot
+STR_RV_TRANSPORT_CRITERIA_SLOT_SET                              :a slot is set
+STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_ANY                        :any
+STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_EMPTY                      :empty only
+STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_FULL                       :full only
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_NONE                         :no minimum
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_DAYS                         :{NUM} day{P "" s}
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_1                            :1 day
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_2                            :2 days
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_5                            :5 days
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_10                           :10 days
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_30                           :30 days
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_60                           :60 days
+STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_CUSTOM                       :a custom time
+STR_RV_TRANSPORT_CRITERIA_MAX                                   :Most vehicles (car) at once
+STR_RV_TRANSPORT_CRITERIA_MAX_ANY                               :Take any number
+STR_RV_TRANSPORT_CRITERIA_MAX_1                                 :Take at most 1
+STR_RV_TRANSPORT_CRITERIA_MAX_2                                 :Take at most 2
+STR_RV_TRANSPORT_CRITERIA_MAX_3                                 :Take at most 3
+STR_RV_TRANSPORT_CRITERIA_MAX_5                                 :Take at most 5
+STR_RV_TRANSPORT_CRITERIA_MAX_10                                :Take at most 10
+STR_RV_TRANSPORT_CRITERIA_MAX_N                                 :Take at most {NUM}
+STR_RV_TRANSPORT_CRITERIA_MAX_CUSTOM                            :Take at most a custom number
+STR_ORDER_RV_MAX_VEHICLES                                       :at most {NUM}
 STR_ORDER_TOOLTIP_FULL_LOAD                                     :{BLACK}Change the loading behaviour of the highlighted order
 
 STR_ORDER_TOGGLE_UNLOAD                                         :{BLACK}Unload all
-STR_ORDER_DROP_UNLOAD_IF_ACCEPTED                               :Unload if accepted
-STR_ORDER_DROP_UNLOAD                                           :Unload all
-STR_ORDER_DROP_TRANSFER                                         :Transfer
-STR_ORDER_DROP_NO_UNLOADING                                     :No unloading
+STR_ORDER_DROP_UNLOAD_IF_ACCEPTED                               :Unload normal cargo if accepted
+STR_ORDER_DROP_UNLOAD                                           :Unload all normal cargo
+STR_ORDER_DROP_TRANSFER                                         :Transfer normal cargo
+STR_ORDER_DROP_NO_UNLOADING                                     :No normal cargo unloading
 STR_ORDER_TOOLTIP_UNLOAD                                        :{BLACK}Change the unloading behaviour of the highlighted order
 
 STR_ORDER_REFIT                                                 :{BLACK}Refit
@@ -4985,34 +5055,34 @@ STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION                       :{PUSH_COLOUR}{R
 
 STR_ORDER_IMPLICIT                                              :{SPACE}(Implicit)
 
-STR_ORDER_FULL_LOAD                                             :{SPACE}(Full load)
-STR_ORDER_FULL_LOAD_ANY                                         :{SPACE}(Full load any cargo)
-STR_ORDER_NO_LOAD                                               :{SPACE}(No loading)
-STR_ORDER_UNLOAD                                                :{SPACE}(Unload and take cargo)
-STR_ORDER_UNLOAD_FULL_LOAD                                      :{SPACE}(Unload and wait for full load)
-STR_ORDER_UNLOAD_FULL_LOAD_ANY                                  :{SPACE}(Unload and wait for any full load)
-STR_ORDER_UNLOAD_NO_LOAD                                        :{SPACE}(Unload and leave empty)
-STR_ORDER_TRANSFER                                              :{SPACE}(Transfer and take cargo)
-STR_ORDER_TRANSFER_FULL_LOAD                                    :{SPACE}(Transfer and wait for full load)
-STR_ORDER_TRANSFER_FULL_LOAD_ANY                                :{SPACE}(Transfer and wait for any full load)
-STR_ORDER_TRANSFER_NO_LOAD                                      :{SPACE}(Transfer and leave empty)
-STR_ORDER_NO_UNLOAD                                             :{SPACE}(No unloading and take cargo)
-STR_ORDER_NO_UNLOAD_FULL_LOAD                                   :{SPACE}(No unloading and wait for full load)
-STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY                               :{SPACE}(No unloading and wait for any full load)
-STR_ORDER_NO_UNLOAD_NO_LOAD                                     :{SPACE}(No unloading and no loading)
+STR_ORDER_FULL_LOAD                                             :{SPACE}(Full load normal cargo)
+STR_ORDER_FULL_LOAD_ANY                                         :{SPACE}(Full load any normal cargo)
+STR_ORDER_NO_LOAD                                               :{SPACE}(No normal cargo loading)
+STR_ORDER_UNLOAD                                                :{SPACE}(Unload all normal cargo and take normal cargo)
+STR_ORDER_UNLOAD_FULL_LOAD                                      :{SPACE}(Unload all normal cargo and wait for full normal cargo load)
+STR_ORDER_UNLOAD_FULL_LOAD_ANY                                  :{SPACE}(Unload all normal cargo and wait for any full normal cargo load)
+STR_ORDER_UNLOAD_NO_LOAD                                        :{SPACE}(Unload all normal cargo)
+STR_ORDER_TRANSFER                                              :{SPACE}(Transfer normal cargo and take normal cargo)
+STR_ORDER_TRANSFER_FULL_LOAD                                    :{SPACE}(Transfer normal cargo and wait for full normal cargo load)
+STR_ORDER_TRANSFER_FULL_LOAD_ANY                                :{SPACE}(Transfer normal cargo and wait for any full normal cargo load)
+STR_ORDER_TRANSFER_NO_LOAD                                      :{SPACE}(Transfer normal cargo)
+STR_ORDER_NO_UNLOAD                                             :{SPACE}(No normal cargo unloading and take normal cargo)
+STR_ORDER_NO_UNLOAD_FULL_LOAD                                   :{SPACE}(No normal cargo unloading and wait for full normal cargo load)
+STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY                               :{SPACE}(No normal cargo unloading and wait for any full normal cargo load)
+STR_ORDER_NO_UNLOAD_NO_LOAD                                     :{SPACE}(No normal cargo unloading and no normal cargo loading)
 
 STR_ORDER_AUTO_REFIT                                            :{SPACE}(Refit to {STRING})
-STR_ORDER_FULL_LOAD_REFIT                                       :{SPACE}(Full load with refit to {STRING})
-STR_ORDER_FULL_LOAD_ANY_REFIT                                   :{SPACE}(Full load any cargo with refit to {STRING})
-STR_ORDER_UNLOAD_REFIT                                          :{SPACE}(Unload and take cargo with refit to {STRING})
-STR_ORDER_UNLOAD_FULL_LOAD_REFIT                                :{SPACE}(Unload and wait for full load with refit to {STRING})
-STR_ORDER_UNLOAD_FULL_LOAD_ANY_REFIT                            :{SPACE}(Unload and wait for any full load with refit to {STRING})
-STR_ORDER_TRANSFER_REFIT                                        :{SPACE}(Transfer and take cargo with refit to {STRING})
-STR_ORDER_TRANSFER_FULL_LOAD_REFIT                              :{SPACE}(Transfer and wait for full load with refit to {STRING})
-STR_ORDER_TRANSFER_FULL_LOAD_ANY_REFIT                          :{SPACE}(Transfer and wait for any full load with refit to {STRING})
-STR_ORDER_NO_UNLOAD_REFIT                                       :{SPACE}(No unloading and take cargo with refit to {STRING})
-STR_ORDER_NO_UNLOAD_FULL_LOAD_REFIT                             :{SPACE}(No unloading and wait for full load with refit to {STRING})
-STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY_REFIT                         :{SPACE}(No unloading and wait for any full load with refit to {STRING})
+STR_ORDER_FULL_LOAD_REFIT                                       :{SPACE}(Full load normal cargo with refit to {STRING})
+STR_ORDER_FULL_LOAD_ANY_REFIT                                   :{SPACE}(Full load any normal cargo with refit to {STRING})
+STR_ORDER_UNLOAD_REFIT                                          :{SPACE}(Unload all normal cargo and take normal cargo with refit to {STRING})
+STR_ORDER_UNLOAD_FULL_LOAD_REFIT                                :{SPACE}(Unload all normal cargo and wait for full normal cargo load with refit to {STRING})
+STR_ORDER_UNLOAD_FULL_LOAD_ANY_REFIT                            :{SPACE}(Unload all normal cargo and wait for any full normal cargo load with refit to {STRING})
+STR_ORDER_TRANSFER_REFIT                                        :{SPACE}(Transfer normal cargo and take normal cargo with refit to {STRING})
+STR_ORDER_TRANSFER_FULL_LOAD_REFIT                              :{SPACE}(Transfer normal cargo and wait for full normal cargo load with refit to {STRING})
+STR_ORDER_TRANSFER_FULL_LOAD_ANY_REFIT                          :{SPACE}(Transfer normal cargo and wait for any full normal cargo load with refit to {STRING})
+STR_ORDER_NO_UNLOAD_REFIT                                       :{SPACE}(No normal cargo unloading and take normal cargo with refit to {STRING})
+STR_ORDER_NO_UNLOAD_FULL_LOAD_REFIT                             :{SPACE}(No normal cargo unloading and wait for full normal cargo load with refit to {STRING})
+STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY_REFIT                         :{SPACE}(No normal cargo unloading and wait for any full normal cargo load with refit to {STRING})
 
 STR_ORDER_AUTO_REFIT_ANY                                        :available cargo
 
@@ -5639,6 +5709,8 @@ STR_ERROR_CAN_T_RENAME_AIRCRAFT_TYPE                            :Can't rename ai
 ###length VEHICLE_TYPES
 STR_ERROR_CAN_T_SELL_TRAIN                                      :Can't sell railway vehicle...
 STR_ERROR_CAN_T_SELL_ROAD_VEHICLE                               :Can't sell road vehicle...
+STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIED                      :Can't sell a vehicle (car) which is being transported
+STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIER                      :Unload the carried vehicles (car) first
 STR_ERROR_CAN_T_SELL_SHIP                                       :Can't sell ship...
 STR_ERROR_CAN_T_SELL_AIRCRAFT                                   :Can't sell aircraft...
 
@@ -5686,6 +5758,7 @@ STR_ERROR_TOO_MANY_ORDERS                                       :too many orders
 STR_ERROR_CAN_T_INSERT_NEW_ORDER                                :Can't insert new order...
 STR_ERROR_CAN_T_DELETE_THIS_ORDER                               :Can't delete this order...
 STR_ERROR_CAN_T_MODIFY_THIS_ORDER                               :Can't modify this order...
+STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY                       :Vehicles (car) transport can only be set on a station order
 STR_ERROR_CAN_T_MOVE_THIS_ORDER                                 :Can't move this order...
 STR_ERROR_CAN_T_SKIP_ORDER                                      :Can't skip current order...
 STR_ERROR_CAN_T_SKIP_TO_ORDER                                   :Can't skip to selected order...

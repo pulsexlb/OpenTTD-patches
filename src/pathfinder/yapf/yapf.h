@@ -49,6 +49,23 @@ bool YapfShipCheckReverse(const Ship *v, Trackdir *trackdir);
 Trackdir YapfRoadVehicleChooseTrack(const RoadVehicle *v, TileIndex tile, DiagDirection enterdir, TrackdirBits trackdirs, bool &path_found, RoadVehPathCache &path_cache);
 
 /**
+ * Cost of the cheapest path a road vehicle could drive from a road tile to a station, or UINT32_MAX
+ * when it cannot get there within the node budget. The vehicle is not touched at all (no path cache,
+ * no "pathfinder lost" handling), so this can be called repeatedly to compare candidate tiles.
+ * @param v                the RV the path is for
+ * @param tile             the road tile to start from
+ * @param enterdir         diagonal direction which the RV enters this tile from
+ * @param station          the station to drive to
+ * @param travel_direction direction the RV must be travelling in on arrival, or DiagDirection::Invalid
+ * @param max_nodes        node budget for this search
+ * @param cost            [out] cost of the path, only valid when this returns true
+ * @return whether the station was reached; false means the node budget ran out or there is no path
+ *         at all, and  cost then does not describe the distance to the station
+ */
+bool YapfRoadVehicleProbeToStation(const RoadVehicle *v, TileIndex tile, DiagDirection enterdir, StationID station,
+		DiagDirection travel_direction, int max_nodes, int &cost);
+
+/**
  * Finds the best path for given train using YAPF.
  * @param v        the train that needs to find a path
  * @param tile     the tile to find the path from (should be next tile the train is about to enter)

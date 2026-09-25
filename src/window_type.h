@@ -260,6 +260,12 @@ enum class WindowClass : uint16_t {
 	VehicleCargoTypeUnloadOrders,
 
 	/**
+	 * Road vehicle transport (RoRo) selection criteria of an order; %Window numbers:
+	 *   - #VehicleID = #RVTransportCriteriaWidgets
+	 */
+	VehicleRVTransportCriteria,
+
+	/**
 	 * Vehicle order import errors; %Window numbers:
 	 *   - #VehicleID = #OrderWidgets
 	 */

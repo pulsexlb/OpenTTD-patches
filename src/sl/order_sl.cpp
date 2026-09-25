@@ -14,6 +14,7 @@
 #include "../network/network.h"
 
 #include "saveload_internal.h"
+#include "extended_ver_sl.h"
 #include "vehicle_sl.h"
 
 #include "../safeguards.h"
@@ -138,12 +139,24 @@ NamedSaveLoadTable GetOrderExtraInfoDescription()
 {
 	static const NamedSaveLoad _order_extra_info_desc[] = {
 		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, 32,        SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 1, 2))),
-		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_CARGO, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 3))),
+		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_GRF_CARGO, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 3, 4))),
+		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_CARGO,     SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 5))),
 		NSL("xflags",           SLE_CONDVAR_X(OrderExtraInfo, xflags,           SLE_UINT8,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA))),
 		NSL("xdata",            SLE_CONDVAR_X(OrderExtraInfo, xdata,           SLE_UINT32,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_EXTRA_DATA))),
 		NSL("xdata2",           SLE_CONDVAR_X(OrderExtraInfo, xdata2,          SLE_UINT32,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_EXTRA_DATA, 3))),
 		NSL("dispatch_index",   SLE_CONDVAR_X(OrderExtraInfo, dispatch_index,  SLE_UINT16,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_SCHEDULED_DISPATCH, 3))),
 		NSL("colour",           SLE_CONDVAR_X(OrderExtraInfo, colour,           SLE_UINT8,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_EXTRA_DATA, 2))),
+		NSL("rv_transport_flags", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_flags, SLE_UINT8,       SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
+		NSL("rv_transport_max", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_max, SLE_UINT8,           SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
+		/* Selection criteria, added with feature version 2 (older saves simply have no criteria). */
+		NSL("rv_transport_load_state", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_load_state, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
+		NSL("rv_transport_cargo_mode", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_cargo_mode, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
+		NSL("rv_transport_cargo", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_cargo, SLE_UINT8,       SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
+		NSL("rv_transport_min_wait", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_min_wait, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
+		/* Reserved field of a dropped criterion; kept so that feature version 2 savegames still load. */
+		NSL("rv_transport_dest_station", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_dest_station, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
+		/* Selection criteria added with feature version 3. */
+		NSL("rv_transport_slot", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_slot, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 3))),
 	};
 
 	return _order_extra_info_desc;

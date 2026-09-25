@@ -595,7 +595,7 @@ static bool DisasterTick_Big_Ufo(DisasterVehicle *v)
 		v->state = 2;
 
 		for (Vehicle *target : Vehicle::Iterate()) {
-			if (target->IsGroundVehicle() && !HasBit(target->subtype, GVSF_VIRTUAL)) {
+			if (target->IsGroundVehicle() && !target->IsVirtualOrCarried()) {
 				if (Delta(target->x_pos, v->x_pos) + Delta(target->y_pos, v->y_pos) <= 12 * (int)TILE_SIZE) {
 					target->breakdown_ctr = 5;
 					target->breakdown_delay = 0xF0;

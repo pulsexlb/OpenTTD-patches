@@ -70,17 +70,32 @@ static constexpr CargoLabel CT_BUBBLES{'BUBL'};
 static constexpr CargoLabel CT_PLASTIC{'PLST'};
 static constexpr CargoLabel CT_FIZZY_DRINKS{'FZDR'};
 
+/** Dedicated cargo for road vehicle transport: trains refit to it to carry road vehicles (label "VEHC", VEHicle Car). */
+static constexpr CargoLabel CT_VEHICLES{'VEHC'};
+
 /** Dummy label for engines that carry no cargo; they actually carry 0 passengers. */
 static constexpr CargoLabel CT_NONE = CT_PASSENGERS;
 
 static constexpr CargoLabel CT_INVALID{UINT32_MAX}; ///< Invalid cargo type.
 
 static constexpr CargoType NUM_ORIGINAL_CARGO{12}; ///< Original number of cargo types.
-static constexpr CargoType NUM_CARGO{64}; ///< Maximum number of cargo types in a game.
+static constexpr CargoType NUM_GRF_CARGO{64}; ///< Maximum number of cargo types which a NewGRF can define. Kept at 64 so that the slots above it stay reserved for internal use.
+static constexpr CargoType NUM_CARGO{128}; ///< Maximum number of cargo types in a game.
+static constexpr CargoType RV_TRANSPORT_CARGO_SLOT{NUM_CARGO - 1}; ///< Cargo slot reserved for the built-in "Vehicles (Road)" cargo (road vehicle transport). Must be outside the NewGRF range.
+
+/* The built-in cargoes are identified by their slot, never by their label: a NewGRF is free to
+ * define a cargo with the same label (CT_VEHICLES), and BuildCargoLabelMap() resolves duplicate
+ * labels to the lowest slot, which would shadow the built-in cargo. */
+
+static_assert(NUM_GRF_CARGO <= NUM_CARGO);
+static_assert(RV_TRANSPORT_CARGO_SLOT >= NUM_GRF_CARGO);
 
 /* CARGO_AUTO_REFIT and CARGO_NO_REFIT are stored in save-games for refit-orders, so should not be changed. */
 static constexpr CargoType CARGO_AUTO_REFIT{0xFD}; ///< Automatically choose cargo type when doing auto refitting.
 static constexpr CargoType CARGO_NO_REFIT{0xFE}; ///< Do not refit cargo of a vehicle (used in vehicle orders and auto-replace/auto-renew).
+
+/* The special cargo filter criteria and pseudo cargoes must not collide with the special values above. */
+static_assert(NUM_CARGO + 6 < CARGO_AUTO_REFIT);
 
 static constexpr CargoType INVALID_CARGO{UINT8_MAX};
 
@@ -104,6 +119,8 @@ namespace CargoFilterCriteria {
 	static constexpr CargoType CF_NO_RATING{NUM_CARGO + 4}; ///< Show items with no rating (station list)
 	static constexpr CargoType CF_SELECT_ALL{NUM_CARGO + 5}; ///< Select all items (station list)
 	static constexpr CargoType CF_EXPAND_LIST{NUM_CARGO + 6}; ///< Expand list to show all items (station list)
+
+	static_assert(CF_EXPAND_LIST < CARGO_AUTO_REFIT);
 };
 
 /**
@@ -113,15 +130,14 @@ namespace CargoFilterCriteria {
  */
 inline bool IsValidCargoType(CargoType cargo) { return cargo != INVALID_CARGO; }
 
-/** Bitset of \c CargoType elements. */
-using CargoTypes = EnumBitSet<CargoType, uint64_t>;
+using CargoTypes = EnumBitSet<CargoType, Uint128, NUM_CARGO>;
 
 template <>
 struct BaseBitSetEnableDirectIteration<CargoTypes> {
 	static const bool value = true;
 };
 
-static constexpr CargoTypes ALL_CARGOTYPES{UINT64_MAX};
+static constexpr CargoTypes ALL_CARGOTYPES{~Uint128{}};
 
 /** Class for storing amounts of cargo */
 struct CargoArray : std::array<uint, NUM_CARGO> {

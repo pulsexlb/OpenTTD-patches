@@ -360,6 +360,12 @@ public:
 	inline CargoType Cargo() const { return this->cargo; }
 
 	/**
+	 * Set the cargo type this component's link graph refers to.
+	 * @param new_cargo New cargo type.
+	 */
+	inline void SetCargo(CargoType new_cargo) { this->cargo = new_cargo; }
+
+	/**
 	 * Scale a value to its monthly equivalent, based on last compression.
 	 * @param base Value to be scaled.
 	 * @return Scaled value.

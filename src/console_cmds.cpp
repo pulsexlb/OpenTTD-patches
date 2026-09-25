@@ -51,6 +51,12 @@
 #include "aircraft.h"
 #include "airport.h"
 #include "station_base.h"
+#include "order_cmd.h"
+#include "roadveh_transport.h"
+#include "train.h"
+#include "tracerestrict.h"
+#include "tracerestrict_cmd.h"
+#include "vehicle_base.h"
 #include "waypoint_base.h"
 #include "waypoint_func.h"
 #include "economy_func.h"
@@ -4447,6 +4453,753 @@ static bool ConDumpInfo(std::span<std::string_view> argv)
 	return false;
 }
 
+/*
+ * Road vehicle transport (RoRo): the 'rvtransport' console command is a debug and self-test tool
+ * used by the regression scripts in testrun\, not something a player needs. It is only compiled in
+ * when the CMake option RORO_DEBUG_COMMANDS is enabled (off by default), so that a playtest build
+ * has no such command at all. Everything it needs - including the debug helpers of
+ * roadveh_transport.h - lives behind the same guard.
+ */
+#ifdef RORO_DEBUG_COMMANDS
+
+/**
+ * Debug and self-test command for the road vehicle transport (RoRo) feature.
+ */
+/**
+ * RoRo debug helper: copy the road vehicle transport fields of an order list entry into the
+ * vehicle's current order. The loading loop reads the current order copy and a paused vehicle does
+ * not re-read its order list, so the debug commands have to keep the two in sync; they are debug
+ * commands, so this is done unconditionally.
+ */
+static void RVTransportDebugSyncCurrentOrder(Vehicle *v, VehicleOrderID order_index)
+{
+	if (v == nullptr) return;
+	const Order *o = v->GetOrder(order_index);
+	if (o == nullptr) return;
+	v->current_order.GetRVTransportFlagsRef() = o->GetRVTransportFlags();
+	v->current_order.GetRVTransportLoadStateRef() = o->GetRVTransportLoadState();
+	v->current_order.GetRVTransportCargoModeRef() = o->GetRVTransportCargoMode();
+	v->current_order.GetRVTransportCargoRef() = o->GetRVTransportCargo();
+	v->current_order.GetRVTransportMinWaitRef() = o->GetRVTransportMinWait();
+	v->current_order.GetRVTransportSlotRef() = o->GetRVTransportSlot();
+	v->current_order.GetRVTransportMaxRef() = o->GetRVTransportMax();
+}
+
+static bool ConRVTransport(std::span<std::string_view> argv)
+{
+	auto get_veh = [](std::string_view s) -> Vehicle * {
+		/* Convenience: 'firstrv' / 'firsttrain' pick the first front vehicle of that type. */
+		if (StrEqualsIgnoreCase(s, "firstrv")) {
+			for (Vehicle *v : Vehicle::Iterate()) {
+				if (v->type == VehicleType::Road && v->IsFrontEngine()) return v;
+			}
+			return nullptr;
+		}
+		if (StrEqualsIgnoreCase(s, "firsttrain")) {
+			for (Vehicle *v : Vehicle::Iterate()) {
+				if (v->type == VehicleType::Train && v->IsFrontEngine()) return v;
+			}
+			return nullptr;
+		}
+		return Vehicle::GetIfValid(ParseType<VehicleID>(s).value_or(VehicleID::Invalid()));
+	};
+
+	if (argv.size() < 2) {
+		IConsolePrint(CC_HELP, "Road vehicle transport (RoRo) debug command. Usage:");
+		IConsolePrint(CC_HELP, "  rvtransport list");
+		IConsolePrint(CC_HELP, "  rvtransport wait <vehicle_id> on|off");
+		IConsolePrint(CC_HELP, "  rvtransport orderflag <vehicle_id> load|unload");
+		IConsolePrint(CC_HELP, "  rvtransport modify <vehicle_id> <order_index> load|unload|dest   (uses the real order-modify command)");
+		IConsolePrint(CC_HELP, "  rvtransport attach <carrier_id> <rv_id> [force]");
+		IConsolePrint(CC_HELP, "  rvtransport toggle <vehicle_id> <order_nr> load|unload|dest|wait");
+		IConsolePrint(CC_HELP, "  rvtransport setflags <vehicle_id> <order_nr> <flags>");
+		IConsolePrint(CC_HELP, "  rvtransport destroy <vehicle_id>");
+		IConsolePrint(CC_HELP, "  rvtransport criteria <vehicle_id> <order_nr> loadstate any|empty|full");
+		IConsolePrint(CC_HELP, "  rvtransport criteria <vehicle_id> <order_nr> cargo any|<cargo_id> [carrying]");
+		IConsolePrint(CC_HELP, "  rvtransport criteria <vehicle_id> <order_nr> minwait <days>");
+		IConsolePrint(CC_HELP, "  rvtransport criteria <vehicle_id> <order_nr> slot any|<slot_id>");
+		IConsolePrint(CC_HELP, "  rvtransport criteria <vehicle_id> <order_nr> max <count>   # 0 = no limit");
+		IConsolePrint(CC_HELP, "  rvtransport mkslot <name> [max_occupancy]   # create a road vehicle slot");
+		IConsolePrint(CC_HELP, "  rvtransport slot <vehicle_id> <slot_id> on|off");
+		IConsolePrint(CC_HELP, "  rvtransport carried <carrier_id>");
+		IConsolePrint(CC_HELP, "  rvtransport release <rv_id>");
+		IConsolePrint(CC_HELP, "  rvtransport detach <carrier_id> <station_id> [force]");
+		IConsolePrint(CC_HELP, "  rvtransport selftest");
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "list")) {
+		IConsolePrint(CC_DEFAULT, "road vehicles (up to 12):");
+		int n = 0;
+		for (Vehicle *v : Vehicle::Iterate()) {
+			if (v->type != VehicleType::Road || !v->IsFrontEngine()) continue;
+			IConsolePrint(CC_DEFAULT, "  rv #{} tile=0x{:X} flags={} stopped={} hidden={} on_board={}",
+					v->index.base(), v->tile.base(), v->rv_transport_flags,
+					v->vehstatus.Test(VehState::Stopped), v->vehstatus.Test(VehState::Hidden), RVTransportCountOnCarrier(v));
+			if (++n >= 12) break;
+		}
+		IConsolePrint(CC_DEFAULT, "carriers (up to 12 trains/ships/aircraft):");
+		n = 0;
+		for (Vehicle *v : Vehicle::Iterate()) {
+			if (v->type != VehicleType::Train && v->type != VehicleType::Ship && v->type != VehicleType::Aircraft) continue;
+			if (!v->IsPrimaryVehicle()) continue;
+			IConsolePrint(CC_DEFAULT, "  #{} type={} tile=0x{:X} carrying={}",
+					v->index.base(), (int)v->type, v->tile.base(), RVTransportCountOnCarrier(v));
+			if (++n >= 12) break;
+		}
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "state")) {
+		if (argv.size() != 3) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		IConsolePrint(CC_DEFAULT, "vehicle #{}: type={} flags={} tile={} hidden={} stopped={} by={} part={} weight={} waiting_tick={}",
+				v->index.base(), (int)v->type, v->rv_transport_flags, v->tile.base(),
+				v->vehstatus.Test(VehState::Hidden), v->vehstatus.Test(VehState::Stopped),
+				v->transported_by.base(), v->transported_host_part.base(), v->transported_weight, v->transport_wait_tick);
+		if (v->type == VehicleType::Road) {
+			/* Show every part of an articulated road vehicle: all of them must be carried together. */
+			uint parts = 0;
+			for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
+				IConsolePrint(CC_DEFAULT, "  part {}: #{} flags={} tile=0x{:X} hidden={} stopped={} state={} artic={}",
+						parts, u->index.base(), u->rv_transport_flags, u->tile.base(),
+						u->vehstatus.Test(VehState::Hidden), u->vehstatus.Test(VehState::Stopped),
+						(int)RoadVehicle::From(u)->state, u->IsArticulatedPart());
+				IConsolePrint(CC_DEFAULT, "    cargo: type={} cap={} stored={} group={}",
+						(int)u->cargo_type, u->cargo_cap, u->cargo.StoredCount(), u->group_id.base());
+				parts++;
+			}
+			IConsolePrint(CC_DEFAULT, "  weights: unladen={}t on_board={} parts={}", RVTransportGetVehicleWeightTonnes(v), RVTransportCountOnCarrier(v), parts);
+			IConsolePrint(CC_DEFAULT, "  declared_dest={} (station the road vehicle itself wants to be dropped at)",
+					RVTransportGetDeclaredDestination(v).base());
+			std::vector<TraceRestrictSlotID> held_slots;
+			TraceRestrictGetVehicleSlots(v->index, held_slots);
+			for (const TraceRestrictSlotID slot : held_slots) {
+				IConsolePrint(CC_DEFAULT, "  slot: {} (name='{}')", slot.base(), TraceRestrictSlot::Get(slot)->name);
+			}
+		} else if (v->type == VehicleType::Train) {
+			/* Show that the carrier is heavier while it carries road vehicles (ConsistChanged()
+			 * recomputes the cached weight, which includes them). */
+			const uint32_t carried = RVTransportGetCarriedWeightTonnes(v);
+			const uint32_t total = Train::From(v)->gcache.cached_weight;
+			IConsolePrint(CC_DEFAULT, "  weights: carried={}t total_incl_carried={}t own={}t",
+					carried, total, (total >= carried) ? total - carried : 0);
+		}
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "wait")) {
+		if (argv.size() != 4) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		const bool on = StrEqualsIgnoreCase(argv[3], "on");
+		RVTransportSetWaiting(v, on);
+		IConsolePrint(CC_DEFAULT, "vehicle #{} waiting={} flags={}", v->index.base(), on, v->rv_transport_flags);
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "orderflag")) {
+		if (argv.size() != 4) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		uint8_t bit = 0;
+		if (StrEqualsIgnoreCase(argv[3], "load")) bit = ORVTF_LOAD;
+		else if (StrEqualsIgnoreCase(argv[3], "unload")) bit = ORVTF_UNLOAD;
+		else if (StrEqualsIgnoreCase(argv[3], "unloadall")) bit = ORVTF_UNLOAD_ALL;
+		else { IConsolePrint(CC_ERROR, "flag must be 'load', 'unload' or 'unloadall'"); return true; }
+		v->current_order.GetRVTransportFlagsRef() |= bit;
+		Order *o = v->GetOrder(v->cur_real_order_index);
+		if (o != nullptr) o->GetRVTransportFlagsRef() |= bit;
+		IConsolePrint(CC_DEFAULT, "orderflag: vehicle #{} flags={} (order list entry updated={})",
+				v->index.base(), v->current_order.GetRVTransportFlags(), o != nullptr);
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "modify")) {
+		if (argv.size() != 5) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		const VehicleOrderID order_index = ParseType<VehicleOrderID>(argv[3]).value_or(INVALID_VEH_ORDER_ID);
+		if (order_index == INVALID_VEH_ORDER_ID) { IConsolePrint(CC_ERROR, "invalid order index"); return true; }
+		uint8_t bit = 0;
+		if (StrEqualsIgnoreCase(argv[4], "load")) bit = ORVTF_LOAD;
+		else if (StrEqualsIgnoreCase(argv[4], "unload")) bit = ORVTF_UNLOAD;
+		else if (StrEqualsIgnoreCase(argv[4], "dest")) bit = ORVTF_MATCH_DEST;
+		else if (StrEqualsIgnoreCase(argv[4], "wait")) bit = ORVTF_WAIT;
+		else if (StrEqualsIgnoreCase(argv[4], "unloadall")) bit = ORVTF_UNLOAD_ALL;
+		else { IConsolePrint(CC_ERROR, "flag must be 'load', 'unload', 'dest', 'wait' or 'unloadall'"); return true; }
+		const Order *o = v->GetOrder(order_index);
+		if (o == nullptr) { IConsolePrint(CC_ERROR, "order {} not found (vehicle has {} orders)", order_index, v->GetNumOrders()); return true; }
+		uint8_t nflags = o->GetRVTransportFlags();
+		nflags = ((nflags & bit) != 0) ? (nflags & ~bit) : (nflags | bit);
+		/* Commands check ownership against the company executing them (_current_company); the GUI also uses
+		 * _local_company. Set both temporarily so this debug command works on a dedicated server too. */
+		const CompanyID old_local_company = _local_company;
+		const CompanyID old_current_company = _current_company;
+		_local_company = v->owner;
+		_current_company = v->owner;
+		const CommandCost res = CmdModifyOrder(DoCommandFlags{DoCommandFlag::Execute}, v->index, order_index, MOF_RV_TRANSPORT, nflags, INVALID_CARGO, std::string{});
+		_current_company = old_current_company;
+		_local_company = old_local_company;
+		const bool ok = res.Succeeded();
+		IConsolePrint(ok ? CC_DEFAULT : CC_ERROR, "modify: {} (vehicle #{}, order {}, station order {}, flags -> {}), error: {}",
+				ok ? "OK" : "FAILED", v->index.base(), order_index, o->IsType(OT_GOTO_STATION), nflags,
+				res.GetErrorMessage() != INVALID_STRING_ID ? GetString(res.GetErrorMessage()) : std::string("<none>"));
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "toggle")) {
+		/* Applies the same flag-consistency rules as the order window's check boxes, so that the
+		 * behaviour of the GUI can be exercised on a dedicated server. */
+		if (argv.size() != 5) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		const VehicleOrderID order_index = ParseType<VehicleOrderID>(argv[3]).value_or(INVALID_VEH_ORDER_ID);
+		if (order_index == INVALID_VEH_ORDER_ID) { IConsolePrint(CC_ERROR, "invalid order index"); return true; }
+		uint8_t bit = 0;
+		if (StrEqualsIgnoreCase(argv[4], "load")) bit = ORVTF_LOAD;
+		else if (StrEqualsIgnoreCase(argv[4], "unload")) bit = ORVTF_UNLOAD;
+		else if (StrEqualsIgnoreCase(argv[4], "dest")) bit = ORVTF_MATCH_DEST;
+		else if (StrEqualsIgnoreCase(argv[4], "wait")) bit = ORVTF_WAIT;
+		else if (StrEqualsIgnoreCase(argv[4], "unloadall")) bit = ORVTF_UNLOAD_ALL;
+		else { IConsolePrint(CC_ERROR, "flag must be 'load', 'unload', 'dest', 'wait' or 'unloadall'"); return true; }
+		const Order *o = v->GetOrder(order_index);
+		if (o == nullptr) { IConsolePrint(CC_ERROR, "order {} not found (vehicle has {} orders)", order_index, v->GetNumOrders()); return true; }
+		const uint8_t old_flags = o->GetRVTransportFlags();
+		const uint8_t nflags = RVTransportToggleOrderFlag(old_flags, bit, v->type == VehicleType::Road);
+		const CompanyID old_local_company = _local_company;
+		const CompanyID old_current_company = _current_company;
+		_local_company = v->owner;
+		_current_company = v->owner;
+		const CommandCost res = CmdModifyOrder(DoCommandFlags{DoCommandFlag::Execute}, v->index, order_index, MOF_RV_TRANSPORT, nflags, INVALID_CARGO, std::string{});
+		_current_company = old_current_company;
+		_local_company = old_local_company;
+		const bool ok = res.Succeeded();
+		if (ok) RVTransportDebugSyncCurrentOrder(v, order_index);
+		IConsolePrint(ok ? CC_DEFAULT : CC_ERROR, "toggle: {} (vehicle #{} type={} order {} flags {} -> {}), error: {}",
+				ok ? "OK" : "FAILED", v->index.base(), (int)v->type, order_index, old_flags, nflags,
+				res.GetErrorMessage() != INVALID_STRING_ID ? GetString(res.GetErrorMessage()) : std::string("<none>"));
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "setflags")) {
+		/* Raw setter, used to put an order into a known state before testing the toggling rules. */
+		if (argv.size() != 5) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		const VehicleOrderID order_index = ParseType<VehicleOrderID>(argv[3]).value_or(INVALID_VEH_ORDER_ID);
+		if (order_index == INVALID_VEH_ORDER_ID) { IConsolePrint(CC_ERROR, "invalid order index"); return true; }
+		const uint8_t nflags = ParseType<uint8_t>(argv[4]).value_or(0);
+		const Order *o = v->GetOrder(order_index);
+		if (o == nullptr) { IConsolePrint(CC_ERROR, "order {} not found (vehicle has {} orders)", order_index, v->GetNumOrders()); return true; }
+		const CompanyID old_local_company = _local_company;
+		const CompanyID old_current_company = _current_company;
+		_local_company = v->owner;
+		_current_company = v->owner;
+		const CommandCost res = CmdModifyOrder(DoCommandFlags{DoCommandFlag::Execute}, v->index, order_index, MOF_RV_TRANSPORT, nflags, INVALID_CARGO, std::string{});
+		_current_company = old_current_company;
+		_local_company = old_local_company;
+		const bool ok = res.Succeeded();
+		if (ok) RVTransportDebugSyncCurrentOrder(v, order_index);
+		IConsolePrint(ok ? CC_DEFAULT : CC_ERROR, "setflags: {} (vehicle #{} order {} -> {}), error: {}",
+				ok ? "OK" : "FAILED", v->index.base(), order_index, nflags,
+				res.GetErrorMessage() != INVALID_STRING_ID ? GetString(res.GetErrorMessage()) : std::string("<none>"));
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "destroy")) {
+		/* Destroy a vehicle, to test what happens to the road vehicles it carries. Uses the same
+		 * emergency path as the built-in 'delete_vehicle_id' command, which is registered for
+		 * non-network (GUI) clients only and therefore unavailable on a dedicated server. */
+		if (argv.size() != 3) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		const VehicleID id = v->index;
+		extern void ConsoleRemoveVehicle(VehicleID id);
+		ConsoleRemoveVehicle(id);
+		IConsolePrint(CC_DEFAULT, "destroy: vehicle #{} (still present after destroy: {})", id.base(), Vehicle::GetIfValid(id) != nullptr);
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "orders")) {
+		if (argv.size() != 3) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		IConsolePrint(CC_DEFAULT, "vehicle #{} type={} has {} orders (current index {}):",
+				v->index.base(), (int)v->type, v->GetNumOrders(), v->cur_real_order_index);
+		for (VehicleOrderID i = 0; i < v->GetNumOrders(); i++) {
+			const Order *o = v->GetOrder(i);
+			if (o == nullptr) continue;
+			const uint8_t rvf = o->GetRVTransportFlags();
+			/* The station of a station order is printed by id and name: the game itself only shows the
+			 * name, and two stations can share one. */
+			std::string dest = "<none>";
+			int dest_id = -1;
+			if (o->IsType(OT_GOTO_STATION)) {
+				const StationID st_id = o->GetDestination().ToStationID();
+				dest_id = (int)st_id.base();
+				dest = Station::IsValidID(st_id) ? GetString(STR_STATION_NAME, st_id) : std::string("<invalid>");
+			}
+			IConsolePrint(CC_DEFAULT, "  [{}] station={} depot={} waypoint={} dest={} '{}' load={} unload={} rvflags={}{}{}{}{}",
+					i, o->IsType(OT_GOTO_STATION), o->IsType(OT_GOTO_DEPOT), o->IsType(OT_GOTO_WAYPOINT),
+					dest_id, dest,
+					(int)o->GetLoadType(), (int)o->GetUnloadType(), rvf,
+					((rvf & ORVTF_LOAD) != 0) ? " RV_LOAD" : "",
+					((rvf & ORVTF_UNLOAD) != 0) ? " RV_UNLOAD" : "",
+					((rvf & ORVTF_MATCH_DEST) != 0) ? " RV_MATCH_DEST" : "",
+					((rvf & ORVTF_UNLOAD_ALL) != 0) ? " RV_UNLOAD_ALL" : "");
+		}
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "sim")) {
+		/* Simulate the carrier-side scan: put a road vehicle into the waiting state at the carrier's
+		 * current order station, then run exactly the same lookup + attach the load loop uses. */
+		if (argv.size() < 4) return false;
+		Vehicle *carrier = get_veh(argv[2]);
+		Vehicle *rv = get_veh(argv[3]);
+		if (carrier == nullptr || rv == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		carrier = carrier->First();
+		const StationID st_id = carrier->current_order.GetDestination().ToStationID();
+		Station *st = Station::GetIfValid(st_id);
+		if (st == nullptr) { IConsolePrint(CC_ERROR, "carrier's current order has no station destination"); return true; }
+
+		rv->last_station_visited = st->index;
+		RVTransportSetWaiting(rv, true);
+		IConsolePrint(CC_DEFAULT, "sim: rv #{} waiting at station #{} flags={} stopped={}",
+				rv->index.base(), st->index.base(), rv->rv_transport_flags, rv->vehstatus.Test(VehState::Stopped));
+
+		const uint8_t rvf = carrier->current_order.GetRVTransportFlags();
+		Vehicle *found = RVTransportFindWaitingAtStation(st, carrier); // applies the order's selection criteria
+		const bool attached = (found != nullptr) ? RVTransportAttachAuto(carrier, found, false) : false;
+		IConsolePrint(attached ? CC_DEFAULT : CC_ERROR, "sim: scan found={} attached={} carrying={} (carrier order rvflags={} declared dest of rv={} criteria={})",
+				found != nullptr, attached, RVTransportCountOnCarrier(carrier), rvf, RVTransportGetDeclaredDestination(rv).base(),
+				RVTransportOrderHasCriteria(carrier->current_order));
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "setwaiting")) {
+		/* Debug helper: put a road vehicle into the waiting state at the station of a carrier's current
+		 * order, without loading it (the first half of what `sim` does). Lets a script set up the
+		 * station state and then trigger the loading code path from a *part* of the carrier. */
+		if (argv.size() != 4) return false;
+		Vehicle *carrier = get_veh(argv[2]);
+		Vehicle *rv = get_veh(argv[3]);
+		if (carrier == nullptr || rv == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		if (rv->type != VehicleType::Road) { IConsolePrint(CC_ERROR, "not a road vehicle"); return true; }
+		carrier = carrier->First();
+		Station *st = Station::GetIfValid(carrier->current_order.GetDestination().ToStationID());
+		if (st == nullptr) { IConsolePrint(CC_ERROR, "carrier's current order has no station destination"); return true; }
+		rv->last_station_visited = st->index;
+		RVTransportSetWaiting(rv, true);
+		IConsolePrint(CC_DEFAULT, "setwaiting: rv #{} waiting at station #{} flags={} stopped={}",
+				rv->index.base(), st->index.base(), rv->rv_transport_flags, rv->vehstatus.Test(VehState::Stopped));
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "loadfrom")) {
+		/* Debug helper: run the carrier-side loading code of LoadUnloadVehicle() as if the given
+		 * *part* of the carrier had entered the station. A multi-part carrier (a multi-hold ship, for
+		 * instance) is processed part by part, while the road vehicles it carries belong to the front
+		 * vehicle, so this is the path which has to resolve the part to its carrier. */
+		if (argv.size() != 4) return false;
+		Vehicle *part = get_veh(argv[2]);
+		Vehicle *rv = get_veh(argv[3]);
+		if (part == nullptr || rv == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		Vehicle *carrier = part->First();
+		Station *st = Station::GetIfValid(carrier->current_order.GetDestination().ToStationID());
+		if (st == nullptr) { IConsolePrint(CC_ERROR, "carrier's current order has no station destination"); return true; }
+
+		const uint8_t rvf = carrier->current_order.GetRVTransportFlags();
+		Vehicle *found = RVTransportFindWaitingAtStation(st, carrier);
+		const bool attached = (found != nullptr) ? RVTransportAttachAuto(carrier, found, false) : false;
+		IConsolePrint(CC_DEFAULT, "loadfrom: part #{} -> carrier #{} order rvflags={} found={} attached={} carrying={}",
+				part->index.base(), carrier->index.base(), rvf, found != nullptr, attached, RVTransportCountOnCarrier(carrier));
+		Vehicle *first = RVTransportFindFirstOnCarrier(carrier);
+		if (first != nullptr) {
+			IConsolePrint(CC_DEFAULT, "loadfrom: carried rv #{} by={} host_part={}", first->index.base(),
+					first->transported_by.base(), first->transported_host_part.base());
+		}
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "criteria")) {
+		/* Set one selection criterion of a station order, in the same way the order window does (the
+		 * debug command exists so that the criteria can be exercised on a dedicated server). */
+		if (argv.size() < 6) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		const VehicleOrderID order_index = ParseType<VehicleOrderID>(argv[3]).value_or(INVALID_VEH_ORDER_ID);
+		if (order_index == INVALID_VEH_ORDER_ID) { IConsolePrint(CC_ERROR, "invalid order index"); return true; }
+		const Order *o = v->GetOrder(order_index);
+		if (o == nullptr) { IConsolePrint(CC_ERROR, "order {} not found (vehicle has {} orders)", order_index, v->GetNumOrders()); return true; }
+
+		ModifyOrderFlags mof = MOF_END;
+		uint16_t data = 0;
+		CargoType cargo = INVALID_CARGO;
+		const std::string_view key = argv[4];
+		const std::string_view value = argv[5];
+
+		if (StrEqualsIgnoreCase(key, "loadstate")) {
+			mof = MOF_RV_LOAD_STATE;
+			if (StrEqualsIgnoreCase(value, "any")) data = RVTLS_ANY;
+			else if (StrEqualsIgnoreCase(value, "empty")) data = RVTLS_EMPTY;
+			else if (StrEqualsIgnoreCase(value, "full")) data = RVTLS_FULL;
+			else { IConsolePrint(CC_ERROR, "loadstate must be 'any', 'empty' or 'full'"); return true; }
+		} else if (StrEqualsIgnoreCase(key, "cargo")) {
+			mof = MOF_RV_CARGO_MODE;
+			if (StrEqualsIgnoreCase(value, "any") || StrEqualsIgnoreCase(value, "none")) {
+				data = RVTC_ANY;
+			} else {
+				const CargoType c = static_cast<CargoType>(ParseType<uint8_t>(value).value_or(0xFF));
+				if (!IsValidCargoType(c)) { IConsolePrint(CC_ERROR, "cargo must be <cargo id>, 'any' or 'none'"); return true; }
+				cargo = c;
+				data = (argv.size() > 6 && StrEqualsIgnoreCase(argv[6], "carrying")) ? RVTC_IS_CARRYING : RVTC_CAN_CARRY;
+			}
+		} else if (StrEqualsIgnoreCase(key, "minwait")) {
+			mof = MOF_RV_MIN_WAIT;
+			data = ParseType<uint16_t>(value).value_or(0);
+		} else if (StrEqualsIgnoreCase(key, "slot")) {
+			mof = MOF_RV_SLOT;
+			if (StrEqualsIgnoreCase(value, "any") || StrEqualsIgnoreCase(value, "none")) {
+				data = 0;
+			} else {
+				const uint16_t slot_raw = ParseType<uint16_t>(value).value_or(0xFFFF);
+				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{slot_raw});
+				if (slot == nullptr) { IConsolePrint(CC_ERROR, "slot must be <slot id>, 'any' or 'none'"); return true; }
+				data = static_cast<uint16_t>(slot_raw + 1);
+			}
+		} else if (StrEqualsIgnoreCase(key, "max")) {
+			mof = MOF_RV_MAX;
+			data = ParseType<uint16_t>(value).value_or(0);
+		} else {
+			IConsolePrint(CC_ERROR, "criteria key must be 'loadstate', 'cargo', 'minwait', 'slot' or 'max'");
+			return true;
+		}
+
+		const CompanyID old_local_company = _local_company;
+		const CompanyID old_current_company = _current_company;
+		_local_company = v->owner;
+		_current_company = v->owner;
+		const CommandCost res = CmdModifyOrder(DoCommandFlags{DoCommandFlag::Execute}, v->index, order_index, mof, data, cargo, std::string{});
+		_current_company = old_current_company;
+		_local_company = old_local_company;
+		const bool ok = res.Succeeded();
+		if (ok) RVTransportDebugSyncCurrentOrder(v, order_index);
+		IConsolePrint(ok ? CC_DEFAULT : CC_ERROR, "criteria: {} (vehicle #{} order {} {}={}), load_state={} cargo_mode={} cargo={} min_wait={} slot={} max={}",
+				ok ? "OK" : "FAILED", v->index.base(), order_index, key, value,
+				o->GetRVTransportLoadState(), o->GetRVTransportCargoMode(), o->GetRVTransportCargo(),
+				o->GetRVTransportMinWait(), o->GetRVTransportSlot(), o->GetRVTransportMax());
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "mkslot")) {
+		/* Create a road vehicle trace restrict slot, so that the "slot" selection criterion can be
+		 * exercised without the GUI. The owner is the first company with a vehicle (a dedicated
+		 * server has no local company). */
+		if (argv.size() < 3) return false;
+		CompanyID owner = _local_company;
+		if (!Company::IsValidID(owner)) {
+			for (const Vehicle *v : Vehicle::Iterate()) {
+				if (v->type < VehicleType::CompanyEnd && Company::IsValidID(v->owner)) { owner = v->owner; break; }
+			}
+		}
+		if (!Company::IsValidID(owner)) { IConsolePrint(CC_ERROR, "no company to own the slot"); return true; }
+
+		TraceRestrictCreateSlotCmdData data;
+		data.vehtype = VehicleType::Road;
+		data.parent = INVALID_TRACE_RESTRICT_SLOT_GROUP;
+		data.name = std::string{argv[2]};
+		data.max_occupancy = (argv.size() > 3) ? ParseType<uint32_t>(argv[3]).value_or(TRACE_RESTRICT_SLOT_DEFAULT_MAX_OCCUPANCY) : TRACE_RESTRICT_SLOT_DEFAULT_MAX_OCCUPANCY;
+
+		const CompanyID old_local_company = _local_company;
+		const CompanyID old_current_company = _current_company;
+		_local_company = owner;
+		_current_company = owner;
+		const CommandCost res = CmdCreateTraceRestrictSlot(DoCommandFlags{DoCommandFlag::Execute}, data);
+		_current_company = old_current_company;
+		_local_company = old_local_company;
+		const bool ok = res.Succeeded();
+		TraceRestrictSlotID created = TraceRestrictSlotID::Invalid();
+		if (ok) {
+			for (const TraceRestrictSlot *slot : TraceRestrictSlot::Iterate()) {
+				if (slot->owner == owner && slot->name == data.name) { created = slot->index; break; }
+			}
+		}
+		IConsolePrint(ok ? CC_DEFAULT : CC_ERROR, "mkslot: {} (name='{}' id={} vehtype=road)", ok ? "OK" : "FAILED", data.name, created.base());
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "slot")) {
+		/* Add or remove a vehicle from a trace restrict slot (test helper for the slot criterion). */
+		if (argv.size() != 5) return false;
+		Vehicle *v = get_veh(argv[2]);
+		const uint16_t slot_raw = ParseType<uint16_t>(argv[3]).value_or(0xFFFF);
+		const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{slot_raw});
+		if (v == nullptr || slot == nullptr) { IConsolePrint(CC_ERROR, "vehicle or slot not found"); return true; }
+		const bool on = StrEqualsIgnoreCase(argv[4], "on");
+
+		const CompanyID old_local_company = _local_company;
+		const CompanyID old_current_company = _current_company;
+		_local_company = slot->owner;
+		_current_company = slot->owner;
+		const CommandCost res = on
+				? CmdAddVehicleTraceRestrictSlot(DoCommandFlags{DoCommandFlag::Execute}, slot->index, v->index)
+				: CmdRemoveVehicleTraceRestrictSlot(DoCommandFlags{DoCommandFlag::Execute}, slot->index, v->index);
+		_current_company = old_current_company;
+		_local_company = old_local_company;
+		const bool ok = res.Succeeded();
+		IConsolePrint(ok ? CC_DEFAULT : CC_ERROR, "slot: {} (vehicle #{} slot {} occupant={})",
+				ok ? "OK" : "FAILED", v->index.base(), slot_raw, TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{slot_raw})->IsOccupant(v->index));
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "row")) {
+		/* Debug: which road vehicle does line <row> of the train details "carried" tab show? This is the
+		 * mapping the window's click handler uses, so a script can check that clicking a line opens the
+		 * right vehicle. */
+		if (argv.size() != 4) return false;
+		Vehicle *carrier = get_veh(argv[2]);
+		if (carrier == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		const int row = ParseType<int>(argv[3]).value_or(-1);
+		extern const Vehicle *GetTrainDetailsCarriedVehicleRow(VehicleID veh_id, int row);
+		const Vehicle *rv = GetTrainDetailsCarriedVehicleRow(carrier->First()->index, row);
+		if (rv == nullptr) {
+			IConsolePrint(CC_ERROR, "row: carrier #{} line {} has no road vehicle", carrier->First()->index.base(), row);
+		} else {
+			IConsolePrint(CC_DEFAULT, "row: carrier #{} line {} -> rv #{} (unit={}, cargo={}/{}, weight={}t, declared_dest={})",
+					carrier->First()->index.base(), row, rv->index.base(), rv->unitnumber, rv->cargo.StoredCount(),
+					rv->cargo_cap, rv->transported_weight, RVTransportGetDeclaredDestination(rv).base());
+		}
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "carried")) {
+		/* List the road vehicles a carrier holds (the same list the train details window shows). */
+		if (argv.size() != 3) return false;
+		Vehicle *carrier = get_veh(argv[2]);
+		if (carrier == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		carrier = carrier->First();
+		std::vector<const Vehicle *> carried;
+		RVTransportGetCarriedVehicles(carrier, carried);
+		IConsolePrint(CC_DEFAULT, "carrier #{} holds {} road vehicle(s):", carrier->index.base(), carried.size());
+		for (const Vehicle *rv : carried) {
+			IConsolePrint(CC_DEFAULT, "  rv #{} unit={} cargo={} stored={} weight={}t declared_dest={}",
+					rv->index.base(), rv->unitnumber, (int)rv->cargo_type, rv->cargo.StoredCount(), rv->transported_weight,
+					RVTransportGetDeclaredDestination(rv).base());
+		}
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "setcurrent")) {
+		/* Debug helper: make one of the vehicle's orders its current order, optionally as if the
+		 * vehicle had just arrived at that station (the loading order which Vehicle::BeginLoading()
+		 * derives from it). Order-driven behaviour cannot be tested on a dedicated server otherwise,
+		 * because no vehicle can be driven around there. */
+		if (argv.size() < 4 || argv.size() > 5) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		const VehicleOrderID order_index = ParseType<VehicleOrderID>(argv[3]).value_or(INVALID_VEH_ORDER_ID);
+		if (order_index == INVALID_VEH_ORDER_ID) { IConsolePrint(CC_ERROR, "invalid order index"); return true; }
+		const Order *o = v->GetOrder(order_index);
+		if (o == nullptr) { IConsolePrint(CC_ERROR, "order {} not found (vehicle has {} orders)", order_index, v->GetNumOrders()); return true; }
+		v->current_order = *o;
+		v->cur_real_order_index = order_index;
+		if (argv.size() == 5 && StrEqualsIgnoreCase(argv[4], "loading")) v->current_order.MakeLoading(true);
+		IConsolePrint(CC_DEFAULT, "setcurrent: vehicle #{} order {} type={} station={} rvflags={} loading={}",
+				v->index.base(), order_index, (int)v->current_order.GetType(), v->current_order.IsType(OT_GOTO_STATION),
+				v->current_order.GetRVTransportFlags(), v->current_order.IsType(OT_LOADING));
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "dump")) {
+		/* Debug: dump everything about the road vehicle transport in this game (road vehicles with their
+		 * state and declared destination, carriers with their parts, orders and carried vehicles, and
+		 * whether the vehicles on board could be put down at the station the carrier is heading for). */
+		RVTransportDebugDump();
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "station")) {
+		/* Debug: rvtransport station <station_id> [rv_id] - why can (not) this road vehicle be put
+		 * down at this station? */
+		if (argv.size() < 3 || argv.size() > 4) return false;
+		const StationID st_id = ParseType<StationID>(argv[2]).value_or(StationID::Invalid());
+		Station *st = Station::GetIfValid(st_id);
+		if (st == nullptr) { IConsolePrint(CC_ERROR, "station not found"); return true; }
+		Vehicle *rv = (argv.size() == 4) ? get_veh(argv[3]) : nullptr;
+		RVTransportDebugStation(rv, st);
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "arrive")) {
+		/* Debug helper: run the engine's own station arrival for a vehicle (Vehicle::BeginLoading()),
+		 * which is what registers it in the station's list of loading vehicles and gives it a cargo
+		 * payment. Refuses when the vehicle still has a cargo payment (that would assert), so that a
+		 * script can build the "really arrived and waiting" state the game produces on its own. */
+		if (argv.size() != 3) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		if (v->cargo_payment != nullptr) { IConsolePrint(CC_ERROR, "arrive: vehicle #{} still has a cargo payment (already at a station?)", v->index.base()); return true; }
+		v->BeginLoading();
+		IConsolePrint(CC_DEFAULT, "arrive: vehicle #{} order type={} in a station loading list={} payment={} load_unload_ticks={} state={}",
+				v->index.base(), (int)v->current_order.GetType(), RVTransportDebugStationLists(v),
+				(v->cargo_payment != nullptr), v->load_unload_ticks, (int)RoadVehicle::From(v)->state);
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "invariants")) {
+		/* Debug: the state a carried road vehicle must not have left behind at the station it was
+		 * picked up at (see RVTransportLeaveBoardingStation()). */
+		if (argv.size() != 3) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		IConsolePrint(CC_DEFAULT, "invariants: vehicle #{} in a station loading list={} cargo_payment={} load_unload_ticks={} loading_finished={} current order type={} carried={}",
+				v->index.base(), RVTransportDebugStationLists(v), (v->cargo_payment != nullptr),
+				v->load_unload_ticks, v->vehicle_flags.Test(VehicleFlag::LoadingFinished),
+				(int)v->current_order.GetType(),
+				((v->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) != 0));
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "parts")) {
+		/* Show every part of a carrier: what cargo it holds, how many tonnes of road vehicles it can
+		 * take and whether it currently holds any (this is what decides which part a road vehicle is
+		 * loaded onto, and therefore whose sprite changes to the "loaded" one). */
+		if (argv.size() != 3) return false;
+		Vehicle *carrier = get_veh(argv[2]);
+		if (carrier == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		if (carrier->type == VehicleType::Road) { IConsolePrint(CC_ERROR, "a road vehicle is not a carrier"); return true; }
+
+		uint n = 0;
+		for (const Vehicle *u = carrier->First(); u != nullptr; u = u->Next(), n++) {
+			IConsolePrint(CC_DEFAULT, "  part {}: #{} cargo={} cap={} stored={} rv_capacity={}t rv_used={}t holds_rv={}",
+					n, u->index.base(), (int)u->cargo_type, u->cargo_cap, u->cargo.StoredCount(),
+					RVTransportGetPartCapacityTonnes(u), RVTransportGetPartUsedTonnes(u),
+					RVTransportPartHoldsRoadVehicles(u));
+		}
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "vscroll")) {
+		/* Verification helper: report the number of lines each tab of the train details window
+		 * contains. This is the logic which decides how far the list can be scrolled, so it is what
+		 * makes the carried road vehicles (listed at the end of the "vehicles" tab) reachable; it
+		 * does not draw anything, so it also works on a dedicated server. */
+		if (argv.size() != 3) return false;
+		Vehicle *v = get_veh(argv[2]);
+		if (v == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		if (v->type != VehicleType::Train) { IConsolePrint(CC_ERROR, "not a train (only trains use the matrix/scrollbar)"); return true; }
+
+		extern int GetTrainDetailsWndVScroll(VehicleID veh_id, TrainDetailsWindowTabs det_tab);
+		std::vector<const Vehicle *> carried;
+		RVTransportGetCarriedVehicles(v->First(), carried);
+		IConsolePrint(CC_DEFAULT, "vscroll: train #{} lines per tab: cargo={} info={} capacity={} totals={} perf={} carried_tab={}, carried={}",
+				v->First()->index.base(),
+				GetTrainDetailsWndVScroll(v->First()->index, TDW_TAB_CARGO),
+				GetTrainDetailsWndVScroll(v->First()->index, TDW_TAB_INFO),
+				GetTrainDetailsWndVScroll(v->First()->index, TDW_TAB_CAPACITY),
+				GetTrainDetailsWndVScroll(v->First()->index, TDW_TAB_TOTALS),
+				GetTrainDetailsWndVScroll(v->First()->index, TDW_TAB_PERF),
+				GetTrainDetailsWndVScroll(v->First()->index, TDW_TAB_CARRIED),
+				carried.size());
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "release")) {
+		/* Emergency release of a carried road vehicle (same code path used when a carrier is destroyed). */
+		if (argv.size() != 3) return false;
+		Vehicle *rv = get_veh(argv[2]);
+		if (rv == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		RVTransportForceRelease(rv);
+		IConsolePrint(CC_DEFAULT, "release: vehicle #{} flags={} hidden={} tile={}",
+				rv->index.base(), rv->rv_transport_flags, rv->vehstatus.Test(VehState::Hidden), rv->tile.base());
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "attach")) {
+		if (argv.size() < 4) return false;
+		Vehicle *carrier = get_veh(argv[2]);
+		Vehicle *rv = get_veh(argv[3]);
+		const bool force = argv.size() > 4 && StrEqualsIgnoreCase(argv[4], "force");
+		if (carrier == nullptr || rv == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		carrier = carrier->First();
+		const bool ok = RVTransportAttachAuto(carrier, rv, force);
+		IConsolePrint(ok ? CC_DEFAULT : CC_ERROR, "attach: {} (on board={}, flags={}, hidden={})",
+				ok ? "ok" : "failed", RVTransportCountOnCarrier(carrier), rv->rv_transport_flags, rv->vehstatus.Test(VehState::Hidden));
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "detach")) {
+		if (argv.size() < 3) return false;
+		Vehicle *carrier = get_veh(argv[2]);
+		if (carrier == nullptr) { IConsolePrint(CC_ERROR, "vehicle not found"); return true; }
+		carrier = carrier->First();
+		/* 'current' (or no station at all) means the station of the carrier's current order. */
+		Station *st = nullptr;
+		if (argv.size() < 4 || StrEqualsIgnoreCase(argv[3], "current")) {
+			st = Station::GetIfValid(carrier->current_order.GetDestination().ToStationID());
+		} else {
+			st = Station::GetIfValid(ParseType<StationID>(argv[3]).value_or(StationID::Invalid()));
+		}
+		if (st == nullptr) { IConsolePrint(CC_ERROR, "station not found"); return true; }
+		const bool force = argv.size() > 4 && StrEqualsIgnoreCase(argv[4], "force");
+		const bool ok = RVTransportDetachAtStation(carrier, st, force);
+		IConsolePrint(ok ? CC_DEFAULT : CC_ERROR, "detach: {} (on board={}, force={}, station #{})", ok ? "ok" : "failed", RVTransportCountOnCarrier(carrier), force, st->index.base());
+		return true;
+	}
+
+	if (StrEqualsIgnoreCase(argv[1], "selftest")) {
+		Vehicle *rv = nullptr;
+		for (Vehicle *v : Vehicle::Iterate()) {
+			if (v->type == VehicleType::Road && v->IsFrontEngine() && v->Next() == nullptr) { rv = v; break; }
+		}
+		Vehicle *carrier = nullptr;
+		for (Vehicle *v : Vehicle::Iterate()) {
+			if (v->type == VehicleType::Train && v->IsFrontEngine()) { carrier = v; break; }
+		}
+		if (rv == nullptr || carrier == nullptr) {
+			IConsolePrint(CC_ERROR, "SELFTEST FAIL: map needs at least one road vehicle (found={}) and one train (found={})",
+					rv != nullptr, carrier != nullptr);
+			return true;
+		}
+		IConsolePrint(CC_DEFAULT, "selftest: rv #{} weight={}t, carrier #{}", rv->index.base(), RVTransportGetVehicleWeightTonnes(rv), carrier->index.base());
+
+		RVTransportSetWaiting(rv, true);
+		if (!RVTransportAttachAuto(carrier, rv, true)) {
+			IConsolePrint(CC_ERROR, "SELFTEST FAIL: attach failed");
+			return true;
+		}
+		const bool carried = (rv->rv_transport_flags & RVTF_TRANSPORTED) != 0;
+		const bool hidden = rv->vehstatus.Test(VehState::Hidden);
+		IConsolePrint(CC_DEFAULT, "selftest: attached: carried={} hidden={} on_board={} part={} weight={}",
+				carried, hidden, RVTransportCountOnCarrier(carrier), rv->transported_host_part.base(), rv->transported_weight);
+
+		Station *target = nullptr;
+		for (Station *st : Station::Iterate()) {
+			if (st->facilities.Test(StationFacility::TruckStop) || st->facilities.Test(StationFacility::BusStop)) { target = st; break; }
+		}
+		if (target == nullptr) {
+			IConsolePrint(CC_ERROR, "SELFTEST FAIL: no station with a road stop on the map");
+			return true;
+		}
+		if (!RVTransportDetachAtStation(carrier, target)) {
+			IConsolePrint(CC_ERROR, "SELFTEST FAIL: detach failed at station #{} (no free road stop tile)", target->index.base());
+			return true;
+		}
+		const bool restored = (rv->rv_transport_flags & RVTF_TRANSPORTED) == 0 && !rv->vehstatus.Test(VehState::Hidden) && rv->tile != INVALID_TILE;
+		IConsolePrint(CC_DEFAULT, "selftest: detached: flags={} tile={} hidden={} on_board={}",
+				rv->rv_transport_flags, rv->tile.base(), rv->vehstatus.Test(VehState::Hidden), RVTransportCountOnCarrier(carrier));
+		IConsolePrint(restored ? CC_DEFAULT : CC_ERROR, "SELFTEST: {}", restored ? "PASS" : "FAIL");
+		return true;
+	}
+
+	return false;
+}
+
+#endif /* RORO_DEBUG_COMMANDS */
+
 /** Console command registration. */
 void IConsoleStdLibRegister()
 {
@@ -4501,6 +5254,9 @@ void IConsoleStdLibRegister()
 	IConsole::CmdRegister("gamelog",                 ConGamelogPrint);
 	IConsole::CmdRegister("rescan_newgrf",           ConRescanNewGRF);
 	IConsole::CmdRegister("list_dirs",               ConListDirs);
+#ifdef RORO_DEBUG_COMMANDS
+	IConsole::CmdRegister("rvtransport",             ConRVTransport);
+#endif /* RORO_DEBUG_COMMANDS */
 
 	IConsole::AliasRegister("dir",                   "ls");
 	IConsole::AliasRegister("del",                   "rm %+");

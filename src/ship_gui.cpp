@@ -140,5 +140,9 @@ void DrawShipDetails(const Vehicle *v, const Rect &r)
 
 	if (Ship::From(v)->critical_breakdown_count > 0) {
 		DrawString(r.left, r.right, y, GetString(STR_NEED_REPAIR, Ship::From(v)->GetDisplayEffectiveMaxSpeed()));
+		y += GetCharacterHeight(FontSize::Normal);
 	}
+
+	/* RoRo: road vehicles this ship carries. */
+	DrawCarriedRoadVehicles(v, r, y);
 }

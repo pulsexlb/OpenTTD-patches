@@ -101,6 +101,22 @@ static const CargoSpec _default_cargo[] = {
 	MK(0xFF, CT_INVALID,      184,  0, 0x100, 5120,  9, 255,  true,       TownAcceptanceEffect::None,      NOTHING,      NOTHING,       STR_TONS, CargoClasses({})),
 };
 
+/**
+ * Dedicated "Vehicles (Car)" cargo for road vehicle transport. Not part of _default_cargo above:
+ * it is installed into its own CargoType slot by SetupCargoForClimate() so that its slot is stable
+ * regardless of climate and of the original cargo numbering. Written out instead of via MK so the
+ * town production effect can be set explicitly (towns never produce or accept it).
+ * It is an ordinary (non-Special) cargo, so that it is listed and selectable wherever other cargoes
+ * are (cargo filters, cargo selection lists, graphs, ...); it only exists as a refit destination for
+ * vehicle transport, so nothing else in the game ever produces, accepts or waits for it.
+ * Weight is 1 tonne per unit so a part's road vehicle capacity in tonnes equals its cargo capacity.
+ */
+static const CargoSpec _rv_transport_cargo = {
+	CT_VEHICLES, 27, PixelColour{87}, PixelColour{87}, 16, 0x100, CargoClasses({CargoClass::Oversized}), 5688, {0, 30}, true, TownAcceptanceEffect::None, TownProductionEffect::None, TOWN_PRODUCTION_DIVISOR, CargoCallbackMasks{},
+	MK_STR_CARGO_PLURAL(VEHICLES), MK_STR_CARGO_SINGULAR(VEHICLE), STR_TONS, MK_STR_QUANTITY(VEHICLES), MK_STR_ABBREV(VEHICLES),
+	MK_SPRITE(VEHICLES), nullptr, nullptr, 0
+};
+
 
 /** Table of cargo types available in each climate, by default */
 static const std::variant<CargoLabel, int> _default_climate_cargo[NUM_LANDSCAPE][NUM_ORIGINAL_CARGO] = {

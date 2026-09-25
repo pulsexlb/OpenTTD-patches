@@ -111,6 +111,16 @@ void SetupCargoForClimate(LandscapeType l)
 	/* Reset and disable remaining cargo types. */
 	std::fill(insert, std::end(CargoSpec::array), CargoSpec{});
 
+	/* Road vehicle transport: install the dedicated "Vehicles (Road)" cargo in its own slot,
+	 * placed above the NewGRF-visible range so that a NewGRF can never claim it (see CalculateRefitMasks). */
+	{
+		CargoSpec &cs = CargoSpec::array[to_underlying(RV_TRANSPORT_CARGO_SLOT)];
+		cs = _rv_transport_cargo;
+		_cargo_mask.Set(cs.Index());
+		_default_cargo_labels.push_back(cs.label);
+		_climate_independent_cargo_labels[cs.bitnum] = cs.label;
+	}
+
 	BuildCargoLabelMap();
 }
 

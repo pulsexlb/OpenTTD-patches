@@ -139,7 +139,7 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 /* static */ void GroupStatistics::CountVehicle(const Vehicle *v, int delta)
 {
 	/* make virtual trains group-neutral */
-	if (HasBit(v->subtype, GVSF_VIRTUAL)) return;
+	if (v->IsVirtualOrCarried()) return;
 
 	assert(delta == 1 || delta == -1);
 
@@ -167,7 +167,7 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 /* static */ void GroupStatistics::CountEngine(const Vehicle *v, int delta)
 {
 	/* make virtual trains group-neutral */
-	if (HasBit(v->subtype, GVSF_VIRTUAL)) return;
+	if (v->IsVirtualOrCarried()) return;
 
 	assert(delta == 1 || delta == -1);
 	GroupStatistics::GetAllGroup(v).num_engines[v->engine_type] += delta;
@@ -221,7 +221,7 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 	}
 
 	for (const Vehicle *v : Vehicle::IterateFrontOnly()) {
-		if (v->IsPrimaryVehicle() && !HasBit(v->subtype, GVSF_VIRTUAL)) {
+		if (v->IsPrimaryVehicle() && !v->IsVirtualOrCarried()) {
 			GroupStatistics::AddProfitLastYear(v);
 			if (v->economy_age > VEHICLE_PROFIT_MIN_AGE) GroupStatistics::VehicleReachedMinAge(v);
 		}

@@ -1887,7 +1887,7 @@ NetworkCompanyStatsArray NetworkGetCompanyStats()
 
 	/* Go through all vehicles and count the type of vehicles */
 	for (const Vehicle *v : Vehicle::IterateFrontOnly()) {
-		if (!Company::IsValidID(v->owner) || !v->IsPrimaryVehicle() || HasBit(v->subtype, GVSF_VIRTUAL)) continue;
+		if (!Company::IsValidID(v->owner) || !v->IsPrimaryVehicle() || v->IsVirtualOrCarried()) continue;
 		NetworkVehicleType type;
 		switch (v->type) {
 			case VehicleType::Train: type = NetworkVehicleType::Train; break;

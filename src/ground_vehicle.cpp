@@ -16,6 +16,7 @@
 #include "slope_type.h"
 #include "company_func.h"
 #include "vehicle_func.h"
+#include "roadveh_transport.h"
 
 #include "safeguards.h"
 
@@ -138,6 +139,10 @@ void GroundVehicle<T, Type>::CargoChanged()
 	if (Type == VehicleType::Train) {
 		Train::From(this)->tcache.cached_centre_mass = (weight != 0) ? (mass_offset / weight) : (this->gcache.cached_total_length / 2);
 	}
+
+	/* RoRo: the road vehicles this carrier holds are part of its weight, so that accelerating,
+	 * climbing and braking account for them (this always runs on the front vehicle). */
+	weight += RVTransportGetCarriedWeightTonnes(this);
 
 	/* Store consist weight in cache. */
 	this->gcache.cached_weight = std::max(1u, weight);

@@ -73,6 +73,7 @@
 #include "core/math_func.hpp"
 #include "landscape.h"
 #include "viewport_func.h"
+#include "roadveh_transport.h"
 #include "station_base.h"
 #include "waypoint_base.h"
 #include "town.h"
@@ -707,7 +708,7 @@ void InitializeWindowViewport(Window *w, int x, int y,
 		const Vehicle *veh;
 
 		vp->follow_vehicle = (VehicleID)(follow_flags & 0xFFFFF);
-		veh = Vehicle::Get(vp->follow_vehicle)->GetMovingFront();
+		veh = RVTransportGetFollowVehicle(Vehicle::Get(vp->follow_vehicle))->GetMovingFront();
 		pt = MapXYZToViewport(vp, veh->x_pos, veh->y_pos, veh->z_pos);
 	} else {
 		x = TileX(TileIndex{follow_flags}) * TILE_SIZE;
@@ -2639,6 +2640,7 @@ static inline Vehicle *GetVehicleFromWindow(const Window *w)
 			case WindowClass::VehicleRefit:
 			case WindowClass::VehicleCargoTypeLoadOrders:
 			case WindowClass::VehicleCargoTypeUnloadOrders:
+			case WindowClass::VehicleRVTransportCriteria:
 			case WindowClass::ScheduledDispatchSlots:
 				if (wn != VehicleID::Invalid()) return Vehicle::GetIfValid(wn);
 				break;
@@ -4548,7 +4550,7 @@ void UpdateNextViewportPosition(Window *w, uint32_t delta_ms)
 	const Viewport *vp = w->viewport;
 
 	if (w->viewport->follow_vehicle != VehicleID::Invalid()) {
-		const Vehicle *veh = Vehicle::Get(w->viewport->follow_vehicle)->GetMovingFront();
+		const Vehicle *veh = RVTransportGetFollowVehicle(Vehicle::Get(w->viewport->follow_vehicle))->GetMovingFront();
 		Point pt = MapXYZToViewport(vp, veh->x_pos, veh->y_pos, veh->z_pos);
 
 		w->viewport->next_scrollpos_x = pt.x;

@@ -98,6 +98,14 @@ struct OrderExtraInfo {
 	uint16_t dispatch_index = 0;              ///< Scheduled dispatch index + 1
 	uint8_t xflags = 0;                       ///< Extra flags
 	uint8_t colour = 0;                       ///< Order colour + 1
+	uint8_t rv_transport_flags = 0;           ///< Road vehicle transport (RoRo): load/unload flags for this station order.
+	uint8_t rv_transport_max = 0;             ///< Road vehicle transport (RoRo): maximum number of road vehicles to load (0 = unlimited).
+	uint8_t rv_transport_load_state = 0;      ///< Road vehicle transport (RoRo): candidate load state criterion (RVTransportLoadState).
+	uint8_t rv_transport_cargo_mode = 0;      ///< Road vehicle transport (RoRo): candidate cargo criterion (RVTransportCargoMode).
+	uint8_t rv_transport_cargo = 0;           ///< Road vehicle transport (RoRo): cargo of the cargo criterion.
+	uint16_t rv_transport_min_wait = 0;       ///< Road vehicle transport (RoRo): minimum days the candidate must have been waiting (0 = no minimum).
+	uint16_t rv_transport_slot = 0;           ///< Road vehicle transport (RoRo): trace restrict slot the candidate must hold, slot id + 1 (0 = any).
+	uint16_t rv_transport_dest_station = 0;   ///< Reserved: a dropped criterion ("the first station the candidate declares for unloading"), kept so that savegames written with feature version 2 still load.
 };
 
 namespace upstream_sl {
@@ -162,6 +170,18 @@ private:
 	}
 
 public:
+	/**
+	 * Move the per-cargo load/unload flags of one cargo slot to another one.
+	 * @param from The cargo slot to move the flags from.
+	 * @param to The cargo slot to move the flags to.
+	 */
+	inline void MoveCargoTypeFlags(CargoType from, CargoType to)
+	{
+		if (!this->extra) return;
+		this->extra->cargo_type_flags[to] = this->extra->cargo_type_flags[from];
+		this->extra->cargo_type_flags[from] = 0;
+	}
+
 	inline uint32_t GetXData() const
 	{
 		return this->extra != nullptr ? this->extra->xdata : 0;
@@ -191,6 +211,97 @@ public:
 	inline void SetXDataHigh(uint16_t data)
 	{
 		SB(this->GetXDataRef(), 16, 16, data);
+	}
+
+	/** Road vehicle transport (RoRo): get load/unload flags of this station order. */
+	inline uint8_t GetRVTransportFlags() const
+	{
+		return this->extra != nullptr ? this->extra->rv_transport_flags : 0;
+	}
+
+	/** Road vehicle transport (RoRo): writable reference to load/unload flags. */
+	inline uint8_t &GetRVTransportFlagsRef()
+	{
+		this->CheckExtraInfoAlloced();
+		return this->extra->rv_transport_flags;
+	}
+
+	/** Road vehicle transport (RoRo): candidate load state criterion (RVTransportLoadState). */
+	inline uint8_t GetRVTransportLoadState() const
+	{
+		return this->extra != nullptr ? this->extra->rv_transport_load_state : 0;
+	}
+
+	/** Road vehicle transport (RoRo): writable reference to the load state criterion. */
+	inline uint8_t &GetRVTransportLoadStateRef()
+	{
+		this->CheckExtraInfoAlloced();
+		return this->extra->rv_transport_load_state;
+	}
+
+	/** Road vehicle transport (RoRo): candidate cargo criterion (RVTransportCargoMode). */
+	inline uint8_t GetRVTransportCargoMode() const
+	{
+		return this->extra != nullptr ? this->extra->rv_transport_cargo_mode : 0;
+	}
+
+	/** Road vehicle transport (RoRo): writable reference to the cargo criterion mode. */
+	inline uint8_t &GetRVTransportCargoModeRef()
+	{
+		this->CheckExtraInfoAlloced();
+		return this->extra->rv_transport_cargo_mode;
+	}
+
+	/** Road vehicle transport (RoRo): cargo of the cargo criterion. */
+	inline uint8_t GetRVTransportCargo() const
+	{
+		return this->extra != nullptr ? this->extra->rv_transport_cargo : 0;
+	}
+
+	/** Road vehicle transport (RoRo): writable reference to the cargo of the cargo criterion. */
+	inline uint8_t &GetRVTransportCargoRef()
+	{
+		this->CheckExtraInfoAlloced();
+		return this->extra->rv_transport_cargo;
+	}
+
+	/** Road vehicle transport (RoRo): minimum waiting time (in days) of a candidate, 0 = no minimum. */
+	inline uint16_t GetRVTransportMinWait() const
+	{
+		return this->extra != nullptr ? this->extra->rv_transport_min_wait : 0;
+	}
+
+	/** Road vehicle transport (RoRo): writable reference to the minimum waiting time. */
+	inline uint16_t &GetRVTransportMinWaitRef()
+	{
+		this->CheckExtraInfoAlloced();
+		return this->extra->rv_transport_min_wait;
+	}
+
+	/** Road vehicle transport (RoRo): trace restrict slot the candidate must hold ("路签"), slot id + 1 (0 = any). */
+	inline uint16_t GetRVTransportSlot() const
+	{
+		return this->extra != nullptr ? this->extra->rv_transport_slot : 0;
+	}
+
+	/** Road vehicle transport (RoRo): writable reference to the trace restrict slot criterion. */
+	inline uint16_t &GetRVTransportSlotRef()
+	{
+		this->CheckExtraInfoAlloced();
+		return this->extra->rv_transport_slot;
+	}
+
+	/** Road vehicle transport (RoRo): most road vehicles this order may load in one visit (0 = no limit). */
+	inline uint8_t GetRVTransportMax() const
+	{
+		return this->extra != nullptr ? this->extra->rv_transport_max : 0;
+	}
+
+	/** Road vehicle transport (RoRo): writable reference to the per-visit load limit. */
+	inline uint8_t &GetRVTransportMaxRef()
+	{
+		this->CheckExtraInfoAlloced();
+		return this->extra->rv_transport_max;
 	}
 
 	inline uint32_t GetXData2() const

@@ -16,6 +16,13 @@
 #include "company_func.h"
 #include "tile_map.h"
 
+/**
+ * Transfer a sharing fee from the company of the vehicle to the company owning the infrastructure.
+ * @param v           the vehicle whose company pays
+ * @param infra_owner the company receiving the money
+ * @param cost        the amount, in 1/256ths of a currency unit
+ */
+void PaySharingFee(Vehicle *v, Owner infra_owner, Money cost);
 void PayStationSharingFee(Vehicle *v, const Station *st);
 void PayDailyTrackSharingFee(Train *v);
 

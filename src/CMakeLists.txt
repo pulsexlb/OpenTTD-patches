@@ -460,6 +460,8 @@ add_files(
     roadveh.h
     roadveh_cmd.cpp
     roadveh_gui.cpp
+    roadveh_transport.cpp
+    roadveh_transport.h
     safeguards.h
     schdispatch.h
     schdispatch_cmd.cpp

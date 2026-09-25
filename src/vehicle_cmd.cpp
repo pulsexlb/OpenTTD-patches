@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include "roadveh.h"
+#include "roadveh_transport.h"
 #include "news_func.h"
 #include "airport.h"
 #include "command_func.h"
@@ -270,6 +271,10 @@ CommandCost CmdSellVehicle(DoCommandFlags flags, TileIndex tile, VehicleID v_id,
 	if (HasFlag(sell_flags, SellVehicleFlags::VirtualOnly) != HasBit(front->subtype, GVSF_VIRTUAL)) return CMD_ERROR;
 
 	if (front->vehstatus.Test(VehState::Crashed)) return CommandCost(STR_ERROR_VEHICLE_IS_DESTROYED);
+
+	/* RoRo: a carried road vehicle cannot be sold, and a carrier must not be sold while it carries road vehicles. */
+	if ((front->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) != 0) return CommandCost(STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIED);
+	if (RVTransportCountOnCarrier(front) > 0) return CommandCost(STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIER);
 
 	/* Do this check only if the vehicle to be moved is non-virtual */
 	if (!HasFlag(sell_flags, SellVehicleFlags::VirtualOnly) && !front->IsStoppedInDepot()) return CommandCost(STR_ERROR_TRAIN_MUST_BE_STOPPED_INSIDE_DEPOT + to_underlying(front->type));

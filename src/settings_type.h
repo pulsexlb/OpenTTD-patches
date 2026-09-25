@@ -854,6 +854,9 @@ struct VehicleSettings {
 	uint8_t                roadveh_slope_steepness;               ///< Steepness of hills for road vehicles when using realistic acceleration
 	bool                   wagon_speed_limits;                    ///< enable wagon speed limits
 	bool                   train_speed_adaptation;                ///< Faster trains slow down when behind slower trains
+	uint8_t                rv_transport_carrier_parts;            ///< Carrying road vehicles (RoRo): which carrier parts may take them (RVTransportCarrierParts)
+	uint16_t               rv_transport_unload_warn_days;         ///< Carrying road vehicles (RoRo): warn when a carried road vehicle was not unloaded for this many days (0 = no warning)
+	bool                   rv_transport_enabled;                  ///< Carrying road vehicles (RoRo): may road vehicles be loaded onto carriers at all (unloading always works)
 	bool                   slow_road_vehicles_in_curves;          ///< Road vehicles slow down in curves.
 	bool                   disable_elrails;                       ///< when true, the elrails are disabled
 	UnitID                 max_trains;                            ///< max trains in game per company
@@ -936,6 +939,8 @@ struct EconomySettings {
 	bool     infrastructure_sharing[4];      ///< enable infrastructure sharing for rail/road/water/air
 	bool     allow_coupling_other_company_trains; ///< allow coupling with trains owned by other companies
 	uint     sharing_fee[4];                 ///< fees for infrastructure sharing for rail/road/water/air
+	bool     infrastructure_sharing_rv;      ///< enable road vehicle transport between companies
+	uint     rv_sharing_fee;                 ///< fee for road vehicle transport between companies, per 1000 tonnes per 8 tiles
 	bool     sharing_payment_in_debt;        ///< allow fee payment for companies with more loan than money (switch off to prevent MP exploits)
 	bool     allow_town_level_crossings;     ///< towns are allowed to build level crossings
 	TownTunnelMode town_build_tunnels;       ///< if/when towns are allowed to build road tunnels

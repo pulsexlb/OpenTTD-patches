@@ -34,6 +34,7 @@
 #include "autoreplace_func.h"
 #include "autoreplace_gui.h"
 #include "station_base.h"
+#include "roadveh_transport.h"
 #include "ai/ai.hpp"
 #include "depot_func.h"
 #include "network/network.h"
@@ -447,7 +448,7 @@ uint Vehicle::Crash(bool)
  */
 void Vehicle::UpdateIsDrawn()
 {
-	bool drawn = !(HasBit(this->subtype, GVSF_VIRTUAL)) && (!this->vehstatus.Test(VehState::Hidden) ||
+	bool drawn = !(this->IsVirtualOrCarried()) && (!this->vehstatus.Test(VehState::Hidden) ||
 			(IsTransparencySet(TransparencyOption::Tunnels) &&
 				((this->type == VehicleType::Train && Train::From(this)->track == TRACK_BIT_WORMHOLE) ||
 				(this->type == VehicleType::Road && RoadVehicle::From(this)->state == RVSB_WORMHOLE))));
@@ -1084,7 +1085,7 @@ uint CountVehiclesInChain(const Vehicle *v)
  */
 bool Vehicle::IsEngineCountable() const
 {
-	if (HasBit(this->subtype, GVSF_VIRTUAL)) return false;
+	if (this->IsVirtualOrCarried()) return false;
 	switch (this->type) {
 		case VehicleType::Aircraft: return Aircraft::From(this)->IsNormalAircraft(); // don't count plane shadows and helicopter rotors
 		case VehicleType::Train:
@@ -1203,6 +1204,10 @@ void Vehicle::PreDestructor()
 
 	SCOPE_INFO_FMT([this], "Vehicle::PreDestructor: {}", VehicleInfoDumper(this));
 
+	/* RoRo: the road vehicles this vehicle carries are lost together with it, like the wagons of a
+	 * crashed train, so that they do not keep pointing at a vehicle which is being destroyed. */
+	RVTransportDestroyCarriedVehicles(this);
+
 	if (Station::IsValidID(this->last_station_visited)) {
 		Station *st = Station::Get(this->last_station_visited);
 		st->loading_vehicles.erase(std::remove(st->loading_vehicles.begin(), st->loading_vehicles.end(), this), st->loading_vehicles.end());
@@ -1272,6 +1277,7 @@ void Vehicle::PreDestructor()
 		CloseWindowById(WindowClass::ScheduledDispatchSlots, this->index);
 		CloseWindowById(WindowClass::VehicleCargoTypeLoadOrders, this->index);
 		CloseWindowById(WindowClass::VehicleCargoTypeUnloadOrders, this->index);
+		CloseWindowById(WindowClass::VehicleRVTransportCriteria, this->index);
 		CloseWindowById(WindowClass::VehicleOrderImportErrors, this->index);
 		SetWindowDirty(WindowClass::Company, this->owner);
 		OrderBackup::ClearVehicle(this);
@@ -1379,6 +1385,11 @@ static void RunVehicleDayProc()
 	for (size_t i = EconTime::CurDateFract(); i < Vehicle::GetPoolSize(); i += DAY_TICKS) {
 		v = Vehicle::Get(i);
 		if (v == nullptr) continue;
+
+		/* RoRo: a carried road vehicle is frozen (no ageing, depreciation or running costs), but it may
+		 * have been on board for so long that the player should be told about it. */
+		RVTransportCheckCarriedTooLong(v);
+		if ((v->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) != 0) continue;
 
 		/* Call the 32-day callback if needed */
 		if ((v->day_counter & 0x1F) == 0 && v->HasEngineType() && (Engine::Get(v->engine_type)->callbacks_used & SGCU_VEHICLE_32DAY_CALLBACK) != 0) {
@@ -1539,7 +1550,8 @@ void RebuildVehicleTickCaches()
 				break;
 
 			case VehicleType::Road:
-				if (is_front) _tick_road_veh_front_cache.push_back(RoadVehicle::From(v));
+				/* RoRo: carried road vehicles do not tick at all. */
+				if (is_front && !v->IsVirtualOrCarried()) _tick_road_veh_front_cache.push_back(RoadVehicle::From(v));
 				break;
 
 			case VehicleType::Aircraft:
@@ -2608,7 +2620,7 @@ bool Vehicle::HandleBreakdown()
 void EconomyAgeVehicle(Vehicle *v)
 {
 	/* Stop if a virtual vehicle */
-	if (HasBit(v->subtype, GVSF_VIRTUAL)) return;
+	if (v->IsVirtualOrCarried()) return;
 
 	if (v->economy_age < EconTime::MAX_DATE.AsDelta()) {
 		v->economy_age++;
@@ -2623,7 +2635,7 @@ void EconomyAgeVehicle(Vehicle *v)
 void AgeVehicle(Vehicle *v)
 {
 	/* Stop if a virtual vehicle */
-	if (HasBit(v->subtype, GVSF_VIRTUAL)) return;
+	if (v->IsVirtualOrCarried()) return;
 
 	if (v->age < CalTime::MAX_DATE.AsDelta()) v->age++;
 
@@ -2861,6 +2873,8 @@ void VehicleEnterDepot(Vehicle *v)
 		}
 
 		if (v->current_order.IsRefit()) {
+			/* Road vehicle transport: the built-in "Vehicles (Car)" cargo is a normal cargo as far as
+			 * refitting goes, so an order refit to or from it is applied like any other. */
 			AutoRestoreBackup cur_company(_current_company, v->owner);
 			CommandCost cost = Command<Commands::RefitVehicle>::Do(DoCommandFlag::Execute, v->index, v->current_order.GetRefitCargo(), 0xFF, false, false, 0);
 
@@ -3629,6 +3643,11 @@ void Vehicle::BeginLoading()
 	 * there is no cargo to load, where the train would otherwise just pass through. */
 	if (this->type == VehicleType::Train && _settings_game.vehicle.train_service_at_station && this->IsServiceIntervalDue()) {
 		VehicleServiceInDepot(this);
+	}
+
+	/* RoRo: a road vehicle whose order says "wait to be transported" stops here and waits. */
+	if (this->type == VehicleType::Road && (this->current_order.GetRVTransportFlags() & ORVTF_LOAD) != 0) {
+		RVTransportSetWaiting(this, true);
 	}
 }
 

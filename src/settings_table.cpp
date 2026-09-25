@@ -31,6 +31,7 @@
 #include "rail.h"
 #include "rail_gui.h"
 #include "roadveh.h"
+#include "roadveh_transport.h"
 #include "scope_info.h"
 #include "screenshot.h"
 #include "settings_internal.h"
@@ -567,14 +568,14 @@ static void TrainBrakingModelChanged(int32_t new_value)
 		for (Train *v : Train::IterateFrontOnly()) {
 			v_cur = v;
 			Train *moving_front = v->GetMovingFront();
-			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || HasBit(v->subtype, GVSF_VIRTUAL) || moving_front->track == TRACK_BIT_DEPOT) continue;
+			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried() || moving_front->track == TRACK_BIT_DEPOT) continue;
 			TryPathReserve(v, true, HasStationTileRail(moving_front->tile));
 		}
 		_long_reserve_disabled = false;
 		for (Train *v : Train::IterateFrontOnly()) {
 			v_cur = v;
 			Train *moving_front = v->GetMovingFront();
-			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || HasBit(v->subtype, GVSF_VIRTUAL) || moving_front->track == TRACK_BIT_DEPOT) continue;
+			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried() || moving_front->track == TRACK_BIT_DEPOT) continue;
 			TryPathReserve(v, true, HasStationTileRail(moving_front->tile));
 			if (v->lookahead != nullptr) v->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
 		}
@@ -584,7 +585,7 @@ static void TrainBrakingModelChanged(int32_t new_value)
 		for (Train *v : Train::IterateFrontOnly()) {
 			v_cur = v;
 			Train *moving_front = v->GetMovingFront();
-			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || HasBit(v->subtype, GVSF_VIRTUAL) || moving_front->track == TRACK_BIT_DEPOT) {
+			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried() || moving_front->track == TRACK_BIT_DEPOT) {
 				v->lookahead.reset();
 				continue;
 			}

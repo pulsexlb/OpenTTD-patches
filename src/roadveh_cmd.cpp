@@ -27,6 +27,7 @@
 #include "depot_map.h"
 #include "effectvehicle_func.h"
 #include "roadstop_base.h"
+#include "roadveh_transport.h"
 #include "core/random_func.hpp"
 #include "company_base.h"
 #include "core/backup_type.hpp"
@@ -2150,6 +2151,12 @@ static bool RoadVehController(RoadVehicle *v)
 
 	/* road vehicle has broken down? */
 	if (v->HandleBreakdown()) return true;
+
+	/* RoRo: stop waiting to be transported when the order no longer asks for it (the player skipped
+	 * the order or sent the vehicle to a depot); this has to happen before the stopped check below,
+	 * because a waiting vehicle is stopped and would otherwise never carry that order out. */
+	RVTransportTickWaiting(v);
+
 	if (v->IsRoadVehicleStopped()) {
 		v->cur_speed = 0;
 		v->SetLastSpeed();

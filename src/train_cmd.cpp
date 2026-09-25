@@ -29,6 +29,7 @@
 #include "company_base.h"
 #include "group.h"
 #include "newgrf.h"
+#include "roadveh_transport.h"
 #include "infrastructure_func.h"
 #include "order_backup.h"
 #include "zoom_func.h"
@@ -1585,6 +1586,10 @@ void Train::GetImage(Direction direction, EngineImageType image_type, VehicleSpr
 	SpriteID sprite = GetDefaultTrainSprite(spritenum, direction);
 
 	if (this->cargo.StoredCount() >= this->cargo_cap / 2U) sprite += _wagon_full_adder[spritenum];
+
+	/* RoRo: a part which carries road vehicles is drawn as if it were fully loaded.
+	 * (Only while the master switch is on, so the vehicle pool scan is skipped when the feature is off.) */
+	if (this->cargo_cap > 0 && _settings_game.vehicle.rv_transport_enabled && RVTransportPartHoldsRoadVehicles(this)) sprite += _wagon_full_adder[spritenum];
 
 	result->Set(sprite);
 }

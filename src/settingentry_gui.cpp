@@ -1016,6 +1016,15 @@ SettingsContainer &GetSettingsTree()
 			vehicles->Add(new SettingEntry("vehicle.non_leading_engines_keep_name"));
 		}
 
+		/* Road vehicles carried by other vehicles (RoRo): its own page, so that everything this
+		 * feature adds can be found in one place. */
+		SettingsPage *rv_transport = main->Add(new SettingsPage(STR_CONFIG_SETTING_ROAD_VEHICLE_TRANSPORT));
+		{
+			rv_transport->Add(new SettingEntry("vehicle.rv_transport_enabled"));
+	rv_transport->Add(new SettingEntry("vehicle.rv_transport_carrier_parts"));
+	rv_transport->Add(new SettingEntry("vehicle.rv_transport_unload_warn_days"));
+		}
+
 		SettingsPage *limitations = main->Add(new SettingsPage(STR_CONFIG_SETTING_LIMITATIONS));
 		{
 			limitations->Add(new SettingEntry("construction.command_pause_level"));
@@ -1257,10 +1266,12 @@ SettingsContainer &GetSettingsTree()
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[1]"));
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[2]"));
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[3]"));
+				sharing->Add(new SettingEntry("economy.infrastructure_sharing_rv"));
 				sharing->Add(new SettingEntry("economy.sharing_fee[0]"));
 				sharing->Add(new SettingEntry("economy.sharing_fee[1]"));
 				sharing->Add(new SettingEntry("economy.sharing_fee[2]"));
 				sharing->Add(new SettingEntry("economy.sharing_fee[3]"));
+				sharing->Add(new SettingEntry("economy.rv_sharing_fee"));
 				sharing->Add(new SettingEntry("economy.sharing_payment_in_debt"));
 			}
 
