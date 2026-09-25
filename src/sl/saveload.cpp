@@ -4271,6 +4271,7 @@ static SaveLoadResult DoLoad(std::shared_ptr<LoadFilter> reader, bool load_check
 
 	SlXvResetState();
 	SlResetVENC();
+	SlResetCoupleClaims();
 	SlResetTNNC();
 	SlResetERNC();
 	auto guard = scope_guard([&]() {

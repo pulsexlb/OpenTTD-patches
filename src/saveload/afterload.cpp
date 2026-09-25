@@ -757,6 +757,52 @@ static void FixupCargoTypes128()
 }
 
 /**
+ * Validate the persisted transient couple target/claim state of every consist.
+ * Claims referencing vehicles that are gone, no longer approaching, or whose
+ * counterpart no longer points back are cleared, so all peers (re)starting
+ * from the same save derive identical claim state.
+ */
+static void AfterLoadValidateCoupleClaims()
+{
+	if (SlXvIsFeatureMissing(XSLFI_COUPLE_CLAIM_STATE)) return;
+
+	/* Restore the persisted claim state onto the train primaries. */
+	SlApplyCoupleClaims();
+
+	for (Train *t : Train::Iterate()) {
+		if (!t->IsPrimaryVehicle()) continue;
+
+		if (t->couple_target != VehicleID::Invalid()) {
+			Train *tgt = Train::GetIfValid(t->couple_target);
+			bool ok = tgt != nullptr && tgt->Primary() != t && tgt->Primary()->current_order.IsType(OT_WAIT_COUPLE)
+					&& !tgt->Primary()->vehstatus.Test(VehState::Crashed);
+			if (ok) {
+				Train *claimant = Train::GetIfValid(tgt->Primary()->couple_claimant);
+				ok = claimant == t && claimant->current_order.IsType(OT_GOTO_COUPLE)
+						&& !claimant->vehstatus.Test(VehState::Crashed);
+			}
+			if (!ok) t->couple_target = VehicleID::Invalid();
+		}
+
+		if (t->couple_claimant != VehicleID::Invalid()) {
+			Train *claimant = Train::GetIfValid(t->couple_claimant);
+			bool ok = claimant != nullptr && claimant != t && claimant->current_order.IsType(OT_GOTO_COUPLE)
+					&& !claimant->vehstatus.Test(VehState::Crashed);
+			if (ok) {
+				Train *tgt = Train::GetIfValid(claimant->couple_target);
+				ok = tgt != nullptr && tgt->Primary() == t;
+			}
+			if (!ok) {
+				t->couple_claimant = VehicleID::Invalid();
+				t->couple_claim_cost = 0;
+			}
+		}
+
+		if (t->couple_body_hold && !t->current_order.IsType(OT_WAIT_COUPLE)) t->couple_body_hold = false;
+	}
+}
+
+/**
  * Perform a (large) amount of savegame conversion *magic* in order to
  * load older savegames and to fill the caches for various purposes.
  * @return True iff conversion went without a problem.
@@ -4856,6 +4902,8 @@ bool AfterLoadGame()
 	}
 
 	UpdateCargoScalers();
+
+	AfterLoadValidateCoupleClaims();
 
 	if (_networking && !_network_server) {
 		SlProcessVENC();

@@ -250,6 +250,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 
 	{ XSLFI_ROAD_VEH_TRANSPORT,               XSCF_NULL,                3,   3, "road_veh_transport",               nullptr, nullptr, nullptr          },
 	{ XSLFI_CARGO_TYPES_128,                  XSCF_NULL,                1,   1, "cargo_types_128",                  nullptr, nullptr, nullptr          },
+	{ XSLFI_COUPLE_CLAIM_STATE,               XSCF_NULL,                1,   1, "couple_claim_state",               nullptr, nullptr, "CPLM"           },
 };
 
 /**

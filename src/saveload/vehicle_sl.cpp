@@ -11,6 +11,7 @@
 
 #include "saveload.h"
 #include "compat/vehicle_sl_compat.h"
+#include "../sl/extended_ver_sl.h"
 
 #include "../vehicle_func.h"
 #include "../train.h"

@@ -1275,6 +1275,7 @@ const char *GetSyncRecordEventName(NetworkSyncRecordEvents event)
 		"VEH_TBTR",
 		"VEH_AUTOREPLACE",
 		"VEH_REPAIR",
+		"COUPLE",
 		"FRAME_DONE"
 	};
 	static_assert(lengthof(names) == NSRE_LAST);

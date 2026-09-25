@@ -25,6 +25,7 @@
 #include "newgrf_station.h"
 #include "effectvehicle_func.h"
 #include "network/network.h"
+#include "network/network_sync.h"
 #include "core/random_func.hpp"
 #include "company_base.h"
 #include "group.h"
@@ -5955,6 +5956,51 @@ static void NormalizeLastLoadingStation(Train *primary)
 	}
 }
 
+/**
+ * RAII guard for trial consist surgery (couple/decouple arrangement
+ * validation). Snapshots the per-vehicle NewGRF caches of the involved
+ * chains and the game random seed; at scope end the caches are restored and
+ * a seed shift (NewGRF callbacks consuming randomness during the trial) is
+ * rolled back, so every peer stays deterministic even in release builds
+ * where the former assert would be a no-op.
+ */
+struct TrialConsistGuard {
+	struct TrialCache {
+		Train *vehicle;
+		NewGRFCache grf_cache;
+		uint8_t user_def_data;
+		uint8_t cached_veh_flags;
+	};
+
+	std::vector<TrialCache> caches;
+	SavedRandomSeeds seeds;
+
+	TrialConsistGuard()
+	{
+		SaveRandomSeeds(&this->seeds);
+	}
+
+	void SnapshotChain(const TrainList &chain)
+	{
+		for (Train *t : chain) {
+			this->caches.push_back({t, t->grf_cache, t->tcache.user_def_data, t->vcache.cached_veh_flags});
+		}
+	}
+
+	~TrialConsistGuard()
+	{
+		for (const TrialCache &cache : this->caches) {
+			cache.vehicle->grf_cache = cache.grf_cache;
+			cache.vehicle->tcache.user_def_data = cache.user_def_data;
+			cache.vehicle->vcache.cached_veh_flags = cache.cached_veh_flags;
+		}
+		if (this->seeds.random.state[0] != _random.state[0] || this->seeds.random.state[1] != _random.state[1]) {
+			Debug(desync, 0, "Trial consist surgery shifted the random seed; restoring it");
+			RestoreRandomSeeds(this->seeds);
+		}
+	}
+};
+
 static bool TryTrainDecouple(Train *v, Train *u)
 {
 	/* v and u are the physical chain heads of the front and rear parts of the
@@ -5964,7 +6010,10 @@ static bool TryTrainDecouple(Train *v, Train *u)
 	 * would permanently sever them on the failure path. */
 	TrainList original_src;
 
+	TrialConsistGuard trial_guard;
+
 	MakeTrainBackup(original_src, v);
+	trial_guard.SnapshotChain(original_src);
 
 	Train *first_param = nullptr;
 
@@ -6323,6 +6372,7 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_r
 
 	dec_head->vehstatus.Reset(VehState::Stopped);
 	v->vehstatus.Reset(VehState::Stopped);
+	RecordSyncEvent(NSRE_COUPLE);
 	return dec_head;
 }
 
@@ -6553,22 +6603,12 @@ bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 	TrainList original_src;
 	TrainList original_dst;
 
+	TrialConsistGuard trial_guard;
+
 	MakeTrainBackup(original_src, v_phys);
 	MakeTrainBackup(original_dst, u_phys);
-
-	/* Callbacks evaluate a trial consist on the live vehicles. Chain backups
-	 * alone do not restore the user data and caches populated by that trial. */
-	struct TrialCache {
-		Train *vehicle;
-		NewGRFCache grf_cache;
-		uint8_t user_def_data;
-		uint8_t cached_veh_flags;
-	};
-	std::vector<TrialCache> caches;
-	for (const TrainList *chain : {&original_src, &original_dst}) {
-		for (Train *t : *chain) caches.push_back({t, t->grf_cache, t->tcache.user_def_data, t->vcache.cached_veh_flags});
-	}
-	GameRandomSeedChecker random_checker;
+	trial_guard.SnapshotChain(original_src);
+	trial_guard.SnapshotChain(original_dst);
 
 	Train *u_head = u_phys;
 	Train *v = v_phys;
@@ -6593,13 +6633,6 @@ bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 	RestoreTrainBackup(original_src);
 	RestoreTrainBackup(original_dst);
 
-	for (const TrialCache &cache : caches) {
-		cache.vehicle->grf_cache = cache.grf_cache;
-		cache.vehicle->tcache.user_def_data = cache.user_def_data;
-		cache.vehicle->vcache.cached_veh_flags = cache.cached_veh_flags;
-	}
-	assert(random_checker.Check());
-
 	return ok;
 }
 
@@ -6611,8 +6644,12 @@ static bool TryTrainCouple(Train *v, Train *u)
 	TrainList original_src;
 	TrainList original_dst;
 
+	TrialConsistGuard trial_guard;
+
 	MakeTrainBackup(original_src, v);
 	MakeTrainBackup(original_dst, u);
+	trial_guard.SnapshotChain(original_src);
+	trial_guard.SnapshotChain(original_dst);
 
 	Train *u_head = u;
 	Train *v_last = v->Last();
@@ -6920,6 +6957,7 @@ static void Couple(Train *v, Train *u)
 	u->ClearFrontEngine();
 
 	NormaliseTrainHead(v, CCF_COUPLE);
+	RecordSyncEvent(NSRE_COUPLE);
 
 	/* The train is now one consist again: it is no longer a decoupled part. */
 	v->Primary()->decouple_part = 0;
@@ -8563,7 +8601,13 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 		}
 	}
 
-	if (direction_changed) first->tcache.cached_max_curve_speed = first->GetCurveSpeedLimit();
+	if (direction_changed) {
+		first->tcache.cached_max_curve_speed = first->GetCurveSpeedLimit();
+		/* Only the chain head was updated; re-broadcast the consist-level
+		 * caches or the other vehicles keep stale copies, which backwards
+		 * driving / mid-chain primaries read to compute their speed limit. */
+		first->BroadcastConsistCaches();
+	}
 
 	return true;
 

@@ -1239,6 +1239,9 @@ bool SaveloadCrashWithMissingNewGRFs();
 void SlResetVENC();
 void SlProcessVENC();
 
+void SlResetCoupleClaims();
+void SlApplyCoupleClaims();
+
 void SlResetTNNC();
 
 void SlResetERNC();

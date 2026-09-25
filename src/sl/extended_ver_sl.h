@@ -214,6 +214,7 @@ enum SlXvFeatureIndex {
 
 	XSLFI_ROAD_VEH_TRANSPORT,                     ///< Road vehicles transported by other vehicles (RoRo)
 	XSLFI_CARGO_TYPES_128,                        ///< Cargo types extended from 64 to 128 slots, cargo ids above 64 in savegames need remapping
+	XSLFI_COUPLE_CLAIM_STATE,                     ///< Transient couple target/claim state of trains is persisted
 
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };

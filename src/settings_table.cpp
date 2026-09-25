@@ -491,6 +491,9 @@ static void TrainAccelerationModelChanged(int32_t new_value)
 		if (t->IsFrontEngine()) {
 			t->tcache.cached_max_curve_speed = t->GetCurveSpeedLimit();
 			t->UpdateAcceleration();
+			/* The recomputation only updates the chain head; re-broadcast the
+			 * consist-level caches or the other vehicles keep stale copies. */
+			t->BroadcastConsistCaches();
 			if (t->lookahead != nullptr) t->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
 		}
 	}

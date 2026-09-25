@@ -47,6 +47,7 @@ enum NetworkSyncRecordEvents : uint32_t {
 	NSRE_VEH_TBTR,
 	NSRE_VEH_AUTOREPLACE,
 	NSRE_VEH_REPAIR,
+	NSRE_COUPLE,
 	NSRE_FRAME_DONE,
 	NSRE_LAST,
 };
