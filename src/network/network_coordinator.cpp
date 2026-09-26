@@ -251,9 +251,7 @@ bool ClientNetworkCoordinatorSocketHandler::ReceiveGameCoordinatorListing(Packet
 		if (this->invite_check_pending) {
 			this->invite_check_pending = false;
 
-			if (this->invite_check_found) {
-				Debug(net, 3, "Invite-code self-check: invite code '{}' is still registered with the Game Coordinator", _network_server_invite_code);
-			} else {
+			if (this->invite_check_found) {} else {
 				Debug(net, 3, "Invite-code self-check: invite code '{}' is NOT known to the Game Coordinator anymore; forcing reconnect to re-register", _network_server_invite_code);
 				/* The coordinator lost our registration (its TCP connection with us is
 				 * likely still alive, so it will never recover on its own). Close the
@@ -538,7 +536,6 @@ void ClientNetworkCoordinatorSocketHandler::GetListing(bool invite_check)
 	if (invite_check) {
 		this->invite_check_pending = true;
 		this->invite_check_found = false;
-		Debug(net, 3, "Invite-code self-check: requesting server listing to verify invite code '{}'", _network_server_invite_code);
 	}
 
 	auto p = std::make_unique<Packet>(this, PacketCoordinatorType::ClientListing);

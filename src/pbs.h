@@ -199,7 +199,7 @@ bool IsWaitingPositionFreeTraceRestrictExecute(const TraceRestrictProgram *prog,
 
 bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile);
 bool IsCouplePartnerTile(const Train *v, TileIndex tile);
-bool IsCoupleTargetBlockClear(const Train *v);
+bool IsCoupleApproachPathClear(const Train *v);
 
 Train *GetTrainForReservation(TileIndex tile, Track track);
 CommandCost CheckTrainReservationPreventsTrackModification(TileIndex tile, Track track);

@@ -182,9 +182,11 @@ private:
 		TileIndexDiff diff = TileOffsByDiagDir(dir);
 		const Train *v = Yapf().GetVehicle();
 
-		/* The strict couple semantics: the partner must be alone in its
-		 * signal block before anything is reserved towards it. */
-		if (v->current_order.IsType(OT_GOTO_COUPLE) && !IsCoupleTargetBlockClear(v)) return false;
+		/* The couple semantics: nothing may stand between us and the partner
+		 * before anything is reserved towards it. A train parked on the far
+		 * side of the partner is not in the way and does not hold the couple
+		 * up, so only the track we actually travel is looked at. */
+		if (v->current_order.IsType(OT_GOTO_COUPLE) && !IsCoupleApproachPathClear(v)) return false;
 
 		do {
 			/* Tiles of the claimed couple partner's own platform are shared:
