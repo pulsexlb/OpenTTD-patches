@@ -7037,11 +7037,12 @@ static void Couple(Train *v, Train *u)
 	 * survivor front, otherwise the slot ends up pointing at a non-primary
 	 * vehicle. Same convention as autoreplace.
 	 *
-	 * This has to happen BEFORE the ProcessOrders below: a slot-release order
-	 * right after the couple ("return the slot") is executed there, and it
-	 * vacates the slot for the surviving consist's own primary. If the slot is
-	 * still registered under u at that point, the release is a no-op and the
-	 * merged consist would keep holding a slot that it already gave back. */
+	 * This has to happen BEFORE the order advance below: that advance executes
+	 * the next order, so a slot-release order right after the couple ("return
+	 * the slot") runs there, and it vacates the slot for the surviving consist's
+	 * own primary. If the slot is still registered under u at that point, the
+	 * release is a no-op and the merged consist would keep holding a slot that
+	 * it already gave back. */
 	const bool transferred_slots = u->vehicle_flags.Test(VehicleFlag::HaveSlot);
 	if (transferred_slots) {
 		TraceRestrictTransferVehicleOccupantInAllSlots(u->index, v->index);
@@ -7049,8 +7050,17 @@ static void Couple(Train *v, Train *u)
 		v->vehicle_flags.Set(VehicleFlag::HaveSlot);
 	}
 
-	v->IncrementImplicitOrderIndex();
-	ProcessOrders(v);
+	/* The couple order is done, so load the one after it. This must not happen
+	 * when the consist takes over the waiting consist's schedule: that schedule
+	 * is about to replace ours wholesale, and running our own next order first
+	 * leaves its effects behind for the replacement not to undo. A slot release
+	 * right after the couple is the visible case, vacating a slot the transfer
+	 * above has just moved to us. The adopted successor is loaded further down
+	 * instead, see the adopt_waiting_schedule block. */
+	if (!adopt_waiting_schedule) {
+		v->IncrementImplicitOrderIndex();
+		ProcessOrders(v);
+	}
 
 	/* TryTrainCouple performs chain surgery (MakeTrainBackup/ArrangeTrains) and
 	 * needs the physical chain head; the primary vehicle is only the identity
