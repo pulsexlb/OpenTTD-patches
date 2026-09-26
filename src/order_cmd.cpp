@@ -2884,7 +2884,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			if (data >= ONSF_END) return CMD_ERROR;
 			if ((data & ONSF_NO_STOP_AT_DESTINATION_STATION) && order->IsType(OT_GOTO_DEPOT)) return CMD_ERROR;
 			if (data == order->GetNonStopType()) return CommandCost();
-			if (_settings_game.order.nonstop_only && !(data & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS) && v->IsGroundVehicle()) return CMD_ERROR;
+			if (!is_list && _settings_game.order.nonstop_only && !(data & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS) && v->IsGroundVehicle()) return CMD_ERROR;
 			break;
 
 		case MOF_STOP_LOCATION:
@@ -2924,13 +2924,15 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			if (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) return CMD_ERROR;
 			if ((data > to_underlying(OrderLoadType::NoLoad) && data != to_underlying(OrderLoadType::CargoTypeLoad)) || data == 1) return CMD_ERROR;
 			if (data == to_underlying(order->GetLoadType())) return CommandCost();
-			if (IsFullLoadOrderLoadType(static_cast<OrderLoadType>(data)) && v->HasUnbunchingOrder()) return CommandCost(STR_ERROR_UNBUNCHING_NO_FULL_LOAD);
+			if (IsFullLoadOrderLoadType(static_cast<OrderLoadType>(data)) &&
+					(is_list ? StandaloneHasUnbunchingOrder(ol) : v->HasUnbunchingOrder())) return CommandCost(STR_ERROR_UNBUNCHING_NO_FULL_LOAD);
 			break;
 
 		case MOF_RV_TRANSPORT:
 			/* Road vehicle transport (RoRo): only meaningful for station orders, value = load/unload/match flags. */
 			if (!order->IsType(OT_GOTO_STATION)) return CommandCost(STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY);
-			if ((data & ~(ORVTF_LOAD | ORVTF_UNLOAD | ORVTF_MATCH_DEST | ORVTF_WAIT | ORVTF_UNLOAD_ALL)) != 0) return CMD_ERROR;
+			if ((data & ~(ORVTF_LOAD | ORVTF_UNLOAD | ORVTF_MATCH_DEST | ORVTF_WAIT | ORVTF_UNLOAD_ALL |
+					ORVTF_OWN_WAIT | ORVTF_OWN_UNLOAD)) != 0) return CMD_ERROR;
 			break;
 
 		case MOF_RV_LOAD_STATE:
@@ -3805,6 +3807,16 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_GOTO_STATION)) {
 				u->current_order.SetDecouple(order->GetDecouple());
 				u->current_order.SetNumDecouple(order->GetNumDecouple());
+				/* Road vehicle transport: the vehicle acts on the road vehicle transport state of
+				 * its current order (see the loading code and the waiting logic), so all of it
+				 * has to follow the order the player just changed. */
+				u->current_order.GetRVTransportFlagsRef() = order->GetRVTransportFlags();
+				u->current_order.GetRVTransportLoadStateRef() = order->GetRVTransportLoadState();
+				u->current_order.GetRVTransportCargoModeRef() = order->GetRVTransportCargoMode();
+				u->current_order.GetRVTransportCargoRef() = order->GetRVTransportCargo();
+				u->current_order.GetRVTransportMinWaitRef() = order->GetRVTransportMinWait();
+				u->current_order.GetRVTransportSlotRef() = order->GetRVTransportSlot();
+				u->current_order.GetRVTransportMaxRef() = order->GetRVTransportMax();
 			}
 			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_GOTO_COUPLE)) {
 				u->current_order.SetCoupleLoad(order->GetCoupleLoad());

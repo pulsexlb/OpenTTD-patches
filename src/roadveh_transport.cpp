@@ -267,7 +267,7 @@ void RVTransportTickWaiting(Vehicle *rv)
 		const Order *listed = rv->GetOrder(rv->cur_real_order_index);
 		if (listed != nullptr) order = listed;
 	}
-	if ((order->IsType(OT_GOTO_STATION) || order->IsType(OT_LOADING)) && (order->GetRVTransportFlags() & ORVTF_LOAD) != 0) return;
+	if ((order->IsType(OT_GOTO_STATION) || order->IsType(OT_LOADING)) && (order->GetRVTransportFlags() & ORVTF_OWN_WAIT) != 0) return;
 
 	RVTransportSetWaiting(rv, false);
 }
@@ -678,7 +678,7 @@ static RVTransportNextLeg RVTransportGetNextLeg(const Vehicle *rv, StationID dro
 		const Order *o = rv->GetOrder(i);
 		if (o == nullptr || !o->IsType(OT_GOTO_STATION)) continue;
 		if (o->GetDestination().ToStationID() != drop_st) continue;
-		if ((o->GetRVTransportFlags() & ORVTF_UNLOAD) == 0) continue;
+		if ((o->GetRVTransportFlags() & ORVTF_OWN_UNLOAD) == 0) continue;
 		start = i + 1;
 		found_current = true;
 		break;
@@ -1102,7 +1102,7 @@ StationID RVTransportGetDeclaredDestination(const Vehicle *rv)
 	 * the order it is executing now: that is where it wants to get off. */
 	const Order &current = rv->current_order;
 	if ((current.IsType(OT_GOTO_STATION) || current.IsType(OT_GOTO_WAYPOINT)) &&
-			(current.GetRVTransportFlags() & ORVTF_UNLOAD) != 0) {
+			(current.GetRVTransportFlags() & ORVTF_OWN_UNLOAD) != 0) {
 		return current.GetDestination().ToStationID();
 	}
 
@@ -1116,7 +1116,7 @@ StationID RVTransportGetDeclaredDestination(const Vehicle *rv)
 	for (VehicleOrderID i = 0; i < num_orders; i++) {
 		const Order *o = rv->GetOrder(static_cast<VehicleOrderID>((current_index + i) % num_orders));
 		if (o == nullptr || !o->IsType(OT_GOTO_STATION)) continue;
-		if ((o->GetRVTransportFlags() & ORVTF_UNLOAD) != 0) return o->GetDestination().ToStationID();
+		if ((o->GetRVTransportFlags() & ORVTF_OWN_UNLOAD) != 0) return o->GetDestination().ToStationID();
 	}
 	return StationID::Invalid();
 }
@@ -1306,7 +1306,7 @@ void RVTransportValidateAfterLoad()
 			 * been written before that bookkeeping existed, in which case the station it was picked up
 			 * at still lists it as a loading vehicle and it still holds a cargo payment. */
 			RVTransportLeaveBoardingStation(v);
-			if ((v->current_order.GetRVTransportFlags() & ORVTF_LOAD) != 0) RVTransportAdvanceCarriedVehicleOrder(v);
+			if ((v->current_order.GetRVTransportFlags() & ORVTF_OWN_WAIT) != 0) RVTransportAdvanceCarriedVehicleOrder(v);
 			continue; // carried as expected
 		}
 

@@ -28,6 +28,12 @@ static const uint8_t ORVTF_UNLOAD = 1 << 1; ///< This station order unloads road
 static const uint8_t ORVTF_MATCH_DEST = 1 << 2; ///< Only load road vehicles whose declared unload station equals the carrier's next stop.
 static const uint8_t ORVTF_WAIT = 1 << 3;       ///< Keep waiting at this station until road vehicles have been loaded.
 static const uint8_t ORVTF_UNLOAD_ALL = 1 << 4; ///< Unload every road vehicle here, ignoring the station each of them declares itself.
+/* The two bits below are the road vehicle's own view on the same feature and are deliberately
+ * separate from the carrier bits above: a standalone/shared order list is not bound to a vehicle
+ * type, so one and the same order can have to say both "wait to be transported" (for a road
+ * vehicle running it) and "load road vehicles" (for a carrier running it). */
+static const uint8_t ORVTF_OWN_WAIT   = 1 << 5; ///< Road vehicle only: this station order makes the road vehicle wait to be transported here.
+static const uint8_t ORVTF_OWN_UNLOAD = 1 << 6; ///< Road vehicle only: this station order makes the road vehicle get off a carrier here.
 
 /**
  * Is this vehicle a dedicated road vehicle carrier: every cargo-carrying part of its chain is
