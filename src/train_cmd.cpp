@@ -5542,6 +5542,62 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 }
 
 /**
+ * Whether the other consist is the one we are coupling with, in either role: the part we are
+ * homing in on, and the part that has claimed us as its target. Sharing a platform with either
+ * is intended, so they must not be treated as blocking the path. Without the second relation a
+ * collector would be held up by the very part it comes for.
+ *
+ * @param consist The %Train that is extending its reservation.
+ * @param other The %Train found on our path.
+ * @return \c true when the other consist is our couple partner.
+ */
+static bool IsCouplePartnerOf(const Train *consist, const Train *other)
+{
+	if (const Train *tgt = GetClaimedCoupleTarget(consist); tgt != nullptr && tgt->Primary() == other) return true;
+	if (const Train *claimant = GetValidCoupleClaimant(consist); claimant != nullptr && claimant->Primary() == other) return true;
+	return false;
+}
+
+/**
+ * Whether another consist is standing between us and the platform exit, that is, on the part of
+ * our own platform we are about to travel along.
+ *
+ * #FollowTrainReservation only reports a train it happens to find at the end of the reservation,
+ * so a train standing further along the platform is missed entirely, and reversing on a platform
+ * that another train shares then reserved a path straight through it and drove into that train.
+ * This looks at the platform itself instead, and only ahead of us: a train further down the
+ * platform, which we would not have to pass, does not hold us up.
+ *
+ * Only departure is checked. A consist that is still loading, one that is not standing on a
+ * platform yet, and one that is not standing still are left to the normal arrival handling, so
+ * trains still queue behind each other inside a station instead of being held at its entrance.
+ *
+ * The walk starts at the leading vehicle and runs towards the platform exit, so a consist is only
+ * held up by what it would have to pass: a train further down the platform, which lies behind it
+ * after a turnaround, never blocks it.
+ *
+ * @param consist The %Train that is about to leave.
+ * @return \c true when another consist stands on the platform ahead of us.
+ */
+static bool IsPlatformAheadOccupied(const Train *consist)
+{
+	const Train *moving_front = consist->GetMovingFront();
+	if (!IsRailStationTile(moving_front->tile) || consist->cur_speed != 0) return false;
+	if (consist->current_order.IsAnyLoadingType() || consist->current_order.IsType(OT_WAIT_COUPLE)) return false;
+
+	DiagDirection dir = TrackdirToExitdir(moving_front->GetVehicleTrackdir());
+	TileIndexDiff diff = TileOffsByDiagDir(dir);
+	for (TileIndex tile = moving_front->tile; IsCompatibleTrainStationTile(tile, moving_front->tile); tile += diff) {
+		for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
+			if (u->Primary() == consist->Primary()) continue;
+			if (IsCouplePartnerOf(consist, u)) continue;
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
  * Try to reserve a path to a safe position.
  *
  * @param consist The vehicle
@@ -5606,6 +5662,14 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 		}
 	}
 
+	/* Another consist standing between us and the platform exit blocks us, whatever the
+	 * reservations say. A turnaround on a shared platform used to reserve a path straight
+	 * through the other train and drive into it. */
+	if (IsPlatformAheadOccupied(consist)) {
+		if (mark_as_stuck) MarkTrainAsStuck(consist);
+		return TPRRF_NONE;
+	}
+
 	Vehicle *other_train = nullptr;
 	PBSTileInfo origin = FollowTrainReservation(consist, &other_train);
 	/* The path we are driving on is already blocked by some other train.
@@ -5614,8 +5678,10 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 	 * Exit here as doing any further reservations will probably just
 	 * make matters worse. */
 	if (other_train != nullptr && other_train->index != consist->index && other_train->tile != consist->tile) {
-		/* If we are both at the station, we probably just decoupled and we can continue */
-		if (!IsRailStationTile(consist->tile) || !IsRailStationTile(other_train->tile)) {
+		/* Only a couple partner may share our path; the former "both at a station, so we
+		 * probably just decoupled and can continue" test also let unrelated trains through, and
+		 * a train reversing on a platform another train stands on was driven straight into it. */
+		if (!IsCouplePartnerOf(consist, Train::From(other_train))) {
 			if (mark_as_stuck) MarkTrainAsStuck(consist);
 			return TPRRF_NONE;
 		}
