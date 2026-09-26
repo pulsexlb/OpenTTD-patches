@@ -6121,9 +6121,12 @@ static void InsertDecoupleWaitOrder(Train *v, std::unique_ptr<OrderList> &copy, 
  * @param schedule_id the schedule to adopt
  * @param load_at_station when valid, load/unload at this station on the first
  *                       pass only before running the schedule
+ * @param load_order the order the part is running at the decouple station; when
+ *                   given, its settings are copied onto the one-off station
+ *                   order of the wrapper instead of starting from a bare one
  * @return true when the schedule was adopted
  */
-static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id, StationID load_at_station = StationID::Invalid())
+static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id, StationID load_at_station = StationID::Invalid(), const Order *load_order = nullptr)
 {
 	OrderList *ol = OrderList::GetIfValid(schedule_id);
 	if (ol == nullptr || !ol->IsPlayerCreated()) return false;
@@ -6138,7 +6141,20 @@ static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id, StationI
 	const bool load_before_schedule = load_at_station != StationID::Invalid();
 	if (load_before_schedule) {
 		Order station_order;
-		station_order.MakeGoToStation(load_at_station);
+		if (load_order != nullptr && load_order->IsType(OT_GOTO_STATION)) {
+			/* The one-off load has to do what the player configured for the decouple
+			 * station itself, so take the whole order as a template: load types,
+			 * per-cargo load/unload settings, refit cargo (including auto-refit),
+			 * unload type, stop location, timings and any trace/restrict slot. */
+			station_order = *load_order;
+			station_order.SetDestination(load_at_station);
+		} else {
+			station_order.MakeGoToStation(load_at_station);
+		}
+		/* Splitting is driven by the OT_DECOUPLE order which follows in the original
+		 * list; this copy lives in a list of its own and must not split again. */
+		station_order.SetDecouple(ODF_NOTHING);
+		station_order.SetNumDecouple(0);
 		wrapper_orders.push_back(std::move(station_order));
 	}
 
@@ -6222,7 +6238,7 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_pt
 				/* Load/unload at this station once, then run the schedule, skipping
 				 * the station order on all later passes. */
 				load_trains |= DECOUPLE_LOAD_SECOND;
-				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID(), v->last_station_visited);
+				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID(), v->last_station_visited, &v->current_order);
 				break;
 			default: NOT_REACHED();
 		}
@@ -6250,7 +6266,7 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_pt
 			/* Load/unload at this station once, then run the schedule, skipping
 			 * the station order on all later passes. */
 			load_trains |= DECOUPLE_LOAD_FIRST;
-			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID(), v->last_station_visited);
+			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID(), v->last_station_visited, &v->current_order);
 			break;
 		default: NOT_REACHED();
 	}
