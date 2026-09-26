@@ -4628,6 +4628,9 @@ STR_VEHICLE_DETAILS_ROAD_VEHICLE_RENAME                         :{BLACK}命名�
 STR_VEHICLE_DETAILS_SHIP_RENAME                                 :{BLACK}命名船只
 STR_VEHICLE_DETAILS_AIRCRAFT_RENAME                             :{BLACK}命名飞机
 
+STR_VEHICLE_INFO_VALUE_NA                                       :-
+STR_VEHICLE_INFO_WEIGHT_RATIOS_NA                               :{BLACK}功率重量比：{LTBLUE}-{BLACK}  {BLACK}最大牵引力重量比：{LTBLUE}-
+STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS_NA                      :{BLACK}可靠度：{LTBLUE}-{BLACK}上次维护后的故障次数：{LTBLUE}-
 STR_VEHICLE_INFO_AGE                                            :{COMMA} 年（剩余年限：{COMMA}）
 STR_VEHICLE_INFO_AGE_RED                                        :{RED}{COMMA} 年（剩余年限：{COMMA}）
 STR_VEHICLE_INFO_AGE_RUNNING_COST_YR                            :{BLACK}年龄：{LTBLUE}{STRING}{BLACK}   运行成本：{LTBLUE}{CURRENCY_LONG}/年

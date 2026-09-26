@@ -3333,6 +3333,25 @@ struct VehicleDetailsWindow : Window {
 		this->owner = v->owner;
 		this->tab = TDW_TAB_CARGO;
 		if (v->type == VehicleType::Train && _shift_pressed) this->tab = TDW_TAB_TOTALS;
+
+		this->UpdateEngineDependentWidgets();
+	}
+
+	/**
+	 * A consist with no engine at all has no reliability to decay and no speed to restrict, so
+	 * the service interval and the speed restriction controls have nothing to act on. Grey them
+	 * out; the consist may still be coupled to an engine later, so this is refreshed whenever the
+	 * window is invalidated.
+	 */
+	void UpdateEngineDependentWidgets()
+	{
+		const Vehicle *v = Vehicle::Get(this->window_number);
+		const bool engine_less = v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0;
+		if (!engine_less) return;
+
+		this->SetWidgetDisabledState(WID_VD_DECREASE_SERVICING_INTERVAL, true);
+		this->SetWidgetDisabledState(WID_VD_INCREASE_SERVICING_INTERVAL, true);
+		this->SetWidgetDisabledState(WID_VD_SERVICE_INTERVAL_DROPDOWN, true);
 	}
 
 	void Close(int data = 0) override
@@ -3357,6 +3376,9 @@ struct VehicleDetailsWindow : Window {
 		}
 		if (!gui_scope) return;
 		const Vehicle *v = Vehicle::Get(this->window_number);
+		/* The consist may have gained or lost an engine, which decides whether the service
+		 * interval and speed restriction controls apply to it. */
+		this->UpdateEngineDependentWidgets();
 		if (v->type == VehicleType::Road || v->type == VehicleType::Ship || v->type == VehicleType::Aircraft) {
 			const NWidgetBase *nwid_info = this->GetWidget<NWidgetBase>(WID_VD_MIDDLE_DETAILS);
 			uint aimed_height = this->GetVehDetailsHeight(v);
@@ -3632,18 +3654,47 @@ struct VehicleDetailsWindow : Window {
 			case WID_VD_TOP_DETAILS: {
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
 
+				/* A consist with no engine at all (e.g. a fully uncoupled set of wagons) has no
+				 * power, no reachable speed, no reliability to decay and no breakdown history, and
+				 * the lifetime limit comes from the engine it was built around. Every one of those
+				 * values is unknown, so it is shown as a dash next to the label it belongs to. */
+				const bool engine_less = v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0;
+
 				/* Draw running cost */
-				DrawString(tr,
-					GetString(this->GetRunningCostString(),
-						(v->age + DAYS_IN_YEAR < v->max_age) ? STR_VEHICLE_INFO_AGE : STR_VEHICLE_INFO_AGE_RED,
-						DateDeltaToYearDelta(v->age),
-						DateDeltaToYearDelta(v->max_age),
-						v->GetDisplayRunningCost()));
+				if (engine_less) {
+					/* The age is shown through a {STRING2}, which consumes the id and two arguments
+					 * of its own, so the dash still needs both fillers. */
+					DrawString(tr,
+						GetString(this->GetRunningCostString(),
+							STR_VEHICLE_INFO_VALUE_NA,
+							std::monostate{},
+							std::monostate{},
+							v->GetDisplayRunningCost()));
+				} else {
+					DrawString(tr,
+						GetString(this->GetRunningCostString(),
+							(v->age + DAYS_IN_YEAR < v->max_age) ? STR_VEHICLE_INFO_AGE : STR_VEHICLE_INFO_AGE_RED,
+							DateDeltaToYearDelta(v->age),
+							DateDeltaToYearDelta(v->max_age),
+							v->GetDisplayRunningCost()));
+				}
 				tr.top += GetCharacterHeight(FontSize::Normal);
 
 				/* Draw max speed */
 				uint64_t max_speed = PackVelocity(v->GetDisplayMaxSpeed(), v->type);
-				if (v->type == VehicleType::Train ||
+				if (engine_less) {
+					/* The weight belongs to the wagons themselves, so it stays visible; the power
+					 * and the speed need an engine and are left out. The included ratios are dropped
+					 * by passing an empty string, which still has to be followed by the four filler
+					 * arguments that {STRING4} always consumes. */
+					DrawString(tr, GetString(STR_VEHICLE_INFO_FULL_WEIGHT_WITH_RATIOS,
+							v->GetGroundVehicleCache()->cached_weight,
+							STR_EMPTY,
+							std::monostate{},
+							std::monostate{},
+							std::monostate{},
+							std::monostate{}));
+				} else if (v->type == VehicleType::Train ||
 						(v->type == VehicleType::Road && _settings_game.vehicle.roadveh_acceleration_model != AccelerationModel::Original)) {
 					const GroundVehicleCache *gcache = v->GetGroundVehicleCache();
 					if (v->type == VehicleType::Train && (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Original ||
@@ -3666,12 +3717,19 @@ struct VehicleDetailsWindow : Window {
 
 				bool should_show_weight_ratio = this->ShouldShowWeightRatioLine(v);
 				if (should_show_weight_ratio) {
-					DrawString(tr,
-						GetString(STR_VEHICLE_INFO_WEIGHT_RATIOS,
-							STR_VEHICLE_INFO_POWER_WEIGHT_RATIO,
-							(100 * Train::From(v)->gcache.cached_power) / std::max<uint>(1, Train::From(v)->gcache.cached_weight),
-							Train::From(v)->GetAccelerationType() == VehicleAccelerationModel::Maglev ? STR_EMPTY : STR_VEHICLE_INFO_TE_WEIGHT_RATIO,
-							(100 * Train::From(v)->gcache.cached_max_te) / std::max<uint>(1, Train::From(v)->gcache.cached_weight)));
+					if (engine_less) {
+						/* Both ratios divide a power or a tractive effort by the weight, and the
+						 * numerators only exist when there is an engine, so show a dash for each
+						 * next to the label naming it. */
+						DrawString(tr, STR_VEHICLE_INFO_WEIGHT_RATIOS_NA);
+					} else {
+						DrawString(tr,
+							GetString(STR_VEHICLE_INFO_WEIGHT_RATIOS,
+								STR_VEHICLE_INFO_POWER_WEIGHT_RATIO,
+								(100 * Train::From(v)->gcache.cached_power) / std::max<uint>(1, Train::From(v)->gcache.cached_weight),
+								Train::From(v)->GetAccelerationType() == VehicleAccelerationModel::Maglev ? STR_EMPTY : STR_VEHICLE_INFO_TE_WEIGHT_RATIO,
+								(100 * Train::From(v)->gcache.cached_max_te) / std::max<uint>(1, Train::From(v)->gcache.cached_weight)));
+					}
 					tr.top += GetCharacterHeight(FontSize::Normal);
 				}
 
@@ -3714,6 +3772,11 @@ struct VehicleDetailsWindow : Window {
 					uint8_t total_engines = Train::From(v)->tcache.cached_num_engines;
 					if (total_engines > 0) {
 						DrawString(tr, GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, ToPercent16(total_reliability / total_engines), ToPercent16(total_max_reliability / total_engines), total_breakdowns));
+					} else {
+						/* A consist without engines has no reliability and never breaks down, so
+						 * there is nothing to report; show a dash next to each label rather than
+						 * leave the line blank, which would make the lines below appear to shift. */
+						DrawString(tr, STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS_NA);
 					}
 				} else {
 					DrawString(tr, GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, ToPercent16(v->reliability), ToPercent16(v->GetEngine()->reliability), v->breakdowns_since_last_service));
@@ -3872,6 +3935,8 @@ struct VehicleDetailsWindow : Window {
 			case WID_VD_INCREASE_SERVICING_INTERVAL:   // increase int
 			case WID_VD_DECREASE_SERVICING_INTERVAL: { // decrease int
 				const Vehicle *v = Vehicle::Get(this->window_number);
+				/* Nothing decays on a consist without an engine, so there is no interval to set. */
+				if (v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0) break;
 				int mod;
 				if (!v->ServiceIntervalIsPercent() && EconTime::UsingWallclockUnits()) {
 					mod = _ctrl_pressed ? 1 : 5;
@@ -3889,6 +3954,7 @@ struct VehicleDetailsWindow : Window {
 
 			case WID_VD_SERVICE_INTERVAL_DROPDOWN: {
 				const Vehicle *v = Vehicle::Get(this->window_number);
+				if (v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0) break;
 				ShowDropDownMenu(this,
 						GetServiceIntervalDropDownTexts(),
 						v->ServiceIntervalIsCustom() ? (v->ServiceIntervalIsPercent() ? 2 : 1) : 0, widget, 0, 0, 0, DDSF_SHARED);
@@ -3950,6 +4016,9 @@ struct VehicleDetailsWindow : Window {
 				DropDownList list;
 				if (v->type == VehicleType::Train) {
 					bool change_allowed = IsVehicleControlAllowed(v, _local_company);
+					/* A speed limit needs a reachable speed to be measured against, so a consist
+					 * without any engine cannot have one set. */
+					if (Train::From(v)->tcache.cached_num_engines == 0) change_allowed = false;
 					list.push_back(MakeDropDownListStringItem(STR_VEHICLE_DETAILS_REMOVE_SPEED_RESTRICTION, VDWDDA_CLEAR_SPEED_RESTRICTION, !change_allowed || Train::From(v)->speed_restriction == 0));
 					list.push_back(MakeDropDownListStringItem(STR_VEHICLE_DETAILS_SET_SPEED_RESTRICTION, VDWDDA_SET_SPEED_RESTRICTION, !change_allowed));
 				}
@@ -4068,10 +4137,6 @@ static WindowDesc _nontrain_vehicle_details_desc(__FILE__, __LINE__,
  */
 static void ShowVehicleDetailsWindow(const Vehicle *v)
 {
-	/* Trains without any engine (e.g. after full uncoupling) cannot be viewed. */
-	if (v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0) {
-		return;
-	}
 	CloseWindowById(WindowClass::VehicleOrders, v->index, false);
 	CloseWindowById(WindowClass::VehicleTimetable, v->index, false);
 	AllocateWindowDescFront<VehicleDetailsWindow>((v->type == VehicleType::Train) ? _train_vehicle_details_desc : _nontrain_vehicle_details_desc, v->index);

@@ -4766,6 +4766,9 @@ STR_VEHICLE_DETAILS_ROAD_VEHICLE_RENAME                         :{BLACK}Name roa
 STR_VEHICLE_DETAILS_SHIP_RENAME                                 :{BLACK}Name ship
 STR_VEHICLE_DETAILS_AIRCRAFT_RENAME                             :{BLACK}Name aircraft
 
+STR_VEHICLE_INFO_VALUE_NA                                       :-
+STR_VEHICLE_INFO_WEIGHT_RATIOS_NA                               :{BLACK}Power / weight: {LTBLUE}-{BLACK}  Max. T.E / weight: {LTBLUE}-
+STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS_NA                      :{BLACK}Reliability: {LTBLUE}-{BLACK}  {BLACK}Breakdowns since last service: {LTBLUE}-
 STR_VEHICLE_INFO_AGE                                            :{COMMA} year{P "" s} (lifetime: {COMMA} year{P "" s})
 STR_VEHICLE_INFO_AGE_RED                                        :{RED}{COMMA} year{P "" s} (lifetime: {COMMA} year{P "" s})
 STR_VEHICLE_INFO_AGE_RUNNING_COST_YR                            :{BLACK}Age: {LTBLUE}{STRING2}{BLACK}   Running Cost: {LTBLUE}{CURRENCY_LONG}/year

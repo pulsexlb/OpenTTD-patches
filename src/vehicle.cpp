@@ -3638,13 +3638,6 @@ void Vehicle::BeginLoading()
 	this->cur_speed = 0;
 	this->MarkDirty();
 
-	/* When train station servicing is enabled, service the train here at the station it has
-	 * arrived at, instead of it being routed to a depot. This also covers scheduled stops where
-	 * there is no cargo to load, where the train would otherwise just pass through. */
-	if (this->type == VehicleType::Train && _settings_game.vehicle.train_service_at_station && this->IsServiceIntervalDue()) {
-		VehicleServiceInDepot(this);
-	}
-
 	/* RoRo: a road vehicle whose order says "wait to be transported" stops here and waits. */
 	if (this->type == VehicleType::Road && (this->current_order.GetRVTransportFlags() & ORVTF_OWN_WAIT) != 0) {
 		RVTransportSetWaiting(this, true);

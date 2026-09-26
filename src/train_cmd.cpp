@@ -7424,6 +7424,14 @@ static void TrainEnterStation(Train *consist, StationID station)
 		Game::NewEvent(new ScriptEventStationFirstVehicle(st->index, consist->index));
 	}
 
+	/* When train station servicing is enabled, service the train here at the station it has
+	 * arrived at, instead of it being routed to a depot. This runs on arrival rather than as part
+	 * of loading, so it also covers arrivals that unload and load nothing: a decouple station with
+	 * the "keep orders, but do not load" setting still gets the consist serviced here. */
+	if (_settings_game.vehicle.train_service_at_station && consist->IsServiceIntervalDue()) {
+		VehicleServiceInDepot(consist);
+	}
+
 	if (load_trains & DECOUPLE_LOAD_FIRST) {
 		consist->force_proceed = TFP_NONE;
 		InvalidateWindowData(WindowClass::VehicleView, consist->index);
