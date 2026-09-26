@@ -7325,6 +7325,24 @@ static void TrainEnterStation(Train *consist, StationID station)
 	Train *u = nullptr;
 	uint8_t load_trains = DECOUPLE_NO_LOAD;
 	bool want_decouple = consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE;
+	if (want_decouple) {
+		/* Stopping at a via station leaves an OT_IMPLICIT marker at the implicit index (see the
+		 * implicit-order handling in #HandleLoading), so that index can point at the marker while
+		 * the order actually being run sits one place further along. Every step of the decouple
+		 * below assumes the implicit index is on a real order, as it is after a plain stop:
+		 * #PrepareDecoupleWaitOrders and #SplitOrders read the OT_DECOUPLE that follows it, the
+		 * wait orders are inserted relative to it, and the ODOF_WAIT_FOR_COUPLE branch steps past
+		 * the decouple with IncrementImplicitOrderIndex - which, from a marker, only re-syncs the
+		 * two indices and leaves the consist on the station order it was just at. Line the
+		 * implicit index up with the real one, which is never itself implicit (see
+		 * #UpdateRealOrderIndex), so all of that behaves as it does on a plain stop. */
+		const Order *implicit_order = consist->GetOrder(consist->cur_implicit_order_index);
+		if (implicit_order != nullptr && implicit_order->IsType(OT_IMPLICIT) &&
+				consist->cur_implicit_order_index != consist->cur_real_order_index) {
+			consist->cur_implicit_order_index = consist->cur_real_order_index;
+			consist->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+		}
+	}
 	Debug(desync, 1, "TrainEnterStation: veh={} st={} tile=({},{}) want_decouple={} ordertype={}", consist->index, station, TileX(consist->tile), TileY(consist->tile), want_decouple, (int)consist->current_order.GetType());
 	std::unique_ptr<OrderList> wait_orders[2];
 	const StringID order_failure = want_decouple ? PrepareDecoupleWaitOrders(consist, wait_orders) : STR_NULL;
