@@ -125,6 +125,7 @@ struct GUIVehicleGroup;
 /* Unified window procedure */
 void ShowVehicleViewWindow(const Vehicle *v);
 void DirtySharedVehicleViewWindowTitles(const Vehicle *v);
+void ChangeVehicleViewWindow(VehicleID from_index, VehicleID to_index);
 bool VehicleClicked(const Vehicle *v);
 bool VehicleClicked(VehicleList::const_iterator begin, VehicleList::const_iterator end);
 bool VehicleClicked(const GUIVehicleGroup &vehgroup);

@@ -36,7 +36,6 @@
 
 extern void ChangeVehicleViewports(VehicleID from_index, VehicleID to_index);
 extern void ChangeVehicleNews(VehicleID from_index, VehicleID to_index);
-extern void ChangeVehicleViewWindow(VehicleID from_index, VehicleID to_index);
 
 /**
  * Figure out if two engines got at least one type of cargo in common (refitting if needed)

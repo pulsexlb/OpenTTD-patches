@@ -2367,15 +2367,71 @@ static void MaterialiseTrainPrimary(Train *head)
 	if (prim->IsEngine()) prim->SetFrontEngine();
 }
 
+/**
+ * The window classes that show a whole consist, and are therefore kept open across a consist
+ * change instead of being closed. They are keyed by a single vehicle id, so a consist change
+ * has to re-key them; see RekeyConsistWindows().
+ */
+static constexpr WindowClass _consist_window_classes[] = {
+	WindowClass::VehicleView,
+	WindowClass::VehicleDetails,
+	WindowClass::VehicleOrders,
+	WindowClass::VehicleRefit,
+	WindowClass::VehicleTimetable,
+};
+
+/**
+ * Keep one window per consist window class across a consist change.
+ *
+ * A consist window is keyed by one vehicle id but displays everything from the primary, so a
+ * consist change that moves the primary leaves the window pointing at a vehicle that no longer
+ * carries the consist. Closing every window avoided that, but at the cost of losing the window
+ * on every couple, decouple and depot rebuild. Instead, one window per class is re-keyed to the
+ * new primary and refreshed; the windows of the other members have no consist left to follow, so
+ * those are closed.
+ *
+ * @param members every vehicle of the chain, as passed to NormaliseTrainHead().
+ * @param new_prim the primary the chain ended up with.
+ */
+static void RekeyConsistWindows(const std::vector<Train *> &members, const Train *new_prim)
+{
+	for (WindowClass wc : _consist_window_classes) {
+		/* Prefer a window that is already keyed to the new primary, so one the player opened on
+		 * the surviving vehicle is not moved at all. */
+		const Train *from = nullptr;
+		for (const Train *u : members) {
+			if (FindWindowById(wc, u->index) == nullptr) continue;
+			if (u == new_prim) {
+				from = u;
+				break;
+			}
+			if (from == nullptr) from = u;
+		}
+
+		/* Move the survivor onto the primary before closing, so the window just moved is not
+		 * closed again by the loop below. */
+		if (from != nullptr && from != new_prim) ChangeVehicleViewWindow(from->index, new_prim->index);
+
+		for (const Train *u : members) {
+			if (u == new_prim) continue;
+			CloseWindowById(wc, u->index.base());
+		}
+
+		/* The key did not change for a window that was already on the primary, but everything it
+		 * displays is stale now, so refresh it either way. */
+		if (from != nullptr) InvalidateWindowData(wc, new_prim->index, VIWD_CONSIST_CHANGED);
+	}
+}
+
 static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 {
 	/* Not much to do! */
 	if (head == nullptr) return;
 
 	/* Unify the primary pointers of the chain (single driver, consistent
-	 * resolution, valid carrier), then simply close the vehicle windows of
-	 * every member -- identities may have shifted and players can reopen
-	 * them. */
+	 * resolution, valid carrier), then re-key the vehicle windows of the chain to the primary it
+	 * ends up with, so that a couple, a decouple or a depot rebuild keeps the window the player
+	 * is looking at. */
 	{
 		std::vector<Train *> members;
 		for (Train *u = head; u != nullptr; u = u->Next()) members.push_back(u);
@@ -2395,13 +2451,10 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 		for (Train *u : members) {
 			u->SetPrimary(new_prim);
 
-			CloseWindowById(WindowClass::VehicleView, u->index.base());
-			CloseWindowById(WindowClass::VehicleDetails, u->index.base());
-			CloseWindowById(WindowClass::VehicleOrders, u->index.base());
-			CloseWindowById(WindowClass::VehicleRefit, u->index.base());
-			CloseWindowById(WindowClass::VehicleTimetable, u->index.base());
 			DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
 		}
+
+		RekeyConsistWindows(members, new_prim);
 	}
 
 	/* Tell the 'world' the train changed. Physical caches are always recomputed
@@ -2418,6 +2471,13 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 	/* Update the refit button and window */
 	InvalidateWindowData(WindowClass::VehicleRefit, ident->index, VIWD_CONSIST_CHANGED);
 	SetWindowWidgetDirty(WindowClass::VehicleView, ident->index, WID_VV_REFIT);
+
+	/* Refresh the rest of the kept consist windows. RekeyConsistWindows() already invalidated
+	 * them, but it runs before the primary is final, so a window re-keyed to a primary that
+	 * changed again afterwards would be left stale. */
+	for (WindowClass wc : _consist_window_classes) {
+		InvalidateWindowData(wc, ident->index, VIWD_CONSIST_CHANGED);
+	}
 
 	/* If we don't have a unit number yet, set one. */
 	if (ident->unitnumber != 0 || HasBit(ident->subtype, GVSF_VIRTUAL)) return;
@@ -7103,15 +7163,14 @@ static void Couple(Train *v, Train *u)
 	 * stations. */
 	NormalizeLastLoadingStation(v_prim);
 
-	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
-
-	CloseWindowById(WindowClass::VehicleView, u->index);
-	CloseWindowById(WindowClass::VehicleOrders, u->index);
-	CloseWindowById(WindowClass::VehicleRefit, u->index);
-	CloseWindowById(WindowClass::VehicleDetails, u->index);
-	CloseWindowById(WindowClass::VehicleTimetable, u->index);
+	/* The consist windows keyed to u are left to NormaliseTrainHead() below: it re-keys exactly
+	 * one window per class to the primary of the merged chain, which keeps the window of v (the
+	 * part the player was driving) and closes the one of u, or moves u's over to v when v had no
+	 * window open at all. */
 	DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
 	SetWindowDirty(WindowClass::Company, _current_company);
+
+	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
 
 	/* The moving consist may take over the waiting consist's schedule; do this
 	 * before the waiting consist's orders are removed, so its state can be
@@ -7131,7 +7190,9 @@ static void Couple(Train *v, Train *u)
 	u->ClearFrontWagon();
 	u->ClearFrontEngine();
 
-	NormaliseTrainHead(v, CCF_COUPLE);
+	/* Normalise from the physical chain head, not from the primary: the vehicles ahead of the
+	 * primary have to be in the chain for their windows to be re-keyed as well. */
+	NormaliseTrainHead(v->First(), CCF_COUPLE);
 	RecordSyncEvent(NSRE_COUPLE);
 
 	/* The train is now one consist again: it is no longer a decoupled part. */
