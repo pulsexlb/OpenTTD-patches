@@ -59,6 +59,8 @@
 #include "table/strings.h"
 #include "table/train_cmd.h"
 
+static Train *GetClaimedCoupleTarget(const Train *moving);
+
 #include "safeguards.h"
 
 extern btree::btree_multimap<VehicleID, PendingSpeedRestrictionChange> _pending_speed_restriction_change_map;
@@ -1204,13 +1206,15 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 	 * the contact point of the waiting train at crawl speed; the actual stop
 	 * to zero happens on physical contact. */
 	if (this->current_order.IsType(OT_GOTO_COUPLE)) {
-		const Train *tgt = Train::GetIfValid(this->couple_target);
-		bool target_ok = tgt != nullptr && !tgt->Primary()->vehstatus.Test(VehState::Crashed)
-				&& !tgt->Primary()->vehstatus.Test(VehState::Stopped)
-				&& tgt->Primary()->current_order.IsType(OT_WAIT_COUPLE)
+		/* Use the claim-validated target: the claim is re-checked against the
+		 * order's own conditions every tick, so a partner that stopped
+		 * qualifying (lost its 路签, filled up, left, ...) is dropped here
+		 * instead of being braked towards for a couple that cannot happen. */
+		const Train *tgt = GetClaimedCoupleTarget(this);
+		bool target_ok = tgt != nullptr && !tgt->Primary()->vehstatus.Test(VehState::Stopped)
 				&& IsTrainCouplingAllowed(this->owner, tgt->owner);
 		if (!target_ok) {
-			if (tgt != nullptr) const_cast<Train *>(this)->couple_target = VehicleID::Invalid();
+			const_cast<Train *>(this)->couple_target = VehicleID::Invalid();
 		} else {
 			const Train *mf = this->GetMovingFront();
 			int centre_dist = std::max(abs(mf->x_pos - tgt->x_pos), abs(mf->y_pos - tgt->y_pos));
@@ -6435,9 +6439,19 @@ static bool CoupleStationOk(const Order &order, TileIndex contact_tile)
 	return IsRailStationTile(contact_tile) && GetStationIndex(contact_tile) == order.GetCoupleStation();
 }
 
+static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *moving, const Order &order,
+		Train *rep, TileIndex contact_tile);
+
 /**
  * Check whether the claim stored on a waiting consist is still held by a live
  * moving consist that is homing in on it.
+ *
+ * Besides liveness, this re-checks the couple order's own conditions (路签,
+ * cargo, load, unit count, station, platform) on every tick: a claim is a
+ * commitment to *this* partner for *this* order, so it must never outlive the
+ * conditions that created it. When a condition lapses the claim dies here, the
+ * waiting consist gives up its body hold, and the approaching consist re-paths
+ * and re-selects a partner on its next tick.
  * @param carrier Primary of the waiting consist.
  * @return the claimant's Primary, or nullptr when the claim has gone stale.
  */
@@ -6452,6 +6466,17 @@ static Train *GetValidCoupleClaimant(const Train *carrier)
 	if (claimant->vehstatus.Test(VehState::Crashed)) return nullptr;
 	Train *tgt = Train::GetIfValid(claimant->couple_target);
 	if (tgt == nullptr || tgt->Primary() != carrier) return nullptr;
+
+	/* The partner can stop qualifying at any time while we approach it (most
+	 * notably it can lose its 路签 to another consist, or fill up). Note this
+	 * must not go through #GetCoupleCandidateResult: that one asks
+	 * #CoupleClaimBlocks, which lands back here. */
+	if (GetCoupleVolatileConditionResult(claimant, claimant->current_order, tgt->First(), tgt->tile) != CoupleCandidateResult::Valid) {
+		/* Drop the target so the claimant re-selects a partner instead of
+		 * braking for a couple that can no longer happen. */
+		claimant->couple_target = VehicleID::Invalid();
+		return nullptr;
+	}
 
 	return claimant;
 }
@@ -6522,6 +6547,41 @@ void ClaimCoupleTarget(Train *moving, Train *carrier, uint32_t claim_cost)
 }
 
 /**
+ * Check the *volatile* conditions of a couple order against a waiting train.
+ *
+ * These are all cheap state comparisons (the partner can change any of them
+ * while the approaching consist is still on its way: it can lose its 路签,
+ * finish loading, get refitted, drive off, ...), so they are re-checked every
+ * tick for an established claim. The expensive geometric check
+ * (#IsCoupleArrangementValid, which re-arranges both chains and runs the NewGRF
+ * start/stop callbacks) is deliberately NOT part of this: it belongs to target
+ * selection and to the actual contact, never to the per-tick claim validation.
+ *
+ * @param moving the approaching consist.
+ * @param order the GOTO_COUPLE order of \a moving.
+ * @param rep physical chain head of the waiting train.
+ * @param contact_tile tile where the coupling is expected to happen.
+ * @return #CoupleCandidateResult::Valid, or the first condition that fails.
+ */
+static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *moving, const Order &order,
+		Train *rep, TileIndex contact_tile)
+{
+	Train *carrier = rep->Primary();
+
+	if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) return CoupleCandidateResult::NotWaiting;
+	if (carrier->vehstatus.Test(VehState::Crashed)) return CoupleCandidateResult::Crashed;
+	if (carrier->vehstatus.Test(VehState::Stopped)) return CoupleCandidateResult::Stopped;
+	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return CoupleCandidateResult::Owner;
+	if (!CoupleOrderLoadOk(order, rep)) return CoupleCandidateResult::Load;
+	if (!CoupleCargoOk(order, rep)) return CoupleCandidateResult::Cargo;
+	if (!CoupleNumOk(order, rep)) return CoupleCandidateResult::UnitCount;
+	if (!CoupleSlotOk(order, carrier)) return CoupleCandidateResult::Slot;
+	if (!CoupleStationOk(order, contact_tile)) return CoupleCandidateResult::Station;
+	if (!TrainFitStation(rep)) return CoupleCandidateResult::Platform;
+	return CoupleCandidateResult::Valid;
+}
+
+/**
  * Validate a waiting train as a coupling partner for the moving consist and
  * return the end of its chain expected to make contact first.
  * @param moving the approaching consist.
@@ -6539,17 +6599,9 @@ CoupleCandidateResult GetCoupleCandidateResult(const Train *moving, const Order 
 	Train *carrier = rep->Primary();
 
 	if (!order.IsType(OT_GOTO_COUPLE)) return CoupleCandidateResult::NotCoupleOrder;
-	if (!carrier->current_order.IsType(OT_WAIT_COUPLE)) return CoupleCandidateResult::NotWaiting;
 	if (respect_claim && CoupleClaimBlocks(carrier, moving, claim_cost)) return CoupleCandidateResult::Claimed;
-	if (carrier->vehstatus.Test(VehState::Crashed)) return CoupleCandidateResult::Crashed;
-	if (carrier->vehstatus.Test(VehState::Stopped)) return CoupleCandidateResult::Stopped;
-	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return CoupleCandidateResult::Owner;
-	if (!CoupleOrderLoadOk(order, rep)) return CoupleCandidateResult::Load;
-	if (!CoupleCargoOk(order, rep)) return CoupleCandidateResult::Cargo;
-	if (!CoupleNumOk(order, rep)) return CoupleCandidateResult::UnitCount;
-	if (!CoupleSlotOk(order, carrier)) return CoupleCandidateResult::Slot;
-	if (!CoupleStationOk(order, contact_tile)) return CoupleCandidateResult::Station;
-	if (!TrainFitStation(rep)) return CoupleCandidateResult::Platform;
+	CoupleCandidateResult volatile_result = GetCoupleVolatileConditionResult(moving, order, rep, contact_tile);
+	if (volatile_result != CoupleCandidateResult::Valid) return volatile_result;
 	if (!IsCoupleArrangementValid(const_cast<Train *>(moving), rep)) return CoupleCandidateResult::Arrangement;
 	return CoupleCandidateResult::Valid;
 }
@@ -7501,10 +7553,28 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	 * as a couple instead of a crash. The moving train (OT_GOTO_COUPLE) is the
 	 * survivor, the waiting train (OT_WAIT_COUPLE) is being merged in. Stop
 	 * the moving train afterwards, the same way the caller stops it after a
-	 * regular successful couple. */
-	Train *couple_target = ValidateCoupleCandidate(moving_front, v->First(), v->tile);
-	if (couple_target != nullptr) {
-		Couple(moving_front, couple_target->Primary());
+	 * regular successful couple.
+	 *
+	 * Only the consist this one has actually claimed ever couples: the claim is
+	 * re-validated against the order's own conditions (路签/cargo/load/...) on
+	 * every tick (see #GetValidCoupleClaimant), so those need no second check
+	 * here. A claim that lapsed is no longer a claim, and hitting that train
+	 * is a plain collision. */
+	Train *carrier = v->First()->Primary();
+	bool waiting_for_us = carrier->current_order.IsType(OT_WAIT_COUPLE)
+			&& !carrier->vehstatus.Test(VehState::Crashed)
+			&& GetValidCoupleClaimant(carrier) == moving_front->Primary();
+
+	if (waiting_for_us) {
+		/* The claim is still valid, which means the couple order's conditions
+		 * (路签/cargo/load/...) hold right now, so couple unconditionally.
+		 *
+		 * A partner that stopped qualifying mid-approach (lost its 路签 to
+		 * another consist, filled up, ...) has its claim dropped by
+		 * #GetValidCoupleClaimant above, so it is no longer ours here and falls
+		 * through to the normal crash check below - just like any other train
+		 * that happens to be in the way. */
+		Couple(moving_front, carrier);
 		moving_front->cur_speed = 0;
 		moving_front->progress = 0;
 		return 0;
