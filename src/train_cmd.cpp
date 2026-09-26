@@ -543,7 +543,15 @@ void Train::BroadcastConsistCaches()
 		u->gcache.cached_power = this->gcache.cached_power;
 		u->gcache.cached_air_drag = this->gcache.cached_air_drag;
 		u->gcache.cached_total_length = this->gcache.cached_total_length;
-		u->tcache.cached_tflags = this->tcache.cached_tflags;
+		/* cached_tflags also carries the per-vehicle TCF_MOVING_UNIT_START bit, which
+		 * ConsistChanged() computed for every vehicle individually right before this
+		 * broadcast. Keep each vehicle's own value and only take the consist-wide bits
+		 * (tilt, railtype speed, driving cab, acceleration type) from the head; copying
+		 * the head's tflags wholesale wipes the unit starts of every other vehicle,
+		 * which makes station servicing treat the whole chain as one articulated unit. */
+		u->tcache.cached_tflags = static_cast<TrainCacheFlags>(
+				(u->tcache.cached_tflags & TCF_MOVING_UNIT_START) |
+				(this->tcache.cached_tflags & ~TCF_MOVING_UNIT_START));
 		u->tcache.cached_num_engines = this->tcache.cached_num_engines;
 		u->tcache.cached_centre_mass = this->tcache.cached_centre_mass;
 		u->tcache.cached_braking_length = this->tcache.cached_braking_length;
