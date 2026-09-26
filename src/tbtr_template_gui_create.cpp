@@ -546,7 +546,10 @@ public:
 				new_vehicle_over = gdvp.head->index;
 			} else if (gdvp.wagon != nullptr && gdvp.head != gdvp.wagon &&
 					gdvp.wagon->index != this->sel &&
-					gdvp.wagon->Previous()->index != this->sel) { // ..over an existing wagon.
+					/* A chain can start with a wagon now that the primary may sit mid-chain, so
+					 * there is no previous vehicle to compare against. That wagon heads another
+					 * train, which makes this a valid insertion point rather than a no-op move. */
+					(gdvp.wagon->Previous() == nullptr || gdvp.wagon->Previous()->index != this->sel)) { // ..over an existing wagon.
 				new_vehicle_over = gdvp.wagon->index;
 			}
 		}

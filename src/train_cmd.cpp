@@ -2117,12 +2117,27 @@ static void NormaliseSubtypes(Train *chain)
 	/* We must be the first in the chain. */
 	assert(chain->Previous() == nullptr);
 
-	/* Set the appropriate bits for the first in the chain. */
-	if (chain->IsWagon()) {
-		if (!chain->IsFrontWagon()) chain->SetFreeWagon();
+	/* Set the appropriate bits for the first in the chain.
+	 *
+	 * Whether the chain is a free wagon chain depends on the whole chain having no engine, not
+	 * on the head being a wagon. The primary may sit mid-chain, so a chain can start with a
+	 * wagon and still have an engine behind it; marking such a chain as a free wagon chain makes
+	 * the depot list it as engine-less and hides the unit number, and #CanBuildNormalRailVehicle
+	 * and the build/buy vehicle list would skip the engine that can actually pull it. The
+	 * front-engine marker stays with the head when the head is an engine, and otherwise belongs
+	 * to the engine of the chain, which #MaterialiseTrainPrimary places right after this. */
+	bool has_engine = false;
+	for (const Train *t = chain; t != nullptr; t = t->Next()) {
+		if (t->IsEngine()) {
+			has_engine = true;
+			break;
+		}
+	}
+	if (has_engine) {
+		chain->ClearFreeWagon();
+		if (chain->IsEngine()) chain->SetFrontEngine();
 	} else {
-		assert(chain->IsEngine());
-		chain->SetFrontEngine();
+		chain->SetFreeWagon();
 	}
 
 	/* Now clear the bits for the rest of the chain */
