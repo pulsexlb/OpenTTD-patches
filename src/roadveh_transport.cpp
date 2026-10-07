@@ -858,7 +858,25 @@ bool RVTransportAttach(Vehicle *carrier, Vehicle *part, Vehicle *rv, bool force)
 
 	/* The road vehicle has done its "wait to be transported" order: move it on to its next one, which
 	 * is where it wants to get off. */
+	if (rv->type == VehicleType::Train) {
+		const Train *tr = Train::From(rv);
+		fprintf(stderr, "[taildbg] attach t#%u onto carrier#%u BEFORE advance: num=%u impl=%u real=%u cur_dest=%u\n",
+			tr->index.base(), carrier->index.base(), tr->GetNumOrders(),
+			tr->cur_implicit_order_index, tr->cur_real_order_index, tr->current_order.GetDestination().ToStationID().base());
+		for (VehicleOrderID i = 0; i < tr->GetNumOrders(); i++) {
+			const Order *o = tr->GetOrder(i);
+			if (o == nullptr) { fprintf(stderr, "[taildbg]     order %u: null\n", i); continue; }
+			fprintf(stderr, "[taildbg]     order %u: type=%d dest=%u rvflags=%u unload=%d\n",
+				i, (int)o->GetType(), o->GetDestination().ToStationID().base(), (uint)o->GetRVTransportFlags(), (int)o->GetUnloadType());
+		}
+	}
 	RVTransportAdvanceCarriedVehicleOrder(rv);
+	if (rv->type == VehicleType::Train) {
+		const Train *tr = Train::From(rv);
+		fprintf(stderr, "[taildbg] attach t#%u AFTER advance: impl=%u real=%u cur_dest=%u cur_type=%d\n",
+			tr->index.base(), tr->cur_implicit_order_index, tr->cur_real_order_index,
+			tr->current_order.GetDestination().ToStationID().base(), (int)tr->current_order.GetType());
+	}
 
 	/* Remember when this trip started: the "carried for too long" warning counts from here (the field
 	 * is otherwise only read while the vehicle is *waiting*, where RVTransportSetWaiting() sets it
@@ -981,14 +999,17 @@ static RVTransportNextLeg RVTransportGetNextLeg(const Vehicle *rv, StationID dro
 	RVTransportNextLeg leg;
 	if (rv == nullptr) return leg;
 
-	const VehicleOrderID num_orders = rv->GetNumOrders();
+	/* Orders live on the primary vehicle of the chain, which is not necessarily the chain head
+	 * (a train with its only locomotive at the rear, for instance). */
+	const Vehicle *pv = rv->Primary();
+	const VehicleOrderID num_orders = pv->GetNumOrders();
 	if (num_orders == 0) return leg;
 
 	/* Find the order the vehicle is on right now: the "be unloaded here" order for this station. */
 	VehicleOrderID start = 0;
 	bool found_current = false;
 	for (VehicleOrderID i = 0; i < num_orders; i++) {
-		const Order *o = rv->GetOrder(i);
+		const Order *o = pv->GetOrder(i);
 		if (o == nullptr || !o->IsType(OT_GOTO_STATION)) continue;
 		if (o->GetDestination().ToStationID() != drop_st) continue;
 		if ((o->GetRVTransportFlags() & ORVTF_OWN_UNLOAD) == 0) continue;
@@ -999,11 +1020,11 @@ static RVTransportNextLeg RVTransportGetNextLeg(const Vehicle *rv, StationID dro
 	if (!found_current) {
 		/* No matching order (an edited schedule, for instance): fall back to the index the vehicle
 		 * is on, even though it can lag behind. */
-		start = (rv->cur_implicit_order_index < num_orders) ? rv->cur_implicit_order_index + 1 : 0;
+		start = (pv->cur_implicit_order_index < num_orders) ? pv->cur_implicit_order_index + 1 : 0;
 	}
 
 	for (VehicleOrderID i = 0; i < num_orders; i++) {
-		const Order *o = rv->GetOrder(static_cast<VehicleOrderID>((start + i) % num_orders));
+		const Order *o = pv->GetOrder(static_cast<VehicleOrderID>((start + i) % num_orders));
 		if (o == nullptr) continue;
 		if (!o->IsType(OT_GOTO_STATION) && !o->IsType(OT_GOTO_WAYPOINT)) continue;
 		leg.station = o->GetDestination().ToStationID();
@@ -1226,6 +1247,23 @@ static void FindFreeRailPlatformCandidates(const Station *st, const Train *tr, s
 	const RVTransportNextLeg leg = RVTransportGetNextLeg(tr, st->index);
 	const Station *target = (leg.station != StationID::Invalid()) ? Station::GetIfValid(leg.station) : nullptr;
 	const TileIndex target_xy = (target != nullptr) ? target->xy : INVALID_TILE;
+	fprintf(stderr, "[taildbg] st#%u t#%u: front_can_lead=%d last_can_lead=%d len=%u leg_st=%u target=(%d,%d)\n",
+		st->index.base(), tr->index.base(),
+		tr->CanLeadTrain() ? 1 : 0, tr->Last()->CanLeadTrain() ? 1 : 0,
+		tr->gcache.cached_total_length, (uint)leg.station.base(),
+		(target_xy != INVALID_TILE) ? (int)TileX(target_xy) : -1,
+		(target_xy != INVALID_TILE) ? (int)TileY(target_xy) : -1);
+	fprintf(stderr, "[taildbg]   orders of st#%u t#%u (first v#%u, primary v#%u): num=%u impl=%u impl2=%u cur=%u\n",
+		st->index.base(), tr->index.base(), tr->First()->index.base(), tr->Primary()->index.base(),
+		tr->Primary()->GetNumOrders(), tr->Primary()->cur_implicit_order_index, tr->Primary()->cur_real_order_index,
+		tr->Primary()->current_order.GetDestination().ToStationID().base());
+	for (VehicleOrderID i = 0; i < tr->Primary()->GetNumOrders(); i++) {
+		const Order *o = tr->Primary()->GetOrder(i);
+		if (o == nullptr) { fprintf(stderr, "[taildbg]     order %u: null\n", i); continue; }
+		fprintf(stderr, "[taildbg]     order %u: type=%d dest=%u rvflags=%u unload=%d\n",
+			i, (int)o->GetType(), o->GetDestination().ToStationID().base(),
+			(uint)o->GetRVTransportFlags(), (int)o->GetUnloadType());
+	}
 	for (size_t i = 0; i < candidates.size(); i++) {
 		auto &c = candidates[i];
 		c.platform_idx = i / 2; // candidates come in per-platform pairs (one per end)
@@ -1269,6 +1307,13 @@ static void FindFreeRailPlatformCandidates(const Station *st, const Train *tr, s
 			const int dot = ddx * TileIndexDiffCByDiagDir(c.dir).x + ddy * TileIndexDiffCByDiagDir(c.dir).y;
 			c.score = (dot > 0) ? 1 : 0;
 		}
+	}
+
+	for (size_t i = 0; i < candidates.size(); i++) {
+		const auto &c = candidates[i];
+		fprintf(stderr, "[taildbg]   cand %zu (plat %u) end=(%d,%d) dir=%d fwd=%d reachable=%d dist=%d score=%d\n",
+			i, c.platform_idx, (int)TileX(c.exit_end), (int)TileY(c.exit_end), (int)c.dir,
+			c.fwd_reachable ? 1 : 0, c.reachable ? 1 : 0, c.dist, c.score);
 	}
 
 	std::stable_sort(candidates.begin(), candidates.end(), [](const RVTransportRailCandidate &a, const RVTransportRailCandidate &b) {
@@ -1375,6 +1420,13 @@ static bool RVTransportPlaceTrainOnPlatform(Train *tr, TileIndex exit_end, DiagD
 	/* Refresh the consist caches: setting the backwards flag above changed the leading end, so the
 	 * no-driving-cab speed limit and friends must be re-judged from the new tail-leading state. */
 	tr->ConsistChanged(CCF_COUPLE);
+	if (tail_leads) {
+		fprintf(stderr, "[taildbg] t#%u: placed tail-leads at end=(%d,%d) dir=%d: loco(v#%u) tile=(%d,%d) faces %d, DrivingBackwards=%d, front v#%u tile=(%d,%d)\n",
+			tr->index.base(), (int)TileX(exit_end), (int)TileY(exit_end), (int)dir,
+			tr->Last()->index.base(), (int)TileX(tr->Last()->tile), (int)TileY(tr->Last()->tile),
+			(int)DirToDiagDir(tr->Last()->direction), tr->Last()->vehicle_flags.Test(VehicleFlag::DrivingBackwards) ? 1 : 0,
+			tr->index.base(), (int)TileX(tr->tile), (int)TileY(tr->tile));
+	}
 
 	/* Reserve a contiguous chain from the exit end back to and including the leading vehicle's
 	 * tile. The chain must end on a tile the train actually stands on: PBS attributes a
@@ -1710,6 +1762,7 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 			 * caches are refreshed inside the placement, so the no-driving-cab speed limit is not
 			 * applied to the (locomotive-equipped) leading end. */
 			const bool tail_leads = !consist->CanLeadTrain() && consist->Last()->CanLeadTrain();
+			fprintf(stderr, "[taildbg] t#%u: tail_leads=%d\n", consist->index.base(), tail_leads ? 1 : 0);
 
 			/* Remember how the train was carried, in case the platform refuses it below: a
 			 * distributed train records a host part and weight per member, so snapshot every
@@ -1726,6 +1779,9 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 			bool placed = false;
 			for (size_t ci = 0; ci < ranked.size() && !placed; ci++) {
 				const RVTransportRailCandidate &c = ranked[ci];
+				fprintf(stderr, "[taildbg] t#%u: try placement %zu end=(%d,%d) dir=%d reachable=%d fwd=%d\n",
+					consist->index.base(), ci, (int)TileX(c.exit_end), (int)TileY(c.exit_end), (int)c.dir,
+					c.reachable ? 1 : 0, c.fwd_reachable ? 1 : 0);
 				if (!RVTransportPlaceTrainOnPlatform(consist, c.exit_end, c.dir, c.platform_tiles, tail_leads)) {
 					/* This platform is blocked (e.g. its track is reserved by another train):
 					 * put the layout attempt back and try the next-best platform. */
