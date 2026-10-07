@@ -62,7 +62,7 @@ for sav in "${SAVS[@]}"; do
     log "[$i] 启动服务器 port=$port sav=$(basename "$sav")"
     ( cd "$BASE/p$i/srv/openttd" && exec stdbuf -o0 -e0 env \
         XDG_DATA_HOME="$BASE/p$i/srv" XDG_CONFIG_HOME="$BASE/p$i/srv/cfg" \
-        "$BIN" -D "127.0.0.1:$port" -g save/input.sav -d "desync=1:statecsum=1" \
+        "$BIN" -D "127.0.0.1:$port" -g save/input.sav -d "desync=2:statecsum=1" \
         > "$BASE/p$i/srv-stdout.log" 2>&1 ) & srv_pid[$i]=$!
 
     # 等端口监听
@@ -83,11 +83,11 @@ for round in $(seq 1 "$ROUNDS"); do
         ( cd "$BASE/p$i/cli/openttd" && exec stdbuf -o0 -e0 env \
             XDG_DATA_HOME="$BASE/p$i/cli" XDG_CONFIG_HOME="$BASE/p$i/cli/cfg" \
             "$BIN" -v null:until_exit=true -s null -m null -n "127.0.0.1:$port#255" \
-            -d "desync=1:statecsum=1" > "$BASE/p$i/cli-stdout.log" 2>&1 ) &
+            -d "desync=2:statecsum=1" > "$BASE/p$i/cli-stdout.log" 2>&1 ) &
         cli_pid[$i]=$!
     done
     # 等 90 秒，期间每 10 秒查 desync
-    for t in $(seq 1 9); do
+    for t in $(seq 1 15); do
         sleep 10
         for i in $(seq 0 $((N-1))); do
             [ "${alive[$i]}" = 1 ] || continue
