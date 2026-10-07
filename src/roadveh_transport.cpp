@@ -1077,10 +1077,12 @@ struct RVTransportRailCandidate {
 	TileIndex exit_end;         ///< the last platform tile towards the exit
 	DiagDirection dir;          ///< direction the train faces (its direction of travel when leaving)
 	uint platform_tiles;        ///< length of the platform, in tiles
+	uint platform_idx = 0;      ///< index of the platform this end belongs to (two ends share one)
+	bool reachable = false;     ///< the train leaving here (forward, or reversed off the other end) can reach the next station
+	bool fwd_reachable = false; ///< a train leaving *this* end forward can reach the next station
+	int dist = INT_MAX;         ///< direct distance from the exit end to the next station
+	int score = 0;              ///< ranking score: reachable, or facing the target when none is reachable
 };
-
-/** Node budget for one rail reachability probe; bounds the cost of choosing a platform. */
-static const int RVTRANSPORT_RAIL_PROBE_MAX_NODES = 10000;
 
 /** Is this rail type usable by the given train (one the train can run on)? */
 static bool RVTransportRailTypeCompatible(const Train *tr, RailType rt)
@@ -1090,66 +1092,6 @@ static bool RVTransportRailTypeCompatible(const Train *tr, RailType rt)
 	 * a merely compatible rail type (e.g. declared compatible by a rail NewGRF) would leave the
 	 * consist stranded on the platform. */
 	return HasPowerOnRail(tr->railtypes, rt);
-}
-
-/** Is this tile a rail tile (plain rail, rail station or rail tunnel/bridge head) the train can use? */
-static bool RVTransportIsRailTileFor(const Train *tr, TileIndex t)
-{
-	if (!IsValidTile(t)) return false;
-	if (IsPlainRailTile(t)) return RVTransportRailTypeCompatible(tr, GetRailType(t));
-	if (IsRailStationTile(t)) return RVTransportRailTypeCompatible(tr, GetRailType(t));
-	return IsTileType(t, TileType::TunnelBridge) && GetTunnelBridgeTransportType(t) == TransportType::Rail;
-}
-
-/**
- * Simplified rail reachability probe: can the train reach the target station's rail tiles from the
- * platform end it would be put on? A plain breadth-first walk along the tracks, honouring rail type
- * compatibility but not signals or PBS reservations (a first version; a YAPF probe can replace it
- * later). Deterministic, and bounded by \a max_nodes.
- */
-static bool RVTransportRailReachable(const Train *tr, TileIndex start_tile, Trackdir start_td, StationID target, int max_nodes)
-{
-	std::set<std::pair<uint32_t, uint8_t>> visited;
-	std::vector<std::pair<TileIndex, Trackdir>> queue;
-	queue.push_back({start_tile, start_td});
-	visited.insert({start_tile.base(), to_underlying(start_td)});
-
-	int nodes = 0;
-	for (size_t i = 0; i < queue.size() && nodes < max_nodes; i++) {
-		const TileIndex tile = queue[i].first;
-		const Trackdir td = queue[i].second;
-
-		const DiagDirection exitdir = TrackdirToExitdir(td);
-		const TileIndex next = TileAddByDiagDir(tile, exitdir);
-		if (!IsValidTile(next)) continue;
-		nodes++;
-
-		/* Arriving at a rail tile of the target station ends the probe. */
-		if ((IsRailStationTile(next) || IsRailWaypointTile(next)) && GetStationIndex(next) == target) return true;
-
-		TrackBits bits = TRACK_BIT_NONE;
-		if (IsPlainRailTile(next)) {
-			if (!RVTransportRailTypeCompatible(tr, GetRailType(next))) continue;
-			bits = GetTrackBits(next);
-		} else if (IsRailStationTile(next) || IsRailWaypointTile(next)) {
-			if (!RVTransportRailTypeCompatible(tr, GetRailType(next))) continue;
-			bits = GetRailStationTrackBits(next);
-		} else if (IsTileType(next, TileType::TunnelBridge) && GetTunnelBridgeTransportType(next) == TransportType::Rail) {
-			bits = DiagDirToDiagTrackBits(ReverseDiagDir(exitdir)); // tunnel/bridge: keep heading through
-		} else {
-			continue;
-		}
-
-		const TrackBits connecting = bits & DiagdirReachesTracks(ReverseDiagDir(exitdir));
-		for (Track t = TRACK_BEGIN; t < TRACK_END; t++) {
-			if ((connecting & TrackToTrackBits(t)) == TRACK_BIT_NONE) continue;
-			const Trackdir ntd = TrackEnterdirToTrackdir(t, ReverseDiagDir(exitdir));
-			if (ntd == INVALID_TRACKDIR) continue;
-			if (!visited.insert({next.base(), to_underlying(ntd)}).second) continue;
-			queue.push_back({next, ntd});
-		}
-	}
-	return false;
 }
 
 /**
@@ -1171,7 +1113,6 @@ static void CollectFreeRailPlatformTiles(const Station *st, const Train *tr, std
 
 	for (TileIndex t : st->train_station) {
 		if (!st->TileBelongsToRailStation(t)) continue;
-		if (!seen.insert(t).second) continue;
 
 		const Axis axis = GetRailStationAxis(t);
 		const TileIndexDiff delta = TileOffsByAxis(axis);
@@ -1183,6 +1124,10 @@ static void CollectFreeRailPlatformTiles(const Station *st, const Train *tr, std
 		/* Walk to its end. */
 		TileIndex end = start;
 		while (IsValidTile(end + delta) && IsCompatibleTrainStationTile(end + delta, end)) end += delta;
+
+		/* Every tile of one platform walks to the same start; process each platform once. */
+		if (!seen.insert(start).second) continue;
+
 		const uint platform_len = static_cast<uint>(std::abs(static_cast<int>(end.base()) - static_cast<int>(start.base())) / std::abs(delta)) + 1;
 		if (platform_len < tiles_needed) {
 			continue;
@@ -1203,7 +1148,11 @@ static void CollectFreeRailPlatformTiles(const Station *st, const Train *tr, std
 			bool free = true;
 			TileIndex pt = exit_end;
 			for (uint i = 0; i < tiles_needed && free; i++) {
-				if (!st->TileBelongsToRailStation(pt) || !RVTransportRailTypeCompatible(tr, GetRailType(pt))) {
+				if (!st->TileBelongsToRailStation(pt)) {
+					free = false;
+					break;
+				}
+				if (!RVTransportRailTypeCompatible(tr, GetRailType(pt))) {
 					free = false;
 					break;
 				}
@@ -1246,82 +1195,89 @@ static void CollectFreeRailPlatformTiles(const Station *st, const Train *tr, std
 			}
 			if (!free) continue;
 
-			/* The train has to be able to leave the platform: usable rail beyond the end it faces,
-			 * and that tile must have a track which actually connects to the platform. */
-			const TileIndex exit_tile = TileAddByDiagDir(exit_end, dd);
-			if (!RVTransportIsRailTileFor(tr, exit_tile)) {
-				continue;
-			}
-			TrackBits exit_bits = TRACK_BIT_NONE;
-			if (IsPlainRailTile(exit_tile)) exit_bits = GetTrackBits(exit_tile);
-			else if (IsRailStationTile(exit_tile)) exit_bits = GetRailStationTrackBits(exit_tile);
-			if ((exit_bits & DiagdirReachesTracks(ReverseDiagDir(dd))) == TRACK_BIT_NONE) {
-				continue;
-			}
-
 			candidates.push_back({exit_end, dd, platform_len});
 		}
 	}
 }
 
 /**
- * Find the platform of this station where the given train should be put back on the rails.
+ * Rank this station's platforms where the given train can be put back on the rails, best first.
  *
- * When the train has a station to drive to after this one, every candidate is scored by a rail
- * reachability probe from the platform end it would leave by, and a reachable one always beats an
- * unreachable one; among the reachable ones the shortest direct distance to that station wins, and
- * ties keep the order the candidates were found in. Without a next station, the first candidate is
- * used.
+ * Candidates are ranked for placing a dropped train: the engine's own pathfinder decides, per exit
+ * end, whether a train leaving there can actually drive on to the station it heads to next (this
+ * follows the real track connectivity rules, including curve tiles). Reachable candidates outrank
+ * unreachable ones, and the direct distance to the next station breaks ties. When no candidate can
+ * reach the next station, the exit end facing towards it ranks first, so the train is at least laid
+ * out looking the right way and can reverse or re-path from there. The caller tries the ranked
+ * candidates in order, so a placement blocked by another train's reservation falls back to the
+ * next-best platform instead of giving up.
  * @param st      station to put the train down at
  * @param tr      train to put down
- * @param out_tile [out] the last platform tile towards the exit
- * @param out_dir  [out] direction the train faces
- * @param out_platform_tiles [out] length of the platform, in tiles
- * @return whether a platform was found
+ * @param ranked [out] the viable candidates, best first; empty when no platform fits
  */
-static bool FindFreeRailPlatformTile(const Station *st, const Train *tr, TileIndex &out_tile, DiagDirection &out_dir, uint &out_platform_tiles)
+static void FindFreeRailPlatformCandidates(const Station *st, const Train *tr, std::vector<RVTransportRailCandidate> &ranked)
 {
 	std::vector<RVTransportRailCandidate> candidates;
 	CollectFreeRailPlatformTiles(st, tr, candidates);
 	if (candidates.empty()) {
-		return false;
+		return;
 	}
 
 	const RVTransportNextLeg leg = RVTransportGetNextLeg(tr, st->index);
-
-	size_t best = 0;
-	if (leg.station != StationID::Invalid()) {
-		int best_dist = 0;
-		bool found_reachable = false;
-		const Station *target = Station::GetIfValid(leg.station);
-		const TileIndex target_xy = (target != nullptr) ? target->xy : INVALID_TILE;
-		for (size_t i = 0; i < candidates.size(); i++) {
-			const TileIndex exit_end = candidates[i].exit_end;
-			const Trackdir start_td = TrackEnterdirToTrackdir(GetRailStationTrack(exit_end), ReverseDiagDir(candidates[i].dir));
-			if (start_td == INVALID_TRACKDIR) continue;
-
-			const bool reachable = RVTransportRailReachable(tr, exit_end, start_td, leg.station, RVTRANSPORT_RAIL_PROBE_MAX_NODES);
-			if (!reachable) continue;
-
-			/* Direct distance from the platform end to the next station, as the tie-break. */
-			int dist = INT_MAX;
-			if (target_xy != INVALID_TILE) {
-				const int dx = std::abs(static_cast<int>(TileX(exit_end)) - static_cast<int>(TileX(target_xy)));
-				const int dy = std::abs(static_cast<int>(TileY(exit_end)) - static_cast<int>(TileY(target_xy)));
-				dist = std::max(dx, dy);
+	const Station *target = (leg.station != StationID::Invalid()) ? Station::GetIfValid(leg.station) : nullptr;
+	const TileIndex target_xy = (target != nullptr) ? target->xy : INVALID_TILE;
+	for (size_t i = 0; i < candidates.size(); i++) {
+		auto &c = candidates[i];
+		c.platform_idx = i / 2; // candidates come in per-platform pairs (one per end)
+		if (leg.station != StationID::Invalid()) {
+			/* The trackdir of a train travelling in direction dir on this platform track
+			 * (TrackEnterdirToTrackdir takes the direction of travel, not the entry edge). */
+			const Trackdir start_td = TrackEnterdirToTrackdir(GetRailStationTrack(c.exit_end), c.dir);
+			if (start_td != INVALID_TRACKDIR) {
+				/* Ask the engine's own pathfinder whether a train leaving the platform here can
+				 * actually drive on and reach the station it will head to next. */
+				c.fwd_reachable = YapfTrainCanReachStation(tr, c.exit_end, start_td, leg.station);
 			}
-			if (!found_reachable || dist < best_dist) {
-				found_reachable = true;
-				best_dist = dist;
-				best = i;
-			}
+		} else {
+			c.fwd_reachable = true; // no next leg to probe for; any exit will do
+		}
+		if (target_xy != INVALID_TILE) {
+			const int dx = std::abs(static_cast<int>(TileX(c.exit_end)) - static_cast<int>(TileX(target_xy)));
+			const int dy = std::abs(static_cast<int>(TileY(c.exit_end)) - static_cast<int>(TileY(target_xy)));
+			c.dist = std::max(dx, dy);
 		}
 	}
 
-	out_tile = candidates[best].exit_end;
-	out_dir = candidates[best].dir;
-	out_platform_tiles = candidates[best].platform_tiles;
-	return true;
+	/* The placed train is centred on the platform, so a train facing one end and then reversing
+	 * off departs exactly like a train facing the other end. A platform is therefore usable in
+	 * either orientation when at least one of its two ends can reach the next station. */
+	for (size_t i = 0; i < candidates.size(); i += 2) {
+		const bool either = candidates[i].fwd_reachable || candidates[i + 1].fwd_reachable;
+		candidates[i].reachable = candidates[i + 1].reachable = either;
+	}
+	for (auto &c : candidates) {
+		c.score = c.reachable ? 1 : 0;
+	}
+
+	/* When nothing reaches the next station, rank exit ends facing towards it first. */
+	if (target_xy != INVALID_TILE && std::none_of(candidates.begin(), candidates.end(), [](const RVTransportRailCandidate &c) { return c.reachable; })) {
+		for (auto &c : candidates) {
+			const int ddx = static_cast<int>(TileX(target_xy)) - static_cast<int>(TileX(c.exit_end));
+			const int ddy = static_cast<int>(TileY(target_xy)) - static_cast<int>(TileY(c.exit_end));
+			/* Dot product of the exit direction with the bearing to the target: positive means the
+			 * train would leave heading towards the next station. */
+			const int dot = ddx * TileIndexDiffCByDiagDir(c.dir).x + ddy * TileIndexDiffCByDiagDir(c.dir).y;
+			c.score = (dot > 0) ? 1 : 0;
+		}
+	}
+
+	std::stable_sort(candidates.begin(), candidates.end(), [](const RVTransportRailCandidate &a, const RVTransportRailCandidate &b) {
+		if (a.score != b.score) return a.score > b.score;
+		if (a.fwd_reachable != b.fwd_reachable) return a.fwd_reachable; // prefer leaving forward over reversing
+		return a.dist < b.dist;
+	});
+
+	ranked = std::move(candidates);
 }
 
 /**
@@ -1448,7 +1404,9 @@ static bool RVTransportPlaceTrainOnPlatform(Train *tr, TileIndex exit_end, DiagD
 	}
 
 	/* Hold the track beyond the exit end for the train, so that it can actually leave. */
-	bool exit_held = true;
+	bool hold_needed = false; // the exit has exactly one continuation, which we want to hold
+	bool hold_taken = false;  // the exit track was actually reserved and must be released on failure
+	Track held_track = TRACK_BEGIN;
 	const TileIndex exit_tile = TileAddByDiagDir(exit_end, dir);
 	if (IsValidTile(exit_tile)) {
 		TrackBits bits = TRACK_BIT_NONE;
@@ -1458,14 +1416,17 @@ static bool RVTransportPlaceTrainOnPlatform(Train *tr, TileIndex exit_end, DiagD
 		if (CountBits(static_cast<uint8_t>(connecting)) == 1) {
 			/* Exactly one continuation: hold it for the train. On a fork or a dead end the engine's
 			 * own pathfinder reserves a branch (or waits) when the train departs. */
-			exit_held = TryReserveRailTrack(exit_tile, FindFirstTrack(connecting));
+			hold_needed = true;
+			held_track = FindFirstTrack(connecting);
+			hold_taken = TryReserveRailTrack(exit_tile, held_track);
 		}
 	}
 
-	if (!exit_held || !all_reserved) {
+	if ((hold_needed && !hold_taken) || !all_reserved) {
 		/* The way out is already reserved by another train: leave the train on the carrier and try
 		 * again later, rather than parking it somewhere it cannot move from. */
 		for (const TileIndex &pt : reserve_tiles) UnreserveRailTrack(pt, (IsRailStationTile(pt)) ? GetRailStationTrack(pt) : FindFirstTrack(GetTrackBits(pt)));
+		if (hold_taken) UnreserveRailTrack(exit_tile, held_track);
 		return false;
 	}
 
@@ -1715,7 +1676,6 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 
 	if (carrier == nullptr || st == nullptr) return false;
 
-
 	/* Remove phantom reservations before trying to place anything. */
 	RVTransportHealOrphanReservations(st);
 
@@ -1739,13 +1699,10 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 		/* Trains are put back on the rails of this station's platforms; road vehicles use the
 		 * road stops below. */
 		if (v->type == VehicleType::Train) {
-			TileIndex exit_end = INVALID_TILE;
-			DiagDirection dir = DiagDirection::Begin;
-			uint platform_tiles = 0;
 			Train *consist = Train::From(v->First());
-			if (!FindFreeRailPlatformTile(st, consist, exit_end, dir, platform_tiles)) {
-				continue; // no room: stay on the carrier, retry later
-			}
+			std::vector<RVTransportRailCandidate> ranked;
+			FindFreeRailPlatformCandidates(st, consist, ranked);
+			if (ranked.empty()) continue; // no room: stay on the carrier, retry later
 
 			/* Don't let the train back out of the platform: when only the chain tail can lead the
 			 * train (a locomotive at the rear), place the consist mirrored and marked as driving
@@ -1766,9 +1723,19 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 			const VehicleID host_part = v->transported_host_part;
 			const StationID transported_from = v->transported_from;
 
-			if (!RVTransportPlaceTrainOnPlatform(consist, exit_end, dir, platform_tiles, tail_leads)) {
-				/* The way out of the platform is blocked: put the train back on the carrier rather
-				 * than parking it somewhere it cannot move from, and retry later. */
+			bool placed = false;
+			for (size_t ci = 0; ci < ranked.size() && !placed; ci++) {
+				const RVTransportRailCandidate &c = ranked[ci];
+				if (!RVTransportPlaceTrainOnPlatform(consist, c.exit_end, c.dir, c.platform_tiles, tail_leads)) {
+					/* This platform is blocked (e.g. its track is reserved by another train):
+					 * put the layout attempt back and try the next-best platform. */
+					continue;
+				}
+				placed = true;
+			}
+			if (!placed) {
+				/* Every candidate was blocked: put the train back on the carrier rather than parking
+				 * it somewhere it cannot move from, and retry later. */
 				size_t i = 0;
 				for (Vehicle *u = v->First(); u != nullptr; u = u->Next(), i++) {
 					u->rv_transport_flags |= RVTF_TRANSPORTED;

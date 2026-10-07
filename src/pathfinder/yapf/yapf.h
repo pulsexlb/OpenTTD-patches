@@ -121,6 +121,9 @@ bool YapfTrainCheckDepotReverse(const Train *v, TileIndex forward_depot, TileInd
  */
 bool YapfTrainFindNearestSafeTile(const Train *v, TileIndex tile, Trackdir td, bool override_railtype);
 
+/** Vehicle transport: can a train leaving the given tile/trackdir reach the given rail station? */
+bool YapfTrainCanReachStation(const Train *v, TileIndex tile, Trackdir td, StationID station);
+
 #endif /* YAPF_H */
 
 struct Aircraft;

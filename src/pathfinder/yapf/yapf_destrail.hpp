@@ -142,6 +142,20 @@ protected:
 public:
 	typedef typename Types::TrackFollower TrackFollower; ///< track follower, needed for node tile iteration
 
+	/** Set the destination to a specific rail station (used by the vehicle-transport platform probe). */
+	void SetDestinationStation(const Train *v, StationID station, TileIndex near_tile)
+	{
+		this->dest_tile = CalcClosestStationTile(station, near_tile, StationType::Rail);
+		this->dest_station_id = station;
+		this->dest_trackdirs = INVALID_TRACKDIR_BIT;
+		this->any_depot = false;
+		this->couple_dest = false;
+		this->couple_station_dest = false;
+		/* The compatible rail types must be set as well, otherwise the track follower
+		 * cannot follow anything and every probe fails. */
+		this->CYapfDestinationRailBase::SetDestination(v);
+	}
+
 	void SetDestination(const Train *v)
 	{
 		this->any_depot = false;

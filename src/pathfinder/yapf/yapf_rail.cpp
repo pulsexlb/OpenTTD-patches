@@ -1033,6 +1033,33 @@ struct CYapfAnyDepotRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfAnyDepotRailN
 struct CYapfAnySafeTileRail     : CYapfRailBase<CYapfRail_TypesT<CYapfAnySafeTileRail    , CFollowTrackFreeRail    , CYapfDestinationAnySafeTileRailT , CYapfFollowAnySafeTileRailT>> {};
 struct CYapfAnySafeTileRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfAnySafeTileRailNo90, CFollowTrackFreeRailNo90, CYapfDestinationAnySafeTileRailT , CYapfFollowAnySafeTileRailT>> {};
 
+static const int RVTRANSPORT_YAPF_PROBE_MAX_NODES = 10000; // bounds the cost of one platform probe
+
+/* Vehicle transport: probe whether a dropped train leaving a platform end can reach a specific
+ * rail station. Uses the same real-world follower as the engine's own reversal decision
+ * (CFollowTrackRail + CYapfFollowRailT), so signal states are honoured exactly as the train
+ * will experience them when departing. */
+struct CYapfReachStationRail     : CYapfRailBase<CYapfRail_TypesT<CYapfReachStationRail    , CFollowTrackRail    , CYapfDestinationTileOrStationRailT, CYapfFollowRailT>> {};
+struct CYapfReachStationRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfReachStationRailNo90, CFollowTrackRailNo90, CYapfDestinationTileOrStationRailT, CYapfFollowRailT>> {};
+
+template <class Tpf_>
+static bool YapfCanReachStation(const Train *v, TileIndex tile, Trackdir td, StationID station)
+{
+	Tpf_ pf;
+	pf.SetOrigin(tile, td, INVALID_TILE, INVALID_TRACKDIR, 1);
+	pf.SetTreatFirstRedTwoWaySignalAsEOL(true);
+	pf.SetDestinationStation(v, station, tile);
+	pf.SetMaxSearchNodes(RVTRANSPORT_YAPF_PROBE_MAX_NODES);
+	return pf.FindPath(v);
+}
+
+bool YapfTrainCanReachStation(const Train *v, TileIndex tile, Trackdir td, StationID station)
+{
+	return _settings_game.pf.forbid_90_deg
+		? YapfCanReachStation<CYapfReachStationRailNo90>(v, tile, td, station)
+		: YapfCanReachStation<CYapfReachStationRail>(v, tile, td, station);
+}
+
 
 Track YapfTrainChooseTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
 {
