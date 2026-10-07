@@ -144,7 +144,19 @@ not sent at all until then, so a second finger can cancel it silently.
 | single finger tap | left click at the touch position |
 | single finger drag | left button held while moving: map scrolling, moving windows, drag-to-build, ... |
 | two finger vertical swipe | wheel, one notch per ~1/20 of the screen height |
+| two finger pinch / spread | wheel (zoom), one notch per ~1.4x change in finger distance |
 | two finger tap | right click |
+
+The two-finger swipe and the pinch are the same wheel channel (which is what
+desktop zooming uses, one notch = one discrete ZoomLevel = 2x), so they have to
+be told apart: while both fingers are down the gesture is undecided until either
+the parallel movement or the distance change commits past a threshold (~24dp,
+like pelya's SDL 1.2 multitouch gesture detection) and is then locked into swipe
+or pinch for the rest of the touch. Real fingers never move perfectly, so the
+losing dimension's jitter is ignored; anchoring the winning dimension at commit
+keeps pre-lock movement from double counting. A committed gesture never
+degenerates into a tap, even if it sits so close to a notch boundary that no
+wheel notch comes out of it.
 
 There is deliberately no double-tap-drag: the left button is already held by the
 first drag, so nothing had to be invented for it (and its "first tap still

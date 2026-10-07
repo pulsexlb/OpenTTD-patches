@@ -15,6 +15,9 @@ On top of that it only adds what SDL has no answer for:
                              window dragging, drag-to-build, ...
   two finger tap          -> right click
   two finger swipe up/down-> mouse wheel (zoom), one notch per ~1/20 screen height
+  two finger pinch        -> mouse wheel (zoom), one notch per ~1.4x distance;
+                             the gesture is locked into pinch or swipe, which
+                             ever commits first, so they never fight
 
 Everything goes through SDLActivity.onNativeMouse(), which is a public static
 native, so no SDL2 or game changes are needed. Two details of that interface
@@ -73,6 +76,13 @@ public class TouchpadInput
 	/* Vertical two-finger travel per wheel notch, as a fraction of the view
 	 * height (pelya's SDL 1.2 input layer used height/20). */
 	private static final int WHEEL_TRAVEL_DIVISOR = 20;
+	/* Distance ratio between the two fingers per pinch-zoom notch. OpenTTD's
+	 * zoom is discrete (one wheel notch = one ZoomLevel = 2x), so this must not
+	 * be too small, or a single pinch would climb several levels at once. */
+	private static final float PINCH_NOTCH_RATIO = 1.4f;
+	/* How far the gesture has to commit (px in dp units) before it is locked
+	 * into pinch or swipe; below that it can still become either. */
+	private static final float GESTURE_LOCK_DP = 24f;
 	/* How far a touch may wander before it counts as a drag instead of a tap.
 	 * Small enough that a drag starts as soon as the finger really moves, large
 	 * enough that the jitter of a tap cannot turn into one. */
@@ -101,6 +111,16 @@ public class TouchpadInput
 	private boolean twoFingers = false;
 	private boolean gestureMoved = false;
 	private float lastGestureY, wheelAccum;
+
+	/* Two-finger gesture discrimination: while both fingers are down, the
+	 * gesture is undecided until either the distance between them or their
+	 * parallel movement exceeds GESTURE_LOCK_DP - then it is locked into
+	 * pinch-zoom or swipe-to-wheel for the rest of the touch. */
+	private static final int GESTURE_UNDECIDED = 0;
+	private static final int GESTURE_PINCH = 1;
+	private static final int GESTURE_SWIPE = 2;
+	private int gestureType = GESTURE_UNDECIDED;
+	private float gestureDist0, gestureAvgY0, gestureAccum;
 
 	private TouchpadInput(Context context)
 	{
@@ -148,6 +168,7 @@ public class TouchpadInput
 				this.moved = false;
 				this.twoFingers = false;
 				this.gestureMoved = false;
+				this.gestureType = GESTURE_UNDECIDED;
 				this.wheelAccum = 0f;
 				/* Put the mouse under the finger right away, but press nothing
 				 * yet: a tap is only turned into a click when the finger is
@@ -168,8 +189,11 @@ public class TouchpadInput
 				{
 					this.twoFingers = true;
 					this.gestureMoved = false;
+					this.gestureType = GESTURE_UNDECIDED;
 					this.wheelAccum = 0f;
 					this.lastGestureY = averageY(event);
+					this.gestureAvgY0 = this.lastGestureY;
+					this.gestureDist0 = spread(event);
 				}
 				return true;
 
@@ -178,22 +202,7 @@ public class TouchpadInput
 				{
 					if (event.getPointerCount() >= 2)
 					{
-						float y = averageY(event);
-						/* Fingers moving up (decreasing y) scroll one way. */
-						this.wheelAccum += this.lastGestureY - y;
-						this.lastGestureY = y;
-						float travel = Math.max(this.view.getHeight(), 1) / (float)WHEEL_TRAVEL_DIVISOR;
-						if (Math.abs(this.wheelAccum) >= travel) this.gestureMoved = true;
-						while (this.wheelAccum >= travel)
-						{
-							this.wheelAccum -= travel;
-							sendWheel(1);
-						}
-						while (this.wheelAccum <= -travel)
-						{
-							this.wheelAccum += travel;
-							sendWheel(-1);
-						}
+						twoFingerMove(event);
 					}
 				}
 				else if (event.getPointerCount() == 1)
@@ -253,6 +262,83 @@ public class TouchpadInput
 		float sum = 0f;
 		for (int i = 0; i < event.getPointerCount(); i++) sum += event.getY(i);
 		return sum / event.getPointerCount();
+	}
+
+	/* Current distance between the first two fingers. */
+	private static float spread(MotionEvent event)
+	{
+		float dx = event.getX(0) - event.getX(1);
+		float dy = event.getY(0) - event.getY(1);
+		return (float)Math.sqrt(dx * dx + dy * dy);
+	}
+
+	/**
+	 * Both fingers down and moving. The gesture is undecided until either the
+	 * distance between the fingers (pinch-zoom) or their parallel movement
+	 * (swipe-to-wheel) commits past GESTURE_LOCK_DP; real fingers never move
+	 * perfectly, so committing on the dominant dimension keeps a pinch from
+	 * spraying wheel notches and a swipe from zooming.
+	 */
+	private void twoFingerMove(MotionEvent event)
+	{
+		float y = averageY(event);
+		float dist = spread(event);
+
+		if (this.gestureType == GESTURE_UNDECIDED)
+		{
+			float lock = GESTURE_LOCK_DP * this.density;
+			/* Parallel movement relative to where the gesture started ... */
+			float movedY = Math.abs(y - this.gestureAvgY0);
+			/* ... or distance change relative to where it started. */
+			float pinch = Math.abs(dist - this.gestureDist0);
+			if (movedY < lock && pinch < lock) return;
+			this.gestureType = (pinch > movedY) ? GESTURE_PINCH : GESTURE_SWIPE;
+			/* A committed gesture is never a tap, even if it is so close to a
+			 * notch boundary that no wheel output comes out of it. */
+			this.gestureMoved = true;
+			/* Anchor the winning dimension here so that the movement already
+			 * made does not double up as wheel output. */
+			this.lastGestureY = y;
+			this.wheelAccum = 0f;
+		}
+
+		if (this.gestureType == GESTURE_SWIPE)
+		{
+			/* Fingers moving up (decreasing y) scroll one way. */
+			this.wheelAccum += this.lastGestureY - y;
+			this.lastGestureY = y;
+			float travel = Math.max(this.view.getHeight(), 1) / (float)WHEEL_TRAVEL_DIVISOR;
+			if (Math.abs(this.wheelAccum) >= travel) this.gestureMoved = true;
+			while (this.wheelAccum >= travel)
+			{
+				this.wheelAccum -= travel;
+				sendWheel(1);
+			}
+			while (this.wheelAccum <= -travel)
+			{
+				this.wheelAccum += travel;
+				sendWheel(-1);
+			}
+		}
+		else /* GESTURE_PINCH */
+		{
+			/* Anchored multiplicatively: after every notch the reference
+			 * distance moves, so a long steady pinch zooms at a constant rate
+			 * instead of running away. Spread out (dist > ref) is zoom in. */
+			if (dist <= 0f || this.gestureDist0 <= 0f) return;
+			if (dist > this.gestureDist0 * PINCH_NOTCH_RATIO)
+			{
+				this.gestureDist0 = dist;
+				this.gestureMoved = true;
+				sendWheel(1);
+			}
+			else if (dist < this.gestureDist0 / PINCH_NOTCH_RATIO)
+			{
+				this.gestureDist0 = dist;
+				this.gestureMoved = true;
+				sendWheel(-1);
+			}
+		}
 	}
 
 	/* Absolute, so the game's cursor lands exactly where the finger is. */
