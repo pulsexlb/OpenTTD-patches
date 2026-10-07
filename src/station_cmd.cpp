@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include "aircraft.h"
+#include "core/checksum_func.hpp"
 #include "bridge_map.h"
 #include "viewport_func.h"
 #include "viewport_kdtree.h"
@@ -4724,16 +4725,31 @@ void UpdateAllStationRatings()
 
 void OnTick_Station()
 {
+#ifdef RANDOM_DEBUG
+	uint64_t _probe_rb;
+#endif
 	if (_game_mode == GameMode::Editor) return;
 
 	ClearDeleteStaleLinksVehicleCache();
 
 	for (BaseStation *st : BaseStation::Iterate()) {
+#ifdef RANDOM_DEBUG
+		_probe_rb = _random.state[0];
+#endif
 		StationHandleSmallTick(st);
+#ifdef RANDOM_DEBUG
+		if (_random.state[0] != _probe_rb) DEBUG_UPDATESTATECHECKSUM("OnTick_Station probe: SmallTick st {} consumed random", st->index);
+#endif
 
 		/* Clean up the link graph about once a week. */
 		if (Station::IsExpected(st) && (_tick_counter + st->index) % STATION_LINKGRAPH_TICKS == 0) {
+#ifdef RANDOM_DEBUG
+			_probe_rb = _random.state[0];
+#endif
 			DeleteStaleLinks(Station::From(st));
+#ifdef RANDOM_DEBUG
+			if (_random.state[0] != _probe_rb) DEBUG_UPDATESTATECHECKSUM("OnTick_Station probe: DeleteStaleLinks st {} consumed random", st->index);
+#endif
 		};
 
 		/* Run STATION_ACCEPTANCE_TICKS = 250 tick interval trigger for station animation.
@@ -4741,10 +4757,20 @@ void OnTick_Station()
 		 * at the same time. */
 		if ((_tick_counter + st->index) % STATION_ACCEPTANCE_TICKS == 0) {
 			/* Stop processing this station if it was deleted */
+#ifdef RANDOM_DEBUG
+			_probe_rb = _random.state[0];
+#endif
 			if (!StationHandleBigTick(st)) continue;
+#ifdef RANDOM_DEBUG
+			if (_random.state[0] != _probe_rb) DEBUG_UPDATESTATECHECKSUM("OnTick_Station probe: BigTick(Acceptance) st {} consumed random", st->index);
+			_probe_rb = _random.state[0];
+#endif
 			TriggerStationAnimation(st, st->xy, StationAnimationTrigger::AcceptanceTick);
 			TriggerRoadStopAnimation(st, st->xy, StationAnimationTrigger::AcceptanceTick);
 			if (Station::IsExpected(st)) TriggerAirportAnimation(Station::From(st), AirportAnimationTrigger::AcceptanceTick);
+#ifdef RANDOM_DEBUG
+			if (_random.state[0] != _probe_rb) DEBUG_UPDATESTATECHECKSUM("OnTick_Station probe: Animations st {} consumed random", st->index);
+#endif
 		}
 	}
 }
