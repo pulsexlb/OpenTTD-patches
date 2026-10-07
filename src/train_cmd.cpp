@@ -6614,7 +6614,11 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_r
 	}
 
 	Train *u = GetDecoupleVehicle(v);
-	Debug(desync, 1, "DecoupleTrain: veh={} split u={} num={}", v->index, u != nullptr ? u->index.base() : -1, v->orders != nullptr ? v->orders->GetOrderAt(v->cur_implicit_order_index + 1)->GetNumDecouple() : -1);
+	{
+		const Order *after_decouple = (v->orders != nullptr) ? v->orders->GetOrderAt(v->cur_implicit_order_index + 1) : nullptr;
+		Debug(desync, 1, "DecoupleTrain: veh={} split u={} num={}", v->index, u != nullptr ? u->index.base() : -1,
+				after_decouple != nullptr ? after_decouple->GetNumDecouple() : -1);
+	}
 	if (u == nullptr) {
 		failure_reason = STR_DECOUPLE_DIAGNOSTIC_CUT;
 		return v;
@@ -7648,7 +7652,14 @@ static void TrainEnterStation(Train *consist, StationID station)
 
 	Train *u = nullptr;
 	uint8_t load_trains = DECOUPLE_NO_LOAD;
-	bool want_decouple = consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE;
+	/* The decouple handling below unconditionally reads the order after the current one and
+	 * expects it to be the OT_DECOUPLE marker (see #PrepareDecoupleWaitOrders and #SplitOrders).
+	 * A schedule edited around a depot detour can leave the implicit index on the last order,
+	 * with nothing following it: treat such a misaligned arrival as a plain stop instead of
+	 * walking off the end of the order list. */
+	const Order *after_current = (consist->orders != nullptr) ? consist->orders->GetOrderAt(consist->cur_implicit_order_index + 1) : nullptr;
+	bool want_decouple = after_current != nullptr && after_current->IsType(OT_DECOUPLE) &&
+			consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE;
 	/* Which parts may leave the station in the same direction as the other
 	 * part. For such a part the JustDecoupled flag below is withheld, so the
 	 * normal departure reverse check can turn it back around once its natural
@@ -7740,7 +7751,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * Both parts are still standing at this station and BeginLoading below
 		 * needs the station id, so restore it. */
 		consist->last_station_visited = station;
-		u->last_station_visited = station;
+		if (u != nullptr) u->last_station_visited = station;
 		if (u != nullptr) {
 		}
 		/* A part allowed a same-direction exit carries no JustDecoupled flag, but
