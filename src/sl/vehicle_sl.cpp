@@ -629,7 +629,16 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 
 		v->UpdateDeltaXY();
 		v->coord.left = INVALID_COORD;
-		v->UpdatePosition();
+		/* Carried vehicles were taken off the vehicle tile hash when they were loaded onto their
+		 * carrier (RVTransportAttach), and the hash itself is not part of the savegame. Rebuilding
+		 * their entry here would put phantoms back on the tiles they were picked up from - station
+		 * platforms, usually - and make the unload platform choice differ from the running game. */
+		if ((v->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) != 0) {
+			fprintf(stderr, "[savedbg] load: skipping hash rebuild for carried v#%u type=%d tile=(%d,%d)\n",
+				v->index.base(), (int)v->type, (int)TileX(v->tile), (int)TileY(v->tile));
+		} else {
+			v->UpdatePosition();
+		}
 		if (v->type != VehicleType::Ship || v->Previous() == nullptr) v->UpdateViewport(false);
 		v->cargo.AssertCountConsistency();
 	}
@@ -773,6 +782,11 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 	{
 		v->consist_primary = (v->Primary() == v) ? 1 : 0;
 		if (v->type == VehicleType::Train && v->index.base() <= 40 && v->Primary()->index.base() <= 40) {
+		}
+		if ((v->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) != 0) {
+			fprintf(stderr, "[savedbg] save: carried v#%u type=%d tile=(%d,%d) in_tile_hash=%d\n",
+				v->index.base(), (int)v->type, (int)TileX(v->tile), (int)TileY(v->tile),
+				(v->hash_tile_current != INVALID_TILE) ? 1 : 0);
 		}
 		SlObjectSaveFiltered(v, this->GetLoadDescription());
 	}
