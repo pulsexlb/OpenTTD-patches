@@ -10,7 +10,9 @@ public static natives in stock SDL2 (SDLActivity.java) and feed the same event
 queue the hardware keyboard and the IME use. No C or game code is involved.
 
 Modifier buttons are sticky: tap once to hold the key down (button highlighted),
-tap again to release it. The KEY button toggles the Android soft keyboard.
+tap again to release it, so they can be combined with a game action. ESC and DEL
+are plain one-shot presses (cancel the current tool, close the open windows).
+The KEY button toggles the Android soft keyboard.
 
 ChangeAppSettings.sh rewrites the package line to the app's package.
 */
@@ -38,6 +40,11 @@ public class ModifierKeysOverlay extends LinearLayout
 	private static final int KEYCODE_CTRL_LEFT = 113;
 	private static final int KEYCODE_SHIFT_LEFT = 59;
 	private static final int KEYCODE_ALT_LEFT = 57;
+	/* SDL2's Android keyboard table maps these to SDL_SCANCODE_ESCAPE and
+	 * SDL_SCANCODE_DELETE, i.e. OpenTTD's WKC_ESC (cancel the current tool) and
+	 * WKC_DELETE (close the open windows). */
+	private static final int KEYCODE_ESCAPE = 111;
+	private static final int KEYCODE_FORWARD_DEL = 112;
 
 	private static final String TAG = "SDL";
 
@@ -57,6 +64,8 @@ public class ModifierKeysOverlay extends LinearLayout
 		addModifierButton("Shift", KEYCODE_SHIFT_LEFT);
 		addModifierButton("Alt", KEYCODE_ALT_LEFT);
 		addKeyboardButton();
+		addActionButton("ESC", KEYCODE_ESCAPE);
+		addActionButton("DEL", KEYCODE_FORWARD_DEL);
 	}
 
 	/**
@@ -100,6 +109,25 @@ public class ModifierKeysOverlay extends LinearLayout
 					SDLActivity.onNativeKeyUp(keyCode);
 				}
 				updateStyle(b, down);
+			}
+		});
+		addView(b);
+	}
+
+	/*
+	 * A key that is pressed and released right away - used for the ones that
+	 * trigger an action (ESC cancels the current tool, DEL closes the open
+	 * windows) instead of modifying the next key, so they must not stick.
+	 */
+	private void addActionButton(String label, final int keyCode)
+	{
+		final Button b = makeButton(label);
+		b.setOnClickListener(new OnClickListener() {
+			@Override
+			public void onClick(View v)
+			{
+				SDLActivity.onNativeKeyDown(keyCode);
+				SDLActivity.onNativeKeyUp(keyCode);
 			}
 		});
 		addView(b);

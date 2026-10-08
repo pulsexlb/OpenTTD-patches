@@ -212,13 +212,21 @@ two-finger gestures are added on top.
 
 ### ModifierKeysOverlay.java
 
-On-screen sticky `Ctrl` / `Shift` / `Alt` buttons plus a `KEY` button, on the
-right edge and vertically centered. Ported from the same-named class in the
+On-screen sticky `Ctrl` / `Shift` / `Alt` buttons plus `KEY`, `ESC` and `DEL`, on
+the right edge and vertically centered. Ported from the same-named class in the
 OpenTTD JGRPP Android port, with the injection path changed for SDL2:
 
 * keys go through `SDLActivity.onNativeKeyDown()` / `onNativeKeyUp()`, which are
   `public static` natives in stock SDL2 and feed the same queue as the hardware
   keyboard and the IME;
+* `Ctrl` / `Shift` / `Alt` are sticky: tap to hold (button highlighted), tap
+  again to release, so they can be combined with a game action. `ESC` and `DEL`
+  are one-shot press+release instead - they trigger an action by themselves and
+  must not stay held. Their Android keycodes (111, 112) are what SDL2's
+  `Android_Keycodes` table turns into `SDL_SCANCODE_ESCAPE` (OpenTTD's
+  `WKC_ESC`: cancel the current tool) and `SDL_SCANCODE_DELETE`
+  (`WKC_DELETE`: close the open windows; Shift/Ctrl variants exist in the
+  game's hotkeys);
 * `KEY` toggles the soft keyboard. Whether the keyboard is up is decided from
   the window insets (on Android 11+ `WindowInsets.isVisible(Type.ime())`), not
   from SDL's `isScreenKeyboardShown()`;
