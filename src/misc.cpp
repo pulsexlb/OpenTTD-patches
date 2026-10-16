@@ -8,6 +8,7 @@
 /** @file misc.cpp Misc functions that shouldn't be here. */
 
 #include "stdafx.h"
+#include "blueprint.h"
 #include "landscape.h"
 #include "news_func.h"
 #include "ai/ai.hpp"
@@ -43,6 +44,8 @@
 #include "string_func.h"
 #include "plans_func.h"
 #include "session_stats.h"
+#include "train.h"
+#include "weather.h"
 #include "core/format.hpp"
 #include "3rdparty/monocypher/monocypher.h"
 
@@ -51,6 +54,7 @@
 extern TileIndex _cur_tileloop_tile;
 extern TileIndex _aux_tileloop_tile;
 extern void ClearAllSignalSpeedRestrictions();
+extern void ClearCoupleSearchLastFail();
 extern void MakeNewgameSettingsLive();
 
 extern uint64_t _station_tile_cache_hash;
@@ -153,6 +157,12 @@ void InitializeGame(uint size_x, uint size_y, bool reset_date, bool reset_settin
 	_aspect_cfg_hash = 0;
 	_station_tile_cache_hash = 0;
 	_engine_seed = 0;
+	/* Reset the (cosmetic) weather; when loading a savegame the WTHR chunk
+	 * overwrites this with the persisted state right after. The seed is
+	 * re-derived lazily from the live map generation seed on the first tick.
+	 * The rain cheat lives in _cheats and is reset with the other cheats. */
+	_weather_state = {};
+	_rain_shade_level = 0;
 	InitGRFGlobalVars();
 	_loadgame_DBGL_data.clear();
 	if (reset_settings) {
@@ -201,6 +211,8 @@ void InitializeGame(uint size_x, uint size_y, bool reset_date, bool reset_settin
 
 	ClearAllSignalSpeedRestrictions();
 
+	ClearCoupleSearchLastFail();
+
 	ClearZoningCaches();
 	InvalidatePlanCaches();
 	IntialiseOrderDestinationRefcountMap();
@@ -215,6 +227,7 @@ void InitializeGame(uint size_x, uint size_y, bool reset_date, bool reset_settin
 
 	InitNewsItemStructs();
 	InitializeLandscape();
+	ClearBlueprintUndoStack();
 	InitializeRailGui();
 	InitializeRoadGui();
 	InitializeAirportGui();

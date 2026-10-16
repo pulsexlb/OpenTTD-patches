@@ -5374,3 +5374,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Gormchló
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Roghnaigh limistéar de do bhonneagar féin le cóipeáil isteach sa sliotán gormchló gníomhach
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Greamaigh inneachar an tsliotáin gormchló ghníomhaigh ar an léarscáil
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Greamaigh bonneagar iarnróid
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Greamaigh bonneagar bóthair
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Greamaigh bonneagar uisce
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Greamaigh bonneagar aeir
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Tiontaigh bonneagar iarnróid go dtí an cineál ráille reatha agus é á ghreamú
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Scáthánaigh comharthaí agus iad á ngreamú
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Uasghrádaigh droichid agus iad á ngreamú
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Greamaigh stáisiúin agus pointí bealaigh freisin
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Athmhúnlaigh an talamh agus é á ghreamú. Cliceáil chun athrú: gan athmhúnlú, athmhúnlú íosta, athmhúnlú iomlán
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}An claochlú reatha, cliceáil chun athshocrú
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rothlaigh an gormchló 90 céim tuathalach
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rothlaigh an gormchló 90 céim deisealach
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Scáthánaigh an gormchló ar an ais iarthuaidh-oirdheas
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Scáthánaigh an gormchló ar an ais oirthuaidh-iardheas
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Fritháireamh airde agus é á ghreamú
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Méadaigh an airde ag a ngreamaítear an gormchló
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Laghdaigh an airde ag a ngreamaítear an gormchló
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Eolas faoin bpaiste Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Níl aon bhonneagar de chuid do chuideachta sa limistéar roghnaithe
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Tá an limistéar roghnaithe rómhór le cóipeáil
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Tá an gormchló rómhór le greamú i gcluiche ilimreora
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Taispeáin barra uirlisí na ngormchlónna chun bonneagar a chóipeáil agus a ghreamú
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Taispeáin barra uirlisí na ngormchlónna chun bonneagar a chóipeáil agus a ghreamú
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Ní féidir an gormchló a ghreamú anseo...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Athraigh go dtí an sliotán gormchló seo. Má tá ainm nó ábhar sa sliotán, taispeánann ainliú an t-ainm agus réamhamharc. Cliceáil faoi dhó chun athainmniú
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Easpórtáil
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Iompórtáil
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Easp/Iomp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Paiste Blueprint, leagan {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Easpórtáil an sliotán gníomhach...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Easpórtáil na sliotáin go léir chuig comhad...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Iompórtáil isteach sa sliotán gníomhach...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Iompórtáil na sliotáin go léir ó chomhad...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Níorbh fhéidir an gormchló a chóipeáil chuig an ngearrthaisce
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Tá an ghearrthaisce folamh
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Easpórtáil gormchló
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Iompórtáil gormchló
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Cóipeáil chuig an ngearrthaisce
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Greamaigh ón ngearrthaisce
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}An gormchló a ionadú?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Tá gormchló sa sliotán gníomhach cheana féin. Ar mhaith leat é a ionadú?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}An gormchlónna go léir a ionadú?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Ionadóidh sé seo ábhar gach sliotán gormchló. Ar mhaith leat leanúint ar aghaidh?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Athainmnigh an gormchló
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Easpórtáil na gormchlónna go léir chuig comhad
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Iompórtáil na gormchlónna go léir ó chomhad
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}An comhad a ionadú?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Tá comhad leis an ainm sin ann cheana féin. Ar mhaith leat é a ionadú?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Gormchlónna a easpórtáil nó a iompórtáil
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Cliceáil comhad chun é a roghnú, nó fillteán chun é a oscailt
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Ní gormchló bailí an téacs
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ainm comhaid neamhbhailí
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Comhad gormchló gan aimsiú, nó ní tacar gormchló bailí é
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Níorbh fhéidir an comhad gormchló a scríobh

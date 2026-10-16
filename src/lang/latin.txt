@@ -5346,3 +5346,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Exemplar
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Aream infrastructurae tuae elige quae in loculum exemplaris activum copietur
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Contenta loculi exemplaris activi in chartam glutinare
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Infrastructuram ferriviariam glutinare
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Infrastructuram viariam glutinare
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Infrastructuram navalem glutinare
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Infrastructuram aeriam glutinare
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Infrastructuram ferriviariam in genus ferriviae praesens convertere dum glutinatur
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Signa speculo invertere dum glutinatur
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Pontes renovare dum glutinatur
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Stationes et puncta itineris quoque glutinare
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terram formare dum glutinatur. Preme ut mutes: nulla formatio, formatio minima, formatio plena
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Transformatio praesens, preme ut restituas
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Exemplar XC gradus contra horologium vertere
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Exemplar XC gradus secundum horologium vertere
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Exemplar circa axem NW-SE speculare
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Exemplar circa axem NE-SW speculare
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Differentia altitudinis dum glutinatur
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Altitudinem augere qua exemplar glutinatur
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Altitudinem minuere qua exemplar glutinatur
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Notitiae de emendatione Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Area electa nullam infrastructuram societatis tuae continet
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Area electa maior est quam ut copietur
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Exemplar maius est quam ut in ludo multiplici glutinetur
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Instrumenta exemplaris monstrare ad infrastructuram copiandam et glutinandam
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Instrumenta exemplaris monstrare ad infrastructuram copiandam et glutinandam
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Exemplar hic glutinari non potest...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Ad hunc exemplaris loculum transire. Si loculus nomen vel contentum habet, mus superpositus nomen et praevisionem monstrat. Bis preme ut renomines
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportare
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importare
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Emendatio Blueprint, versio {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Loculum activum exportare...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Omnes loculos in plicam exportare...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :In loculum activum importare...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Omnes loculos e plica importare...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Exemplar in tabulam interpositam copiari non potuit
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Tabula interposita vacua est
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Exemplar exportare
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Exemplar importare
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}In tabulam interpositam copiare
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Ex tabula interposita glutinare
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Exemplar substituere?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Loculus activus iam exemplar continet. Visne id substituere?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Omnia exemplaria substituere?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Hoc contenta omnium loculorum exemplaris substituet. Visne pergere?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Exemplar renominare
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Omnia exemplaria in plicam exportare
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Omnia exemplaria e plica importare
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Plicam substituere?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Plica hoc nomine iam existit. Visne eam substituere?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Exemplaria exportare vel importare
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Preme plicam ut eam eligas, vel indicem ut eum aperias
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Textus exemplar validum non est
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nomen plicae invalidum
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Plica exemplaris non inventa, vel non congregatio exemplarium valida
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Plica exemplaris scribi non potuit

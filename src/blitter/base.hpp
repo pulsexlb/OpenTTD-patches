@@ -111,6 +111,16 @@ public:
 	virtual void DrawColourMappingRect(void *dst, int width, int height, PaletteID pal) = 0;
 
 	/**
+	 * Darken a rectangle of the screen by scaling the colour brightness.
+	 * The default implementation does nothing; 32 bpp blitters override this.
+	 * @param dst the destination pointer (video-buffer), top-left of the rectangle.
+	 * @param width the width of the rectangle.
+	 * @param height the height of the rectangle.
+	 * @param nom nominator of 256 to scale the colour channels with.
+	 */
+	virtual void DarkenRect(void *dst, int width, int height, uint8_t nom) {}
+
+	/**
 	 * Move the destination pointer the requested amount x and y, keeping in mind
 	 *  any pitch and bpp of the renderer.
 	 * @param video The destination pointer (video-buffer) to scroll.

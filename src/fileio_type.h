@@ -108,6 +108,7 @@ enum class Subdirectory : uint8_t {
 	Gs, ///< Subdirectory for all game scripts.
 	GsLibrary, ///< Subdirectory for all GS libraries.
 	Screenshot, ///< Subdirectory for all screenshots.
+	Blueprint, ///< Subdirectory for exported blueprint sets.
 	SocialIntegration, ///< Subdirectory for all social integration plugins.
 	Docs, ///< Subdirectory for documentation.
 	End, ///< End marker.

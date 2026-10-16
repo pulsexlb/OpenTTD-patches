@@ -820,7 +820,10 @@ void TraceRestrictProgram::Execute(const Train *v, const TraceRestrictProgramInp
 
 							case TRTSVF_DRIVING_BACKWARDS_NO_CAB:
 								if (input.input_flags.Test(TraceRestrictProgramInputFlag::InvertDrivingDirection)) {
-									has_status = !v->vehicle_flags.Test(VehicleFlag::DrivingBackwards) && !v->Last()->CanLeadTrain();
+									/* Evaluate as if the driving direction were flipped: the
+									 * opposite end of the chain would be leading. */
+									const Train *flipped_leader = v->vehicle_flags.Test(VehicleFlag::DrivingBackwards) ? v->First() : v->Last();
+									has_status = !flipped_leader->CanLeadTrain();
 								} else {
 									/* Use cached value. */
 									has_status = v->tcache.cached_tflags & TCF_NO_DRIVING_CAB;
@@ -3667,10 +3670,17 @@ void TraceRestrictTransferVehicleOccupantInAllSlots(VehicleID from, VehicleID to
 	_slot_vehicle_index.erase(start, it);
 	for (TraceRestrictSlotID slot_id : slots) {
 		TraceRestrictSlot *slot = TraceRestrictSlot::Get(slot_id);
-		for (VehicleID &id : slot->occupants) {
-			if (id == from) {
-				id = to;
-				_slot_vehicle_index.insert({ to, slot_id });
+		if (slot->IsOccupant(to)) {
+			/* 'to' already occupies this slot (e.g. both consists held the same slot
+			 * before coupling), so drop 'from' rather than create a duplicate occupant. */
+			container_unordered_remove(slot->occupants, from);
+			slot->UpdateSignals();
+		} else {
+			for (VehicleID &id : slot->occupants) {
+				if (id == from) {
+					id = to;
+					_slot_vehicle_index.insert({ to, slot_id });
+				}
 			}
 		}
 	}
@@ -4395,7 +4405,7 @@ CommandCost TraceRestrictFollowUpCmdData::ExecuteWithValue(uint16_t value, DoCom
 			using Payload = CmdPayload<Commands::ModifyOrder>;
 			if (const Payload *src = this->cmd.payload->AsType<Payload>(); src != nullptr) {
 				Payload payload = *src;
-				uint16_t &cmd_value = payload.GetValue<3>(); // Make sure that it is the expected type
+				uint16_t &cmd_value = payload.GetValue<4>(); // Make sure that it is the expected type
 				cmd_value = value;
 				return DoCommand<Commands::ModifyOrder>(this->cmd.tile, payload, flags);
 			}

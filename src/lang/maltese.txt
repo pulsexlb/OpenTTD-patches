@@ -1807,3 +1807,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Pjanta
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Agħżel żona tal-infrastruttura tiegħek biex tikkupjaha fis-slot attiv tal-pjanta
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Waħħal il-kontenut tas-slot attiv tal-pjanta fuq il-mappa
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Waħħal infrastruttura ferrovjarja
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Waħħal infrastruttura tat-toroq
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Waħħal infrastruttura tal-ilma
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Waħħal infrastruttura tal-ajru
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Ikkonverti l-infrastruttura ferrovjarja għat-tip tal-linji attwali meta twaħħal
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Irrifletti s-sinjali meta twaħħal
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Aġġorna l-pontijiet meta twaħħal
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Waħħal ukoll l-istazzjonijiet u l-punti tar-rotta
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Ibdel l-art meta twaħħal. Ikklikkja biex tibdel: mingħajr tibdil tal-art, tibdil minimu, tibdil sħiħ
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}It-trasformazzjoni attwali, ikklikkja biex tirrisettja
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Dawwar il-pjanta 90 grad kontra l-arloġġ
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Dawwar il-pjanta 90 grad mal-arloġġ
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Irrifletti l-pjanta madwar l-assi Majjistral-Xlokk
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Irrifletti l-pjanta madwar l-assi Grigal-Lbiċ
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Differenza fl-għoli meta twaħħal
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Żid l-għoli fejn titwaħħal il-pjanta
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Naqqas l-għoli fejn titwaħħal il-pjanta
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informazzjoni dwar il-patch Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Iż-żona magħżula ma fihiex infrastruttura tal-kumpanija tiegħek
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Iż-żona magħżula hija kbira wisq biex tiġi kkupjata
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Il-pjanta hija kbira wisq biex titwaħħal f'logħba multiplayer
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Uri l-istrixxa tal-għodda tal-pjanti biex tikkopja u twaħħal l-infrastruttura
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Uri l-istrixxa tal-għodda tal-pjanti biex tikkopja u twaħħal l-infrastruttura
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Il-pjanta ma tistax titwaħħal hawn...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Aqleb għal dan is-slot tal-pjanta. Jekk is-slot għandu isem jew kontenut, meta żżomm il-maws fuqu jidhru l-isem u previżjoni. Ikklikkja darbtejn biex issemmi mill-ġdid
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Esporta
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importa
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Esp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patch Blueprint, verżjoni {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Esporta s-slot attiv...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Esporta l-islots kollha f'fajl...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importa fis-slot attiv...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importa l-islots kollha minn fajl...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Il-pjanta ma setgħetx tiġi kkupjata fil-clipboard
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Il-clipboard huwa vojt
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Esporta l-pjanta
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importa pjanta
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Ikkopja fil-clipboard
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Waħħal mill-clipboard
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Tibdel il-pjanta?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Is-slot attiv diġà fih pjanta. Trid tibdilha?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Tibdel il-pjanti kollha?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Dan se jibdel il-kontenut tal-islots kollha tal-pjanti. Trid tkompli?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Semmi mill-ġdid il-pjanta
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Esporta l-pjanti kollha f'fajl
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importa l-pjanti kollha minn fajl
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Tibdel il-fajl?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Diġà jeżisti fajl b'dan l-isem. Trid tibdlu?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Esporta jew importa pjanti
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Ikklikkja fajl biex tagħżlu, jew folder biex tiftħu
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}It-test mhuwiex pjanta valida
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Isem ta' fajl invalidu
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Fajl tal-pjanti ma nstabx, jew mhuwiex sett ta' pjanti validu
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Il-fajl tal-pjanti ma setax jinkiteb

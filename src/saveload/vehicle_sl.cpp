@@ -11,6 +11,7 @@
 
 #include "saveload.h"
 #include "compat/vehicle_sl_compat.h"
+#include "../sl/extended_ver_sl.h"
 
 #include "../vehicle_func.h"
 #include "../train.h"
@@ -36,6 +37,8 @@ static std::vector<TileIndex> _path_tile;
 
 namespace upstream_sl {
 
+static uint8_t  _pos;             ///< Current aircraft position (used for old saves).
+static uint8_t  _old_state;       ///< Old aircraft state (used for old saves).
 static uint8_t  _cargo_periods;
 static StationID _cargo_source;
 static TileIndex _cargo_source_xy;
@@ -104,11 +107,11 @@ public:
 		/* This next line is for version 4 and prior compatibility.. it temporarily reads
 		type and flags (which were both 4 bits) into type. Later on this is
 		converted correctly */
-		SLE_CONDVAR(Vehicle, current_order.type,    SLE_UINT8,                    SL_MIN_VERSION,   SLV_5),
+		SLE_CONDVAR(Vehicle, current_order.type,    SLE_UINT16,                   SL_MIN_VERSION,   SLV_5),
 		SLE_CONDVAR(Vehicle, current_order.dest,    SLE_FILE_U8  | SLE_VAR_U16,   SL_MIN_VERSION,   SLV_5),
 
 		/* Orders for version 5 and on */
-		SLE_CONDVAR(Vehicle, current_order.type,    SLE_UINT8,                    SLV_5, SL_MAX_VERSION),
+		SLE_CONDVAR(Vehicle, current_order.type,    SLE_UINT16,                   SLV_5, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, current_order.flags,   SLE_FILE_U8 | SLE_VAR_U16,    SLV_5, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, current_order.dest,    SLE_UINT16,                   SLV_5, SL_MAX_VERSION),
 
@@ -119,6 +122,7 @@ public:
 		SLE_CONDVAR(Vehicle, current_order.wait_time,     SLE_FILE_U16 | SLE_VAR_U32, SLV_67, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, current_order.travel_time,   SLE_FILE_U16 | SLE_VAR_U32, SLV_67, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, current_order.max_speed,     SLE_UINT16,           SLV_174, SL_MAX_VERSION),
+		SLE_CONDVAR(Vehicle, current_order.decouple_flags, SLE_UINT8,           SL_MIN_VERSION, SL_MAX_VERSION),
 		SLE_CONDVAR(Vehicle, timetable_start,       SLE_FILE_I32 | SLE_VAR_I64, SLV_129, SLV_TIMETABLE_START_TICKS),
 		SLE_CONDVAR(Vehicle, timetable_start,       SLE_FILE_U64 | SLE_VAR_I64, SLV_TIMETABLE_START_TICKS, SL_MAX_VERSION),
 
@@ -206,6 +210,7 @@ public:
 		 SLE_CONDVAR(Train, flags,               SLE_FILE_U16 | SLE_VAR_U32, SLV_100, SL_MAX_VERSION),
 		 SLE_CONDVAR(Train, wait_counter,        SLE_UINT16,                 SLV_136, SL_MAX_VERSION),
 		 SLE_CONDVAR(Train, gv_flags,            SLE_UINT16,                 SLV_139, SL_MAX_VERSION),
+		 SLE_CONDVAR(Train, decouple_part,       SLE_UINT8,          SL_MIN_VERSION, SL_MAX_VERSION),
 	};
 	static inline const SaveLoadCompatTable compat_description = _vehicle_train_sl_compat;
 
@@ -396,20 +401,27 @@ class SlVehicleAircraft : public DefaultSaveLoadHandler<SlVehicleAircraft, Vehic
 public:
 	static inline const SaveLoad description[] = {
 		 SLEG_STRUCT("common", SlVehicleCommon),
+		 SLE_CONDVAR(Aircraft, trackdir,              SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, state,                 SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, next_trackdir,         SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, next_pos.x,            SLE_UINT32,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, next_pos.y,            SLE_UINT32,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+		 SLE_CONDVAR(Aircraft, next_pos.pos,          SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
 		     SLE_VAR(Aircraft, crashed_counter,       SLE_UINT16),
-		     SLE_VAR(Aircraft, pos,                   SLE_UINT8),
+		SLEG_CONDVAR("aircraft_pos", _pos,            SLE_UINT8,                    SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION),
 
 		 SLE_CONDVAR(Aircraft, targetairport,         SLE_FILE_U8  | SLE_VAR_U16,   SL_MIN_VERSION, SLV_5),
 		 SLE_CONDVAR(Aircraft, targetairport,         SLE_UINT16,                   SLV_5, SL_MAX_VERSION),
 
-		     SLE_VAR(Aircraft, state,                 SLE_UINT8),
-
-		 SLE_CONDVAR(Aircraft, previous_pos,          SLE_UINT8,                    SLV_2, SL_MAX_VERSION),
+		SLEG_CONDVAR("old_state", _old_state,         SLE_UINT8,                    SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION),
+		SLEG_CONDVAR("previous_pos", _pos,            SLE_UINT8,                    SLV_2, SLV_CUSTOM_SUBSIDY_DURATION),
 		 SLE_CONDVAR(Aircraft, last_direction,        SLE_UINT8,                    SLV_2, SL_MAX_VERSION),
 		 SLE_CONDVAR(Aircraft, number_consecutive_turns, SLE_UINT8,                 SLV_2, SL_MAX_VERSION),
 
 		 SLE_CONDVAR(Aircraft, turn_counter,          SLE_UINT8,                  SLV_136, SL_MAX_VERSION),
 		 SLE_CONDVAR(Aircraft, flags,                 SLE_UINT8,                  SLV_167, SL_MAX_VERSION),
+	   SLE_CONDRING(Aircraft, path.td,                SLE_UINT8,                    SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
+	   SLE_CONDRING(Aircraft, path.tile,              SLE_UINT32,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION),
 	};
 	static inline const SaveLoadCompatTable compat_description = _vehicle_aircraft_sl_compat;
 

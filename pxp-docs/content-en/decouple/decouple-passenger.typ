@@ -1,0 +1,2 @@
+#title[Cargo Distribution when Decoupling]
+Currently, per-vehicle cargo distribution for trains has not been implemented. When decoupling, if the train has cargo capacity and the route it will run differs from the original one, it is strongly recommended to choose a decouple order with loading/unloading, so that cargo not matching the new route is unloaded and transferred at the decoupling station.

@@ -95,8 +95,30 @@ public:
 		struct visitor {
 			uint64_t operator()(const std::monostate &) { throw std::out_of_range("Attempt to read uninitialised parameter as integer"); }
 			uint64_t operator()(const uint64_t &arg) { return arg; }
+			/* Only the cargoes below the 64 bit boundary; use GetNextParameterCargoTypes() for the whole mask. */
+			uint64_t operator()(const CargoTypes &arg) { return arg.base().lo; }
 			uint64_t operator()(const std::string &) { throw std::out_of_range("Attempt to read string parameter as integer"); }
 			uint64_t operator()(const StringParameterDataStringView &) { throw std::out_of_range("Attempt to read string parameter as integer"); }
+		};
+
+		const auto &param = this->GetNextParameterReference();
+		return std::visit(visitor{}, param.data);
+	}
+
+	/**
+	 * Get the next parameter as a cargo bit set.
+	 * This updates the offset, so the next time this is called the next parameter
+	 * will be read.
+	 * @return The next parameter's value.
+	 */
+	CargoTypes GetNextParameterCargoTypes()
+	{
+		struct visitor {
+			CargoTypes operator()(const std::monostate &) { throw std::out_of_range("Attempt to read uninitialised parameter as cargo list"); }
+			CargoTypes operator()(const uint64_t &arg) { return CargoTypes{arg}; }
+			CargoTypes operator()(const CargoTypes &arg) { return arg; }
+			CargoTypes operator()(const std::string &) { throw std::out_of_range("Attempt to read string parameter as cargo list"); }
+			CargoTypes operator()(const StringParameterDataStringView &) { throw std::out_of_range("Attempt to read string parameter as cargo list"); }
 		};
 
 		const auto &param = this->GetNextParameterReference();
@@ -127,6 +149,7 @@ public:
 		struct visitor {
 			std::string_view operator()(const std::monostate &) { throw std::out_of_range("Attempt to read uninitialised parameter as string"); }
 			std::string_view operator()(const uint64_t &) { throw std::out_of_range("Attempt to read integer parameter as string"); }
+			std::string_view operator()(const CargoTypes &) { throw std::out_of_range("Attempt to read integer parameter as string"); }
 			std::string_view operator()(const std::string &arg) { return arg; }
 			std::string_view operator()(const StringParameterDataStringView &arg) { return arg.view; }
 		};

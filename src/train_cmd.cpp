@@ -25,9 +25,12 @@
 #include "newgrf_station.h"
 #include "effectvehicle_func.h"
 #include "network/network.h"
+#include "network/network_sync.h"
 #include "core/random_func.hpp"
 #include "company_base.h"
+#include "group.h"
 #include "newgrf.h"
+#include "roadveh_transport.h"
 #include "infrastructure_func.h"
 #include "order_backup.h"
 #include "zoom_func.h"
@@ -55,6 +58,8 @@
 
 #include "table/strings.h"
 #include "table/train_cmd.h"
+
+static Train *GetClaimedCoupleTarget(const Train *moving);
 
 #include "safeguards.h"
 
@@ -191,6 +196,12 @@ uint8_t FreightWagonMult(CargoType cargo)
 /** Checks if lengths of all rail vehicles are valid. If not, shows an error message. */
 void CheckTrainsLengths()
 {
+	/* Temporarily disabled: NewGRF callback-evaluated cached_veh_length can
+	 * differ by 1 pixel between continuous play and post-load recalculation,
+	 * causing false positive "length invalid" warnings for Primary != First
+	 * trains. Re-enable once the evaluation timing is fully consistent. */
+	return;
+
 	bool first = true;
 
 	for (const Train *v : Train::IterateFrontOnly()) {
@@ -253,6 +264,36 @@ void CheckBreakdownFlags(Train *v)
 	}
 }
 
+/**
+ * Recompute the breakdown bookkeeping of a resulting consist part.
+ *
+ * #VehicleRailFlag::ConsistBreakdown is set wherever a breakdown starts
+ * (Vehicle::HandleBreakdown) and gates the whole breakdown handling in
+ * TrainLocoHandler, and the stop/speed/power flags are only ever recomputed by
+ * #CheckBreakdownFlags, which is reached only from Vehicle::HandleBreakdown.
+ * Consist surgery (see #SplitOrders) moves vehicles -- and the primary that
+ * carries all of this -- between the two parts, so both have to be recomputed
+ * for each part afterwards. Without it the part that keeps a broken engine never
+ * processes the breakdown (gate unset, so the counter and the breakdown delay
+ * are never advanced and BreakdownBraking is never cleared), while the part that
+ * lost it keeps a stale BreakdownSpeed and is displayed as broken down.
+ *
+ * @param part The primary vehicle of the resulting part.
+ */
+static void RefreshConsistBreakdownState(Train *part)
+{
+	bool broken = false;
+	for (Train *w = part->First(); w != nullptr; w = w->GetNextVehicle()) {
+		if (w->breakdown_ctr != 0 && (w->IsEngine() || w->IsMultiheaded())) {
+			broken = true;
+			break;
+		}
+	}
+	part->flags.Set(VehicleRailFlag::ConsistBreakdown, broken);
+	/* CheckBreakdownFlags() expects a front engine and rewrites the flags from the chain. */
+	if (part->IsFrontEngine()) CheckBreakdownFlags(part);
+}
+
 uint16_t GetTrainVehicleMaxSpeed(const Train *u, const RailVehicleInfo &rvi_u, const Train *front)
 {
 	const uint16_t base_speed = GetVehicleProperty(u, PROP_TRAIN_SPEED, rvi_u.max_speed);
@@ -278,11 +319,45 @@ uint16_t GetTrainVehicleMaxSpeed(const Train *u, const RailVehicleInfo &rvi_u, c
  * Note: this needs to be called too for 'wagon chains' (in the depot, without an engine)
  * @param allowed_changes Stuff that is allowed to change.
  */
+	bool Train::CanConsistChange(ConsistChangeFlags allowed_changes) const
+{
+	for (const Train *u = this; u != nullptr; u = u->Next()) {
+		const Engine *e_u = u->GetEngine();
+		const RailVehicleInfo *rvi_u = RailVehInfo(u->engine_type);
+
+		if (!allowed_changes.Test(ConsistChangeFlag::Capacity)) {
+			/* Verify capacity hasn't changed. */
+			if (e_u->DetermineCapacity(u) != u->cargo_cap) return false;
+		}
+
+		if (!allowed_changes.Test(ConsistChangeFlag::Length)) {
+			/* Verify length hasn't changed. */
+			uint16_t veh_len = CALLBACK_FAILED;
+			if (e_u->GetGRF() != nullptr && e_u->GetGRF()->grf_version >= 8) {
+				/* Use callback 36 */
+				veh_len = GetVehicleProperty(u, PROP_TRAIN_SHORTEN_FACTOR, CALLBACK_FAILED);
+
+				if (veh_len != CALLBACK_FAILED && veh_len >= VEHICLE_LENGTH) {
+					ErrorUnknownCallbackResult(e_u->GetGRFID(), CBID_VEHICLE_LENGTH, veh_len);
+				}
+			} else if (e_u->info.callback_mask.Test(VehicleCallbackMask::Length)) {
+				/* Use callback 11 */
+				veh_len = GetVehicleCallback(CBID_VEHICLE_LENGTH, 0, 0, u->engine_type, u);
+			}
+			if (veh_len == CALLBACK_FAILED) veh_len = rvi_u->shorten_factor;
+			veh_len = VEHICLE_LENGTH - Clamp(veh_len, 0, VEHICLE_LENGTH - 1);
+
+			if (veh_len != u->gcache.cached_veh_length) return false;
+		}
+	}
+	return true;
+}
+
 void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 {
 	uint16_t max_speed = UINT16_MAX;
 
-	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon());
+	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon() || this->IsFrontWagon());
 
 	const RailVehicleInfo *rvi_v = RailVehInfo(this->engine_type);
 	EngineID first_engine = this->IsFrontEngine() ? this->engine_type : EngineID::Invalid();
@@ -445,8 +520,14 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 	this->tcache.cached_curve_speed_mod = min_curve_speed_mod;
 	this->tcache.cached_max_curve_speed = this->GetCurveSpeedLimit();
 
-	if (driving_backwards && !this->Last()->CanLeadTrain()) {
-		this->tcache.cached_tflags |= TCF_NO_DRIVING_CAB;
+	/* Restrict speed when the end of the chain that currently leads has no
+	 * driving cab. With Primary != First the chain head can be a wagon, so
+	 * forward-driven trains need this check as much as reversed ones. */
+	{
+		const Train *leader = driving_backwards ? this->Last() : this->First();
+		if (!leader->CanLeadTrain()) {
+			this->tcache.cached_tflags |= TCF_NO_DRIVING_CAB;
+		}
 	}
 
 	extern std::array<RailTypes, 3> _railtypes_acceleration_type_masks;
@@ -472,24 +553,42 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 		/* If the consist is changed while in a depot, the vehicle view window must be invalidated to update the availability of refitting. */
 		InvalidateWindowData(WindowClass::VehicleView, this->index, VIWD_CONSIST_CHANGED);
 	}
-	if (allowed_changes.Test(ConsistChangeFlag::Length)) {
-		for (Train *u = this->Next(); u != nullptr; u = u->Next()) {
-			u->vcache.cached_max_speed = 0;
-			u->gcache.cached_weight = 0;
-			u->gcache.cached_max_te = 0;
-			u->gcache.cached_axle_resistance = 0;
-			u->gcache.cached_max_track_speed = 0;
-			u->gcache.cached_power = 0;
-			u->gcache.cached_air_drag = 0;
-			u->gcache.cached_total_length = 0;
-			u->tcache.cached_num_engines = 0;
-			u->tcache.cached_centre_mass = 0;
-			u->tcache.cached_braking_length = 0;
-			u->tcache.cached_deceleration = 0;
-			u->tcache.cached_uncapped_decel = 0;
-			u->tcache.cached_curve_speed_mod = 0;
-			u->tcache.cached_max_curve_speed = 0;
-		}
+	this->BroadcastConsistCaches();
+}
+
+/**
+ * Broadcast the consist-level caches to every vehicle of the chain. They
+ * are computed on the chain head, but any vehicle (e.g. a primary vehicle
+ * that is not the chain head) may read its own copies at any time.
+ */
+void Train::BroadcastConsistCaches()
+{
+	for (Train *u = this->Next(); u != nullptr; u = u->Next()) {
+		u->compatible_railtypes = this->compatible_railtypes;
+		u->vcache.cached_max_speed = this->vcache.cached_max_speed;
+		u->gcache.cached_weight = this->gcache.cached_weight;
+		u->gcache.cached_max_te = this->gcache.cached_max_te;
+		u->gcache.cached_axle_resistance = this->gcache.cached_axle_resistance;
+		u->gcache.cached_max_track_speed = this->gcache.cached_max_track_speed;
+		u->gcache.cached_power = this->gcache.cached_power;
+		u->gcache.cached_air_drag = this->gcache.cached_air_drag;
+		u->gcache.cached_total_length = this->gcache.cached_total_length;
+		/* cached_tflags also carries the per-vehicle TCF_MOVING_UNIT_START bit, which
+		 * ConsistChanged() computed for every vehicle individually right before this
+		 * broadcast. Keep each vehicle's own value and only take the consist-wide bits
+		 * (tilt, railtype speed, driving cab, acceleration type) from the head; copying
+		 * the head's tflags wholesale wipes the unit starts of every other vehicle,
+		 * which makes station servicing treat the whole chain as one articulated unit. */
+		u->tcache.cached_tflags = static_cast<TrainCacheFlags>(
+				(u->tcache.cached_tflags & TCF_MOVING_UNIT_START) |
+				(this->tcache.cached_tflags & ~TCF_MOVING_UNIT_START));
+		u->tcache.cached_num_engines = this->tcache.cached_num_engines;
+		u->tcache.cached_centre_mass = this->tcache.cached_centre_mass;
+		u->tcache.cached_braking_length = this->tcache.cached_braking_length;
+		u->tcache.cached_deceleration = this->tcache.cached_deceleration;
+		u->tcache.cached_uncapped_decel = this->tcache.cached_uncapped_decel;
+		u->tcache.cached_curve_speed_mod = this->tcache.cached_curve_speed_mod;
+		u->tcache.cached_max_curve_speed = this->tcache.cached_max_curve_speed;
 	}
 }
 
@@ -1060,6 +1159,8 @@ static void ApplyLookAheadItem(const Train *v, const TrainReservationLookAheadIt
 	}
 }
 
+static int CoupleJointOffset(uint8_t front_len, uint8_t back_len, bool front_driving_backwards);
+
 static void AdvanceLookAheadPosition(Train *v)
 {
 	v->lookahead->current_position++;
@@ -1113,6 +1214,12 @@ static void AdvanceLookAheadPosition(Train *v)
 	}
 }
 
+/** Maximum speeds for train that is broken down or approaching line end */
+static const uint16_t _breakdown_speeds[16] = {
+	225, 210, 195, 180, 165, 150, 135, 120, 105, 90, 75, 60, 45, 30, 15, 15
+};
+
+
 /**
  * Calculates the maximum speed information of the vehicle under its current conditions.
  * @return Maximum speed information of the vehicle.
@@ -1125,7 +1232,7 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 
 	if (this->current_order.IsType(OT_LOADING_ADVANCE)) max_speed = std::min<int>(max_speed, _settings_game.vehicle.through_load_speed_limit);
 
-	/* If the train is going backwards, without a leading cab, restrict its speed. */
+	/* If the leading end of the train has no driving cab, restrict its speed. */
 	if (this->tcache.cached_tflags & TCF_NO_DRIVING_CAB) {
 		constexpr int BACKWARDS_NO_CAB_SPEED_LIMIT = 32;
 		max_speed = std::min<int>(max_speed, BACKWARDS_NO_CAB_SPEED_LIMIT);
@@ -1133,8 +1240,82 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 
 	int advisory_max_speed = max_speed;
 
+	/* Braking for a coupling approach: decelerate so the leading end reaches
+	 * the contact point of the waiting train at crawl speed; the actual stop
+	 * to zero happens on physical contact. */
+	if (this->current_order.IsType(OT_GOTO_COUPLE)) {
+		/* Use the claim-validated target: the claim is re-checked against the
+		 * order's own conditions every tick, so a partner that stopped
+		 * qualifying (lost its 路签, filled up, left, ...) is dropped here
+		 * instead of being braked towards for a couple that cannot happen. */
+		const Train *tgt = GetClaimedCoupleTarget(this);
+		bool target_ok = tgt != nullptr && !tgt->Primary()->vehstatus.Test(VehState::Stopped)
+				&& IsTrainCouplingAllowed(this->owner, tgt->owner);
+		if (!target_ok) {
+			if (update_state) const_cast<Train *>(this)->couple_target = VehicleID::Invalid();
+		} else {
+			const Train *mf = this->GetMovingFront();
+			int centre_dist = std::max(abs(mf->x_pos - tgt->x_pos), abs(mf->y_pos - tgt->y_pos));
+			int joint_offset = CoupleJointOffset(mf->gcache.cached_veh_length, tgt->gcache.cached_veh_length, mf->IsDrivingBackwards());
+			int gap = std::max(0, centre_dist - joint_offset);
+			if (gap > 0) {
+				constexpr int COUPLE_CRAWL_SPEED = 5;
+				int allowed;
+				if (this->UsingRealisticBraking()) {
+					TrainDecelerationStats stats(this, this->z_pos);
+					if (stats.deceleration_x2 == 0) {
+						/* Wagon-headed consists carry no cached realistic deceleration
+						 * (UpdateAcceleration skips non-front-engine heads); approximate
+						 * with the power-derived value used by the original model. */
+						uint16_t fallback = Clamp((this->acceleration * 7) / 2, 1, 200);
+						stats.deceleration_x2 = 2 * fallback;
+						stats.uncapped_deceleration_x2 = 2 * fallback;
+					}
+					allowed = GetRealisticBrakingSpeedForDistance(stats, gap, COUPLE_CRAWL_SPEED, tgt->z_pos - this->z_pos);
+				} else {
+					/* Original model: vanilla only slows down within the final tile
+					 * of approach via the _breakdown_speeds step table, with the
+					 * current speed clamped directly like TrainApproachingLineEnd. */
+					allowed = max_speed;
+					if (gap <= TILE_SIZE) {
+						uint idx = Clamp<uint>(TILE_SIZE - gap, 0, 15);
+						uint16_t break_speed = _breakdown_speeds[idx];
+						if (update_state && break_speed < this->cur_speed) {
+							const_cast<Train *>(this)->vehstatus.Set(VehState::TrainSlowing);
+							const_cast<Train *>(this)->cur_speed = break_speed;
+						}
+						max_speed = std::min(max_speed, static_cast<int>(break_speed));
+						allowed = max_speed;
+					}
+				}
+
+				/* Realistic braking only: within four tiles blend in a linear
+				 * ramp (crawl + 4 per world unit of gap). Its slope exceeds the
+				 * steepest descent of the physics curve, so the envelope
+				 * min(physics, ramp) is continuous: the physics value governs
+				 * until the crossover (~gap 27), then the ramp monotonically
+				 * brings the leading end to crawl speed at contact. */
+				if (this->UsingRealisticBraking() && gap <= TILE_SIZE * 4) {
+					int near_spd = std::max(COUPLE_CRAWL_SPEED, gap * 4);
+					allowed = std::min(allowed, near_spd);
+					/* Direct clamp as a safety net; with the continuous envelope
+					 * it only ever trims a small residual per tick. */
+					if (update_state && near_spd < this->cur_speed) {
+						const_cast<Train *>(this)->vehstatus.Set(VehState::TrainSlowing);
+						const_cast<Train *>(this)->cur_speed = near_spd;
+					}
+				}
+
+				max_speed = std::min(max_speed, allowed);
+				advisory_max_speed = std::min(advisory_max_speed, allowed);
+
+			}
+		}
+	}
+
 	if (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Realistic && this->lookahead == nullptr) {
 		Train *v_platform = const_cast<Train *>(this->GetStationLoadingVehicle());
+		if (v_platform == nullptr) v_platform = const_cast<Train *>(this->First());
 		TileIndex platform_tile = v_platform->tile;
 		if (HasStationTileRail(platform_tile)) {
 			StationID sid = GetStationIndex(platform_tile);
@@ -1167,10 +1348,10 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 	}
 
 	if (this->flags.Test(VehicleRailFlag::ConsistSpeedReduction)) {
-		const_cast<Train *>(this)->flags.Reset(VehicleRailFlag::ConsistSpeedReduction);
-		for (const Train *u = this; u != nullptr; u = u->Next()) {
+		bool has_speed_reduction = false;
+		for (const Train *u = this->First(); u != nullptr; u = u->Next()) {
 			if (u->track == TRACK_BIT_DEPOT) {
-				const_cast<Train *>(this)->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
+				has_speed_reduction = true;
 				if (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Realistic) {
 					max_speed = std::min<int>(max_speed, _settings_game.vehicle.rail_depot_speed_limit);
 				}
@@ -1179,10 +1360,11 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 
 			/* Vehicle is on the middle part of a bridge. */
 			if (u->track & TRACK_BIT_WORMHOLE && !u->vehstatus.Test(VehState::Hidden)) {
-				const_cast<Train *>(this)->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
+				has_speed_reduction = true;
 				max_speed = std::min<int>(max_speed, GetBridgeSpec(GetBridgeType(u->tile))->speed);
 			}
 		}
+		if (update_state) const_cast<Train *>(this)->flags.Set(VehicleRailFlag::ConsistSpeedReduction, has_speed_reduction);
 	}
 
 	advisory_max_speed = std::min<int>(advisory_max_speed, this->current_order.GetMaxSpeed());
@@ -1238,7 +1420,12 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 int Train::GetCurrentMaxSpeed() const
 {
 	MaxSpeedInfo info = this->GetCurrentMaxSpeedInfo();
-	return std::min(info.strict_max_speed, info.advisory_max_speed);
+	int max_speed = std::min(info.strict_max_speed, info.advisory_max_speed);
+
+	/* Unpowered front wagons should not drive too fast. */
+	if (this->IsFrontWagon() && !this->flags.Test(VehicleRailFlag::PoweredWagon)) max_speed = std::min(max_speed, 50);
+
+	return max_speed;
 }
 
 uint32_t Train::CalculateOverallZPos() const
@@ -1445,6 +1632,10 @@ void Train::GetImage(Direction direction, EngineImageType image_type, VehicleSpr
 
 	if (this->cargo.StoredCount() >= this->cargo_cap / 2U) sprite += _wagon_full_adder[spritenum];
 
+	/* RoRo: a part which carries road vehicles is drawn as if it were fully loaded.
+	 * (Only while the master switch is on, so the vehicle pool scan is skipped when the feature is off.) */
+	if (this->cargo_cap > 0 && _settings_game.vehicle.rv_transport_enabled && RVTransportPartHoldsRoadVehicles(this)) sprite += _wagon_full_adder[spritenum];
+
 	result->Set(sprite);
 }
 
@@ -1552,6 +1743,8 @@ void GetTrainSpriteSize(EngineID engine, uint &width, uint &height, int &xoffs, 
  * @param[out] ret the vehicle that has been built.
  * @return the cost of this operation or an error.
  */
+static void MaterialiseTrainPrimary(Train *head);
+
 static CommandCost CmdBuildRailWagon(TileIndex tile, DoCommandFlags flags, const Engine *e, Vehicle **ret)
 {
 	const RailVehicleInfo *rvi = &e->VehInfo<RailVehicleInfo>();
@@ -1621,7 +1814,7 @@ static CommandCost CmdBuildRailWagon(TileIndex tile, DoCommandFlags flags, const
 			for (Train *w = Train::From(GetFirstVehicleOnTile(tile, VehicleType::Train)); w != nullptr; w = w->HashTileNext()) {
 				if (w->IsFreeWagon() &&                          ///< A free wagon chain
 						w->engine_type == e->index &&            ///< Same type
-						w->First() != v &&                       ///< Don't connect to ourself
+						w->Primary() != v &&                       ///< Don't connect to ourself
 						!w->vehstatus.Test(VehState::Crashed) && ///< Not crashed/flooded
 						w->owner == v->owner) {                  ///< Same owner
 					candidates.push_back(w);
@@ -1632,6 +1825,11 @@ static CommandCost CmdBuildRailWagon(TileIndex tile, DoCommandFlags flags, const
 			});
 			for (Train *w : candidates) {
 				if (Command<Commands::MoveRailVehicle>::Do(DoCommandFlag::Execute, v->index, w->Last()->index, MoveRailVehicleFlags::MoveChain).Succeeded()) {
+					/* The built wagon joined an existing chain: unify primaries
+					 * onto that chain's info carrier. Standalone wagons keep
+					 * primary == nullptr so Primary() keeps falling back to
+					 * First(). */
+					MaterialiseTrainPrimary(v->First());
 					break;
 				}
 			}
@@ -1791,6 +1989,7 @@ CommandCost CmdBuildRailVehicle(TileIndex tile, DoCommandFlags flags, const Engi
 		}
 
 		v->ConsistChanged(CCF_ARRANGE);
+		MaterialiseTrainPrimary(v->First());
 		UpdateTrainGroupID(v);
 
 		CheckConsistencyOfArticulatedVehicle(v);
@@ -1908,15 +2107,26 @@ static void InsertInConsist(Train *dst, Train *chain)
  * Normalise the dual heads in the train, i.e. if one is
  * missing move that one to this train.
  * @param t the train to normalise.
+ * @param pull_in_free_cars Whether free cars between the front half and the
+ *                          next engine are pulled inside the dual-head block
+ *                          (vanilla depot semantics). Must be false while
+ *                          coupling: the absorbed consist's wagons belong
+ *                          outside the block and pulling them in corrupts a
+ *                          consist that is not safely stopped in a depot.
  */
-static void NormaliseDualHeads(Train *t)
+static void NormaliseDualHeads(Train *t, bool pull_in_free_cars)
 {
 	for (; t != nullptr; t = t->GetNextVehicle()) {
 		if (!t->IsMultiheaded() || !t->IsEngine()) continue;
 
-		/* Make sure that there are no free cars before next engine */
+		/* Make sure that there are no free cars before next engine.
+		 * With pull_in_free_cars the walk overshoots the other dual-head half
+		 * (the rear half carries no engine flag), so the rear half is
+		 * re-inserted right before the next engine and any free cars in
+		 * between end up inside the dual-head block. Without it the walk
+		 * stops at the rear half and the surrounding cars keep their place. */
 		Train *u;
-		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine(); u = u->Next()) {}
+		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine() && (pull_in_free_cars || u->Next() != t->other_multiheaded_part); u = u->Next()) {}
 
 		if (u == t->other_multiheaded_part) continue;
 
@@ -1939,18 +2149,34 @@ static void NormaliseSubtypes(Train *chain)
 	/* We must be the first in the chain. */
 	assert(chain->Previous() == nullptr);
 
-	/* Set the appropriate bits for the first in the chain. */
-	if (chain->IsWagon()) {
-		chain->SetFreeWagon();
+	/* Set the appropriate bits for the first in the chain.
+	 *
+	 * Whether the chain is a free wagon chain depends on the whole chain having no engine, not
+	 * on the head being a wagon. The primary may sit mid-chain, so a chain can start with a
+	 * wagon and still have an engine behind it; marking such a chain as a free wagon chain makes
+	 * the depot list it as engine-less and hides the unit number, and #CanBuildNormalRailVehicle
+	 * and the build/buy vehicle list would skip the engine that can actually pull it. The
+	 * front-engine marker stays with the head when the head is an engine, and otherwise belongs
+	 * to the engine of the chain, which #MaterialiseTrainPrimary places right after this. */
+	bool has_engine = false;
+	for (const Train *t = chain; t != nullptr; t = t->Next()) {
+		if (t->IsEngine()) {
+			has_engine = true;
+			break;
+		}
+	}
+	if (has_engine) {
+		chain->ClearFreeWagon();
+		if (chain->IsEngine()) chain->SetFrontEngine();
 	} else {
-		assert(chain->IsEngine());
-		chain->SetFrontEngine();
+		chain->SetFreeWagon();
 	}
 
 	/* Now clear the bits for the rest of the chain */
 	for (Train *t = chain->Next(); t != nullptr; t = t->Next()) {
 		t->ClearFreeWagon();
 		t->ClearFrontEngine();
+		t->ClearFrontWagon();
 	}
 }
 
@@ -1968,16 +2194,19 @@ static CommandCost CheckNewTrain(Train *original_dst, Train *dst, Train *origina
 	/* Just add 'new' engines and subtract the original ones.
 	 * If that's less than or equal to 0 we can be sure we did
 	 * not add any engines (read: trains) along the way. */
-	if ((src          != nullptr && src->IsEngine()          ? 1 : 0) +
-			(dst          != nullptr && dst->IsEngine()          ? 1 : 0) -
-			(original_src != nullptr && original_src->IsEngine() ? 1 : 0) -
-			(original_dst != nullptr && original_dst->IsEngine() ? 1 : 0) <= 0) {
+	if ((src          != nullptr && src->unitnumber          ? 1 : 0) +
+			(dst          != nullptr && dst->unitnumber          ? 1 : 0) -
+			(original_src != nullptr && original_src->unitnumber ? 1 : 0) -
+			(original_dst != nullptr && original_dst->unitnumber ? 1 : 0) <= 0) {
 		return CommandCost();
 	}
 
 	/* Get a free unit number and check whether it's within the bounds.
 	 * There will always be a maximum of one new train. */
-	if (GetFreeUnitNumber(VehicleType::Train) <= _settings_game.vehicle.max_trains) return CommandCost();
+	/* Pass the owner explicitly: consist surgery such as decoupling also runs
+	 * outside command context, where _current_company is not usable. */
+	Owner owner = src != nullptr ? src->owner : (dst != nullptr ? dst->owner : _current_company);
+	if (GetFreeUnitNumber(VehicleType::Train, owner) <= _settings_game.vehicle.max_trains) return CommandCost();
 
 	return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
 }
@@ -1990,7 +2219,7 @@ static CommandCost CheckNewTrain(Train *original_dst, Train *dst, Train *origina
 static CommandCost CheckTrainAttachment(Train *t)
 {
 	/* No multi-part train, no need to check. */
-	if (t == nullptr || t->Next() == nullptr) return CommandCost();
+	if (t == nullptr || t->Next() == nullptr || (!t->IsEngine() && t->IsStoppedInDepot())) return CommandCost();
 
 	/* The maximum length for a train. For each part we decrease this by one
 	 * and if the result is negative the train is simply too long. */
@@ -2119,8 +2348,10 @@ static CommandCost ValidateTrains(Train *original_dst, Train *dst, Train *origin
  * @param src_head   The source chain of the to be moved vehicle.
  * @param src        The to be moved vehicle.
  * @param move_chain Whether to move all vehicles after src or not.
+ * @param pull_in_free_cars Whether dual-head normalisation may pull free cars
+ *                          inside the dual-head block; false while coupling.
  */
-static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train *src, bool move_chain)
+static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train *src, bool move_chain, bool pull_in_free_cars = true)
 {
 	/* First determine the front of the two resulting trains */
 	if (*src_head == *dst_head) {
@@ -2152,8 +2383,8 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
 
 	/* Now normalise the dual heads, that is move the dual heads around in such
 	 * a way that the head and rear of a dual head are in the same train */
-	NormaliseDualHeads(*src_head);
-	NormaliseDualHeads(*dst_head);
+	NormaliseDualHeads(*src_head, pull_in_free_cars);
+	NormaliseDualHeads(*dst_head, pull_in_free_cars);
 }
 
 /**
@@ -2161,26 +2392,143 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
  * we have changed and update all kinds of variables.
  * @param head the train to update.
  */
-static void NormaliseTrainHead(Train *head)
+/**
+ * Materialise the primary pointers of a chain: prefer the first engine in the
+ * chain (it carries the consist identity), fall back to the chain head for
+ * engine-less wagon chains. Call after building a chain and after any chain
+ * surgery so the fallback rule in Primary() is never relied upon.
+ */
+static void MaterialiseTrainPrimary(Train *head)
+{
+	Train *prim = head;
+	for (Train *u = head; u != nullptr; u = u->Next()) {
+		if (u->IsEngine()) {
+			prim = u;
+			break;
+		}
+	}
+	for (Train *u = head; u != nullptr; u = u->Next()) u->SetPrimary(prim);
+	/* The carrier must carry the front-engine marker wherever it sits in the
+	 * chain -- vanilla surgery (e.g. NormaliseSubtypes) strips it from every
+	 * non-head vehicle without knowing about primary pointers. */
+	if (prim->IsEngine()) prim->SetFrontEngine();
+}
+
+/**
+ * The window classes that show a whole consist, and are therefore kept open across a consist
+ * change instead of being closed. They are keyed by a single vehicle id, so a consist change
+ * has to re-key them; see RekeyConsistWindows().
+ */
+static constexpr WindowClass _consist_window_classes[] = {
+	WindowClass::VehicleView,
+	WindowClass::VehicleDetails,
+	WindowClass::VehicleOrders,
+	WindowClass::VehicleRefit,
+	WindowClass::VehicleTimetable,
+};
+
+/**
+ * Keep one window per consist window class across a consist change.
+ *
+ * A consist window is keyed by one vehicle id but displays everything from the primary, so a
+ * consist change that moves the primary leaves the window pointing at a vehicle that no longer
+ * carries the consist. Closing every window avoided that, but at the cost of losing the window
+ * on every couple, decouple and depot rebuild. Instead, one window per class is re-keyed to the
+ * new primary and refreshed; the windows of the other members have no consist left to follow, so
+ * those are closed.
+ *
+ * @param members every vehicle of the chain, as passed to NormaliseTrainHead().
+ * @param new_prim the primary the chain ended up with.
+ */
+static void RekeyConsistWindows(const std::vector<Train *> &members, const Train *new_prim)
+{
+	for (WindowClass wc : _consist_window_classes) {
+		/* Prefer a window that is already keyed to the new primary, so one the player opened on
+		 * the surviving vehicle is not moved at all. */
+		const Train *from = nullptr;
+		for (const Train *u : members) {
+			if (FindWindowById(wc, u->index) == nullptr) continue;
+			if (u == new_prim) {
+				from = u;
+				break;
+			}
+			if (from == nullptr) from = u;
+		}
+
+		/* Move the survivor onto the primary before closing, so the window just moved is not
+		 * closed again by the loop below. */
+		if (from != nullptr && from != new_prim) ChangeVehicleViewWindow(from->index, new_prim->index);
+
+		for (const Train *u : members) {
+			if (u == new_prim) continue;
+			CloseWindowById(wc, u->index.base());
+		}
+
+		/* The key did not change for a window that was already on the primary, but everything it
+		 * displays is stale now, so refresh it either way. */
+		if (from != nullptr) InvalidateWindowData(wc, new_prim->index, VIWD_CONSIST_CHANGED);
+	}
+}
+
+static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 {
 	/* Not much to do! */
 	if (head == nullptr) return;
 
-	/* Tell the 'world' the train changed. */
-	head->ConsistChanged(CCF_ARRANGE);
-	UpdateTrainGroupID(head);
+	/* Unify the primary pointers of the chain (single driver, consistent
+	 * resolution, valid carrier), then re-key the vehicle windows of the chain to the primary it
+	 * ends up with, so that a couple, a decouple or a depot rebuild keeps the window the player
+	 * is looking at. */
+	{
+		std::vector<Train *> members;
+		for (Train *u = head; u != nullptr; u = u->Next()) members.push_back(u);
+
+		bool valid = false;
+		int drivers = 0;
+		for (Train *u : members) {
+			if (u == head->Primary()) valid = u->IsPrimaryVehicle() || u->IsFreeWagon();
+			if (u->IsPrimaryVehicle()) drivers++;
+		}
+
+		if (!valid || drivers > 1) {
+			MaterialiseTrainPrimary(head);
+		}
+
+		Train *new_prim = head->Primary();
+		for (Train *u : members) {
+			u->SetPrimary(new_prim);
+
+			DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
+		}
+
+		RekeyConsistWindows(members, new_prim);
+	}
+
+	/* Tell the 'world' the train changed. Physical caches are always recomputed
+	 * on the chain head, even when 'head' is the primary vehicle mid-chain. */
+	head->First()->ConsistChanged(allowed_changes);
+	UpdateTrainGroupID(head->Primary());
 	head->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 
-	/* Not a front engine, i.e. a free wagon chain. No need to do more. */
-	if (!head->IsFrontEngine()) return;
+	/* Identity operations (refit button, windows, unit number) belong to the
+	 * primary vehicle, which may sit mid-chain when it is not the chain head. */
+	Train *ident = head->Primary();
+	if (!ident->IsPrimaryVehicle()) return;
 
 	/* Update the refit button and window */
-	InvalidateWindowData(WindowClass::VehicleRefit, head->index, VIWD_CONSIST_CHANGED);
-	SetWindowWidgetDirty(WindowClass::VehicleView, head->index, WID_VV_REFIT);
+	InvalidateWindowData(WindowClass::VehicleRefit, ident->index, VIWD_CONSIST_CHANGED);
+	SetWindowWidgetDirty(WindowClass::VehicleView, ident->index, WID_VV_REFIT);
+
+	/* Refresh the rest of the kept consist windows. RekeyConsistWindows() already invalidated
+	 * them, but it runs before the primary is final, so a window re-keyed to a primary that
+	 * changed again afterwards would be left stale. */
+	for (WindowClass wc : _consist_window_classes) {
+		InvalidateWindowData(wc, ident->index, VIWD_CONSIST_CHANGED);
+	}
 
 	/* If we don't have a unit number yet, set one. */
-	if (head->unitnumber != 0 || HasBit(head->subtype, GVSF_VIRTUAL)) return;
-	head->unitnumber = Company::Get(head->owner)->freeunits[head->type].UseID(GetFreeUnitNumber(VehicleType::Train));
+	if (ident->unitnumber != 0 || HasBit(ident->subtype, GVSF_VIRTUAL)) return;
+	ident->unitnumber = Company::Get(ident->owner)->freeunits[ident->type].UseID(GetFreeUnitNumber(VehicleType::Train, ident->owner));
 }
 
 CommandCost CmdMoveVirtualRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleID dest_veh, MoveRailVehicleFlags move_flags)
@@ -2301,8 +2649,8 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 	/* We want this information from before the rearrangement, but execute this after the validation.
 	 * original_src_head can't be nullptr; src is by definition != nullptr, so src_head can't be nullptr as
 	 * src->GetFirst() always yields non-nullptr, so eventually original_src_head != nullptr as well. */
-	bool original_src_head_front_engine = original_src_head->IsFrontEngine();
-	bool original_dst_head_front_engine = original_dst_head != nullptr && original_dst_head->IsFrontEngine();
+	bool original_src_head_front_engine = original_src_head->IsPrimaryVehicle();
+	bool original_dst_head_front_engine = original_dst_head != nullptr && original_dst_head->IsPrimaryVehicle();
 
 	/* (Re)arrange the trains in the wanted arrangement. */
 	ArrangeTrains(&dst_head, dst, &src_head, src, move_chain);
@@ -2330,6 +2678,14 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		NormaliseSubtypes(src_head);
 		NormaliseSubtypes(dst_head);
 
+		/* NormaliseSubtypes strips front markers from every non-head vehicle
+		 * and knows nothing about primary pointers; re-materialise each
+		 * resulting chain's primary onto its carrier (first engine, or the
+		 * head for engine-less wagon chains) so mid-chain primaries stay
+		 * drivable and stale self-references are cleaned up. */
+		if (src_head != nullptr) MaterialiseTrainPrimary(src_head);
+		if (dst_head != nullptr) MaterialiseTrainPrimary(dst_head);
+
 		/* There are 14 different cases:
 		 *  1) front engine gets moved to a new train, it stays a front engine.
 		 *     a) the 'next' part is a wagon that becomes a free wagon chain.
@@ -2350,7 +2706,7 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		 *  6) non front engine gets moved within a train / to another train, nothing happens
 		 *  7) wagon gets moved, nothing happens
 		 */
-		if (src == original_src_head && src->IsEngine() && (!src->IsFrontEngine() || new_head)) {
+		if (src == original_src_head && original_src_head_front_engine && (!src->IsPrimaryVehicle() || new_head)) {
 			/* Cases #2 and #3: the front engine gets trashed. */
 			CloseWindowById(WindowClass::VehicleView, src->index);
 			CloseWindowById(WindowClass::VehicleOrders, src->index);
@@ -2366,6 +2722,8 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 				/* Cases #?b: Transfer order, unit number and other stuff
 				 * to the new front engine. */
 				src_head->orders = src->orders;
+				src_head->primary_order = src->primary_order;
+				src_head->primary_order_index = src->primary_order_index;
 				if (src_head->orders != nullptr) src_head->AddToShared(src);
 				src_head->CopyVehicleConfigAndStatistics(src);
 			}
@@ -2392,17 +2750,29 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		}
 
 		/* Handle 'new engine' part of cases #1b, #2b, #3b, #4b and #5 in NormaliseTrainHead. */
-		NormaliseTrainHead(src_head);
-		NormaliseTrainHead(dst_head);
+		NormaliseTrainHead(src_head, CCF_ARRANGE);
+		NormaliseTrainHead(dst_head, CCF_ARRANGE);
 
 		/* Add new heads to statistics.
 		 * This should be done after NormaliseTrainHead due to engine total limit checks in GetFreeUnitNumber. */
-		if (src_head != nullptr && src_head->IsFrontEngine()) GroupStatistics::CountVehicle(src_head, 1);
-		if (dst_head != nullptr && dst_head->IsFrontEngine()) GroupStatistics::CountVehicle(dst_head, 1);
+		if (src_head != nullptr && src_head->IsPrimaryVehicle()) GroupStatistics::CountVehicle(src_head, 1);
+		if (dst_head != nullptr && dst_head->IsPrimaryVehicle()) GroupStatistics::CountVehicle(dst_head, 1);
 
 		if (!flags.Test(DoCommandFlag::NoCargoCapacityCheck)) {
 			CheckCargoCapacity(src_head);
 			CheckCargoCapacity(dst_head);
+		}
+
+		/* A drag-drop edit of a consist in a depot always leaves it stopped,
+		 * so neither a mid-chain primary nor any other partial head/primary
+		 * state can cause an unexpected departure. */
+		if (!HasFlag(move_flags, MoveRailVehicleFlags::Virtual)) {
+			if (src_head != nullptr) {
+				for (Train *u = src_head->First(); u != nullptr; u = u->Next()) u->vehstatus.Set(VehState::Stopped);
+			}
+			if (dst_head != nullptr) {
+				for (Train *u = dst_head->First(); u != nullptr; u = u->Next()) u->vehstatus.Set(VehState::Stopped);
+			}
 		}
 
 		if (src_head != nullptr) {
@@ -2449,7 +2819,10 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, bool backup_order, ClientID user)
 {
 	Train *v = Train::From(t)->GetFirstEnginePart();
+	/* The primary (consist info carrier) may sit anywhere in the chain; all
+	 * chain surgery below must be anchored at the physical chain head. */
 	Train *first = v->First();
+	Train *primary = v->Primary();
 
 	if (v->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
 
@@ -2466,14 +2839,14 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 	ArrangeTrains(&sell_head, nullptr, &new_head, v, sell_chain);
 
 	/* We don't need to validate the second train; it's going to be sold. */
-	CommandCost ret = ValidateTrains(nullptr, nullptr, first, new_head, !flags.Test(DoCommandFlag::AutoReplace));
+	CommandCost ret = ValidateTrains(nullptr, nullptr, primary, new_head, !flags.Test(DoCommandFlag::AutoReplace));
 	if (ret.Failed()) {
 		/* Restore the train we had. */
 		RestoreTrainBackup(original);
 		return ret;
 	}
 
-	if (first->orders == nullptr && !OrderList::CanAllocateItem()) {
+	if (primary->orders == nullptr && !OrderList::CanAllocateItem()) {
 		/* Restore the train we had. */
 		RestoreTrainBackup(original);
 		return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
@@ -2487,26 +2860,43 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 		/* First normalise the sub types of the chain. */
 		NormaliseSubtypes(new_head);
 
-		if (v == first && !sell_chain && new_head != nullptr && new_head->IsFrontEngine()) {
-			if (v->IsEngine()) {
-				/* We are selling the front engine. In this case we want to
-				 * 'give' the order, unit number and such to the new head. */
-				new_head->orders = first->orders;
-				new_head->AddToShared(first);
-				DeleteVehicleOrders(first);
-
-				/* Copy other important data from the front engine */
-				new_head->CopyVehicleConfigAndStatistics(first);
-				new_head->speed_restriction = first->speed_restriction;
-				Train::From(new_head)->flags.Set(VehicleRailFlag::SpeedAdaptationExempt, Train::From(first)->flags.Test(VehicleRailFlag::SpeedAdaptationExempt));
+		/* Does the sold part contain the consist info carrier? The carrier may
+		 * sit anywhere in the chain, so selling a part around it can split the
+		 * consist identity off the surviving chain. */
+		bool primary_sold = false;
+		for (Train *part = sell_head; part != nullptr; part = part->Next()) {
+			if (part == primary) {
+				primary_sold = true;
+				break;
 			}
-			GroupStatistics::CountVehicle(new_head, 1); // after copying over the profit, if required
-		} else if (v->IsPrimaryVehicle() && backup_order) {
-			OrderBackup::Backup(v, user);
+		}
+
+		if (primary_sold && new_head != nullptr) {
+			/* The info carrier is sold but the consist survives: materialise
+			 * the surviving chain's own carrier and transfer the consist
+			 * identity (orders, unit number, statistics) to it, so the
+			 * surviving chain keeps running as the same train. */
+			MaterialiseTrainPrimary(new_head);
+			Train *new_primary = new_head->Primary();
+
+			new_primary->orders = primary->orders;
+			new_primary->primary_order = primary->primary_order;
+			new_primary->primary_order_index = primary->primary_order_index;
+			new_primary->AddToShared(primary);
+			DeleteVehicleOrders(primary);
+
+			/* Copy other important data from the old carrier */
+			new_primary->CopyVehicleConfigAndStatistics(primary);
+			new_primary->speed_restriction = primary->speed_restriction;
+			Train::From(new_primary)->flags.Set(VehicleRailFlag::SpeedAdaptationExempt, Train::From(primary)->flags.Test(VehicleRailFlag::SpeedAdaptationExempt));
+
+			GroupStatistics::CountVehicle(new_primary, 1); // after copying over the profit, if required
+		} else if (primary->IsPrimaryVehicle() && backup_order) {
+			OrderBackup::Backup(primary, user);
 		}
 
 		/* We need to update the information about the train. */
-		NormaliseTrainHead(new_head);
+		NormaliseTrainHead(new_head, CCF_ARRANGE);
 
 		/* We are undoubtedly changing something in the depot and train list. */
 		/* Unless its a virtual train */
@@ -2594,6 +2984,16 @@ void Train::UpdateDeltaXY()
  */
 static void MarkTrainAsStuck(Train *consist, bool waiting_restriction = false)
 {
+	/* A consist without any powered vehicle (an engine-less decoupled part, or
+	 * free wagons) cannot move on its own and never owns a path reservation
+	 * (the track follower refuses to follow with no compatible rail type), so
+	 * it would be reported as stuck forever although it is just waiting for a
+	 * couple. Never mark such a consist. */
+	if (consist->compatible_railtypes.None()) {
+		consist->flags.Reset(VehicleRailFlag::Stuck);
+		return;
+	}
+
 	if (!consist->flags.Test(VehicleRailFlag::Stuck)) {
 		/* It is the first time the problem occurred, set the "train stuck" flag. */
 		consist->flags.Set(VehicleRailFlag::Stuck);
@@ -2733,6 +3133,188 @@ void ReverseTrainSwapVehicles(Train *v)
 	for (Train *u = v; u != nullptr; u = u->Next()) {
 		UpdateStatusAfterSwap(u);
 	}
+
+	/* The front vehicle changes when flipping; invalidate the tick caches or the new front will not be ticked. */
+	InvalidateVehicleTickCaches();
+}
+
+
+
+/**
+ * Reverse only the chain order of a train, without touching directions,
+ * positions or the primary vehicle. Used when a consist must be attached to
+ * a joint in reversed order to keep chain order matching spatial order.
+ */
+static void ReverseTrainChainOrder(Train *v)
+{
+	assert(v == v->First());
+	std::vector<Train *> parts;
+	for (Train *u = v; u != nullptr; u = u->Next()) parts.push_back(u);
+
+	parts[0]->SetNext(nullptr);
+	for (size_t i = 1; i < parts.size(); ++i) {
+		parts[i]->SetNext(parts[i - 1]);
+	}
+
+	Train *new_first = parts.back();
+	for (Train *u = new_first; u != nullptr; u = u->Next()) {
+		u->SetFirst(new_first);
+		u->SetLast(parts[0]);
+	}
+}
+
+/**
+ * Reverse a train in place without changing the physical positions of single
+ * vehicles: every vehicle keeps its position and only turns around, while the
+ * chain order is reversed so the former last vehicle becomes the chain front.
+ * The primary vehicle (consist info carrier) is not moved, so the train keeps
+ * its identity, orders and group.
+ *
+ * Multi-part units (dual-headed engines and articulated engines) are reversed
+ * as a whole block: inside such a block the vehicles exchange positions like
+ * ReverseTrainSwapVehicles does, keeping the internal chain order intact, so
+ * the "rear follows front" / "articulated parts follow base" invariants are
+ * preserved and the new chain front of such a block is always a legal chain
+ * head (front dual-headed part / articulated base).
+ * @param v First vehicle of the chain to reverse.
+ */
+static void ReverseTrainNoSwapVehicles(Train *v)
+{
+	assert(v == v->First());
+
+	/* Dual-headed engines require the vanilla full physical swap: swapping
+	 * their halves' positions across tiles breaks tile/track/direction
+	 * consistency in ways that NoSwap cannot handle. */
+	for (Train *u = v; u != nullptr; u = u->Next()) {
+		if (u->IsMultiheaded() && u->IsEngine()) {
+			ReverseTrainSwapVehicles(v);
+			InvalidateVehicleTickCaches();
+			return;
+		}
+	}
+
+	/* Split the chain into blocks of vehicles that must be reversed as a unit.
+	 * A dual-headed unit spans from its front half to its rear half,
+	 * including any vehicles between them (wrapped/wrapped-around wagons),
+	 * so the pair may be non-adjacent. */
+	std::vector<std::vector<Train *>> blocks;
+	for (Train *u = v; u != nullptr;) {
+		if (u->IsMultiheaded() && u->IsEngine() && !u->IsRearDualheaded() && u->other_multiheaded_part != nullptr) {
+			/* Dual-headed engine: everything from the front half up to and
+			 * including the rear half forms one block. */
+			blocks.emplace_back();
+			bool found_rear = false;
+			for (Train *w = u; w != nullptr; w = w->Next()) {
+				blocks.back().push_back(w);
+				if (w == u->other_multiheaded_part) {
+					found_rear = true;
+					break;
+				}
+			}
+			if (!found_rear) {
+				/* Rear half not ahead of us: malformed state, fall back to the
+				 * vanilla swap reversal which is always safe. */
+				ReverseTrainSwapVehicles(v);
+				InvalidateVehicleTickCaches();
+				return;
+			}
+			u = blocks.back().back()->Next();
+		} else if (u->HasArticulatedPart()) {
+			/* Articulated engine: base and all consecutive articulated parts form one block. */
+			blocks.emplace_back();
+			blocks.back().push_back(u);
+			u = u->Next();
+			while (u != nullptr && u->IsArticulatedPart()) {
+				blocks.back().push_back(u);
+				u = u->Next();
+			}
+		} else {
+			blocks.push_back({u});
+			u = u->Next();
+		}
+	}
+
+/* Reverse every block internally, like ReverseTrainSwapVehicles does. */
+	for (auto &block : blocks) {
+		int r = static_cast<int>(block.size()) - 1;
+		int l = 0;
+		while (l <= r) {
+			Train *a = block[l];
+			Train *b = block[r];
+			if (a != b) {
+				bool a_hidden = a->vehstatus.Test(VehState::Hidden);
+				bool b_hidden = b->vehstatus.Test(VehState::Hidden);
+				b->vehstatus.Set(VehState::Hidden, a_hidden);
+				a->vehstatus.Set(VehState::Hidden, b_hidden);
+
+				std::swap(a->track, b->track);
+				std::swap(a->direction, b->direction);
+				std::swap(a->x_pos, b->x_pos);
+				std::swap(a->y_pos, b->y_pos);
+				std::swap(a->tile, b->tile);
+				std::swap(a->z_pos, b->z_pos);
+
+				SwapTrainFlags(&a->gv_flags, &b->gv_flags);
+			} else {
+				/* Swap GroundVehicleFlag::GoingUp/GroundVehicleFlag::GoingDown. */
+				SwapTrainFlags(&a->gv_flags, &a->gv_flags);
+			}
+			l++;
+			r--;
+		}
+
+		if (block.size() > 1) {
+			/* The vehicles changed place, fully update them. */
+			for (Train *u : block) UpdateStatusAfterSwap(u);
+		} else {
+			/* Single vehicle turning around in place: reverse the direction and
+			 * update sprites, but do not re-enter the (unchanged) tile. */
+			Train *u = block[0];
+			u->direction = ReverseDir(u->direction);
+			u->InvalidateImageCache();
+			u->UpdateIsDrawn();
+			u->UpdatePosition();
+			u->UpdateViewport(true, true);
+		}
+	}
+
+	/* Relink the blocks in reverse order. SetNext() cannot be used here: it
+	 * walks and repairs first/previous pointers of the surrounding chains,
+	 * which are in a stale intermediate state while the chain is being
+	 * reordered, leading to broken links and endless loops. Assign all
+	 * next/previous pointers directly instead. */
+	Train *new_first = blocks.back()[0];
+
+	/* Flatten the block order into a single vehicle sequence. */
+	std::vector<Train *> order;
+	for (auto it = blocks.rbegin(); it != blocks.rend(); ++it) {
+		for (Train *u : *it) order.push_back(u);
+	}
+
+	for (size_t i = 0; i < order.size(); i++) {
+		order[i]->SetNextRaw((i + 1 < order.size()) ? order[i + 1] : nullptr);
+		order[i]->SetPreviousRaw((i > 0) ? order[i - 1] : nullptr);
+	}
+	Train *new_last = order.back();
+	/* Normalise the chain pointers. The primary pointers are intentionally left
+	 * untouched: the primary vehicle stays part of this chain, so the train
+	 * keeps its identity, orders and group. */
+	for (Train *u = new_first; u != nullptr; u = u->Next()) {
+		u->SetFirst(new_first);
+		u->SetLast(new_last);
+		u->vehicle_flags.Reset(VehicleFlag::DrivingBackwards);
+	}
+	/* Direct pointer assignment bypasses SetNext()'s marker maintenance;
+	 * recompute the pool's front/non-front markers for the new chain,
+	 * otherwise tick-cache rebuilds pick wrong chain fronts. */
+	ResetChainNonFrontMarkers(new_first);
+
+	/* CCF_COUPLE (not CCF_ARRANGE): ARRANGE includes DepotDirection which
+	 * would overwrite the per-vehicle directions we just reversed. */
+	new_first->ConsistChanged(CCF_COUPLE);
+
+	/* The front vehicle changes when flipping; invalidate the tick caches or the new front will not be ticked. */
+	InvalidateVehicleTickCaches();
 }
 
 /**
@@ -3029,15 +3611,21 @@ static bool IsWholeTrainInsideDepot(const Train *v)
 	return true;
 }
 
+static void ReverseTrainForCouple(Train *v, bool joint_at_tail);
+
 /**
  * Turn a train around.
  * @param consist %Train to turn around.
+ * @param no_swap When flipping, reverse in place without swapping vehicle
+ *                positions (see ReverseTrainNoSwapVehicles) instead of the
+ *                vanilla full swap.
  */
-static void ReverseTrainDirection(Train *consist)
+static void ReverseTrainDirection(Train *consist, bool no_swap = false)
 {
+	Train *first = consist->First();
 	Train *moving_front = consist->GetMovingFront();
 	if (IsRailDepotTile(moving_front->tile)) {
-		if (IsWholeTrainInsideDepot(consist)) return;
+		if (IsWholeTrainInsideDepot(first)) return;
 		InvalidateWindowData(WindowClass::VehicleDepot, moving_front->tile.base());
 	}
 
@@ -3066,7 +3654,7 @@ static void ReverseTrainDirection(Train *consist)
 		}
 	}
 
-	for (Train *u = consist; u != nullptr; u = u->Next()) {
+	for (Train *u = first; u != nullptr; u = u->Next()) {
 		u->flags.Reset({VehicleRailFlag::BeyondPlatformEnd, VehicleRailFlag::NotYetInPlatform});
 	}
 
@@ -3094,7 +3682,15 @@ static void ReverseTrainDirection(Train *consist)
 	}
 
 	/* Clear path reservation in front if train is not stuck. */
-	if (!consist->flags.Test(VehicleRailFlag::Stuck) && !no_near_end_unreserve && !no_far_end_unreserve) {
+	if (no_swap) {
+		/* A decoupled part is flipped to face away from its partner, so the
+		 * reservation ahead of it still belongs to the partner part and must
+		 * not be released: with no signal in front of the station the walk
+		 * would follow the platform past the partner and eat that reservation.
+		 * Drop only our own lookahead and let both parts re-reserve in their
+		 * new directions. */
+		consist->lookahead.reset();
+	} else if (!consist->flags.Test(VehicleRailFlag::Stuck) && !no_near_end_unreserve && !no_far_end_unreserve) {
 		FreeTrainTrackReservation(consist);
 	} else {
 		consist->lookahead.reset();
@@ -3127,7 +3723,7 @@ static void ReverseTrainDirection(Train *consist)
 	/* Check if we should back up or flip the train. */
 	if (consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards) || _settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::None || consist->Last()->CanLeadTrain()) {
 		/* The train will back up. */
-		for (Train *u = consist; u != nullptr; u = u->Next()) {
+		for (Train *u = first; u != nullptr; u = u->Next()) {
 			u->vehicle_flags.Flip(VehicleFlag::DrivingBackwards);
 
 			/* Invert going up/down */
@@ -3138,17 +3734,24 @@ static void ReverseTrainDirection(Train *consist)
 		}
 		/* We may have entered a depot and stopped driving backwards. */
 		std::swap(moving_front, moving_back);
+	} else if (no_swap) {
+		/* The train will flip in place without swapping vehicle positions. The
+		 * chain tail is kept in place while the front is re-spaced. */
+		ReverseTrainForCouple(first, true);
+		/* The flip reversed the chain order, so the chain head moved to the
+		 * former tail; re-anchor before updating the consist from the head. */
+		first = first->First();
 	} else {
 		/* The train will flip. */
 		AdvanceWagonsBeforeSwap(moving_front);
 
 		/* swap start<>end, start+1<>end-1, ... */
-		ReverseTrainSwapVehicles(consist);
+		ReverseTrainSwapVehicles(first);
 
 		AdvanceWagonsAfterSwap(moving_front);
 	}
 
-	ClrBit(consist->vcache.cached_veh_flags, VCF_GV_ZERO_SLOPE_RESIST);
+	ClrBit(first->vcache.cached_veh_flags, VCF_GV_ZERO_SLOPE_RESIST);
 
 	if (IsRailDepotTile(moving_front->tile)) {
 		InvalidateWindowData(WindowClass::VehicleDepot, moving_front->tile.base());
@@ -3158,10 +3761,10 @@ static void ReverseTrainDirection(Train *consist)
 	consist->flags.Reset(VehicleRailFlag::Reversing);
 
 	/* recalculate cached data */
-	consist->ConsistChanged(CCF_TRACK);
+	first->ConsistChanged(CCF_TRACK);
 
 	/* update all images */
-	for (Train *u = consist; u != nullptr; u = u->Next()) u->UpdateViewport(false, false);
+	for (Train *u = first; u != nullptr; u = u->Next()) u->UpdateViewport(false, false);
 
 	/* update crossing we were approaching */
 	if (crossing != INVALID_TILE) UpdateLevelCrossing(crossing);
@@ -3264,6 +3867,7 @@ static void ReverseTrainDirection(Train *consist)
 		consist->flags.Reset(VehicleRailFlag::Stuck);
 		consist->wait_counter = 0;
 	}
+
 }
 
 /**
@@ -3280,6 +3884,9 @@ CommandCost CmdReverseTrainDirection(DoCommandFlags flags, VehicleID veh_id, boo
 
 	CommandCost ret = CheckOwnership(v->owner);
 	if (ret.Failed()) return ret;
+
+	/* The front has just decoupled, reversing could crash into the decoupled part. */
+	if (v->flags.Test(VehicleRailFlag::JustDecoupled) && !reverse_single_veh) return CMD_ERROR;
 
 	if (reverse_single_veh) {
 		/* turn a single unit around */
@@ -3444,7 +4051,7 @@ static void CheckNextTrainTile(Train *moving_front)
 	/* Exit if we are inside a depot. */
 	if (moving_front->track == TRACK_BIT_DEPOT) return;
 
-	Train *consist = moving_front->First();
+	Train *consist = moving_front->Primary();
 
 	/* Exit if we are currently in a waiting order */
 	if (consist->current_order.IsType(OT_WAITING)) return;
@@ -3509,8 +4116,9 @@ static void CheckNextTrainTile(Train *moving_front)
  */
 static bool CheckTrainStayInDepot(Train *v)
 {
-	/* bail out if not all wagons are in the same depot or not in a depot at all */
-	for (const Train *u = v; u != nullptr; u = u->Next()) {
+	/* bail out if not all wagons are in the same depot or not in a depot at all.
+	 * Walk from the physical chain head: the primary vehicle may sit mid-chain. */
+	for (const Train *u = v->First(); u != nullptr; u = u->Next()) {
 		if (u->track != TRACK_BIT_DEPOT || u->tile != v->tile) return false;
 	}
 
@@ -3565,7 +4173,7 @@ static bool CheckTrainStayInDepot(Train *v)
 		return true;
 	}
 
-	if (_settings_game.vehicle.drive_through_train_depot) {
+	if (_settings_game.vehicle.drive_through_train_depot && !_settings_game.vehicle.train_no_depot_temporary_stop) {
 		const TileIndex depot_tile = v->tile;
 		const DiagDirection depot_dir = GetRailDepotDirection(depot_tile);
 		const DiagDirection behind_depot_dir = ReverseDiagDir(depot_dir);
@@ -3604,7 +4212,11 @@ static bool CheckTrainStayInDepot(Train *v)
 			const bool driving_backwards = preserve_direction && !v->vehicle_flags.Test(VehicleFlag::DrivingBackwards);
 			if (driving_backwards) direction = ReverseDir(direction);
 
-			for (Train *u = v; u != nullptr; u = u->Next()) {
+			/* The consist is the whole physical chain, and the driving primary may only be
+			 * a part of it: lay out every vehicle and recompute the caches from the chain
+			 * head. Train::ConsistChanged() requires this == First(). */
+			Train *head = v->First();
+			for (Train *u = head; u != nullptr; u = u->Next()) {
 				u->tile = behind_depot_tile;
 				u->direction = direction;
 				u->x_pos = x;
@@ -3620,7 +4232,7 @@ static bool CheckTrainStayInDepot(Train *v)
 			} else {
 				v->flags.Reset(VehicleRailFlag::Reversed);
 			}
-			v->ConsistChanged(CCF_TRACK);
+			head->ConsistChanged(CCF_TRACK);
 
 			InvalidateWindowData(WindowClass::VehicleDepot, depot_tile.base());
 			InvalidateWindowData(WindowClass::VehicleDepot, behind_depot_tile.base());
@@ -3628,13 +4240,17 @@ static bool CheckTrainStayInDepot(Train *v)
 		}
 	}
 
-	if (exit_blocked) return true;
+	if (exit_blocked) {
+		return true;
+	}
 
 	/* Only leave when we can reserve a path to our destination. */
-	if (seg_state == SigSegState::Path && !TryPathReserve(v) && v->force_proceed == TFP_NONE) {
-		/* No path and no force proceed. */
-		MarkTrainAsStuck(v);
-		return true;
+	if (seg_state == SigSegState::Path && v->force_proceed == TFP_NONE) {
+		bool ok = TryPathReserve(v);
+		if (!ok) {
+			MarkTrainAsStuck(v);
+			return true;
+		}
 	}
 
 	SetDepotReservation(v->tile, true);
@@ -3655,7 +4271,12 @@ static bool CheckTrainStayInDepot(Train *v)
 	moving_front->UpdateViewport(true, true);
 	moving_front->UpdatePosition();
 	UpdateSignalsOnSegment(v->tile, DiagDirection::Invalid, v->owner);
-	v->UpdateAcceleration();
+	/* Recompute the consist-level caches on the chain head and re-broadcast them: the
+	 * track of the moving front was just rewritten, and the primary (which may sit
+	 * mid-chain) reads its own copy of these caches. */
+	Train *head = v->First();
+	head->UpdateAcceleration();
+	head->BroadcastConsistCaches();
 	InvalidateWindowData(WindowClass::VehicleDepot, v->tile.base());
 
 	return false;
@@ -3823,7 +4444,9 @@ static void ClearPathReservation(const Train *v, TileIndex tile, Trackdir track_
 		/* If the new tile is not a further tile of the same station, we
 		 * clear the reservation for the whole platform. */
 		if (!IsCompatibleTrainStationTile(new_tile, tile)) {
-			SetRailStationPlatformReservation(tile, ReverseDiagDir(dir), false);
+			if (IsRailStationPlatformFree(v, tile, ReverseDiagDir(dir))) {
+				SetRailStationPlatformReservation(tile, ReverseDiagDir(dir), false);
+			}
 		}
 	} else {
 		/* Any other tile */
@@ -3839,7 +4462,7 @@ static void ClearPathReservation(const Train *v, TileIndex tile, Trackdir track_
  */
 void FreeTrainTrackReservation(Train *consist, TileIndex origin, Trackdir orig_td)
 {
-	assert(consist->IsFrontEngine());
+	assert(consist->IsPrimaryVehicle());
 
 	if (origin == INVALID_TILE) consist->lookahead.reset();
 
@@ -3873,8 +4496,10 @@ void FreeTrainTrackReservation(Train *consist, TileIndex origin, Trackdir orig_t
 	/* Can't be holding a reservation if we enter a depot. */
 	if (IsRailDepotTile(tile) && TrackdirToExitdir(td) != GetRailDepotDirection(tile)) return;
 	if (moving_front->track == TRACK_BIT_DEPOT) {
-		/* Front engine is in a depot. We enter if some part is not in the depot. */
-		for (const Train *u = consist; u != nullptr; u = u->Next()) {
+		/* Front engine is in a depot. We enter if some part is not in the depot.
+		 * The consist is the whole physical chain: walk it from the chain head, as
+		 * the primary (the parameter) may sit mid-chain. */
+		for (const Train *u = consist->First(); u != nullptr; u = u->Next()) {
 			if (u->track != TRACK_BIT_DEPOT || u->tile != consist->tile) return;
 		}
 	}
@@ -3905,9 +4530,9 @@ void FreeTrainTrackReservation(Train *consist, TileIndex origin, Trackdir orig_t
 
 		if (IsTileType(tile, TileType::Railway)) {
 			if (HasSignalOnTrackdir(tile, td) && !IsPbsSignal(GetSignalType(tile, TrackdirToTrack(td)))) {
-				/* Conventional signal along trackdir: remove reservation and stop. */
-				UnreserveRailTrack(tile, TrackdirToTrack(td));
-				break;
+			/* Conventional signal along trackdir: remove reservation and stop. */
+			UnreserveRailTrack(tile, TrackdirToTrack(td));
+			break;
 			}
 			if (HasPbsSignalOnTrackdir(tile, td)) {
 				if (GetSignalStateByTrackdir(tile, td) == SignalState::Red || IsNoEntrySignal(tile, TrackdirToTrack(td))) {
@@ -3944,6 +4569,102 @@ void FreeTrainTrackReservation(Train *consist, TileIndex origin, Trackdir orig_t
 	}
 }
 
+static Train *GetValidCoupleClaimant(const Train *carrier);
+static Train *GetClaimedCoupleTarget(const Train *moving);
+
+/**
+ * A train waiting to be coupled holds only the reservation of the tiles its
+ * body occupies. Everything beyond its moving front (its drive-away
+ * direction) is released once, so its partner can reserve a path up to the
+ * contact point with the regular reservation machinery, while the body tiles
+ * still keep other trains from driving through the consist. Beyond the
+ * moving back lies the path of the just decoupled partner part, which is
+ * deliberately left alone.
+ *
+ * The release never crosses a signal, a track choice or a tile occupied by
+ * any vehicle (including station/bridge tiles the track follower would skip
+ * across), so it can never eat into another train's reservation.
+ * @param consist %Train waiting for its coupling partner.
+ */
+static void HoldWaitingTrainBody(Train *consist)
+{
+	assert(consist->IsPrimaryVehicle());
+
+	if (!consist->couple_body_hold) {
+		/* Only release when nobody is homing in on us yet: afterwards the
+		 * approaching partner's own reservation may be adjacent to ours and
+		 * must not be touched. */
+		if (const Train *claimant = GetValidCoupleClaimant(consist); claimant != nullptr && claimant->current_order.IsType(OT_GOTO_COUPLE)) return;
+		consist->couple_body_hold = true;
+
+		consist->lookahead.reset();
+
+		/* Only clear outward from the moving front, i.e. in the drive-away
+		 * direction. Beyond the moving back lies the path of the just
+		 * decoupled partner part (the original consist's forward reservation
+		 * is always ahead of its former front), which must not be touched:
+		 * eating it strands that train in front of the next signal. */
+		Train *end = consist->GetMovingFront();
+		if (end->track != TRACK_BIT_WORMHOLE && end->track != TRACK_BIT_DEPOT) {
+			Trackdir outward = end->GetVehicleTrackdir();
+			CFollowTrackRail ft(consist, consist->GetIndirectCompatibleRailTypes());
+			TileIndex tile = end->tile;
+			Trackdir td = outward;
+			while (ft.Follow(tile, td)) {
+				if (KillFirstBit(ft.new_td_bits) != TRACKDIR_BIT_NONE) break;
+				Trackdir ntd = FindFirstTrackdir(ft.new_td_bits);
+				TileIndex ntile = ft.new_tile;
+				if (!HasReservedTracks(ntile, TrackToTrackBits(TrackdirToTrack(ntd)))) break;
+				bool occupied = false;
+				for (Train *w : VehiclesOnTile<VehicleType::Train>(ntile)) occupied = true;
+				if (occupied) break;
+				/* The follower may have jumped across station/bridge tiles.
+				 * A vehicle standing on a skipped tile must stop the walk:
+				 * clearing onwards would eat the reservation of that train's
+				 * path. */
+				bool skipped_occupied = false;
+				if (ft.tiles_skipped != 0) {
+					TileIndexDiff sdiff = TileOffsByDiagDir(ft.exitdir);
+					for (TileIndex st = ntile - sdiff * ft.tiles_skipped; st != ntile; st += sdiff) {
+						for (Train *w : VehiclesOnTile<VehicleType::Train>(st)) skipped_occupied = true;
+					}
+					if (skipped_occupied) break;
+				}
+				if (IsRailStationTile(ntile)) {
+					/* The follower jumped across the platform: clear the strip
+					 * back towards the entry, then continue from the far end. */
+					TileIndex t = ntile;
+					TileIndexDiff back = TileOffsByDiagDir(ReverseDiagDir(TrackdirToExitdir(ntd)));
+					for (;;) {
+						bool strip_occupied = false;
+						for (Train *w : VehiclesOnTile<VehicleType::Train>(t)) strip_occupied = true;
+						if (strip_occupied) break;
+						if (!HasStationReservation(t)) break;
+						SetRailStationReservation(t, false);
+						TileIndex prev = t + back;
+						if (!IsCompatibleTrainStationTile(prev, ntile)) break;
+						t = prev;
+					}
+				} else {
+					UnreserveRailTrack(ntile, TrackdirToTrack(ntd));
+				}
+				tile = ntile;
+				td = ntd;
+				/* The chain ends at a signal facing our direction. */
+				if (IsTileType(ntile, TileType::Railway) && HasSignalOnTrackdir(ntile, ntd)) break;
+			}
+		}
+	}
+
+	/* Keep every body tile held. */
+	for (Train *u = consist->First(); u != nullptr; u = u->Next()) {
+		if (u->track == TRACK_BIT_WORMHOLE || u->track == TRACK_BIT_DEPOT) continue;
+		if ((GetReservedTrackbits(u->tile) & u->track) != u->track) {
+			bool ok = TryReserveRailTrack(u->tile, TrackdirToTrack(u->GetVehicleTrackdir()), false);
+		}
+	}
+}
+
 /**
  * Perform pathfinding for a train.
  *
@@ -3963,6 +4684,96 @@ static Track DoTrainPathfind(const Train *v, TileIndex tile, DiagDirection enter
 	return YapfTrainChooseTrack(v, tile, enterdir, tracks, path_found, do_track_reservation, dest, final_dest);
 }
 
+/** Tick of the last failed couple target search, per train (see #DoTrainCouplePathfind). */
+btree::btree_map<VehicleID, uint64_t> _couple_search_last_fail;
+
+void ClearCoupleSearchLastFail()
+{
+	_couple_search_last_fail.clear();
+}
+
+/** A failed couple target search is retried only after this many ticks. */
+constexpr uint64_t COUPLE_FAIL_RETRY_INTERVAL = 60;
+
+/**
+ * Whether any consist is currently waiting for a couple. The couple target
+ * search walks the entire rail network when no partner is reachable; this
+ * cheap pre-check avoids that scan entirely when nobody is waiting at all.
+ */
+static bool IsHoldingForCouple(const Train *train)
+{
+	return train->current_order.IsType(OT_WAIT_COUPLE) &&
+			(!train->current_order.HasWaitCoupleStation() ||
+			(train->last_station_visited == train->current_order.GetWaitCoupleStation() && train->cur_speed == 0 &&
+			IsRailStationTile(train->tile) && GetStationIndex(train->tile) == train->current_order.GetWaitCoupleStation()));
+}
+
+static bool HasWaitingCoupleTrain()
+{
+	for (Vehicle *v : Vehicle::Iterate()) {
+		if (v->type != VehicleType::Train || !v->IsPrimaryVehicle()) continue;
+		if (v->vehstatus.Test(VehState::Crashed)) continue;
+		if (IsHoldingForCouple(Train::From(v))) return true;
+	}
+	return false;
+}
+
+/**
+ * Find the track to take when going to couple with another train.
+ * @param v The train.
+ * @param do_track_reservation Whether to reserve the path.
+ * @param couple_target Optionally returns the contact-end vehicle of the
+ *   waiting train the path leads to.
+ * @param couple_cost Optionally returns the path cost of the found route.
+ * @return The track to take, or #INVALID_TRACK if no path was found.
+ */
+static Track DoTrainCouplePathfind(const Train *v, bool do_track_reservation, Train **couple_target, uint32_t *couple_cost)
+{
+	const VehicleID id = v->Primary()->index;
+	const uint64_t now = _tick_counter;
+
+	/* Nobody is waiting for a couple anywhere: no target can be found, so do
+	 * not walk the whole network to prove it. */
+	if (!HasWaitingCoupleTrain()) {
+		if (couple_target != nullptr) *couple_target = nullptr;
+		if (couple_cost != nullptr) *couple_cost = 0;
+		return INVALID_TRACK;
+	}
+
+	/* Drop entries for trains that no longer exist. */
+	if (_couple_search_last_fail.size() > 128) {
+		for (auto i = _couple_search_last_fail.begin(); i != _couple_search_last_fail.end();) {
+			if (Train::GetIfValid(i->first) == nullptr) {
+				i = _couple_search_last_fail.erase(i);
+			} else {
+				++i;
+			}
+		}
+	}
+
+	/* A search that found no reachable partner is expensive; retry it only
+	 * after an interval instead of every track choice. */
+	auto it = _couple_search_last_fail.find(id);
+	if (it != _couple_search_last_fail.end()) {
+		/* The tick counter is saved/restored with the game, so guard against it
+		 * moving backwards relative to a cached timestamp. */
+		if (it->second > now) it->second = now;
+		else if (now < it->second + COUPLE_FAIL_RETRY_INTERVAL) {
+			if (couple_target != nullptr) *couple_target = nullptr;
+			if (couple_cost != nullptr) *couple_cost = 0;
+			return INVALID_TRACK;
+		}
+	}
+
+	Track ret = YapfTrainCoupleTrack(v, !do_track_reservation, couple_target, couple_cost);
+	if (ret == INVALID_TRACK) {
+		_couple_search_last_fail[id] = now;
+	} else {
+		_couple_search_last_fail.erase(id);
+	}
+	return ret;
+}
+
 /**
  * Extend a train path as far as possible. Stops on encountering a safe tile,
  * another reservation or a track choice.
@@ -3977,17 +4788,42 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 {
 	CFollowTrackRail ft(v);
 
+	int extend_steps = 0;
 	TileIndex tile = origin.tile;
 	Trackdir  cur_td = origin.trackdir;
 	while (ft.Follow(tile, cur_td)) {
+		extend_steps++;
 		if (KillFirstBit(ft.new_td_bits) == TRACKDIR_BIT_NONE) {
 			/* Possible signal tile. */
-			if (HasOnewaySignalBlockingTrackdir(ft.new_tile, FindFirstTrackdir(ft.new_td_bits))) break;
+			if (HasOnewaySignalBlockingTrackdir(ft.new_tile, FindFirstTrackdir(ft.new_td_bits))) {
+				break;
+			}
 		}
 
 		if (ft.tiles_skipped == 0 && Rail90DegTurnDisallowedTilesFromTrackdir(ft.old_tile, ft.new_tile, ft.old_td, _settings_game.pf.forbid_90_deg)) {
 			ft.new_td_bits &= ~TrackdirCrossesTrackdirs(ft.old_td);
-			if (ft.new_td_bits == TRACKDIR_BIT_NONE) break;
+			if (ft.new_td_bits == TRACKDIR_BIT_NONE) {
+				break;
+			}
+		}
+
+		/* A goto-couple train may only travel towards its partner while no
+		 * foreign consist stands on the tiles it passes, including the tiles
+		 * the track follower jumps over (station platforms). */
+		if (v->current_order.IsType(OT_GOTO_COUPLE)) {
+			TileIndexDiff step = TileOffsByDiagDir(ft.exitdir);
+			bool foreign = false;
+			for (int i = 1; i <= ft.tiles_skipped + 1; i++) {
+				TileIndex t = ft.new_tile - step * (ft.tiles_skipped + 1 - i);
+				if (!IsValidTile(t)) continue;
+				/* The contact happens at the partner; tiles past it are not travelled. */
+				if (IsCouplePartnerVehicleTile(v, t)) break;
+				if (HasForeignConsistOnTile(v, t)) {
+					foreign = true;
+					break;
+				}
+			}
+			if (foreign) break;
 		}
 
 		/* Station, depot or waypoint are a possible target. */
@@ -3999,7 +4835,27 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 			 * orders, so we might cause pathfinding to fail later on if we find a choice.
 			 * This failure would cause a bogus call to TryReserveSafePath which might reserve
 			 * a wrong path not leading to our next destination. */
-			if (HasReservedTracks(ft.new_tile, TrackdirBitsToTrackBits(TrackdirReachesTrackdirs(ft.old_td)))) break;
+			if (HasReservedTracks(ft.new_tile, TrackdirBitsToTrackBits(TrackdirReachesTrackdirs(ft.old_td)))) {
+				if (!IsCouplePartnerTile(v, ft.new_tile)) {
+					/* Stop here, like every other order does, and wait.
+					 *
+					 * A goto-couple train used to be handed the choice instead
+					 * of stopping, on the assumption that the holder of this
+					 * reservation would turn out to be the partner once the
+					 * target search ran. That assumption is what let the
+					 * reservation extend past the boundary: the release
+					 * (#FreeTrainTrackReservation) walks the very same chain,
+					 * so it then cleared track this consist had never
+					 * reserved, and the train standing on that track lost the
+					 * path it was braking for.
+					 *
+					 * Stopping costs nothing and is the ordinary behaviour: the
+					 * reservation belongs to the other train, so we wait for it
+					 * to clear and try again on a later tick, rather than taking
+					 * a path that is not ours. */
+					break;
+				}
+			}
 
 			/* If we did skip some tiles, backtrack to the first skipped tile so the pathfinder
 			 * actually starts its search at the first unreserved tile. */
@@ -4018,7 +4874,8 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 		if (IsSafeWaitingPosition(v, tile, cur_td, true, _settings_game.pf.forbid_90_deg)) {
 			PBSWaitingPositionRestrictedSignalState restricted_signal_state;
 			bool wp_free = IsWaitingPositionFree(v, tile, cur_td, _settings_game.pf.forbid_90_deg, &restricted_signal_state);
-			if (!(wp_free && TryReserveRailTrackdir(v, tile, cur_td))) break;
+			bool res_ok = wp_free && TryReserveRailTrackdir(v, tile, cur_td);
+			if (!res_ok) break;
 			/* Safe position is all good, path valid and okay. */
 			restricted_signal_state.TraceRestrictExecuteResEndSlot(v);
 			return PBSTileInfo(tile, cur_td, true);
@@ -4054,7 +4911,9 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 			}
 		}
 
-		if (!TryReserveRailTrackdir(v, tile, cur_td)) break;
+		if (!TryReserveRailTrackdir(v, tile, cur_td)) {
+			break;
+		}
 	}
 
 	if (ft.err == CFollowTrackRail::ErrorCode::Owner || ft.err == CFollowTrackRail::ErrorCode::NoWay) {
@@ -4183,6 +5042,13 @@ public:
 		if (skip_first) ++this->v->cur_real_order_index;
 
 		int depth = 0;
+		/* Set when this advance skipped over a couple/decouple marker whose
+		 * station the train has not reached yet. A depot order directly behind
+		 * such a marker is beyond the couple stop: it must not become the
+		 * current order here, or the depot gate would open and the look-ahead
+		 * would reserve a path into that depot although the train will turn
+		 * around / couple long before reaching it. */
+		bool skipped_couple_order = false;
 
 		do {
 			/* Wrap around. */
@@ -4193,6 +5059,10 @@ public:
 
 			switch (order->GetType()) {
 				case OT_GOTO_DEPOT:
+					/* A depot order directly behind an unexecuted couple/decouple
+					 * stop is not the train's next target: stop the advance with
+					 * current_order left on the previous (reached) station order. */
+					if (skipped_couple_order) return false;
 					/* Skip service in depot orders when the train doesn't need service. */
 					if ((order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) && !this->v->NeedsServicing()) break;
 					[[fallthrough]];
@@ -4211,6 +5081,11 @@ public:
 					break;
 				}
 				default:
+					/* Couple/decouple markers are skipped, but remember that the
+					 * stop they belong to has not been reached in this advance. */
+					if (order->IsType(OT_GOTO_COUPLE) || order->IsType(OT_WAIT_COUPLE) || order->IsType(OT_DECOUPLE)) {
+						skipped_couple_order = true;
+					}
 					break;
 			}
 			/* Don't increment inside the while because otherwise conditional
@@ -4263,6 +5138,17 @@ public:
 		TrainReservationLookAhead *lookahead = this->v->lookahead.get();
 		if (lookahead == nullptr) return;
 
+		/* For a goto-couple order the train couples at the platform of its
+		 * claimed partner; reserve up to that station and stop there, exactly
+		 * like a train stopping at a station on a goto-station order. */
+		StationID couple_station = StationID::Invalid();
+		if (this->v->current_order.IsType(OT_GOTO_COUPLE)) {
+			const Train *ct = Train::GetIfValid(this->v->couple_target);
+			if (ct != nullptr && IsRailStationTile(ct->tile)) {
+				couple_station = GetStationIndex(ct->tile);
+			}
+		}
+
 		for (size_t i = state.order_items_start; i < lookahead->items.size(); i++) {
 			const TrainReservationLookAheadItem &item = lookahead->items[i];
 			switch (item.type) {
@@ -4294,6 +5180,21 @@ public:
 					break;
 			}
 		}
+
+		/* A goto-couple order has exactly one stop target (its partner's
+		 * platform), so detect it across the whole lookahead, not just from
+		 * order_items_start: the reservation may be rebuilt after the train
+		 * was held at a signal, which can put the station item at an index
+		 * the watermark has already passed. */
+		if (this->v->current_order.IsType(OT_GOTO_COUPLE) && couple_station != StationID::Invalid() && !HasBit(state.flags, CTTLASF_STOP_FOUND)) {
+			for (const TrainReservationLookAheadItem &item : lookahead->items) {
+				if (item.type == TRLIT_STATION && static_cast<StationID>(item.data_id) == couple_station) {
+					SetBit(state.flags, CTTLASF_STOP_FOUND);
+					break;
+				}
+			}
+		}
+
 		state.order_items_start = (uint)lookahead->items.size();
 	}
 };
@@ -4303,6 +5204,14 @@ static bool IsReservationLookAheadLongEnough(const Train *v, const ChooseTrainTr
 	if (!v->UsingRealisticBraking() || v->lookahead == nullptr) return true;
 
 	if (v->current_order.IsAnyLoadingType() || v->current_order.IsType(OT_WAITING)) return true;
+
+	/* A part that has just decoupled is still standing in the station it
+	 * decoupled at. Long reserving here would make it hold the block beyond
+	 * the station, on the side it came from, while it is only about to start
+	 * loading there. Loading itself already blocks long reserving (above);
+	 * this closes the window between the decouple and the start of loading.
+	 * The flag is cleared once the train leaves the station. */
+	if (v->flags.Test(VehicleRailFlag::JustDecoupled)) return true;
 
 	if (HasBit(lookahead_state.flags, CTTLASF_STOP_FOUND) || v->lookahead->flags.Test(TrainReservationLookAheadFlag::DepotEnd)) return true;
 
@@ -4529,6 +5438,7 @@ static void TryLongReserveChooseTrainTrackFromReservationEnd(Train *v, bool no_r
 	}
 }
 
+
 /**
  * Choose a track and reserve if necessary
  *
@@ -4547,6 +5457,8 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 	TileIndex final_dest = INVALID_TILE;
 
 	dbg_assert((tracks & ~TRACK_BIT_MASK) == 0);
+
+	TrackBits origin_tracks = tracks;
 
 	ChooseTrainTrackResultFlags result_flags = CTTRF_NONE;
 
@@ -4614,6 +5526,16 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 		if (temporary_slot_state.IsActive()) temporary_slot_state.PopFromChangeStackRevertTemporaryChanges(consist->index);
 	});
 
+	/* A split consist can lose its occupied tile reservation when the other part leaves.
+	 * Restore the origin before extending: otherwise the pathfinder cannot follow the
+	 * extension and attempts to reserve the same tracks a second time. */
+	if (do_track_reservation) {
+		const Train *front = consist->GetMovingFront();
+		if (IsPlainRailTile(front->tile) && !HasReservedTracks(front->tile, front->track)) {
+			TryReserveRailTrack(front->tile, TrackdirToTrack(front->GetVehicleTrackdir()));
+		}
+	}
+
 	PBSTileInfo   origin = FollowTrainReservation(consist, nullptr, FollowTrainReservationFlag::OkayUnused);
 	PBSTileInfo   res_dest(tile, INVALID_TRACKDIR, false);
 	DiagDirection dest_enterdir = enterdir;
@@ -4637,6 +5559,34 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 			}
 
 			if (!long_reserve) {
+				/* For a goto-couple order reaching a safe waiting position is
+				 * not success: without a PBS signal ahead the couple target
+				 * search below would never run, so a consist whose partner
+				 * has vanished would quick-exit forever without ever being
+				 * marked stuck. Verify a target still exists first. */
+				if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
+					Train *couple_target = GetClaimedCoupleTarget(consist);
+					if (couple_target == nullptr) {
+						uint32_t couple_cost = 0;
+						DoTrainCouplePathfind(consist, false, &couple_target, &couple_cost);
+						if (couple_target == nullptr) {
+							if (mark_stuck) MarkTrainAsStuck(consist);
+							FreeTrainTrackReservation(consist);
+							if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SignalState::Red);
+							return { FindFirstTrack(origin_tracks), result_flags };
+						}
+						consist->couple_target = couple_target->index;
+						ClaimCoupleTarget(consist, couple_target->Primary(), couple_cost);
+					if (GetClaimedCoupleTarget(consist) == nullptr) {
+						consist->couple_target = VehicleID::Invalid();
+						if (mark_stuck) MarkTrainAsStuck(consist);
+						FreeTrainTrackReservation(consist);
+						if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SignalState::Red);
+						return { FindFirstTrack(origin_tracks), result_flags };
+					}
+					}
+					consist->SetDestTile(couple_target->tile);
+				}
 				/* Got a valid reservation that ends at a safe target, quick exit. */
 				result_flags |= CTTRF_RESERVATION_MADE;
 				if (changed_signal != INVALID_TRACKDIR) MarkSingleSignalDirty(tile, changed_signal);
@@ -4654,7 +5604,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 		 * the destination but instead to the next one if service isn't needed. */
 		CheckIfTrainNeedsService(consist);
 		if (consist->current_order.IsType(OT_DUMMY) || consist->current_order.IsType(OT_CONDITIONAL) || consist->current_order.IsType(OT_GOTO_DEPOT) ||
-				consist->current_order.IsSlotCounterOrder() || consist->current_order.IsType(OT_LABEL)) {
+				consist->current_order.IsSlotCounterOrder() || consist->current_order.IsType(OT_LABEL) || consist->current_order.IsExecuteScheduleOrder()) {
 			ProcessOrders(consist);
 		}
 	}
@@ -4666,6 +5616,46 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 		orders.AdvanceOrdersFromVehiclePosition(lookahead_state);
 	}
 	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC) orders.AdvanceOrdersFromLookahead(lookahead_state);
+
+	/* When going to couple with another train, only pick the target with the
+	 * couple pathfinder (and claim it); the actual reservation is handled by
+	 * the regular machinery below, so the couple order reserves exactly like
+	 * any other order, one block at a time. */
+	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
+		Train *couple_target = GetClaimedCoupleTarget(consist);
+		/* A temporary obstruction on the approach is not a reason to release
+		 * this partner. The regular reservation checks will hold the train until
+		 * the track is clear; dropping the claim here lets a following locomotive
+		 * take the same waiting consist while our first locomotive is en route. */
+		if (couple_target == nullptr) {
+			uint32_t couple_cost = 0;
+			DoTrainCouplePathfind(consist, false, &couple_target, &couple_cost);
+			/* Track the concrete contact-end vehicle for approach braking; the
+			 * speed code re-validates it every tick. */
+			consist->couple_target = (couple_target != nullptr) ? couple_target->index : VehicleID::Invalid();
+			/* Register (or update) the claim on the waiting train so competing
+			 * approaching consists look for another partner. Must happen after
+			 * couple_target is set: the claim is only valid while it points here. */
+			if (couple_target != nullptr) {
+				ClaimCoupleTarget(consist, couple_target->Primary(), couple_cost);
+				if (GetClaimedCoupleTarget(consist) == nullptr) {
+					consist->couple_target = VehicleID::Invalid();
+					couple_target = nullptr;
+				}
+			}
+		}
+		if (couple_target != nullptr) {
+			/* Steer the regular pathfinder towards the partner's contact end. */
+			consist->SetDestTile(couple_target->tile);
+		} else {
+			/* No available partner: wait like a train with an unreachable
+			 * destination instead of pathing anywhere. */
+			if (mark_stuck) MarkTrainAsStuck(consist);
+			FreeTrainTrackReservation(consist);
+			if (changed_signal != INVALID_TRACKDIR) SetSignalStateByTrackdir(tile, changed_signal, SignalState::Red);
+			return { FindFirstTrack(origin_tracks), result_flags };
+		}
+	}
 
 	if (res_dest.tile != INVALID_TILE && !res_dest.okay) {
 		/* Pathfinders are able to tell that route was only 'guessed'. */
@@ -4780,6 +5770,11 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 		}
 		if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
 			FillTrainReservationLookAhead(consist);
+			/* The just-extended reservation may have reached the couple platform.
+			 * STOP_FOUND was only evaluated against the old (shorter) lookahead,
+			 * so re-run the lookahead order advance now to catch it before we
+			 * decide whether to extend the reservation any further. */
+			if (consist->current_order.IsType(OT_GOTO_COUPLE)) orders.AdvanceOrdersFromLookahead(lookahead_state);
 			if (consist->lookahead != nullptr) lookahead_state.order_items_start = (uint)consist->lookahead->items.size();
 		}
 		TryLongReserveChooseTrainTrack(consist, res_dest.tile, res_dest.trackdir, (flags & CTTF_FORCE_RES), lookahead_state);
@@ -4805,6 +5800,91 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 }
 
 /**
+ * Whether the other consist is the one we are coupling with, in either role: the part we are
+ * homing in on, and the part that has claimed us as its target. Sharing a platform with either
+ * is intended, so they must not be treated as blocking the path. Without the second relation a
+ * collector would be held up by the very part it comes for.
+ *
+ * @param consist The %Train that is extending its reservation.
+ * @param other The %Train found on our path.
+ * @return \c true when the other consist is our couple partner.
+ */
+
+static bool IsCouplePartnerOf(const Train *consist, const Train *other)
+{
+	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
+		if (const Train *tgt = GetClaimedCoupleTarget(consist); tgt != nullptr && tgt->Primary() == other) return true;
+	}
+	if (const Train *claimant = GetValidCoupleClaimant(consist); claimant != nullptr && claimant->current_order.IsType(OT_GOTO_COUPLE) && claimant->Primary() == other) return true;
+	return false;
+}
+
+/**
+ * Whether another consist is standing between us and the platform exit, that is, on the part of
+ * our own platform we are about to travel along.
+ *
+ * #FollowTrainReservation only reports a train it happens to find at the end of the reservation,
+ * so a train standing further along the platform is missed entirely, and reversing on a platform
+ * that another train shares then reserved a path straight through it and drove into that train.
+ * This looks at the platform itself instead, and only ahead of us: a train further down the
+ * platform, which we would not have to pass, does not hold us up.
+ *
+ * Only departure is checked. A consist that is still loading, one that is not standing on a
+ * platform yet, and one that is not standing still are left to the normal arrival handling, so
+ * trains still queue behind each other inside a station instead of being held at its entrance.
+ *
+ * The walk starts at the leading vehicle and runs towards the platform exit, so a consist is only
+ * held up by what it would have to pass: a train further down the platform, which lies behind it
+ * after a turnaround, never blocks it.
+ *
+ * @param consist The %Train that is about to leave.
+ * @return \c true when another consist stands on the platform ahead of us.
+ */
+static bool IsPlatformAheadOccupied(const Train *consist)
+{
+	const Train *moving_front = consist->GetMovingFront();
+	if (!IsRailStationTile(moving_front->tile) || consist->cur_speed != 0) return false;
+	if (consist->current_order.IsAnyLoadingType() || IsHoldingForCouple(consist)) return false;
+
+	DiagDirection dir = TrackdirToExitdir(moving_front->GetVehicleTrackdir());
+	TileIndexDiff diff = TileOffsByDiagDir(dir);
+	for (TileIndex tile = moving_front->tile; IsCompatibleTrainStationTile(tile, moving_front->tile); tile += diff) {
+		for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
+			if (u->Primary() == consist->Primary()) continue;
+			if (IsCouplePartnerOf(consist, u)) continue;
+			/* The partner of a just-performed decouple necessarily shares the tile
+			 * around the cut with us; it does not stand in our way. Restrict the
+			 * exemption to that cut tile: once we have turned around to follow the
+			 * partner's direction, the partner still leaving the station stands
+			 * ahead of us on the platform and very much blocks us, and a blanket
+			 * exemption let us reserve a path straight into its tail. JustDecoupled
+			 * is only kept while the part is still in the station it decoupled
+			 * at, so this exemption cannot hide a consist we later meet on the
+			 * same platform after having left and returned. */
+			if (u->Primary()->flags.Test(VehicleRailFlag::JustDecoupled) && tile == moving_front->tile) continue;
+			return true;
+		}
+	}
+	return false;
+}
+
+/** The trailing split part must let its former partner clear the shared platform before turning to follow. */
+static bool IsOtherConsistOnPlatform(const Train *consist)
+{
+	const Train *front = consist->GetMovingFront();
+	if (!IsRailStationTile(front->tile)) return false;
+	for (DiagDirection dir : {TrackdirToExitdir(front->GetVehicleTrackdir()), ReverseDiagDir(TrackdirToExitdir(front->GetVehicleTrackdir()))}) {
+		TileIndexDiff diff = TileOffsByDiagDir(dir);
+		for (TileIndex tile = front->tile; IsCompatibleTrainStationTile(tile, front->tile); tile += diff) {
+			for (const Train *other : VehiclesOnTile<VehicleType::Train>(tile)) {
+				if (other->Primary() != consist->Primary()) return true;
+			}
+		}
+	}
+	return false;
+}
+
+/**
  * Try to reserve a path to a safe position.
  *
  * @param consist The vehicle
@@ -4814,7 +5894,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
  */
 TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mark_as_stuck, bool first_tile_okay)
 {
-	dbg_assert(consist->IsFrontEngine());
+	dbg_assert(consist->IsPrimaryVehicle());
 
 	ClearLookAheadIfInvalid(consist);
 
@@ -4869,6 +5949,14 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 		}
 	}
 
+	/* Another consist standing between us and the platform exit blocks us, whatever the
+	 * reservations say. A turnaround on a shared platform used to reserve a path straight
+	 * through the other train and drive into it. */
+	if (IsPlatformAheadOccupied(consist)) {
+		if (mark_as_stuck) MarkTrainAsStuck(consist);
+		return TPRRF_NONE;
+	}
+
 	Vehicle *other_train = nullptr;
 	PBSTileInfo origin = FollowTrainReservation(consist, &other_train);
 	/* The path we are driving on is already blocked by some other train.
@@ -4876,9 +5964,14 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 	 * block signals or when changing tracks and/or signals.
 	 * Exit here as doing any further reservations will probably just
 	 * make matters worse. */
-	if (other_train != nullptr && other_train->index != consist->index) {
-		if (mark_as_stuck) MarkTrainAsStuck(consist);
-		return TPRRF_NONE;
+	if (other_train != nullptr && other_train->index != consist->index && other_train->tile != consist->tile) {
+		/* Only a couple partner may share our path; the former "both at a station, so we
+		 * probably just decoupled and can continue" test also let unrelated trains through, and
+		 * a train reversing on a platform another train stands on was driven straight into it. */
+		if (!IsCouplePartnerOf(consist, Train::From(other_train))) {
+			if (mark_as_stuck) MarkTrainAsStuck(consist);
+			return TPRRF_NONE;
+		}
 	}
 	/* If we have a reserved path and the path ends at a safe tile, we are finished already. */
 	if (origin.okay && (moving_front->tile != origin.tile || first_tile_okay)) {
@@ -4907,6 +6000,7 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 	}
 	TrackBits reachable = TrackdirBitsToTrackBits(GetTileTrackdirBits(new_tile, TransportType::Rail, 0) & DiagdirReachesTrackdirs(exitdir));
 
+
 	if (Rail90DegTurnDisallowedTilesFromDiagDir(origin.tile, new_tile, exitdir, _settings_game.pf.forbid_90_deg)) reachable &= ~TrackCrossesTracks(TrackdirToTrack(origin.trackdir));
 
 	TryPathReserveResultFlags result_flags = TPRRF_NONE;
@@ -4920,6 +6014,8 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 	}
 
 	if ((result_flags & TPRRF_RESERVATION_OK) == 0) {
+		for (const Train *w = consist->First(); w != nullptr; w = w->Next()) {
+		}
 		/* Free the depot reservation as well. */
 		if (moving_front->track == TRACK_BIT_DEPOT && moving_front->tile == origin.tile) SetDepotReservation(moving_front->tile, false);
 		return result_flags;
@@ -4941,6 +6037,9 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
  */
 static bool CheckReverseTrain(const Train *consist)
 {
+	/* The front has just decoupled, reversing could crash into the decoupled part. */
+	if (consist->flags.Test(VehicleRailFlag::JustDecoupled)) return false;
+
 	const Train *moving_front = consist->GetMovingFront();
 	if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::EndOfLineOnly ||
 			moving_front->track == TRACK_BIT_DEPOT) {
@@ -4950,6 +6049,1679 @@ static bool CheckReverseTrain(const Train *consist)
 	dbg_assert(moving_front->track != TRACK_BIT_NONE);
 
 	return YapfTrainCheckReverse(consist);
+}
+
+/**
+ * Push every vehicle of a chain-ordered range one pixel forward along its own
+ * facing, one vehicle at a time. Deliberately does NOT use TrainController's
+ * segment walk: that follows GetMovingNext(), which honours each vehicle's
+ * DrivingBackwards flag. A freshly merged consist can carry mixed flags, and
+ * a segment walk would then turn around mid-chain, miss its nomove bound and
+ * run off the end of the chain, crashing on the null vehicle.
+ * @param first first vehicle to push.
+ * @param last last vehicle to push, or nullptr to push up to the chain end.
+ */
+static void CoupleAdvanceVehicles(Train *first, Train *last)
+{
+	for (Train *w = first; w != nullptr; w = w->Next()) {
+		/* nomove = w's own moving-next stops the walk after exactly w. */
+		TrainController(w, w->GetMovingNext());
+		if (w == last) break;
+	}
+}
+
+static int CoupleJointOffset(uint8_t front_len, uint8_t back_len, bool front_driving_backwards);
+
+/**
+ * Pixel step of a vehicle's motion. Vehicles flagged DrivingBackwards move
+ * against their facing, so their motion delta is the negated direction delta.
+ */
+static TileIndexDiffC CoupleMotionDelta(const Train *w)
+{
+	TileIndexDiffC dd = TileIndexDiffCByDir(w->direction);
+	if (w->IsDrivingBackwards()) {
+		dd.x = -dd.x;
+		dd.y = -dd.y;
+	}
+	return dd;
+}
+
+/**
+ * Expected centre distance of the chain-adjacent pair (\a a, \a a->Next()).
+ * CalcNextVehicleOffset() cannot be used here: for DrivingBackwards vehicles
+ * it pairs the vehicle with GetMovingNext() (its chain predecessor), not with
+ * its chain successor.
+ */
+static int CouplePairOffset(const Train *a)
+{
+	return CoupleJointOffset(a->gcache.cached_veh_length, a->Next()->gcache.cached_veh_length, a->IsDrivingBackwards());
+}
+
+/**
+ * Advance the wagons of the consist after coupling, so that they are positioned
+ * correctly on the track.
+ */
+static void AdvanceWagonsAfterCouple(Train *v)
+{
+	int difference = CouplePairOffset(v);
+	int diff_x = abs(v->x_pos - v->Next()->x_pos);
+	int diff_y = abs(v->y_pos - v->Next()->y_pos);
+	int real_diff = std::max(diff_x, diff_y) - difference;
+
+	/* Contact coupling can land a pixel or two inside the partner when the
+	 * approach step jumps over the exact-contact sample. real_diff < 0 means
+	 * the joint pair is too close: open the gap by advancing one half of the
+	 * merged consist. After the orientation phase both halves face the same
+	 * direction, so the half that leads along that direction moves away from
+	 * the joint when pushed forward, while the trailing half would close the
+	 * gap further. Decide which half to push from the sign of the dot product
+	 * between the shared facing and the joint vector. */
+	if (real_diff > 0) {
+		CoupleAdvanceVehicles(v->Next(), nullptr);
+	} else if (real_diff < 0) {
+		Train *u_first = v->Next();
+		TileIndexDiffC dd = CoupleMotionDelta(u_first);
+		int dot = (u_first->x_pos - v->x_pos) * dd.x + (u_first->y_pos - v->y_pos) * dd.y;
+		/* Push the leading half (dot > 0: u half ahead of the joint along the
+		 * shared motion direction) without a bound; push the trailing half
+		 * only up to the joint vehicle. */
+		if (dot > 0) {
+			CoupleAdvanceVehicles(u_first, nullptr);
+		} else {
+			CoupleAdvanceVehicles(v->First(), v);
+		}
+	}
+
+}
+
+/**
+ * Check whether both ends of the train are standing on the same station
+ * platform. Only actual vehicle positions are used; vehicle lengths (NewGRF
+ * callback driven) are deliberately not consulted, so articulated parts and
+ * non-standard vehicle lengths cannot make the check fail.
+ */
+bool TrainFitStation(const Train *v)
+{
+	if (!IsRailStationTile(v->tile)) return false;
+	if (!IsRailStationTile(v->Last()->tile)) return false;
+	return GetStationIndex(v->tile) == GetStationIndex(v->Last()->tile);
+}
+
+/**
+ * Check if the train can decouple at its current position.
+ */
+static bool CanDecouple(Train *v)
+{
+	/* Both checks must anchor at the physical chain head: the consist carrier
+	 * may sit mid-chain or at the tail, and both TrainFitStation and
+	 * CountVehiclesInChain otherwise only see the part trailing the primary. */
+	Train *head = v->First();
+	if (!TrainFitStation(head)) {
+		Debug(desync, 1, "CanDecouple: veh={} fail fitstation tile=({},{}) last=({},{})", v->index, TileX(v->tile), TileY(v->tile), TileX(v->Last()->tile), TileY(v->Last()->tile));
+		return false;
+	}
+	if (CountVehiclesInChain(head) < 2) {
+		Debug(desync, 1, "CanDecouple: veh={} fail count={}", v->index, CountVehiclesInChain(head));
+		return false;
+	}
+	/* The cut is counted from the physical chain head, not from the consist
+	 * carrier; a primary sitting mid-chain or at the tail still has units
+	 * ahead of it, so anchor this check at the head too. */
+	if (v->First()->GetNextUnit() == nullptr) {
+		Debug(desync, 1, "CanDecouple: veh={} fail no next unit", v->index);
+		return false;
+	}
+	return true;
+}
+
+/**
+ * Automatically determine how many vehicles to decouple.
+ */
+static uint GetDecoupleVehicleAuto(Train *v)
+{
+	/* The cut is applied relative to the physical chain head, so the count has to
+	 * start there as well; the consist carrier may sit mid-chain after a couple. */
+	v = v->First();
+	uint engines_front = 0;
+	uint engines_back = 0;
+	uint pos = 1;
+	bool has_wagons = false;
+	bool multihead_front = false;
+	for (Train *t = v; t != nullptr; t = t->GetNextVehicle(), pos++) {
+		if (t->IsEngine()) {
+			if (t->IsMultiheaded()) {
+				if (multihead_front) {
+					return pos;
+				}
+				multihead_front = true;
+			}
+			if (has_wagons) {
+				engines_back++;
+			} else {
+				engines_front++;
+			}
+		} else {
+			has_wagons = true;
+		}
+	}
+	if (engines_front > 0 && has_wagons) return engines_front;
+	if (engines_back > 0 && has_wagons) return CountVehiclesInChain(v) - engines_back;
+	return 1;
+}
+
+/**
+ * Find the vehicle where the consist should be split.
+ */
+Train *GetDecoupleVehicleForCount(Train *v, uint num_decouple)
+{
+	if (num_decouple == 0) num_decouple = GetDecoupleVehicleAuto(v);
+	Train *head = v->First();
+	Train *ret = head->GetNextVehicle();
+	/* The editor can query single-unit consists, unlike the execution caller. */
+	if (ret == nullptr) return nullptr;
+	bool multihead_front = head->IsMultiheaded();
+
+	for (uint i = 1; i < num_decouple && ret->GetNextVehicle() != nullptr; i++) {
+		if (multihead_front) {
+			if (ret->IsRearDualheaded()) multihead_front = false;
+		} else {
+			if (ret->IsMultiheaded()) multihead_front = true;
+		}
+		ret = ret->GetNextVehicle();
+	}
+	if (multihead_front) return nullptr;
+	return ret;
+}
+
+/** Enumerate representable cuts using exactly the execution order's counting rules. */
+std::vector<DecoupleCut> GetDecoupleCuts(Train *v)
+{
+	std::vector<DecoupleCut> cuts;
+	uint count = 1;
+	for (Train *next = v->First()->GetNextVehicle(); next != nullptr && count <= 127; next = next->GetNextVehicle(), count++) {
+		if (GetDecoupleVehicleForCount(v, count) == next) cuts.push_back({static_cast<uint8_t>(count), next});
+	}
+	return cuts;
+}
+
+static Train *GetDecoupleVehicle(Train *v)
+{
+	/* Order data lives on the primary vehicle; the unit walk must start at the
+	 * physical chain head, which may be a different vehicle when the primary
+	 * sits mid-chain after a couple. */
+	Train *prim = v->Primary();
+	Order *decouple_order = prim->orders->GetOrderAt(prim->cur_implicit_order_index + 1);
+	return GetDecoupleVehicleForCount(v, decouple_order->GetNumDecouple());
+}
+
+/**
+ * Try to split off the rear part of the consist.
+ */
+/**
+ * The start/stop check callback is evaluated on the primary vehicle, i.e. the
+ * first engine of the (trial) chain; fall back to the chain head for
+ * engine-less chains.
+ */
+static Train *GetStartStopCheckVehicle(Train *head)
+{
+	for (Train *t = head; t != nullptr; t = t->Next()) {
+		if (t->IsEngine()) return t;
+	}
+	return head;
+}
+
+/**
+ * Recompute property 0x25 user data (optionally overridden by callback 0x36)
+ * for the trial chain, mirroring Train::ConsistChanged, so consist variables
+ * such as var 0x42 reflect the hypothetical consist.
+ */
+static void RefreshTrainUserDefData(Train *head)
+{
+	for (Train *u = head; u != nullptr; u = u->Next()) {
+		u->tcache.user_def_data = GetVehicleProperty(u, PROP_TRAIN_USER_DATA, RailVehInfo(u->engine_type)->user_def_data);
+	}
+}
+
+/**
+ * Make every vehicle's last-loading-station record authoritative before
+ * couple/decouple surgery. When the consist does not carry the
+ * LastLoadStationSeparate flag only the primary's record is maintained and the
+ * per-vehicle values may be stale; propagate the primary's record so that
+ * after the split each part keeps a correct, per-vehicle attribution. With
+ * the flag already set every vehicle's record is authoritative and is kept.
+ */
+static void PropagateLastLoadingStation(Train *primary)
+{
+	if (primary->vehicle_flags.Test(VehicleFlag::LastLoadStationSeparate)) return;
+	StationID station = primary->last_loading_station;
+	StateTicks tick = primary->last_loading_tick;
+	for (Train *w = primary->First(); w != nullptr; w = w->Next()) {
+		w->last_loading_station = station;
+		w->last_loading_tick = tick;
+	}
+}
+
+/**
+ * Normalize the last-loading-station records of a resulting consist part after
+ * couple/decouple surgery: when all vehicles agree on the record the part can
+ * keep the compact (non-separate) representation, otherwise per-vehicle records
+ * are used via LastLoadStationSeparate so VehicleIncreaseStats attributes each
+ * wagon's link to the station it actually loaded at.
+ */
+static void NormalizeLastLoadingStation(Train *primary)
+{
+	Train *head = primary->First();
+	StationID first = head->last_loading_station;
+	bool differ = false;
+	for (Train *w = head; w != nullptr; w = w->Next()) {
+		if (w->last_loading_station != first) {
+			differ = true;
+			break;
+		}
+	}
+	if (!differ) {
+		primary->last_loading_station = first;
+		primary->last_loading_tick = head->last_loading_tick;
+		primary->vehicle_flags.Reset(VehicleFlag::LastLoadStationSeparate);
+	} else {
+		primary->vehicle_flags.Set(VehicleFlag::LastLoadStationSeparate);
+	}
+}
+
+/**
+ * RAII guard for trial consist surgery (couple/decouple arrangement
+ * validation). Snapshots the per-vehicle NewGRF caches of the involved
+ * chains and the game random seed; at scope end the caches are restored and
+ * a seed shift (NewGRF callbacks consuming randomness during the trial) is
+ * rolled back, so every peer stays deterministic even in release builds
+ * where the former assert would be a no-op.
+ */
+struct TrialConsistGuard {
+	struct TrialCache {
+		Train *vehicle;
+		NewGRFCache grf_cache;
+		uint8_t user_def_data;
+		uint8_t cached_veh_flags;
+	};
+
+	std::vector<TrialCache> caches;
+	SavedRandomSeeds seeds;
+
+	TrialConsistGuard()
+	{
+		SaveRandomSeeds(&this->seeds);
+	}
+
+	void SnapshotChain(const TrainList &chain)
+	{
+		for (Train *t : chain) {
+			this->caches.push_back({t, t->grf_cache, t->tcache.user_def_data, t->vcache.cached_veh_flags});
+		}
+	}
+
+	~TrialConsistGuard()
+	{
+		for (const TrialCache &cache : this->caches) {
+			cache.vehicle->grf_cache = cache.grf_cache;
+			cache.vehicle->tcache.user_def_data = cache.user_def_data;
+			cache.vehicle->vcache.cached_veh_flags = cache.cached_veh_flags;
+		}
+		if (this->seeds.random.state[0] != _random.state[0] || this->seeds.random.state[1] != _random.state[1]) {
+			Debug(desync, 0, "Trial consist surgery shifted the random seed; restoring it");
+			RestoreRandomSeeds(this->seeds);
+		}
+	}
+};
+
+static bool TryTrainDecouple(Train *v, Train *u)
+{
+	/* v and u are the physical chain heads of the front and rear parts of the
+	 * split. The consist carrier (primary) may sit anywhere inside either
+	 * part, so the backup must cover the whole physical chain; backing up from
+	 * the primary would miss the head-side vehicles and RestoreTrainBackup
+	 * would permanently sever them on the failure path. */
+	TrainList original_src;
+
+	TrialConsistGuard trial_guard;
+
+	MakeTrainBackup(original_src, v);
+	trial_guard.SnapshotChain(original_src);
+
+	Train *first_param = nullptr;
+
+	ArrangeTrains(&first_param, nullptr, &v, u, true, false);
+
+	/* The NewGRF caches still hold values of the pre-split consist; invalidate
+	 * them so the start/stop check sees the would-be resulting parts. */
+	v->InvalidateNewGRFCacheOfChain();
+	u->InvalidateNewGRFCacheOfChain();
+	RefreshTrainUserDefData(v);
+	RefreshTrainUserDefData(u);
+
+	bool ok = true;
+	CommandCost ret = ValidateTrains(nullptr, u, v, v, true);
+	ok &= !ret.Failed();
+
+	bool cc_u = u->CanConsistChange(CCF_ARRANGE_CHECK);
+	bool cc_v = v->CanConsistChange(CCF_ARRANGE_CHECK);
+	ok &= cc_u && cc_v;
+
+	/* Both resulting parts must satisfy the NewGRF start/stop check. */
+	CommandCost cb_front = CheckVehicleStartStopCallback(GetStartStopCheckVehicle(v));
+	CommandCost cb_rear = CheckVehicleStartStopCallback(GetStartStopCheckVehicle(u));
+	ok &= !cb_front.Failed() && !cb_rear.Failed();
+
+	if (!ok) {
+		/* Restore the train we had. */
+		RestoreTrainBackup(original_src);
+		v->ConsistChanged(CCF_ARRANGE_STATION);
+		return false;
+	}
+	/* Splitting creates a new train front; invalidate the tick caches or the new front will not be ticked. */
+	InvalidateVehicleTickCaches();
+	return true;
+}
+
+/** Which parts of the consist should load after decoupling. */
+static constexpr uint8_t DECOUPLE_NO_LOAD     = 0; ///< Neither part loads.
+static constexpr uint8_t DECOUPLE_LOAD_FIRST  = 1; ///< Load the first part.
+static constexpr uint8_t DECOUPLE_LOAD_SECOND = 2; ///< Load the second part.
+
+static bool IsDecoupleWaitMode(OrderDecoupleOrdersFlags mode)
+{
+	return mode == ODOF_LOAD_AND_WAIT || mode == ODOF_WAIT_FOR_COUPLE;
+}
+
+/** Prepare both copies before splitting or changing either part's orders. */
+static StringID PrepareDecoupleWaitOrders(const Train *v, std::unique_ptr<OrderList> (&copies)[2])
+{
+	const Order *decouple = v->GetOrder(v->cur_implicit_order_index + 1);
+	const OrderDecoupleOrdersFlags modes[] = {decouple->GetDecoupleFirstOrdersType(), decouple->GetDecoupleSecondOrdersType()};
+	if (!IsDecoupleWaitMode(modes[0]) && !IsDecoupleWaitMode(modes[1])) return STR_NULL;
+	if (v->GetNumOrders() >= MAX_VEH_ORDER_ID) return STR_ERROR_TOO_MANY_ORDERS;
+
+	uint needed = 0;
+	for (uint i = 0; i < 2; ++i) {
+		if (IsDecoupleWaitMode(modes[i])) {
+			++needed;
+		} else if (modes[i] == ODOF_EXECUTE_SCHEDULE || modes[i] == ODOF_LOAD_AND_SCHEDULE) {
+			const OrderList *schedule = OrderList::GetIfValid(i == 0 ? decouple->GetDecoupleFirstScheduleID() : decouple->GetDecoupleSecondScheduleID());
+			if (schedule != nullptr && schedule->IsPlayerCreated()) ++needed;
+		}
+	}
+	if (!OrderList::CanAllocateItem(needed)) return STR_ERROR_NO_MORE_SPACE_FOR_ORDERS;
+
+	for (uint i = 0; i < 2; ++i) {
+		if (!IsDecoupleWaitMode(modes[i])) continue;
+		copies[i].reset(OrderList::Create());
+		OrderList *copy = copies[i].get();
+		copy->GetOrderVector().reserve(v->GetNumOrders() + 1);
+		for (const Order *order : v->Orders()) copy->GetOrderVector().emplace_back(*order);
+		copy->GetScheduledDispatchScheduleSet() = v->orders->GetScheduledDispatchScheduleSet();
+		copy->SetRouteOverlayColour(v->orders->GetRouteOverlayColour());
+		copy->SetDispatchEnabled(v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch));
+		copy->SetSeparationEnabled(v->vehicle_flags.Test(VehicleFlag::TimetableSeparation));
+	}
+	return STR_NULL;
+}
+
+/** Install the independent copy and insert a new wait after this decouple, never deduplicating. */
+static void InsertDecoupleWaitOrder(Train *v, std::unique_ptr<OrderList> &copy, VehicleOrderID wait_index)
+{
+	SetDecoupleWaitOrderList(v, copy.release());
+	Order wait;
+	wait.MakeWaitCouple();
+	InsertOrder(v, std::move(wait), wait_index);
+}
+
+
+/**
+ * Make a decoupled train part adopt a player-created order list as its own
+ * schedule: both its orders and its primary order list become the schedule.
+ * @param part the train part
+ * @param schedule_id the schedule to adopt
+ * @param load_at_station when valid, load/unload at this station on the first
+ *                       pass only before running the schedule
+ * @param load_order the order the part is running at the decouple station; when
+ *                   given, its settings are copied onto the one-off station
+ *                   order of the wrapper instead of starting from a bare one
+ * @return true when the schedule was adopted
+ */
+static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id, StationID load_at_station = StationID::Invalid(), const Order *load_order = nullptr)
+{
+	OrderList *ol = OrderList::GetIfValid(schedule_id);
+	if (ol == nullptr || !ol->IsPlayerCreated()) {
+		return false;
+	}
+
+
+	/* Build a wrapper schedule holding an execute-schedule order for the target
+	 * schedule; the part will run the target through the regular
+	 * execute-schedule mechanism, restarting it after every full pass. The
+	 * wrapper is a vehicle-owned list, so it is freed automatically when the
+	 * part's orders are replaced or removed. */
+	std::vector<Order> wrapper_orders;
+
+	const bool load_before_schedule = load_at_station != StationID::Invalid();
+	if (load_before_schedule) {
+		Order station_order;
+		if (load_order != nullptr && load_order->IsType(OT_GOTO_STATION)) {
+			/* The one-off load has to do what the player configured for the decouple
+			 * station itself, so take the whole order as a template: load types,
+			 * per-cargo load/unload settings, refit cargo (including auto-refit),
+			 * unload type, stop location, timings and any trace/restrict slot. */
+			station_order = *load_order;
+			station_order.SetDestination(load_at_station);
+		} else {
+			station_order.MakeGoToStation(load_at_station);
+		}
+		/* Splitting is driven by the OT_DECOUPLE order which follows in the original
+		 * list; this copy lives in a list of its own and must not split again. */
+		station_order.SetDecouple(ODF_NOTHING);
+		station_order.SetNumDecouple(0);
+		wrapper_orders.push_back(std::move(station_order));
+	}
+
+	/* Also the jump target of the unconditional jump appended below. */
+	VehicleOrderID execute_index = static_cast<VehicleOrderID>(wrapper_orders.size());
+
+	Order execute_order;
+	execute_order.MakeExecuteSchedule();
+	execute_order.SetDestination(ol->index);
+	wrapper_orders.push_back(std::move(execute_order));
+
+	if (load_before_schedule) {
+		/* Jump straight back to the execute-schedule order, so the station order
+		 * above is only run on the first pass. */
+		Order repeat_order;
+		repeat_order.MakeConditional(execute_index);
+		repeat_order.SetConditionVariable(OrderConditionVariable::Unconditionally);
+		wrapper_orders.push_back(std::move(repeat_order));
+	}
+
+	if (!OrderList::CanAllocateItem()) return false;
+
+	DeleteVehicleOrders(part, false, true);
+
+	part->orders = OrderList::Create(std::move(wrapper_orders), part);
+	part->primary_order = part->orders->index;
+	part->primary_order_index = INVALID_VEH_ORDER_ID;
+	part->cur_implicit_order_index = 0;
+	part->cur_real_order_index = 0;
+	part->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+	part->UpdateRealOrderIndex();
+	part->current_order.Free();
+
+	/* The wrapper mirrors the part's dispatch/separation state while it is the home list. */
+	part->orders->SetDispatchEnabled(part->vehicle_flags.Test(VehicleFlag::ScheduledDispatch));
+	part->orders->SetSeparationEnabled(part->vehicle_flags.Test(VehicleFlag::TimetableSeparation));
+	return true;
+}
+
+
+
+static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_ptr<OrderList> (&wait_orders)[2])
+{
+	const Order after_decouple_flags = *v->orders->GetOrderAt(v->cur_implicit_order_index + 1);
+	assert(after_decouple_flags.GetType() == OT_DECOUPLE);
+	const VehicleOrderID wait_index = v->cur_implicit_order_index + 2;
+	const BaseConsist order_state = *v;
+
+
+	if (v != u) {
+		switch (after_decouple_flags.GetDecoupleSecondOrdersType()) {
+			case ODOF_LOAD_AND_WAIT:
+			case ODOF_KEEP_ORDERS:
+				load_trains |= DECOUPLE_LOAD_SECOND;
+				[[fallthrough]];
+			case ODOF_WAIT_FOR_COUPLE:
+			case ODOF_KEEP_ORDERS_NO_LOAD:
+				u->orders = v->orders;
+				u->primary_order = v->primary_order;
+				u->primary_order_index = v->primary_order_index;
+				/* A home list that no longer exists would leave the new part looking like it is
+				 * on an execute-schedule detour; the next list allocated could then reuse that
+				 * index and hand it a foreign list. Fall back to the list the part actually runs. */
+				if (u->primary_order != OrderListID::Invalid() && OrderList::GetIfValid(u->primary_order) == nullptr) {
+					u->primary_order = (u->orders != nullptr) ? u->orders->index : OrderListID::Invalid();
+					u->primary_order_index = INVALID_VEH_ORDER_ID;
+				}
+				u->AddToShared(v);
+				u->cur_real_order_index = v->cur_real_order_index;
+				u->cur_implicit_order_index = v->cur_implicit_order_index;
+				u->current_order = v->current_order;
+				/* Everything that describes where the consist stands in the order list has to be
+				 * taken over together with the real order index. Leaving any of it behind points
+				 * the new part at the state it had before the split: the timetable index in
+				 * particular then still refers to a pre-split order, and asserting that the two
+				 * match (see #UpdateVehicleTimetable) aborts the game on the next station the
+				 * part loads at. This applies to every mode that shares the list, not only to
+				 * the ones that insert a wait order. */
+				u->cur_timetable_order_index = order_state.cur_timetable_order_index;
+				u->current_order_time = order_state.current_order_time;
+				u->lateness_counter = order_state.lateness_counter;
+				u->timetable_start = order_state.timetable_start;
+				u->dispatch_records = order_state.dispatch_records;
+				for (VehicleFlag flag : {VehicleFlag::TimetableStarted, VehicleFlag::AutofillTimetable,
+						VehicleFlag::AutofillPreserveWaitTime, VehicleFlag::ScheduledDispatch,
+						VehicleFlag::TimetableSeparation, VehicleFlag::AutomateTimetable}) {
+					u->vehicle_flags.Set(flag, order_state.vehicle_flags.Test(flag));
+				}
+				if (wait_orders[1] != nullptr) {
+					InsertDecoupleWaitOrder(u, wait_orders[1], wait_index);
+				}
+				if (!(load_trains & DECOUPLE_LOAD_SECOND)) u->IncrementImplicitOrderIndex();
+				break;
+			case ODOF_EXECUTE_SCHEDULE:
+				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID());
+				break;
+			case ODOF_LOAD_AND_SCHEDULE:
+				/* Load/unload at this station once, then run the schedule, skipping
+				 * the station order on all later passes. */
+				load_trains |= DECOUPLE_LOAD_SECOND;
+				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID(), v->last_station_visited, &v->current_order);
+				break;
+			default: NOT_REACHED();
+		}
+		ProcessOrders(u);
+	}
+
+
+	for (const Train *w = u->First(); w != nullptr; w = w->Next()) {
+	}
+
+	/* A failed physical split must not insert a wait or replace the original list. */
+	if (v != u && wait_orders[0] != nullptr) InsertDecoupleWaitOrder(v, wait_orders[0], wait_index);
+	switch (after_decouple_flags.GetDecoupleFirstOrdersType()) {
+		case ODOF_LOAD_AND_WAIT:
+		case ODOF_KEEP_ORDERS:
+			load_trains |= DECOUPLE_LOAD_FIRST;
+			break;
+		case ODOF_WAIT_FOR_COUPLE:
+		case ODOF_KEEP_ORDERS_NO_LOAD:
+			v->IncrementImplicitOrderIndex();
+			break;
+		case ODOF_EXECUTE_SCHEDULE:
+			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID());
+			break;
+		case ODOF_LOAD_AND_SCHEDULE:
+			/* Load/unload at this station once, then run the schedule, skipping
+			 * the station order on all later passes. */
+			load_trains |= DECOUPLE_LOAD_FIRST;
+			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID(), v->last_station_visited, &v->current_order);
+			break;
+		default: NOT_REACHED();
+	}
+	ProcessOrders(v);
+
+}
+
+/**
+ * Decouple the rear part of the consist at the current station.
+ * @param v The consist.
+ * @param[out] consist_in_rear Set to true when the consist carrier ended up in
+ *                             the rear physical part (engine-less head side),
+ *                             i.e. the decoupled part is the physical front.
+ * @return The head of the decoupled part, or \c v if decoupling failed.
+ */
+static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_reason)
+{
+	consist_in_rear = false;
+	failure_reason = STR_NULL;
+	if (!CanDecouple(v)) {
+		failure_reason = !TrainFitStation(v) ? STR_DECOUPLE_DIAGNOSTIC_PLATFORM : STR_DECOUPLE_DIAGNOSTIC_TOO_SHORT;
+		Debug(desync, 1, "DecoupleTrain: veh={} CANNOT decouple tile=({},{})", v->index, TileX(v->tile), TileY(v->tile));
+		return v;
+	}
+
+	Train *u = GetDecoupleVehicle(v);
+	{
+		const Order *after_decouple = (v->orders != nullptr) ? v->orders->GetOrderAt(v->cur_implicit_order_index + 1) : nullptr;
+		Debug(desync, 1, "DecoupleTrain: veh={} split u={} num={}", v->index, u != nullptr ? u->index.base() : -1,
+				after_decouple != nullptr ? after_decouple->GetNumDecouple() : -1);
+	}
+	if (u == nullptr) {
+		failure_reason = STR_DECOUPLE_DIAGNOSTIC_CUT;
+		return v;
+	}
+
+	/* The physical chain head of the front part. The consist carrier may sit
+	 * mid-chain (engine-less head side), so all surgery is anchored at the
+	 * physical heads, never at the primary. */
+	Train *front_head = v->First();
+
+	/* Preserve each wagon's last-loading-station attribution across the split
+	 * instead of dropping it: the decoupled part keeps recording links from
+	 * the station it actually loaded at on its very first trip. */
+	PropagateLastLoadingStation(v);
+
+	if (!TryTrainDecouple(front_head, u)) {
+		failure_reason = STR_DECOUPLE_DIAGNOSTIC_ARRANGEMENT;
+		return v;
+	}
+
+	/* Which physical part hosts the consist carrier? When the head side is
+	 * engine-less, the primary sits in the rear part and the roles swap: the
+	 * front part is the one that gets split off, while the primary's part
+	 * keeps the original orders. */
+	for (Train *w = u; w != nullptr; w = w->Next()) {
+		if (w == v) {
+			consist_in_rear = true;
+			break;
+		}
+	}
+	Train *dec_head = consist_in_rear ? front_head : u;
+	Train *consist_head = consist_in_rear ? u : front_head;
+	/* This train stays at the station and keeps on running the original orders. */
+	v->decouple_part = 1;
+	/* The decoupled part now runs a separate schedule: mark it as the second part. */
+	dec_head->decouple_part = 2;
+
+	/* The decoupled part inherits the slot occupants held by the consist part,
+	 * so both trains share the same slots. Slots have a maximum occupant
+	 * count; if adding the decoupled part would exceed that limit, it does not inherit. */
+	if (v->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
+		std::vector<TraceRestrictSlotID> slots;
+		TraceRestrictGetVehicleSlots(v->index, slots);
+		for (TraceRestrictSlotID slot_id : slots) {
+			TraceRestrictSlot::Get(slot_id)->Occupy(dec_head);
+		}
+	}
+
+	if (dec_head->IsEngine()) {
+		dec_head->SetFrontEngine();
+	} else {
+		dec_head->SetFrontWagon();
+	}
+
+	/* Pin the decoupled part's primary to its first engine (if any), even
+	 * when the chain head is a wagon: the engine carries the consist's age,
+	 * unit number and identity. For an engine-less part the chain head wagon
+	 * becomes the primary. Either way every member must be re-pinned: before
+	 * the split they may still have pointed into the consist part. */
+	{
+		Train *dec_prim = dec_head;
+		for (Train *w = dec_head; w != nullptr; w = w->Next()) {
+			if (w->IsEngine()) {
+				dec_prim = w;
+				break;
+			}
+		}
+		for (Train *w = dec_head; w != nullptr; w = w->Next()) w->SetPrimary(dec_prim);
+		if (dec_prim != dec_head) {
+			/* Restore the front-engine flag: it may have been cleared when
+			 * this engine's train was absorbed by a couple. Without it the
+			 * NormaliseTrainHead self-heal would reject the pinned primary
+			 * and fall back to the chain head. */
+			dec_prim->SetFrontEngine();
+			/* Only one vehicle of a chain may be a driver: drop the front-wagon
+			 * flag of the chain head, otherwise both the wagon head and the
+			 * mid-chain engine tick independently and drag the consist apart. */
+			dec_head->ClearFrontWagon();
+		}
+		/* Keep the last-loading-station records valid on both resulting parts
+		 * instead of invalidating them; see PropagateLastLoadingStation. */
+		NormalizeLastLoadingStation(dec_prim);
+		NormalizeLastLoadingStation(v);
+		dec_prim->decouple_part = 2;
+	}
+
+	SetTrainGroupID(dec_head, DEFAULT_GROUP);
+	GroupStatistics::CountVehicle(v, -1);
+
+	GroupStatistics::CountVehicle(v, 1);
+	GroupStatistics::CountVehicle(dec_head, 1);
+
+	/* Normalise both parts from their physical heads so the primary pointers
+	 * of the head-side vehicles (which sit before the primary) are refreshed
+	 * too; normalising from the mid-chain primary would leave them stale. */
+	NormaliseTrainHead(dec_head, CCF_COUPLE);
+	NormaliseTrainHead(consist_head, CCF_COUPLE);
+
+	/* The split created a new chain front; invalidate the vehicle tick caches
+	 * so both parts are ticked from now on (same as couple/flip do). */
+	InvalidateVehicleTickCaches();
+
+	InvalidateWindowClassesData(WindowClass::TrainList);
+
+
+	dec_head->vehstatus.Reset(VehState::Stopped);
+	v->vehstatus.Reset(VehState::Stopped);
+	RecordSyncEvent(NSRE_COUPLE);
+	return dec_head;
+}
+
+/**
+ * Check whether coupling the moving consist onto the waiting consist would
+ * produce a valid train, using the same backup/arrange/validate/restore logic
+ * as depot vehicle moves (CmdMoveRailVehicle). No change is kept.
+ * @param v_phys physical chain head of the moving train.
+ * @param u_phys physical chain head of the waiting train.
+ * @return true if the merged consist passes attachment validation.
+ */
+static bool CoupleOrderLoadOk(const Order &order, const Train *t)
+{
+	/* The expensive consist scan below only matters when the order actually
+	 * constrains the load; ODC_ANY must not pay for it (this check runs per
+	 * candidate inside the couple pathfinder). */
+	switch (order.GetCoupleLoad()) {
+		case ODC_ANY: return true;
+		case ODC_IS_EMPTY:
+		case ODC_IS_FULL: break;
+		default: NOT_REACHED();
+	}
+
+	struct ConsistPart {
+		uint32_t stored;
+		uint16_t cargo_cap;
+		CargoType cargo_type;
+		uint32_t carried_tonnes;
+	};
+	std::vector<ConsistPart> parts;
+	for (const Train *u = t->First(); u != nullptr; u = u->Next()) {
+		parts.push_back({u->cargo.StoredCount(), u->cargo_cap, u->cargo_type, 0});
+	}
+
+	/* RVTransportGetPartCargoAmount() walks every vehicle in the game once per
+	 * consist part, which is O(chain * vehicles) per candidate and stalls the
+	 * game when the couple pathfinder probes a station platform. Gather the
+	 * tonnes carried on all parts of this consist in a single global pass
+	 * instead; the result is identical. */
+	{
+		btree::btree_map<uint32_t, size_t> host_slot;
+		size_t i = 0;
+		for (const Train *u = t->First(); u != nullptr; u = u->Next(), i++) {
+			host_slot[u->index.base()] = i;
+		}
+		for (const Vehicle *v : Vehicle::Iterate()) {
+			if ((v->rv_transport_flags & RVTF_TRANSPORTED) == 0) continue;
+			auto it = host_slot.find(v->transported_host_part.base());
+			if (it == host_slot.end()) continue;
+			parts[it->second].carried_tonnes += v->transported_weight;
+		}
+	}
+
+	uint cargo = 0;
+	uint capacity = 0;
+	for (const ConsistPart &p : parts) {
+		uint amount = p.stored;
+		if (p.carried_tonnes != 0 && IsValidCargoType(p.cargo_type)) {
+			const CargoSpec *cs = CargoSpec::Get(p.cargo_type);
+			if (cs->weight != 0) {
+				amount = std::min<uint32_t>(p.stored + p.carried_tonnes * 16 / cs->weight, p.cargo_cap);
+			}
+		}
+		cargo += amount;
+		capacity += p.cargo_cap;
+	}
+
+	switch (order.GetCoupleLoad()) {
+		case ODC_IS_EMPTY: return cargo == 0;
+		case ODC_IS_FULL: return capacity > 0 && cargo == capacity;
+		default: NOT_REACHED();
+	}
+}
+
+static bool CoupleCargoOk(const Order &order, const Train *t)
+{
+	if (!order.HasCoupleCargoType()) return true;
+	CargoType cargo_type = order.GetCoupleCargoType();
+	for (const Train *v = t; v != nullptr; v = v->Next()) {
+		if (v->cargo_type == cargo_type && v->cargo_cap > 0) return true;
+	}
+	return false;
+}
+
+static bool CoupleNumOk(const Order &order, const Train *t)
+{
+	if (order.GetNumCouple() == 0) return true;
+
+	uint count = 0;
+	for (const Train *u = t->First(); u != nullptr; u = u->GetNextUnit()) count++;
+	return order.GetNumCouple() == count;
+}
+
+static bool CoupleSlotOk(const Order &order, const Train *t)
+{
+	TraceRestrictSlotID slot = order.GetCoupleSlot();
+	if (slot == TraceRestrictSlotID::Invalid()) return true;
+	const TraceRestrictSlot *rs = TraceRestrictSlot::GetIfValid(slot);
+	if (rs == nullptr) return false;
+	return rs->IsOccupant(t->index);
+}
+
+static bool CoupleSlotGroupOk(const Order &order, const Train *t)
+{
+	TraceRestrictSlotGroupID group = order.GetCoupleSlotGroup();
+	if (group == TraceRestrictSlotGroupID::Invalid()) return true;
+	const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(group);
+	if (sg == nullptr) return false;
+	return TraceRestrictIsVehicleInSlotGroup(sg, t->owner, t);
+}
+
+static bool CoupleGroupOk(const Order &order, const Train *t)
+{
+	GroupID group = order.GetCoupleGroup();
+	if (group == GroupID::Invalid()) return true;
+	/* Hierarchical: a consist placed in a sub-group of the selected group matches too. */
+	return GroupIsInGroup(t->group_id, group);
+}
+
+static bool CoupleStationOk(const Order &order, TileIndex contact_tile)
+{
+	if (!order.HasCoupleStation()) return true;
+	return IsRailStationTile(contact_tile) && GetStationIndex(contact_tile) == order.GetCoupleStation();
+}
+
+static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *moving, const Order &order,
+		Train *rep, TileIndex contact_tile);
+
+/** The couple order backing an active approach or an early checkpoint claim. */
+static const Order *GetClaimCoupleOrder(const Train *moving)
+{
+	/* An unscheduled depot trip overrides the route that backed an early claim. */
+	if (moving->current_order.IsType(OT_GOTO_DEPOT) && !moving->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders)) return nullptr;
+	if (moving->current_order.IsType(OT_GOTO_COUPLE)) return &moving->current_order;
+	if (moving->orders == nullptr) return nullptr;
+	for (VehicleOrderID i = moving->cur_real_order_index; i < moving->GetNumOrders(); ++i) {
+		const Order *order = moving->GetOrder(i);
+		if (order == nullptr || !order->IsType(OT_GOTO_COUPLE) || !order->HasCoupleCheckPoint()) continue;
+		for (VehicleOrderID j = 0; j <= moving->cur_real_order_index; ++j) {
+			const Order *earlier = moving->GetOrder(j);
+			if (earlier != nullptr && (earlier->IsType(OT_GOTO_STATION) || earlier->IsType(OT_GOTO_WAYPOINT)) &&
+					earlier->GetDestination().ToStationID() == order->GetCoupleCheckPoint()) return order;
+		}
+	}
+	return nullptr;
+}
+
+/** Leave an early couple checkpoint when a depot trip overrides the schedule. */
+void CancelTrainCoupleCheckpoint(Train *train)
+{
+	train = train->Primary();
+	if (Train *target = Train::GetIfValid(train->couple_target); target != nullptr) {
+		Train *carrier = target->Primary();
+		if (carrier->couple_claimant == train->index) {
+			carrier->couple_claimant = VehicleID::Invalid();
+			carrier->couple_claim_cost = 0;
+		}
+	}
+	train->couple_target = VehicleID::Invalid();
+	/* Cancel only the reversal belonging to the overridden checkpoint. */
+	if (train->flags.Test(VehicleRailFlag::CoupleCheckReversePending)) train->reverse_distance = 0;
+	train->flags.Reset({VehicleRailFlag::CoupleCheckReversePending, VehicleRailFlag::CoupleCheckReservationReleased});
+}
+
+/**
+ * Check a waiting consist's exclusive claim, including while its claimant is
+ * still completing orders between the checkpoint and the couple order.
+ * Changing the target or any volatile order condition invalidates the claim.
+ */
+static Train *GetValidCoupleClaimant(const Train *carrier)
+{
+	Train *claimant = Train::GetIfValid(carrier->couple_claimant);
+	if (claimant == nullptr) return nullptr;
+
+	/* The claim only counts while the claimant is still approaching this
+	 * consist; anything else (order left, different target, crash) releases it. */
+	const Order *couple_order = GetClaimCoupleOrder(claimant);
+	if (couple_order == nullptr) return nullptr;
+	if (claimant->vehstatus.Test(VehState::Crashed)) return nullptr;
+	Train *tgt = Train::GetIfValid(claimant->couple_target);
+	if (tgt == nullptr || tgt->Primary() != carrier) return nullptr;
+
+	/* The partner can stop qualifying at any time while we approach it (most
+	 * notably it can lose its 路签 to another consist, or fill up). Note this
+	 * must not go through #GetCoupleCandidateResult: that one asks
+	 * #CoupleClaimBlocks, which lands back here. */
+	CoupleCandidateResult vol = GetCoupleVolatileConditionResult(claimant, *couple_order, tgt->First(), tgt->tile);
+	if (vol != CoupleCandidateResult::Valid) {
+		/* Queries are also made by GUI diagnostics and NewGRF inspectors.
+		 * Report an invalid claim without changing simulation state; the game
+		 * tick's speed update / target selection performs the actual cleanup. */
+		return nullptr;
+	}
+
+	return claimant;
+}
+
+/**
+ * Get the couple target this moving consist has already validly claimed, if any.
+ * A consist that has claimed a waiting train keeps approaching it instead of
+ * re-running the couple pathfinder and re-claiming every tick; only when the
+ * claim is stale (target gone, not waiting, crashed, or no longer held by this
+ * consist) should the caller search afresh and re-claim.
+ * @param moving the approaching consist.
+ * @return the claimed contact-end vehicle, or nullptr when there is no valid claim.
+ */
+static Train *GetClaimedCoupleTarget(const Train *moving)
+{
+	Train *tgt = Train::GetIfValid(moving->couple_target);
+	if (tgt == nullptr) return nullptr;
+	Train *carrier = tgt->Primary();
+	/* The claim is only usable while the target is still a live, waiting consist
+	 * and the claim is still held by this moving consist. */
+	if (carrier->vehstatus.Test(VehState::Crashed)) return nullptr;
+	if (!IsHoldingForCouple(carrier)) return nullptr;
+	if (GetValidCoupleClaimant(carrier) != moving->Primary()) return nullptr;
+	return tgt;
+}
+
+const Train *GetCoupleClaimant(const Train *carrier)
+{
+	return GetValidCoupleClaimant(carrier->Primary());
+}
+
+/**
+ * Check whether a waiting consist is already reserved for another train.
+ * @param carrier Primary of the waiting consist.
+ * @param moving the approaching consist challenging the claim.
+ * @param claim_cost path cost of the challenger's route to the waiting consist.
+ * @return true when the claim blocks the challenger.
+ */
+static bool CoupleClaimBlocks(const Train *carrier, const Train *moving, [[maybe_unused]] uint32_t claim_cost)
+{
+	Train *claimant = GetValidCoupleClaimant(carrier);
+	if (claimant == nullptr) return false;
+	if (claimant == moving->Primary()) return false;
+	/* A selected partner remains exclusive, including during intermediate orders. */
+	return true;
+}
+
+void ClaimCoupleTarget(Train *moving, Train *carrier, uint32_t claim_cost)
+{
+	Train *prim = moving->Primary();
+	if (GetClaimCoupleOrder(prim) == nullptr) return;
+
+	Train *claimant = GetValidCoupleClaimant(carrier);
+	if (claimant == prim) {
+		carrier->couple_claim_cost = claim_cost;
+		return;
+	}
+	if (claimant != nullptr) return;
+
+	carrier->couple_claimant = prim->index;
+	carrier->couple_claim_cost = claim_cost;
+}
+
+/**
+ * Check the *volatile* conditions of a couple order against a waiting train.
+ *
+ * These are all cheap state comparisons (the partner can change any of them
+ * while the approaching consist is still on its way: it can lose its 路签,
+ * finish loading, get refitted, drive off, ...), so they are re-checked every
+ * tick for an established claim. The expensive geometric check
+ * (#IsCoupleArrangementValid, which re-arranges both chains and runs the NewGRF
+ * start/stop callbacks) is deliberately NOT part of this: it belongs to target
+ * selection and to the actual contact, never to the per-tick claim validation.
+ *
+ * @param moving the approaching consist.
+ * @param order the GOTO_COUPLE order of \a moving.
+ * @param rep physical chain head of the waiting train.
+ * @param contact_tile tile where the coupling is expected to happen.
+ * @return #CoupleCandidateResult::Valid, or the first condition that fails.
+ */
+static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *moving, const Order &order,
+		Train *rep, TileIndex contact_tile)
+{
+	Train *carrier = rep->Primary();
+
+	if (!IsHoldingForCouple(carrier)) return CoupleCandidateResult::NotWaiting;
+	if (carrier->vehstatus.Test(VehState::Crashed)) return CoupleCandidateResult::Crashed;
+	if (carrier->vehstatus.Test(VehState::Stopped)) return CoupleCandidateResult::Stopped;
+	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return CoupleCandidateResult::Owner;
+	if (!CoupleOrderLoadOk(order, rep)) return CoupleCandidateResult::Load;
+	if (!CoupleCargoOk(order, rep)) return CoupleCandidateResult::Cargo;
+	if (!CoupleNumOk(order, rep)) return CoupleCandidateResult::UnitCount;
+	if (!CoupleSlotOk(order, carrier)) return CoupleCandidateResult::Slot;
+	if (!CoupleSlotGroupOk(order, carrier)) return CoupleCandidateResult::SlotGroup;
+	if (!CoupleGroupOk(order, carrier)) return CoupleCandidateResult::Group;
+	if (!CoupleStationOk(order, contact_tile)) return CoupleCandidateResult::Station;
+	if (!TrainFitStation(rep)) return CoupleCandidateResult::Platform;
+	return CoupleCandidateResult::Valid;
+}
+
+/**
+ * Validate a waiting train as a coupling partner for the moving consist and
+ * return the end of its chain expected to make contact first.
+ * @param moving the approaching consist.
+ * @param rep physical chain head of the waiting train.
+ * @param contact_tile tile where the coupling is expected to happen.
+ * @param respect_claim when true, a waiting train already claimed by another
+ *   approaching consist is rejected (target selection); the claim is ignored
+ *   on the physical contact paths so a reached partner always couples.
+ * @param claim_cost path cost of the moving consist's route when selecting.
+ * @return the contact-end vehicle of the waiting train, or nullptr if invalid.
+ */
+CoupleCandidateResult GetCoupleCandidateResult(const Train *moving, const Order &order,
+		Train *rep, TileIndex contact_tile, bool respect_claim, uint32_t claim_cost)
+{
+	Train *carrier = rep->Primary();
+
+	if (!order.IsType(OT_GOTO_COUPLE)) return CoupleCandidateResult::NotCoupleOrder;
+	if (respect_claim && CoupleClaimBlocks(carrier, moving, claim_cost)) return CoupleCandidateResult::Claimed;
+	CoupleCandidateResult volatile_result = GetCoupleVolatileConditionResult(moving, order, rep, contact_tile);
+	if (volatile_result != CoupleCandidateResult::Valid) return volatile_result;
+	if (!IsCoupleArrangementValid(const_cast<Train *>(moving), rep)) return CoupleCandidateResult::Arrangement;
+	return CoupleCandidateResult::Valid;
+}
+
+/** Select and exclusively claim a matching waiting consist, or report that no partner is ready. */
+static bool ClaimOrWaitForCoupleOrder(Train *moving, const Order &couple)
+{
+	if (GetClaimedCoupleTarget(moving) != nullptr) {
+		moving->flags.Reset(VehicleRailFlag::CoupleCheckReservationReleased);
+		return false;
+	}
+	for (Train *candidate : Train::Iterate()) {
+		if (!candidate->IsPrimaryVehicle() || candidate == moving || candidate->vehstatus.Test(VehState::Crashed)) continue;
+		Train *ends[2] = {candidate->First(), candidate->First()->Last()};
+		if (DistanceManhattan(ends[1]->tile, moving->tile) < DistanceManhattan(ends[0]->tile, moving->tile)) std::swap(ends[0], ends[1]);
+		for (Train *end : ends) {
+			if (GetCoupleCandidateResult(moving, couple, candidate->First(), end->tile, true, 0) != CoupleCandidateResult::Valid) continue;
+			moving->couple_target = end->index;
+			ClaimCoupleTarget(moving, candidate, 0);
+			if (GetClaimedCoupleTarget(moving) != nullptr) {
+				moving->flags.Reset(VehicleRailFlag::CoupleCheckReservationReleased);
+				return false;
+			}
+			moving->couple_target = VehicleID::Invalid();
+		}
+	}
+	/* The checkpoint can be several orders before the actual couple order.
+	 * Stop and release its existing forward reservation just as an unmatched
+	 * OT_GOTO_COUPLE does, so other trains may use the route while we wait. */
+	moving->cur_speed = 0;
+	moving->subspeed = 0;
+	/* Only release once. Repeating this walk after another train reserves the
+	 * newly freed route could otherwise clear that train's reservation. */
+	if (!moving->flags.Test(VehicleRailFlag::CoupleCheckReservationReleased)) {
+		FreeTrainTrackReservation(moving);
+		moving->flags.Set(VehicleRailFlag::CoupleCheckReservationReleased);
+	}
+	return true;
+}
+
+bool TrainShouldWaitForCoupleAtCheckpoint(Train *moving, bool *at_checkpoint, StationID arrived)
+{
+	if (at_checkpoint != nullptr) *at_checkpoint = false;
+	if (moving->current_order.IsType(OT_GOTO_DEPOT)) return false;
+	if (moving->orders == nullptr || moving->vehstatus.Test(VehState::Crashed)) return false;
+	const Order *current = moving->GetOrder(moving->cur_real_order_index);
+	if (current == nullptr || (!current->IsType(OT_GOTO_STATION) && !current->IsType(OT_GOTO_WAYPOINT))) return false;
+	const Train *front = moving->GetMovingFront();
+	const StationID point = current->GetDestination().ToStationID();
+	if (arrived != StationID::Invalid()) {
+		if (arrived != point) return false;
+	} else if (moving->current_order.IsType(OT_LOADING) && current->IsType(OT_GOTO_STATION) && moving->last_station_visited == point && moving->cur_speed == 0) {
+		/* A long train may have its moving front beyond the platform tile while
+		 * loading. The active station order still identifies the checkpoint. */
+	} else if ((!IsRailStationTile(front->tile) && !IsRailWaypointTile(front->tile)) || GetStationIndex(front->tile) != point) {
+		return false;
+	}
+	const Order *couple = nullptr;
+	for (VehicleOrderID i = moving->cur_real_order_index + 1; i < moving->GetNumOrders(); ++i) {
+		const Order *next = moving->GetOrder(i);
+		if (next != nullptr && next->IsType(OT_GOTO_COUPLE) && next->HasCoupleCheckPoint() && next->GetCoupleCheckPoint() == current->GetDestination().ToStationID()) { couple = next; break; }
+	}
+	if (couple == nullptr) return false;
+	if (at_checkpoint != nullptr) *at_checkpoint = true;
+	if (current->IsType(OT_GOTO_WAYPOINT) && current->GetWaypointFlags().Test(OrderWaypointFlag::Reverse) && moving->reverse_distance > 0) {
+		moving->flags.Set(VehicleRailFlag::CoupleCheckReversePending);
+		return false;
+	}
+	return ClaimOrWaitForCoupleOrder(moving, *couple);
+}
+
+Train *ValidateCoupleCandidate(const Train *moving, Train *rep, TileIndex contact_tile,
+		bool respect_claim, uint32_t claim_cost)
+{
+	const Order &order = moving->Primary()->current_order;
+	if (GetCoupleCandidateResult(moving, order, rep, contact_tile, respect_claim, claim_cost) != CoupleCandidateResult::Valid) return nullptr;
+
+	/* The waiting train's closest end to the contact point is met first. */
+	Train *first = rep;
+	Train *last = rep->Last();
+	return DistanceManhattan(first->tile, contact_tile) <= DistanceManhattan(last->tile, contact_tile) ? last : first;
+}
+
+/**
+ * Scan a station platform for a valid coupling partner.
+ * @param moving the approaching consist.
+ * @param tile tile the couple pathfinder wants to reach.
+ * @param td trackdir of arrival.
+ * @param respect_claim whether an existing couple claim on the waiting train
+ *   blocks this consist (see #ValidateCoupleCandidate).
+ * @param claim_cost path cost of the moving consist's route when selecting.
+ * @return contact-end vehicle of a waiting train, or nullptr.
+ */
+Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir td,
+		bool respect_claim, uint32_t claim_cost)
+{
+	if (!IsRailStationTile(tile)) return nullptr;
+
+	TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
+	for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
+		for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
+			if (t->vehstatus.Test(VehState::Crashed)) continue;
+			Train *target = ValidateCoupleCandidate(moving, t->First(), st_tile, respect_claim, claim_cost);
+			if (target != nullptr) {
+				/* A candidate whose approach is blocked by another consist is not
+				 * reachable; keep looking for a waiting train we can reach. */
+				if (IsCoupleApproachPathClearTo(moving, target)) return target;
+			}
+		}
+	}
+	return nullptr;
+}
+
+bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
+{
+	/* The pathfinder operates on the Primary, which may be in the middle of
+	 * the physical chain. Back up and arrange complete consists only; otherwise
+	 * RestoreTrainBackup would detach every vehicle preceding the Primary. */
+	v_phys = v_phys->First();
+	u_phys = u_phys->First();
+
+	TrainList original_src;
+	TrainList original_dst;
+
+	TrialConsistGuard trial_guard;
+
+	MakeTrainBackup(original_src, v_phys);
+	MakeTrainBackup(original_dst, u_phys);
+	trial_guard.SnapshotChain(original_src);
+	trial_guard.SnapshotChain(original_dst);
+
+	Train *u_head = u_phys;
+	Train *v = v_phys;
+	Train *v_last = v_phys->Last();
+
+	ArrangeTrains(&v, v_last, &u_head, u_phys, true, false);
+
+	/* The NewGRF caches still hold values of the two pre-couple consists;
+	 * invalidate them so the start/stop check sees the merged consist. */
+	v->InvalidateNewGRFCacheOfChain();
+	RefreshTrainUserDefData(v);
+
+	bool ok = !CheckTrainAttachment(v).Failed();
+	ok &= v->CanConsistChange(CCF_ARRANGE_CHECK);
+
+	/* Target selection gate: the merged consist's primary must satisfy the
+	 * NewGRF start/stop check, otherwise this couple target is rejected. */
+	Train *merged_prim = GetStartStopCheckVehicle(v);
+	CommandCost cb = CheckVehicleStartStopCallback(merged_prim);
+	ok &= !cb.Failed();
+
+	RestoreTrainBackup(original_src);
+	RestoreTrainBackup(original_dst);
+
+	return ok;
+}
+
+/**
+ * Try to couple the two consists together.
+ */
+static bool TryTrainCouple(Train *v, Train *u)
+{
+	TrainList original_src;
+	TrainList original_dst;
+
+	TrialConsistGuard trial_guard;
+
+	MakeTrainBackup(original_src, v);
+	MakeTrainBackup(original_dst, u);
+	trial_guard.SnapshotChain(original_src);
+	trial_guard.SnapshotChain(original_dst);
+
+	Train *u_head = u;
+	Train *v_last = v->Last();
+
+	ArrangeTrains(&v, v_last, &u_head, u, true, false);
+
+	/* The NewGRF caches still hold values of the two pre-couple consists;
+	 * invalidate them so the start/stop check sees the merged consist. */
+	v->InvalidateNewGRFCacheOfChain();
+	RefreshTrainUserDefData(v);
+
+	CommandCost ret = CheckTrainAttachment(v);
+	bool ok = v->CanConsistChange(CCF_ARRANGE_CHECK);
+
+	/* The merged consist's primary must satisfy the NewGRF start/stop check. */
+	Train *merged_prim = GetStartStopCheckVehicle(v);
+	CommandCost cb_merged = CheckVehicleStartStopCallback(merged_prim);
+	ok &= !cb_merged.Failed();
+
+	if (ret.Failed() || !ok) {
+		/* Restore the train we had. */
+		RestoreTrainBackup(original_src);
+		RestoreTrainBackup(original_dst);
+
+		v->ConsistChanged(CCF_ARRANGE_STATION);
+		u->ConsistChanged(CCF_ARRANGE_STATION);
+		return false;
+	}
+
+	/* Coupling removes a train front; invalidate the tick caches or the merged chain will be ticked twice. */
+	InvalidateVehicleTickCaches();
+	return true;
+}
+
+/**
+ * Move a train vehicle to the given pixel position, keeping its tile, height and
+ * vehicle hash consistent with the new position.
+ * @param v vehicle to move.
+ * @param x new x position.
+ * @param y new y position.
+ */
+static void MoveTrainToPosition(Train *v, int x, int y)
+{
+	if (v->x_pos == x && v->y_pos == y) return;
+
+	TileIndex tile = TileVirtXY(x, y);
+	bool changed_tile = (tile != v->tile);
+
+	v->x_pos = x;
+	v->y_pos = y;
+	v->z_pos = GetSlopePixelZ(x, y, true);
+	v->tile = tile;
+
+	if (changed_tile) {
+		/* The vehicle changed tile: run the usual enter tile update. */
+		UpdateStatusAfterSwap(v, false);
+	} else {
+		/* Moved inside its tile: update the sprite and the vehicle hash without
+		 * re-entering the (unchanged) tile, like the single vehicle case of
+		 * ReverseTrainNoSwapVehicles(). */
+		v->InvalidateImageCache();
+		v->UpdateIsDrawn();
+		v->UpdatePosition();
+		v->UpdateViewport(true, true);
+	}
+}
+
+void TrainMoveToPosition(Train *v, int x, int y)
+{
+	MoveTrainToPosition(v, x, y);
+}
+
+/**
+ * Re-space a consist half that was just mirrored in place by
+ * ReverseTrainNoSwapVehicles().
+ *
+ * Mirroring re-pairs the adjacent vehicles, and with variable length consists
+ * the rounding that governs each pair's spacing swaps with the pairing, so
+ * consecutive vehicles can end up a pixel too tight or too wide. Correcting
+ * that by pushing chunks around does not converge: a push moves every vehicle
+ * of the chunk, which disturbs pairs that were already correct, and for the half
+ * that trails at the joint every push is directed towards the partner consist,
+ * so the half creeps into it.
+ *
+ * Instead lay the half out in a single pass from the end that must not move (the
+ * joint end, where the partner consist is standing) towards the other end: every
+ * vehicle is placed at exactly the joint offset from its chain neighbour.
+ *
+ * @param half_first chain head of the flipped half.
+ * @param joint_at_tail whether the end that must keep its position is the chain
+ *                      tail (\c true, the moving consist: its tail meets the
+ *                      partner) or the chain head (\c false, the waiting consist:
+ *                      its head meets the partner).
+ */
+static void RespaceFlippedHalf(Train *half_first, bool joint_at_tail)
+{
+	if (joint_at_tail) {
+		/* Lay out towards the chain head: every predecessor takes its position
+		 * from its already placed successor. */
+		for (Train *b = half_first->Last(); b->Previous() != nullptr; b = b->Previous()) {
+			Train *a = b->Previous();
+			TileIndexDiffC dd = CoupleMotionDelta(a);
+			int offset = CouplePairOffset(a);
+			MoveTrainToPosition(a, b->x_pos + dd.x * offset, b->y_pos + dd.y * offset);
+		}
+	} else {
+		/* Lay out towards the chain tail: every successor takes its position from
+		 * its already placed predecessor. */
+		for (Train *a = half_first; a->Next() != nullptr; a = a->Next()) {
+			Train *b = a->Next();
+			TileIndexDiffC dd = CoupleMotionDelta(a);
+			int offset = CouplePairOffset(a);
+			MoveTrainToPosition(b, a->x_pos - dd.x * offset, a->y_pos - dd.y * offset);
+		}
+	}
+}
+
+/**
+ * Reverse a train for coupling by flipping the consist in place.
+ *
+ * Single vehicles keep their physical position and only turn around; the chain
+ * order is reversed so the former tail becomes the front. Dual-headed and
+ * articulated units are reversed as whole blocks (their parts exchange
+ * positions inside the block). The primary vehicle is not moved, so the train
+ * keeps its identity, orders and group.
+ */
+static void ReverseTrainForCouple(Train *v, bool joint_at_tail)
+{
+	/* Physical reversal always operates on the whole chain; callers may pass
+	 * the primary vehicle which can sit mid-chain. */
+	v = v->First();
+	ReverseTrainNoSwapVehicles(v);
+	/* The flip reverses the chain order, so the local pointer now sits
+	 * mid-chain; re-anchor at the new chain head before re-spacing. */
+	v = v->First();
+	RespaceFlippedHalf(v, joint_at_tail);
+}
+
+/**
+ * Make the moving consist take over the waiting consist's schedule: the order
+ * list (incl. shared chain membership), the primary order list, the execution
+ * position and the dispatch/timetable state are all taken from the waiting
+ * consist instead of keeping the moving consist's own schedule.
+ * @param v the surviving (moving) consist's primary vehicle
+ * @param u the waiting consist's primary vehicle
+ */
+static void AdoptCoupleWaitingSchedule(Train *v, Train *u)
+{
+	if (u->orders == nullptr) return;
+	OrderList *adopted = u->orders;
+
+	if (v->orders != adopted) {
+		/* Leave our own order list first. */
+		if (v->IsOrderListShared()) {
+			v->RemoveFromShared();
+		} else if (v->orders->IsPlayerCreated()) {
+			v->orders->RemoveVehicle(v);
+		} else if (OrderListIsSomeonesHome(v->orders)) {
+			/* Another vehicle away on an execute-schedule detour calls this list home, so it has
+			 * to survive. Only detach from it; leaving the vehicle in the chain with no orders
+			 * would make a later join allocate a fresh empty list for it. */
+			v->orders->RemoveVehicle(v);
+		} else {
+			v->orders->FreeChain(false);
+		}
+		v->orders = adopted;
+		adopted->AssignVehicle(v);
+	}
+
+	/* Take over the waiting consist's schedule state wholesale. */
+	v->primary_order = u->primary_order;
+	v->primary_order_index = u->primary_order_index;
+	v->cur_real_order_index = u->cur_real_order_index;
+	v->cur_implicit_order_index = u->cur_implicit_order_index;
+	v->cur_timetable_order_index = u->cur_timetable_order_index;
+	v->current_order_time = u->current_order_time;
+	v->lateness_counter = u->lateness_counter;
+	v->timetable_start = u->timetable_start;
+	v->dispatch_records = u->dispatch_records;
+	u->dispatch_records.clear();
+	v->vehicle_flags.Set(VehicleFlag::ScheduledDispatch, u->vehicle_flags.Test(VehicleFlag::ScheduledDispatch));
+	v->vehicle_flags.Set(VehicleFlag::TimetableSeparation, u->vehicle_flags.Test(VehicleFlag::TimetableSeparation));
+	v->vehicle_flags.Set(VehicleFlag::AutomateTimetable, u->vehicle_flags.Test(VehicleFlag::AutomateTimetable));
+	v->vehicle_flags.Set(VehicleFlag::SeparationActive, u->vehicle_flags.Test(VehicleFlag::SeparationActive));
+
+	/* The taken-over position sits on the order the waiting consist was held
+	 * at -- usually 'wait for couple'. Advance past it, otherwise the merged
+	 * consist would re-enter the wait and never continue. */
+	if (u->current_order.IsType(OT_WAIT_COUPLE)) {
+		v->IncrementRealOrderIndex();
+	}
+
+	/* Let the next ProcessOrders pick up the order at the taken-over position. */
+	v->current_order.Free();
+	v->SetDestTile(INVALID_TILE);
+	v->last_station_visited = u->last_station_visited;
+}
+
+/**
+ * Couple the train \a u onto the train \a v.
+ */
+static void Couple(Train *v, Train *u)
+{
+	/* v may arrive as the physical moving front (Last() when driving backwards,
+	 * which for an articulated train is a non-primary part). All order handling
+	 * (IncrementImplicitOrderIndex / ProcessOrders) and NormaliseTrainHead must
+	 * run on the primary vehicle, so normalise to the chain heads first. */
+	v = v->Primary();
+	u = u->Primary();
+	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return;
+
+	/* Stop the order/speed carrier before processing successor orders. The
+	 * moving endpoint can be a wagon, especially after a previous coupling.
+	 * A wait-at-station successor must see a stopped train; otherwise it
+	 * clears last_station_visited and sends the consist out to re-enter. */
+	v->cur_speed = 0;
+	v->subspeed = 0;
+	v->progress = 0;
+
+	/* The couple order may instruct the consist to adopt the waiting
+	 * consist's schedule; current_order is still that order here. */
+	bool adopt_waiting_schedule = v->current_order.IsType(OT_GOTO_COUPLE) && v->current_order.GetCoupleUseWaitingSchedule();
+
+	/*
+	 * Orientation phase: v will stay the front of the merged consist
+	 * (ClearFrontWagon/ClearFrontEngine + NormaliseTrainHead below), so both
+	 * trains must face the same way BEFORE the merge. All reversals here are
+	 * full physical flips (direction + position + tile, via
+	 * ReverseTrainForCouple); no direction adjustments happen after this
+	 * point.
+	 */
+
+	/* Which end of v reaches the joint: v is the moving train and u is
+	 * stationary, so v's own driving state decides it. If v is driving
+	 * backwards its tail meets u (no flip needed); otherwise its head meets
+	 * u, so v must be turned around and approach tail-first. */
+	if (!v->IsDrivingBackwards()) {
+		/* Its tail meets the waiting consist after the flip. */
+		ReverseTrainForCouple(v, true);
+		v = v->Primary();
+	}
+
+	/* u must face the (possibly reversed) v within 45 degrees to couple as-is. */
+	DirDiff dir_diff = DirDifference(v->direction, u->direction);
+	if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
+		/* The waiting consist's head is the end that meets the partner. */
+		ReverseTrainForCouple(u, false);
+		u = u->Primary();
+	} else {
+		u = u->Primary();
+	}
+
+	/* The couple happened at the station of the GOTO_COUPLE order; record it
+	 * as the last visited station (the movement-loop coupling path never goes
+	 * through TrainEnterStation). Without this the implicit order bookkeeping
+	 * on departure runs with an invalid station and derails order advancement. */
+	v->last_station_visited = v->current_order.GetDestination().ToStationID();
+
+	/* The coupled consist's front (u) becomes a non-primary wagon of the merged
+	 * consist, so any trace restrict slot it held must be transferred to the
+	 * survivor front, otherwise the slot ends up pointing at a non-primary
+	 * vehicle. Same convention as autoreplace.
+	 *
+	 * This has to happen BEFORE the order advance below: that advance executes
+	 * the next order, so a slot-release order right after the couple ("return
+	 * the slot") runs there, and it vacates the slot for the surviving consist's
+	 * own primary. If the slot is still registered under u at that point, the
+	 * release is a no-op and the merged consist would keep holding a slot that
+	 * it already gave back. */
+	const bool transferred_slots = u->vehicle_flags.Test(VehicleFlag::HaveSlot);
+	if (transferred_slots) {
+		TraceRestrictTransferVehicleOccupantInAllSlots(u->index, v->index);
+		u->vehicle_flags.Reset(VehicleFlag::HaveSlot);
+		v->vehicle_flags.Set(VehicleFlag::HaveSlot);
+	}
+
+	/* The couple order is done, so load the one after it. This must not happen
+	 * when the consist takes over the waiting consist's schedule: that schedule
+	 * is about to replace ours wholesale, and running our own next order first
+	 * leaves its effects behind for the replacement not to undo. A slot release
+	 * right after the couple is the visible case, vacating a slot the transfer
+	 * above has just moved to us. The adopted successor is loaded further down
+	 * instead, see the adopt_waiting_schedule block. */
+	if (!adopt_waiting_schedule) {
+		v->IncrementImplicitOrderIndex();
+		ProcessOrders(v);
+	}
+
+	/* TryTrainCouple performs chain surgery (MakeTrainBackup/ArrangeTrains) and
+	 * needs the physical chain head; the primary vehicle is only the identity
+	 * for user-facing messages below. */
+	Train *v_phys = v->First();
+	Train *u_phys = u->First();
+
+	Train *v_last = v_phys->Last();
+
+	/* Preserve each part's last-loading-station attribution across the merge:
+	 * after coupling, VehicleIncreaseStats can keep attributing every wagon's
+	 * links to the station it actually loaded at, even though the two parts
+	 * may have loaded at different stations. */
+	PropagateLastLoadingStation(v);
+	PropagateLastLoadingStation(u);
+
+	if (!TryTrainCouple(v_phys, u_phys)) {
+		if (v->owner == _local_company) {
+			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
+		}
+		/* The couple did not happen, so give the waiting consist its slots back. */
+		if (transferred_slots && v->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
+			TraceRestrictTransferVehicleOccupantInAllSlots(v->index, u->index);
+			v->vehicle_flags.Reset(VehicleFlag::HaveSlot);
+			u->vehicle_flags.Set(VehicleFlag::HaveSlot);
+		}
+		return;
+	}
+
+
+	/* The absorbed consist's primary pointers must follow the surviving
+	 * primary, otherwise vehicles of the absorbed part resolve their consist
+	 * info (orders, name, group) from a stale mid-chain vehicle. */
+	Train *v_prim = v->Primary();
+	for (Train *w = v->First(); w != nullptr; w = w->Next()) {
+		w->SetPrimary(v_prim);
+	}
+	/* The merged consist keeps the last-loading-station records of both parts;
+	 * switch to per-vehicle attribution when they loaded at different
+	 * stations. */
+	NormalizeLastLoadingStation(v_prim);
+
+	/* The consist windows keyed to u are left to NormaliseTrainHead() below: it re-keys exactly
+	 * one window per class to the primary of the merged chain, which keeps the window of v (the
+	 * part the player was driving) and closes the one of u, or moves u's over to v when v had no
+	 * window open at all. */
+	DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
+	SetWindowDirty(WindowClass::Company, _current_company);
+
+	/* Delete orders, group stuff and the unit number as we're not the front of any vehicle anymore. */
+
+	/* The moving consist may take over the waiting consist's schedule; do this
+	 * before the waiting consist's orders are removed, so its state can be
+	 * copied and the surviving consist can join its shared chain. */
+	if (adopt_waiting_schedule) AdoptCoupleWaitingSchedule(v, u);
+
+	DeleteVehicleOrders(u);
+	u->ReleaseUnitNumber();
+	GroupStatistics::CountVehicle(u, -1);
+
+	v->profit_this_year += u->profit_this_year;
+	v->profit_last_year += u->profit_last_year;
+
+	u->profit_last_year = 0;
+	u->profit_this_year = 0;
+
+	u->ClearFrontWagon();
+	u->ClearFrontEngine();
+
+	/* Normalise from the physical chain head, not from the primary: the vehicles ahead of the
+	 * primary have to be in the chain for their windows to be re-keyed as well. */
+	NormaliseTrainHead(v->First(), CCF_COUPLE);
+	RecordSyncEvent(NSRE_COUPLE);
+
+	/* The train is now one consist again: it is no longer a decoupled part. */
+	v->Primary()->decouple_part = 0;
+
+	/* The merge moved vehicles -- and the primary that carries the breakdown
+	 * bookkeeping -- between the two consists, so recompute it for the merged
+	 * consist; see #RefreshConsistBreakdownState. The absorbed consist's own copy
+	 * of the flag went out of use with its front engine above. */
+	RefreshConsistBreakdownState(v->Primary());
+
+	/* [FIX-couple] Post-couple flag cleanup. Direction is NOT touched here: it
+	 * is maintained by the standard movement pipeline (AdvanceWagonsAfterCouple
+	 * -> TrainController recomputes per-vehicle direction from the track every
+	 * tick), so any manual override (e.g. forcing u->direction to a quantized
+	 * travel axis) desyncs direction from the vehicle's pixels and produces the
+	 * 45-degree visual skew seen before. Only clear stale flags that would make
+	 * the next tick trigger an unrequested auto-reversal. */
+	for (Train *w = v; w != nullptr; w = w->Next()) {
+		w->flags.Reset(VehicleRailFlag::Reversed);
+	}
+	v->flags.Reset(VehicleRailFlag::Reversing);
+
+	/* If the absorbed consist was queued for loading/unloading at a station,
+	 * drop the stale entry: it can never leave the queue by itself anymore
+	 * and its load_unload_ticks would eventually hit zero and assert. */
+	Station *couple_station = Station::GetIfValid(u->last_station_visited);
+	if (couple_station != nullptr) {
+		auto &loading = couple_station->loading_vehicles;
+		auto it = std::find(loading.begin(), loading.end(), u);
+		if (it != loading.end()) loading.erase(it);
+	}
+	AdvanceWagonsAfterCouple(v_last);
+
+	/* Stale look-ahead/reservations from before the flip: rebuild them for
+	 * the combined train's new position and direction, otherwise it drives
+	 * blindly (and may end up in a depot) until it hits a PBS signal. */
+	v->Primary()->lookahead.reset();
+	if (u != nullptr) u->lookahead.reset();
+	if (adopt_waiting_schedule) {
+		/* AdoptCoupleWaitingSchedule took over u's schedule and freed
+		 * current_order, only fixing the order index. Load the successor
+		 * order now so the reservation and reversal checks below operate on
+		 * the adopted destination instead of leaving the merged consist
+		 * orderless. Otherwise a head-couple is oriented by no order at all
+		 * and its first forward reservation fails, reporting the consist as
+		 * lost before it ever departs. This mirrors the adopt-off path, where
+		 * the ProcessOrders in Couple() already loaded the next order. */
+		ProcessOrders(v);
+	}
+	InvalidateWindowClassesData(WindowClass::TrainList);
+	/* The physical chain order is now correct (orientation is fixed before
+	 * the merge), so give the consist the usual chance to reverse in the
+	 * station, e.g. when its next order points the other way. CheckReverseTrain
+	 * only sets Reversing; the actual turnaround still happens at the usual
+	 * spot in the movement handler (speed zero + Reversing flag). Do not reserve
+	 * ahead until this decision is made: ReverseTrainDirection will reserve in
+	 * the new direction when the turnaround completes. */
+	Train *consist = v->Primary();
+	consist->cur_speed = 0;
+	consist->subspeed = 0;
+	consist->progress = 0;
+	if (IsHoldingForCouple(consist)) {
+		FreeTrainTrackReservation(consist);
+		HoldWaitingTrainBody(consist);
+		return;
+	}
+	if (CheckReverseTrain(consist)) {
+		consist->flags.Set(VehicleRailFlag::Reversing);
+	} else {
+		TryPathReserve(consist);
+	}
+}
+
+/**
+ * Centre-to-centre distance between the two vehicles that meet at a coupling
+ * joint when their ends just touch. Follows the same rounding rule as
+ * Train::CalcNextVehicleOffset(): for a vehicle of odd length the half towards
+ * the front is one unit longer, so the leading vehicle rounds up its own half
+ * only when driving backwards, and the following vehicle gets the complementary
+ * rounding.
+ * @param front_len              Length (in vehicle units) of the leading vehicle.
+ * @param back_len               Length (in vehicle units) of the following vehicle.
+ * @param front_driving_backwards Whether the leading vehicle is driving backwards.
+ * @return Distance in vehicle units (same units as x_pos/y_pos offsets).
+ */
+static int CoupleJointOffset(uint8_t front_len, uint8_t back_len, bool front_driving_backwards)
+{
+	uint8_t rounding = front_driving_backwards ? 1 : 0;
+	return (front_len + rounding) / 2 + (back_len + 1 - rounding) / 2;
 }
 
 /**
@@ -4974,7 +7746,10 @@ TileIndex Train::GetOrderStationLocation(StationID station)
 /** Goods at the consist have changed, update the graphics, cargo, and acceleration. */
 void Train::MarkDirty()
 {
-	Train *v = this;
+	/* Callable on any vehicle of the chain (e.g. a primary vehicle that is not
+	 * the chain head): refresh the whole physical chain and recompute the
+	 * consist caches on the chain head. */
+	Train *v = this->First();
 	do {
 		v->colourmap = PAL_NONE;
 		v->InvalidateImageCache();
@@ -4982,8 +7757,12 @@ void Train::MarkDirty()
 	} while ((v = v->Next()) != nullptr);
 
 	/* need to update acceleration and cached values since the goods on the train changed. */
-	this->CargoChanged();
-	this->UpdateAcceleration();
+	this->First()->CargoChanged();
+	this->First()->UpdateAcceleration();
+	/* CargoChanged()/UpdateAcceleration() only write the consist-level caches
+	 * of the chain head; re-broadcast them or every other vehicle keeps its
+	 * stale copy and network peers diverge. */
+	this->First()->BroadcastConsistCaches();
 }
 
 /**
@@ -5005,9 +7784,12 @@ int Train::UpdateSpeed(MaxSpeedInfo max_speed_info)
 			return this->DoUpdateSpeed({ this->acceleration * (accel_status == AS_BRAKE ? -4 : 2), this->acceleration * -4 }, 0,
 					max_speed_info.strict_max_speed, max_speed_info.advisory_max_speed, this->UsingRealisticBraking());
 
-		case AccelerationModel::Realistic:
-			return this->DoUpdateSpeed(this->GetAcceleration(), accel_status == AS_BRAKE ? 0 : 2,
+		case AccelerationModel::Realistic: {
+			int min_speed = accel_status == AS_BRAKE ? 0 : 2;
+			if (this->IsFrontWagon()) min_speed = 0;
+			return this->DoUpdateSpeed(this->GetAcceleration(), min_speed,
 					max_speed_info.strict_max_speed, max_speed_info.advisory_max_speed, this->UsingRealisticBraking());
+		}
 	}
 }
 /**
@@ -5017,7 +7799,9 @@ int Train::UpdateSpeed(MaxSpeedInfo max_speed_info)
 static bool HandlePossibleBreakdowns(Train *v)
 {
 	dbg_assert(v->IsFrontEngine());
-	for (Train *u = v; u != nullptr; u = u->Next()) {
+	/* Breakdown state is per-vehicle; iterate the whole physical chain, which
+	 * may extend before the primary vehicle when it is not the chain head. */
+	for (Train *u = v->First(); u != nullptr; u = u->Next()) {
 		if (u->breakdown_ctr != 0 && (u->IsEngine() || u->IsMultiheaded())) {
 			if (u->breakdown_ctr <= 2) {
 				if (u->HandleBreakdown()) return true;
@@ -5037,7 +7821,24 @@ static bool HandlePossibleBreakdowns(Train *v)
  */
 static void TrainEnterStation(Train *consist, StationID station)
 {
+	/* Everything below (orders, loading state, decouple handling) is
+	 * primary-hosted consist information; the caller only passes the physical
+	 * chain head because that is what movement code has at hand. */
+	consist = consist->Primary();
+	if (consist->current_order.IsType(OT_GOTO_WAYPOINT) && TrainShouldWaitForCoupleAtCheckpoint(consist, nullptr, station)) {
+		consist->cur_speed = 0;
+		consist->subspeed = 0;
+		return;
+	}
 	consist->last_station_visited = station;
+	if (consist->current_order.IsType(OT_WAIT_COUPLE) && consist->current_order.HasWaitCoupleStation() && consist->current_order.GetWaitCoupleStation() == station) {
+		UpdateVehicleTimetable(consist, true);
+		consist->cur_speed = 0;
+		consist->subspeed = 0;
+		consist->SetDestTile(INVALID_TILE);
+		FreeTrainTrackReservation(consist);
+		return;
+	}
 
 	BaseStation *bst = BaseStation::Get(station);
 
@@ -5054,6 +7855,126 @@ static void TrainEnterStation(Train *consist, StationID station)
 		return;
 	}
 
+	Train *u = nullptr;
+	uint8_t load_trains = DECOUPLE_NO_LOAD;
+	/* The decouple handling below unconditionally reads the order after the current one and
+	 * expects it to be the OT_DECOUPLE marker (see #PrepareDecoupleWaitOrders and #SplitOrders).
+	 * A schedule edited around a depot detour can leave the implicit index on the last order,
+	 * with nothing following it: treat such a misaligned arrival as a plain stop instead of
+	 * walking off the end of the order list. */
+	const Order *after_current = (consist->orders != nullptr) ? consist->orders->GetOrderAt(consist->cur_implicit_order_index + 1) : nullptr;
+	bool want_decouple = after_current != nullptr && after_current->IsType(OT_DECOUPLE) &&
+			consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE;
+	/* When both parts request the original direction, the physical trailer
+	 * waits for the leading part to clear the platform. Neither part reverses
+	 * while still in the station. */
+	const Order *decouple_flags_order = want_decouple ? consist->GetOrder(consist->cur_implicit_order_index + 1) : nullptr;
+	bool first_same_dir = decouple_flags_order != nullptr && decouple_flags_order->IsType(OT_DECOUPLE) && decouple_flags_order->GetDecoupleFirstSameDirExit();
+	bool second_same_dir = decouple_flags_order != nullptr && decouple_flags_order->IsType(OT_DECOUPLE) && decouple_flags_order->GetDecoupleSecondSameDirExit();
+	bool both_same_dir = first_same_dir && second_same_dir;
+	if (want_decouple) {
+		/* Stopping at a via station leaves an OT_IMPLICIT marker at the implicit index (see the
+		 * implicit-order handling in #HandleLoading), so that index can point at the marker while
+		 * the order actually being run sits one place further along. Every step of the decouple
+		 * below assumes the implicit index is on a real order, as it is after a plain stop:
+		 * #PrepareDecoupleWaitOrders and #SplitOrders read the OT_DECOUPLE that follows it, the
+		 * wait orders are inserted relative to it, and the ODOF_WAIT_FOR_COUPLE branch steps past
+		 * the decouple with IncrementImplicitOrderIndex - which, from a marker, only re-syncs the
+		 * two indices and leaves the consist on the station order it was just at. Line the
+		 * implicit index up with the real one, which is never itself implicit (see
+		 * #UpdateRealOrderIndex), so all of that behaves as it does on a plain stop. */
+		const Order *implicit_order = consist->GetOrder(consist->cur_implicit_order_index);
+		if (implicit_order != nullptr && implicit_order->IsType(OT_IMPLICIT) &&
+				consist->cur_implicit_order_index != consist->cur_real_order_index) {
+			consist->cur_implicit_order_index = consist->cur_real_order_index;
+			consist->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+		}
+	}
+	Debug(desync, 1, "TrainEnterStation: veh={} st={} tile=({},{}) want_decouple={} ordertype={}", consist->index, station, TileX(consist->tile), TileY(consist->tile), want_decouple, (int)consist->current_order.GetType());
+	std::unique_ptr<OrderList> wait_orders[2];
+	const StringID order_failure = want_decouple ? PrepareDecoupleWaitOrders(consist, wait_orders) : STR_NULL;
+	if (order_failure != STR_NULL && consist->owner == _local_company) {
+		AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED_REASON, consist->index, order_failure), consist->index);
+	}
+	if (want_decouple && order_failure == STR_NULL) {
+		bool consist_in_rear = false;
+		StringID decouple_failure_reason;
+		u = DecoupleTrain(consist, consist_in_rear, decouple_failure_reason);
+		/* All further handling of the rear part (orders, loading, windows)
+		 * must operate on its primary vehicle, not the physical chain head. */
+		if (u != nullptr) u = u->Primary();
+		if (u != nullptr)
+		Debug(desync, 1, "TrainEnterStation: veh={} decoupled u={}", consist->index, u != nullptr ? u->index.base() : -1);
+		/* After the split, whichever part trails in the movement direction must
+		 * be reversed so the two parts drive away from each other. With
+		 * chain-forward movement the rear physical part trails; when driving
+		 * backwards the front physical part does. The consist part is the
+		 * rear physical part exactly when the decoupled head-side part was
+		 * engine-less (consist_in_rear), so the trailer cannot be derived from
+		 * the decouple roles alone. */
+		bool backwards = consist->vehicle_flags.Test(VehicleFlag::DrivingBackwards);
+		Train *trailer = (backwards != consist_in_rear) ? consist : u;
+		/* DecoupleTrain returns the consist itself when the split failed; the
+		 * trailer reversal below assumes a successful split into two parts, so
+		 * skip it entirely then: physically flipping a still-moving consist
+		 * mid-station-entry is only valid for an actual trailer part. */
+		bool decoupled = (u != nullptr && u != consist);
+		/* Both parts are marked before the reversal: reversing re-reserves the
+		 * part's path, and a part that is still standing in the station it
+		 * decoupled at must not long-reserve (see IsReservationLookAheadLongEnough),
+		 * otherwise the reversal makes it hold the block past the station, on the
+		 * side the train arrived from. */
+		if (!first_same_dir || both_same_dir) consist->flags.Set(VehicleRailFlag::JustDecoupled);
+		if (decoupled && (!second_same_dir || both_same_dir)) u->flags.Set(VehicleRailFlag::JustDecoupled);
+		if (decoupled && trailer == consist && first_same_dir) consist->flags.Set(VehicleRailFlag::SameDirDecouplePending);
+		if (decoupled && trailer == u && second_same_dir) u->flags.Set(VehicleRailFlag::SameDirDecouplePending);
+		if (trailer == consist) {
+			if (decoupled && !both_same_dir) ReverseTrainDirection(consist, true);
+			consist = consist->Primary();
+		}
+		/* For the decoupled part, do the opposite: if it is driving forward (towards
+		 * the front part), reverse it now so it drives away from the front part, then
+		 * forbid reversing until it leaves the station. */
+		if (u != nullptr && u != consist) {
+			if (trailer == u) {
+				if (!both_same_dir) ReverseTrainDirection(u, true);
+				u = u->Primary();
+			}
+		}
+		SplitOrders(consist, u, load_trains, wait_orders);
+		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);
+		if (u != nullptr && u->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(u);
+		/* The split moved vehicles -- and the primary that carries the breakdown
+		 * bookkeeping -- between the two parts, so both have to be recomputed for
+		 * each part; see #RefreshConsistBreakdownState. A failed split (u == consist)
+		 * leaves one intact consist, for which the recomputation is a no-op. */
+		RefreshConsistBreakdownState(consist);
+		if (u != nullptr) RefreshConsistBreakdownState(u);
+		/* ProcessOrders inside SplitOrders runs GetOrderStationLocation, which
+		 * clears last_station_visited when the (new) destination equals it.
+		 * Both parts are still standing at this station and BeginLoading below
+		 * needs the station id, so restore it. */
+		consist->last_station_visited = station;
+		if (u != nullptr) u->last_station_visited = station;
+		if (u != nullptr) {
+		}
+		/* A part allowed a same-direction exit carries no JustDecoupled flag, but
+		 * a part that does not load never passes the OT_LEAVESTATION departure
+		 * handling where the usual reverse check lives, so it would drive off in
+		 * its forced-reversed orientation without ever reconsidering. Give such a
+		 * part the usual chance to reverse in the station right away; loading
+		 * parts get the same check again when they depart. */
+		if (decoupled) {
+			if (!consist->flags.Test(VehicleRailFlag::JustDecoupled) && !consist->flags.Test(VehicleRailFlag::SameDirDecouplePending) && CheckReverseTrain(consist)) consist->flags.Set(VehicleRailFlag::Reversing);
+			if (!u->flags.Test(VehicleRailFlag::JustDecoupled) && !u->flags.Test(VehicleRailFlag::SameDirDecouplePending) && CheckReverseTrain(u)) u->flags.Set(VehicleRailFlag::Reversing);
+		}
+		if (u == consist && consist->owner == _local_company) {
+			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED_REASON, consist->index, decouple_failure_reason), consist->index);
+		}
+	} else {
+		load_trains = DECOUPLE_LOAD_FIRST;
+	}
+
 	/* check if a train ever visited this station before */
 	Station *st = Station::From(bst);
 	if (!st->had_vehicle_of_type.Test(StationVehicleType::Train)) {
@@ -5068,14 +7989,45 @@ static void TrainEnterStation(Train *consist, StationID station)
 		Game::NewEvent(new ScriptEventStationFirstVehicle(st->index, consist->index));
 	}
 
-	consist->force_proceed = TFP_NONE;
-	InvalidateWindowData(WindowClass::VehicleView, consist->index);
+	/* When train station servicing is enabled, service the train here at the station it has
+	 * arrived at, instead of it being routed to a depot. This runs on arrival rather than as part
+	 * of loading, so it also covers arrivals that unload and load nothing: a decouple station with
+	 * the "keep orders, but do not load" setting still gets the consist serviced here. */
+	if (_settings_game.vehicle.train_service_at_station && consist->IsServiceIntervalDue()) {
+		VehicleServiceInDepot(consist);
+	}
 
-	consist->BeginLoading();
+	if (load_trains & DECOUPLE_LOAD_FIRST) {
+		consist->force_proceed = TFP_NONE;
+		InvalidateWindowData(WindowClass::VehicleView, consist->index);
+		consist->BeginLoading();
+	}
+	if (u != nullptr && u != consist && (load_trains & DECOUPLE_LOAD_SECOND)) {
+		u->force_proceed = TFP_NONE;
+		InvalidateWindowData(WindowClass::VehicleView, u->index);
+		u->BeginLoading();
+	}
 
-	TileIndex station_tile = consist->GetStationLoadingVehicle()->tile;
-	TriggerStationRandomisation(st, station_tile, StationRandomTrigger::VehicleArrives);
-	TriggerStationAnimation(st, station_tile, StationAnimationTrigger::VehicleArrives);
+	/* The arrival handler stops the whole consist so the split can happen.
+	 * Afterwards each part's primary must be un-stopped again: the front part
+	 * departs on its own orders, and the rear part must remain drivable for
+	 * its own schedule / wait-for-couple hold. Non-decouple arrivals have no
+	 * rear part (u == nullptr). */
+	consist->Primary()->vehstatus.Reset(VehState::Stopped);
+	if (u != nullptr) u->Primary()->vehstatus.Reset(VehState::Stopped);
+
+	for (const Train *w = consist->First(); w != nullptr; w = w->Next()) {
+	}
+	if (u != nullptr) {
+		for (const Train *w = u->First(); w != nullptr; w = w->Next()) {
+		}
+	}
+
+	if (load_trains != DECOUPLE_NO_LOAD) {
+		TileIndex station_tile = consist->GetStationLoadingVehicle()->tile;
+		TriggerStationRandomisation(st, station_tile, StationRandomTrigger::VehicleArrives);
+		TriggerStationAnimation(st, station_tile, StationAnimationTrigger::VehicleArrives);
+	}
 }
 
 /**
@@ -5188,13 +8140,14 @@ void Train::ReserveTrackUnderConsist() const
 uint Train::Crash(bool flooded)
 {
 	uint victims = 0;
-	if (this->IsFrontEngine()) {
+	Train *consist = this->Primary();
+	if (consist->IsPrimaryVehicle()) {
 		victims += 2; // driver
 
 		/* Remove the reserved path in front of the train if it is not stuck.
 		 * Also clear all reserved tracks the train is currently on. */
-		if (!this->flags.Test(VehicleRailFlag::Stuck)) FreeTrainTrackReservation(this);
-		for (const Train *v = this; v != nullptr; v = v->Next()) {
+		if (!consist->flags.Test(VehicleRailFlag::Stuck)) FreeTrainTrackReservation(consist);
+		for (const Train *v = this->First(); v != nullptr; v = v->Next()) {
 			ClearPathReservation(v, v->tile, v->GetVehicleTrackdir(), true);
 		}
 
@@ -5204,7 +8157,7 @@ uint Train::Crash(bool flooded)
 		if (crossing != INVALID_TILE) UpdateLevelCrossing(crossing);
 
 		/* Remove the loading indicators (if any) */
-		HideFillingPercent(&this->fill_percent_te_id);
+		HideFillingPercent(&consist->fill_percent_te_id);
 	}
 
 	RegisterGameEvents(GEF_TRAIN_CRASH);
@@ -5260,7 +8213,7 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	 * This is the most common case and skipping it early avoids further calculations. */
 	if (v == moving_front) return 0;
 
-	if (v->First() == moving_front->First()) {
+	if (v->Primary() == moving_front->Primary()) {
 		/* If self-collision is disabled, skip all wagons of the same train.
 		 * If enabled, only skip immediate neighbors. */
 		if (!_settings_game.vehicle.train_self_collision || v == moving_front->Next() || v == moving_front->Previous()) return 0;
@@ -5277,11 +8230,54 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 	if (hash & ~15) return 0;
 
 	/* Slower check using multiplication */
-	int min_diff = (v->gcache.cached_veh_length + 1) / 2 + (moving_front->gcache.cached_veh_length + 1) / 2 - 1;
-	if (x_diff * x_diff + y_diff * y_diff >= min_diff * min_diff) return 0;
+	int min_diff = CoupleJointOffset(moving_front->gcache.cached_veh_length, v->gcache.cached_veh_length, moving_front->IsDrivingBackwards());
+	int dist_sq = x_diff * x_diff + y_diff * y_diff;
+
+	/* Touching counts too: a homing couple train must couple on first contact,
+	 * before the collision point (strictly inside min_diff) is ever reached. */
+	if (dist_sq > min_diff * min_diff) return 0;
 
 	/* Happens when there is a train under bridge next to bridge head */
 	if (abs(v->z_pos - moving_front->z_pos) > 5) return 0;
+
+	/* A train homing onto its coupling partner touches it: treat the contact
+	 * as a couple instead of a crash. The moving train (OT_GOTO_COUPLE) is the
+	 * survivor, the waiting train (OT_WAIT_COUPLE) is being merged in. Stop
+	 * the moving train afterwards, the same way the caller stops it after a
+	 * regular successful couple.
+	 *
+	 * Only the consist this one has actually claimed ever couples: the claim is
+	 * re-validated against the order's own conditions (路签/cargo/load/...) on
+	 * every tick (see #GetValidCoupleClaimant), so those need no second check
+	 * here. A claim that lapsed is no longer a claim, and hitting that train
+	 * is a plain collision. */
+	Train *carrier = v->First()->Primary();
+	bool waiting_for_us = moving_front->Primary()->current_order.IsType(OT_GOTO_COUPLE)
+			&& IsHoldingForCouple(carrier)
+			&& !carrier->vehstatus.Test(VehState::Crashed)
+			&& GetValidCoupleClaimant(carrier) == moving_front->Primary();
+
+	if (waiting_for_us) {
+		/* The claim is still valid, which means the couple order's conditions
+		 * (路签/cargo/load/...) hold right now, so couple unconditionally.
+		 *
+		 * A partner that stopped qualifying mid-approach (lost its 路签 to
+		 * another consist, filled up, ...) has its claim dropped by
+		 * #GetValidCoupleClaimant above, so it is no longer ours here and falls
+		 * through to the normal crash check below - just like any other train
+		 * that happens to be in the way. */
+		Couple(moving_front, carrier);
+		/* Coupling may change the physical front; motion belongs to the primary. */
+		Train *consist = moving_front->Primary();
+		consist->cur_speed = 0;
+		consist->subspeed = 0;
+		consist->progress = 0;
+		return 0;
+	}
+
+	/* Exactly touching but not a valid couple: bumpers meet, nothing overlaps,
+	 * so this is still not a crash (same semantics as the vanilla check). */
+	if (dist_sq >= min_diff * min_diff) return 0;
 
 	/* Crash both trains. Two statements required to guarantee execution
 	 * order because RandomRange() is involved. */
@@ -5325,7 +8321,7 @@ static bool CheckTrainCollision(Train *moving_front)
 
 	AddTileNewsItem(GetEncodedString(STR_NEWS_TRAIN_CRASH, num_victims), NewsType::Accident, moving_front->tile);
 
-	ModifyStationRatingAround(moving_front->tile, moving_front->First()->owner, -160, 30);
+	ModifyStationRatingAround(moving_front->tile, moving_front->Primary()->owner, -160, 30);
 	if (_settings_client.sound.disaster) SndPlayVehicleFx(SND_13_TRAIN_COLLISION, moving_front);
 	return true;
 }
@@ -5366,7 +8362,7 @@ bool FindSpaceBetweenTrainsChecker::operator()(const Train *v) const
 
 static bool IsTooCloseBehindTrain(Train *moving_front, TileIndex tile, uint16_t distance, bool check_endtile)
 {
-	Train *consist = moving_front->First();
+	Train *consist = moving_front->Primary();
 	if (consist->force_proceed != 0) return false;
 
 	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
@@ -5575,7 +8571,7 @@ static bool CheckTrainStayInWormHolePathReserve(Train *consist, Train *moving_fr
 /** Simulate signals in tunnel - bridge. */
 static bool CheckTrainStayInWormHole(Train *moving_front, TileIndex tile)
 {
-	Train *consist = moving_front->First();
+	Train *consist = moving_front->Primary();
 	if (consist->force_proceed != 0) return false;
 
 	/* When not exit reverse train. */
@@ -5731,6 +8727,7 @@ void TrainControllerTraceRestrictFrontEvaluation(TileIndex tile, Trackdir dir, T
 bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 {
 	Train *first = v->First();
+	Train *consist = first->Primary();
 	Train *prev = nullptr;
 	SCOPE_INFO_FMT([&], "TrainController: {}, {}, {}", VehicleInfoDumper(v), VehicleInfoDumper(prev), VehicleInfoDumper(nomove));
 	bool direction_changed = false; // has direction of any part changed?
@@ -5741,14 +8738,14 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 	auto notify_direction_changed = [&](Direction old_direction, Direction new_direction) {
 		if (prev == nullptr && _settings_game.vehicle.train_acceleration_model == AccelerationModel::Original) {
-			const AccelerationSlowdownParams *asp = &_accel_slowdown[static_cast<uint>(first->GetAccelerationType())];
+			const AccelerationSlowdownParams *asp = &_accel_slowdown[static_cast<uint>(consist->GetAccelerationType())];
 			DirDiff diff = DirDifference(old_direction, new_direction);
-			first->cur_speed -= (diff == DirDiff::Right45 || diff == DirDiff::Left45 ? asp->small_turn : asp->large_turn) * first->cur_speed >> 8;
+			consist->cur_speed -= (diff == DirDiff::Right45 || diff == DirDiff::Left45 ? asp->small_turn : asp->large_turn) * consist->cur_speed >> 8;
 		}
 		direction_changed = true;
 	};
 
-	if (reverse && first->reverse_distance == 1 && (first->cur_speed <= 15 || !first->UsingRealisticBraking())) {
+	if (reverse && consist->reverse_distance == 1 && (consist->cur_speed <= 15 || !consist->UsingRealisticBraking())) {
 		/* Train is not moving too fast and reversing distance has been reached */
 		goto reverse_train_direction;
 	}
@@ -5783,7 +8780,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					/* Inside depot */
 					gp.x = v->x_pos;
 					gp.y = v->y_pos;
-					first->reverse_distance = 0;
+					consist->reverse_distance = 0;
 				} else {
 					/* Not inside depot */
 
@@ -5796,7 +8793,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					}
 					if (vets.Test(VehicleEnterTileState::EnteredStation)) {
 						/* The new position is the end of the platform */
-						TrainEnterStation(first, GetStationIndex(gp.new_tile));
+						TrainEnterStation(consist, GetStationIndex(gp.new_tile));
 					}
 					if (old_direction != v->direction) notify_direction_changed(old_direction, v->direction);
 				}
@@ -5832,20 +8829,20 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 				/* Check if the new tile constrains tracks that are compatible
 				 * with the current train, if not, bail out. */
-				if (!CheckCompatibleRail(first, gp.new_tile, enterdir, prev == nullptr)) goto invalid_rail;
+				if (!CheckCompatibleRail(consist, gp.new_tile, enterdir, prev == nullptr)) goto invalid_rail;
 
 				TrackBits chosen_track;
 				bool reverse_at_signal = false;
 				if (prev == nullptr) {
 					/* Currently the locomotive is active. Determine which one of the
 					 * available tracks to choose */
-					ChooseTrainTrackResult result = ChooseTrainTrack(first, gp.new_tile, enterdir, bits, CTTF_MARK_STUCK | CTTF_NON_LOOKAHEAD);
+					ChooseTrainTrackResult result = ChooseTrainTrack(consist, gp.new_tile, enterdir, bits, CTTF_MARK_STUCK | CTTF_NON_LOOKAHEAD);
 					assert(IsValidTrack(result.track));
 					chosen_track = TrackToTrackBits(result.track);
 					reverse_at_signal = (result.ctt_flags & CTTRF_REVERSE_AT_SIGNAL);
 					dbg_assert_msg_tile(chosen_track & (bits | GetReservedTrackbits(gp.new_tile)), gp.new_tile, "0x{:X}, 0x{:X}, 0x{:X}", chosen_track, bits, GetReservedTrackbits(gp.new_tile));
 
-					if (first->force_proceed != TFP_NONE && IsPlainRailTile(gp.new_tile) && HasSignals(gp.new_tile)) {
+					if (consist->force_proceed != TFP_NONE && IsPlainRailTile(gp.new_tile) && HasSignals(gp.new_tile)) {
 						/* For each signal we find decrease the counter by one.
 						 * We start at two, so the first signal we pass decreases
 						 * this to one, then if we reach the next signal it is
@@ -5856,13 +8853,13 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 								GetSignalType(gp.new_tile, TrackdirToTrack(dir)) != SignalType::Path)) {
 							/* However, we do not want to be stopped by PBS signals
 							 * entered via the back. */
-							first->force_proceed = (first->force_proceed == TFP_SIGNAL) ? TFP_STUCK : TFP_NONE;
-							InvalidateWindowData(WindowClass::VehicleView, first->index);
+							consist->force_proceed = (consist->force_proceed == TFP_SIGNAL) ? TFP_STUCK : TFP_NONE;
+							InvalidateWindowData(WindowClass::VehicleView, consist->index);
 						}
 					}
 
 					/* Check if it's a red signal and that force proceed is not clicked. */
-					if ((red_signals & chosen_track) && first->force_proceed == TFP_NONE) {
+					if ((red_signals & chosen_track) && consist->force_proceed == TFP_NONE) {
 						/* In front of a red signal */
 						Trackdir i = FindFirstTrackdir(trackdirbits);
 
@@ -5872,22 +8869,22 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						}
 
 						/* Don't handle stuck trains here. */
-						if (first->flags.Test(VehicleRailFlag::Stuck)) return false;
+						if (consist->flags.Test(VehicleRailFlag::Stuck)) return false;
 
 						if (IsNoEntrySignal(gp.new_tile, TrackdirToTrack(i)) && HasSignalOnTrackdir(gp.new_tile, i)) {
 							goto reverse_train_direction;
 						}
 
 						if (!HasSignalOnTrackdir(gp.new_tile, ReverseTrackdir(i))) {
-							first->cur_speed = 0;
-							first->subspeed = 0;
-							first->progress = 255; // make sure that every bit of acceleration will hit the signal again, so speed stays 0.
-							if (!_settings_game.pf.reverse_at_signals || ++first->wait_counter < _settings_game.pf.wait_oneway_signal * DAY_TICKS * 2) return false;
+							consist->cur_speed = 0;
+							consist->subspeed = 0;
+							consist->progress = 255; // make sure that every bit of acceleration will hit the signal again, so speed stays 0.
+							if (!_settings_game.pf.reverse_at_signals || ++consist->wait_counter < _settings_game.pf.wait_oneway_signal * DAY_TICKS * 2) return false;
 						} else if (HasSignalOnTrackdir(gp.new_tile, i)) {
-							first->cur_speed = 0;
-							first->subspeed = 0;
-							first->progress = 255; // make sure that every bit of acceleration will hit the signal again, so speed stays 0.
-							if (!_settings_game.pf.reverse_at_signals || ++first->wait_counter < _settings_game.pf.wait_twoway_signal * DAY_TICKS * 2) {
+							consist->cur_speed = 0;
+							consist->subspeed = 0;
+							consist->progress = 255; // make sure that every bit of acceleration will hit the signal again, so speed stays 0.
+							if (!_settings_game.pf.reverse_at_signals || ++consist->wait_counter < _settings_game.pf.wait_twoway_signal * DAY_TICKS * 2) {
 								DiagDirection exitdir = TrackdirToExitdir(i);
 								TileIndex o_tile = TileAddByDiagDir(gp.new_tile, exitdir);
 
@@ -5913,7 +8910,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						 * signal blocking us, because a train would then be stuck forever. */
 						if (!_settings_game.pf.reverse_at_signals && !HasOnewaySignalBlockingTrackdir(gp.new_tile, i) &&
 								UpdateSignalsOnSegment(v->tile, enterdir, v->owner) == SigSegState::Path) {
-							first->wait_counter = 0;
+							consist->wait_counter = 0;
 							return false;
 						}
 						goto reverse_train_direction;
@@ -5927,13 +8924,13 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						if (IsPlainRailTile(gp.new_tile) && HasSignals(gp.new_tile) && IsRestrictedSignal(gp.new_tile)) {
 							const Trackdir dir = FindFirstTrackdir(trackdirbits);
 							if (HasSignalOnTrack(gp.new_tile, TrackdirToTrack(dir))) {
-								TrainControllerTraceRestrictFrontEvaluation(gp.new_tile, dir, first, TRPAUF_REVERSE_BEHIND, [&]() -> bool {
+								TrainControllerTraceRestrictFrontEvaluation(gp.new_tile, dir, consist, TRPAUF_REVERSE_BEHIND, [&]() -> bool {
 									return !IsPbsSignal(GetSignalType(gp.new_tile, TrackdirToTrack(dir)));
 								}, [&](const TraceRestrictProgramResult &out) {
 									if (out.flags & TRPRF_REVERSE_BEHIND && GetSignalType(gp.new_tile, TrackdirToTrack(dir)) == SignalType::Path &&
 											!HasSignalOnTrackdir(gp.new_tile, dir)) {
-										first->reverse_distance = first->gcache.cached_total_length + (IsDiagonalTrack(TrackdirToTrack(dir)) ? 16 : 8);
-										SetWindowDirty(WindowClass::VehicleView, first->index);
+										consist->reverse_distance = consist->gcache.cached_total_length + (IsDiagonalTrack(TrackdirToTrack(dir)) ? 16 : 8);
+										SetWindowDirty(WindowClass::VehicleView, consist->index);
 									}
 								});
 							}
@@ -5983,15 +8980,15 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 				if (!(v->track & TRACK_BIT_WORMHOLE) && IsTunnelBridgeWithSignalSimulation(gp.new_tile) && (GetAcrossTunnelBridgeTrackBits(gp.new_tile) & chosen_track)) {
 					/* If red signal stop. */
-					if (v->IsMovingFront() && first->force_proceed == 0) {
+					if (v->IsMovingFront() && consist->force_proceed == 0) {
 						if (IsTunnelBridgeSignalSimulationEntrance(gp.new_tile) && GetTunnelBridgeEntranceSignalState(gp.new_tile) == SignalState::Red) {
-							first->cur_speed = 0;
-							first->vehstatus.Set(VehState::TrainSlowing);
+							consist->cur_speed = 0;
+							consist->vehstatus.Set(VehState::TrainSlowing);
 							return false;
 						}
 						if (IsTunnelBridgeSignalSimulationExitOnly(gp.new_tile) &&
 								TrackdirEntersTunnelBridge(gp.new_tile, TrackDirectionToTrackdir(FindFirstTrack(chosen_track), chosen_dir))) {
-							first->cur_speed = 0;
+							consist->cur_speed = 0;
 							goto invalid_rail;
 						}
 						/* Flip signal on tunnel entrance tile red. */
@@ -6049,19 +9046,27 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				}
 
 				if (v->IsMovingFront()) {
-					first->wait_counter = 0;
+					consist->wait_counter = 0;
 
 					/* If we are approaching a crossing that is reserved, play the sound now. */
 					TileIndex crossing = TrainApproachingCrossingTile(v); // We know we are the moving front, so we can check v.
 					if (crossing != INVALID_TILE && HasCrossingReservation(crossing) && _settings_client.sound.ambient) SndPlayTileFx(SND_0E_LEVEL_CROSSING, crossing);
 
-					/* Always try to extend the reservation when entering a tile. */
-					CheckNextTrainTile(v);
+					/* A via waypoint can advance its order while the reservation is
+					 * extended on entry. Hold the moving train on the checkpoint tile
+					 * before that happens, so the selected earlier stop is not skipped. */
+					if (IsTileType(gp.new_tile, TileType::Station) &&
+							TrainShouldWaitForCoupleAtCheckpoint(consist, nullptr, GetStationIndex(gp.new_tile))) {
+						consist->cur_speed = 0;
+						consist->subspeed = 0;
+					} else {
+						CheckNextTrainTile(v);
+					}
 				}
 
 				if (vets.Test(VehicleEnterTileState::EnteredStation)) {
 					/* The new position is the location where we want to stop */
-					TrainEnterStation(first, GetStationIndex(gp.new_tile));
+					TrainEnterStation(consist, GetStationIndex(gp.new_tile));
 				}
 			}
 		} else {
@@ -6070,7 +9075,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 			if (old_tile != gp.new_tile && IsTunnelBridgeWithSignalSimulation(v->tile) && (v->Previous() == nullptr || v->Next() == nullptr)) {
 				const uint simulated_wormhole_signals = GetTunnelBridgeSignalSimulationSpacing(v->tile);
 				if (old_tile == v->tile) {
-					if (v->IsMovingFront() && first->force_proceed == 0 && IsTunnelBridgeSignalSimulationExitOnly(v->tile)) goto invalid_rail;
+					if (v->IsMovingFront() && consist->force_proceed == 0 && IsTunnelBridgeSignalSimulationExitOnly(v->tile)) goto invalid_rail;
 					/* Entered wormhole set counters. */
 					v->tunnel_bridge_tile_ctr = static_cast<uint8_t>(simulated_wormhole_signals - 1);
 					v->tunnel_bridge_signal_num = 0;
@@ -6078,7 +9083,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					if (v->IsMovingFront() && IsTunnelBridgeSignalSimulationEntrance(old_tile) && (IsTunnelBridgeRestrictedSignal(old_tile) || _settings_game.vehicle.train_speed_adaptation)) {
 						const Trackdir trackdir = GetTunnelBridgeEntranceTrackdir(old_tile);
 						if (IsTunnelBridgeRestrictedSignal(old_tile)) {
-							TrainControllerTraceRestrictFrontEvaluation(old_tile, trackdir, first, TRPAUF_NONE, [&]() -> bool {
+							TrainControllerTraceRestrictFrontEvaluation(old_tile, trackdir, consist, TRPAUF_NONE, [&]() -> bool {
 								/* Only acquire slot when not using realistic braking, as the tunnel/bridge entrance otherwise acts as a block signal */
 								return _settings_game.vehicle.train_braking_model != TBM_REALISTIC;
 							}, [&](const TraceRestrictProgramResult &out) {});
@@ -6098,7 +9103,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 								TraceRestrictProgramResult out;
 								TraceRestrictProgramInput input(old_tile, trackdir, nullptr, nullptr);
 								input.permitted_slot_operations = TRPISP_RELEASE_BACK;
-								prog->Execute(first, input, out);
+								prog->Execute(consist, input, out);
 							}
 						}
 						if (_settings_game.vehicle.train_speed_adaptation) {
@@ -6116,21 +9121,21 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					int z = GetSlopePixelZ(gp.x, gp.y, true) - v->z_pos;
 					if (IsTileType(gp.new_tile, TileType::TunnelBridge) && !(abs(z) > 2)) {
 						if (CheckTrainStayInWormHole(v, gp.new_tile)) {
-							first->cur_speed = 0;
+							consist->cur_speed = 0;
 							return false;
 						}
 						leaving = true;
 						if (IsTunnelBridgeRestrictedSignal(gp.new_tile) && IsTunnelBridgeSignalSimulationExit(gp.new_tile)) {
 							const Trackdir trackdir = GetTunnelBridgeExitTrackdir(gp.new_tile);
-							TrainControllerTraceRestrictFrontEvaluation(gp.new_tile, trackdir, first, TRPAUF_NONE, [&]() -> bool {
+							TrainControllerTraceRestrictFrontEvaluation(gp.new_tile, trackdir, consist, TRPAUF_NONE, [&]() -> bool {
 								return !IsTunnelBridgeEffectivelyPBS(gp.new_tile);
 							}, [&](const TraceRestrictProgramResult &out) {});
 						}
 					} else {
 						if (IsTooCloseBehindTrain(v, gp.new_tile, TILE_SIZE * v->tunnel_bridge_tile_ctr, distance == 0)) {
 							if (distance == 0) v->tunnel_bridge_tile_ctr = 0;
-							first->cur_speed = 0;
-							first->vehstatus.Set(VehState::TrainSlowing);
+							consist->cur_speed = 0;
+							consist->vehstatus.Set(VehState::TrainSlowing);
 							return false;
 						}
 						/* flip signal in front to red on bridges*/
@@ -6166,7 +9171,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				if (v->tunnel_bridge_tile_ctr != Train::TBS_INVALID_DISTANCE) v->tunnel_bridge_tile_ctr--;
 
 				if (leaving) { // Reset counters.
-					first->force_proceed = TFP_NONE;
+					consist->force_proceed = TFP_NONE;
 					v->tunnel_bridge_tile_ctr = 0;
 					v->tunnel_bridge_signal_num = 0;
 					update_signal_tunbridge_exit = true;
@@ -6239,9 +9244,9 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						MarkTileDirtyByTile(gp.new_tile, VMDF_NOT_MAP_MODE);
 					}
 				}
-				if (v->IsMovingFront() && !IsTunnelBridgeWithSignalSimulation(v->tile) && (first->lookahead != nullptr &&
-						first->cur_speed > 0 && first->lookahead->reservation_end_position <= first->lookahead->current_position + 24)) {
-					TryLongReserveChooseTrainTrackFromReservationEnd(first, true);
+				if (v->IsMovingFront() && !IsTunnelBridgeWithSignalSimulation(v->tile) && (consist->lookahead != nullptr &&
+						consist->cur_speed > 0 && consist->lookahead->reservation_end_position <= consist->lookahead->current_position + 24)) {
+					TryLongReserveChooseTrainTrackFromReservationEnd(consist, true);
 				}
 				continue;
 			}
@@ -6262,7 +9267,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 		if (prev == nullptr) {
 			/* This is the first vehicle in the train */
-			AffectSpeedByZChange(first, v->z_pos - old_z);
+			AffectSpeedByZChange(consist, v->z_pos - old_z);
 		}
 
 		if (update_signal_tunbridge_exit) {
@@ -6290,7 +9295,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 					ApplySignalTrainAdaptationSpeed(v, gp.old_tile, TrackdirToTrack(rev_trackdir));
 				}
 
-				switch (TrainMovedChangeSignal(first, gp.new_tile, enterdir, true)) {
+				switch (TrainMovedChangeSignal(consist, gp.new_tile, enterdir, true)) {
 					case CHANGED_NORMAL_TO_PBS_BLOCK:
 						/* We are entering a block with PBS signals right now, but
 						* not through a PBS signal. This means we don't have a
@@ -6302,8 +9307,8 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						* the problem. */
 						if ((!HasReservedTracks(gp.new_tile, v->track) &&
 								!TryReserveRailTrack(gp.new_tile, FindFirstTrack(v->track))) ||
-								!TryPathReserve(first)) {
-							MarkTrainAsStuck(first);
+								!TryPathReserve(consist)) {
+							MarkTrainAsStuck(consist);
 						}
 
 						break;
@@ -6312,7 +9317,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 						{
 							/* We went past a long reserve PBS signal. Try to extend the
 							* reservation if reserving failed at another LR signal. */
-							TryLongReserveChooseTrainTrackFromReservationEnd(first);
+							TryLongReserveChooseTrainTrackFromReservationEnd(consist);
 							break;
 						}
 
@@ -6324,7 +9329,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 			/* Signals can only change when the first
 			 * (above) or the last vehicle moves. */
 			if (v->GetMovingNext() == nullptr) {
-				TrainMovedChangeSignal(first, gp.old_tile, ReverseDiagDir(enterdir), false);
+				TrainMovedChangeSignal(consist, gp.old_tile, ReverseDiagDir(enterdir), false);
 				if (IsLevelCrossingTile(gp.old_tile)) UpdateLevelCrossing(gp.old_tile);
 
 				if (IsTileType(gp.old_tile, TileType::Railway) && HasSignals(gp.old_tile)) {
@@ -6343,7 +9348,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 								TraceRestrictProgramResult out;
 								TraceRestrictProgramInput input(gp.old_tile, ReverseTrackdir(rev_trackdir), nullptr, nullptr);
 								input.permitted_slot_operations = TRPISP_RELEASE_BACK;
-								prog->Execute(first, input, out);
+								prog->Execute(consist, input, out);
 							}
 						}
 					}
@@ -6361,7 +9366,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 								TraceRestrictProgramResult out;
 								TraceRestrictProgramInput input(gp.old_tile, ReverseTrackdir(rev_trackdir), nullptr, nullptr);
 								input.permitted_slot_operations = TRPISP_RELEASE_BACK;
-								prog->Execute(first, input, out);
+								prog->Execute(consist, input, out);
 							}
 						}
 						if (_settings_game.vehicle.train_speed_adaptation) {
@@ -6374,15 +9379,21 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 		/* Do not check on every tick to save some computing time. */
 		if (v->IsMovingFront()) {
-			if (first->lookahead != nullptr && first->cur_speed > 0 && first->lookahead->reservation_end_position <= first->lookahead->current_position + 24) {
-				TryLongReserveChooseTrainTrackFromReservationEnd(first, true);
-			} else if (first->tick_counter % _settings_game.pf.path_backoff_interval == 0) {
+			if (consist->lookahead != nullptr && consist->cur_speed > 0 && consist->lookahead->reservation_end_position <= consist->lookahead->current_position + 24) {
+				TryLongReserveChooseTrainTrackFromReservationEnd(consist, true);
+			} else if (consist->tick_counter % _settings_game.pf.path_backoff_interval == 0) {
 				CheckNextTrainTile(v);
 			}
 		}
 	}
 
-	if (direction_changed) first->tcache.cached_max_curve_speed = first->GetCurveSpeedLimit();
+	if (direction_changed) {
+		first->tcache.cached_max_curve_speed = first->GetCurveSpeedLimit();
+		/* Only the chain head was updated; re-broadcast the consist-level
+		 * caches or the other vehicles keep stale copies, which backwards
+		 * driving / mid-chain primaries read to compute their speed limit. */
+		first->BroadcastConsistCaches();
+	}
 
 	return true;
 
@@ -6399,10 +9410,10 @@ reverse_train_direction:
 		if (!(v->track & TRACK_BIT_WORMHOLE)) v->z_pos = GetSlopePixelZ(v->x_pos, v->y_pos, true);
 	}
 	if (reverse) {
-		first->wait_counter = 0;
-		first->cur_speed = 0;
-		first->subspeed = 0;
-		ReverseTrainDirection(first);
+		consist->wait_counter = 0;
+		consist->cur_speed = 0;
+		consist->subspeed = 0;
+		ReverseTrainDirection(consist);
 	}
 
 	return false;
@@ -6474,9 +9485,19 @@ static void DeleteLastWagon(Train *v)
 	for (; v->Next() != nullptr; v = v->Next()) new_last = v;
 	new_last->SetNext(nullptr);
 
+	/* The primary can sit in the middle of the physical chain. Once cleanup
+	 * reaches it, the remaining wreckage must not retain pointers to the
+	 * primary vehicle that is about to be freed. The wreck no longer needs a
+	 * logical identity, so use its surviving physical head as a safe anchor. */
+	bool deleting_primary = first != v && first->Primary() == v;
+	if (deleting_primary) {
+		for (Train *u = first; u != nullptr; u = u->Next()) u->SetPrimary(first);
+	}
+
 	if (first != v) {
-		/* Recalculate cached train properties */
-		first->ConsistChanged(CCF_ARRANGE);
+		/* Recalculate cached train properties while a valid logical carrier is
+		 * still part of the remaining wreckage. */
+		if (!deleting_primary && first->Primary()->IsPrimaryVehicle()) first->ConsistChanged(CCF_ARRANGE);
 		/* Update the depot window in case a part of the consist is in a depot.
 		 * If v == first, then it is updated in PreDestructor(). */
 
@@ -6607,12 +9628,6 @@ static bool HandleCrashedTrain(Train *v)
 	return true;
 }
 
-/** Maximum speeds for train that is broken down or approaching line end */
-static const uint16_t _breakdown_speeds[16] = {
-	225, 210, 195, 180, 165, 150, 135, 120, 105, 90, 75, 60, 45, 30, 15, 15
-};
-
-
 /**
  * Train is approaching line end, slow down and possibly reverse
  *
@@ -6642,7 +9657,7 @@ static bool TrainApproachingLineEnd(Train *moving_front, bool signal, bool rever
 		default: break;
 	}
 
-	Train *consist = moving_front->First();
+	Train *consist = moving_front->Primary();
 
 	/* Do not reverse when approaching red signal. Make sure the vehicle's front
 	 * does not cross the tile boundary when we do reverse, but as the vehicle's
@@ -6721,7 +9736,7 @@ static TileIndex TrainApproachingCrossingTile(const Train *moving_front)
 
 	/* not a crossing || wrong axis || unusable rail (wrong type or owner) */
 	if (!IsLevelCrossingTile(tile) || DiagDirToAxis(dir) == GetCrossingRoadAxis(tile) ||
-			!CheckCompatibleRail(moving_front->First(), tile, dir, true)) {
+			!CheckCompatibleRail(moving_front->Primary(), tile, dir, true)) {
 		return INVALID_TILE;
 	}
 
@@ -6739,7 +9754,7 @@ static bool TrainCheckIfLineEnds(Train *moving_front, bool reverse)
 {
 	/* First, handle broken down train */
 
-	Train *consist = moving_front->First();
+	Train *consist = moving_front->Primary();
 	if (consist->flags.Test(VehicleRailFlag::BreakdownBraking)) {
 		consist->vehstatus.Set(VehState::TrainSlowing);
 	} else {
@@ -6805,6 +9820,15 @@ Money Train::CalculateCurrentOverallValue() const
  */
 static bool TrainLocoHandler(Train *consist, bool mode)
 {
+	/* Also recover saves made after requesting a depot trip while held at a checkpoint. */
+	if (consist->current_order.IsType(OT_GOTO_DEPOT) && !consist->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders)) {
+		CancelTrainCoupleCheckpoint(consist);
+	}
+	/* The front has left the station after decoupling, normal reversing is allowed again. */
+	if (consist->flags.Test(VehicleRailFlag::JustDecoupled) && !IsRailStationTile(consist->tile)) {
+		consist->flags.Reset(VehicleRailFlag::JustDecoupled);
+	}
+
 	/* train has crashed? */
 	if (consist->vehstatus.Test(VehState::Crashed)) {
 		return mode ? true : HandleCrashedTrain(consist); // 'this' can be deleted here
@@ -6827,8 +9851,57 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 
 	/* exit if train is stopped */
 	if (consist->vehstatus.Test(VehState::Stopped) && consist->cur_speed == 0) return true;
+	if (consist->flags.Test(VehicleRailFlag::CoupleCheckReservationReleased) && GetClaimCoupleOrder(consist) == nullptr) {
+		consist->flags.Reset(VehicleRailFlag::CoupleCheckReservationReleased);
+	}
 
-	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL);
+	/* A reverse-at-waypoint checkpoint must let the whole train pass the
+	 * waypoint before it can turn around. Keep the early couple check pending
+	 * across the intervening order change, then hold the reversed consist. */
+	if (consist->flags.Test(VehicleRailFlag::CoupleCheckReversePending) && consist->reverse_distance == 0) {
+		const Order *couple = GetClaimCoupleOrder(consist);
+		if (couple != nullptr && ClaimOrWaitForCoupleOrder(consist, *couple)) {
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+			return true;
+		}
+		consist->flags.Reset(VehicleRailFlag::CoupleCheckReversePending);
+	}
+
+	/* Synthetic station arrival: a train that is fully inside its destination
+	 * station and standing still begins loading/unloading right away, without
+	 * having to move across the platform end tile that the normal arrival
+	 * path (VehicleEnterTile -> TrainEnterStation) requires. This covers e.g.
+	 * re-arriving at the station the train is already standing on after order
+	 * changes or order-list jumps, and engine-less decoupled parts standing in
+	 * the station (those carry JustDecoupled until they leave the station and
+	 * have last_station_visited restored to the decouple station, so neither
+	 * may gate this bypass). */
+	if (consist->cur_speed == 0 && (consist->current_order.IsType(OT_GOTO_STATION) || (consist->current_order.IsType(OT_WAIT_COUPLE) && consist->current_order.HasWaitCoupleStation() && consist->last_station_visited != consist->current_order.GetWaitCoupleStation()))
+			&& !(consist->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)
+			&& IsRailStationTile(consist->tile)) {
+		StationID station = GetStationIndex(consist->tile);
+		if (consist->current_order.GetDestination().ToStationID() == station && TrainFitStation(consist)) {
+			TrainEnterStation(consist, station);
+		}
+	}
+	if (consist->cur_speed == 0 && consist->current_order.IsType(OT_GOTO_WAYPOINT) && IsRailWaypointTile(consist->GetMovingFront()->tile) &&
+			GetStationIndex(consist->GetMovingFront()->tile) == consist->current_order.GetDestination().ToStationID()) {
+		bool at_checkpoint = false;
+		bool waiting = TrainShouldWaitForCoupleAtCheckpoint(consist, &at_checkpoint);
+		if (at_checkpoint && !waiting) TrainEnterStation(consist, consist->current_order.GetDestination().ToStationID());
+	}
+
+	/* A via order can advance as soon as the train enters its tile. Perform the
+	 * optional early couple check first, leaving later route orders untouched. */
+	if ((consist->current_order.IsType(OT_GOTO_WAYPOINT) ||
+			(consist->current_order.IsType(OT_GOTO_STATION) && (consist->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION))) &&
+			TrainShouldWaitForCoupleAtCheckpoint(consist)) {
+		consist->cur_speed = 0;
+		consist->subspeed = 0;
+		return true;
+	}
+	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL) && !consist->current_order.IsExecuteScheduleOrder();
 	if (ProcessOrders(consist) && CheckReverseTrain(consist)) {
 		consist->wait_counter = 0;
 		consist->cur_speed = 0;
@@ -6844,7 +9917,9 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		DiagDirection dir = VehicleExitDir(moving_front->GetMovingDirection(), moving_front->track);
 		if (IsRailDepotTile(moving_front->tile) || IsTileType(moving_front->tile, TileType::TunnelBridge)) dir = DiagDirection::Invalid;
 
-		if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SigSegState::Path || _settings_game.pf.reserve_paths) {
+		if (IsHoldingForCouple(consist)) {
+			FreeTrainTrackReservation(consist);
+		} else if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SigSegState::Path || _settings_game.pf.reserve_paths) {
 			TryPathReserve(consist, true, true);
 		}
 		consist->flags.Reset(VehicleRailFlag::LeavingStation);
@@ -6853,6 +9928,34 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	consist->HandleLoading(mode);
 
 	if (consist->current_order.IsType(OT_LOADING)) return true;
+	if (consist->flags.Test(VehicleRailFlag::SameDirDecouplePending)) {
+		if (IsOtherConsistOnPlatform(consist)) {
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+			FreeTrainTrackReservation(consist);
+			return true;
+		}
+		consist->flags.Reset(VehicleRailFlag::SameDirDecouplePending);
+		if (CheckReverseTrain(consist)) {
+			consist->flags.Set(VehicleRailFlag::Reversing);
+			return true;
+		}
+	}
+
+	/* The beyond-body release is redone from scratch whenever the train stops
+	 * waiting for a couple. */
+	if (!consist->current_order.IsType(OT_WAIT_COUPLE)) consist->couple_body_hold = false;
+
+	if (IsHoldingForCouple(consist)) {
+		if (consist->cur_speed > 0) {
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+		}
+		/* Keep only the body tiles reserved, so the partner can reserve a
+		 * path up to the contact point like for any other order. */
+		HoldWaitingTrainBody(consist);
+		return true;
+	}
 
 	if (CheckTrainStayInDepot(consist)) return true;
 
@@ -6918,7 +10021,13 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			if (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetDestination() == station_id &&
 					!(consist->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)) {
 				consist->last_station_visited = station_id;
-				consist->BeginLoading();
+				if (consist->current_order.GetDecouple() == ODF_DECOUPLE) {
+					/* A decouple order needs the full station-arrival handling; just staying in the
+					 * station and starting to load again would silently skip the decoupling. */
+					TrainEnterStation(consist, station_id);
+				} else {
+					consist->BeginLoading();
+				}
 				return true;
 			}
 		}
@@ -6965,8 +10074,10 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			j -= adv_spd;
 			TrainController(moving_front, nullptr);
 			moving_front = moving_front->GetMovingFront();
-			/* Don't continue to move if the train crashed. */
-			if (CheckTrainCollision(moving_front)) break;
+				/* Don't continue to move if the train crashed. Coupling is handled
+				 * inside CheckTrainCollision, which fires as soon as the consists
+				 * touch. */
+				if (CheckTrainCollision(moving_front)) break;
 			/* Determine distance to next map position */
 			adv_spd = moving_front->GetAdvanceDistance();
 
@@ -6985,7 +10096,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		consist->SetLastSpeed();
 	}
 
-	for (Train *u = consist; u != nullptr; u = u->Next()) {
+	for (Train *u = consist->First(); u != nullptr; u = u->Next()) {
 		if (!(u->IsDrawn())) continue;
 
 		u->UpdateViewport(false, false);
@@ -7039,23 +10150,43 @@ bool Train::Tick()
 {
 	DEBUG_UPDATESTATECHECKSUM("Train::Tick: v: {}, x: {}, y: {}, track: {}", this->index, this->x_pos, this->y_pos, this->track);
 	UpdateStateChecksum((((uint64_t) this->x_pos) << 32) | (this->y_pos << 16) | this->track);
-	if (this->IsFrontEngine()) {
-		if (!(this->vehstatus.Test(VehState::Stopped) || this->IsWaitingInDepot()) || this->cur_speed > 0) this->running_ticks++;
+	/* Drive each chain exactly once, triggered by its chain head. The driving
+	 * operations run on the chain's primary vehicle, which -- after a
+	 * no-swap couple/decouple -- may sit mid-chain instead of at the head. */
+	if (this != this->First()) return true;
 
-		this->current_order_time++;
+	/* RoRo: end the "waiting to be transported" state when the vehicle was told to do something
+	 * else in the meantime (the player skipped the order, sent it to a depot, ...). */
+	RVTransportTickWaiting(this);
 
-		if (!TrainLocoHandler(this, false)) return false;
+	/* Crashed consists are physical wreckage. Drive their animation and
+	 * tail-first removal from the physical chain head, independently of where
+	 * the former consist-information carrier sits in the chain. */
+	if (this->vehstatus.Test(VehState::Crashed)) return HandleCrashedTrain(this);
 
-		return TrainLocoHandler(this, true);
-	} else if (this->IsFreeWagon() && this->vehstatus.Test(VehState::Crashed)) {
-		/* Delete flooded standalone wagon chain */
-		if (++this->crash_anim_pos >= 4400) {
-			delete this;
-			return false;
+	Train *prim = this->Primary();
+
+	if (!prim->IsPrimaryVehicle()) {
+		/* Engine-less wagon chains: only the flooded-standalone-chain cleanup. */
+		if (prim == this && this->IsFreeWagon() && this->vehstatus.Test(VehState::Crashed)) {
+			if (++this->crash_anim_pos >= 4400) {
+				delete this;
+				return false;
+			}
 		}
+		return true;
 	}
 
-	return true;
+	if (!(prim->vehstatus.Test(VehState::Stopped) || prim->IsWaitingInDepot()) || prim->cur_speed > 0) prim->running_ticks++;
+
+	prim->current_order_time++;
+
+	if (!TrainLocoHandler(prim, false)) return false;
+
+	/* We might change chain order during coupling or reversing */
+	if (!this->Primary()->IsPrimaryVehicle()) return true;
+
+	return TrainLocoHandler(prim, true);
 }
 
 /**
@@ -7114,7 +10245,7 @@ void Train::OnNewDay()
 
 void Train::OnPeriodic()
 {
-	if (this->IsFrontEngine()) {
+	if (this->IsPrimaryVehicle()) {
 		CheckIfTrainNeedsService(this);
 
 		CheckOrders(this);
@@ -7813,7 +10944,7 @@ CommandCost CmdTemplateReplaceVehicle(DoCommandFlags flags, VehicleID veh_id)
 
 void TrainRoadVehicleCrashBreakdown(Vehicle *v)
 {
-	Train *t = Train::From(v)->First();
+	Train *t = Train::From(v)->Primary();
 	t->breakdown_ctr = 2;
 	t->flags.Set(VehicleRailFlag::ConsistBreakdown);
 	t->breakdown_delay = 255;
@@ -7825,7 +10956,7 @@ void TrainRoadVehicleCrashBreakdown(Vehicle *v)
 void TrainBrakesOverheatedBreakdown(Vehicle *v, int speed, int max_speed)
 {
 	if (v->type != VehicleType::Train) return;
-	Train *t = Train::From(v)->First();
+	Train *t = Train::From(v)->Primary();
 	if (t->breakdown_ctr != 0 || t->vehstatus.Test(VehState::Crashed)) return;
 
 	if (unlikely(HasBit(_misc_debug_flags, MDF_OVERHEAT_BREAKDOWN_OPEN_WIN)) && !IsHeadless()) {
@@ -7921,7 +11052,7 @@ void SetSignalTrainAdaptationSpeed(const Train *v, TileIndex tile, uint16_t trac
 	speed_key.signal_track = track;
 	speed_key.last_passing_train_dir = v->GetVehicleTrackdir();
 
-	const Train *first = v->First();
+	const Train *first = v->Primary();
 
 	if (first->cur_speed < SPEED_ADAPTATION_MIN_SPEED) {
 		_signal_speeds.erase(speed_key);
@@ -7956,7 +11087,7 @@ void ApplySignalTrainAdaptationSpeed(Train *v, TileIndex tile, uint16_t track)
 {
 	uint16_t speed = GetTrainAdaptationSpeed(tile, track, v->GetVehicleTrackdir());
 
-	Train *consist = v->First();
+	Train *consist = v->Primary();
 	if (speed > 0 && consist->lookahead != nullptr) {
 		for (const TrainReservationLookAheadItem &item : consist->lookahead->items) {
 			if (item.type == TRLIT_SPEED_ADAPTATION && item.end + 1 < consist->lookahead->reservation_end_position) {

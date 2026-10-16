@@ -8,6 +8,7 @@
 /** @file waypoint_cmd.cpp %Command Handling for waypoints. */
 
 #include "stdafx.h"
+#include "blueprint.h"
 
 #include "command_func.h"
 #include "landscape.h"
@@ -318,6 +319,10 @@ CommandCost CmdBuildRailWaypoint(DoCommandFlags flags, TileIndex start_tile, Axi
 			bool reserved = IsTileType(tile, TileType::Railway) ?
 					HasBit(GetRailReservationTrackBits(tile), AxisToTrack(axis)) :
 					HasStationReservation(tile);
+			/* A waypoint always goes onto track that is already there -- the rail
+			 * type is read off the tile -- so it never brings track of its own and
+			 * only the tile itself is undoable. */
+			RecordBlueprintUndoStationTile(tile, true, axis, GetRailType(tile));
 			MakeRailWaypoint(tile, wp->owner, wp->index, axis, layout_ptr[i], GetRailType(tile));
 			if (old_specindex != map_spec_index) DeallocateSpecFromStation(wp, old_specindex);
 			SetCustomStationSpecIndex(tile, map_spec_index);
@@ -496,6 +501,9 @@ CommandCost CmdBuildRoadWaypoint(DoCommandFlags flags, TileIndex start_tile, Axi
 			SetDriveThroughStopDisallowedRoadDirections(cur_tile, drd);
 			SetCustomRoadStopSpecIndex(cur_tile, map_spec_index);
 			if (spec != nullptr) wp->SetRoadStopRandomBits(cur_tile, 0);
+			/* A road waypoint always goes onto road that is already there, so only
+			 * the waypoint itself is undoable. */
+			RecordBlueprintUndoRoadStop(cur_tile, StationType::RoadWaypoint, true, AxisToDiagDir(axis), axis);
 
 			Company::Get(wp->owner)->infrastructure.station++;
 
@@ -552,6 +560,7 @@ CommandCost CmdBuildBuoy(DoCommandFlags flags, TileIndex tile)
 
 		MakeBuoy(tile, wp->index, GetWaterClass(tile));
 		InvalidateWaterRegion(tile);
+		RecordBlueprintUndoBuoy(tile);
 		CheckForDockingTile(tile);
 		MarkTileDirtyByTile(tile);
 		ClearNeighbourNonFloodingStates(tile);

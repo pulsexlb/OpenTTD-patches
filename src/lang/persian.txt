@@ -4659,3 +4659,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}نقشه
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}ناحیه‌ای از زیرساخت خود را انتخاب کنید تا در جایگاه نقشهٔ فعال کپی شود
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}چسباندن محتوای جایگاه نقشهٔ فعال روی نقشهٔ بازی
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}چسباندن زیرساخت ریلی
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}چسباندن زیرساخت جاده‌ای
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}چسباندن زیرساخت آبی
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}چسباندن زیرساخت هوایی
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}تبدیل زیرساخت ریلی به نوع ریل فعلی هنگام چسباندن
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}آینه‌ای کردن علائم هنگام چسباندن
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}ارتقای پل‌ها هنگام چسباندن
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}چسباندن ایستگاه‌ها و نقاط مسیر نیز
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}تغییر شکل زمین هنگام چسباندن. برای تغییر کلیک کنید: بدون تغییر زمین، تغییر حداقلی، تغییر کامل
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}تبدیل فعلی، برای بازنشانی کلیک کنید
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}چرخاندن نقشه 90 درجه پادساعتگرد
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}چرخاندن نقشه 90 درجه ساعتگرد
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}قرینه کردن نقشه حول محور شمال‌غرب-جنوب‌شرق
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}قرینه کردن نقشه حول محور شمال‌شرق-جنوب‌غرب
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}جابه‌جایی ارتفاع هنگام چسباندن
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}افزایش ارتفاعی که نقشه در آن چسبانده می‌شود
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}کاهش ارتفاعی که نقشه در آن چسبانده می‌شود
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}اطلاعات دربارهٔ وصلهٔ Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}ناحیهٔ انتخاب‌شده هیچ زیرساختی متعلق به شرکت شما ندارد
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}ناحیهٔ انتخاب‌شده برای کپی بسیار بزرگ است
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}نقشه برای چسباندن در بازی چندنفره بسیار بزرگ است
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}نمایش نوار ابزار نقشه برای کپی و چسباندن زیرساخت
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}نمایش نوار ابزار نقشه برای کپی و چسباندن زیرساخت
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}نمی‌توان نقشه را اینجا چسباند...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}رفتن به این جایگاه نقشه. اگر جایگاه نام یا محتوا داشته باشد، نگه داشتن نشانگر روی آن نام و پیش‌نمایش را نشان می‌دهد. برای تغییر نام دوبار کلیک کنید
+STR_BLUEPRINT_EXPORT                                            :{BLACK}برون‌بری
+STR_BLUEPRINT_IMPORT                                            :{BLACK}درون‌ریزی
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}برون‌بری/درون‌ریزی
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}وصلهٔ Blueprint، نسخهٔ {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :برون‌بری جایگاه فعال...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :برون‌بری همهٔ جایگاه‌ها به یک پرونده...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :درون‌ریزی به جایگاه فعال...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :درون‌ریزی همهٔ جایگاه‌ها از یک پرونده...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}نقشه در کلیپ‌بورد کپی نشد
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}کلیپ‌بورد خالی است
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}برون‌بری نقشه
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}درون‌ریزی نقشه
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}کپی در کلیپ‌بورد
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}چسباندن از کلیپ‌بورد
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}جایگزینی نقشه؟
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}جایگاه فعال از قبل نقشه‌ای دارد. آیا می‌خواهید آن را جایگزین کنید؟
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}جایگزینی همهٔ نقشه‌ها؟
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}این کار محتوای همهٔ جایگاه‌های نقشه را جایگزین می‌کند. آیا می‌خواهید ادامه دهید؟
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}تغییر نام نقشه
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}برون‌بری همهٔ نقشه‌ها به یک پرونده
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}درون‌ریزی همهٔ نقشه‌ها از یک پرونده
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}جایگزینی پرونده؟
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}پرونده‌ای با این نام از قبل وجود دارد. آیا می‌خواهید آن را جایگزین کنید؟
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}برون‌بری یا درون‌ریزی نقشه‌ها
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}برای انتخاب یک پرونده روی آن کلیک کنید، یا برای باز کردن یک پوشه روی آن کلیک کنید
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}متن یک نقشهٔ معتبر نیست
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}نام پروندهٔ نامعتبر
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}پروندهٔ نقشه یافت نشد، یا مجموعهٔ نقشهٔ معتبری نیست
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}پروندهٔ نقشه نوشته نشد

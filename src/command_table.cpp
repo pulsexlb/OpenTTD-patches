@@ -14,7 +14,9 @@
 #include "command_table.h"
 #include "core/format_variant.hpp"
 
+#include "airport_cmd.h"
 #include "autoreplace_cmd.h"
+#include "blueprint_cmd.h"
 #include "company_cmd.h"
 #include "depot_cmd.h"
 #include "engine_cmd.h"

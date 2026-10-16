@@ -4973,3 +4973,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}مخطط
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}حدد منطقة من بنيتك التحتية لنسخها إلى خانة المخطط النشطة
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}لصق محتوى خانة المخطط النشطة على الخريطة
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}لصق البنية التحتية للسكك الحديدية
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}لصق البنية التحتية للطرق
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}لصق البنية التحتية المائية
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}لصق البنية التحتية الجوية
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}تحويل السكك الحديدية إلى نوع السكة الحالي عند اللصق
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}عكس الإشارات عند اللصق
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}تطوير الجسور عند اللصق
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}لصق المحطات ونقاط المسار أيضًا
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}تسوية الأرض عند اللصق. انقر للتبديل: بدون تسوية، تسوية بسيطة، تسوية كاملة
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}التحويل الحالي، انقر لإعادة التعيين
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}تدوير المخطط 90 درجة عكس عقارب الساعة
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}تدوير المخطط 90 درجة مع عقارب الساعة
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}عكس المخطط حول محور الشمال الغربي-الجنوب الشرقي
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}عكس المخطط حول محور الشمال الشرقي-الجنوب الغربي
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}إزاحة الارتفاع عند اللصق
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}زيادة الارتفاع الذي يُلصق عنده المخطط
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}خفض الارتفاع الذي يُلصق عنده المخطط
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}معلومات عن تعديل Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}المنطقة المحددة لا تحتوي على بنية تحتية تملكها شركتك
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}المنطقة المحددة كبيرة جدًا للنسخ
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}المخطط كبير جدًا للصق في لعبة متعددة اللاعبين
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}إظهار شريط أدوات المخططات لنسخ البنية التحتية ولصقها
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}إظهار شريط أدوات المخططات لنسخ البنية التحتية ولصقها
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}لا يمكن لصق المخطط هنا...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}التبديل إلى خانة المخطط هذه. إذا كان للخانة اسم أو محتوى، يظهر التمرير فوقها الاسم ومعاينة. انقر نقرًا مزدوجًا لإعادة التسمية
+STR_BLUEPRINT_EXPORT                                            :{BLACK}تصدير
+STR_BLUEPRINT_IMPORT                                            :{BLACK}استيراد
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}تصدير/استيراد
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}تعديل Blueprint، الإصدار {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :تصدير الخانة النشطة...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :تصدير كل الخانات إلى ملف...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :استيراد إلى الخانة النشطة...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :استيراد كل الخانات من ملف...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}تعذر نسخ المخطط إلى الحافظة
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}الحافظة فارغة
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}تصدير المخطط
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}استيراد مخطط
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}نسخ إلى الحافظة
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}لصق من الحافظة
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}استبدال المخطط؟
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}الخانة النشطة تحتوي بالفعل على مخطط. هل تريد استبداله؟
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}استبدال كل المخططات؟
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}سيؤدي هذا إلى استبدال محتوى كل خانات المخططات. هل تريد المتابعة؟
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}إعادة تسمية المخطط
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}تصدير كل المخططات إلى ملف
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}استيراد كل المخططات من ملف
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}استبدال الملف؟
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}يوجد بالفعل ملف بهذا الاسم. هل تريد استبداله؟
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}تصدير أو استيراد المخططات
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}انقر فوق ملف لتحديده، أو مجلد لفتحه
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}النص ليس مخططًا صالحًا
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}اسم ملف غير صالح
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}لم يتم العثور على ملف المخطط، أو أنه ليس مجموعة مخططات صالحة
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}تعذرت كتابة ملف المخطط

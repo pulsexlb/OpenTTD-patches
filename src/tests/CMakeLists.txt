@@ -2,12 +2,14 @@ add_test_files(
     alternating_iterator.cpp
     bitmath_func.cpp
     command.cpp
+    blueprint.cpp
     enum_over_optimisation.cpp
     flatset_type.cpp
     format_target.cpp
     history_func.cpp
     landscape_partial_pixel_z.cpp
     math_func.cpp
+    orderlist_groups.cpp
     mock_environment.h
     mock_fontcache.h
     mock_spritecache.cpp
@@ -24,5 +26,6 @@ add_test_files(
     test_script_admin.cpp
     test_window_desc.cpp
     tilearea.cpp
+    train_decouple.cpp
     utf8.cpp
 )

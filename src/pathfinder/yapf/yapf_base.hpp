@@ -123,6 +123,13 @@ public:
 	/** default destructor */
 	~CYapfBaseT() {}
 
+	/**
+	 * Limit how many nodes this search may visit before it gives up. Used to bound the cost of a
+	 * throw-away search, e.g. when comparing several possible starting points.
+	 * @param nodes the node budget; 0 means no limit
+	 */
+	void SetMaxSearchNodes(int nodes) { this->max_search_nodes = nodes; }
+
 protected:
 	/**
 	 * Access the inherited path finder.

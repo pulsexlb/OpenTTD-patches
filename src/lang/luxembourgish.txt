@@ -6045,3 +6045,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Badgefil
 STR_BADGE_CONFIG_PREVIEW                                        :Bildvirschau
 STR_BADGE_CONFIG_NAME                                           :Numm
 STR_BADGE_FILTER_ANY_LABEL                                      :Iergendeen {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} ass {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plang
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Wielt e Beräich vun ärer eegener Infrastruktur aus, fir en an den aktive Plang-Slot ze kopéieren
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Den Inhalt vum aktive Plang-Slot op d'Kaart asetzen
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Schinneninfrastruktur asetzen
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Stroosseninfrastruktur asetzen
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Waasserinfrastruktur asetzen
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Loftverkéiersinfrastruktur asetzen
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Schinneninfrastruktur beim Asetzen an den aktuelle Schinnentyp ëmwandelen
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Signaler beim Asetze spigelen
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Brécke beim Asetze moderniséieren
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Och Statiounen a Weepunkten asetzen
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Beim Asetzen d'Land terraforméieren. Klickt fir ze wiesselen: keng Terraformatioun, minimal Terraformatioun, voll Terraformatioun
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Aktuell Transformatioun, klickt fir zréckzesetzen
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}De Plang 90 Grad géint d'Auer dréinen
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}De Plang 90 Grad mat der Auer dréinen
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}De Plang un der NW-SO-Achs spigelen
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}De Plang un der NO-SW-Achs spigelen
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Héichtversaz beim Asetzen
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}D'Héicht eropsetzen, op där de Plang agesat gëtt
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}D'Héicht erofsetzen, op där de Plang agesat gëtt
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informatiounen iwwer de Blueprint-Patch
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}De gewielte Beräich enthält keng Infrastruktur vun ärer Firma
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}De gewielte Beräich ass ze grouss fir ze kopéieren
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}De Plang ass ze grouss fir an engem Multiplayer-Spill agesat ze ginn
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Plang-Toolbar fir d'Kopéieren an d'Asetze vun Infrastruktur weisen
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Plang-Toolbar fir d'Kopéieren an d'Asetze vun Infrastruktur weisen
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}De Plang kann hei net agesat ginn...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Op dëse Plang-Slot wiesselen. Wann de Slot en Numm oder Inhalt huet, weist Driwwerfueren den Numm an eng Virschau. Duebelklick fir ëmzebenennen
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportéieren
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importéieren
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Ex-/Import
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-Patch, Versioun {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Aktive Slot exportéieren...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :All Slots an eng Datei exportéieren...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :An aktive Slot importéieren...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :All Slots aus enger Datei importéieren...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}De Plang konnt net an de Presse-papier kopéiert ginn
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}De Presse-papier ass eidel
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Plang exportéieren
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Plang importéieren
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}An de Presse-papier kopéieren
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Aus dem Presse-papier asetzen
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Plang ersetzen?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Den aktive Slot enthält schonn e Plang. Soll e ersat ginn?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}All Blaupause ersetzen?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Dëst ersetzt den Inhalt vun all de Blaupausen-Slots. Wëllt Dir weiderfueren?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Plang ëmbenennen
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}All Blaupause an eng Datei exportéieren
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}All Blaupause aus enger Datei importéieren
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Datei ersetzen?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Eng Datei mat dësem Numm existéiert schonn. Wëllt Dir se ersetzen?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Blaupausen exportéieren oder importéieren
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klickt op eng Datei fir se auszewielen, oder op en Dossier fir en opzemaachen
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Den Text ass kee gültege Plang
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ongültege Dateinumm
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Blaupausen-Datei net fonnt, oder keng gülteg Blaupausen-Sammlung
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}D'Blaupausen-Datei konnt net geschriwwe ginn

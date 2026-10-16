@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include "roadveh.h"
+#include "roadveh_transport.h"
 #include "news_func.h"
 #include "airport.h"
 #include "command_func.h"
@@ -262,7 +263,7 @@ CommandCost CmdSellVehicle(DoCommandFlags flags, TileIndex tile, VehicleID v_id,
 	if (v == nullptr || !IsCompanyBuildableVehicleType(v)) return CMD_ERROR;
 	if (v->tile != tile) return CMD_ERROR;
 
-	Vehicle *front = v->First();
+	Vehicle *front = v->Primary();
 
 	CommandCost ret = CheckOwnership(front->owner);
 	if (ret.Failed()) return ret;
@@ -270,6 +271,10 @@ CommandCost CmdSellVehicle(DoCommandFlags flags, TileIndex tile, VehicleID v_id,
 	if (HasFlag(sell_flags, SellVehicleFlags::VirtualOnly) != HasBit(front->subtype, GVSF_VIRTUAL)) return CMD_ERROR;
 
 	if (front->vehstatus.Test(VehState::Crashed)) return CommandCost(STR_ERROR_VEHICLE_IS_DESTROYED);
+
+	/* RoRo: a carried road vehicle cannot be sold, and a carrier must not be sold while it carries road vehicles. */
+	if ((front->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) != 0) return CommandCost(STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIED);
+	if (RVTransportCountOnCarrier(front) > 0) return CommandCost(STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIER);
 
 	/* Do this check only if the vehicle to be moved is non-virtual */
 	if (!HasFlag(sell_flags, SellVehicleFlags::VirtualOnly) && !front->IsStoppedInDepot()) return CommandCost(STR_ERROR_TRAIN_MUST_BE_STOPPED_INSIDE_DEPOT + to_underlying(front->type));
@@ -425,6 +430,13 @@ static CommandCost RefitVehicle(Vehicle *v, bool only_this, uint8_t num_vehicles
 		/* If the vehicle is not refittable, or does not allow automatic refitting,
 		 * count its capacity nevertheless if the cargo matches */
 		bool refittable = e->info.refit_mask.Test(new_cargo_type) && (!auto_refit || e->info.misc_flags.Test(EngineMiscFlag::AutoRefit));
+		/* Road vehicle transport: the dedicated vehicle transport cargoes may only be chosen when
+		 * the "carrier parts" setting lets this engine become a carrier part, independent of what
+		 * the (engine-level) refit mask offers. */
+		if ((new_cargo_type == RV_TRANSPORT_CARGO_SLOT || new_cargo_type == RAIL_TRANSPORT_CARGO_SLOT) &&
+				!RVTransportEngineMayBeRefitToVehicles(e)) {
+			refittable = false;
+		}
 		if (!refittable && v->cargo_type != new_cargo_type) {
 			uint amount = e->DetermineCapacity(v, nullptr);
 			if (amount > 0) _returned_vehicle_capacities[v->cargo_type] += amount;
@@ -556,7 +568,11 @@ CommandCost CmdRefitVehicle(DoCommandFlags flags, VehicleID veh_id, CargoType ne
 	if (!is_virtual_train) {
 		if (!flags.Test(DoCommandFlag::QueryCost) && // used by the refit GUI, including the order refit GUI.
 				!free_wagon && // used by autoreplace/renew
-				(!auto_refit || !front->current_order.IsType(OT_LOADING)) && // refit inside stations
+				/* The current order is primary-hosted (see #ProcessOrders), while front is the
+				 * physical chain head, which is not the primary when the engine is not at the head
+				 * of the consist. Asking the head would report a stale order and reject a refit which
+				 * is perfectly legal here; the physical caches further down do need the head. */
+				(!auto_refit || !front->Primary()->current_order.IsType(OT_LOADING)) && // refit inside stations
 				!front->IsStoppedInDepot()) { // refit inside depots
 			return CommandCost(STR_ERROR_TRAIN_MUST_BE_STOPPED_INSIDE_DEPOT + to_underlying(front->type));
 		}
@@ -617,6 +633,45 @@ CommandCost CmdRefitVehicle(DoCommandFlags flags, VehicleID veh_id, CargoType ne
 }
 
 /**
+ * Evaluate the CBID_VEHICLE_START_STOP_CHECK NewGRF callback for a consist.
+ * The callback is evaluated on the primary vehicle, so for hypothetical
+ * couple/decouple results this must be the would-be front engine.
+ * @param v the (would-be) primary vehicle of the consist
+ * @return failed when the NewGRF forbids starting/stopping the consist
+ */
+CommandCost CheckVehicleStartStopCallback(const Vehicle *v)
+{
+	/* Check if this vehicle can be started/stopped. Failure means 'allow'. */
+	uint16_t callback = GetVehicleCallback(CBID_VEHICLE_START_STOP_CHECK, 0, 0, v->engine_type, v);
+	StringID error = STR_NULL;
+	if (callback != CALLBACK_FAILED) {
+		if (v->GetGRF()->grf_version < 8) {
+			/* 8 bit result 0xFF means 'allow' */
+			if (callback < 0x400 && GB(callback, 0, 8) != 0xFF) error = GetGRFStringID(v->GetGRF(), GRFSTR_MISC_GRF_TEXT + callback);
+		} else {
+			if (callback < 0x400) {
+				error = GetGRFStringID(v->GetGRF(), GRFSTR_MISC_GRF_TEXT + callback);
+			} else {
+				switch (callback) {
+					case 0x400: // allow
+						break;
+
+					case 0x40F:
+						error = GetGRFStringID(v->GetGRFID(), static_cast<GRFStringID>(GetRegister(0x100)));
+						break;
+
+					default: // unknown reason -> disallow
+						error = STR_ERROR_INCOMPATIBLE_RAIL_TYPES;
+						break;
+				}
+			}
+		}
+	}
+	if (error != STR_NULL) return CommandCost(error);
+	return CommandCost();
+}
+
+/**
  * Start/Stop a vehicle
  * @param flags type of operation
  * @param veh_id vehicle to start/stop, don't forget to change CcStartStopVehicle if you modify this!
@@ -638,7 +693,7 @@ CommandCost CmdStartStopVehicle(DoCommandFlags flags, VehicleID veh_id, bool eva
 
 	switch (v->type) {
 		case VehicleType::Train:
-			if (v->vehstatus.Test(VehState::Stopped) && Train::From(v)->gcache.cached_power == 0) return CommandCost(STR_ERROR_TRAIN_START_NO_POWER);
+			if (v->vehstatus.Test(VehState::Stopped) && Train::From(v)->gcache.cached_power == 0 && !Train::From(v)->IsFrontWagon()) return CommandCost(STR_ERROR_TRAIN_START_NO_POWER);
 			break;
 
 		case VehicleType::Ship:
@@ -648,8 +703,7 @@ CommandCost CmdStartStopVehicle(DoCommandFlags flags, VehicleID veh_id, bool eva
 		case VehicleType::Aircraft: {
 			Aircraft *a = Aircraft::From(v);
 			/* cannot stop airplane when in flight, or when taking off / landing */
-			if (a->state >= STARTTAKEOFF && a->state < TERM7) return CommandCost(STR_ERROR_AIRCRAFT_IS_IN_FLIGHT);
-			if (a->flags.Test(VehicleAirFlag::HelicopterDirectDescent)) return CommandCost(STR_ERROR_AIRCRAFT_IS_IN_FLIGHT);
+			if (a->IsAircraftFlying()) return CommandCost(STR_ERROR_AIRCRAFT_IS_IN_FLIGHT);
 			break;
 		}
 
@@ -657,33 +711,8 @@ CommandCost CmdStartStopVehicle(DoCommandFlags flags, VehicleID veh_id, bool eva
 	}
 
 	if (evaluate_startstop_cb) {
-		/* Check if this vehicle can be started/stopped. Failure means 'allow'. */
-		uint16_t callback = GetVehicleCallback(CBID_VEHICLE_START_STOP_CHECK, 0, 0, v->engine_type, v);
-		StringID error = STR_NULL;
-		if (callback != CALLBACK_FAILED) {
-			if (v->GetGRF()->grf_version < 8) {
-				/* 8 bit result 0xFF means 'allow' */
-				if (callback < 0x400 && GB(callback, 0, 8) != 0xFF) error = GetGRFStringID(v->GetGRF(), GRFSTR_MISC_GRF_TEXT + callback);
-			} else {
-				if (callback < 0x400) {
-					error = GetGRFStringID(v->GetGRF(), GRFSTR_MISC_GRF_TEXT + callback);
-				} else {
-					switch (callback) {
-						case 0x400: // allow
-							break;
-
-						case 0x40F:
-							error = GetGRFStringID(v->GetGRFID(), static_cast<GRFStringID>(GetRegister(0x100)));
-							break;
-
-						default: // unknown reason -> disallow
-							error = STR_ERROR_INCOMPATIBLE_RAIL_TYPES;
-							break;
-					}
-				}
-			}
-		}
-		if (error != STR_NULL) return CommandCost(error);
+		CommandCost ret_cb = CheckVehicleStartStopCallback(v);
+		if (ret_cb.Failed()) return ret_cb;
 	}
 
 	if (flags.Test(DoCommandFlag::Execute)) {

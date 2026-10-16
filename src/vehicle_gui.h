@@ -21,6 +21,7 @@
 #include <vector>
 
 void ShowVehicleRefitWindow(const Vehicle *v, VehicleOrderID order, Window *parent, bool auto_refit = false, bool is_virtual_train = false);
+void ShowVehicleCargoTypesWindow(const Vehicle *v, VehicleOrderID order, Window *parent);
 
 /** The tabs in the train details window */
 enum TrainDetailsWindowTabs : uint8_t {
@@ -29,6 +30,7 @@ enum TrainDetailsWindowTabs : uint8_t {
 	TDW_TAB_CAPACITY,  ///< Tab with cargo capacity of the vehicles
 	TDW_TAB_TOTALS,    ///< Tab with sum of total cargo transported
 	TDW_TAB_PERF,      ///< Tab with empty/full train performance statistics
+	TDW_TAB_CARRIED,   ///< Tab with the road vehicles this train carries (RoRo), clickable rows
 };
 DECLARE_ENUM_AS_ADDABLE(TrainDetailsWindowTabs)
 
@@ -58,6 +60,8 @@ void DrawTrainImage(const Train *v, const Rect &r, VehicleID selection, EngineIm
 void DrawRoadVehImage(const Vehicle *v, const Rect &r, VehicleID selection, EngineImageType image_type, int skip = 0);
 void DrawShipImage(const Vehicle *v, const Rect &r, VehicleID selection, EngineImageType image_type);
 void DrawAircraftImage(const Vehicle *v, const Rect &r, VehicleID selection, EngineImageType image_type);
+
+int DrawCarriedRoadVehicles(const Vehicle *carrier, const Rect &r, int y);
 
 void ShowBuildVehicleWindow(TileIndex tile, VehicleType type);
 void ShowTemplateTrainBuildVehicleWindow(Train **virtual_train);
@@ -94,6 +98,8 @@ struct VehicleCellSize {
 
 VehicleCellSize GetVehicleImageCellSize(VehicleType type, EngineImageType image_type);
 
+void ShowVehicleCargoTypesWindow(const Vehicle *v, VehicleOrderID order, Window *parent);
+
 /**
  * Get WindowClass for vehicle list of given vehicle type
  * @param vt vehicle type to check
@@ -119,6 +125,7 @@ struct GUIVehicleGroup;
 /* Unified window procedure */
 void ShowVehicleViewWindow(const Vehicle *v);
 void DirtySharedVehicleViewWindowTitles(const Vehicle *v);
+void ChangeVehicleViewWindow(VehicleID from_index, VehicleID to_index);
 bool VehicleClicked(const Vehicle *v);
 bool VehicleClicked(VehicleList::const_iterator begin, VehicleList::const_iterator end);
 bool VehicleClicked(const GUIVehicleGroup &vehgroup);

@@ -8,6 +8,7 @@
 /** @file terraform_cmd.cpp Commands related to terraforming. */
 
 #include "stdafx.h"
+#include "blueprint.h"
 #include "command_func.h"
 #include "tunnel_map.h"
 #include "bridge_map.h"
@@ -315,6 +316,7 @@ CommandCost CmdTerraformLand(DoCommandFlags flags, TileIndex tile, Slope slope, 
 			TileIndex t = it.first;
 			int height = it.second;
 
+			RecordBlueprintUndoTerraform(t, static_cast<uint8_t>(TileHeight(t)));
 			SetTileHeight(t, (uint)height);
 		}
 

@@ -6050,3 +6050,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}篩選�
 STR_BADGE_CONFIG_PREVIEW                                        :預覽圖
 STR_BADGE_CONFIG_NAME                                           :名稱
 STR_BADGE_FILTER_ANY_LABEL                                      :任何{STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING}：{STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}藍圖
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}選擇一塊您自己的基礎設施區域，複製到目前的藍圖欄位
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}將目前藍圖欄位的內容貼上到地圖上
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}貼上鐵路基礎設施
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}貼上道路基礎設施
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}貼上水運基礎設施
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}貼上航空基礎設施
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}貼上時將鐵路基礎設施轉換為目前的鐵路類型
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}貼上時鏡像號誌
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}貼上時升級橋樑
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}同時貼上車站和路點
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}貼上時改變地形。點擊切換：不改變地形、最小改變、完全改變
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}目前的變換，點擊重設
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}將藍圖逆時針旋轉90度
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}將藍圖順時針旋轉90度
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}沿西北-東南軸翻轉藍圖
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}沿東北-西南軸翻轉藍圖
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}貼上時套用的高度偏移
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}提高藍圖貼上的高度
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}降低藍圖貼上的高度
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}關於 Blueprint 修補程式的資訊
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}所選區域內沒有貴公司的基礎設施
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}所選區域太大，無法複製
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}藍圖太大，無法在多人遊戲中貼上
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}顯示用於複製和貼上基礎設施的藍圖工具列
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}顯示用於複製和貼上基礎設施的藍圖工具列
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}無法在此處貼上藍圖...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}切換到此藍圖欄位。若欄位有名稱或內容，游標懸停時會顯示名稱與預覽。雙擊以重新命名
+STR_BLUEPRINT_EXPORT                                            :{BLACK}匯出
+STR_BLUEPRINT_IMPORT                                            :{BLACK}匯入
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}匯出/匯入
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint 修補程式，版本 {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :匯出目前欄位...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :將所有欄位匯出到檔案...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :匯入到目前欄位...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :從檔案匯入所有欄位...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}無法將藍圖複製到剪貼簿
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}剪貼簿是空的
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}匯出藍圖
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}匯入藍圖
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}複製到剪貼簿
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}從剪貼簿貼上
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}取代藍圖？
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}目前欄位已有藍圖。要取代它嗎？
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}取代所有藍圖？
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}這將取代所有藍圖欄位的內容。要繼續嗎？
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}重新命名藍圖
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}將所有藍圖匯出到檔案
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}從檔案匯入所有藍圖
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}取代檔案？
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}已有同名檔案存在。要取代它嗎？
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}匯出或匯入藍圖
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}點擊檔案以選取，或點擊資料夾以開啟
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}該文字不是有效的藍圖
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}檔案名稱無效
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}找不到藍圖檔案，或不是有效的藍圖集
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}無法寫入藍圖檔案

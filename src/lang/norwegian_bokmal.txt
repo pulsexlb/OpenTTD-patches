@@ -6052,3 +6052,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Merkefil
 STR_BADGE_CONFIG_PREVIEW                                        :Forhåndsvis bilde
 STR_BADGE_CONFIG_NAME                                           :Navn
 STR_BADGE_FILTER_ANY_LABEL                                      :Vilkårlig {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} er {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Blåkopi
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Velg et område med din egen infrastruktur som skal kopieres til den aktive blåkopiplassen
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Lim inn innholdet i den aktive blåkopiplassen på kartet
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Lim inn jernbaneinfrastruktur
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Lim inn veiinfrastruktur
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Lim inn sjøfartsinfrastruktur
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Lim inn luftfartsinfrastruktur
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Konverter jernbaneinfrastruktur til gjeldende skinnetype ved innliming
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Speilvend signaler ved innliming
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Oppgrader broer ved innliming
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Lim også inn stasjoner og veipunkter
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraformer landskapet ved innliming. Klikk for å veksle: ingen terraforming, minimal terraforming, full terraforming
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Gjeldende transformasjon, klikk for å tilbakestille
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Roter blåkopien 90 grader mot klokka
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Roter blåkopien 90 grader med klokka
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Speil blåkopien om NV-SØ-aksen
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Speil blåkopien om NØ-SV-aksen
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Høydeforskyvning ved innliming
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Øk høyden blåkopien limes inn på
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Reduser høyden blåkopien limes inn på
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informasjon om Blueprint-patchen
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Det valgte området inneholder ingen infrastruktur eid av firmaet ditt
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Det valgte området er for stort til å kopiere
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Blåkopien er for stor til å limes inn i et flerspillerspill
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Vis blåkopiverktøylinjen for kopiering og innliming av infrastruktur
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Vis blåkopiverktøylinjen for kopiering og innliming av infrastruktur
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Kan ikke lime inn blåkopien her...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Bytt til denne blåkopiplassen. Hvis plassen har et navn eller innhold, viser museover navnet og en forhåndsvisning. Dobbeltklikk for å gi nytt navn
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Eksporter
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importer
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eksp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-patch, versjon {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Eksporter aktiv plass...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Eksporter alle plasser til fil...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importer til aktiv plass...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importer alle plasser fra fil...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Blåkopien kunne ikke kopieres til utklippstavlen
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Utklippstavlen er tom
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Eksporter blåkopi
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importer blåkopi
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopier til utklippstavlen
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Lim inn fra utklippstavlen
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Erstatte blåkopien?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Den aktive plassen inneholder allerede en blåkopi. Vil du erstatte den?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Erstatte alle blåkopier?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Dette vil erstatte innholdet i alle blåkopiplasser. Vil du fortsette?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Gi blåkopi nytt navn
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Eksporter alle blåkopier til fil
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importer alle blåkopier fra fil
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Erstatte fil?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}En fil med det navnet finnes allerede. Vil du erstatte den?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Eksporter eller importer blåkopier
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klikk på en fil for å velge den, eller en mappe for å åpne den
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Teksten er ingen gyldig blåkopi
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ugyldig filnavn
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Blåkopifilen ble ikke funnet, eller er ikke et gyldig blåkopisett
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Blåkopifilen kunne ikke skrives

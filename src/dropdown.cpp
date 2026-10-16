@@ -189,6 +189,7 @@ struct DropdownWindow : Window {
 			, editbox(60 * MAX_CHAR_LENGTH, 60)
 	{
 		assert(!this->list.empty());
+		this->drag_mode = !this->options.Test(DropDownOption::ClickOnly);
 
 		this->parent_wnd_token = parent->GetWindowToken();
 

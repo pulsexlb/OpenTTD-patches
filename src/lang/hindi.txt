@@ -1760,3 +1760,63 @@ STR_PLANE                                                       :{BLACK}{PLANE}
 STR_SHIP                                                        :{BLACK}{SHIP}
 
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}ब्लूप्रिंट
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}अपने बुनियादी ढाँचे का एक क्षेत्र चुनें ताकि उसे सक्रिय ब्लूप्रिंट स्लॉट में कॉपी किया जाए
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}सक्रिय ब्लूप्रिंट स्लॉट की सामग्री मानचित्र पर पेस्ट करें
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}रेल बुनियादी ढाँचा पेस्ट करें
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}सड़क बुनियादी ढाँचा पेस्ट करें
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}जल बुनियादी ढाँचा पेस्ट करें
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}वायु बुनियादी ढाँचा पेस्ट करें
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}पेस्ट करते समय रेल बुनियादी ढाँचे को वर्तमान रेल प्रकार में बदलें
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}पेस्ट करते समय सिग्नल दर्पणित करें
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}पेस्ट करते समय पुलों को उन्नत करें
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}स्टेशन और मार्ग-बिंदु भी पेस्ट करें
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}पेस्ट करते समय भूमि का आकार बदलें। बदलने के लिए क्लिक करें: कोई बदलाव नहीं, न्यूनतम बदलाव, पूर्ण बदलाव
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}वर्तमान रूपांतरण, रीसेट करने के लिए क्लिक करें
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}ब्लूप्रिंट को 90 डिग्री वामावर्त घुमाएँ
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}ब्लूप्रिंट को 90 डिग्री दक्षिणावर्त घुमाएँ
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}ब्लूप्रिंट को उत्तर-पश्चिम-दक्षिण-पूर्व अक्ष पर पलटें
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}ब्लूप्रिंट को उत्तर-पूर्व-दक्षिण-पश्चिम अक्ष पर पलटें
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}पेस्ट करते समय ऊँचाई का अंतर
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}वह ऊँचाई बढ़ाएँ जिस पर ब्लूप्रिंट पेस्ट होता है
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}वह ऊँचाई घटाएँ जिस पर ब्लूप्रिंट पेस्ट होता है
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Blueprint पैच के बारे में जानकारी
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}चयनित क्षेत्र में आपकी कंपनी का कोई बुनियादी ढाँचा नहीं है
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}चयनित क्षेत्र कॉपी करने के लिए बहुत बड़ा है
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}ब्लूप्रिंट मल्टीप्लेयर खेल में पेस्ट करने के लिए बहुत बड़ा है
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}बुनियादी ढाँचे को कॉपी और पेस्ट करने के लिए ब्लूप्रिंट टूलबार दिखाएँ
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}बुनियादी ढाँचे को कॉपी और पेस्ट करने के लिए ब्लूप्रिंट टूलबार दिखाएँ
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}ब्लूप्रिंट यहाँ पेस्ट नहीं किया जा सकता...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}इस ब्लूप्रिंट स्लॉट पर जाएँ। यदि स्लॉट का नाम या सामग्री है, तो माउस रखने पर नाम और पूर्वावलोकन दिखता है। नाम बदलने के लिए डबल-क्लिक करें
+STR_BLUEPRINT_EXPORT                                            :{BLACK}निर्यात
+STR_BLUEPRINT_IMPORT                                            :{BLACK}आयात
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}निर्यात/आयात
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint पैच, संस्करण {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :सक्रिय स्लॉट निर्यात करें...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :सभी स्लॉट फ़ाइल में निर्यात करें...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :सक्रिय स्लॉट में आयात करें...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :सभी स्लॉट फ़ाइल से आयात करें...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}ब्लूप्रिंट क्लिपबोर्ड पर कॉपी नहीं हो सका
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}क्लिपबोर्ड खाली है
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}ब्लूप्रिंट निर्यात करें
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}ब्लूप्रिंट आयात करें
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}क्लिपबोर्ड पर कॉपी करें
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}क्लिपबोर्ड से पेस्ट करें
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}ब्लूप्रिंट बदलें?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}सक्रिय स्लॉट में पहले से एक ब्लूप्रिंट है। क्या आप उसे बदलना चाहते हैं?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}सभी ब्लूप्रिंट बदलें?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}इससे सभी ब्लूप्रिंट स्लॉट की सामग्री बदल जाएगी। क्या आप जारी रखना चाहते हैं?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}ब्लूप्रिंट का नाम बदलें
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}सभी ब्लूप्रिंट फ़ाइल में निर्यात करें
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}सभी ब्लूप्रिंट फ़ाइल से आयात करें
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}फ़ाइल बदलें?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}उस नाम की फ़ाइल पहले से मौजूद है। क्या आप उसे बदलना चाहते हैं?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}ब्लूप्रिंट निर्यात या आयात करें
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}चुनने के लिए फ़ाइल पर क्लिक करें, या खोलने के लिए फ़ोल्डर पर क्लिक करें
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}पाठ मान्य ब्लूप्रिंट नहीं है
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}अमान्य फ़ाइल नाम
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}ब्लूप्रिंट फ़ाइल नहीं मिली, या यह मान्य ब्लूप्रिंट सेट नहीं है
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}ब्लूप्रिंट फ़ाइल नहीं लिखी जा सकी

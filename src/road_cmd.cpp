@@ -8,6 +8,7 @@
 /** @file road_cmd.cpp Commands related to road tiles. */
 
 #include "stdafx.h"
+#include "blueprint.h"
 #include "road.h"
 #include "road_internal.h"
 #include "viewport_func.h"
@@ -1043,6 +1044,12 @@ CommandCost CmdBuildRoad(DoCommandFlags flags, TileIndex tile, RoadBits pieces, 
 	Slope tileh = GetTileSlope(tile);
 	RoadTramType rtt = GetRoadTramType(rt);
 
+	/* What is already here, so that an undo removes only the bits this command
+	 * adds. Building over existing road succeeds while adding just the missing
+	 * pieces, and the caller's request is widened in places below, so the
+	 * difference has to be measured rather than assumed. */
+	RoadBits undo_bits_before = GetAnyRoadBits(tile, rtt);
+
 	bool need_to_clear = false;
 	switch (GetTileType(tile)) {
 		case TileType::Road:
@@ -1567,6 +1574,7 @@ do_clear:;
 		}
 
 		MarkTileDirtyByTile(tile);
+		RecordBlueprintUndoRoad(tile, GetAnyRoadBits(tile, rtt) & ~undo_bits_before, rt);
 	}
 	return cost;
 }
@@ -1829,6 +1837,9 @@ CommandCost CmdBuildRoadDepot(DoCommandFlags flags, TileIndex tile, RoadType rt,
 
 			MakeRoadDepot(tile, _current_company, dep->index, dir, rt);
 			MakeDefaultName(dep);
+			/* Only a depot that was actually built is undoable; rotating one that
+			 * was already there must not make it removable. */
+			RecordBlueprintUndoRoadDepot(tile, dir, rt);
 		}
 
 		MarkTileDirtyByTile(tile);

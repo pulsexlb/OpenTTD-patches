@@ -34,6 +34,7 @@ public:
 
 	void Draw(Blitter::BlitterParams *bp, BlitterMode mode, ZoomLevel zoom) override;
 	void DrawColourMappingRect(void *dst, int width, int height, PaletteID pal) override;
+	void DarkenRect(void *dst, int width, int height, uint8_t nom) override;
 	void SetPixel(void *video, int x, int y, PixelColour colour) override;
 	void SetPixel32(void *video, int x, int y, PixelColour colour, uint32_t colour32) override;
 	void DrawLine(void *video, int x, int y, int x2, int y2, int screen_width, int screen_height, PixelColour colour, int width, int dash) override;

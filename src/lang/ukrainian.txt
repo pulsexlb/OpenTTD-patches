@@ -6180,3 +6180,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Філь
 STR_BADGE_CONFIG_PREVIEW                                        :Попередній перегляд
 STR_BADGE_CONFIG_NAME                                           :Назва
 STR_BADGE_FILTER_ANY_LABEL                                      :Заголовок: {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} це {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Креслення
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Виділіть область власної інфраструктури, щоб скопіювати її в активний слот креслення
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Вставити вміст активного слота креслення на мапу
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Вставляти залізничну інфраструктуру
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Вставляти автошляхову інфраструктуру
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Вставляти водну інфраструктуру
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Вставляти авіаційну інфраструктуру
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Перетворювати залізничну інфраструктуру на поточний тип колії під час вставлення
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Дзеркально відображати сигнали під час вставлення
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Оновлювати мости під час вставлення
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Вставляти також станції та шляхові точки
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Змінювати рельєф під час вставлення. Натисніть для перемикання: без зміни рельєфу, мінімальна зміна, повна зміна
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Поточне перетворення, натисніть для скидання
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Повернути креслення на 90 градусів проти годинникової стрілки
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Повернути креслення на 90 градусів за годинниковою стрілкою
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Відобразити креслення відносно осі ПнЗ-ПдС
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Відобразити креслення відносно осі ПнС-ПдЗ
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Зсув висоти під час вставлення
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Збільшити висоту, на якій вставляється креслення
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Зменшити висоту, на якій вставляється креслення
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Відомості про патч Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Виділена область не містить інфраструктури вашої компанії
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Виділена область завелика для копіювання
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Креслення завелике для вставлення в мережевій грі
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Показати панель креслень для копіювання та вставлення інфраструктури
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Показати панель креслень для копіювання та вставлення інфраструктури
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Тут не можна вставити креслення...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Перемкнутися на цей слот креслення. Якщо слот має назву або вміст, наведення показує назву та попередній перегляд. Подвійний клац для перейменування
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Експорт
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Імпорт
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Експ/Імп
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Патч Blueprint, версія {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Експортувати активний слот...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Експортувати всі слоти у файл...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Імпортувати в активний слот...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Імпортувати всі слоти з файлу...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Не вдалося скопіювати креслення в буфер обміну
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Буфер обміну порожній
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Експорт креслення
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Імпорт креслення
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Скопіювати в буфер обміну
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Вставити з буфера обміну
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Замінити креслення?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Активний слот уже містить креслення. Замінити його?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Замінити всі креслення?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Це замінить вміст усіх слотів креслень. Продовжити?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Перейменувати креслення
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Експортувати всі креслення у файл
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Імпортувати всі креслення з файлу
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Замінити файл?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Файл з такою назвою вже існує. Замінити його?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Експорт або імпорт креслень
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Клацніть файл, щоб вибрати його, або теку, щоб відкрити її
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Текст не є коректним кресленням
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Некоректна назва файлу
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Файл креслень не знайдено, або це не коректний набір креслень
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Не вдалося записати файл креслень

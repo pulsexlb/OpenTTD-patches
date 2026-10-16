@@ -36,7 +36,7 @@ VehicleOrderID AdvanceOrderIndexDeferred(const Vehicle *v, VehicleOrderID index)
 void FlushAdvanceOrderIndexDeferred(const Vehicle *v, bool apply);
 uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int conditional_depth = 0);
 
-void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int y, bool selected, bool timetable, int left, int middle, int right);
+void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int y, bool selected, bool timetable, int left, int middle, int right, bool dispatch_enabled = false, const OrderList *orders = nullptr);
 
 static const uint DEF_SERVINT_DAYS_TRAINS   = 150;
 static const uint DEF_SERVINT_DAYS_ROADVEH  = 150;
@@ -62,4 +62,17 @@ bool EvaluateTimetableStateConditionalOrder(const Order *order, int lateness);
 
 const char *GetOrderTypeName(OrderType order_type);
 
+/**
+ * Whether any vehicle that is away on an execute-schedule detour still names the given order
+ * list as its home. Such a list must not be emptied or destroyed, and a vehicle dropping its
+ * own orders must be detached from it instead.
+ * @param ol the order list to test
+ * @return true when the list is still needed as the home of another vehicle
+ */
+bool OrderListIsSomeonesHome(const OrderList *ol);
+
 #endif /* ORDER_FUNC_H */
+
+struct Depot;
+const Depot *GetOrderHangar(const Order &o);
+DestinationID GetTargetDestination(const Order &o, bool is_aircraft);

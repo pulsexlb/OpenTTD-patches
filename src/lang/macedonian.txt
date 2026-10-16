@@ -2277,3 +2277,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Нацрт
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Изберете област од сопствената инфраструктура за копирање во активниот слот за нацрт
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Залепи ја содржината на активниот слот за нацрт на картата
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Залепи железничка инфраструктура
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Залепи патна инфраструктура
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Залепи водна инфраструктура
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Залепи воздушна инфраструктура
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Претвори ја железничката инфраструктура во тековниот тип пруга при лепење
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Огледално преврти ги сигналите при лепење
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Надгради ги мостовите при лепење
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Залепи и станици и патни точки
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Тераформирај го теренот при лепење. Кликнете за менување: без тераформирање, минимално тераформирање, целосно тераформирање
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Тековна трансформација, кликнете за ресетирање
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Ротирај го нацртот за 90 степени спротивно од стрелките на часовникот
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Ротирај го нацртот за 90 степени во насока на стрелките на часовникот
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Преврти го нацртот околу оската СЗ-ЈИ
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Преврти го нацртот околу оската СИ-ЈЗ
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Поместување на висината при лепење
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Зголеми ја висината на која се лепи нацртот
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Намали ја висината на која се лепи нацртот
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Информации за закрпата Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Избраната област не содржи инфраструктура на вашата компанија
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Избраната област е преголема за копирање
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Нацртот е преголем за лепење во повеќекорисничка игра
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Прикажи ја лентата за нацрти за копирање и лепење инфраструктура
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Прикажи ја лентата за нацрти за копирање и лепење инфраструктура
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Нацртот не може да се залепи тука...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Префрли на овој слот за нацрт. Ако слотот има име или содржина, при поставување на глувчето се прикажуваат името и преглед. Двоен клик за преименување
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Извези
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Увези
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Извоз/Увоз
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Закрпа Blueprint, верзија {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Извези го активниот слот...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Извези ги сите слотови во датотека...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Увези во активниот слот...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Увези ги сите слотови од датотека...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Нацртот не можеше да се копира во таблата со исечоци
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Таблата со исечоци е празна
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Извоз на нацрт
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Увоз на нацрт
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Копирај во таблата со исечоци
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Залепи од таблата со исечоци
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Да се замени нацртот?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Активниот слот веќе содржи нацрт. Дали сакате да го замените?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Да се заменат сите нацрти?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Ова ќе ја замени содржината на сите слотови за нацрти. Дали сакате да продолжите?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Преименувај нацрт
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Извези ги сите нацрти во датотека
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Увези ги сите нацрти од датотека
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Да се замени датотеката?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Веќе постои датотека со тоа име. Дали сакате да ја замените?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Извези или увези нацрти
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Кликнете на датотека за да ја изберете, или на папка за да ја отворите
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Текстот не е валиден нацрт
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Неважечко име на датотека
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Датотеката со нацрти не е пронајдена, или не е валиден сет нацрти
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Датотеката со нацрти не можеше да се запише

@@ -36,7 +36,8 @@ DECLARE_ENUM_AS_BIT_SET(CommandCostIntlFlags)
 
 using CommandCostAllowedResultTypes = TypeList<uint32_t, struct PlanIDTag, struct VehicleIDTag, struct SignIDTag, struct GroupIDTag, struct GoalIDTag, struct TownIDTag,
 		struct StoryPageIDTag, struct StoryPageElementIDTag, struct LeagueTableElementIDTag, struct LeagueTableIDTag,
-		struct TraceRestrictSlotIDTag, struct TraceRestrictSlotGroupIDTag, struct TraceRestrictCounterIDTag>;
+		struct TraceRestrictSlotIDTag, struct TraceRestrictSlotGroupIDTag, struct TraceRestrictCounterIDTag,
+		struct OrderListIDTag>;
 using CommandCostResultTypeIndex = uint8_t;
 
 template <typename T>
@@ -530,6 +531,12 @@ enum class Commands : uint8_t {
 	ConvertRoad,                            ///< convert a road type
 
 	BuildAirport,                           ///< build an airport
+	ChangeAirport,                          ///< change pieces of airport
+	AddRemoveAirportTiles,                  ///< build/remove tiles for airport tracks
+	AddRemoveTracksAirport,                 ///< build/remove tracks
+	ChangeAirType,                          ///< change the airport type (gravel, asphalt, etc.)
+	AirportChangeTrackGfx,                  ///< change the graphics of an airport tile, if possible
+	AirportToggleGround,                    ///< toggle between showing the specific airtype ground or not, if possible
 
 	BuildDock,                              ///< build a dock
 
@@ -559,6 +566,13 @@ enum class Commands : uint8_t {
 	SetRouteOverlayColour,                  ///< set route overlay colour
 	MassChangeOrder,                        ///< mass change the target of an order
 	BulkOrder,                              ///< bulk order operations
+
+	CreateOrderList,                        ///< create a new player-created order list
+	RenameOrderList,                        ///< rename a player-created order list
+	DeleteOrderList,                        ///< delete a player-created order list
+	SetOrderListPublic,                     ///< change the visibility of a player-created order list
+	MoveOrderListToGroup,                   ///< move a standalone schedule or folder to another folder
+	ExitExecuteSchedule,                    ///< stop executing the assigned schedule and return to the vehicle's own orders
 
 	ChangeServiceInterval,                  ///< change the service interval of a vehicle
 
@@ -772,6 +786,9 @@ enum class Commands : uint8_t {
 
 	DesyncCheck,                            ///< Force desync checks to be run
 
+	PasteBlueprint,                         ///< paste a blueprint onto the map
+	UndoBlueprintPaste,                     ///< remove again what a blueprint paste built
+
 	End,                                    ///< Must ALWAYS be on the end of this list!! (period)
 };
 
@@ -812,6 +829,7 @@ enum class CommandCallback : uint8_t {
 	/* order_gui.cpp */
 	InsertOrder,
 	InsertOrdersFromVehicle,
+	CreateOrderList,
 
 	/* plans_gui.cpp */
 	AddPlan,
@@ -863,6 +881,9 @@ enum class CommandCallback : uint8_t {
 	/* tracerestrict_gui.cpp */
 	CreateTraceRestrictSlot,
 	CreateTraceRestrictCounter,
+
+	PasteBlueprint, ///< paste a blueprint onto the map
+	UndoBlueprintPaste, ///< remove again what a blueprint paste built
 
 	End, ///< Must ALWAYS be on the end of this list
 };

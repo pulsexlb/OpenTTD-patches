@@ -6155,3 +6155,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Φίλτ
 STR_BADGE_CONFIG_PREVIEW                                        :Προεπισκόπιση Εικόνας
 STR_BADGE_CONFIG_NAME                                           :Όνομα
 STR_BADGE_FILTER_ANY_LABEL                                      :Κάθε {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} είναι {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Σχέδιο
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Επιλέξτε μια περιοχή της υποδομής σας για αντιγραφή στην ενεργή θέση σχεδίου
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Επικόλληση του περιεχομένου της ενεργής θέσης σχεδίου στον χάρτη
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Επικόλληση σιδηροδρομικής υποδομής
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Επικόλληση οδικής υποδομής
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Επικόλληση πλωτής υποδομής
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Επικόλληση αεροπορικής υποδομής
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Μετατροπή της σιδηροδρομικής υποδομής στον τρέχοντα τύπο ράγας κατά την επικόλληση
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Καθρεφτισμός σημάτων κατά την επικόλληση
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Αναβάθμιση γεφυρών κατά την επικόλληση
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Επικόλληση και σταθμών και σημείων διαδρομής
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Διαμόρφωση εδάφους κατά την επικόλληση. Κάντε κλικ για εναλλαγή: χωρίς διαμόρφωση, ελάχιστη διαμόρφωση, πλήρης διαμόρφωση
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Τρέχων μετασχηματισμός, κάντε κλικ για επαναφορά
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Περιστροφή του σχεδίου κατά 90 μοίρες αριστερόστροφα
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Περιστροφή του σχεδίου κατά 90 μοίρες δεξιόστροφα
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Κατοπτρισμός του σχεδίου ως προς τον άξονα ΒΔ-ΝΑ
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Κατοπτρισμός του σχεδίου ως προς τον άξονα ΒΑ-ΝΔ
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Μετατόπιση ύψους κατά την επικόλληση
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Αύξηση του ύψους στο οποίο επικολλάται το σχέδιο
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Μείωση του ύψους στο οποίο επικολλάται το σχέδιο
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Πληροφορίες για το patch Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Η επιλεγμένη περιοχή δεν περιέχει υποδομές της εταιρείας σας
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Η επιλεγμένη περιοχή είναι πολύ μεγάλη για αντιγραφή
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Το σχέδιο είναι πολύ μεγάλο για επικόλληση σε παιχνίδι πολλών παικτών
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Εμφάνιση της γραμμής εργαλείων σχεδίων για αντιγραφή και επικόλληση υποδομών
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Εμφάνιση της γραμμής εργαλείων σχεδίων για αντιγραφή και επικόλληση υποδομών
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Δεν είναι δυνατή η επικόλληση του σχεδίου εδώ...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Εναλλαγή σε αυτή τη θέση σχεδίου. Αν η θέση έχει όνομα ή περιεχόμενο, η αιώρηση του δείκτη εμφανίζει το όνομα και μια προεπισκόπηση. Διπλό κλικ για μετονομασία
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Εξαγωγή
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Εισαγωγή
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Εξαγ/Εισαγ
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patch Blueprint, έκδοση {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Εξαγωγή ενεργής θέσης...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Εξαγωγή όλων των θέσεων σε αρχείο...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Εισαγωγή στην ενεργή θέση...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Εισαγωγή όλων των θέσεων από αρχείο...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Δεν ήταν δυνατή η αντιγραφή του σχεδίου στο πρόχειρο
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Το πρόχειρο είναι κενό
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Εξαγωγή σχεδίου
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Εισαγωγή σχεδίου
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Αντιγραφή στο πρόχειρο
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Επικόλληση από το πρόχειρο
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Αντικατάσταση σχεδίου;
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Η ενεργή θέση περιέχει ήδη ένα σχέδιο. Θέλετε να το αντικαταστήσετε;
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Αντικατάσταση όλων των σχεδίων;
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Αυτό θα αντικαταστήσει το περιεχόμενο όλων των θέσεων σχεδίου. Θέλετε να συνεχίσετε;
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Μετονομασία σχεδίου
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Εξαγωγή όλων των σχεδίων σε αρχείο
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Εισαγωγή όλων των σχεδίων από αρχείο
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Αντικατάσταση αρχείου;
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Υπάρχει ήδη ένα αρχείο με αυτό το όνομα. Θέλετε να το αντικαταστήσετε;
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Εξαγωγή ή εισαγωγή σχεδίων
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Κάντε κλικ σε ένα αρχείο για να το επιλέξετε, ή σε φάκελο για να τον ανοίξετε
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Το κείμενο δεν είναι έγκυρο σχέδιο
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Μη έγκυρο όνομα αρχείου
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Το αρχείο σχεδίων δεν βρέθηκε ή δεν είναι έγκυρο σύνολο σχεδίων
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Δεν ήταν δυνατή η εγγραφή του αρχείου σχεδίων

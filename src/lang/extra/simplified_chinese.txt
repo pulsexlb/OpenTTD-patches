@@ -54,6 +54,7 @@ STR_SETTINGS_MENU_MONEY_TEXT_EFFECTS                            :显示收入/�
 STR_SETTINGS_MENU_SHOW_HIDDEN_SIGNS                             :隐藏所显示的标志名
 
 STR_MAP_MENU_PLAN_LIST                                          :计划列表
+STR_MAP_MENU_ORDER_LIST_MANAGER                                 :调度表列表
 
 STR_VEHICLE_TYPE_TRAINS                                         :列车
 STR_VEHICLE_TYPE_ROAD_VEHICLES                                  :汽车
@@ -199,6 +200,12 @@ STR_CONFIG_SETTING_ROADVEH_CANT_QUANTUM_TUNNEL_HELPTEXT         :即使道路长
 
 STR_CONFIG_SETTING_DRIVE_THROUGH_TRAIN_DEPOT                    :直通车辆段：{STRING}
 STR_CONFIG_SETTING_DRIVE_THROUGH_TRAIN_DEPOT_HELPTEXT           :启用直通车辆段{}列车可以在背对背的两个车库之间穿越，并且可以穿越两个车库之间的所有车库{}这需要启用 YAPF 寻路器
+
+STR_CONFIG_SETTING_TRAIN_SERVICE_AT_STATION                    :在车站为列车提供维修：{STRING}
+STR_CONFIG_SETTING_TRAIN_SERVICE_AT_STATION_HELPTEXT           :启用后，列车会在停靠的任何车站自动接受维修，而不会被路由到车辆段。
+
+STR_CONFIG_SETTING_TRAIN_NO_DEPOT_TEMPORARY_STOP               :禁止列车在车辆段临时停留：{STRING}
+STR_CONFIG_SETTING_TRAIN_NO_DEPOT_TEMPORARY_STOP_HELPTEXT      :启用后，列车进入车辆段时会停止，不会自行离开。在路径搜索中，除非列车当前有明确的车辆段指令，否则车辆段将被视为不可通行。
 
 STR_CONFIG_SETTING_WARN_RESTRICTION_WAIT_VEHICLE                :在列车因为寻路限制长时间等待时提示：{STRING}
 STR_CONFIG_SETTING_WARN_RESTRICTION_WAIT_VEHICLE_HELPTEXT       :启用时，如果列车长时间在路径信号处等待，给出提示
@@ -518,6 +525,7 @@ STR_CONFIG_SETTING_ENABLE_REMOVE_WATER                          :允许移除海
 STR_CONFIG_SETTING_ENABLE_REMOVE_WATER_HELPTEXT                 :允许在场景编辑器外移除海洋和河流
 
 STR_CONFIG_SETTING_SHARING_RAIL                                 :共享铁路设施：{STRING}
+STR_CONFIG_SETTING_COUPLING_OTHER_COMPANY_TRAINS                :共享列车车底：{STRING}
 STR_CONFIG_SETTING_SHARING_ROAD                                 :共享道路设施：{STRING}
 STR_CONFIG_SETTING_SHARING_WATER                                :共享水运设施：{STRING}
 STR_CONFIG_SETTING_SHARING_AIR                                  :共享航空设施：{STRING}
@@ -525,13 +533,30 @@ STR_CONFIG_SETTING_SHARING_FEE_RAIL                             :列车通行费
 STR_CONFIG_SETTING_SHARING_FEE_ROAD                             :车辆停放费：{STRING}/日
 STR_CONFIG_SETTING_SHARING_FEE_WATER                            :船舶停泊费：{STRING}/日
 STR_CONFIG_SETTING_SHARING_FEE_AIR                              :机场使用费：{STRING}/日
+STR_CONFIG_SETTING_SHARING_FEE_RV                             :载具运输费：{STRING}
+STR_CONFIG_SETTING_SHARING_FEE_RV_HELPTEXT                     :载具被卸下时向承运公司支付，按装载站到卸载站的直线距离计算。费用以载体总重每 1000 吨、每 8 格计算
+STR_CONFIG_SETTING_SHARING_FEE_RV_VALUE                         :{CURRENCY_SHORT}/千吨每8格
 STR_CONFIG_SETTING_SHARING_FEE_HELPTEXT                         :本费用每 74 刻支付一次，即每一个未缩放的经济日支付一次
+STR_CONFIG_SETTING_SHARING_RV                                 :共享载具运输：{STRING}
+STR_CONFIG_SETTING_SHARING_RV_HELPTEXT                         :开启后，道路载具可以被其他公司的火车、轮船和飞机装载，这些载体也可以装载其他公司的载具。载具所属公司按运费支付承运方
 STR_CONFIG_SETTING_SHARING_PAYMENT_IN_DEBT                      :允许公司支付费用时赊账：{STRING}
 STR_CONFIG_SETTING_SHARING_USED_BY_VEHICLES                     :不能更改这个设定，载具正在使用共享设施
 STR_CONFIG_SETTING_SHARING_ORDERS_TO_OTHERS                     :不能更改这个设定，载具有途径其他公司设施的调度计划
 
 STR_CONFIG_SETTING_TRAIN_SPEED_ADAPTATION                       :启用列车速度调整：{STRING}
 STR_CONFIG_SETTING_TRAIN_SPEED_ADAPTATION_HELPTEXT              :当开启后，较快的列车会在经过信号时调整速度以与前方较慢列车的速度相匹配。{}“速度调整”功能可能不适用于部分信号设置风格；此功能可以使用信号“寻路限制”功能针对特定列车手动启用或禁用
+
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS                   :哪些车厢/货舱可以装载载具：{STRING}
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_HELPTEXT          :决定火车车厢、船舶货舱、飞机货舱中哪些可以接纳载具。{}除此之外，该节还必须装得下这辆车的重量。{}“任何具备载货容量的节”最宽松，客车厢与油罐车也会收车。{}“仅限装载超大件货物的节”用于运车车厢/滚装货舱，这类 NewGRF 会把其货物标为超大件；原版内容没有这类货物，选它会导致谁都装不上车。{}“散货、超大件或载具货物”（默认）只放行货物为散货（敞车/漏斗车：煤、矿石、谷物……）、被标为超大件的货物、或专用“载具”货物的节：客车厢、邮件车、油罐车、棚车都不收车。{}卸载不受此设置影响：中途改设置不会让已经在车上的载具下不来。
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_ANY               :任何具备载货容量的节
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_OVERSIZED         :仅限装载“超大件”货物的节
+STR_CONFIG_SETTING_RV_TRANSPORT_CARRIER_PARTS_BULK_OVERSIZED_VEHI:散货、“超大件”或“载具”货物
+STR_CONFIG_SETTING_ROAD_VEHICLE_TRANSPORT                       :载具运载
+STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS                :被运载的载具超过多久未卸下时告警：{STRING}
+STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS_HELPTEXT       :当一辆载具在载体上待满这么多天仍未在任何车站被放下时，发一条新闻提示。{}载具只会在它自己的调度要求"在此被卸下"的车站被放下，所以永远到不了这种车站的载体（或目的站被拆除的车）会把车一直带在身上——这条告警就是用来提示这种情况的。{}每趟只告警一次（下次被装上时可以再告警）。{}设为 0 表示不告警。
+STR_CONFIG_SETTING_RV_TRANSPORT_UNLOAD_WARN_DAYS_VALUE           :{NUM} 天
+STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED                          :载具运载
+STR_CONFIG_SETTING_RV_TRANSPORT_ENABLED_HELPTEXT                 :允许载具被装到火车/轮船/飞机上运输。{}关闭不会改动已经设好的订单：不再发生新的装载、正在"等待被运载"的车会结束等待并继续按自己的调度行驶，而已经在车上的车仍然可以在目的站被放下，所以不会把车卡死在车上。{}这是总开关；"哪些车厢/货舱可以装车"是另一个设置。
 
 STR_CONFIG_SETTING_SLOW_ROAD_VEHICLES_IN_CURVES                 :道路车辆在转弯处减速：{STRING}
 STR_CONFIG_SETTING_SLOW_ROAD_VEHICLES_IN_CURVES_HELPTEXT        :当开启后，道路车辆将在转弯处减速（仅当真实加速开启时启用）
@@ -1653,10 +1678,11 @@ STR_VEHICLE_INFO_SPEED_ADAPTATION_NONE                          :{BLACK}速度�
 
 STR_VEHICLE_DETAILS_TRAIN_ENGINE_BUILT_AND_VALUE_AND_SPEED      :{LTBLUE}{ENGINE}{BLACK}   建造年份： {LTBLUE}{NUM}{BLACK} 价值：{LTBLUE}{CURRENCY_LONG} {BLACK}最高速度：{LTBLUE}{VELOCITY}
 STR_VEHICLE_DETAILS_TRAIN_WAGON_VALUE_AND_SPEED                 :{LTBLUE}{ENGINE}{BLACK}   价值：{LTBLUE}{CURRENCY_LONG} {BLACK}最高速度{LTBLUE}{VELOCITY}
-STR_VEHICLE_DETAILS_TRAIN_TOTAL_WEIGHT                          :{BLACK}总重：{LTBLUE}{WEIGHT_SHORT}{BLACK}（空载），{LTBLUE}{WEIGHT_SHORT}{BLACK}（满载）
-STR_VEHICLE_DETAILS_TRAIN_MAX_SPEED                             :{BLACK}最高速度：{LTBLUE}{VELOCITY}{BLACK}（空载），{LTBLUE}{VELOCITY}{BLACK}（满载）
-STR_VEHICLE_DETAILS_TRAIN_POWER_WEIGHT_RATIO                    :{BLACK}功率重量比：{LTBLUE}{POWER_WEIGHT_RATIO}{BLACK}（空载），{LTBLUE}{POWER_WEIGHT_RATIO}{BLACK}（满载）
-STR_VEHICLE_DETAILS_TRAIN_TE_WEIGHT_RATIO                       :{BLACK}最大牵引力重量比：{LTBLUE}{FORCE_WEIGHT_RATIO}{BLACK}（空载），{LTBLUE}{FORCE_WEIGHT_RATIO} {BLACK}（满载）
+STR_VEHICLE_DETAILS_TRAIN_TOTAL_WEIGHT                          :{BLACK}总重：{LTBLUE}{WEIGHT_SHORT}{BLACK}（空载）{LTBLUE}{WEIGHT_SHORT}{BLACK}（满载）
+STR_VEHICLE_DETAILS_TRAIN_SELF_WEIGHT                           :{BLACK}重量：{LTBLUE}{WEIGHT_SHORT}{BLACK}（当前）{LTBLUE}{WEIGHT_SHORT}{BLACK}（满载）
+STR_VEHICLE_DETAILS_TRAIN_MAX_SPEED                             :{BLACK}最高速度：{LTBLUE}{VELOCITY}{BLACK}（空载）{LTBLUE}{VELOCITY}{BLACK}（满载）
+STR_VEHICLE_DETAILS_TRAIN_POWER_WEIGHT_RATIO                    :{BLACK}功率重量比：{LTBLUE}{POWER_WEIGHT_RATIO}{BLACK}（空载）{LTBLUE}{POWER_WEIGHT_RATIO}{BLACK}（满载）
+STR_VEHICLE_DETAILS_TRAIN_TE_WEIGHT_RATIO                       :{BLACK}最大牵引力重量比：{LTBLUE}{FORCE_WEIGHT_RATIO}{BLACK}（空载）{LTBLUE}{FORCE_WEIGHT_RATIO} {BLACK}（满载）
 
 STR_VEHICLE_DETAILS_EXTRA_ACTIONS_TOOLTIP                       :{BLACK}额外载具操作
 STR_VEHICLE_DETAILS_REMOVE_SPEED_RESTRICTION                    :移除限速
@@ -1673,9 +1699,11 @@ STR_VEHICLE_DETAILS_DECREASE_SERVICING_INTERVAL_TOOLTIP_PRODINT :{BLACK}将维�
 
 STR_VEHICLE_DETAIL_TAB_PERFORMANCE                              :{BLACK}性能
 STR_VEHICLE_DETAILS_TRAIN_PERFORMANCE_TOOLTIP                   :{BLACK}显示列车空载与满载性能
+STR_VEHICLE_DETAIL_TAB_CARRIED                                  :{BLACK}载运
+STR_VEHICLE_DETAILS_TRAIN_CARRIED_TOOLTIP                       :{BLACK}显示这列车载运的载具。点某一行可打开那辆车的窗口
 
-STR_ORDER_DROP_CARGO_TYPE_LOAD                                  :以货物类型装载
-STR_ORDER_DROP_CARGO_TYPE_UNLOAD                                :以货物类型卸载
+STR_ORDER_DROP_CARGO_TYPE_LOAD                                  :以类型装载普通货物
+STR_ORDER_DROP_CARGO_TYPE_UNLOAD                                :以类型卸载普通货物
 
 STR_ORDER_REVERSE                                               :{BLACK}换向
 STR_ORDER_REVERSE_TOOLTIP                                       :{BLACK}改变选中命令的换向行为
@@ -1784,6 +1812,14 @@ STR_ORDER_IMPORT_ORDER_LIST_INSERT_REVERSED                     :导入调度计
 STR_ORDER_INSERT_FROM_VEHICLE                                   :插入载具调度计划
 
 STR_ORDER_TRY_ACQUIRE_SLOT_BUTTON                               :尝试领取路签
+STR_ORDER_EXECUTE_SCHEDULE_BUTTON                               :执行调度计划
+STR_ORDER_EXECUTE_SCHEDULE                                      :执行调度计划：{STRING}
+STR_ORDER_EXECUTE_SCHEDULE_UNDEFINED                             :执行调度计划：{STRING}
+STR_ORDER_EXECUTE_SCHEDULE_TOOLTIP                              :{BLACK}到达该指令后要执行的调度计划
+STR_ORDERS_END_OF_EXECUTE_SCHEDULE                              :- - {STRING} 执行结束 - -
+STR_ORDERS_EXIT_EXECUTE_BUTTON                                  :{BLACK}退出当前执行
+STR_ORDERS_EXIT_EXECUTE_TOOLTIP                                 :{BLACK}退出当前正在执行的调度计划，返回本载具自己的调度计划
+STR_ERROR_CAN_T_EXIT_EXECUTE_SCHEDULE                           :{WHITE}不能退出调度计划执行……
 STR_ORDER_RELEASE_SLOT_BUTTON                                   :返还路签
 STR_ORDER_RELEASE_SLOT_GROUP_BUTTON                             :返还路签组路签
 STR_ORDER_CHANGE_COUNTER_BUTTON                                 :更改计数器
@@ -1816,23 +1852,23 @@ STR_ORDERS_VEH_WITH_SHARED_ORDERS_LIST_TOOLTIP_EXTRA            :{STRING}{}{BLAC
 STR_ORDER_GO_TO_WAYPOINT_REVERSE                                :经由并在 {WAYPOINT} 掉头
 STR_ORDER_GO_NON_STOP_TO_WAYPOINT_REVERSE                       :直达经由并在 {WAYPOINT} 掉头
 STR_ORDER_SELL_ORDER                                            :（卖出载具）
-STR_ORDER_CARGO_TYPE_LOAD                                       :（以货物类型装载）
-STR_ORDER_UNLOAD_CARGO_TYPE_LOAD                                :（卸载，以货物类型装载）
-STR_ORDER_TRANSFER_CARGO_TYPE_LOAD                              :（联运，以货物类型装载）
-STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD                             :（不卸载，以货物类型装载）
-STR_ORDER_CARGO_TYPE_UNLOAD                                     :（以货物类型卸载）
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD                           :（以货物类型卸载，等待满载）
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY                       :（以货物类型卸载，等待任一货物满载）
-STR_ORDER_CARGO_TYPE_UNLOAD_NO_LOAD                             :（以货物类型卸载，空车离开）
-STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD                     :（以货物类型卸载，以货物类型装载）
-STR_ORDER_CARGO_TYPE_LOAD_REFIT                                 :（改装为运载{STRING}后以货物类型装载）
-STR_ORDER_UNLOAD_CARGO_TYPE_LOAD_REFIT                          :（卸载，改装为运载{STRING}后以货物类型装载）
-STR_ORDER_TRANSFER_CARGO_TYPE_LOAD_REFIT                        :（联运，改装为运载{STRING}后以货物类型装载）
-STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD_REFIT                       :（不卸载，改装为运载{STRING}后以货物类型装载）
-STR_ORDER_CARGO_TYPE_UNLOAD_REFIT                               :（以货物类型卸载，改装为运载{STRING}后装载）
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_REFIT                     :（以货物类型卸载，改装为运载{STRING}后等待满载）
-STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY_REFIT                 :（以货物类型卸载，改装为运载{STRING}后等待任一货物满载）
-STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD_REFIT               :（以货物类型卸载，改装为运载{STRING}后以货物类型装载）
+STR_ORDER_CARGO_TYPE_LOAD                                       :（以类型装载普通货物）
+STR_ORDER_UNLOAD_CARGO_TYPE_LOAD                                :（卸载全部普通货物，以类型装载普通货物）
+STR_ORDER_TRANSFER_CARGO_TYPE_LOAD                              :（联运普通货物，以类型装载普通货物）
+STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD                             :（不卸载普通货物，以类型装载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD                                     :（以类型卸载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD                           :（以类型卸载普通货物，等待普通货物满载）
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY                       :（以类型卸载普通货物，等待任一普通货物满载）
+STR_ORDER_CARGO_TYPE_UNLOAD_NO_LOAD                             :（以类型卸载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD                     :（以类型卸载普通货物，以类型装载普通货物）
+STR_ORDER_CARGO_TYPE_LOAD_REFIT                                 :（改装为运载{STRING}后以类型装载普通货物）
+STR_ORDER_UNLOAD_CARGO_TYPE_LOAD_REFIT                          :（卸载全部普通货物，改装为运载{STRING}后以类型装载普通货物）
+STR_ORDER_TRANSFER_CARGO_TYPE_LOAD_REFIT                        :（联运普通货物，改装为运载{STRING}后以类型装载普通货物）
+STR_ORDER_NO_UNLOAD_CARGO_TYPE_LOAD_REFIT                       :（不卸载普通货物，改装为运载{STRING}后以类型装载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD_REFIT                               :（以类型卸载普通货物，改装为运载{STRING}后装载普通货物）
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_REFIT                     :（以类型卸载普通货物，改装为运载{STRING}后等待普通货物满载）
+STR_ORDER_CARGO_TYPE_UNLOAD_FULL_LOAD_ANY_REFIT                 :（以类型卸载普通货物，改装为运载{STRING}后等待任一普通货物满载）
+STR_ORDER_CARGO_TYPE_UNLOAD_CARGO_TYPE_LOAD_REFIT               :（以类型卸载普通货物，改装为运载{STRING}后以类型装载普通货物）
 
 STR_ORDER_RV_DIR_ANY                                            :[任意方向]
 STR_ORDER_RV_DIR_NE                                             :[东北方]
@@ -1861,6 +1897,10 @@ STR_ORDER_CONDITIONAL_INVALID_COUNTER                           :跳至 #{COMMA}
 STR_ORDER_CONDITIONAL_TIME_HHMM                                 :跳至 #{COMMA} [如果 {STRING} {STRING} {TIME_HHMM}]
 STR_ORDER_CONDITIONAL_TIMETABLE                                 :跳至 #{COMMA} [如果{STRING}{STRING}{TT_TICKS}]
 STR_ORDER_CONDITIONAL_DISPATCH_SLOT_DISPLAY                     :跳至 #{COMMA} [如果 {STRING} {STRING} {STRING}]
+STR_ORDER_CONDITIONAL_DECOUPLE_PART_DISPLAY                     :跳至 #{COMMA} [如果解挂部分 {STRING} {STRING}]
+STR_ORDER_CONDITIONAL_DECOUPLE_PART_NONE                        :无
+STR_ORDER_CONDITIONAL_DECOUPLE_PART_FIRST                       :第一部分
+STR_ORDER_CONDITIONAL_DECOUPLE_PART_SECOND                      :第二部分
 
 STR_ORDER_CONDITIONAL_CARGO_WAITING_PERCENT_CAPACITY            :列车{1:STRING}容量的 {0:COMMA}%
 STR_ORDER_CONDITIONAL_CARGO_WAITING_PERCENT_CAPACITY_REFIT      :列车改装为{1:STRING}类型时容量的 {0:COMMA}%
@@ -1987,6 +2027,40 @@ STR_PLANS_OWN_ONLY_TOOLTIP                                      :{BLACK}仅显�
 STR_SORT_BY_PLAN_ID                                             :计划编号
 STR_SORT_BY_OWNER                                               :所有者
 STR_SORT_BY_DATE                                                :日期
+
+# Order list manager window
+STR_ORDER_LIST_CAPTION                                          :{WHITE}调度表列表
+STR_ORDER_LIST_NEW                                              :{BLACK}新建
+STR_ORDER_LIST_NEW_TOOLTIP                                      :{BLACK}创建新的调度表
+STR_ORDER_LIST_EDIT                                             :{BLACK}编辑
+STR_ORDER_LIST_DELETE                                           :{BLACK}删除
+STR_ORDER_LIST_DELETE_TOOLTIP                                   :{BLACK}删除选中的调度表
+STR_ORDER_LIST_PUBLIC                                           :{BLACK}公开
+STR_ORDER_LIST_PUBLIC_TOOLTIP                                   :{BLACK}切换调度表的可见性。公开的调度表会对其他公司显示。
+STR_ORDER_LIST_MAKE_PUBLIC                                      :{BLACK}设为公开
+STR_ORDER_LIST_MAKE_PRIVATE                                     :{BLACK}设为私有
+STR_ORDER_LIST_LIST_TOOLTIP                                     :{BLACK}点击编辑按钮在订单窗口打开该调度表
+STR_ORDER_LIST_QUERY_RENAME                                     :{WHITE}重命名调度表
+STR_ORDER_LIST_DEFAULT_NAME                                     :调度表 {NUM}
+STR_SORT_BY_ORDER_LIST_ID                                      :调度表编号
+STR_ERROR_CAN_T_RENAME_ORDER_LIST                               :{WHITE}无法重命名调度表...
+STR_ERROR_CAN_T_DELETE_ORDER_LIST                               :{WHITE}无法删除调度表...
+STR_ERROR_ORDER_LIST_IN_USE                                     :{WHITE}正在其它载具中使用
+STR_ORDER_LIST_ORDERS_CAPTION                                  :{WHITE}{STRING}（调度计划）
+
+# Order list timetable window
+STR_ORDER_LIST_TIMETABLE_CAPTION                                :{WHITE}时刻表
+STR_ORDER_LIST_TIMETABLE_LIST_TOOLTIP                           :{BLACK}点击调度命令进行选择
+STR_ORDER_LIST_TIMETABLE_WAIT                                   :{BLACK}等待时间
+STR_ORDER_LIST_TIMETABLE_WAIT_TOOLTIP                           :{BLACK}设置选中命令的等待时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL                                 :{BLACK}行驶时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL_TOOLTIP                         :{BLACK}设置选中命令的行驶时间
+STR_ORDER_LIST_TIMETABLE_WAIT_FIXED                             :{BLACK}锁定等待时间
+STR_ORDER_LIST_TIMETABLE_WAIT_UNFIX                             :{BLACK}解锁等待时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL_FIXED                           :{BLACK}锁定行驶时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL_UNFIX                           :{BLACK}解锁行驶时间
+STR_ORDER_LIST_TIMETABLE_WAIT_QUERY                             :{WHITE}选中命令的等待时间
+STR_ORDER_LIST_TIMETABLE_TRAVEL_QUERY                           :{WHITE}选中命令的行驶时间
 
 STR_WARNING_LOADGAME_REMOVED_UNCORRECTABLE_VEHICLES             :{WHITE}由于在加载过程中无可挽回的错误，已经移除了{NUM} 辆车
 

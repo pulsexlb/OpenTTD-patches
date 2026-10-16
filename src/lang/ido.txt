@@ -1761,3 +1761,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plano
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Selektez areo di vua propra infrastrukturo por kopiar ol aden la aktiva plan-loko
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Gluar la kontenajo di la aktiva plan-loko sur la mapo
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Gluar fervoyala infrastrukturo
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Gluar voyala infrastrukturo
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Gluar aquala infrastrukturo
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Gluar aerala infrastrukturo
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Konvertar fervoyala infrastrukturo al la nuna relotipo dum gluado
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Spegulagar signali dum gluado
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Plubonigar ponti dum gluado
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Gluar anke stacioni e voyopunti
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terformacar la tero dum gluado. Kliktez por chanjar: sen terformacado, minimala terformacado, kompleta terformacado
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Nuna transformo, kliktez por richanjar
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rotacar la plano 90 gradi kontre-horloje
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rotacar la plano 90 gradi segun-horloje
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Spegulagar la plano segun la nordwest-sudest-axo
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Spegulagar la plano segun la nordest-sudwest-axo
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Alteso-deplaso dum gluado
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Augmentar la alteso ye qua la plano gluesas
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Diminutar la alteso ye qua la plano gluesas
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informo pri la patcho Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}La selektita areo kontenas nula infrastrukturo di vua kompanio
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}La selektita areo esas tro granda por kopiar
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}La plano esas tro granda por gluar en multopleera ludo
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Montrar la plan-utensilaro por kopiar e gluar infrastrukturo
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Montrar la plan-utensilaro por kopiar e gluar infrastrukturo
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}On ne povas gluar la plano hike...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Chanjar a ca plan-loko. Se la loko havas nomo od kontenajo, la muso super ol montras la nomo e prevido. Duople-kliktez por renominar
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportar
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importar
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patcho Blueprint, versiono {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Exportar la aktiva loko...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Exportar omna loki a dosiero...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importar aden la aktiva loko...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importar omna loki de dosiero...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}On ne povis kopiar la plano al la klipo-tabulo
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}La klipo-tabulo esas vakua
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Exportar plano
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importar plano
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopiar al klipo-tabulo
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Gluar de la klipo-tabulo
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Remplasar la plano?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}La aktiva loko ja kontenas plano. Ka vu volas remplasar ol?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Remplasar omna plani?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Ico remplasos la kontenajo di omna plan-loki. Ka vu volas durar?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Renominar la plano
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Exportar omna plani a dosiero
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importar omna plani de dosiero
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Remplasar la dosiero?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Dosiero kun ta nomo ja existas. Ka vu volas remplasar ol?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Exportar od importar plani
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Kliktez dosiero por selektar ol, o dosierujo por apertar ol
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}La texto ne esas valida plano
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nevalida dosier-nomo
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Plan-dosiero ne trovita, o ne valida grupo di plani
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}On ne povis skribar la plan-dosiero

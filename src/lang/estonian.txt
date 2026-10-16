@@ -5844,3 +5844,62 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plaan
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Vali oma taristu ala, mis kopeeritakse aktiivsesse plaanipessa
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Kleebi aktiivse plaanipesa sisu kaardile
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Kleebi raudteetaristu
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Kleebi maanteetaristu
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Kleebi veetaristu
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Kleebi lennutaristu
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Kleepimisel teisenda raudteetaristu praegusele rööpatüübile
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Kleepimisel peegelda signaale
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Kleepimisel uuenda sildu
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Kleebi ka jaamad ja teepunktid
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Kleepimisel kujunda maastikku. Klõpsa vahetamiseks: ilma maastiku muutmiseta, minimaalne muutmine, täielik muutmine
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Praegune teisendus, klõpsa lähtestamiseks
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Pööra plaani 90 kraadi vastupäeva
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Pööra plaani 90 kraadi päripäeva
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Peegelda plaani üle loode-kagu telje
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Peegelda plaani üle kirde-edela telje
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Kõrguse nihe kleepimisel
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Suurenda kõrgust, millele plaan kleebitakse
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Vähenda kõrgust, millele plaan kleebitakse
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Teave Blueprint-paiga kohta
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Valitud ala ei sisalda sinu ettevõtte taristut
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Valitud ala on kopeerimiseks liiga suur
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Plaan on mitmikmängus kleepimiseks liiga suur
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Näita plaanide tööriistariba taristu kopeerimiseks ja kleepimiseks
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Näita plaanide tööriistariba taristu kopeerimiseks ja kleepimiseks
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Plaani ei saa siia kleepida...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Lülitu sellele plaanipesale. Kui pesal on nimi või sisu, näitab hiirega peal hoidmine nime ja eelvaadet. Ümbernimetamiseks tee topeltklõps
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Ekspordi
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Impordi
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eksp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-paik, versioon {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Ekspordi aktiivne pesa...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Ekspordi kõik pesad faili...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Impordi aktiivsesse pessa...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Impordi kõik pesad failist...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Plaani ei õnnestunud lõikelauale kopeerida
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Lõikelaud on tühi
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Plaani eksport
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Plaani import
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopeeri lõikelauale
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Kleebi lõikelaualt
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Kas asendada plaan?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Aktiivses pesas on juba plaan. Kas soovid selle asendada?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Kas asendada kõik plaanid?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}See asendab kõigi plaanipesade sisu. Kas soovid jätkata?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Nimeta plaan ümber
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Ekspordi kõik plaanid faili
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Impordi kõik plaanid failist
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Kas asendada fail?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Sellise nimega fail on juba olemas. Kas soovid selle asendada?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Ekspordi või impordi plaane
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klõpsa failil, et see valida, või kaustal, et see avada
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Tekst ei ole kehtiv plaan
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Vigane failinimi
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Plaanifaili ei leitud või pole see kehtiv plaanikomplekt
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Plaanifaili ei õnnestunud kirjutada

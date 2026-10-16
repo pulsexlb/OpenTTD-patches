@@ -16,6 +16,7 @@
 #include "../network/network.h"
 
 #include "saveload.h"
+#include "extended_ver_sl.h"
 #include "newgrf_sl.h"
 
 #include "../safeguards.h"
@@ -497,7 +498,7 @@ static void Load_TOWN()
 		}
 	}
 
-	uint num_cargo = IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES) ? 32 : NUM_CARGO;
+	uint num_cargo = GetSavedCargoCount();
 	static_assert(static_cast<size_t>(TownAcceptanceEffect::Begin) == 0 && static_cast<size_t>(TownAcceptanceEffect::End) == 6);
 
 	int index;

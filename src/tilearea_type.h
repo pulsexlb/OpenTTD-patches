@@ -10,6 +10,8 @@
 #ifndef TILEAREA_TYPE_H
 #define TILEAREA_TYPE_H
 
+#include <iterator>
+
 #include "stdafx.h"
 #include INCLUDE_FOR_PREFETCH_NTA
 #include "map_func.h"

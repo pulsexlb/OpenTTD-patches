@@ -6027,3 +6027,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Badgefil
 STR_BADGE_CONFIG_PREVIEW                                        :Forhåndsvisningsbillede
 STR_BADGE_CONFIG_NAME                                           :Navn
 STR_BADGE_FILTER_ANY_LABEL                                      :Enhver {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} er {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Byggeplan
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Vælg et område med din egen infrastruktur for at kopiere det til den aktive byggeplan-plads
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Indsæt indholdet af den aktive byggeplan-plads på kortet
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Indsæt jernbaneinfrastruktur
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Indsæt vejinfrastruktur
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Indsæt søfartsinfrastruktur
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Indsæt luftfartsinfrastruktur
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Konverter jernbaneinfrastruktur til den aktuelle skinnetype ved indsættelse
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Spejlvend signaler ved indsættelse
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Opgrader broer ved indsættelse
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Indsæt også stationer og waypoints
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraformér landskabet ved indsættelse. Klik for at skifte: ingen terraformering, minimal terraformering, fuld terraformering
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Aktuel transformation, klik for at nulstille
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rotér byggeplanen 90 grader mod uret
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rotér byggeplanen 90 grader med uret
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Spejl byggeplanen omkring NV-SØ-aksen
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Spejl byggeplanen omkring NØ-SV-aksen
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Højdeforskydning ved indsættelse
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Forøg højden, som byggeplanen indsættes i
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Formindsk højden, som byggeplanen indsættes i
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Information om Blueprint-patchen
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Det valgte område indeholder ingen infrastruktur ejet af dit firma
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Det valgte område er for stort til at kopiere
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Byggeplanen er for stor til at indsætte i et multiplayer-spil
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Vis byggeplan-værktøjslinjen til kopiering og indsættelse af infrastruktur
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Vis byggeplan-værktøjslinjen til kopiering og indsættelse af infrastruktur
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Kan ikke indsætte byggeplanen her...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Skift til denne byggeplan-plads. Hvis pladsen har et navn eller indhold, viser museover navnet og et eksempel. Dobbeltklik for at omdøbe
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Eksportér
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importér
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eksp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-patch, version {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Eksportér aktiv plads...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Eksportér alle pladser til fil...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importér til aktiv plads...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importér alle pladser fra fil...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Byggeplanen kunne ikke kopieres til udklipsholderen
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Udklipsholderen er tom
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Eksportér byggeplan
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importér byggeplan
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopiér til udklipsholder
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Indsæt fra udklipsholder
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Erstat byggeplan?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Den aktive plads indeholder allerede en byggeplan. Vil du erstatte den?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Erstat alle byggeplaner?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Dette vil erstatte indholdet af alle byggeplan-pladser. Vil du fortsætte?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Omdøb byggeplan
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Eksportér alle byggeplaner til fil
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importér alle byggeplaner fra fil
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Erstat fil?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}En fil med det navn findes allerede. Vil du erstatte den?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Eksportér eller importér byggeplaner
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klik på en fil for at vælge den, eller på en mappe for at åbne den
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Teksten er ikke en gyldig byggeplan
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ugyldigt filnavn
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Byggeplanfil ikke fundet, eller ikke et gyldigt byggeplansæt
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Byggeplanfilen kunne ikke skrives

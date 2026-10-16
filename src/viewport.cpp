@@ -62,6 +62,8 @@
 
 #include "stdafx.h"
 #include "clear_map.h"
+#include "rain_overlay.h"
+#include "weather.h"
 #include "tree_map.h"
 #include "industry.h"
 #include "smallmap_gui.h"
@@ -71,8 +73,10 @@
 #include "blitter/8bpp_simple.hpp"
 #include "blitter/null.hpp"
 #include "core/math_func.hpp"
+#include "blueprint_gui.h"
 #include "landscape.h"
 #include "viewport_func.h"
+#include "roadveh_transport.h"
 #include "station_base.h"
 #include "waypoint_base.h"
 #include "town.h"
@@ -88,6 +92,7 @@
 #include "zoom_func.h"
 #include "vehicle_func.h"
 #include "company_func.h"
+#include "track_func.h"
 #include "waypoint_func.h"
 #include "window_func.h"
 #include "tilehighlight_func.h"
@@ -707,7 +712,7 @@ void InitializeWindowViewport(Window *w, int x, int y,
 		const Vehicle *veh;
 
 		vp->follow_vehicle = (VehicleID)(follow_flags & 0xFFFFF);
-		veh = Vehicle::Get(vp->follow_vehicle)->GetMovingFront();
+		veh = RVTransportGetFollowVehicle(Vehicle::Get(vp->follow_vehicle))->GetMovingFront();
 		pt = MapXYZToViewport(vp, veh->x_pos, veh->y_pos, veh->z_pos);
 	} else {
 		x = TileX(TileIndex{follow_flags}) * TILE_SIZE;
@@ -1652,6 +1657,44 @@ static void DrawAutorailSelection(const TileInfo *ti, HighLightStyle highlight_s
 	}
 }
 
+/**
+ * Draw the blueprint paste preview overlays on a tile inside the selection.
+ * @param ti Tile that is being drawn.
+ */
+static bool DrawBlueprintPastePreview(const TileInfo *ti)
+{
+	const BlueprintPastePreview *preview = GetBlueprintPastePreview(TileVirtXY(_thd.pos.x, _thd.pos.y));
+	if (preview == nullptr) return false;
+
+	int dx = (ti->x - _thd.pos.x) / static_cast<int>(TILE_SIZE);
+	int dy = (ti->y - _thd.pos.y) / static_cast<int>(TILE_SIZE);
+	if (dx < 0 || dy < 0 || dx >= preview->width || dy >= preview->height) return false;
+
+	size_t index = static_cast<size_t>(dy) * preview->width + dx;
+	uint8_t overlay = preview->tiles[index];
+
+	/* A blueprint's area is a rectangle but its contents rarely fill it. Tiles
+	 * that receive nothing are left unmarked rather than outlined along with the
+	 * rest, so the ghost shows what would actually be built. */
+	if (overlay == 0 && !(index < preview->blocked.size() && preview->blocked[index])) return true;
+	if (index < preview->blocked.size() && preview->blocked[index]) {
+		/* This part cannot be built at the current position. */
+		DrawTileSelectionRect(ti, PALETTE_SEL_TILE_RED);
+	} else if (HasBit(overlay, BLUEPRINT_PREVIEW_HIGHLIGHT_BIT)) {
+		DrawTileSelectionRect(ti, PALETTE_SEL_TILE_BLUE);
+	}
+
+	/* Tracks and the autorail highlight styles use the same order. */
+	static_assert(TRACK_X == HT_DIR_X && TRACK_Y == HT_DIR_Y);
+	static_assert(TRACK_UPPER == HT_DIR_HU && TRACK_LOWER == HT_DIR_HL);
+	static_assert(TRACK_LEFT == HT_DIR_VL && TRACK_RIGHT == HT_DIR_VR);
+	static const HighLightStyle _bp_autorail_type[TRACK_END] = { HT_DIR_X, HT_DIR_Y, HT_DIR_VR, HT_DIR_VL, HT_DIR_HU, HT_DIR_HL };
+	for (Track track : SetTrackBitIterator(static_cast<TrackBits>(GB(overlay, 0, 6)))) {
+		DrawAutorailSelection(ti, _bp_autorail_type[track]);
+	}
+	return false;
+}
+
 /** Types of tile highlight. */
 enum class TileHighlightType : uint8_t {
 	None, ///< No tile highlight.
@@ -1782,6 +1825,10 @@ static void DrawTileSelection(const TileInfo *ti)
 	/* Highlight tiles inside local authority of selected towns. */
 	HighlightTownLocalAuthorityTiles(ti);
 
+	/* Highlight what the undo history's selection would remove. This sits before
+	 * the early-out below because it is not tied to an active build tool. */
+	if (IsTileInBlueprintUndoHighlight(ti->tile)) DrawTileSelectionRect(ti, PALETTE_SEL_TILE_RED);
+
 	/* Draw a red error square? */
 	bool is_redsq = _thd.redsq == ti->tile;
 	if (is_redsq) DrawTileSelectionRect(ti, PALETTE_TILE_RED_PULSATING);
@@ -1795,6 +1842,9 @@ static void DrawTileSelection(const TileInfo *ti)
 		case HT_RECT:
 			if (!is_redsq) {
 				if (IsInsideSelectedRectangle(ti->x, ti->y)) {
+					/* The blueprint ghost decides for itself which tiles it marks, and says
+					 * so for the ones it leaves alone. */
+					if (DrawBlueprintPastePreview(ti)) break;
 					DrawTileSelectionRect(ti, _thd.square_palette);
 				} else if (_thd.outersize.x > 0 && (tht == TileHighlightType::None || tht == TileHighlightType::Red) &&
 						/* Check if it's inside the outer area? */
@@ -2639,6 +2689,7 @@ static inline Vehicle *GetVehicleFromWindow(const Window *w)
 			case WindowClass::VehicleRefit:
 			case WindowClass::VehicleCargoTypeLoadOrders:
 			case WindowClass::VehicleCargoTypeUnloadOrders:
+			case WindowClass::VehicleRVTransportCriteria:
 			case WindowClass::ScheduledDispatchSlots:
 				if (wn != VehicleID::Invalid()) return Vehicle::GetIfValid(wn);
 				break;
@@ -4393,6 +4444,16 @@ static void ViewportDoDrawPhase3(Viewport *vp)
 		DrawPixelInfo dp = _vdd->MakeDPIForText();
 		GfxFillRect(BlitterFactory::GetCurrentBlitter(), &dp, dp.left, dp.top, dp.left + dp.width, dp.top + dp.height,
 				_vdd->display_flags.Test(NWidgetDisplayFlag::ShadeDimmed) ? PALETTE_TO_TRANSPARENT : PALETTE_NEWSPAPER, FillRectMode::Recolour);
+	} else {
+		DrawPixelInfo dp = _vdd->MakeDPIForText();
+		if (_rain_shade_level != 0) {
+			/* Rain (or its fade) darkens the whole world, in discrete levels. */
+			BlitterFactory::GetCurrentBlitter()->DarkenRect(dp.dst_ptr, dp.width, dp.height, RainShadeNom());
+		}
+		if (vp->zoom < ZoomLevel::DrawMap) {
+			/* Scrolling rain in front of the world; scales with the zoom level. */
+			DrawRainOverlay(vp->zoom, &dp);
+		}
 	}
 
 	_vdd->bridge_to_map_x.clear();
@@ -4548,7 +4609,7 @@ void UpdateNextViewportPosition(Window *w, uint32_t delta_ms)
 	const Viewport *vp = w->viewport;
 
 	if (w->viewport->follow_vehicle != VehicleID::Invalid()) {
-		const Vehicle *veh = Vehicle::Get(w->viewport->follow_vehicle)->GetMovingFront();
+		const Vehicle *veh = RVTransportGetFollowVehicle(Vehicle::Get(w->viewport->follow_vehicle))->GetMovingFront();
 		Point pt = MapXYZToViewport(vp, veh->x_pos, veh->y_pos, veh->z_pos);
 
 		w->viewport->next_scrollpos_x = pt.x;
@@ -5498,7 +5559,7 @@ HandleViewportClickedResult HandleViewportClicked(const Viewport *vp, int x, int
 	if (v != nullptr) {
 		Debug(misc, 2, "Vehicle {} (index {}) at {}", v->unitnumber, v->index, fmt::ptr(v));
 		if (IsCompanyBuildableVehicleType(v)) {
-			v = v->First();
+			v = v->Primary();
 			WindowClass wc = _thd.GetCallbackWnd()->window_class;
 			if (_ctrl_pressed && IsVehicleControlAllowed(v, _local_company)) {
 				StartStopVehicle(v, true);
@@ -5812,6 +5873,18 @@ void UpdateTileSelection()
 			}
 			_thd.new_pos.x = x1 & ~TILE_UNIT_MASK;
 			_thd.new_pos.y = y1 & ~TILE_UNIT_MASK;
+
+			/* A blueprint paste hangs centred on the cursor rather than south-east of
+			 * it. Moving the selection is all it takes: the ghost is drawn relative to
+			 * _thd.pos too, so both follow. GetBlueprintPasteOrigin() answers only
+			 * while a paste is armed, so every other rectangle tool is untouched. */
+			if (new_drawstyle == HT_RECT) {
+				TileIndex paste_origin = GetBlueprintPasteOrigin(TileVirtXY(_thd.new_pos.x, _thd.new_pos.y));
+				if (paste_origin != INVALID_TILE) {
+					_thd.new_pos.x = TileX(paste_origin) * TILE_SIZE;
+					_thd.new_pos.y = TileY(paste_origin) * TILE_SIZE;
+				}
+			}
 		}
 	}
 

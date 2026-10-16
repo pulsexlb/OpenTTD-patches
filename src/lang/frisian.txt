@@ -4693,3 +4693,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Blaudruk
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Selektearje in gebiet fan jo eigen ynfrastruktuer om nei it aktive blaudrukfek te kopiearjen
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Plak de ynhâld fan it aktive blaudrukfek op 'e kaart
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Plak spoarynfrastruktuer
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Plak dykynfrastruktuer
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Plak wetterynfrastruktuer
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Plak loftfeartynfrastruktuer
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Set spoarynfrastruktuer by it plakken oer nei it hjoeddeiske spoartype
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Spegelje seinen by it plakken
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Fernij brêgen by it plakken
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Plak ek stasjons en rûtepunten
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Pas it terrein oan by it plakken. Klik om te wikseljen: gjin terreinoanpassing, minimale oanpassing, folsleine oanpassing
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Aktuele transformaasje, klik om werom te setten
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Draai de blaudruk 90 graden tsjin 'e klok yn
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Draai de blaudruk 90 graden mei de klok mei
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Spegelje de blaudruk oer de NW-SE-as
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Spegelje de blaudruk oer de NE-SW-as
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Hichteferskil by it plakken
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Ferheegje de hichte dêr't de blaudruk op plakt wurdt
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Ferleegje de hichte dêr't de blaudruk op plakt wurdt
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Ynformaasje oer de Blueprint-patch
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}It selektearre gebiet befettet gjin ynfrastruktuer fan jo bedriuw
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}It selektearre gebiet is te grut om te kopiearjen
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Blaudruk te grut om yn in multiplayerspul te plakken
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Lit de blaudrukarkbalke sjen foar it kopiearjen en plakken fan ynfrastruktuer
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Lit de blaudrukarkbalke sjen foar it kopiearjen en plakken fan ynfrastruktuer
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Kin blaudruk hjir net plakke...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Wikselje nei dit blaudrukfek. As it fek in namme of ynhâld hat, lit oerhingjen de namme en in foarbyld sjen. Dûbelklik om om te neamen
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Eksportearje
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Ymportearje
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eksp/Ymp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-patch, ferzje {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Aktive fek eksportearje...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Alle fekken nei bestân eksportearje...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Yn aktive fek ymportearje...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Alle fekken út bestân ymportearje...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}De blaudruk koe net nei it klamboerd kopiearre wurde
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}It klamboerd is leech
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Blaudruk eksportearje
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Blaudruk ymportearje
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Nei klamboerd kopiearje
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Plakke fan klamboerd
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Blaudruk ferfange?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}It aktive fek befettet al in blaudruk. Wolle jo dizze ferfange?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Alle blaudrukken ferfange?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Dit ferfangt de ynhâld fan alle blaudrukfekken. Wolle jo trochgean?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Blaudruk omneame
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Alle blaudrukken nei bestân eksportearje
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Alle blaudrukken út bestân ymportearje
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Bestân ferfange?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Der bestiet al in bestân mei dy namme. Wolle jo it ferfange?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Blaudrukken eksportearje of ymportearje
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klik op in bestân om it te selektearjen, of op in map om dizze te iepenjen
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}De tekst is gjin jildige blaudruk
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ûnjildige bestânsnamme
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Blaudrukbestân net fûn, of gjin jildige blaudrukset
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}It blaudrukbestân koe net skreaun wurde

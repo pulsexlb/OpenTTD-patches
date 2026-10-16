@@ -400,6 +400,9 @@ void CheckCaches(bool force_check, std::function<void(std::string_view)> log, Ch
 			}
 
 			extern void FillNewGRFVehicleCache(const Vehicle *v);
+			/* Visit each consist once, from its physical chain head. The caches below are
+			 * recomputed by Train::ConsistChanged(), which requires this == First(); Primary()
+			 * may sit mid-chain, so it cannot be used as the gate here. */
 			if (v != v->First() || v->vehstatus.Test(VehState::Crashed) || !v->IsPrimaryVehicle()) continue;
 
 			uint length = 0;
@@ -632,6 +635,7 @@ void CheckCaches(bool force_check, std::function<void(std::string_view)> log, Ch
 
 		/* Check the last vehicle cache. */
 		for (Vehicle *v : Vehicle::Iterate()) {
+			/* Chain-head gate: the walk below and v->Last() cover the whole chain. */
 			if (v != v->First() || v->vehstatus.Test(VehState::Crashed) || !v->IsPrimaryVehicle()) continue;
 
 			/* Check that the last vehicle is actually last. */
@@ -678,7 +682,8 @@ void CheckCaches(bool force_check, std::function<void(std::string_view)> log, Ch
 			IntialiseOrderDestinationRefcountMap();
 			if (saved_order_destination_refcount_map != _order_destination_refcount_map) cclog("Order destination refcount map mismatch");
 		} else {
-			cclog("Order destination refcount map not valid");
+			/* An explicitly invalidated cache is rebuilt lazily and is not an inconsistency. */
+			IntialiseOrderDestinationRefcountMap();
 		}
 	}
 

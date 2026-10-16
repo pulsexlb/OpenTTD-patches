@@ -8,6 +8,7 @@
 /** @file rail_cmd.cpp Handling of rail tiles. */
 
 #include "stdafx.h"
+#include "blueprint.h"
 #include "viewport_func.h"
 #include "command_func.h"
 #include "depot_base.h"
@@ -968,6 +969,7 @@ CommandCost CmdBuildSingleRail(DoCommandFlags flags, TileIndex tile, RailType ra
 		MarkTileDirtyByTile(tile);
 		AddTrackToSignalBuffer(tile, track, _current_company);
 		YapfNotifyTrackLayoutChange(tile, track);
+		RecordBlueprintUndoRailTrack(tile, track, railtype);
 	}
 
 	cost.AddCost(RailBuildCost(railtype));
@@ -1274,7 +1276,7 @@ static Trackdir GetOtherTrackdir(Trackdir trackdir)
 	return static_cast<Trackdir>(to_underlying(trackdir) ^ 1);
 }
 
-static CommandCost ValidateAutoDrag(Trackdir *trackdir, TileIndex start, TileIndex end)
+CommandCost ValidateAutoDrag(Trackdir *trackdir, TileIndex start, TileIndex end)
 {
 	int x = TileX(start);
 	int y = TileY(start);
@@ -1500,6 +1502,10 @@ CommandCost CmdBuildTrainDepot(DoCommandFlags flags, TileIndex tile, RailType ra
 
 			Company::Get(_current_company)->infrastructure.rail[railtype]++;
 			DirtyCompanyInfrastructureWindows(_current_company);
+
+			/* Only a depot that was actually built is undoable; rotating one that
+			 * was already there must not make it removable. */
+			RecordBlueprintUndoRailDepot(tile, dir, railtype);
 		}
 
 		MarkTileDirtyByTile(tile);
@@ -1948,6 +1954,8 @@ CommandCost CmdBuildSingleSignal(DoCommandFlags flags, TileIndex tile, Track tra
 		}
 	}
 
+	bool undoable_signal = !HasSignalOnTrack(tile, track);
+
 	Train *v = nullptr;
 	/* The new/changed signal could block our path. As this can lead to
 	 * stale reservations, we clear the path reservation here and try
@@ -2071,6 +2079,7 @@ CommandCost CmdBuildSingleSignal(DoCommandFlags flags, TileIndex tile, Track tra
 		MarkTileDirtyByTile(tile, VMDF_NOT_MAP_MODE);
 		AddTrackToSignalBuffer(tile, track, _current_company);
 		YapfNotifyTrackLayoutChange(tile, track);
+		if (undoable_signal && HasSignalOnTrack(tile, track)) RecordBlueprintUndoSignal(tile, track);
 		if (v != nullptr && v->track != TRACK_BIT_DEPOT) {
 			ReReserveTrainPath(v);
 		}
@@ -4815,7 +4824,7 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 		}
 	};
 
-	if (v->GetMovingPrev() == nullptr && v->current_order.IsType(OT_LOADING_ADVANCE)) abort_load_through(v->First(), true);
+	if (v->GetMovingPrev() == nullptr && v->current_order.IsType(OT_LOADING_ADVANCE)) abort_load_through(v->Primary(), true);
 
 	/* Depot direction. */
 	const DiagDirection dir = GetRailDepotDirection(tile);
@@ -4825,7 +4834,9 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 		static_cast<uint8_t>(y & TILE_UNIT_MASK)};
 
 	/* Make sure a train is not entering the tile from behind. */
-	if (_fractcoords_behind[dir] == fract_coord) return VehicleEnterTileState::CannotEnter;
+	if (_fractcoords_behind[dir] == fract_coord) {
+		return VehicleEnterTileState::CannotEnter;
+	}
 
 	/* Leaving depot? */
 	if (v->GetMovingDirection() == DiagDirToDir(dir)) {
@@ -4847,7 +4858,7 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 	} else if (_fractcoords_enter[dir] == fract_coord) {
 		/* Entering depot. */
 		if (v->GetMovingPrev() == nullptr) {
-			Train *consist = v->First();
+			Train *consist = v->Primary();
 			if (consist->current_order.IsType(OT_LOADING_ADVANCE)) {
 				abort_load_through(consist, true);
 			} else if (v->GetMovingFront()->flags.Test(VehicleRailFlag::BeyondPlatformEnd)) {
@@ -4861,7 +4872,7 @@ static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, 
 		v->UpdateIsDrawn();
 		v->tile = tile;
 		if (v->GetMovingNext() == nullptr) {
-			Train *consist = v->First();
+			Train *consist = v->Primary();
 			/* Whether the train should always leave in the forward direction. */
 			const bool reset_reverse = !_settings_game.vehicle.drive_through_train_depot ||
 					(_settings_game.difficulty.train_flip_reverse_allowed != TrainFlipReversingAllowed::None && !consist->Last()->CanLeadTrain());

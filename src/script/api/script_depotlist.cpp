@@ -26,14 +26,12 @@ ScriptDepotList::ScriptDepotList(ScriptTile::TransportType transport_type)
 		case ScriptTile::TRANSPORT_WATER: tile_type = ::TileType::Water; break;
 
 		case ScriptTile::TRANSPORT_AIR: {
-			/* Hangars are not seen as real depots by the depot code. */
+			/* Hangars are depots in the depot pool for multitile airports. */
 			bool is_deity = ScriptCompanyMode::IsDeity();
 			::CompanyID owner = ScriptObject::GetCompany();
 			for (const Station *st : Station::Iterate()) {
-				if (is_deity || st->owner == owner) {
-					for (uint i = 0; i < st->airport.GetNumHangars(); i++) {
-						this->AddItem(st->airport.GetHangarTile(i).base());
-					}
+				if ((is_deity || st->owner == owner) && st->airport.hangar != nullptr && st->airport.hangar->xy != INVALID_TILE) {
+					this->AddItem(st->airport.hangar->xy.base());
 				}
 			}
 			return;

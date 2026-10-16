@@ -6044,3 +6044,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Emblēmu
 STR_BADGE_CONFIG_PREVIEW                                        :Priekšskatīt attēlu
 STR_BADGE_CONFIG_NAME                                           :Nosaukums
 STR_BADGE_FILTER_ANY_LABEL                                      :Jebkurš {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} ir {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Rasējums
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Atlasiet savas infrastruktūras apgabalu, ko kopēt aktīvajā rasējuma slotā
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Ielīmēt aktīvā rasējuma slota saturu kartē
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Ielīmēt dzelzceļa infrastruktūru
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Ielīmēt ceļu infrastruktūru
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Ielīmēt ūdens infrastruktūru
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Ielīmēt gaisa transporta infrastruktūru
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Ielīmējot pārveidot dzelzceļa infrastruktūru uz pašreizējo sliežu tipu
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Ielīmējot spoguļot signālus
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Ielīmējot uzlabot tiltus
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Ielīmēt arī stacijas un ceļa punktus
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Ielīmējot pārveidot reljefu. Klikšķiniet, lai pārslēgtu: bez reljefa maiņas, minimāla maiņa, pilna maiņa
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Pašreizējā transformācija, klikšķiniet, lai atiestatītu
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Pagriezt rasējumu par 90 grādiem pretēji pulksteņrādītāja virzienam
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Pagriezt rasējumu par 90 grādiem pulksteņrādītāja virzienā
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Atspoguļot rasējumu pret ZR-DA asi
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Atspoguļot rasējumu pret ZA-DR asi
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Augstuma nobīde ielīmējot
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Palielināt augstumu, kurā rasējums tiek ielīmēts
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Samazināt augstumu, kurā rasējums tiek ielīmēts
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informācija par Blueprint ielāpu
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Atlasītajā apgabalā nav jūsu uzņēmumam piederošas infrastruktūras
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Atlasītais apgabals ir pārāk liels, lai kopētu
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Rasējums ir pārāk liels, lai ielīmētu daudzspēlētāju spēlē
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Rādīt rasējumu rīkjoslu infrastruktūras kopēšanai un ielīmēšanai
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Rādīt rasējumu rīkjoslu infrastruktūras kopēšanai un ielīmēšanai
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Šeit rasējumu ielīmēt nevar...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Pārslēgties uz šo rasējuma slotu. Ja slotam ir nosaukums vai saturs, uzvirzot peli, tiek parādīts nosaukums un priekšskatījums. Veiciet dubultklikšķi, lai pārdēvētu
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Eksportēt
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importēt
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eksp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint ielāps, versija {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Eksportēt aktīvo slotu...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Eksportēt visus slotus uz failu...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importēt aktīvajā slotā...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importēt visus slotus no faila...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Rasējumu neizdevās nokopēt starpliktuvē
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Starpliktuve ir tukša
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Rasējuma eksports
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Rasējuma imports
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopēt starpliktuvē
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Ielīmēt no starpliktuves
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Aizstāt rasējumu?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Aktīvajā slotā jau ir rasējums. Vai vēlaties to aizstāt?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Aizstāt visus rasējumus?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Tas aizstās visu rasējumu slotu saturu. Vai vēlaties turpināt?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Pārdēvēt rasējumu
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Eksportēt visus rasējumus uz failu
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importēt visus rasējumus no faila
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Aizstāt failu?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Fails ar šādu nosaukumu jau pastāv. Vai vēlaties to aizstāt?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Eksportēt vai importēt rasējumus
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Noklikšķiniet uz faila, lai to atlasītu, vai uz mapes, lai to atvērtu
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Teksts nav derīgs rasējums
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nederīgs faila nosaukums
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Rasējumu fails nav atrasts, vai arī tas nav derīgs rasējumu kopums
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Neizdevās ierakstīt rasējumu failu

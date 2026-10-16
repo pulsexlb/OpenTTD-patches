@@ -5434,3 +5434,64 @@ STR_BADGE_CONFIG_FILTERS                                        :מסנני תג
 STR_BADGE_CONFIG_PREVIEW                                        :תצוגה מקדימה של התמונה
 STR_BADGE_CONFIG_NAME                                           :שם
 STR_BADGE_FILTER_ANY_LABEL                                      :כל {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} הוא {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}שרטוט
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}בחרו אזור של התשתית שלכם להעתקה אל חריץ השרטוט הפעיל
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}הדבקת תוכן חריץ השרטוט הפעיל על המפה
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}הדבקת תשתית רכבות
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}הדבקת תשתית כבישים
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}הדבקת תשתית מים
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}הדבקת תשתית תעופה
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}המרת תשתית רכבות לסוג המסילה הנוכחי בעת הדבקה
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}שיקוף אותות בעת הדבקה
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}שדרוג גשרים בעת הדבקה
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}הדבקת תחנות ונקודות ציון גם כן
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}עיצוב הקרקע בעת הדבקה. לחצו למעבר: ללא עיצוב קרקע, עיצוב מזערי, עיצוב מלא
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}הטרנספורמציה הנוכחית, לחצו לאיפוס
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}סיבוב השרטוט 90 מעלות נגד כיוון השעון
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}סיבוב השרטוט 90 מעלות עם כיוון השעון
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}שיקוף השרטוט סביב ציר צפון-מערב-דרום-מזרח
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}שיקוף השרטוט סביב ציר צפון-מזרח-דרום-מערב
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}היסט גובה בעת הדבקה
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}הגדלת הגובה שבו מודבק השרטוט
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}הקטנת הגובה שבו מודבק השרטוט
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}מידע על תיקון Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}האזור שנבחר אינו מכיל תשתית בבעלות החברה שלכם
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}האזור שנבחר גדול מדי להעתקה
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}השרטוט גדול מדי להדבקה במשחק מרובה משתתפים
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}הצגת סרגל הכלים של השרטוטים להעתקה והדבקה של תשתית
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}הצגת סרגל הכלים של השרטוטים להעתקה והדבקה של תשתית
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}לא ניתן להדביק את השרטוט כאן...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}מעבר לחריץ השרטוט הזה. אם לחריץ יש שם או תוכן, ריחוף מעליו מציג את השם ותצוגה מקדימה. לחיצה כפולה לשינוי שם
+STR_BLUEPRINT_EXPORT                                            :{BLACK}ייצוא
+STR_BLUEPRINT_IMPORT                                            :{BLACK}ייבוא
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}ייצוא/ייבוא
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}תיקון Blueprint, גרסה {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :ייצוא החריץ הפעיל...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :ייצוא כל החריצים לקובץ...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :ייבוא אל החריץ הפעיל...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :ייבוא כל החריצים מקובץ...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}לא ניתן היה להעתיק את השרטוט אל הלוח
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}הלוח ריק
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}ייצוא שרטוט
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}ייבוא שרטוט
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}העתקה אל הלוח
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}הדבקה מהלוח
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}להחליף את השרטוט?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}החריץ הפעיל כבר מכיל שרטוט. האם להחליף אותו?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}להחליף את כל השרטוטים?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}פעולה זו תחליף את התוכן של כל חריצי השרטוטים. האם להמשיך?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}שינוי שם השרטוט
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}ייצוא כל השרטוטים לקובץ
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}ייבוא כל השרטוטים מקובץ
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}להחליף את הקובץ?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}כבר קיים קובץ בשם זה. האם להחליף אותו?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}ייצוא או ייבוא של שרטוטים
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}לחצו על קובץ כדי לבחור בו, או על תיקייה כדי לפתוח אותה
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}הטקסט אינו שרטוט תקין
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}שם קובץ לא תקין
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}קובץ השרטוטים לא נמצא, או שאינו אוסף שרטוטים תקין
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}לא ניתן היה לכתוב את קובץ השרטוטים

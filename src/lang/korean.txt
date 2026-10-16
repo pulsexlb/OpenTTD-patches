@@ -6051,3 +6051,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}배지 �
 STR_BADGE_CONFIG_PREVIEW                                        :미리보기 이미지
 STR_BADGE_CONFIG_NAME                                           :이름
 STR_BADGE_FILTER_ANY_LABEL                                      :모든 {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} = {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}청사진
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}활성 청사진 슬롯에 복사할 자신의 시설 영역을 선택하세요
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}활성 청사진 슬롯의 내용을 지도에 붙여넣기
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}철도 시설 붙여넣기
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}도로 시설 붙여넣기
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}수상 시설 붙여넣기
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}항공 시설 붙여넣기
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}붙여넣을 때 철도 시설을 현재 선로 종류로 변환
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}붙여넣을 때 신호기를 반전
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}붙여넣을 때 다리를 업그레이드
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}역과 경유지도 붙여넣기
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}붙여넣을 때 지형을 변형합니다. 클릭하여 전환: 지형 변형 없음, 최소 변형, 전체 변형
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}현재 변형 상태, 클릭하면 초기화
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}청사진을 반시계 방향으로 90도 회전
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}청사진을 시계 방향으로 90도 회전
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}청사진을 북서-남동 축으로 반전
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}청사진을 북동-남서 축으로 반전
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}붙여넣을 때 적용되는 높이 오프셋
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}청사진을 붙여넣는 높이를 높이기
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}청사진을 붙여넣는 높이를 낮추기
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Blueprint 패치 정보
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}선택한 영역에 회사 소유의 시설이 없습니다
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}선택한 영역이 너무 커서 복사할 수 없습니다
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}청사진이 너무 커서 멀티플레이어 게임에서는 붙여넣을 수 없습니다
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}시설 복사와 붙여넣기를 위한 청사진 도구 모음 표시
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}시설 복사와 붙여넣기를 위한 청사진 도구 모음 표시
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}여기에는 청사진을 붙여넣을 수 없습니다...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}이 청사진 슬롯으로 전환합니다. 슬롯에 이름이나 내용이 있으면 마우스를 올렸을 때 이름과 미리보기가 표시됩니다. 더블 클릭하면 이름을 바꿀 수 있습니다
+STR_BLUEPRINT_EXPORT                                            :{BLACK}내보내기
+STR_BLUEPRINT_IMPORT                                            :{BLACK}가져오기
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}내보내기/가져오기
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint 패치, 버전 {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :활성 슬롯 내보내기...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :모든 슬롯을 파일로 내보내기...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :활성 슬롯으로 가져오기...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :모든 슬롯을 파일에서 가져오기...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}청사진을 클립보드에 복사할 수 없습니다
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}클립보드가 비어 있습니다
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}청사진 내보내기
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}청사진 가져오기
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}클립보드에 복사
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}클립보드에서 붙여넣기
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}청사진을 교체할까요?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}활성 슬롯에 이미 청사진이 있습니다. 교체하시겠습니까?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}모든 청사진을 교체할까요?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}이 작업은 모든 청사진 슬롯의 내용을 교체합니다. 계속하시겠습니까?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}청사진 이름 바꾸기
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}모든 청사진을 파일로 내보내기
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}모든 청사진을 파일에서 가져오기
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}파일을 교체할까요?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}해당 이름의 파일이 이미 있습니다. 교체하시겠습니까?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}청사진 내보내기 또는 가져오기
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}파일을 클릭하여 선택하거나 폴더를 클릭하여 엽니다
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}텍스트가 유효한 청사진이 아닙니다
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}잘못된 파일 이름입니다
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}청사진 파일을 찾을 수 없거나 유효한 청사진 세트가 아닙니다
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}청사진 파일을 쓸 수 없습니다

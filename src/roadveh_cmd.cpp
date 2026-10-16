@@ -27,6 +27,7 @@
 #include "depot_map.h"
 #include "effectvehicle_func.h"
 #include "roadstop_base.h"
+#include "roadveh_transport.h"
 #include "core/random_func.hpp"
 #include "company_base.h"
 #include "core/backup_type.hpp"
@@ -538,8 +539,13 @@ inline int RoadVehicle::GetCurrentMaxSpeed() const
 			}
 		}
 
-		/* Vehicle is on the middle part of a bridge. */
+		/* Vehicle is on the middle part of a bridge. RVSB_WORMHOLE covers "in a tunnel and/or on
+		 * a bridge", but a vehicle in a tunnel is always hidden, so only a bridge gets here. Spell
+		 * the assumption out: a vehicle which is in a tunnel and not hidden means its state and
+		 * its visibility disagree, and that has to be reported here instead of silently reading a
+		 * bridge type out of a tunnel. */
 		if (u->state == RVSB_WORMHOLE && !u->vehstatus.Test(VehState::Hidden)) {
+			assert_tile(IsBridgeTile(u->tile), u->tile);
 			max_speed = std::min(max_speed, GetBridgeSpec(GetBridgeType(u->tile))->speed * 2);
 		}
 	}
@@ -1358,6 +1364,30 @@ static bool RoadVehLeaveDepot(RoadVehicle *v, bool first)
 	return true;
 }
 
+/**
+ * Release an articulated part which road vehicle transport put down on a drive-through stop tile
+ * and held back there (like an articulated part in a depot) until the part in front of it had
+ * travelled its own length. The part takes the place on the stop's drive data which a part entering
+ * the stop would have, and from there the normal following logic drives it out.
+ * @param v the held part, still on the stop tile it was put down on, facing the way the chain travels.
+ */
+static void RoadVehReleasePlacedPart(RoadVehicle *v)
+{
+	v->rv_transport_flags &= ~RVTF_PLACED_HELD;
+	v->vehstatus.Reset(VehState::Hidden);
+	v->InvalidateImageCache();
+
+	/* Same drive data lookup as the movement code uses for a drive-through stop state. */
+	const RoadDriveEntry *rdp = _road_drive_data[GetRoadTramType(v->roadtype)][((v->state & RVSB_ROAD_STOP_TRACKDIR_MASK) + (to_underlying(_settings_game.vehicle.road_side) << RVS_DRIVE_SIDE)) ^ v->overtaking];
+
+	v->frame = RVC_DEFAULT_START_FRAME;
+	v->x_pos = TileX(v->tile) * TILE_SIZE + rdp[RVC_DEFAULT_START_FRAME].x;
+	v->y_pos = TileY(v->tile) * TILE_SIZE + rdp[RVC_DEFAULT_START_FRAME].y;
+	v->UpdatePosition();
+	v->UpdateInclination(true, true);
+	v->UpdateIsDrawn();
+}
+
 static Trackdir FollowPreviousRoadVehicle(const RoadVehicle *v, const RoadVehicle *prev, TileIndex tile, DiagDirection entry_dir, bool already_reversed)
 {
 	if (prev->tile == v->tile && !already_reversed) {
@@ -1669,6 +1699,11 @@ bool IndividualRoadVehicleController(RoadVehicle *v, const RoadVehicle *prev)
 	 * one of the articulated parts. It will stay in the depot until activated
 	 * by the previous vehicle in the chain when it gets to the right place. */
 	if (v->IsInDepot()) return true;
+
+	/* The same, for a part which road vehicle transport put down on a drive-through stop tile: it
+	 * is held there until the part in front of it has travelled its own length, so that the chain
+	 * gets the spacing it needs to drive off instead of folding onto itself. */
+	if ((v->rv_transport_flags & RVTF_PLACED_HELD) != 0) return true;
 
 	bool no_advance_tile = false;
 
@@ -1991,6 +2026,13 @@ again:
 		if (v->frame == v->gcache.cached_veh_length + RVC_DEPOT_START_FRAME) {
 			RoadVehLeaveDepot(v->Next(), false);
 		}
+	} else if (v->Next() != nullptr && (v->Next()->rv_transport_flags & RVTF_PLACED_HELD) != 0 &&
+			HasBit(v->Next()->state, RVS_IN_DT_ROAD_STOP) && v->frame == v->gcache.cached_veh_length) {
+		/* The part in front has travelled its own length since it was put down (or since it last
+		 * entered a tile), so the held part can take up its place on the stop's drive data. The
+		 * equality may be missed if this part changes tiles at exactly that frame; it is then
+		 * simply reached again on the next tile, and releasing the held part late is safe. */
+		RoadVehReleasePlacedPart(v->Next());
 	}
 
 	/* Calculate new position for the vehicle */
@@ -2150,6 +2192,12 @@ static bool RoadVehController(RoadVehicle *v)
 
 	/* road vehicle has broken down? */
 	if (v->HandleBreakdown()) return true;
+
+	/* RoRo: stop waiting to be transported when the order no longer asks for it (the player skipped
+	 * the order or sent the vehicle to a depot); this has to happen before the stopped check below,
+	 * because a waiting vehicle is stopped and would otherwise never carry that order out. */
+	RVTransportTickWaiting(v);
+
 	if (v->IsRoadVehicleStopped()) {
 		v->cur_speed = 0;
 		v->SetLastSpeed();

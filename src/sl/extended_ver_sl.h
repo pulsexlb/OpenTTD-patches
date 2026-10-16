@@ -176,6 +176,8 @@ enum SlXvFeatureIndex {
 	XSLFI_ENGINE_MULTI_RAILTYPE,                  ///< See: SLV_ENGINE_MULTI_RAILTYPE (PR #14357)
 	XSLFI_TOWN_SUPPLY_HISTORY,                    ///< See: SLV_TOWN_SUPPLY_HISTORY (PR #14461)
 	XSLFI_DRIVE_BACKWARDS,                        ///< See: SLV_DRIVE_BACKWARDS (PR#15379)
+	XSLFI_TRAIN_SERVICE_AT_STATION,              ///< Trains can be serviced at stations
+	XSLFI_TRAIN_NO_DEPOT_TEMPORARY_STOP,        ///< Trains do not temporarily stop in / route through depots
 
 	XSLFI_PR_13745_APPLIED,                       ///< Tag to indicate that the fix in PR #13745 has been already applied
 	XSLFI_SIGNAL_STATE_FIX,                       ///< Tag for signal state fixes
@@ -206,7 +208,20 @@ enum SlXvFeatureIndex {
 	XSLFI_SPRINGPP,                               ///< This is a SpringPP game, use this for loading some settings
 	XSLFI_JOKERPP,                                ///< This is a JokerPP game, use this for loading some settings
 	XSLFI_CHILLPP,                                ///< This is a ChillPP game, use this for loading some settings
+	XSLFI_ORDER_DECOUPLE,                         ///< Couple/decouple train orders
+	XSLFI_TRAIN_PRIMARY,                          ///< Trains have a separate primary (consist info carrier) vehicle
+	XSLFI_VEHICLE_PRIMARY_ORDER,                  ///< Vehicles remember their primary order list while executing another one
 
+	XSLFI_ROAD_VEH_TRANSPORT,                     ///< Road vehicles transported by other vehicles (RoRo)
+	XSLFI_CARGO_TYPES_128,                        ///< Cargo types extended from 64 to 128 slots, cargo ids above 64 in savegames need remapping
+	XSLFI_COUPLE_CLAIM_STATE,                     ///< Transient couple target/claim state of trains is persisted
+	XSLFI_WEATHER,                                ///< Cosmetic weather state is persisted
+	XSLFI_COUPLE_SEARCH_FAIL_CACHE,               ///< Couple target search last-fail timestamps are persisted
+
+	XSLFI_ORDER_LIST_GROUPS,                      ///< Hierarchical standalone schedule folders
+	XSLFI_AIRCRAFT_CACHE_STATE,                   ///< Aircraft callback cache state survives network snapshots
+	XSLFI_WAIT_COUPLE_TARGET,                     ///< Wait-for-couple orders may travel to a selected station first
+	XSLFI_COUPLE_CHECK_POINT,                      ///< Go-to-couple orders may check for a partner at an earlier schedule stop
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
 
@@ -321,6 +336,12 @@ void SlXvSetCurrentState();
 void SlXvSetStaticCurrentVersions();
 
 bool SlXvCheckSpecialSavegameVersions();
+
+/**
+ * Get the number of per-cargo entries which are stored in the savegame currently being loaded.
+ * @return The number of per-cargo entries.
+ */
+uint GetSavedCargoCount();
 
 bool SlXvIsChunkDiscardable(uint32_t id);
 

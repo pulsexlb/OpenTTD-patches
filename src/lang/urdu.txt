@@ -3177,3 +3177,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :({STRING} ({VELOCITY}
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}نقشہ
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}اپنے بنیادی ڈھانچے کا ایک علاقہ منتخب کریں تاکہ اسے فعال نقشہ خانے میں نقل کیا جائے
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}فعال نقشہ خانے کا مواد نقشے پر چسپاں کریں
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}ریلوے بنیادی ڈھانچہ چسپاں کریں
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}سڑک کا بنیادی ڈھانچہ چسپاں کریں
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}آبی بنیادی ڈھانچہ چسپاں کریں
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}ہوائی بنیادی ڈھانچہ چسپاں کریں
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}چسپاں کرتے وقت ریلوے بنیادی ڈھانچے کو موجودہ ریل قسم میں تبدیل کریں
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}چسپاں کرتے وقت سگنل الٹ دیں
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}چسپاں کرتے وقت پلوں کو بہتر بنائیں
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}اسٹیشن اور راستے کے مقامات بھی چسپاں کریں
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}چسپاں کرتے وقت زمین کی شکل بدلیں۔ تبدیل کرنے کے لیے کلک کریں: کوئی تبدیلی نہیں، کم سے کم تبدیلی، مکمل تبدیلی
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}موجودہ تبدیلی، دوبارہ ترتیب دینے کے لیے کلک کریں
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}نقشے کو 90 درجے گھڑی کی مخالف سمت گھمائیں
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}نقشے کو 90 درجے گھڑی کی سمت گھمائیں
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}نقشے کو شمال مغرب-جنوب مشرق محور پر الٹیں
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}نقشے کو شمال مشرق-جنوب مغرب محور پر الٹیں
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}چسپاں کرتے وقت اونچائی کا فرق
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}وہ اونچائی بڑھائیں جس پر نقشہ چسپاں ہوتا ہے
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}وہ اونچائی کم کریں جس پر نقشہ چسپاں ہوتا ہے
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Blueprint پیچ کے بارے میں معلومات
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}منتخب علاقے میں آپ کی کمپنی کا کوئی بنیادی ڈھانچہ نہیں ہے
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}منتخب علاقہ نقل کرنے کے لیے بہت بڑا ہے
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}نقشہ ملٹی پلیئر کھیل میں چسپاں کرنے کے لیے بہت بڑا ہے
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}بنیادی ڈھانچے کی نقل اور چسپاں کرنے کے لیے نقشہ ٹول بار دکھائیں
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}بنیادی ڈھانچے کی نقل اور چسپاں کرنے کے لیے نقشہ ٹول بار دکھائیں
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}نقشہ یہاں چسپاں نہیں ہو سکتا...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}اس نقشہ خانے پر جائیں۔ اگر خانے کا نام ہو یا مواد ہو تو ماؤس رکھنے پر نام اور پیش منظر دکھایا جاتا ہے۔ نام تبدیل کرنے کے لیے ڈبل کلک کریں
+STR_BLUEPRINT_EXPORT                                            :{BLACK}برآمد کریں
+STR_BLUEPRINT_IMPORT                                            :{BLACK}درآمد کریں
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}برآمد/درآمد
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint پیچ، ورژن {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :فعال خانہ برآمد کریں...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :تمام خانے فائل میں برآمد کریں...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :فعال خانے میں درآمد کریں...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :تمام خانے فائل سے درآمد کریں...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}نقشہ کلپ بورڈ پر نقل نہیں ہو سکا
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}کلپ بورڈ خالی ہے
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}نقشہ برآمد کریں
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}نقشہ درآمد کریں
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}کلپ بورڈ پر نقل کریں
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}کلپ بورڈ سے چسپاں کریں
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}نقشہ بدلیں؟
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}فعال خانے میں پہلے سے ایک نقشہ موجود ہے۔ کیا آپ اسے بدلنا چاہتے ہیں؟
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}تمام نقشے بدلیں؟
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}یہ تمام نقشہ خانوں کا مواد بدل دے گا۔ کیا آپ جاری رکھنا چاہتے ہیں؟
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}نقشے کا نام تبدیل کریں
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}تمام نقشے فائل میں برآمد کریں
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}تمام نقشے فائل سے درآمد کریں
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}فائل بدلیں؟
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}اس نام کی فائل پہلے سے موجود ہے۔ کیا آپ اسے بدلنا چاہتے ہیں؟
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}نقشے برآمد یا درآمد کریں
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}فائل منتخب کرنے کے لیے اس پر کلک کریں، یا فولڈر کھولنے کے لیے اس پر کلک کریں
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}متن درست نقشہ نہیں ہے
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}غلط فائل کا نام
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}نقشہ فائل نہیں ملی، یا یہ درست نقشوں کا مجموعہ نہیں ہے
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}نقشہ فائل نہیں لکھی جا سکی

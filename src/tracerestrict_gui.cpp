@@ -735,13 +735,13 @@ static const TraceRestrictDropDownListSet *GetSortedCargoTypeDropDownListSet()
 /**
  * Get a DropDownList of the group list
  */
-static DropDownList GetGroupDropDownList(Owner owner, GroupID group_id, int &selected, bool include_default = true)
+DropDownList GetGroupDropDownList(Owner owner, GroupID group_id, int &selected, bool include_default = true, VehicleType vehtype = VehicleType::Train)
 {
 	std::vector<const Group *> list;
 	robin_hood::unordered_set<GroupID> seen_parents;
 
 	for (const Group *g : Group::Iterate()) {
-		if (g->owner == owner && g->vehicle_type == VehicleType::Train) {
+		if (g->owner == owner && g->vehicle_type == vehtype) {
 			list.push_back(g);
 			seen_parents.insert(g->parent);
 		}
@@ -776,7 +776,7 @@ static DropDownList GetGroupDropDownList(Owner owner, GroupID group_id, int &sel
 
 	if (include_default) {
 		if (group_id == DEFAULT_GROUP) selected = DEFAULT_GROUP.base();
-		dlist.push_back(MakeDropDownListStringItem(STR_GROUP_DEFAULT_TRAINS, DEFAULT_GROUP.base(), false));
+		dlist.push_back(MakeDropDownListStringItem(vehtype == VehicleType::Road ? STR_GROUP_DEFAULT_ROAD_VEHICLES : STR_GROUP_DEFAULT_TRAINS, DEFAULT_GROUP.base(), false));
 	}
 
 	auto output_groups = y_combinator([&](auto output_groups, uint indent, GroupID parent_filter) -> void {

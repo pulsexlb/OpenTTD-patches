@@ -273,6 +273,7 @@ static void LoadSpriteTables()
 	 * Let's say everything which provides less than 500 sprites misses the rest intentionally. */
 	if (500 + _missing_extra_graphics > total_extra_graphics) _missing_extra_graphics = 0;
 
+
 	/* Remove the default and baseset extra graphics from the config. */
 	_grfconfig.erase(std::begin(_grfconfig), std::next(std::begin(_grfconfig), 2));
 }

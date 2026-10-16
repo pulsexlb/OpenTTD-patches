@@ -6046,3 +6046,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Filtres 
 STR_BADGE_CONFIG_PREVIEW                                        :Aperçu du véhicule
 STR_BADGE_CONFIG_NAME                                           :Nom
 STR_BADGE_FILTER_ANY_LABEL                                      :Tous {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} est {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plan
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Sélectionner une zone de votre propre infrastructure à copier dans l'emplacement de plan actif
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Coller le contenu de l'emplacement de plan actif sur la carte
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Coller l'infrastructure ferroviaire
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Coller l'infrastructure routière
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Coller l'infrastructure maritime
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Coller l'infrastructure aérienne
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Convertir l'infrastructure ferroviaire vers le type de rail actuel lors du collage
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Mettre les signaux en miroir lors du collage
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Moderniser les ponts lors du collage
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Coller aussi les stations et les points de contrôle
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraformer le terrain lors du collage. Cliquer pour alterner{NBSP}: pas de terraformation, terraformation minimale, terraformation complète
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Transformation actuelle, cliquer pour réinitialiser
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Faire pivoter le plan de 90 degrés dans le sens antihoraire
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Faire pivoter le plan de 90 degrés dans le sens horaire
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Refléter le plan selon l'axe NO-SE
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Refléter le plan selon l'axe NE-SO
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Décalage de hauteur appliqué lors du collage
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Augmenter la hauteur à laquelle le plan est collé
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Diminuer la hauteur à laquelle le plan est collé
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informations sur le patch Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}La zone sélectionnée ne contient aucune infrastructure appartenant à votre compagnie
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}La zone sélectionnée est trop grande pour être copiée
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Plan trop grand pour être collé dans une partie multijoueur
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Afficher la barre d'outils de plan pour copier et coller l'infrastructure
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Afficher la barre d'outils de plan pour copier et coller l'infrastructure
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Impossible de coller le plan ici...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Passer à cet emplacement de plan. Si l'emplacement a un nom ou du contenu, le survol affiche le nom et un aperçu. Double-cliquer pour renommer
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exporter
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importer
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patch Blueprint, version {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Exporter l'emplacement actif...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Exporter tous les emplacements vers un fichier...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importer dans l'emplacement actif...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importer tous les emplacements depuis un fichier...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Impossible de copier le plan dans le presse-papiers
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Le presse-papiers est vide
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Exporter le plan
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importer un plan
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Copier dans le presse-papiers
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Coller depuis le presse-papiers
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Remplacer le plan{NBSP}?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}L'emplacement actif contient déjà un plan. Voulez-vous le remplacer{NBSP}?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Remplacer tous les plans ?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Cela remplacera le contenu de tous les emplacements de plan. Voulez-vous continuer ?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Renommer le plan
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Exporter tous les plans vers un fichier
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importer tous les plans depuis un fichier
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Remplacer le fichier ?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Un fichier portant ce nom existe déjà. Voulez-vous le remplacer ?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Exporter ou importer des plans
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Cliquez sur un fichier pour le sélectionner, ou sur un dossier pour l'ouvrir
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Le texte n'est pas un plan valide
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nom de fichier invalide
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Fichier de plan introuvable, ou ensemble de plans invalide
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Impossible d'écrire le fichier de plan

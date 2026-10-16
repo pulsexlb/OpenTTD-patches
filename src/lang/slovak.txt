@@ -5844,3 +5844,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plán
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Vyberte oblasť vlastnej infraštruktúry na skopírovanie do aktívneho slotu plánu
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Vložiť obsah aktívneho slotu plánu na mapu
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Vkladať železničnú infraštruktúru
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Vkladať cestnú infraštruktúru
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Vkladať vodnú infraštruktúru
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Vkladať leteckú infraštruktúru
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Prevádzať železničnú infraštruktúru na aktuálny typ koľají pri vkladaní
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Zrkadliť návestidlá pri vkladaní
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Vylepšovať mosty pri vkladaní
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Vkladať aj stanice a traťové body
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Upravovať terén pri vkladaní. Kliknutím prepínate: bez úprav terénu, minimálne úpravy, plné úpravy
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Aktuálna transformácia, kliknutím obnovíte
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Otočiť plán o 90 stupňov proti smeru hodinových ručičiek
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Otočiť plán o 90 stupňov v smere hodinových ručičiek
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Zrkadliť plán podľa osi SZ-JV
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Zrkadliť plán podľa osi SV-JZ
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Výškový posun pri vkladaní
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Zvýšiť výšku, v ktorej sa plán vkladá
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Znížiť výšku, v ktorej sa plán vkladá
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informácie o patchi Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Vybraná oblasť neobsahuje žiadnu infraštruktúru vašej spoločnosti
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Vybraná oblasť je príliš veľká na kopírovanie
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Plán je príliš veľký na vloženie v hre viacerých hráčov
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Zobraziť lištu plánov na kopírovanie a vkladanie infraštruktúry
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Zobraziť lištu plánov na kopírovanie a vkladanie infraštruktúry
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Sem nemožno plán vložiť...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Prepnúť na tento slot plánu. Ak má slot názov alebo obsah, ukázaním myšou sa zobrazí názov a náhľad. Dvojklikom premenujete
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportovať
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importovať
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patch Blueprint, verzia {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Exportovať aktívny slot...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Exportovať všetky sloty do súboru...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importovať do aktívneho slotu...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importovať všetky sloty zo súboru...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Plán sa nepodarilo skopírovať do schránky
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Schránka je prázdna
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Export plánu
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Import plánu
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Skopírovať do schránky
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Vložiť zo schránky
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Nahradiť plán?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Aktívny slot už obsahuje plán. Chcete ho nahradiť?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Nahradiť všetky plány?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Týmto sa nahradí obsah všetkých slotov plánov. Chcete pokračovať?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Premenovať plán
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Exportovať všetky plány do súboru
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importovať všetky plány zo súboru
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Nahradiť súbor?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Súbor s týmto názvom už existuje. Chcete ho nahradiť?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Exportovať alebo importovať plány
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Kliknutím na súbor ho vyberiete, kliknutím na priečinok ho otvoríte
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Text nie je platný plán
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Neplatný názov súboru
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Súbor s plánmi sa nenašiel, alebo nejde o platnú sadu plánov
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Súbor s plánmi sa nepodarilo zapísať

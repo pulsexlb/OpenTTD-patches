@@ -6201,3 +6201,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Brėžinys
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Pažymėkite savo infrastruktūros plotą, kurį norite nukopijuoti į aktyvų brėžinio lizdą
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Įklijuoti aktyvaus brėžinio lizdo turinį žemėlapyje
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Įklijuoti geležinkelio infrastruktūrą
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Įklijuoti kelių infrastruktūrą
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Įklijuoti vandens infrastruktūrą
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Įklijuoti oro transporto infrastruktūrą
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Įklijuojant konvertuoti geležinkelio infrastruktūrą į dabartinį bėgių tipą
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Įklijuojant veidrodiškai apversti signalus
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Įklijuojant atnaujinti tiltus
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Įklijuoti ir stotis bei kelio taškus
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Įklijuojant keisti reljefą. Spustelėkite norėdami perjungti: be reljefo keitimo, minimalus keitimas, visiškas keitimas
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Dabartinė transformacija, spustelėkite norėdami atstatyti
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Pasukti brėžinį 90 laipsnių prieš laikrodžio rodyklę
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Pasukti brėžinį 90 laipsnių pagal laikrodžio rodyklę
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Atspindėti brėžinį ŠV-PR ašies atžvilgiu
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Atspindėti brėžinį ŠR-PV ašies atžvilgiu
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Aukščio poslinkis įklijuojant
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Padidinti aukštį, kuriame įklijuojamas brėžinys
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Sumažinti aukštį, kuriame įklijuojamas brėžinys
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informacija apie Blueprint pataisą
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Pažymėtame plote nėra jūsų įmonei priklausančios infrastruktūros
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Pažymėtas plotas per didelis kopijuoti
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Brėžinys per didelis įklijuoti kelių žaidėjų žaidime
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Rodyti brėžinių įrankių juostą infrastruktūrai kopijuoti ir įklijuoti
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Rodyti brėžinių įrankių juostą infrastruktūrai kopijuoti ir įklijuoti
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Čia brėžinio įklijuoti negalima...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Perjungti į šį brėžinio lizdą. Jei lizdas turi pavadinimą ar turinį, užvedus pelę rodomas pavadinimas ir peržiūra. Dukart spustelėkite, kad pervadintumėte
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Eksportuoti
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importuoti
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eksp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint pataisa, versija {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Eksportuoti aktyvų lizdą...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Eksportuoti visus lizdus į failą...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importuoti į aktyvų lizdą...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importuoti visus lizdus iš failo...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Nepavyko nukopijuoti brėžinio į iškarpinę
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Iškarpinė tuščia
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Brėžinio eksportas
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Brėžinio importas
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopijuoti į iškarpinę
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Įklijuoti iš iškarpinės
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Pakeisti brėžinį?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Aktyviame lizde jau yra brėžinys. Ar norite jį pakeisti?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Pakeisti visus brėžinius?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Tai pakeis visų brėžinių lizdų turinį. Ar norite tęsti?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Pervadinti brėžinį
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Eksportuoti visus brėžinius į failą
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importuoti visus brėžinius iš failo
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Pakeisti failą?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Failas tokiu pavadinimu jau egzistuoja. Ar norite jį pakeisti?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Eksportuoti arba importuoti brėžinius
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Spustelėkite failą, kad jį pasirinktumėte, arba aplanką, kad jį atidarytumėte
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Tekstas nėra tinkamas brėžinys
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Neteisingas failo pavadinimas
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Brėžinių failas nerastas arba tai netinkamas brėžinių rinkinys
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Nepavyko įrašyti brėžinių failo

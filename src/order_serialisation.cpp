@@ -252,7 +252,7 @@ static nlohmann::ordered_json OrderToJSON(const Order &o, VehicleType vt)
 		if (o.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) json[OFName::WAYPOINT_REVERSE] = true;
 	}
 
-	if (o.IsSlotCounterOrder()) {
+	if (o.IsSlotCounterOrder() || o.IsExecuteScheduleOrder()) {
 		DestinationID::BaseType id = o.GetDestination().ToSlotID().base();
 		switch (o.GetType()) {
 			case OT_COUNTER: json[OFName::COUNTER_ID] = id; break;
@@ -491,6 +491,10 @@ std::string OrderListToJSONString(const OrderList *ol)
 	};
 
 	const Vehicle *veh = ol->GetFirstSharedVehicle();
+	if (veh == nullptr) { // player-created schedule list without vehicles
+		json["error"] = "Orderlist has no vehicles";
+		return json;
+	}
 	VehicleType vt = veh->type;
 	const Group *group = Group::GetIfValid(veh->group_id);
 
@@ -1419,7 +1423,7 @@ OrderImportErrors ImportJsonOrderList(const Vehicle *veh, std::string_view json_
 			}
 
 			if (have_schedule && veh->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) {
-				Command<Commands::TimetableSeparation>::Post(veh->index, false);
+				Command<Commands::TimetableSeparation>::Post(OrderTargetType::Vehicle, veh->index.base(), false);
 			}
 
 			uint schedule_index = schedule_insert_offset;

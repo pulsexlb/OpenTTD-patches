@@ -11,6 +11,7 @@
 #include "../economy_func.h"
 #include "../economy_base.h"
 
+#include "extended_ver_sl.h"
 #include "saveload.h"
 
 #include "../safeguards.h"
@@ -27,7 +28,7 @@ static void Load_PRIC()
 /** Cargo payment rates in pre 126 savegames */
 static void Load_CAPR()
 {
-	uint num_cargo = IsSavegameVersionBefore(SLV_55) ? 12 : IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES) ? 32 : NUM_CARGO;
+	uint num_cargo = GetSavedCargoCount();
 	int vt = IsSavegameVersionBefore(SLV_65) ? SLE_FILE_I32 : SLE_FILE_I64;
 	SlArray(nullptr, num_cargo, vt | SLE_VAR_NULL);
 	SlArray(nullptr, num_cargo, SLE_FILE_U16 | SLE_VAR_NULL);

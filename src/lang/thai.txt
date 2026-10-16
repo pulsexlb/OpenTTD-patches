@@ -5080,3 +5080,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}พิมพ์เขียว
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}เลือกพื้นที่โครงสร้างพื้นฐานของคุณเองเพื่อคัดลอกไปยังช่องพิมพ์เขียวที่ใช้งานอยู่
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}วางเนื้อหาของช่องพิมพ์เขียวที่ใช้งานอยู่ลงบนแผนที่
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}วางโครงสร้างพื้นฐานทางรถไฟ
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}วางโครงสร้างพื้นฐานถนน
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}วางโครงสร้างพื้นฐานทางน้ำ
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}วางโครงสร้างพื้นฐานทางอากาศ
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}แปลงโครงสร้างพื้นฐานทางรถไฟเป็นชนิดรางปัจจุบันเมื่อวาง
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}กลับด้านสัญญาณเมื่อวาง
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}อัปเกรดสะพานเมื่อวาง
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}วางสถานีและจุดอ้างอิงด้วย
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}ปรับภูมิประเทศเมื่อวาง คลิกเพื่อสลับ: ไม่ปรับภูมิประเทศ ปรับน้อยที่สุด ปรับทั้งหมด
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}การแปลงปัจจุบัน คลิกเพื่อรีเซ็ต
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}หมุนพิมพ์เขียว 90 องศาทวนเข็มนาฬิกา
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}หมุนพิมพ์เขียว 90 องศาตามเข็มนาฬิกา
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}พลิกพิมพ์เขียวตามแกนตะวันตกเฉียงเหนือ-ตะวันออกเฉียงใต้
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}พลิกพิมพ์เขียวตามแกนตะวันออกเฉียงเหนือ-ตะวันตกเฉียงใต้
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}ระยะชดเชยความสูงเมื่อวาง
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}เพิ่มความสูงที่จะวางพิมพ์เขียว
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}ลดความสูงที่จะวางพิมพ์เขียว
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}ข้อมูลเกี่ยวกับแพตช์ Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}พื้นที่ที่เลือกไม่มีโครงสร้างพื้นฐานของบริษัทคุณ
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}พื้นที่ที่เลือกใหญ่เกินกว่าจะคัดลอกได้
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}พิมพ์เขียวใหญ่เกินกว่าจะวางในเกมผู้เล่นหลายคน
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}แสดงแถบเครื่องมือพิมพ์เขียวสำหรับคัดลอกและวางโครงสร้างพื้นฐาน
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}แสดงแถบเครื่องมือพิมพ์เขียวสำหรับคัดลอกและวางโครงสร้างพื้นฐาน
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}ไม่สามารถวางพิมพ์เขียวที่นี่ได้...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}สลับไปยังช่องพิมพ์เขียวนี้ หากช่องมีชื่อหรือเนื้อหา การชี้เมาส์ค้างจะแสดงชื่อและตัวอย่าง ดับเบิลคลิกเพื่อเปลี่ยนชื่อ
+STR_BLUEPRINT_EXPORT                                            :{BLACK}ส่งออก
+STR_BLUEPRINT_IMPORT                                            :{BLACK}นำเข้า
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}ส่งออก/นำเข้า
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}แพตช์ Blueprint รุ่น {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :ส่งออกช่องที่ใช้งานอยู่...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :ส่งออกทุกช่องไปยังไฟล์...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :นำเข้าสู่ช่องที่ใช้งานอยู่...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :นำเข้าทุกช่องจากไฟล์...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}ไม่สามารถคัดลอกพิมพ์เขียวไปยังคลิปบอร์ดได้
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}คลิปบอร์ดว่างเปล่า
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}ส่งออกพิมพ์เขียว
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}นำเข้าพิมพ์เขียว
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}คัดลอกไปยังคลิปบอร์ด
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}วางจากคลิปบอร์ด
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}แทนที่พิมพ์เขียว?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}ช่องที่ใช้งานอยู่มีพิมพ์เขียวอยู่แล้ว ต้องการแทนที่หรือไม่?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}แทนที่พิมพ์เขียวทั้งหมด?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}การดำเนินการนี้จะแทนที่เนื้อหาของช่องพิมพ์เขียวทั้งหมด ต้องการดำเนินการต่อหรือไม่?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}เปลี่ยนชื่อพิมพ์เขียว
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}ส่งออกพิมพ์เขียวทั้งหมดไปยังไฟล์
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}นำเข้าพิมพ์เขียวทั้งหมดจากไฟล์
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}แทนที่ไฟล์?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}มีไฟล์ชื่อนี้อยู่แล้ว ต้องการแทนที่หรือไม่?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}ส่งออกหรือนำเข้าพิมพ์เขียว
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}คลิกไฟล์เพื่อเลือก หรือคลิกโฟลเดอร์เพื่อเปิด
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}ข้อความไม่ใช่พิมพ์เขียวที่ถูกต้อง
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}ชื่อไฟล์ไม่ถูกต้อง
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}ไม่พบไฟล์พิมพ์เขียว หรือไม่ใช่ชุดพิมพ์เขียวที่ถูกต้อง
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}ไม่สามารถเขียนไฟล์พิมพ์เขียวได้

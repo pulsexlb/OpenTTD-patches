@@ -600,6 +600,92 @@ void WriteValue(void *ptr, VarType conv, int64_t val)
 }
 
 /**
+ * Handle conversion of 128 bit variables.
+ * In the case of saving, read in the actual value from the struct
+ * and then write them to file, endian safely. Loading a value
+ * goes exactly the opposite way
+ * @param ptr The object being filled/read
+ * @param conv VarType type of the current element of the struct
+ */
+static void SlSaveLoadConv128(void *ptr, VarType conv)
+{
+	switch (_sl.action) {
+		case SLA_SAVE: {
+			Uint128 x = *static_cast<const Uint128 *>(ptr);
+
+			switch (GetVarFileType(conv)) {
+				case SLE_FILE_U128:
+					SlWriteUint64(x.lo);
+					SlWriteUint64(x.hi);
+					break;
+
+				case SLE_FILE_I64:
+				case SLE_FILE_U64:
+					SlWriteUint64(x.lo);
+					break;
+
+				case SLE_FILE_I32:
+				case SLE_FILE_U32:
+					SlWriteUint32(static_cast<uint32_t>(x.lo));
+					break;
+
+				case SLE_FILE_I16:
+				case SLE_FILE_U16:
+					SlWriteUint16(static_cast<uint16_t>(x.lo));
+					break;
+
+				case SLE_FILE_I8:
+				case SLE_FILE_U8:
+					SlWriteByte(static_cast<uint8_t>(x.lo));
+					break;
+
+				default: NOT_REACHED();
+			}
+			break;
+		}
+		case SLA_LOAD_CHECK:
+		case SLA_LOAD: {
+			Uint128 x;
+
+			switch (GetVarFileType(conv)) {
+				case SLE_FILE_U128:
+					x.lo = SlReadUint64();
+					x.hi = SlReadUint64();
+					break;
+
+				case SLE_FILE_I64:
+				case SLE_FILE_U64:
+					x.lo = SlReadUint64();
+					break;
+
+				case SLE_FILE_I32:
+				case SLE_FILE_U32:
+					x.lo = SlReadUint32();
+					break;
+
+				case SLE_FILE_I16:
+				case SLE_FILE_U16:
+					x.lo = SlReadUint16();
+					break;
+
+				case SLE_FILE_I8:
+				case SLE_FILE_U8:
+					x.lo = SlReadByte();
+					break;
+
+				default: NOT_REACHED();
+			}
+
+			*static_cast<Uint128 *>(ptr) = x;
+			break;
+		}
+		case SLA_PTRS: break;
+		case SLA_NULL: break;
+		default: NOT_REACHED();
+	}
+}
+
+/**
  * Handle all conversion and typechecking of variables here.
  * In the case of saving, read in the actual value from the struct
  * and then write them to file, endian safely. Loading a value
@@ -609,6 +695,11 @@ void WriteValue(void *ptr, VarType conv, int64_t val)
  */
 static void SlSaveLoadConv(void *ptr, VarType conv)
 {
+	if (GetVarMemType(conv) == SLE_VAR_U128) {
+		SlSaveLoadConv128(ptr, conv);
+		return;
+	}
+
 	switch (_sl.action) {
 		case SLA_SAVE: {
 			int64_t x = ReadValue(ptr, conv);

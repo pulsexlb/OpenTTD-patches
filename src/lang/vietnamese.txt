@@ -6050,3 +6050,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Bộ l�
 STR_BADGE_CONFIG_PREVIEW                                        :Ảnh xem trước
 STR_BADGE_CONFIG_NAME                                           :Tên
 STR_BADGE_FILTER_ANY_LABEL                                      :Bất cứ {STRING} nào
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} là {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Bản thiết kế
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Chọn một vùng hạ tầng của bạn để sao chép vào ô bản thiết kế đang hoạt động
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Dán nội dung của ô bản thiết kế đang hoạt động lên bản đồ
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Dán hạ tầng đường sắt
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Dán hạ tầng đường bộ
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Dán hạ tầng đường thủy
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Dán hạ tầng hàng không
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Chuyển hạ tầng đường sắt sang loại ray hiện tại khi dán
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Đối xứng tín hiệu khi dán
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Nâng cấp cầu khi dán
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Dán cả nhà ga và điểm mốc
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Điều chỉnh địa hình khi dán. Nhấp để chuyển: không điều chỉnh, điều chỉnh tối thiểu, điều chỉnh toàn bộ
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Phép biến đổi hiện tại, nhấp để đặt lại
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Xoay bản thiết kế 90 độ ngược chiều kim đồng hồ
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Xoay bản thiết kế 90 độ theo chiều kim đồng hồ
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Lật bản thiết kế theo trục tây bắc - đông nam
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Lật bản thiết kế theo trục đông bắc - tây nam
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Độ lệch chiều cao khi dán
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Tăng độ cao mà bản thiết kế được dán
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Giảm độ cao mà bản thiết kế được dán
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Thông tin về bản vá Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Vùng đã chọn không có hạ tầng thuộc công ty của bạn
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Vùng đã chọn quá lớn để sao chép
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Bản thiết kế quá lớn để dán trong trò chơi nhiều người chơi
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Hiện thanh công cụ bản thiết kế để sao chép và dán hạ tầng
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Hiện thanh công cụ bản thiết kế để sao chép và dán hạ tầng
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Không thể dán bản thiết kế ở đây...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Chuyển sang ô bản thiết kế này. Nếu ô có tên hoặc nội dung, di chuột lên sẽ hiển thị tên và bản xem trước. Nhấp đúp để đổi tên
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Xuất
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Nhập
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Xuất/Nhập
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Bản vá Blueprint, phiên bản {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Xuất ô đang hoạt động...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Xuất tất cả các ô ra tệp...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Nhập vào ô đang hoạt động...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Nhập tất cả các ô từ tệp...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Không thể sao chép bản thiết kế vào bộ nhớ tạm
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Bộ nhớ tạm trống
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Xuất bản thiết kế
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Nhập bản thiết kế
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Sao chép vào bộ nhớ tạm
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Dán từ bộ nhớ tạm
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Thay thế bản thiết kế?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Ô đang hoạt động đã có bản thiết kế. Bạn có muốn thay thế nó không?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Thay thế tất cả bản thiết kế?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Thao tác này sẽ thay thế nội dung của tất cả các ô bản thiết kế. Bạn có muốn tiếp tục không?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Đổi tên bản thiết kế
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Xuất tất cả bản thiết kế ra tệp
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Nhập tất cả bản thiết kế từ tệp
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Thay thế tệp?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Đã tồn tại tệp có tên đó. Bạn có muốn thay thế nó không?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Xuất hoặc nhập bản thiết kế
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Nhấp vào tệp để chọn, hoặc thư mục để mở
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Văn bản không phải là bản thiết kế hợp lệ
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Tên tệp không hợp lệ
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Không tìm thấy tệp bản thiết kế, hoặc không phải là bộ bản thiết kế hợp lệ
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Không thể ghi tệp bản thiết kế

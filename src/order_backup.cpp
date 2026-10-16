@@ -76,6 +76,7 @@ void OrderBackup::DoRestore(Vehicle *v)
 		Command<Commands::CloneOrder>::Do(DoCommandFlag::Execute, CO_SHARE, v->index, this->clone->index);
 	} else if (!this->orders.empty() && OrderList::CanAllocateItem()) {
 		v->orders = OrderList::Create(std::move(this->orders), v);
+		v->primary_order = v->orders->index;
 		this->orders.clear();
 
 		v->orders->GetScheduledDispatchScheduleSet() = std::move(this->dispatch_schedules);

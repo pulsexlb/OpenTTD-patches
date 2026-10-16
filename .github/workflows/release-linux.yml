@@ -7,6 +7,11 @@ on:
         required: false
         type: string
         default: ""
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Ref to build (for Pull Requests, use refs/pull/NNN/head)'
+        required: true
 
 jobs:
   linux:

@@ -133,7 +133,7 @@ extern btree::btree_map<uint64_t, Money> _cargo_packet_deferred_payments;
 		for (auto &iter : _veh_cpp_packets) {
 			if (iter.second.empty()) continue;
 			Vehicle *v = Vehicle::Get(iter.first);
-			Station *st = Station::Get(v->First()->last_station_visited);
+			Station *st = Station::Get(v->Primary()->last_station_visited);
 			assert_msg(st != nullptr, "{}", VehicleInfoDumper(v));
 			for (CargoPacket *cp : iter.second) {
 				st->goods[v->cargo_type].CreateData().cargo.AfterLoadIncreaseReservationCount(cp->count);

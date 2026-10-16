@@ -1,0 +1,195 @@
+name: Android (APK)
+
+# Builds the arm64-v8a APK with build-android-local.sh, the same script that is
+# used locally - so a release APK is exactly the APK that was tested on a
+# device. Called by the Release workflow, which attaches the artifact named
+# "openttd-android" to the GitHub release together with the other platforms
+# (the publish job picks up everything matching openttd-*).
+
+on:
+  # Pushing changes to the build machinery itself is worth checking (the
+  # workflow_dispatch button only shows up once this file is on the default
+  # branch, and a release triggers it through the Release workflow anyway).
+  push:
+    branches: [px-patch]
+    paths:
+      - '.github/workflows/android.yml'
+      - 'build-android-local.sh'
+      - 'patches/android/**'
+  workflow_call:
+    inputs:
+      version:
+        description: 'APK version name (default: the tag/commit that is checked out)'
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'APK version name (default: the tag/commit that is checked out)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  ARCH_LIST: arm64-v8a
+  # Both match what the local build is validated with.
+  ANDROID_BUILD_TOOLS: "35.0.0"
+  ANDROID_NDK_VERSION: "28.2.13676358"
+
+jobs:
+  apk:
+    name: Build APK
+
+    runs-on: ubuntu-latest
+    # A cold run compiles ICU and Boost (~1h); the caches below bring a warm one
+    # down to a few minutes.
+    timeout-minutes: 240
+
+    steps:
+    - name: Java 17
+      uses: actions/setup-java@v5
+      with:
+        java-version: 17
+        distribution: temurin
+
+    - name: Android environment
+      run: |
+        SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:?no Android SDK on this runner}}"
+        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
+        echo "ANDROID_BUILD_DIR=$RUNNER_TEMP/android-build" >> $GITHUB_ENV
+        echo "ANDROID_PREBUILT_CACHE=$RUNNER_TEMP/android-prebuilt-cache" >> $GITHUB_ENV
+        echo "ANDROID_NDK_LATEST_HOME=$SDK_ROOT/ndk/$ANDROID_NDK_VERSION" >> $GITHUB_ENV
+        echo "PATH=$SDK_ROOT/ndk/$ANDROID_NDK_VERSION:$SDK_ROOT/build-tools/$ANDROID_BUILD_TOOLS:$PATH" >> $GITHUB_ENV
+
+        # The prebuilt dependencies only change when the packaging template does
+        # (it pins the iconv submodule that ICU is built from), so its branch tip
+        # is a good cache key. Fetched without checking anything out; a network
+        # hiccup only means a cache miss, so it must not fail the job.
+        TEMPLATE_REV="$(git ls-remote https://github.com/pelya/commandergenius.git refs/heads/sdl_android 2>/dev/null | cut -f1 || true)"
+        echo "TEMPLATE_REV=${TEMPLATE_REV:-unknown}" >> $GITHUB_ENV
+
+    - name: Install Android SDK packages
+      run: |
+        SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+        # The SDK is root-owned on the runner images; locally it may be writable.
+        if [ -w "$ANDROID_SDK_ROOT" ]; then SUDO=""; else SUDO="sudo"; fi
+        for Y in $(seq 20); do echo y; done | $SUDO "$SDKMANAGER" --licenses > /dev/null
+        $SUDO "$SDKMANAGER" --install \
+            "platforms;android-36" \
+            "build-tools;$ANDROID_BUILD_TOOLS" \
+            "ndk;$ANDROID_NDK_VERSION" | tail -3
+
+    - name: Check out the repository
+      uses: actions/checkout@v7
+      with:
+        # Tags are needed: the version name comes from git describe.
+        fetch-depth: 0
+
+    - name: Host build tools
+      # The runner images have most of this already; installing it explicitly
+      # keeps a missing (or differently named) package from failing a build that
+      # takes a while to get to that point.
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq cmake ninja-build zip unzip rsync xz-utils \
+            autoconf automake libtool pkg-config gettext bison flex dos2unix
+
+    - id: prebuilt
+      name: Restore prebuilt dependencies
+      # ICU and Boost take about an hour per architecture to build, so the CI
+      # caches their outputs and build-android-local.sh copies them into the
+      # freshly checked out tree (ANDROID_PREBUILT_CACHE). The cache is written
+      # at the end of this job by the "Cache the prebuilt dependencies" step;
+      # it is only ever restored with an exact key, so a stale tree cannot leak
+      # into a build after the template moved on.
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/android-prebuilt-cache
+        key: android-prebuilt-v1-${{ env.ARCH_LIST }}-${{ env.TEMPLATE_REV }}
+
+    - name: Restore the signing keystore
+      # Without a keystore of its own the build generates a debug one. Caching it
+      # keeps the signature stable across CI runs, so a new APK installs over the
+      # previous one. Set the ANDROID_KEYSTORE_B64 / _ALIAS / _PASS repository
+      # secrets to sign with a real key instead.
+      uses: actions/cache@v6
+      with:
+        path: ~/.android/debug.keystore
+        key: android-debug-keystore-v1
+
+    - name: Signing keystore
+      run: |
+        mkdir -p "$HOME/.android"
+        if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+          # Base64-encoded JKS/P12, as in pelya's own CI.
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$HOME/.android/release.jks"
+          echo "ANDROID_KEYSTORE_FILE=$HOME/.android/release.jks" >> $GITHUB_ENV
+          echo "Using the keystore from ANDROID_KEYSTORE_B64"
+        else
+          echo "No ANDROID_KEYSTORE_B64 secret; signing with the generated debug keystore"
+        fi
+        if [ -n "${{ secrets.ANDROID_KEYSTORE_ALIAS }}" ]; then
+          echo "ANDROID_KEYSTORE_ALIAS=${{ secrets.ANDROID_KEYSTORE_ALIAS }}" >> $GITHUB_ENV
+        fi
+        if [ -n "${{ secrets.ANDROID_KEYSTORE_PASS }}" ]; then
+          echo "ANDROID_KEYSTORE_PASS=${{ secrets.ANDROID_KEYSTORE_PASS }}" >> $GITHUB_ENV
+        fi
+
+    - name: Determine the version
+      id: version
+      run: |
+        VERSION="${{ inputs.version }}"
+        if [ -z "$VERSION" ]; then
+          VERSION="$(git describe --tags --always)"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Building $VERSION"
+
+    - name: Build the APK
+      run: |
+        # Two runs on purpose: the game data package (step 3b of the script) is
+        # assembled from the native build outputs of step 7, so a fresh tree has
+        # none and the first pass would package an APK without data. The first
+        # run produces those outputs, the second one packs them; its native build
+        # is incremental by then.
+        ./build-android-local.sh "$VERSION"
+        rm -rf upload
+        ./build-android-local.sh "$VERSION"
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+
+    - name: Collect the APK
+      run: |
+        # Named like the other release bundles (openttd-<version>-<platform>-<arch>)
+        # so that the Release workflow publishes it with its openttd-* glob.
+        mkdir -p dist
+        APK="$(ls -t upload/*.apk | head -1)"
+        cp -f "$APK" "dist/openttd-${{ steps.version.outputs.version }}-android-arm64-v8a.apk"
+        ls -l dist/
+
+    - name: Cache the prebuilt dependencies
+      # Only fills the cache directory (contents, not the directories themselves,
+      # so an existing tree cannot nest); actions/cache then stores it at the end
+      # of the job, and only when the key was not found.
+      if: steps.prebuilt.outputs.cache-hit != 'true'
+      run: |
+        CACHE="$ANDROID_PREBUILT_CACHE"
+        cd "$ANDROID_BUILD_DIR/sdl-android"
+        for D in project/jni/iconv/include project/jni/iconv/lib \
+                 project/jni/icuuc/include project/jni/icuuc/lib \
+                 project/jni/icuuc/share project/obj; do
+          [ -e "$D" ] || continue
+          mkdir -p "$CACHE/$D"
+          cp -a "$D/." "$CACHE/$D/"
+        done
+        du -sh "$CACHE"
+
+    - name: Upload the APK
+      uses: actions/upload-artifact@v7
+      with:
+        name: openttd-android
+        path: dist
+        if-no-files-found: error
+        retention-days: 14

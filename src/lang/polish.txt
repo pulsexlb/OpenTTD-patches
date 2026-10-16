@@ -6491,3 +6491,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Filtry Z
 STR_BADGE_CONFIG_PREVIEW                                        :Podgląd Obrazka
 STR_BADGE_CONFIG_NAME                                           :Nazwa
 STR_BADGE_FILTER_ANY_LABEL                                      :Wszystkie {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} to {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plan
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Zaznacz obszar własnej infrastruktury, aby skopiować go do aktywnego slotu planu
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Wklej zawartość aktywnego slotu planu na mapę
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Wklejaj infrastrukturę kolejową
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Wklejaj infrastrukturę drogową
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Wklejaj infrastrukturę wodną
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Wklejaj infrastrukturę lotniczą
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Przekształcaj infrastrukturę kolejową na bieżący typ torów podczas wklejania
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Odbijaj lustrzanie sygnalizatory podczas wklejania
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Ulepszaj mosty podczas wklejania
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Wklejaj także stacje i posterunki
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Przekształcaj teren podczas wklejania. Kliknij, aby przełączać: bez zmian terenu, minimalne zmiany, pełne zmiany
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Bieżąca transformacja, kliknij, aby zresetować
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Obróć plan o 90 stopni przeciwnie do ruchu wskazówek zegara
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Obróć plan o 90 stopni zgodnie z ruchem wskazówek zegara
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Odbij plan względem osi NW-SE
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Odbij plan względem osi NE-SW
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Przesunięcie wysokości podczas wklejania
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Zwiększ wysokość, na której wklejany jest plan
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Zmniejsz wysokość, na której wklejany jest plan
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informacje o łatce Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Zaznaczony obszar nie zawiera infrastruktury należącej do twojej firmy
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Zaznaczony obszar jest zbyt duży do skopiowania
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Plan jest zbyt duży, aby wkleić go w grze wieloosobowej
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Pokaż pasek narzędzi planów do kopiowania i wklejania infrastruktury
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Pokaż pasek narzędzi planów do kopiowania i wklejania infrastruktury
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Nie można wkleić tu planu...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Przełącz na ten slot planu. Jeśli slot ma nazwę lub zawartość, najechanie kursorem pokazuje nazwę i podgląd. Kliknij dwukrotnie, aby zmienić nazwę
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Eksportuj
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importuj
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eksp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Łatka Blueprint, wersja {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Eksportuj aktywny slot...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Eksportuj wszystkie sloty do pliku...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importuj do aktywnego slotu...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importuj wszystkie sloty z pliku...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Nie udało się skopiować planu do schowka
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Schowek jest pusty
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Eksport planu
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Import planu
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopiuj do schowka
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Wklej ze schowka
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Zastąpić plan?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Aktywny slot już zawiera plan. Czy chcesz go zastąpić?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Zastąpić wszystkie plany?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}To zastąpi zawartość wszystkich slotów planów. Czy chcesz kontynuować?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Zmień nazwę planu
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Eksportuj wszystkie plany do pliku
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importuj wszystkie plany z pliku
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Zastąpić plik?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Plik o tej nazwie już istnieje. Czy chcesz go zastąpić?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Eksportuj lub importuj plany
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Kliknij plik, aby go wybrać, lub folder, aby go otworzyć
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Tekst nie jest prawidłowym planem
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nieprawidłowa nazwa pliku
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Nie znaleziono pliku planu lub nie jest to prawidłowy zestaw planów
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Nie udało się zapisać pliku planu

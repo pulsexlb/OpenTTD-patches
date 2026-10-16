@@ -12,6 +12,7 @@
 
 #include "stdafx.h"
 #include "newgrf_object.h"
+#include "blueprint.h"
 #include "viewport_func.h"
 #include "command_func.h"
 #include "town.h"
@@ -901,6 +902,8 @@ CommandCost CmdBuildBridge(DoCommandFlags flags, TileIndex tile_end, TileIndex t
 		/* Mark all tiles dirty */
 		MarkBridgeDirty(tile_start, tile_end, AxisToDiagDir(direction), z_start);
 		DirtyCompanyInfrastructureWindows(company);
+
+		RecordBlueprintUndoTunnelBridge(tile_start, tile_end, true, transport_type);
 	}
 
 	if (flags.Test(DoCommandFlag::Execute) && transport_type == TransportType::Rail) {
@@ -1257,6 +1260,8 @@ CommandCost CmdBuildTunnel(DoCommandFlags flags, TileIndex start_tile, Transport
 			UpdateRoadCachedOneWayStatesAroundTile(end_tile);
 		}
 		DirtyCompanyInfrastructureWindows(company);
+
+		RecordBlueprintUndoTunnelBridge(start_tile, end_tile, false, transport_type);
 	}
 
 	return cost;
@@ -3077,7 +3082,7 @@ static bool ClickTile_TunnelBridge(TileIndex tile)
 		std::vector<const Vehicle *> candidates;
 		for (TileIndex test_tile : { tile, tile_end }) {
 			for (const Vehicle *v = GetFirstVehicleOnTile(test_tile, veh_type); v != nullptr; v = v->HashTileNext()) {
-				if (v->IsMovingFront()) candidates.push_back(v->First());
+				if (v->IsMovingFront()) candidates.push_back(v->Primary());
 			}
 		}
 		std::sort(candidates.begin(), candidates.end(), [&](const Vehicle *a, const Vehicle *b) {
@@ -3427,7 +3432,7 @@ static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileInde
 			uint16_t spd = GetBridgeSpec(GetBridgeType(tile))->speed;
 
 			if (v->type == VehicleType::Road) spd *= 2;
-			Vehicle *first = v->First();
+			Vehicle *first = v->Primary();
 			first->cur_speed = std::min(first->cur_speed, spd);
 		}
 
@@ -3440,7 +3445,7 @@ static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileInde
 					if (frame != TILE_SIZE) return {};
 					Train *t = Train::From(v);
 					t->track = TRACK_BIT_WORMHOLE;
-					t->First()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
+					t->Primary()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 
 					/* Do not call PrepareToEnterBridge because that also increments z_pos if
 					 * GroundVehicleFlag::GoingUp is set.
@@ -3531,7 +3536,7 @@ static VehicleEnterTileStates VehicleEnterTile_TunnelBridge(Vehicle *v, TileInde
 					t->SetMovingDirection(bridge_dir);
 					t->track = TRACK_BIT_WORMHOLE;
 				}
-				t->First()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
+				t->Primary()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 				t->gv_flags.Reset(GroundVehicleFlag::GoingUp);
 				t->gv_flags.Reset(GroundVehicleFlag::GoingDown);
 				return VehicleEnterTileState::EnteredWormhole;

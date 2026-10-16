@@ -6028,3 +6028,63 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Filter L
 STR_BADGE_CONFIG_PREVIEW                                        :Gambar Pratinjau
 STR_BADGE_CONFIG_NAME                                           :Nama
 STR_BADGE_FILTER_ANY_LABEL                                      :Apapun {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Cetak biru
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Pilih area infrastruktur milik sendiri untuk disalin ke slot cetak biru aktif
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Tempel isi slot cetak biru aktif ke peta
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Tempel infrastruktur kereta api
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Tempel infrastruktur jalan raya
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Tempel infrastruktur perairan
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Tempel infrastruktur udara
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Ubah infrastruktur rel ke jenis rel saat ini ketika menempel
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Cerminkan sinyal ketika menempel
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Tingkatkan jembatan ketika menempel
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Tempel juga stasiun dan titik jalur
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Bentuk ulang medan ketika menempel. Klik untuk beralih: tanpa perubahan medan, perubahan minimal, perubahan penuh
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Transformasi saat ini, klik untuk mengatur ulang
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Putar cetak biru 90 derajat berlawanan arah jarum jam
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Putar cetak biru 90 derajat searah jarum jam
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Cerminkan cetak biru terhadap sumbu barat laut-tenggara
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Cerminkan cetak biru terhadap sumbu timur laut-barat daya
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Pergeseran ketinggian ketika menempel
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Tambah ketinggian tempat cetak biru ditempel
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Kurangi ketinggian tempat cetak biru ditempel
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informasi tentang patch Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Area yang dipilih tidak berisi infrastruktur milik perusahaan Anda
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Area yang dipilih terlalu besar untuk disalin
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Cetak biru terlalu besar untuk ditempel dalam permainan multipemain
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Tampilkan bilah alat cetak biru untuk menyalin dan menempel infrastruktur
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Tampilkan bilah alat cetak biru untuk menyalin dan menempel infrastruktur
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Tidak dapat menempel cetak biru di sini...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Beralih ke slot cetak biru ini. Jika slot memiliki nama atau isi, mengarahkan kursor menampilkan nama dan pratinjau. Klik dua kali untuk mengganti nama
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Ekspor
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Impor
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eks/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patch Blueprint, versi {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Ekspor slot aktif...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Ekspor semua slot ke file...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Impor ke slot aktif...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Impor semua slot dari file...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Cetak biru tidak dapat disalin ke papan klip
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Papan klip kosong
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Ekspor cetak biru
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Impor cetak biru
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Salin ke papan klip
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Tempel dari papan klip
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Ganti cetak biru?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Slot aktif sudah berisi cetak biru. Apakah Anda ingin menggantinya?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Ganti semua cetak biru?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Ini akan mengganti isi semua slot cetak biru. Apakah Anda ingin melanjutkan?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Ganti nama cetak biru
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Ekspor semua cetak biru ke file
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Impor semua cetak biru dari file
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Ganti file?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}File dengan nama itu sudah ada. Apakah Anda ingin menggantinya?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Ekspor atau impor cetak biru
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klik file untuk memilihnya, atau folder untuk membukanya
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Teks bukan cetak biru yang valid
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nama file tidak valid
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}File cetak biru tidak ditemukan, atau bukan set cetak biru yang valid
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Tidak dapat menulis file cetak biru

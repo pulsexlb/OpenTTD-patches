@@ -5102,3 +5102,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Bloudruk
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Kies 'n gebied van jou eie infrastruktuur om na die aktiewe bloudrukgleuf te kopieer
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Plak die inhoud van die aktiewe bloudrukgleuf op die kaart
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Plak spoorweginfrastruktuur
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Plak padinfrastruktuur
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Plak waterinfrastruktuur
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Plak luginfrastruktuur
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Skakel spoorweginfrastruktuur na die huidige spoortipe om wanneer geplak word
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Spieël seine wanneer geplak word
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Gradeer brûe op wanneer geplak word
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Plak ook stasies en roetepunte
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Vervorm die terrein wanneer geplak word. Klik om te wissel: geen terreinvervorming, minimale vervorming, volle vervorming
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Huidige transformasie, klik om terug te stel
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Draai die bloudruk 90 grade antikloksgewys
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Draai die bloudruk 90 grade kloksgewys
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Weerkaats die bloudruk om die NW-SO-as
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Weerkaats die bloudruk om die NO-SW-as
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Hoogteverskuiwing wanneer geplak word
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Verhoog die hoogte waarop die bloudruk geplak word
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Verlaag die hoogte waarop die bloudruk geplak word
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Inligting oor die Blueprint-patch
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Die gekose gebied bevat geen infrastruktuur wat aan jou maatskappy behoort nie
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Die gekose gebied is te groot om te kopieer
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Bloudruk te groot om in 'n multispelerspel te plak
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Wys die bloudruk-nutsbalk vir die kopieer en plak van infrastruktuur
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Wys die bloudruk-nutsbalk vir die kopieer en plak van infrastruktuur
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Kan nie bloudruk hier plak nie...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Skakel oor na hierdie bloudrukgleuf. As die gleuf 'n naam of inhoud het, wys 'n voorskou saam met die naam wanneer jy daaroor sweef. Dubbelklik om te hernoem
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Voer uit
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Voer in
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Uit/In
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-patch, weergawe {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Voer aktiewe gleuf uit...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Voer alle gleuwe na 'n lêer uit...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Voer in aktiewe gleuf in...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Voer alle gleuwe vanaf 'n lêer in...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Die bloudruk kon nie na die knipbord gekopieer word nie
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Die knipbord is leeg
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Bloudruk uitvoer
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Bloudruk invoer
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopieer na knipbord
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Plak vanaf knipbord
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Bloudruk vervang?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Die aktiewe gleuf bevat reeds 'n bloudruk. Wil jy dit vervang?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Vervang alle bloudrukke?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Dit sal die inhoud van alle bloudrukgleuwe vervang. Wil jy voortgaan?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Hernoem bloudruk
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Voer alle bloudrukke na 'n lêer uit
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Voer alle bloudrukke vanaf 'n lêer in
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Vervang lêer?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}'n Lêer met daardie naam bestaan reeds. Wil jy dit vervang?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Voer bloudrukke uit of in
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klik op 'n lêer om dit te kies, of op 'n vouer om dit oop te maak
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Die teks is nie 'n geldige bloudruk nie
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ongeldige lêernaam
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Bloudruklêer nie gevind nie, of nie 'n geldige bloudrukstel nie
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Die bloudruklêer kon nie geskryf word nie

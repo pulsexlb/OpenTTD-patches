@@ -41,6 +41,8 @@ enum ToolbarNormalWidgets : WidgetID {
 	WID_TN_WATER,         ///< Water building toolbar.
 	WID_TN_AIR,           ///< Airport building toolbar.
 	WID_TN_LANDSCAPE,     ///< Landscaping toolbar.
+	WID_TN_BLUEPRINT,     ///< Blueprint toolbar.
+	WID_TN_BLUEPRINT_UNDO, ///< Undo toolbar.
 	WID_TN_MUSIC_SOUND,   ///< Music/sound configuration menu.
 	WID_TN_MESSAGES,      ///< Messages menu.
 	WID_TN_HELP,          ///< Help menu.

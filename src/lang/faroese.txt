@@ -4501,3 +4501,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Tekning
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Vel eitt øki við tíni egnu undirstøðukervi at avrita í virkna tekningarplássið
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Set innihaldið av virkna tekningarplássinum inn á kortið
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Set jarnbreytarundirstøðukervi inn
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Set vegaundirstøðukervi inn
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Set vatnundirstøðukervi inn
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Set flogundirstøðukervi inn
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Broyt jarnbreytarundirstøðukervi til verandi sporslag, tá ið sett verður inn
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Spegla signal, tá ið sett verður inn
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Dagfør brýr, tá ið sett verður inn
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Set eisini støðir og leiðarpunkt inn
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Broyt lendið, tá ið sett verður inn. Trýst fyri at skifta: ongar lendisbroytingar, minstu broytingar, fullar broytingar
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Verandi umbroyting, trýst fyri at nullstilla
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Snara tekningina 90 stig ímóti urinum
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Snara tekningina 90 stig við urinum
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Spegla tekningina um ásin útnyrðingur-landsynningur
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Spegla tekningina um ásin landnyrðingur-útsynningur
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Hæddarmunur, tá ið sett verður inn
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Hækka hæddina, sum tekningin verður sett inn á
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Lækka hæddina, sum tekningin verður sett inn á
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Upplýsingar um Blueprint-rættingina
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Valda økið inniheldur onki undirstøðukervi hjá tínum felagi
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Valda økið er ov stórt at avrita
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Tekningin er ov stór at seta inn í einum fleirspælaraspæli
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Vís tekningaramboðsbjálkan at avrita og seta undirstøðukervi inn
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Vís tekningaramboðsbjálkan at avrita og seta undirstøðukervi inn
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Kann ikki seta tekningina inn her...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Skift til hetta tekningarplássið. Um plássið hevur navn ella innihald, vísir músin navnið og eina forskoðan. Tvífalt trýst fyri at broyta navn
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Flyt út
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Flyt inn
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Út/Inn
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-rætting, útgáva {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Flyt virkna pláss út...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Flyt øll pláss út til fílu...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Flyt inn í virkna pláss...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Flyt øll pláss inn frá fílu...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Tekningin kundi ikki avritast til klippiborðið
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Klippiborðið er tómt
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Flyt tekning út
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Flyt tekning inn
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Avrita til klippiborðið
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Set inn frá klippiborði
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Skifta tekning út?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Virkna plássið hevur longu eina tekning. Vilt tú skifta hana út?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Skifta allar tekningar út?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Hetta skiftir innihaldið í øllum tekningarplássum út. Vilt tú halda fram?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Broyt navn á tekning
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Flyt allar tekningar út til fílu
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Flyt allar tekningar inn frá fílu
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Skifta fílu út?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Ein fíla við hesum navni finst longu. Vilt tú skifta hana út?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Flyt tekningar út ella inn
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Trýst á eina fílu fyri at velja hana, ella eina möppu fyri at opna hana
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Teksturin er eingin gildig tekning
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ógyldugt fílunavn
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Tekningarfíla ikki funnin, ella ikki eitt gyldugt tekningarsett
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Tekningarfílan kundi ikki skrivast

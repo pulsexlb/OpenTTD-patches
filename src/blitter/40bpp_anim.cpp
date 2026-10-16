@@ -437,6 +437,32 @@ void Blitter_40bppAnim::Draw(Blitter::BlitterParams *bp, BlitterMode mode, ZoomL
 	}
 }
 
+void Blitter_40bppAnim::DarkenRect(void *dst, int width, int height, uint8_t nom)
+{
+	if (_screen_disable_anim) {
+		/* This means our output is not to the screen, so we can't be doing any animation stuff, so use our parent DarkenRect() */
+		Blitter_32bppSimple::DarkenRect(dst, width, height, nom);
+		return;
+	}
+
+	Colour *udst = (Colour *)dst;
+	uint8_t *anim = VideoDriverBase::GetInstance()->GetAnimBuffer() + ((uint32_t *)dst - (uint32_t *)_screen.dst_ptr);
+
+	/* If the anim buffer contains a colour value, the image composition will
+	 * only look at the RGB brightness value. As such, we can simply darken the
+	 * RGB value to darken the anim colour. */
+	do {
+		for (int i = 0; i != width; i++) {
+			Colour b = *anim != 0 ? Colour(GetColourBrightness(*udst), 0, 0) : *udst;
+			*udst = MakeTransparent(b, nom);
+			udst++;
+			anim++;
+		}
+		udst = udst - width + _screen.pitch;
+		anim = anim - width + _screen.pitch;
+	} while (--height);
+}
+
 void Blitter_40bppAnim::DrawColourMappingRect(void *dst, int width, int height, PaletteID pal)
 {
 	if (_screen_disable_anim) {

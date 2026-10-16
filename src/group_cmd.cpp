@@ -139,7 +139,7 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 /* static */ void GroupStatistics::CountVehicle(const Vehicle *v, int delta)
 {
 	/* make virtual trains group-neutral */
-	if (HasBit(v->subtype, GVSF_VIRTUAL)) return;
+	if (v->IsVirtualOrCarried()) return;
 
 	assert(delta == 1 || delta == -1);
 
@@ -167,7 +167,7 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 /* static */ void GroupStatistics::CountEngine(const Vehicle *v, int delta)
 {
 	/* make virtual trains group-neutral */
-	if (HasBit(v->subtype, GVSF_VIRTUAL)) return;
+	if (v->IsVirtualOrCarried()) return;
 
 	assert(delta == 1 || delta == -1);
 	GroupStatistics::GetAllGroup(v).num_engines[v->engine_type] += delta;
@@ -221,7 +221,7 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 	}
 
 	for (const Vehicle *v : Vehicle::IterateFrontOnly()) {
-		if (v->IsPrimaryVehicle() && !HasBit(v->subtype, GVSF_VIRTUAL)) {
+		if (v->IsPrimaryVehicle() && !v->IsVirtualOrCarried()) {
 			GroupStatistics::AddProfitLastYear(v);
 			if (v->economy_age > VEHICLE_PROFIT_MIN_AGE) GroupStatistics::VehicleReachedMinAge(v);
 		}
@@ -259,17 +259,36 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 }
 
 /**
+ * Whether a vehicle may carry the given group id: either the default group, or a
+ * group owned by the vehicle's own company.
+ *
+ * A consist can mix companies after a cross-company couple, so a vehicle may
+ * still hold the group of another company (from a save made before such groups
+ * were kept apart, or from a chain assembled elsewhere). Such a group must never
+ * be looked up in GroupStatistics::Get(), which asserts on an owner mismatch.
+ */
+static bool IsGroupIDUsableByOwner(GroupID id_g, Owner owner)
+{
+	if (!Group::IsValidID(id_g)) return IsDefaultGroupID(id_g);
+	return Group::Get(id_g)->owner == owner;
+}
+
+/**
  * Update the num engines of a groupID. Decrease the old one and increase the new one
  * @note called in SetTrainGroupID and UpdateTrainGroupID
  * @param v     Vehicle we have to update
  * @param old_g index of the old group
- * @param new_g index of the new group
+ * @param new_g index of the new group; must be usable by \a v's owner
  */
 static inline void UpdateNumEngineGroup(const Vehicle *v, GroupID old_g, GroupID new_g)
 {
 	if (old_g != new_g) {
-		/* Decrease the num engines in the old group */
-		GroupStatistics::Get(v->owner, old_g, v->type).num_engines[v->engine_type]--;
+		/* Decrease the num engines in the old group; a foreign group id (see
+		 * IsGroupIDUsableByOwner) is not decounted here, it was never counted
+		 * for this vehicle's company. */
+		if (IsGroupIDUsableByOwner(old_g, v->owner)) {
+			GroupStatistics::Get(v->owner, old_g, v->type).num_engines[v->engine_type]--;
+		}
 
 		/* Increase the num engines in the new group */
 		GroupStatistics::Get(v->owner, new_g, v->type).num_engines[v->engine_type]++;
@@ -1061,13 +1080,20 @@ CommandCost CmdSetGroupFlag(DoCommandFlags flags, GroupID group_id, GroupFlag fl
 void SetTrainGroupID(Train *v, GroupID new_g)
 {
 	if (!Group::IsValidID(new_g) && !IsDefaultGroupID(new_g)) return;
+	/* Never propagate a group that its owner does not own (see IsGroupIDUsableByOwner). */
+	if (!IsGroupIDUsableByOwner(new_g, v->owner)) new_g = DEFAULT_GROUP;
 
-	assert(v->IsFrontEngine() || IsDefaultGroupID(new_g));
+	assert(v->IsPrimaryVehicle() || IsDefaultGroupID(new_g));
 
+	/* A consist may mix companies after a cross-company couple. Only the head's
+	 * company may take \a new_g; vehicles of another company fall back to their
+	 * own default group, so no vehicle ever carries a foreign group id. */
+	const Owner head_owner = v->owner;
 	for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-		if (u->IsEngineCountable()) UpdateNumEngineGroup(u, u->group_id, new_g);
+		GroupID u_g = (u->owner == head_owner) ? new_g : DEFAULT_GROUP;
+		if (u->IsEngineCountable()) UpdateNumEngineGroup(u, u->group_id, u_g);
 
-		u->group_id = new_g;
+		u->group_id = u_g;
 		u->colourmap = PAL_NONE;
 		u->InvalidateNewGRFCache();
 		u->InvalidateImageCache();
@@ -1091,13 +1117,20 @@ void SetTrainGroupID(Train *v, GroupID new_g)
  */
 void UpdateTrainGroupID(Train *v)
 {
-	assert(v->IsFrontEngine() || v->IsFreeWagon());
+	assert(v->IsFrontEngine() || v->IsFreeWagon() || v->IsFrontWagon());
 
 	GroupID new_g = v->IsFrontEngine() ? v->group_id : (GroupID)DEFAULT_GROUP;
+	/* Never propagate a group that its owner does not own (see IsGroupIDUsableByOwner). */
+	if (!IsGroupIDUsableByOwner(new_g, v->owner)) new_g = DEFAULT_GROUP;
+	/* A consist may mix companies after a cross-company couple. Only the head's
+	 * company takes the head's group; vehicles of another company fall back to
+	 * their own default group, so no vehicle ever carries a foreign group id. */
+	const Owner head_owner = v->owner;
 	for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-		if (u->IsEngineCountable()) UpdateNumEngineGroup(u, u->group_id, new_g);
+		GroupID u_g = (u->owner == head_owner) ? new_g : DEFAULT_GROUP;
+		if (u->IsEngineCountable()) UpdateNumEngineGroup(u, u->group_id, u_g);
 
-		u->group_id = new_g;
+		u->group_id = u_g;
 		u->colourmap = PAL_NONE;
 		u->InvalidateNewGRFCache();
 		u->InvalidateImageCache();

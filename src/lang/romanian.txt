@@ -5858,3 +5858,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Schiță
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Selectează o zonă din propria infrastructură pentru a o copia în slotul de schiță activ
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Lipește conținutul slotului de schiță activ pe hartă
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Lipește infrastructura feroviară
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Lipește infrastructura rutieră
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Lipește infrastructura navală
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Lipește infrastructura aeriană
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Convertește infrastructura feroviară la tipul de șină curent la lipire
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Oglindește semnalele la lipire
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Modernizează podurile la lipire
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Lipește și stațiile și punctele de traseu
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraformează terenul la lipire. Clic pentru a comuta: fără terraformare, terraformare minimă, terraformare completă
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Transformarea curentă, clic pentru resetare
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rotește schița cu 90 de grade în sens antiorar
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rotește schița cu 90 de grade în sens orar
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Oglindește schița față de axa NV-SE
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Oglindește schița față de axa NE-SV
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Decalajul de înălțime aplicat la lipire
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Crește înălțimea la care este lipită schița
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Scade înălțimea la care este lipită schița
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informații despre patch-ul Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Zona selectată nu conține infrastructură deținută de compania ta
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Zona selectată este prea mare pentru a fi copiată
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Schița este prea mare pentru a fi lipită într-un joc multiplayer
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Afișează bara de unelte pentru schițe, pentru copierea și lipirea infrastructurii
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Afișează bara de unelte pentru schițe, pentru copierea și lipirea infrastructurii
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Schița nu poate fi lipită aici...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Comută la acest slot de schiță. Dacă slotul are un nume sau conținut, trecerea cu mouse-ul afișează numele și o previzualizare. Dublu clic pentru a redenumi
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportă
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importă
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patch-ul Blueprint, versiunea {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Exportă slotul activ...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Exportă toate sloturile într-un fișier...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importă în slotul activ...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importă toate sloturile dintr-un fișier...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Schița nu a putut fi copiată în clipboard
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Clipboardul este gol
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Exportă schița
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importă schiță
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Copiază în clipboard
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Lipește din clipboard
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Înlocuiești schița?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Slotul activ conține deja o schiță. Vrei să o înlocuiești?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Înlocuiești toate schițele?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Aceasta va înlocui conținutul tuturor sloturilor de schiță. Vrei să continui?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Redenumește schița
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Exportă toate schițele într-un fișier
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importă toate schițele dintr-un fișier
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Înlocuiești fișierul?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Există deja un fișier cu acest nume. Vrei să îl înlocuiești?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Exportă sau importă schițe
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Clic pe un fișier pentru a-l selecta, sau pe un folder pentru a-l deschide
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Textul nu este o schiță validă
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nume de fișier nevalid
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Fișierul de schițe nu a fost găsit, sau nu este un set valid de schițe
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Fișierul de schițe nu a putut fi scris

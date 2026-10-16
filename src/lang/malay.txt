@@ -4648,3 +4648,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Pelan
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Pilih kawasan infrastruktur anda sendiri untuk disalin ke slot pelan aktif
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Tampal kandungan slot pelan aktif pada peta
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Tampal infrastruktur kereta api
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Tampal infrastruktur jalan raya
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Tampal infrastruktur air
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Tampal infrastruktur udara
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Tukar infrastruktur rel kepada jenis landasan semasa apabila menampal
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Cerminkan isyarat apabila menampal
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Naik taraf jambatan apabila menampal
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Tampal juga stesen dan titik laluan
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Ubah bentuk tanah apabila menampal. Klik untuk menukar: tiada pengubahan tanah, pengubahan minimum, pengubahan penuh
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Transformasi semasa, klik untuk menetapkan semula
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Putar pelan 90 darjah lawan arah jam
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Putar pelan 90 darjah ikut arah jam
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Cerminkan pelan pada paksi barat laut-tenggara
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Cerminkan pelan pada paksi timur laut-barat daya
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Ofset ketinggian apabila menampal
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Tinggikan aras di mana pelan ditampal
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Rendahkan aras di mana pelan ditampal
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Maklumat tentang tampalan Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Kawasan yang dipilih tidak mengandungi infrastruktur milik syarikat anda
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Kawasan yang dipilih terlalu besar untuk disalin
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Pelan terlalu besar untuk ditampal dalam permainan berbilang pemain
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Tunjukkan bar alat pelan untuk menyalin dan menampal infrastruktur
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Tunjukkan bar alat pelan untuk menyalin dan menampal infrastruktur
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Tidak boleh menampal pelan di sini...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Tukar ke slot pelan ini. Jika slot mempunyai nama atau kandungan, meletakkan tetikus di atasnya memaparkan nama dan pratonton. Klik dua kali untuk menamakan semula
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Eksport
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Import
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eks/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Tampalan Blueprint, versi {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Eksport slot aktif...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Eksport semua slot ke fail...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Import ke slot aktif...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Import semua slot dari fail...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Pelan tidak dapat disalin ke papan keratan
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Papan keratan kosong
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Eksport pelan
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Import pelan
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Salin ke papan keratan
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Tampal dari papan keratan
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Ganti pelan?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Slot aktif sudah mengandungi pelan. Adakah anda mahu menggantikannya?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Ganti semua pelan?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Ini akan menggantikan kandungan semua slot pelan. Adakah anda mahu meneruskan?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Namakan semula pelan
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Eksport semua pelan ke fail
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Import semua pelan dari fail
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Ganti fail?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Fail dengan nama itu sudah wujud. Adakah anda mahu menggantikannya?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Eksport atau import pelan
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klik fail untuk memilihnya, atau folder untuk membukanya
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Teks itu bukan pelan yang sah
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nama fail tidak sah
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Fail pelan tidak dijumpai, atau bukan set pelan yang sah
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Fail pelan tidak dapat ditulis

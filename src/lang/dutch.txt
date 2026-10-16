@@ -5979,3 +5979,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Badgefil
 STR_BADGE_CONFIG_PREVIEW                                        :Voorbeeld
 STR_BADGE_CONFIG_NAME                                           :Naam
 STR_BADGE_FILTER_ANY_LABEL                                      :Willekeurige {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} is {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Blauwdruk
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Selecteer een gebied met eigen infrastructuur om naar het actieve blauwdrukvak te kopiëren
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Plak de inhoud van het actieve blauwdrukvak op de kaart
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Plak spoorweginfrastructuur
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Plak weginfrastructuur
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Plak waterinfrastructuur
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Plak luchtvaartinfrastructuur
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Zet spoorweginfrastructuur bij het plakken om naar het huidige spoortype
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Spiegel seinen bij het plakken
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Vernieuw bruggen bij het plakken
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Plak ook stations en routepunten
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Pas het terrein aan bij het plakken. Klik om te wisselen: geen terreinaanpassing, minimale terreinaanpassing, volledige terreinaanpassing
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Huidige transformatie, klik om te herstellen
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Draai de blauwdruk 90 graden tegen de klok in
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Draai de blauwdruk 90 graden met de klok mee
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Spiegel de blauwdruk over de NW-ZO-as
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Spiegel de blauwdruk over de NO-ZW-as
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Hoogteverschil bij het plakken
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Verhoog de hoogte waarop de blauwdruk wordt geplakt
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Verlaag de hoogte waarop de blauwdruk wordt geplakt
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informatie over de Blueprint-patch
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Het geselecteerde gebied bevat geen infrastructuur van je eigen bedrijf
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Het geselecteerde gebied is te groot om te kopiëren
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Blauwdruk te groot om in een multiplayerspel te plakken
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Toon de blauwdrukwerkbalk voor het kopiëren en plakken van infrastructuur
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Toon de blauwdrukwerkbalk voor het kopiëren en plakken van infrastructuur
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Kan blauwdruk hier niet plakken...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Ga naar dit blauwdrukvak. Als het vak een naam of inhoud heeft, tonen zweven de naam en een voorbeeld. Dubbelklik om te hernoemen
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exporteren
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importeren
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-patch, versie {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Actief vak exporteren...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Alle vakken naar bestand exporteren...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Naar actief vak importeren...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Alle vakken uit bestand importeren...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}De blauwdruk kon niet naar het klembord worden gekopieerd
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Het klembord is leeg
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Blauwdruk exporteren
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Blauwdruk importeren
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Naar klembord kopiëren
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Plakken vanuit klembord
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Blauwdruk vervangen?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Het actieve vak bevat al een blauwdruk. Wil je deze vervangen?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Alle blauwdrukken vervangen?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Dit vervangt de inhoud van alle blauwdrukvakken. Wil je doorgaan?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Blauwdruk hernoemen
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Alle blauwdrukken naar bestand exporteren
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Alle blauwdrukken uit bestand importeren
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Bestand vervangen?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Er bestaat al een bestand met die naam. Wil je het vervangen?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Blauwdrukken exporteren of importeren
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klik op een bestand om het te selecteren, of op een map om deze te openen
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}De tekst is geen geldige blauwdruk
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ongeldige bestandsnaam
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Blauwdrukbestand niet gevonden, of geen geldige blauwdrukverzameling
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Het blauwdrukbestand kon niet worden geschreven

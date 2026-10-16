@@ -40,6 +40,7 @@ enum class VehicleRailFlag : uint8_t {
 	BreakdownSpeed            = 12, ///< Train has a reduced maximum speed because of a breakdown.
 	BreakdownStopped          = 13, ///< Train is stopped because of a breakdown.
 	NeedRepair                = 14, ///< Train has a reduced maximum speed because of a critical breakdown.
+	JustDecoupled             = 15, ///< Train has just decoupled, reversing is forbidden until it leaves the station.
 	BeyondPlatformEnd         = 16,
 	NotYetInPlatform          = 17,
 	AdvanceInPlatform         = 18,
@@ -47,6 +48,9 @@ enum class VehicleRailFlag : uint8_t {
 	ConsistSpeedReduction     = 20, ///< One or more vehicles in this consist may be in a depot or on a bridge (may be false positive but not false negative).
 	PendingSpeedRestriction   = 21, ///< This vehicle has one or more pending speed restriction changes.
 	SpeedAdaptationExempt     = 22, ///< This vehicle is exempt from train speed adaptation.
+	SameDirDecouplePending    = 23, ///< Trailing split part waits for the leading part to clear its platform before following.
+	CoupleCheckReversePending = 24, ///< Wait for a selected early couple target only after a waypoint reversal completes.
+	CoupleCheckReservationReleased = 25, ///< Forward reservation has already been released for an early couple checkpoint.
 };
 using VehicleRailFlags = EnumBitSet<VehicleRailFlag, uint32_t>;
 
@@ -64,6 +68,8 @@ enum class ConsistChangeFlag : uint8_t {
 	Length, ///< Allow vehicles to change length.
 	Capacity, ///< Allow vehicles to change capacity.
 	DepotDirection, ///< Normalise depot direction.
+	CheckOnly, ///< Only check whether the changes are possible, do not apply them.
+	Immutable, ///< Allow changes to immutable properties (e.g. parent properties).
 };
 /** Bitset of the %ConsistChangeFlag elements. */
 using ConsistChangeFlags = EnumBitSet<ConsistChangeFlag, uint8_t>;
@@ -74,6 +80,9 @@ static constexpr ConsistChangeFlags CCF_AUTOREFIT{ConsistChangeFlag::Capacity}; 
 static constexpr ConsistChangeFlags CCF_REFIT{ConsistChangeFlag::Length, ConsistChangeFlag::Capacity}; ///< Valid changes for refitting in a depot.
 static constexpr ConsistChangeFlags CCF_ARRANGE{ConsistChangeFlag::Length, ConsistChangeFlag::Capacity, ConsistChangeFlag::DepotDirection}; ///< Valid changes for arranging the consist in a depot.
 static constexpr ConsistChangeFlags CCF_SAVELOAD{ConsistChangeFlag::Length}; ///< Valid changes when loading a savegame. (Everything that is not stored in the save.)
+static constexpr ConsistChangeFlags CCF_ARRANGE_STATION{ConsistChangeFlag::Capacity}; ///< Valid changes for arranging the consist in a station.
+static constexpr ConsistChangeFlags CCF_ARRANGE_CHECK{ConsistChangeFlag::Capacity, ConsistChangeFlag::CheckOnly}; ///< Check whether arranging the consist in a station would be possible.
+static constexpr ConsistChangeFlags CCF_COUPLE{ConsistChangeFlag::Length, ConsistChangeFlag::Capacity}; ///< Valid changes when coupling/decoupling trains at a station.
 
 enum RealisticBrakingConstants {
 	RBC_BRAKE_FORCE_PER_LENGTH      = 2400,      ///< Additional force-based brake force per unit of train length
@@ -105,6 +114,46 @@ void DeleteVisibleTrain(Train *v);
 
 void CheckBreakdownFlags(Train *v);
 void GetTrainSpriteSize(EngineID engine, uint &width, uint &height, int &xoffs, int &yoffs, EngineImageType image_type);
+bool TrainFitStation(const Train *v);
+void TrainMoveToPosition(Train *v, int x, int y);
+bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys);
+
+/** First rule which rejects a train as a coupling candidate. */
+enum class CoupleCandidateResult : uint8_t {
+	Valid,
+	NotCoupleOrder,
+	NotWaiting,
+	Claimed,
+	Crashed,
+	Stopped,
+	Owner,
+	Load,
+	Cargo,
+	UnitCount,
+	Slot,
+	SlotGroup,
+	Group,
+	Station,
+	Platform,
+	Arrangement,
+};
+
+CoupleCandidateResult GetCoupleCandidateResult(const Train *moving, const Order &order,
+		Train *waiting_first, TileIndex contact_tile, bool respect_claim = true, uint32_t claim_cost = 0);
+Train *ValidateCoupleCandidate(const Train *moving, Train *waiting_first, TileIndex contact_tile,
+		bool respect_claim = true, uint32_t claim_cost = 0);
+Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir td,
+		bool respect_claim = true, uint32_t claim_cost = 0);
+void ClaimCoupleTarget(Train *moving, Train *carrier, uint32_t claim_cost);
+const Train *GetCoupleClaimant(const Train *carrier);
+Train *GetDecoupleVehicleForCount(Train *v, uint num_keep);
+
+/** An order value and its actual physical split boundary (legacy order units). */
+struct DecoupleCut {
+	uint8_t num_keep;
+	const Train *vehicle;
+};
+std::vector<DecoupleCut> GetDecoupleCuts(Train *v);
 
 bool TrainOnCrossing(TileIndex tile);
 void NormalizeTrainVehInDepot(const Train *u);
@@ -116,7 +165,7 @@ enum TrainCacheFlags : uint8_t {
 	TCF_RL_BRAKING        = 0x02,  ///< Train realistic braking (movement physics) in effect for this vehicle
 	TCF_SPD_RAILTYPE      = 0x04,  ///< Train speed varies depending on railtype
 	TCF_MOVING_UNIT_START = 0x08,  ///< Start of an articulated unit in the movement direction
-	TCF_NO_DRIVING_CAB    = 0x10,  ///< No driving cab in forward direction, restricted speed
+	TCF_NO_DRIVING_CAB    = 0x10,  ///< No driving cab at the leading end of the consist, restricted speed
 
 	TCF_ACCEL_TYPE_MASK   = 0xC0,  ///< Acceleration type: 0 - 2 for corresponding value, 3 for mixed
 };
@@ -160,6 +209,29 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 
 	std::unique_ptr<TrainReservationLookAhead> lookahead{};
 
+	/* Coupling-approach state (persisted via XSLFI_COUPLE_CLAIM_STATE): the
+	 * physical end vehicle of the consist we are approaching, resolved by the
+	 * couple pathfinder. Must be persisted: clients joining while an approach
+	 * is in flight otherwise run diverging target selection. Kept on the
+	 * consist Primary; validated after load (AfterLoadValidateCoupleClaims). */
+	VehicleID couple_target = VehicleID::Invalid();
+	/* Couple-claim state (persisted via XSLFI_COUPLE_CLAIM_STATE): which
+	 * approaching consist has claimed this (waiting) consist as its couple
+	 * target. Only one moving train may home onto a waiting train; a
+	 * challenger with a cheaper path takes the claim over. Kept on the
+	 * consist Primary; validated after load (AfterLoadValidateCoupleClaims). */
+	VehicleID couple_claimant = VehicleID::Invalid();
+	uint32_t couple_claim_cost = 0;
+	/* Couple state (persisted via XSLFI_COUPLE_CLAIM_STATE): the waiting
+	 * consist has released everything beyond its body once, so its partner
+	 * can reserve up to the contact point with the regular reservation
+	 * machinery. Kept on the consist Primary. */
+	bool couple_body_hold = false;
+	/* Transient state (not saved): the player manually ordered this train to
+	 * a depot and we are pathfinding for the nearest depot before the order
+	 * is set, so the depot-impassability rule must not block depot tiles. */
+	bool finding_manual_depot = false;
+
 	RailTypes railtypes{}; ///< On which rail types the train can run.
 	RailTypes compatible_railtypes{}; ///< With which rail types the train is compatible.
 
@@ -173,7 +245,13 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	uint16_t tunnel_bridge_signal_num = 0;
 	static constexpr uint8_t TBS_INVALID_DISTANCE = 0xFF;
 	uint8_t tunnel_bridge_tile_ctr = 0;
-	// 1 byte gap
+
+	/**
+	 * Which part of a decoupled train this vehicle belongs to.
+	 * Only meaningful on the front engine of a train.
+	 * 0 = not a decoupled part, 1 = first part (stays at the station), 2 = second part (the decoupled tail).
+	 */
+	uint8_t decouple_part = 0;
 	uint16_t speed_restriction = 0;
 	uint16_t signal_speed_restriction = 0;
 	uint16_t crash_anim_pos = 0; ///< Crash animation counter, also used for realistic braking train brake overheating
@@ -189,10 +267,11 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	void UpdateDeltaXY() override;
 	ExpensesType GetExpenseType(bool income) const override { return income ? ExpensesType::TrainRevenue : ExpensesType::TrainRun; }
 	void PlayLeaveStationSound(bool force = false) const override;
-	bool IsPrimaryVehicle() const override { return this->IsFrontEngine(); }
+	bool IsPrimaryVehicle() const override { return this->IsFrontEngine() || this->IsFrontWagon(); }
 	void GetImage(Direction direction, EngineImageType image_type, VehicleSpriteSeq *result) const override;
 	int GetDisplaySpeed() const override { return this->gcache.last_speed; }
 	int GetDisplayMaxSpeed() const override { return this->vcache.cached_max_speed; }
+	uint16_t GetDisplayPower() const { return this->GetPower() + this->GetPoweredPartPower(); }
 	Money GetRunningCost() const override;
 	int GetCursorImageOffset() const;
 	int GetDisplayImageWidth(Point *offset = nullptr) const;
@@ -211,6 +290,24 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	uint16_t GetCurveSpeedLimit() const;
 
 	void ConsistChanged(ConsistChangeFlags allowed_changes);
+
+	/**
+	 * Copy the consist-level caches from this chain head to every other
+	 * vehicle of the chain. Must be called whenever the head's copies are
+	 * (re)computed outside ConsistChanged, or the per-vehicle copies go stale
+	 * and diverge between network peers.
+	 */
+	void BroadcastConsistCaches();
+
+	/**
+	 * Check whether the consist changes described by #allowed_changes would be possible,
+	 * without actually applying any of them. Used e.g. to verify a consist can be
+	 * (re)arranged before coupling trains.
+	 * @param allowed_changes Which changes are allowed; only #ConsistChangeFlag::Length and
+	 *                        #ConsistChangeFlag::Capacity are considered.
+	 * @return true if none of the not-allowed properties would change.
+	 */
+	bool CanConsistChange(ConsistChangeFlags allowed_changes) const;
 
 	struct MaxSpeedInfo {
 		int strict_max_speed;
@@ -541,6 +638,18 @@ private:
 	void UpdateTrainSpeedAdaptationLimitInternal(uint16_t speed);
 
 public:
+	/** RoRo: weight of this single vehicle including its cargo, for the carriage-by-carriage loading of carriers. */
+	inline uint16_t GetSelfWeight() const
+	{
+		return this->GetWeight();
+	}
+
+	/** RoRo: weight of this single vehicle when fully loaded with its current cargo, for the carriage-by-carriage loading of carriers. */
+	inline uint16_t GetSelfMaxWeight() const
+	{
+		return this->GetMaxWeight();
+	}
+
 	inline void UpdateTrainSpeedAdaptationLimit(uint16_t speed)
 	{
 		if (speed != this->signal_speed_restriction) this->UpdateTrainSpeedAdaptationLimitInternal(speed);

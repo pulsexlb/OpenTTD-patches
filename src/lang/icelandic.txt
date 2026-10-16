@@ -4738,3 +4738,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Teikning
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Veldu svæði með eigin innviðum til að afrita í virka teikningarhólfið
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Líma innihald virka teikningarhólfsins á kortið
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Líma járnbrautarinnviði
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Líma vegainnviði
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Líma siglingainnviði
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Líma fluginnviði
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Breyta járnbrautarinnviðum í núverandi teinagerð við límingu
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Spegla merki við límingu
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Uppfæra brýr við límingu
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Líma einnig stöðvar og leiðarpunkta
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Jarðmóta land við límingu. Smelltu til að skipta: engin jarðmótun, lágmarks jarðmótun, full jarðmótun
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Núverandi umbreyting, smelltu til að endurstilla
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Snúa teikningunni 90 gráður rangsælis
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Snúa teikningunni 90 gráður réttsælis
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Spegla teikningunni um NV-SA ásinn
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Spegla teikningunni um NA-SV ásinn
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Hæðarhliðrun við límingu
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Hækka hæðina sem teikningin er límd á
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Lækka hæðina sem teikningin er límd á
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Upplýsingar um Blueprint-viðbótina
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Valda svæðið inniheldur enga innviði í eigu fyrirtækisins þíns
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Valda svæðið er of stórt til að afrita
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Teikningin er of stór til að líma í fjölspilunarleik
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Sýna teikningastikuna til að afrita og líma innviði
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Sýna teikningastikuna til að afrita og líma innviði
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Ekki er hægt að líma teikninguna hér...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Skipta yfir í þetta teikningarhólf. Ef hólfið hefur nafn eða innihald birtir bendillinn nafnið og forskoðun. Tvísmelltu til að endurnefna
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Flytja út
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Flytja inn
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Út/Inn
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-viðbót, útgáfa {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Flytja út virkt hólf...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Flytja út öll hólf í skrá...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Flytja inn í virkt hólf...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Flytja inn öll hólf úr skrá...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Ekki tókst að afrita teikninguna á klippiborðið
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Klippiborðið er tómt
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Flytja út teikningu
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Flytja inn teikningu
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Afrita á klippiborð
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Líma af klippiborði
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Skipta út teikningu?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Virka hólfið inniheldur þegar teikningu. Viltu skipta henni út?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Skipta út öllum teikningum?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Þetta mun skipta út innihaldi allra teikningarhólfa. Viltu halda áfram?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Endurnefna teikningu
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Flytja allar teikningar út í skrá
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Flytja allar teikningar inn úr skrá
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Skipta út skrá?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Skrá með þessu nafni er þegar til. Viltu skipta henni út?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Flytja teikningar út eða inn
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Smelltu á skrá til að velja hana, eða möppu til að opna hana
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Textinn er ekki gild teikning
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ógilt skráarheiti
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Teikningarskrá fannst ekki, eða er ekki gilt teikningasafn
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Ekki tókst að skrifa teikningarskrána

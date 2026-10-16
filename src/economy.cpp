@@ -39,6 +39,7 @@
 #include "subsidy_base.h"
 #include "subsidy_func.h"
 #include "station_base.h"
+#include "roadveh_transport.h"
 #include "waypoint_base.h"
 #include "economy_base.h"
 #include "core/pool_func.hpp"
@@ -156,7 +157,7 @@ Money CalculateCompanyValueExcludingShares(const Company *c, bool including_loan
 
 	for (const Vehicle *v : Vehicle::Iterate()) {
 		if (v->owner != owner) continue;
-		if (HasBit(v->subtype, GVSF_VIRTUAL)) continue;
+		if (v->IsVirtualOrCarried()) continue;
 
 		if (v->type == VehicleType::Train ||
 				v->type == VehicleType::Road ||
@@ -245,7 +246,7 @@ int UpdateCompanyRatingAndValue(Company *c, bool update)
 
 		for (const Vehicle *v : Vehicle::IterateFrontOnly()) {
 			if (v->owner != owner) continue;
-			if (IsCompanyBuildableVehicleType(v->type) && v->IsPrimaryVehicle() && !HasBit(v->subtype, GVSF_VIRTUAL)) {
+			if (IsCompanyBuildableVehicleType(v->type) && v->IsPrimaryVehicle() && !v->IsVirtualOrCarried()) {
 				if (v->profit_last_year > 0) num++; // For the vehicle score only count profitable vehicles
 				if (v->economy_age > VEHICLE_PROFIT_MIN_AGE) {
 					/* Find the vehicle with the lowest amount of profit */
@@ -538,7 +539,7 @@ void ChangeOwnershipOfCompanyItems(Owner old_owner, Owner new_owner)
 				if (v->IsEngineCountable()) {
 					GroupStatistics::CountEngine(v, 1);
 				}
-				if (v->IsPrimaryVehicle() && !HasBit(v->subtype, GVSF_VIRTUAL)) {
+				if (v->IsPrimaryVehicle() && !v->IsVirtualOrCarried()) {
 					GroupStatistics::CountVehicle(v, 1);
 					auto &unitidgen = new_company->freeunits[v->type];
 					v->unitnumber = unitidgen.UseID(unitidgen.NextID());
@@ -1502,7 +1503,7 @@ Money CargoPayment::PayTransfer(CargoType cargo, CargoPacket *cp, uint count, Ti
  */
 static OrderLoadType GetLoadType(const Vehicle *v)
 {
-	return v->First()->current_order.GetCargoLoadType(v->cargo_type);
+	return v->Primary()->current_order.GetCargoLoadType(v->cargo_type);
 }
 
 /**
@@ -1514,7 +1515,7 @@ static OrderLoadType GetLoadType(const Vehicle *v)
  */
 static OrderUnloadType GetUnloadType(const Vehicle *v)
 {
-	return v->First()->current_order.GetCargoUnloadType(v->cargo_type);
+	return v->Primary()->current_order.GetCargoUnloadType(v->cargo_type);
 }
 
 /**
@@ -1524,7 +1525,12 @@ static OrderUnloadType GetUnloadType(const Vehicle *v)
 void PrepareUnload(Vehicle *front_v)
 {
 	Station *curr_station = Station::Get(front_v->last_station_visited);
-	curr_station->loading_vehicles.push_back(front_v);
+	/* Guard against duplicate queue entries when BeginLoading runs twice for
+	 * the same vehicle without an intervening LeaveStation. */
+	auto &loading_queue = curr_station->loading_vehicles;
+	if (std::find(loading_queue.begin(), loading_queue.end(), front_v) == loading_queue.end()) {
+		loading_queue.push_back(front_v);
+	}
 
 	/* At this moment loading cannot be finished */
 	front_v->vehicle_flags.Reset(VehicleFlag::LoadingFinished);
@@ -1542,7 +1548,10 @@ void PrepareUnload(Vehicle *front_v)
 	CargoStationIDVectorSet next_station = front_v->GetNextStoppingStation();
 	if (front_v->orders == nullptr || (front_v->current_order.GetUnloadType() != OrderUnloadType::NoUnload)) {
 		Station *st = Station::Get(front_v->last_station_visited);
-		for (Vehicle *v = front_v; v != nullptr; v = v->Next()) {
+		/* The primary may sit mid-chain or at the physical tail (decoupled parts
+		 * driving away reversed), so start at the physical head to cover the
+		 * whole consist. */
+		for (Vehicle *v = front_v->First(); v != nullptr; v = v->Next()) {
 			if (GetUnloadType(v) == OrderUnloadType::NoUnload) continue;
 			const GoodsEntry *ge = &st->goods[v->cargo_type];
 			if (v->cargo_cap > 0 && v->cargo.TotalCount() > 0) {
@@ -1792,12 +1801,17 @@ static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist
 	IterateVehicleParts(v_start, PrepareRefitAction(consist_capleft, refit_mask));
 
 	bool is_auto_refit = new_cid == CARGO_AUTO_REFIT;
-	bool check_order = (v->First()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad);
+	bool check_order = (v->Primary()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad);
+	/* Road vehicle transport: refitting to or from the dedicated vehicle transport cargoes is only
+	 * done manually in a depot, never automatically at a station. */
+	const CargoType vehicles_cargo = RV_TRANSPORT_CARGO_SLOT;
+	const CargoType rail_cargo = RAIL_TRANSPORT_CARGO_SLOT;
 	if (is_auto_refit) {
 		/* Get a refittable cargo type with waiting cargo for next_station or StationID::Invalid(). */
 		new_cid = v_start->cargo_type;
 		for (CargoType cid : refit_mask) {
-			if (check_order && v->First()->current_order.GetCargoLoadType(cid) == OrderLoadType::NoLoad) continue;
+			if (check_order && v->Primary()->current_order.GetCargoLoadType(cid) == OrderLoadType::NoLoad) continue;
+			if (cid == vehicles_cargo || cid == rail_cargo) continue;
 			if (st->goods[cid].data != nullptr && st->goods[cid].data->cargo.HasCargoFor(next_station.Get(cid))) {
 				/* Try to find out if auto-refitting would succeed. In case the refit is allowed,
 				 * the returned refit capacity will be greater than zero. */
@@ -1817,21 +1831,24 @@ static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist
 		}
 	}
 
-	/* Refit if given a valid cargo. */
-	if (new_cid < NUM_CARGO && new_cid != GetOverallCargoOfArticulatedVehicle(v_start)) {
+	/* Refit if given a valid cargo (never to or from the road vehicle transport cargo, see above). */
+	if (new_cid < NUM_CARGO && new_cid != GetOverallCargoOfArticulatedVehicle(v_start) &&
+			new_cid != vehicles_cargo && new_cid != rail_cargo &&
+			GetOverallCargoOfArticulatedVehicle(v_start) != vehicles_cargo &&
+			GetOverallCargoOfArticulatedVehicle(v_start) != rail_cargo) {
 		/* StationID::Invalid() because in the DistributionType::Manual case that's correct and in the DistributionType::Asymmetric/DistributionType::Symmetric
 		 * cases the next hop of the vehicle doesn't really tell us anything if the cargo had been
 		 * "via any station" before reserving. We rather produce some more "any station" cargo than
 		 * misrouting it. */
 		IterateVehicleParts(v_start, ReturnCargoAction(st, StationID::Invalid()));
 		CommandCost cost = Command<Commands::RefitVehicle>::Do(DoCommandFlag::Execute, v_start->index, new_cid, 0xFF, true, false, 1); // Auto-refit and only this vehicle including artic parts.
-		if (cost.Succeeded()) v->First()->profit_this_year -= cost.GetCost() << 8;
+		if (cost.Succeeded()) v->Primary()->profit_this_year -= cost.GetCost() << 8;
 	}
 
 	/* Add new capacity to consist capacity and reserve cargo */
 	IterateVehicleParts(v_start, FinalizeRefitAction(consist_capleft, st, next_station,
-			is_auto_refit || v->First()->current_order.IsFullLoadOrder(),
-			(v->First()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad) ? v->First() : nullptr));
+			is_auto_refit || v->Primary()->current_order.IsFullLoadOrder(),
+			(v->Primary()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad) ? v->Primary() : nullptr));
 }
 
 /**
@@ -1945,6 +1962,10 @@ static void LoadUnloadVehicle(Vehicle *front)
 {
 	assert(front->current_order.IsType(OT_LOADING));
 
+	/* RoRo: the dedicated "Vehicles" cargo marks carrier parts which hold road vehicles; they are
+	 * skipped by the normal-cargo code below (see the part loop). */
+	const CargoType vehicles_cargo = RV_TRANSPORT_CARGO_SLOT;
+
 	StationID last_visited = front->last_station_visited;
 	Station *st = Station::Get(last_visited);
 
@@ -2017,6 +2038,32 @@ static void LoadUnloadVehicle(Vehicle *front)
 
 	/* We have not waited enough time till the next round of loading/unloading */
 	if (front->load_unload_ticks != 0) return;
+
+	/* RoRo: a vehicle waiting to be transported does not load/unload normal cargo. */
+	if ((front->type == VehicleType::Road || front->type == VehicleType::Train) && (front->rv_transport_flags & RVTF_WAITING) != 0) {
+		front->load_unload_ticks = 1;
+		return;
+	}
+
+	/* RoRo: a carrier loads/unloads road vehicles according to its order parameter block.
+	 * Every part of a multi-part carrier (a multi-hold ship, for instance) is a vehicle of its own
+	 * which enters the station and runs this code, while the road vehicles it carries are attached to
+	 * the *front* vehicle, so always work with the front. A station order which does not set the
+	 * vehicle transport flags leaves the carrier's parts alone here; it loads/unloads normal cargo. */
+	if (front->type != VehicleType::Road) {
+		Vehicle *carrier = front->First();
+		const uint8_t rv_order_flags = carrier->current_order.GetRVTransportFlags();
+		if ((rv_order_flags & ORVTF_UNLOAD) != 0) {
+			RVTransportDetachAtStation(carrier, st);
+		}
+		if ((rv_order_flags & ORVTF_LOAD) != 0 && _settings_game.vehicle.rv_transport_enabled) {
+			for (int i = 0; i < 8; i++) {
+				Vehicle *waiting = RVTransportFindWaitingAtStation(st, carrier); // applies the order's selection criteria
+				if (waiting == nullptr) break;
+				if (!RVTransportAttachAuto(carrier, waiting)) break;
+			}
+		}
+	}
 
 	if (front->type == VehicleType::Train && (!IsTileType(station_tile, TileType::Station) || GetStationIndex(station_tile) != st->index)) {
 		/* The train reversed in the station. Take the "easy" way
@@ -2091,6 +2138,12 @@ static void LoadUnloadVehicle(Vehicle *front)
 			suppress_artic_load = false;
 		}
 		if (v->cargo_cap == 0) continue;
+
+		/* RoRo: a part refitted to the dedicated "Vehicles" cargo is a carrier part which holds road
+		 * vehicles, never normal cargo. It is left alone while this order loads/unloads normal cargo:
+		 * the road vehicles on it are handled by the vehicle transport code above (and a carried road
+		 * vehicle is not part of the cargo lists at all). */
+		if (v->cargo_type == vehicles_cargo || v->cargo_type == RAIL_TRANSPORT_CARGO_SLOT) continue;
 		artic_part++;
 
 		/* ge and ged must both be changed together, when the cargo is changed (e.g. after HandleStationRefit) */
@@ -2380,6 +2433,25 @@ static void LoadUnloadVehicle(Vehicle *front)
 			Train::From(front)->flags.Set(VehicleRailFlag::AdvanceInPlatform);
 		}
 
+		/* RoRo: a carrier ordered to wait for road vehicles keeps loading while there is still
+		 * somebody to pick up at this station, and while nothing has been loaded yet. (As above, the
+		 * carried road vehicles belong to the front vehicle of a multi-part carrier.) */
+		Vehicle *rv_carrier = front->First();
+		if (const uint8_t rv_order = rv_carrier->current_order.GetRVTransportFlags(); _settings_game.vehicle.rv_transport_enabled && (rv_order & ORVTF_WAIT) != 0 && (rv_order & ORVTF_LOAD) != 0) {
+			if (RVTransportFindWaitingAtStation(st, rv_carrier) != nullptr || RVTransportCountOnCarrier(rv_carrier) == 0) {
+				finished_loading = false;
+			}
+		}
+
+		/* RoRo: the same waiting order keeps the carrier waiting until the road vehicles which want to
+		 * get off here have actually got off; the station may have had no free road stop tile when it
+		 * arrived. Without this, the carrier would drive on and try again on its next visit. */
+		if (const uint8_t rv_order = rv_carrier->current_order.GetRVTransportFlags(); _settings_game.vehicle.rv_transport_enabled && (rv_order & ORVTF_WAIT) != 0 && (rv_order & ORVTF_UNLOAD) != 0) {
+			if (RVTransportCountWantingUnloadHere(rv_carrier, st) > 0) {
+				finished_loading = false;
+			}
+		}
+
 		/* Refresh next hop stats if we're full loading to make the links
 		 * known to the distribution algorithm and allow cargo to be sent
 		 * along them. Otherwise the vehicle could wait for cargo
@@ -2388,6 +2460,10 @@ static void LoadUnloadVehicle(Vehicle *front)
 		if (!finished_loading) LinkRefresher::Run(front, true, true);
 
 		front->vehicle_flags.Set(VehicleFlag::LoadingFinished, finished_loading);
+		{
+			int cap_total = 0, stored_total = 0;
+			for (const Vehicle *w = front->First(); w != nullptr; w = w->Next()) { cap_total += w->cargo_cap; stored_total += w->cargo.StoredCount(); }
+		}
 
 		if (finished_loading && may_leave_early()) {
 			front->current_order.SetLeaveType(OLT_LEAVE_EARLY);
@@ -2446,6 +2522,8 @@ void LoadUnloadStation(Station *st)
 	for (Vehicle *v : st->loading_vehicles) {
 		if (v->vehstatus.Any({VehState::Stopped, VehState::Crashed}) || v->current_order.IsType(OT_LOADING_ADVANCE)) continue;
 
+		if (v->load_unload_ticks == 0) {
+		}
 		assert(v->load_unload_ticks != 0);
 		if (--v->load_unload_ticks == 0) last_loading = v;
 	}

@@ -91,7 +91,7 @@ void BuildDepotVehicleList(VehicleType type, TileIndex tile, VehicleList *engine
 			}
 		}
 
-		if (v->IsMovingFront()) engines->push_back(v->First());
+		if (v->IsMovingFront()) engines->push_back(v->Primary());
 	}
 }
 
@@ -129,6 +129,12 @@ bool VehicleCargoFilter(const Vehicle *v, const CargoType cid)
 	}
 }
 
+/** Template/virtual vehicles (e.g. virtual trains) are not part of the player's vehicle lists. */
+static bool IsVirtualVehicle(const Vehicle *v)
+{
+	return HasBit(v->subtype, GVSF_VIRTUAL);
+}
+
 /**
  * Generate a list of vehicles based on window type.
  * @param list Pointer to list to add vehicles to
@@ -141,12 +147,15 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 	list->clear();
 
 	auto add_veh = [&](const Vehicle *v) {
-		if (cid == CargoFilterCriteria::CF_ANY || VehicleCargoFilter(v, cid)) list->push_back(v);
+		const Vehicle *prim = v->Primary();
+		if (cid == CargoFilterCriteria::CF_ANY || VehicleCargoFilter(prim, cid)) list->push_back(prim);
 	};
 
 	auto fill_all_vehicles = [&]() {
 		for (const Vehicle *v : Vehicle::IterateTypeFrontOnly(vli.vtype)) {
-			if (!HasBit(v->subtype, GVSF_VIRTUAL) && v->owner == vli.company && v->IsPrimaryVehicle()) {
+			/* RoRo: carried road vehicles are real player vehicles, so they stay in the list (their
+			 * status shows that they are being transported and locating them follows the carrier). */
+			if (!IsVirtualVehicle(v) && v->owner == vli.company && v->First()->Primary()->IsPrimaryVehicle()) {
 				add_veh(v);
 			}
 		}
@@ -164,7 +173,7 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 		case VehicleListType::VehicleSharedOrders: {
 			/* Add all vehicles from this vehicle's shared order list */
 			const Vehicle *v = Vehicle::GetIfValid(vli.ToVehicleID());
-			if (v == nullptr || v->type != vli.vtype || !v->IsPrimaryVehicle()) return false;
+			if (v == nullptr || v->type != vli.vtype || !v->First()->Primary()->IsPrimaryVehicle()) return false;
 
 			for (; v != nullptr; v = v->NextShared()) {
 				add_veh(v);
@@ -175,8 +184,9 @@ bool GenerateVehicleSortList(VehicleList *list, const VehicleListIdentifier &vli
 		case VehicleListType::Group:
 			if (vli.index != ALL_GROUP) {
 				for (const Vehicle *v : Vehicle::IterateTypeFrontOnly(vli.vtype)) {
-					if (!HasBit(v->subtype, GVSF_VIRTUAL) && v->IsPrimaryVehicle() &&
-							v->owner == vli.company && GroupIsInGroup(v->group_id, vli.ToGroupID())) {
+					/* RoRo: carried road vehicles stay in their group's list as well. */
+					if (!IsVirtualVehicle(v) && v->First()->Primary()->IsPrimaryVehicle() &&
+						v->owner == vli.company && GroupIsInGroup(v->First()->Primary()->group_id, vli.ToGroupID())) {
 						add_veh(v);
 					}
 				}

@@ -12,6 +12,7 @@
 #include "command_func.h"
 #include "news_func.h"
 #include "aircraft.h"
+#include "air.h"
 #include "newgrf.h"
 #include "newgrf_engine.h"
 #include "strings_func.h"
@@ -1011,7 +1012,7 @@ static CompanyID GetPreviewCompany(Engine *e)
 
 			/* Check whether the company uses similar vehicles */
 			for (const Vehicle *v : Vehicle::IterateType(e->type)) {
-				if (v->owner != c->index || HasBit(v->subtype, GVSF_VIRTUAL)) continue;
+				if (v->owner != c->index || v->IsVirtualOrCarried()) continue;
 				if (!v->GetEngine()->CanCarryCargo() || !cargomask.Test(v->cargo_type)) continue;
 
 				best_hist = c->old_economy[0].performance_history;
@@ -1367,6 +1368,8 @@ bool IsEngineBuildable(EngineID engine, VehicleType type, CompanyID company)
 		const Company *c = Company::Get(company);
 		if (!GetRoadTypeInfo(e->VehInfo<RoadVehicleInfo>().roadtype)->powered_roadtypes.Any(c->avail_roadtypes)) return false;
 	}
+	/* Aircraft are not gated by air type availability: any plane may be bought and used
+	 * at any airport regardless of the airport's surface. */
 
 	return true;
 }

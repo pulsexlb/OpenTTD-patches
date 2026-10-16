@@ -6030,3 +6030,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Filtres 
 STR_BADGE_CONFIG_PREVIEW                                        :Imatge de previsualització
 STR_BADGE_CONFIG_NAME                                           :Nom
 STR_BADGE_FILTER_ANY_LABEL                                      :Qualsevol {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} és {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plànol
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Selecciona una àrea de la teva pròpia infraestructura per copiar-la a la ranura de plànol activa
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Enganxa el contingut de la ranura de plànol activa al mapa
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Enganxa infraestructura ferroviària
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Enganxa infraestructura viària
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Enganxa infraestructura marítima
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Enganxa infraestructura aèria
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Converteix la infraestructura ferroviària al tipus de via actual en enganxar
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Reflecteix els senyals en enganxar
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Millora els ponts en enganxar
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Enganxa també estacions i punts de pas
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraforma el terreny en enganxar. Fes clic per alternar: sense terraformació, terraformació mínima, terraformació completa
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Transformació actual, fes clic per restablir
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Gira el plànol 90 graus en sentit antihorari
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Gira el plànol 90 graus en sentit horari
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Reflecteix el plànol sobre l'eix NO-SE
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Reflecteix el plànol sobre l'eix NE-SO
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Desplaçament d'altura aplicat en enganxar
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Augmenta l'altura a què s'enganxa el plànol
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Redueix l'altura a què s'enganxa el plànol
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informació sobre el pedaç Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}L'àrea seleccionada no conté infraestructura de la teva companyia
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}L'àrea seleccionada és massa gran per copiar
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}El plànol és massa gran per enganxar-lo en una partida multijugador
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Mostra la barra d'eines de plànols per copiar i enganxar infraestructura
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Mostra la barra d'eines de plànols per copiar i enganxar infraestructura
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}No es pot enganxar el plànol aquí...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Canvia a aquesta ranura de plànol. Si la ranura té nom o contingut, en passar-hi el cursor es mostren el nom i una previsualització. Doble clic per reanomenar
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exporta
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importa
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Pedaç Blueprint, versió {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Exporta la ranura activa...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Exporta totes les ranures a un fitxer...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importa a la ranura activa...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importa totes les ranures des d'un fitxer...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}No s'ha pogut copiar el plànol al porta-retalls
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}El porta-retalls és buit
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Exporta el plànol
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importa un plànol
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Copia al porta-retalls
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Enganxa des del porta-retalls
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Voleu substituir el plànol?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}La ranura activa ja conté un plànol. Voleu substituir-lo?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Voleu substituir tots els plànols?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Això substituirà el contingut de totes les ranures de plànol. Voleu continuar?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Reanomena el plànol
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Exporta tots els plànols a un fitxer
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importa tots els plànols des d'un fitxer
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Voleu substituir el fitxer?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Ja existeix un fitxer amb aquest nom. Voleu substituir-lo?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Exporta o importa plànols
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Fes clic en un fitxer per seleccionar-lo, o en una carpeta per obrir-la
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}El text no és un plànol vàlid
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nom de fitxer no vàlid
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}No s'ha trobat el fitxer de plànol, o no és un conjunt de plànols vàlid
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}No s'ha pogut escriure el fitxer de plànol

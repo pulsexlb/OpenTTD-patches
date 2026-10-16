@@ -13,6 +13,7 @@
 #include "string_type.h"
 #include "strings_id_type.h"
 #include "strings_type_trait.h"
+#include "cargo_type.h"
 #include "core/enum_type.hpp"
 #include "core/strong_typedef_type.hpp"
 #include <optional>
@@ -87,7 +88,7 @@ struct StringParameterDataStringView {
 	explicit StringParameterDataStringView(std::string_view view) : view(view) {}
 };
 
-using StringParameterData = std::variant<std::monostate, uint64_t, std::string, StringParameterDataStringView>;
+using StringParameterData = std::variant<std::monostate, uint64_t, CargoTypes, std::string, StringParameterDataStringView>;
 
 /** The data required to format and validate a single parameter of a string. */
 struct StringParameter {
@@ -105,6 +106,15 @@ private:
 		static inline StringParameterData Init(uint64_t v)
 		{
 			return v;
+		}
+
+		/**
+		 * Cargo bit sets are stored as such, so that {CARGO_LIST} can also list the built-in cargoes
+		 * which live above the NewGRF-visible range.
+		 */
+		static inline StringParameterData Init(const Uint128 &v)
+		{
+			return CargoTypes{v};
 		}
 
 		static inline StringParameterData Init(const char *str)

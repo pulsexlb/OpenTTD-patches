@@ -23,6 +23,7 @@ enum OrderWidgets : WidgetID {
 	WID_O_MGMT_LIST_BTN,             ///< Management list button.
 	WID_O_DELETE,                    ///< Delete selected order.
 	WID_O_STOP_SHARING,              ///< Stop sharing orders.
+	WID_O_EXIT_EXECUTE,              ///< Exit the currently executed schedule.
 	WID_O_NON_STOP,                  ///< Goto non-stop to destination.
 	WID_O_DEPOT_UNBUNCHING,          ///< Toggle unbunching.
 	WID_O_GOTO,                      ///< Goto destination.
@@ -72,6 +73,18 @@ enum OrderWidgets : WidgetID {
 	WID_O_SEL_OCCUPANCY,             ///< #NWID_SELECTION widget for the occupancy list panel.
 	WID_O_OCCUPANCY_LIST,            ///< Occupancy list panel.
 	WID_O_OCCUPANCY_TOGGLE,          ///< Toggle display of occupancy measures.
+	WID_O_DECOUPLE,                  ///< Decouple at station.
+	WID_O_SEL_DECOUPLE_VALUE,        ///< Numeric fallback for standalone schedules.
+	WID_O_DECOUPLE_VALUE,            ///< Select number of units for decoupling.
+	WID_O_SEL_DECOUPLE_PREVIEW,      ///< Show consist preview for a selected decouple order.
+	WID_O_DECOUPLE_PREVIEW,          ///< Click a coupling to change the retained count.
+	WID_O_DECOUPLE_SCROLLBAR,        ///< Scroll the decoupling consist preview.
+	WID_O_COUPLE_SLOT,               ///< Select trace restrict slot for coupling.
+	WID_O_COUPLE_STATION,            ///< Select the station to couple at.
+	WID_O_COUPLE_MORE,               ///< Open the window with the remaining coupling criteria.
+	WID_O_COUPLE_DIAGNOSTICS,        ///< Show coupling target and candidate diagnostics.
+	WID_O_ORDERS_FIRST,              ///< Select orders for first part of decoupled train.
+	WID_O_ORDERS_SECOND,             ///< Select orders for second part of decoupled train.
 };
 
 /** Widgets of the #CargoTypeOrdersWindow class. */
@@ -88,6 +101,14 @@ enum CargoTypeOrdersWidgets : WidgetID {
 	WID_CTO_CARGO_DROPDOWN_FIRST,                                               ///< First order dropdown.
 	WID_CTO_CARGO_DROPDOWN_LAST = WID_CTO_CARGO_DROPDOWN_FIRST + NUM_CARGO - 1, ///< Last order dropdown.
 	WID_CTO_SELECT,                                                             ///< Right column select panel
+};
+
+/** Widgets of the #DecoupleSchedulePickerWindow class. */
+enum DecoupleSchedulePickerWidgets : WidgetID {
+	WID_DSP_CAPTION,  ///< Caption of the window.
+	WID_DSP_FILTER,   ///< Filter of name.
+	WID_DSP_LIST,     ///< List of order lists.
+	WID_DSP_SCROLL,   ///< Scrollbar of the list.
 };
 
 #endif /* WIDGETS_ORDER_WIDGET_H */

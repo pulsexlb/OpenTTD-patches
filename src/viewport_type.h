@@ -189,6 +189,7 @@ enum ViewportDragDropSelectionProcess : uint8_t {
 	DDSP_BUY_LAND,             ///< Purchase land
 	DDSP_BUILD_OBJECT,         ///< Build an object
 	DDSP_PLACE_HOUSE,          ///< Place a house
+	DDSP_BLUEPRINT_COPY,       ///< Select an area to copy into a blueprint slot
 
 	/* Rail specific actions */
 	DDSP_PLACE_RAIL,           ///< Rail placement

@@ -170,8 +170,8 @@ else()
     set(REV_ISSTABLETAG 0)
 endif()
 
-string(REGEX MATCH "^jgrpp-[0-9]+(\.[0-9]+)?(\.[0-9]+)?" REV_RELEASE "${REV_RELEASE}")
-string(REPLACE "jgrpp-" "" REV_RELEASE "${REV_RELEASE}")
+string(REGEX MATCH "^[^-]+-[0-9]+(\.[0-9]+)?(\.[0-9]+)?" REV_RELEASE "${REV_RELEASE}")
+string(REGEX REPLACE "^[^-]+-" "" REV_RELEASE "${REV_RELEASE}")
 
 # Extract REV_YEAR and REV_DATE from REV_ISODATE
 string(SUBSTRING "${REV_ISODATE}" 0 4 REV_YEAR)

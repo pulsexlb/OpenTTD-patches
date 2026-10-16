@@ -33,6 +33,7 @@
 #include "dropdown_func.h"
 #include "engine_gui.h"
 #include "cargotype.h"
+#include "roadveh_transport.h"
 #include "core/geometry_func.hpp"
 #include "autoreplace_func.h"
 #include "train.h"
@@ -668,6 +669,13 @@ static bool CargoAndEngineFilter(const GUIEngineListItem *item, const CargoType 
 		return Engine::Get(item->engine_id)->GetPower() != 0;
 	} else {
 		CargoTypes refit_mask = GetUnionOfArticulatedRefitMasks(item->engine_id, true) & _standard_cargo_mask;
+		/* Road vehicle transport: the dedicated vehicle transport cargoes only match engines which
+		 * the "carrier parts" setting allows to become a carrier part, so non-qualifying wagons do
+		 * not show up when buying with the "Vehicles" cargo selected. */
+		if ((cargo_type == RV_TRANSPORT_CARGO_SLOT || cargo_type == RAIL_TRANSPORT_CARGO_SLOT) &&
+				!RVTransportEngineMayBeRefitToVehicles(Engine::Get(item->engine_id))) {
+			return false;
+		}
 		return (cargo_type == CargoFilterCriteria::CF_NONE ? refit_mask.None() : refit_mask.Test(cargo_type));
 	}
 }

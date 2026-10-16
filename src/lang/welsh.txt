@@ -6038,3 +6038,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Hidlau B
 STR_BADGE_CONFIG_PREVIEW                                        :Rhagolwg Delwedd
 STR_BADGE_CONFIG_NAME                                           :Enw
 STR_BADGE_FILTER_ANY_LABEL                                      :Unrhyw {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :Mae {STRING} yn {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Glasbrint
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Dewiswch ardal o'ch seilwaith eich hun i'w chopïo i'r slot glasbrint gweithredol
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Gludo cynnwys y slot glasbrint gweithredol ar y map
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Gludo seilwaith rheilffordd
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Gludo seilwaith ffyrdd
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Gludo seilwaith dŵr
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Gludo seilwaith awyr
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Trosi seilwaith rheilffordd i'r math cledrau presennol wrth ludo
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Adlewyrchu signalau wrth ludo
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Uwchraddio pontydd wrth ludo
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Gludo gorsafoedd a phwyntiau llwybr hefyd
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Tirffurfio wrth ludo. Cliciwch i newid: dim tirffurfio, tirffurfio lleiaf, tirffurfio llawn
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Trawsffurfiad presennol, cliciwch i ailosod
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Cylchdroi'r glasbrint 90 gradd yn wrthglocwedd
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Cylchdroi'r glasbrint 90 gradd yn glocwedd
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Adlewyrchu'r glasbrint ar draws yr echelin gogledd-orllewin i de-ddwyrain
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Adlewyrchu'r glasbrint ar draws yr echelin gogledd-ddwyrain i de-orllewin
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Gwrthbwyso uchder wrth ludo
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Cynyddu'r uchder y gludir y glasbrint arno
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Lleihau'r uchder y gludir y glasbrint arno
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Gwybodaeth am y patch Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Nid yw'r ardal a ddewiswyd yn cynnwys unrhyw seilwaith sy'n eiddo i'ch cwmni
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Mae'r ardal a ddewiswyd yn rhy fawr i'w chopïo
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Mae'r glasbrint yn rhy fawr i'w ludo mewn gêm amlchwaraewr
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Dangos bar offer glasbrintiau ar gyfer copïo a gludo seilwaith
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Dangos bar offer glasbrintiau ar gyfer copïo a gludo seilwaith
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Methu gludo'r glasbrint yma...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Newid i'r slot glasbrint hwn. Os oes enw neu gynnwys yn y slot, mae hofran yn dangos yr enw a rhagolwg. Cliciwch ddwywaith i ailenwi
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Allforio
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Mewnforio
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}All-/Mewnforio
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patch Blueprint, fersiwn {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Allforio'r slot gweithredol...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Allforio pob slot i ffeil...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Mewnforio i'r slot gweithredol...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Mewnforio pob slot o ffeil...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Methwyd copïo'r glasbrint i'r clipfwrdd
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Mae'r clipfwrdd yn wag
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Allforio glasbrint
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Mewnforio glasbrint
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Copïo i'r clipfwrdd
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Gludo o'r clipfwrdd
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Disodli'r glasbrint?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Mae'r slot gweithredol eisoes yn cynnwys glasbrint. Ydych chi am ei ddisodli?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Disodli'r holl lasbrintiau?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Bydd hyn yn disodli cynnwys pob slot glasbrint. Ydych chi am barhau?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Ailenwi'r glasbrint
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Allforio'r holl lasbrintiau i ffeil
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Mewnforio'r holl lasbrintiau o ffeil
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Disodli'r ffeil?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Mae ffeil â'r enw hwnnw'n bodoli eisoes. Ydych chi am ei disodli?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Allforio neu fewnforio glasbrintiau
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Cliciwch ffeil i'w dewis, neu ffolder i'w agor
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Nid yw'r testun yn lasbrint dilys
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Enw ffeil annilys
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Ffeil glasbrint heb ei chanfod, neu nid yw'n set lasbrint ddilys
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Methwyd ysgrifennu'r ffeil glasbrint

@@ -154,6 +154,7 @@ DEF_CB_RES_TILE_TUPLE(RoadStop, Commands::BuildRoadStop)
 DEF_CB_RES_TUPLE(StartStopVehicle, Commands::StartStopVehicle)
 DEF_CB_GENERAL(Game)
 DEF_CB_RES(AddVehicleNewGroup)
+DEF_CB_RES_TUPLE(CreateOrderList, Commands::CreateOrderList)
 DEF_CB_RES_PAYLOAD(InsertOrder, Commands::InsertOrder)
 DEF_CB_RES_TUPLE(InsertOrdersFromVehicle, Commands::InsertOrdersFromVeh)
 DEF_CB_RES(AddPlan)
@@ -170,6 +171,8 @@ DEF_CB_RES_TUPLE(AdjustSchDispatch, Commands::SchDispatchAdjust)
 DEF_CB_RES_TUPLE(AdjustSchDispatchSlot, Commands::SchDispatchAdjustSlot)
 DEF_CB_RES(CreateTraceRestrictSlot)
 DEF_CB_RES(CreateTraceRestrictCounter)
+DEF_CB_RES_TILE(PasteBlueprint)
+DEF_CB_RES_TILE(UndoBlueprintPaste)
 
 template <size_t... i>
 inline constexpr auto MakeCommandCallbackTable(std::index_sequence<i...>) noexcept {

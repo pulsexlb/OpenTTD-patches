@@ -21,6 +21,9 @@
 /** Instantiation of the 32bpp with animation blitter factory. */
 static FBlitter_32bppAnim iFBlitter_32bppAnim;
 
+/** Brightness applied to animated pixels by transparency fills (matches MakeTransparent(.., 154)). */
+static constexpr uint8_t DARKENED_BRIGHTNESS = DEFAULT_BRIGHTNESS * 154 / 256;
+
 template <BlitterMode mode, bool fast_path>
 inline void Blitter_32bppAnim::Draw(const Blitter::BlitterParams *bp, ZoomLevel zoom)
 {
@@ -359,6 +362,36 @@ void Blitter_32bppAnim::Draw(Blitter::BlitterParams *bp, BlitterMode mode, ZoomL
 	}
 }
 
+void Blitter_32bppAnim::DarkenRect(void *dst, int width, int height, uint8_t nom)
+{
+	if (_screen_disable_anim) {
+		/* Our output is not to the screen, so there is no animation buffer to mind. */
+		Blitter_32bppSimple::DarkenRect(dst, width, height, nom);
+		return;
+	}
+
+	Colour *udst = (Colour *)dst;
+	uint16_t *anim = this->anim_buf + this->ScreenToAnimOffset((uint32_t *)dst);
+
+	do {
+		for (int i = 0; i != width; i++) {
+			*udst = MakeTransparent(*udst, nom);
+			if (*anim != 0) {
+				/* Keep the animation alive; instead of wiping the animation
+				 * entry, clamp its stored brightness so PaletteAnimate
+				 * re-renders the pixel darkened. */
+				uint8_t brightness = GB(*anim, 8, 8);
+				uint8_t darkened = DEFAULT_BRIGHTNESS * nom / 256;
+				if (brightness > darkened) *anim = (*anim & 0xFF) | (darkened << 8);
+			}
+			udst++;
+			anim++;
+		}
+		udst = udst - width + _screen.pitch;
+		anim = anim - width + this->anim_buf_pitch;
+	} while (--height);
+}
+
 void Blitter_32bppAnim::DrawColourMappingRect(void *dst, int width, int height, PaletteID pal)
 {
 	if (_screen_disable_anim) {
@@ -374,7 +407,13 @@ void Blitter_32bppAnim::DrawColourMappingRect(void *dst, int width, int height, 
 		do {
 			for (int i = 0; i != width; i++) {
 				*udst = MakeTransparent(*udst, 154);
-				*anim = 0;
+				if (*anim != 0) {
+					/* Keep the animation alive; instead of wiping the animation
+					 * entry, clamp its stored brightness so PaletteAnimate
+					 * re-renders the pixel darkened. */
+					uint8_t brightness = GB(*anim, 8, 8);
+					if (brightness > DARKENED_BRIGHTNESS) *anim = (*anim & 0xFF) | (DARKENED_BRIGHTNESS << 8);
+				}
 				udst++;
 				anim++;
 			}

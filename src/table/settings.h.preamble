@@ -18,6 +18,7 @@ static StringID SettingHelpWallclockTriple(const IntSettingDesc &sd);
 
 /* Callback function used in _settings[] as well as _gui_settings[] */
 static void UpdateTimeSettings(int32_t new_value);
+static void ModifyAirportLayout(int32_t new_value);
 
 /* Callback function used for various settings */
 static bool CheckTTDPatchSettingFlag(uint flag);

@@ -6231,3 +6231,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Чарцёж
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Вылучыце вобласць уласнай інфраструктуры, каб скапіяваць яе ў актыўны слот чарцяжа
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Уставіць змесціва актыўнага слота чарцяжа на карту
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Устаўляць чыгуначную інфраструктуру
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Устаўляць аўтадарожную інфраструктуру
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Устаўляць водную інфраструктуру
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Устаўляць авіяцыйную інфраструктуру
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Пераўтвараць чыгуначную інфраструктуру ў бягучы тып пуцей пры ўстаўцы
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Люстрана адлюстроўваць сігналы пры ўстаўцы
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Абнаўляць масты пры ўстаўцы
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Устаўляць таксама станцыі і пуцявыя пункты
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Змяняць рэльеф пры ўстаўцы. Націсніце для пераключэння: без змены рэльефу, мінімальная змена, поўная змена
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Бягучае пераўтварэнне, націсніце для скіду
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Павярнуць чарцёж на 90 градусаў супраць гадзіннікавай стрэлкі
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Павярнуць чарцёж на 90 градусаў па гадзіннікавай стрэлцы
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Адлюстраваць чарцёж адносна восі ПнЗ-ПдУ
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Адлюстраваць чарцёж адносна восі ПнУ-ПдЗ
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Зрух вышыні пры ўстаўцы
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Павялічыць вышыню, на якой устаўляецца чарцёж
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Паменшыць вышыню, на якой устаўляецца чарцёж
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Звесткі пра патч Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Вылучаная вобласць не змяшчае інфраструктуры вашай кампаніі
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Вылучаная вобласць занадта вялікая для капіявання
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Чарцёж занадта вялікі для ўстаўкі ў сеткавай гульні
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Паказаць панэль чарцяжоў для капіявання і ўстаўкі інфраструктуры
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Паказаць панэль чарцяжоў для капіявання і ўстаўкі інфраструктуры
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Тут нельга ўставіць чарцёж...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Пераключыцца на гэты слот чарцяжа. Калі слот мае назву ці змесціва, навядзенне паказвае назву і папярэдні прагляд. Двайны клік для перайменавання
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Экспарт
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Імпарт
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Эксп/Імп
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Патч Blueprint, версія {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Экспартаваць актыўны слот...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Экспартаваць усе слоты ў файл...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Імпартаваць у актыўны слот...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Імпартаваць усе слоты з файла...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Не ўдалося скапіяваць чарцёж у буфер абмену
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Буфер абмену пусты
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Экспарт чарцяжа
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Імпарт чарцяжа
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Скапіяваць у буфер абмену
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Уставіць з буфера абмену
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Замяніць чарцёж?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Актыўны слот ужо змяшчае чарцёж. Замяніць яго?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Замяніць усе чарцяжы?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Гэта заменіць змесціва ўсіх слотаў чарцяжоў. Працягнуць?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Перайменаваць чарцёж
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Экспартаваць усе чарцяжы ў файл
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Імпартаваць усе чарцяжы з файла
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Замяніць файл?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Файл з такой назвай ужо існуе. Замяніць яго?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Экспарт ці імпарт чарцяжоў
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Пстрыкніце файл, каб выбраць яго, альбо папку, каб адкрыць яе
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Тэкст не з'яўляецца карэктным чарцяжом
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Няправільная назва файла
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Файл чарцяжоў не знойдзены, альбо гэта не карэктны набор чарцяжоў
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Не ўдалося запісаць файл чарцяжоў

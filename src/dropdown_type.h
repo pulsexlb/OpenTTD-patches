@@ -124,6 +124,7 @@ enum class DropDownOption : uint8_t {
 	InstantClose, ///< Set if releasing mouse button should close the list regardless of where the cursor is.
 	Persist, ///< Set if this dropdown should stay open after an option is selected.
 	Filterable, ///< Set if the dropdown is filterable.
+	ClickOnly, ///< Require a new click to select; do not select on the opening mouse release.
 };
 
 /** Bitset of \c DropDownOption elements. */

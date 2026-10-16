@@ -106,6 +106,19 @@ void Blitter_32bppSimple::Draw(Blitter::BlitterParams *bp, BlitterMode mode, Zoo
 	}
 }
 
+void Blitter_32bppSimple::DarkenRect(void *dst, int width, int height, uint8_t nom)
+{
+	Colour *udst = (Colour *)dst;
+
+	do {
+		for (int i = 0; i != width; i++) {
+			*udst = MakeTransparent(*udst, nom);
+			udst++;
+		}
+		udst = udst - width + _screen.pitch;
+	} while (--height);
+}
+
 void Blitter_32bppSimple::DrawColourMappingRect(void *dst, int width, int height, PaletteID pal)
 {
 	Colour *udst = (Colour *)dst;

@@ -6158,3 +6158,63 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Insignaj
 STR_BADGE_CONFIG_PREVIEW                                        :Antaŭvida bildeto
 STR_BADGE_CONFIG_NAME                                           :Nomo
 STR_BADGE_FILTER_ANY_LABEL                                      :Ĉiu {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plano
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Elektu areon de via propra infrastrukturo por kopii ĝin en la aktivan plan-lokon
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Alglui la enhavon de la aktiva plan-loko sur la mapon
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Alglui fervojan infrastrukturon
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Alglui vojan infrastrukturon
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Alglui akvan infrastrukturon
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Alglui aeran infrastrukturon
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Konverti fervojan infrastrukturon al la nuna reltipo dum algluado
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Speguli signalojn dum algluado
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Plibonigi pontojn dum algluado
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Alglui ankaŭ staciojn kaj vojpunktojn
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terformi la teron dum algluado. Klaku por ŝanĝi: sen terformado, minimuma terformado, plena terformado
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Nuna transformo, klaku por restarigi
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Turni la planon 90 gradojn maldekstrume
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Turni la planon 90 gradojn dekstrume
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Speguli la planon laŭ la nordokcidenta-sudorienta akso
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Speguli la planon laŭ la nordorienta-sudokcidenta akso
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Alteca deŝovo dum algluado
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Pligrandigi la alton, ĉe kiu la plano algluiĝas
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Malpligrandigi la alton, ĉe kiu la plano algluiĝas
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informoj pri la Blueprint-flikaĵo
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}La elektita areo enhavas neniun infrastrukturon de via kompanio
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}La elektita areo estas tro granda por kopii
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}La plano estas tro granda por alglui en plurludanta ludo
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Montri la plan-ilobreton por kopii kaj alglui infrastrukturon
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Montri la plan-ilobreton por kopii kaj alglui infrastrukturon
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Ne eblas alglui la planon ĉi tie...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Ŝalti al ĉi tiu plan-loko. Se la loko havas nomon aŭ enhavon, ŝvebado montras la nomon kaj antaŭrigardon. Duoble alklaku por alinomi
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Eksporti
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importi
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Eksp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-flikaĵo, versio {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Eksporti la aktivan lokon...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Eksporti ĉiujn lokojn al dosiero...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importi en la aktivan lokon...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importi ĉiujn lokojn el dosiero...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Ne eblis kopii la planon al la tondujo
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}La tondujo estas malplena
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Eksporti planon
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importi planon
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopii al la tondujo
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Alglui de la tondujo
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Ĉu anstataŭigi la planon?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}La aktiva loko jam enhavas planon. Ĉu vi volas anstataŭigi ĝin?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Ĉu anstataŭigi ĉiujn planojn?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Ĉi tio anstataŭigos la enhavon de ĉiuj plan-lokoj. Ĉu vi volas daŭrigi?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Alinomi la planon
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Eksporti ĉiujn planojn al dosiero
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importi ĉiujn planojn el dosiero
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Ĉu anstataŭigi la dosieron?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Dosiero kun tiu nomo jam ekzistas. Ĉu vi volas anstataŭigi ĝin?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Eksporti aŭ importi planojn
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Alklaku dosieron por elekti ĝin, aŭ dosierujon por malfermi ĝin
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}La teksto ne estas valida plano
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nevalida dosiernomo
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Plandosiero ne trovita, aŭ ne valida plana aro
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Ne eblis skribi la plandosieron

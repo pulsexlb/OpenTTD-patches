@@ -2136,3 +2136,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}आराखडा
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}सक्रिय आराखडा स्लॉटमध्ये कॉपी करण्यासाठी तुमच्या पायाभूत सुविधांचा भाग निवडा
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}सक्रिय आराखडा स्लॉटमधील मजकूर नकाशावर पेस्ट करा
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}रेल्वे पायाभूत सुविधा पेस्ट करा
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}रस्ते पायाभूत सुविधा पेस्ट करा
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}जल पायाभूत सुविधा पेस्ट करा
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}हवाई पायाभूत सुविधा पेस्ट करा
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}पेस्ट करताना रेल्वे पायाभूत सुविधा सध्याच्या रूळ प्रकारात रूपांतरित करा
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}पेस्ट करताना सिग्नल आरशाप्रमाणे उलटवा
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}पेस्ट करताना पूल सुधारित करा
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}स्थानके आणि मार्गबिंदूही पेस्ट करा
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}पेस्ट करताना जमिनीचा आकार बदला. बदलण्यासाठी क्लिक करा: बदल नाही, किमान बदल, पूर्ण बदल
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}सध्याचे रूपांतरण, रीसेट करण्यासाठी क्लिक करा
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}आराखडा 90 अंश घड्याळाच्या उलट दिशेने फिरवा
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}आराखडा 90 अंश घड्याळाच्या दिशेने फिरवा
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}आराखडा वायव्य-आग्नेय अक्षावर उलटवा
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}आराखडा ईशान्य-नैऋत्य अक्षावर उलटवा
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}पेस्ट करताना उंचीतील फरक
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}आराखडा ज्या उंचीवर पेस्ट होतो ती वाढवा
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}आराखडा ज्या उंचीवर पेस्ट होतो ती कमी करा
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Blueprint पॅचबद्दल माहिती
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}निवडलेल्या भागात तुमच्या कंपनीच्या पायाभूत सुविधा नाहीत
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}निवडलेला भाग कॉपी करण्यासाठी खूप मोठा आहे
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}आराखडा मल्टिप्लेयर खेळात पेस्ट करण्यासाठी खूप मोठा आहे
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}पायाभूत सुविधा कॉपी आणि पेस्ट करण्यासाठी आराखडा साधनपट्टी दाखवा
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}पायाभूत सुविधा कॉपी आणि पेस्ट करण्यासाठी आराखडा साधनपट्टी दाखवा
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}आराखडा येथे पेस्ट करता येत नाही...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}या आराखडा स्लॉटवर जा. स्लॉटला नाव किंवा मजकूर असल्यास, माउस वर ठेवल्यावर नाव आणि पूर्वावलोकन दिसते. नाव बदलण्यासाठी डबल-क्लिक करा
+STR_BLUEPRINT_EXPORT                                            :{BLACK}निर्यात
+STR_BLUEPRINT_IMPORT                                            :{BLACK}आयात
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}निर्यात/आयात
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint पॅच, आवृत्ती {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :सक्रिय स्लॉट निर्यात करा...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :सर्व स्लॉट्स फाईलमध्ये निर्यात करा...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :सक्रिय स्लॉटमध्ये आयात करा...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :सर्व स्लॉट्स फाईलमधून आयात करा...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}आराखडा क्लिपबोर्डवर कॉपी करता आला नाही
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}क्लिपबोर्ड रिकामे आहे
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}आराखडा निर्यात करा
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}आराखडा आयात करा
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}क्लिपबोर्डवर कॉपी करा
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}क्लिपबोर्डवरून पेस्ट करा
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}आराखडा बदलायचा?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}सक्रिय स्लॉटमध्ये आधीच एक आराखडा आहे. तो बदलायचा आहे का?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}सर्व आराखडे बदलायचे?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}यामुळे सर्व आराखडा स्लॉट्सचा मजकूर बदलेल. तुम्हाला पुढे जायचे आहे का?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}आराखड्याचे नाव बदला
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}सर्व आराखडे फाईलमध्ये निर्यात करा
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}सर्व आराखडे फाईलमधून आयात करा
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}फाईल बदलायची?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}त्या नावाची फाईल आधीच अस्तित्वात आहे. तुम्हाला ती बदलायची आहे का?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}आराखडे निर्यात किंवा आयात करा
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}निवडण्यासाठी फाईलवर क्लिक करा, किंवा उघडण्यासाठी फोल्डरवर क्लिक करा
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}मजकूर वैध आराखडा नाही
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}अवैध फाईल नाव
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}आराखडा फाईल सापडली नाही, किंवा वैध आराखडा संच नाही
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}आराखडा फाईल लिहिता आली नाही

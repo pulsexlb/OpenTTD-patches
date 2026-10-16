@@ -19,6 +19,7 @@
 TrackBits GetReservedTrackbits(TileIndex t);
 
 void SetRailStationPlatformReservation(TileIndex start, DiagDirection dir, bool b);
+bool IsRailStationPlatformFree(const Train *v, TileIndex start, DiagDirection dir);
 
 bool TryReserveRailTrack(TileIndex tile, Track t, bool trigger_stations = true);
 bool TryReserveRailTrackdir(const Train *v, TileIndex tile, Trackdir td, bool trigger_stations = true);
@@ -195,6 +196,12 @@ private:
 
 bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bool forbid_90deg = false, PBSWaitingPositionRestrictedSignalState *restricted_signal_state = nullptr);
 bool IsWaitingPositionFreeTraceRestrictExecute(const TraceRestrictProgram *prog, const Train *v, TileIndex tile, Trackdir trackdir);
+
+bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile);
+bool HasForeignConsistOnTile(const Train *v, TileIndex tile);
+bool IsCouplePartnerTile(const Train *v, TileIndex tile);
+bool IsCoupleApproachPathClearTo(const Train *v, const Train *tgt);
+bool IsCoupleApproachPathClear(const Train *v);
 
 Train *GetTrainForReservation(TileIndex tile, Track track);
 CommandCost CheckTrainReservationPreventsTrackModification(TileIndex tile, Track track);

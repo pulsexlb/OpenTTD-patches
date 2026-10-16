@@ -14,6 +14,7 @@
 #include "script_cargo.hpp"
 #include "../../station_base.h"
 #include "../../station_cmd.h"
+#include "../../airport_cmd.h"
 #include "../../roadstop_base.h"
 #include "../../town.h"
 
@@ -234,7 +235,7 @@ template <bool Tfrom, bool Tvia>
 	EnforcePrecondition(false, IsValidStation(station_id));
 	EnforcePrecondition(false, HasStationType(station_id, STATION_AIRPORT));
 
-	return ::Station::Get(station_id)->airport.blocks.Test(AirportBlock::AirportClosed);
+	return ::Station::Get(station_id)->airport.IsClosed();
 }
 
 /* static */ bool ScriptStation::OpenCloseAirport(StationID station_id)

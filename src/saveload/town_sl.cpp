@@ -42,7 +42,7 @@ public:
 	size_t GetNumCargo() const
 	{
 		if (IsSavegameVersionBefore(SLV_EXTEND_CARGOTYPES)) return 32;
-		if (IsSavegameVersionBefore(SLV_SAVELOAD_LIST_LENGTH)) return NUM_CARGO;
+		if (IsSavegameVersionBefore(SLV_SAVELOAD_LIST_LENGTH)) return NUM_GRF_CARGO;
 		/* Read from the savegame how long the list is. */
 		return SlGetStructListLength(NUM_CARGO);
 	}

@@ -6049,3 +6049,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Rozet Fi
 STR_BADGE_CONFIG_PREVIEW                                        :Önizleme Resmi
 STR_BADGE_CONFIG_NAME                                           :İsim
 STR_BADGE_FILTER_ANY_LABEL                                      :Her {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} eşittir {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Taslak
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Etkin taslak yuvasına kopyalamak için kendi altyapınızdan bir alan seçin
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Etkin taslak yuvasının içeriğini haritaya yapıştır
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Demiryolu altyapısını yapıştır
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Karayolu altyapısını yapıştır
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Su yolu altyapısını yapıştır
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Havayolu altyapısını yapıştır
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Yapıştırırken demiryolu altyapısını geçerli ray türüne dönüştür
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Yapıştırırken sinyalleri aynala
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Yapıştırırken köprüleri yükselt
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}İstasyonları ve yol noktalarını da yapıştır
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Yapıştırırken araziyi şekillendir. Geçiş için tıklayın: arazi düzenleme yok, en az düzenleme, tam düzenleme
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Geçerli dönüşüm, sıfırlamak için tıklayın
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Taslağı saat yönünün tersine 90 derece döndür
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Taslağı saat yönünde 90 derece döndür
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Taslağı KB-GD ekseninde yansıt
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Taslağı KD-GB ekseninde yansıt
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Yapıştırırken uygulanan yükseklik farkı
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Taslağın yapıştırıldığı yüksekliği artır
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Taslağın yapıştırıldığı yüksekliği azalt
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Blueprint yaması hakkında bilgi
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Seçilen alanda şirketinize ait altyapı yok
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Seçilen alan kopyalamak için çok büyük
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Taslak, çok oyunculu oyunda yapıştırılamayacak kadar büyük
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Altyapıyı kopyalayıp yapıştırmak için taslak araç çubuğunu göster
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Altyapıyı kopyalayıp yapıştırmak için taslak araç çubuğunu göster
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Taslak buraya yapıştırılamaz...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Bu taslak yuvasına geç. Yuvanın adı veya içeriği varsa, üzerine gelindiğinde ad ve önizleme gösterilir. Yeniden adlandırmak için çift tıklayın
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Dışa aktar
+STR_BLUEPRINT_IMPORT                                            :{BLACK}İçe aktar
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Dışa/İçe aktar
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint yaması, sürüm {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Etkin yuvayı dışa aktar...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Tüm yuvaları dosyaya dışa aktar...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Etkin yuvaya aktar...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Tüm yuvaları dosyadan içe aktar...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Taslak panoya kopyalanamadı
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Pano boş
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Taslağı dışa aktar
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Taslak içe aktar
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Panoya kopyala
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Panodan yapıştır
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Taslak değiştirilsin mi?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Etkin yuvada zaten bir taslak var. Değiştirmek istiyor musunuz?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Tüm taslaklar değiştirilsin mi?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Bu, tüm taslak yuvalarının içeriğini değiştirecek. Devam etmek istiyor musunuz?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Taslağı yeniden adlandır
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Tüm taslakları dosyaya aktar
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Tüm taslakları dosyadan içe aktar
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Dosya değiştirilsin mi?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Bu isimde bir dosya zaten var. Değiştirmek istiyor musunuz?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Taslakları dışa veya içe aktar
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Seçmek için bir dosyaya, açmak için bir klasöre tıklayın
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Metin geçerli bir taslak değil
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Geçersiz dosya adı
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Taslak dosyası bulunamadı veya geçerli bir taslak kümesi değil
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Taslak dosyası yazılamadı

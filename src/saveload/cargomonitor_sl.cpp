@@ -13,6 +13,7 @@
 #include "compat/cargomonitor_sl_compat.h"
 
 #include "../cargomonitor.h"
+#include "../sl/extended_ver_sl.h"
 
 #include "../safeguards.h"
 
@@ -82,6 +83,7 @@ struct CMDLChunkHandler : ChunkHandler {
 			SlObject(&storage, slt);
 
 			if (fix) storage.number = FixupCargoMonitor(storage.number);
+			if (SlXvIsFeatureMissing(XSLFI_CARGO_TYPES_128)) storage.number = ConvertCargoMonitorIdV1(storage.number);
 
 			std::pair<CargoMonitorID, uint32_t> p(storage.number, storage.amount);
 			_cargo_deliveries.insert(p);
@@ -126,6 +128,7 @@ struct CMPUChunkHandler : ChunkHandler {
 			SlObject(&storage, slt);
 
 			if (fix) storage.number = FixupCargoMonitor(storage.number);
+			if (SlXvIsFeatureMissing(XSLFI_CARGO_TYPES_128)) storage.number = ConvertCargoMonitorIdV1(storage.number);
 
 			std::pair<CargoMonitorID, uint32_t> p(storage.number, storage.amount);
 			_cargo_pickups.insert(p);

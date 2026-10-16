@@ -11,6 +11,10 @@
 #define YAPF_DESTRAIL_HPP
 
 #include "../../train.h"
+#include "../../pbs.h"
+#include "../../tracerestrict.h"
+#include "../../vehicle_func.h"
+#include "../../infrastructure_func.h"
 #include "../pathfinder_func.h"
 #include "../pathfinder_type.h"
 
@@ -126,6 +130,8 @@ protected:
 	TrackdirBits dest_trackdirs;
 	StationID dest_station_id;
 	bool any_depot;
+	bool couple_dest = false; ///< goto-couple order with a plain-track partner: detect the partner anywhere in the segment
+	bool couple_station_dest = false; ///< goto-couple order with a station partner: only the partner's own platform counts as the destination
 
 	/** @copydoc CYapfBaseT::Yapf */
 	Tpf &Yapf()
@@ -134,9 +140,26 @@ protected:
 	}
 
 public:
+	typedef typename Types::TrackFollower TrackFollower; ///< track follower, needed for node tile iteration
+
+	/** Set the destination to a specific rail station (used by the vehicle-transport platform probe). */
+	void SetDestinationStation(const Train *v, StationID station, TileIndex near_tile)
+	{
+		this->dest_tile = CalcClosestStationTile(station, near_tile, StationType::Rail);
+		this->dest_station_id = station;
+		this->dest_trackdirs = INVALID_TRACKDIR_BIT;
+		this->any_depot = false;
+		this->couple_dest = false;
+		this->couple_station_dest = false;
+		/* The compatible rail types must be set as well, otherwise the track follower
+		 * cannot follow anything and every probe fails. */
+		this->CYapfDestinationRailBase::SetDestination(v);
+	}
+
 	void SetDestination(const Train *v)
 	{
 		this->any_depot = false;
+		this->couple_station_dest = false;
 		switch (v->current_order.GetType()) {
 			case OT_GOTO_WAYPOINT:
 				if (!Waypoint::Get(v->current_order.GetDestination().ToStationID())->IsSingleTile()) {
@@ -155,6 +178,29 @@ public:
 				this->dest_trackdirs = INVALID_TRACKDIR_BIT;
 				break;
 
+			case OT_GOTO_COUPLE: {
+				/* The destination is the claimed partner's position. When the
+				 * partner stands on a station, only its own continuous
+				 * platform strip counts as the destination — another platform
+				 * of the same station (compatible but a separate strip) must
+				 * not be accepted; this is checked in PfDetectDestination via
+				 * IsCouplePartnerTile. On plain track the partner is detected
+				 * anywhere in the segment. */
+				this->dest_tile = (v->dest_tile == INVALID_TILE) ? TileIndex{} : v->dest_tile;
+				const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
+				if (tgt != nullptr && IsRailStationTile(tgt->tile)) {
+					this->dest_station_id = GetStationIndex(tgt->tile);
+					this->dest_trackdirs = INVALID_TRACKDIR_BIT;
+					this->couple_dest = false;
+					this->couple_station_dest = true;
+				} else {
+					this->dest_station_id = StationID::Invalid();
+					this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TransportType::Rail, 0);
+					this->couple_dest = true;
+				}
+				break;
+			}
+
 			case OT_GOTO_DEPOT:
 				if (v->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) {
 					this->any_depot = true;
@@ -165,6 +211,7 @@ public:
 				this->dest_tile = (v->dest_tile == INVALID_TILE) ? TileIndex{} : v->dest_tile;
 				this->dest_station_id = StationID::Invalid();
 				this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TransportType::Rail, 0);
+				this->couple_dest = false;
 				break;
 		}
 		this->CYapfDestinationRailBase::SetDestination(v);
@@ -173,6 +220,20 @@ public:
 	/** @copydoc CYapfBaseT::PfDetectDestinationFunc */
 	inline bool PfDetectDestination(Node &n)
 	{
+		if (this->couple_dest) {
+			/* Plain-track couple partner: it stands mid-block, so the
+			 * destination must be detected on any tile of the segment. */
+			const Train *v = Yapf().GetVehicle();
+			bool found = false;
+			n.template IterateTiles<CYapfDestinationTileOrStationRailT<Types>>(v, Yapf(), [&](TileIndex tile, Trackdir) {
+				if (IsCouplePartnerVehicleTile(v, tile)) {
+					found = true;
+					return false;
+				}
+				return true;
+			});
+			return found;
+		}
 		return this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir());
 	}
 
@@ -180,9 +241,13 @@ public:
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
 		if (this->dest_station_id != StationID::Invalid()) {
-			return HasStationTileRail(tile)
-				&& (GetStationIndex(tile) == this->dest_station_id)
-				&& (GetRailStationTrack(tile) == TrackdirToTrack(td));
+			if (!HasStationTileRail(tile) || GetStationIndex(tile) != this->dest_station_id) return false;
+			if (GetRailStationTrack(tile) != TrackdirToTrack(td)) return false;
+			/* For a goto-couple order only the partner's own continuous
+			 * platform strip is the destination; another platform of the same
+			 * station passes the checks above but is a separate strip. */
+			if (this->couple_station_dest) return IsCouplePartnerTile(Yapf().GetVehicle(), tile);
+			return true;
 		}
 
 		if (this->any_depot) {
@@ -195,7 +260,9 @@ public:
 	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */
 	inline bool PfCalcEstimate(Node &n)
 	{
-		if (this->PfDetectDestination(n)) {
+		/* The cheap tile-based check only: the segment-scanning couple
+		 * detection runs when the node is evaluated as the best node. */
+		if (this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir())) {
 			n.estimate = n.cost;
 			return true;
 		}
@@ -219,6 +286,80 @@ public:
 			return dmin * YAPF_TILE_CORNER_LENGTH + (dxy - 1) * (YAPF_TILE_LENGTH / 2);
 		};
 		return std::max<int>(0, calculate_distance_cost(prev_tile, 8) - calculate_distance_cost(cur_tile, 0));
+	}
+};
+
+template <class Types>
+class CYapfDestinationTrainRailT : public CYapfDestinationRailBase {
+public:
+	typedef typename Types::Tpf Tpf;              ///< the pathfinder class (derived from THIS class)
+	typedef typename Types::NodeList::Item Node; ///< this will be our node type
+	typedef typename Node::Key Key;               ///< key to hash tables
+
+protected:
+	Order dest_order;
+
+public:
+	/** @copydoc CYapfBaseT::Yapf */
+	Tpf &Yapf()
+	{
+		return *static_cast<Tpf *>(this);
+	}
+
+	void SetDestination(const Train *v)
+	{
+		dest_order.AssignOrder(v->current_order);
+		this->CYapfDestinationRailBase::SetDestination(v);
+	}
+
+	/** @copydoc CYapfBaseT::PfDetectDestinationFunc */
+	inline bool PfDetectDestination(Node &n)
+	{
+		return this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir(), n.GetCost());
+	}
+
+	/**
+	 * Coarse segment-level check used by the cost calculation. The challenger's
+	 * node cost is not final yet, so only a free (or self-claimed) waiting
+	 * train counts here; the exact claim comparison happens when the node is
+	 * evaluated as the destination.
+	 */
+	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
+	{
+		return this->PfDetectDestination(tile, td, UINT32_MAX);
+	}
+
+	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
+	inline bool PfDetectDestination(TileIndex tile, Trackdir td, uint32_t claim_cost)
+	{
+		if (IsRailStationTile(tile)) {
+			/* Station tile: search the entire platform for a waiting train
+			 * directly, without requiring a reservation. Cross-company trains
+			 * that arrived via block signals do not leave reservations.
+			 * All order/permission/validity checks live in the shared resolver.
+			 * A waiting train already claimed by another approaching consist is
+			 * not a destination unless this consist's path is cheaper. */
+			return ResolveCoupleTargetStation(Yapf().GetVehicle(), tile, td, true, claim_cost) != nullptr;
+		}
+
+		/* Non-station tiles: require reservation as usual. */
+		TrackdirBits tdb = TrackdirToTrackdirBits(td);
+		if (!HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb))) return false;
+		Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
+		if (t == nullptr) return false;
+		return ValidateCoupleCandidate(Yapf().GetVehicle(), t->First(), tile, true, claim_cost) != nullptr;
+	}
+
+	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */
+	inline bool PfCalcEstimate(Node &n)
+	{
+		n.estimate = n.cost;
+		return true;
+	}
+
+	inline int TeleportCost(TileIndex cur_tile, TileIndex prev_tile)
+	{
+		return 0;
 	}
 };
 

@@ -63,6 +63,15 @@
 
 static RailType _cur_railtype;               ///< Rail type of the current build-rail toolbar.
 static bool _remove_button_clicked;          ///< Flag whether 'remove' toggle-button is currently enabled
+
+/**
+ * Get the rail type selected in the rail construction toolbar.
+ * @return The selected rail type (the last used one when no toolbar is open).
+ */
+RailType GetCurrentRailType()
+{
+	return _cur_railtype;
+}
 static DiagDirection _build_depot_direction; ///< Currently selected depot direction
 static bool _convert_signal_button;          ///< convert signal button in the signal GUI pressed
 static bool _trace_restrict_button;          ///< trace restrict button in the signal GUI pressed

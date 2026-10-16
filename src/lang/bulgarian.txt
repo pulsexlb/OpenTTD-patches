@@ -5843,3 +5843,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Чертеж
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Изберете област от собствената си инфраструктура, която да копирате в активния слот за чертеж
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Поставяне на съдържанието на активния слот за чертеж върху картата
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Поставяне на железопътна инфраструктура
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Поставяне на пътна инфраструктура
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Поставяне на водна инфраструктура
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Поставяне на въздушна инфраструктура
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Преобразуване на железопътната инфраструктура към текущия тип релси при поставяне
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Огледално обръщане на сигналите при поставяне
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Подобряване на мостовете при поставяне
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Поставяне също на станции и междинни точки
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Тераформиране на терена при поставяне. Щракнете за превключване: без тераформиране, минимално тераформиране, пълно тераформиране
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Текуща трансформация, щракнете за нулиране
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Завъртане на чертежа на 90 градуса обратно на часовниковата стрелка
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Завъртане на чертежа на 90 градуса по часовниковата стрелка
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Огледално обръщане на чертежа спрямо оста СЗ-ЮИ
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Огледално обръщане на чертежа спрямо оста СИ-ЮЗ
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Отместване на височината при поставяне
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Увеличаване на височината, на която се поставя чертежът
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Намаляване на височината, на която се поставя чертежът
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Информация за пача Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Избраната област не съдържа инфраструктура на вашата компания
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Избраната област е твърде голяма за копиране
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Чертежът е твърде голям за поставяне в мрежова игра
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Показване на лентата за чертежи за копиране и поставяне на инфраструктура
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Показване на лентата за чертежи за копиране и поставяне на инфраструктура
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Чертежът не може да бъде поставен тук...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Превключване към този слот за чертеж. Ако слотът има име или съдържание, посочването показва името и преглед. Двукратно щракване за преименуване
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Експортиране
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Импортиране
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Експ/Имп
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Пач Blueprint, версия {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Експортиране на активния слот...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Експортиране на всички слотове във файл...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Импортиране в активния слот...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Импортиране на всички слотове от файл...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Чертежът не можа да бъде копиран в клипборда
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Клипбордът е празен
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Експортиране на чертеж
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Импортиране на чертеж
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Копиране в клипборда
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Поставяне от клипборда
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Замяна на чертежа?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Активният слот вече съдържа чертеж. Искате ли да го замените?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Замяна на всички чертежи?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Това ще замени съдържанието на всички слотове за чертежи. Искате ли да продължите?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Преименуване на чертеж
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Експортиране на всички чертежи във файл
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Импортиране на всички чертежи от файл
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Замяна на файла?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Вече съществува файл с това име. Искате ли да го замените?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Експортиране или импортиране на чертежи
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Щракнете върху файл, за да го изберете, или върху папка, за да я отворите
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Текстът не е валиден чертеж
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Невалидно име на файл
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Файлът с чертежи не е намерен или не е валиден набор от чертежи
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Файлът с чертежи не можа да бъде записан

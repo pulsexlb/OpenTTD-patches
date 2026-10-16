@@ -6050,3 +6050,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Badge Fi
 STR_BADGE_CONFIG_PREVIEW                                        :Preview Image
 STR_BADGE_CONFIG_NAME                                           :Name
 STR_BADGE_FILTER_ANY_LABEL                                      :Any {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} is {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Blueprint
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Select an area of your own infrastructure to copy into the active blueprint slot
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Paste the contents of the active blueprint slot onto the map
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Paste rail transport infrastructure
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Paste road transport infrastructure
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Paste water transport infrastructure
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Paste air transport infrastructure
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Convert rail infrastructure to the current rail type when pasting
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Mirror signals when pasting
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Upgrade bridges when pasting
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Paste stations and waypoints too
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraform land when pasting. Click to cycle: no terraforming, minimal terraforming, full terraforming
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Current transformation, click to reset
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rotate the blueprint 90 degrees anticlockwise
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rotate the blueprint 90 degrees clockwise
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Reflect the blueprint against the NW-SE axis
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Reflect the blueprint against the NE-SW axis
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Height offset applied when pasting
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Increase the height at which the blueprint is pasted
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Decrease the height at which the blueprint is pasted
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Information about the Blueprint patch
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}The selected area contains no infrastructure owned by your company
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}The selected area is too large to copy
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Blueprint too large to paste in a multiplayer game
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Show blueprint toolbar for copying and pasting infrastructure
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Show blueprint toolbar for copying and pasting infrastructure
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Can't paste blueprint here...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Switch to this blueprint slot. If the slot is named or has content, hovering shows its name and a preview. Double-click to rename
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Export
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Import
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint patch, version {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Export active slot...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Export all slots to a file...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Import into active slot...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Import all slots from a file...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Could not copy the blueprint to the clipboard
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}The clipboard is empty
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Export blueprint
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Import blueprint
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Copy to clipboard
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Paste from clipboard
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Replace blueprint?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}The active slot already contains a blueprint. Do you want to replace it?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Replace all blueprints?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}This will replace the contents of all blueprint slots. Do you want to continue?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Rename blueprint
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Export all blueprints to file
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Import all blueprints from file
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Replace file?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}A file with that name already exists. Do you want to replace it?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Export or import blueprints
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Click a file to select it, or a folder to open it
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}The text is not a valid blueprint
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Invalid file name
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Blueprint file not found, or not a valid blueprint set
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Could not write the blueprint file

@@ -27,6 +27,7 @@
 #endif /* __GNUC__ */
 
 #include "strong_typedef_type.hpp"
+#include "uint128_type.hpp"
 
 #include <type_traits>
 
@@ -46,6 +47,40 @@ constexpr inline auto format_as(const T &t) { return to_underlying(t); }
 
 template <typename T> requires format_detail::FmtAsBase<T>
 constexpr inline const typename T::BaseType &format_as(const T &t) { return t.base_ref(); }
+
+namespace format_detail {
+	/** Format a 128 bit value, falling back to hex as it cannot be represented as a 64 bit integer. */
+	template <typename Char>
+	struct Uint128Formatter {
+		bool hex_upper = false; ///< Format in upper case hexadecimal.
+		bool hex_lower = false; ///< Format in lower case hexadecimal.
+
+		constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context &ctx)
+		{
+			auto it = ctx.begin();
+			if (it != ctx.end() && *it != '}') {
+				this->hex_upper = (*it == 'X');
+				this->hex_lower = (*it == 'x');
+				while (it != ctx.end() && *it != '}') ++it;
+			}
+			return it;
+		}
+
+		fmt::format_context::iterator format(const Uint128 &value, fmt::format_context &ctx) const
+		{
+			if (value.hi == 0) {
+				if (this->hex_upper) return fmt::format_to(ctx.out(), "{:X}", value.lo);
+				if (this->hex_lower) return fmt::format_to(ctx.out(), "{:x}", value.lo);
+				return fmt::format_to(ctx.out(), "{}", value.lo);
+			}
+			if (this->hex_lower) return fmt::format_to(ctx.out(), "{:x}{:016x}", value.hi, value.lo);
+			return fmt::format_to(ctx.out(), "{:X}{:016X}", value.hi, value.lo);
+		}
+	};
+}
+
+template <typename Char>
+struct fmt::formatter<Uint128, Char> : format_detail::Uint128Formatter<Char> {};
 
 extern fmt::format_context::iterator FmtTileIndexValueIntl(fmt::format_context &ctx, uint32_t value);
 

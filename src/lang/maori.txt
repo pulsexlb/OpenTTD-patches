@@ -6050,3 +6050,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Tātari 
 STR_BADGE_CONFIG_PREVIEW                                        :Tiro takamuatia te ata
 STR_BADGE_CONFIG_NAME                                           :Ingoa
 STR_BADGE_FILTER_ANY_LABEL                                      :{STRING} katoa
+STR_BADGE_FILTER_IS_LABEL                                       :Ko {1:STRING} te {0:STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Mahere
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Tīpakohia tētahi wāhi o ō hanganga ake hei tārua ki te tūnga mahere e hohe ana
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Whakapiri i ngā kai o te tūnga mahere hohe ki te mapi
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Whakapiri hanganga rerewē
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Whakapiri hanganga rori
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Whakapiri hanganga wai
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Whakapiri hanganga rererangi
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Huri i te hanganga rerewē ki te momo rerewē o nāianei ina whakapiri
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Whakaata i ngā tohu ina whakapiri
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Whakapai ake i ngā arawhiti ina whakapiri
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Whakapiri hoki i ngā teihana me ngā tohu ara
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Whakarerekē i te whenua ina whakapiri. Pāwhiria hei huri: kāore he whakarerekē, he iti noa, he katoa
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Te panoni o nāianei, pāwhiria hei tautuhi anō
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Hurihia te mahere 90 putu ki te mauī
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Hurihia te mahere 90 putu ki te matau
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Whakaatahia te mahere mā te tuaka NW-SE
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Whakaatahia te mahere mā te tuaka NE-SW
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Te rerekētanga teitei ina whakapiri
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Whakapikihia te teitei e whakapiria ai te mahere
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Whakahekehia te teitei e whakapiria ai te mahere
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}He mōhiohio mō te paati Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Kāore he hanganga a tō kamupene i te wāhi i tīpakohia
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}He rahi rawa te wāhi i tīpakohia hei tārua
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}He rahi rawa te mahere hei whakapiri i te kēmu takitini
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Whakaatu i te paeutauta mahere hei tārua, hei whakapiri i ngā hanganga
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Whakaatu i te paeutauta mahere hei tārua, hei whakapiri i ngā hanganga
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Kāore e taea te whakapiri i te mahere ki konei...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Huri ki tēnei tūnga mahere. Ki te whai ingoa, whai kai rānei te tūnga, ka whakaatuhia te ingoa me tētahi tirohanga wawe ina tau te kiore ki runga. Pāwhiritia rua hei whakaingoa anō
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Kaweake
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Kawemai
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Kaweake/Kawemai
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Paati Blueprint, putanga {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Kaweake i te tūnga hohe...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Kaweake i ngā tūnga katoa ki tētahi kōnae...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Kawemai ki te tūnga hohe...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Kawemai i ngā tūnga katoa mai i tētahi kōnae...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Kāore i taea te tārua i te mahere ki te papatopenga
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Kei te putua te papatopenga
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Kaweake mahere
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Kawemai mahere
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Tārua ki te papatopenga
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Whakapiri mai i te papatopenga
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Whakakapi i te mahere?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}He mahere kei te tūnga hohe kē. Kei te hiahia koe ki te whakakapi?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Whakakapi i ngā mahere katoa?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Ka whakakapi tēnei i ngā ihirangi o ngā tūnga mahere katoa. Kei te hiahia koe ki te haere tonu?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Ingoa anō te mahere
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Kaweake i ngā mahere katoa ki tētahi kōnae
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Kawemai i ngā mahere katoa mai i tētahi kōnae
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Whakakapi i te kōnae?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Kei te noho kē tētahi kōnae me taua ingoa. Kei te hiahia koe ki te whakakapi?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Kaweake, kawemai rānei i ngā mahere
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Pāwhiritia tētahi kōnae hei tīpako, tētahi kōpaki rānei hei whakatuwhera
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Ehara te kuputuhi i te mahere tika
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ingoa kōnae muhu
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Kaore i kitea te kōnae mahere, kaore rānei he huinga mahere tika
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Kaore i taea te tuhi i te kōnae mahere

@@ -18,6 +18,7 @@
 #include "newgrf_text.h"
 #include "newgrf_debug.h"
 #include "roadveh.h"
+#include "roadveh_transport.h"
 #include "train.h"
 #include "train_cmd.h"
 #include "aircraft.h"
@@ -865,6 +866,11 @@ struct RefitWindow : public Window {
 		this->refit_list.clear();
 		Vehicle *v = Vehicle::Get(this->window_number);
 
+		/* Road vehicle transport: the built-in "Vehicles (Car)" cargo is a normal cargo as far as
+		 * refitting goes, so it is offered here just like any other cargo, and a chain configured for
+		 * road vehicle transport can be refitted to a normal cargo and vice versa - also for
+		 * station/depot orders and auto-refit. */
+
 		/* Check only the selected vehicles. */
 		VehicleSet vehicles_to_refit;
 		GetVehicleSet(vehicles_to_refit, Vehicle::Get(this->selected_vehicle), this->num_vehicles);
@@ -886,6 +892,13 @@ struct RefitWindow : public Window {
 				CargoType cargo_type = cs->Index();
 				/* Skip cargo type if it's not listed */
 				if (!cmask.Test(cargo_type)) continue;
+				/* Road vehicle transport: the built-in vehicle transport cargoes may only be chosen
+				 * when the "carrier parts" setting lets this engine become a carrier part; a wagon
+				 * whose own cargo does not qualify cannot gain the dedicated cargo by refitting. */
+				if ((cargo_type == RV_TRANSPORT_CARGO_SLOT || cargo_type == RAIL_TRANSPORT_CARGO_SLOT) &&
+						!RVTransportEngineMayBeRefitToVehicles(e)) continue;
+				/* Road vehicle transport: the built-in cargo is identified by its slot, as a NewGRF may
+				 * define a cargo using the same label. No special refit handling is needed. */
 
 				auto &list = this->refit_list[cargo_type];
 				bool first_vehicle = list.empty();
@@ -1106,7 +1119,7 @@ struct RefitWindow : public Window {
 	{
 		std::string name = this->ship_part_names[v->index];
 		if (name.empty()) {
-			const Vehicle *front = v->First();
+			const Vehicle *front = v->Primary();
 			uint offset = 0;
 			for (const Vehicle *u = front; u != v; u = u->Next()) offset++;
 			uint16_t callback = GetVehicleCallback(XCBID_SHIP_REFIT_PART_NAME, offset, 0, front->engine_type, front);
@@ -1523,6 +1536,167 @@ static constexpr std::initializer_list<NWidgetPart> _nested_vehicle_refit_widget
 	EndContainer(),
 };
 
+/**
+ * Draw the cargo type list in the cargo types window.
+ * @param sel The currently selected cargo type.
+ * @param pos The position of the first row to draw.
+ * @param rows The number of rows to draw.
+ * @param delta The height of each row.
+ * @param r The area to draw within.
+ */
+static void DrawVehicleCargoTypeWindow(CargoType sel, uint pos, uint rows, uint delta, const Rect &r)
+{
+	Rect ir = r.Shrink(WidgetDimensions::scaled.matrix);
+	uint y = ir.top;
+
+	uint i = 0;
+	for (const CargoSpec *cs : CargoSpec::Iterate()) {
+		if (i < pos) {
+			i++;
+			continue;
+		}
+		if (i >= pos + rows) break;
+		DrawString(ir.left, ir.right, y, GetString(STR_JUST_STRING, cs->name), cs->Index() == sel ? TextColour::White : TextColour::Black);
+		y += delta;
+		i++;
+	}
+}
+
+/** Window for selecting a cargo type for a couple order. */
+struct CargoTypesWindow : public Window {
+	CargoType sel;               ///< Currently selected cargo type.
+	Scrollbar *vscroll;          ///< The main scrollbar.
+	VehicleOrderID order;        ///< The order to modify.
+
+	CargoTypesWindow(WindowDesc *desc, const Vehicle *v, VehicleOrderID order) : Window(*desc)
+	{
+		this->sel = CARGO_NO_REFIT;
+		this->order = order;
+		this->CreateNestedTree();
+
+		this->vscroll = this->GetScrollbar(WID_VCT_SCROLLBAR);
+		NWidgetCore *nwi = this->GetWidget<NWidgetCore>(WID_VCT_SET);
+		nwi->SetStringTip(STR_TRAIN_CARGOS_CONFIRM + to_underlying(v->type), STR_REFIT_TRAIN_REFIT_TOOLTIP + to_underlying(v->type));
+
+		this->FinishInitNested(v->index);
+		this->owner = v->owner;
+
+		this->SetWidgetDisabledState(WID_VCT_SET, this->sel == CARGO_NO_REFIT);
+	}
+
+	void OnInit() override
+	{
+		this->SetWidgetDisabledState(WID_VCT_SET, this->sel == CARGO_NO_REFIT);
+		this->RefreshScrollbar();
+	}
+
+	void OnClick(Point pt, WidgetID widget, int click_count) override
+	{
+		switch (widget) {
+			case WID_VCT_MATRIX: { // listbox
+				this->SetSelection(this->vscroll->GetScrolledRowFromWidget(pt.y, this, WID_VCT_MATRIX));
+				this->SetWidgetDisabledState(WID_VCT_SET, this->sel == CARGO_NO_REFIT);
+				this->RefreshScrollbar();
+				this->InvalidateData();
+
+				if (click_count == 1) break;
+				[[fallthrough]];
+			}
+
+			case WID_VCT_SET: // set button
+				if (this->sel != CARGO_NO_REFIT) {
+					const Vehicle *v = Vehicle::Get(this->window_number);
+					if (Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, v->tile, OrderTargetType::Vehicle, v->index.base(), this->order, MOF_COUPLE_CARGO, {}, this->sel, {})) this->Close();
+				}
+				break;
+		}
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		switch (widget) {
+			case WID_VCT_MATRIX:
+				DrawVehicleCargoTypeWindow(this->sel, this->vscroll->GetPosition(), this->vscroll->GetCapacity(), this->resize.step_height, r);
+				break;
+		}
+	}
+
+	void SetSelection(uint click_row)
+	{
+		uint row = 0;
+		for (const CargoSpec *cs : CargoSpec::Iterate()) {
+			if (row == click_row) {
+				this->sel = cs->Index();
+				return;
+			}
+			row++;
+		}
+		this->sel = CARGO_NO_REFIT;
+	}
+
+	void OnResize() override
+	{
+		this->vscroll->SetCapacityFromWidget(this, WID_VCT_MATRIX);
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
+	{
+		switch (widget) {
+			case WID_VCT_MATRIX:
+				fill.height = resize.height = GetCharacterHeight(FontSize::Normal) + padding.height;
+				size.height = resize.height * 8;
+				break;
+		}
+	}
+
+	void RefreshScrollbar()
+	{
+		uint row = 0;
+		for (const CargoSpec *cs : CargoSpec::Iterate()) {
+			row++;
+			(void)cs;
+		}
+		this->vscroll->SetCount(row);
+	}
+
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		if (widget == WID_VCT_CAPTION) return GetString(STR_CARGO_CAPTION, Vehicle::Get(this->window_number)->index);
+		return this->Window::GetWidgetString(widget, stringid);
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_vehicle_cargotype_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_CLOSEBOX, Colours::Grey),
+		NWidget(WWT_CAPTION, Colours::Grey, WID_VCT_CAPTION), SetStringTip(STR_CARGO_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
+		NWidget(WWT_DEFSIZEBOX, Colours::Grey),
+	EndContainer(),
+	/* Matrix + scrollbar. */
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_MATRIX, Colours::Grey, WID_VCT_MATRIX), SetMinimalSize(228, 112), SetResize(1, 14), SetFill(1, 1), SetMatrixDataTip(1, 0, STR_NULL), SetScrollbar(WID_VCT_SCROLLBAR),
+		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_VCT_SCROLLBAR),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_VCT_SET), SetFill(1, 0), SetResize(1, 0),
+		NWidget(WWT_RESIZEBOX, Colours::Grey),
+	EndContainer(),
+};
+
+static WindowDesc _vehicle_cargotype_desc(__FILE__, __LINE__,
+	WindowPosition::Automatic, "view_vehicle_cargotype", 240, 174,
+	WindowClass::VehicleCargoTypes, WindowClass::VehicleView,
+	WindowDefaultFlag::Construction,
+	_nested_vehicle_cargotype_widgets
+);
+
+void ShowVehicleCargoTypesWindow(const Vehicle *v, VehicleOrderID order, Window *parent)
+{
+	CloseWindowById(WindowClass::VehicleCargoTypes, v->index);
+	CargoTypesWindow *w = new CargoTypesWindow(&_vehicle_cargotype_desc, v, order);
+	w->parent = parent;
+}
+
 static WindowDesc _vehicle_refit_desc(__FILE__, __LINE__,
 	WindowPosition::Automatic, "view_vehicle_refit", 240, 174,
 	WindowClass::VehicleRefit, WindowClass::VehicleView,
@@ -1556,6 +1730,13 @@ uint ShowRefitOptionsList(int left, int right, int y, EngineID engine)
 {
 	/* List of cargo types of this engine */
 	CargoTypes present = GetUnionOfArticulatedRefitMasks(engine, false);
+
+	/* Road vehicle transport: don't advertise the dedicated vehicle transport cargoes when the
+	 * "carrier parts" setting does not let this engine become a carrier part. */
+	if (!RVTransportEngineMayBeRefitToVehicles(Engine::Get(engine))) {
+		present.Reset(RV_TRANSPORT_CARGO_SLOT);
+		present.Reset(RAIL_TRANSPORT_CARGO_SLOT);
+	}
 
 	/* Draw nothing if the engine is not refittable */
 	if (HasAtMostOneBit(present.base())) return y;
@@ -1966,7 +2147,7 @@ static void DrawSmallOrderList(OrderIterateWrapper<const Order> orders, int left
 void DrawVehicleImage(const Vehicle *v, const Rect &r, VehicleID selection, EngineImageType image_type, int skip)
 {
 	switch (v->type) {
-		case VehicleType::Train:    DrawTrainImage(Train::From(v), r, selection, image_type, skip); break;
+		case VehicleType::Train:    DrawTrainImage(Train::From(v)->First(), r, selection, image_type, skip); break;
 		case VehicleType::Road:     DrawRoadVehImage(v, r, selection, image_type, skip);  break;
 		case VehicleType::Ship:     DrawShipImage(v, r, selection, image_type);     break;
 		case VehicleType::Aircraft: DrawAircraftImage(v, r, selection, image_type); break;
@@ -2048,11 +2229,14 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 		const GUIVehicleGroup &vehgroup = *it;
 		if (this->grouping == GB_NONE) {
 			const Vehicle *v = vehgroup.GetSingleVehicle();
+			/* Identity fields (age, lifetime, profit, ...) come from the
+			 * primary vehicle, which may differ from the chain head. */
+			const Vehicle *ident = v->Primary();
 
 			std::array<StringParameter, 5> params = {
 				EconTime::UsingWallclockUnits() ? STR_VEHICLE_LIST_PROFIT_THIS_PERIOD_LAST_PERIOD : STR_VEHICLE_LIST_PROFIT_THIS_YEAR_LAST_YEAR,
-				v->GetDisplayProfitThisYear(),
-				v->GetDisplayProfitLastYear(),
+				ident->GetDisplayProfitThisYear(),
+				ident->GetDisplayProfitLastYear(),
 				std::monostate{},
 				std::monostate{}
 			};
@@ -2060,9 +2244,9 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 			StringID str;
 			switch (this->vehgroups.SortType()) {
 				case VST_AGE: {
-					str = (v->age + DAYS_IN_YEAR < v->max_age) ? STR_VEHICLE_LIST_AGE : STR_VEHICLE_LIST_AGE_RED;
-					params[3] = DateDeltaToYearDelta(v->age);
-					params[4] = DateDeltaToYearDelta(v->max_age);
+					str = (ident->age + DAYS_IN_YEAR < ident->max_age) ? STR_VEHICLE_LIST_AGE : STR_VEHICLE_LIST_AGE_RED;
+					params[3] = DateDeltaToYearDelta(ident->age);
+					params[4] = DateDeltaToYearDelta(ident->max_age);
 					break;
 				}
 
@@ -2077,21 +2261,21 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 				}
 
 				case VST_RELIABILITY: {
-					str = ToPercent16(v->reliability) >= 50 ? STR_VEHICLE_LIST_RELIABILITY : STR_VEHICLE_LIST_RELIABILITY_RED;
-					params[3] = ToPercent16(v->reliability);
+					str = ToPercent16(ident->reliability) >= 50 ? STR_VEHICLE_LIST_RELIABILITY : STR_VEHICLE_LIST_RELIABILITY_RED;
+					params[3] = ToPercent16(ident->reliability);
 					break;
 				}
 
 				case VST_MAX_SPEED: {
 					str = STR_VEHICLE_LIST_MAX_SPEED;
-					params[3] = v->GetDisplayMaxSpeed();
+					params[3] = ident->GetDisplayMaxSpeed();
 					break;
 				}
 
 				case VST_MODEL: {
 					str = STR_VEHICLE_LIST_ENGINE_BUILT;
-					params[3] = v->engine_type;
-					params[4] = v->build_year;
+					params[3] = ident->engine_type;
+					params[4] = ident->build_year;
 					break;
 				}
 
@@ -2115,25 +2299,25 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 				}
 
 				case VST_TIME_TO_LIVE: {
-					auto years_remaining = (v->max_age / DAYS_IN_LEAP_YEAR) - (v->age / DAYS_IN_LEAP_YEAR);
+					auto years_remaining = (ident->max_age / DAYS_IN_LEAP_YEAR) - (ident->age / DAYS_IN_LEAP_YEAR);
 					str = (years_remaining > 1) ? STR_VEHICLE_LIST_TIME_TO_LIVE : ((years_remaining < 0) ? STR_VEHICLE_LIST_TIME_TO_LIVE_OVERDUE : STR_VEHICLE_LIST_TIME_TO_LIVE_RED);
 					params[3] = std::abs(years_remaining.base());
 					break;
 				}
 
 				case VST_TIMETABLE_DELAY: {
-					if (v->lateness_counter == 0 || (!_settings_client.gui.timetable_in_ticks && v->lateness_counter / TimetableDisplayUnitSize() == 0)) {
+					if (ident->lateness_counter == 0 || (!_settings_client.gui.timetable_in_ticks && ident->lateness_counter / TimetableDisplayUnitSize() == 0)) {
 						str = STR_VEHICLE_LIST_TIMETABLE_DELAY_ON_TIME;
 					} else {
-						str = v->lateness_counter > 0 ? STR_VEHICLE_LIST_TIMETABLE_DELAY_LATE : STR_VEHICLE_LIST_TIMETABLE_DELAY_EARLY;
-						std::tie(params[3], params[4]) = GetTimetableParameters(std::abs(v->lateness_counter));
+						str = ident->lateness_counter > 0 ? STR_VEHICLE_LIST_TIMETABLE_DELAY_LATE : STR_VEHICLE_LIST_TIMETABLE_DELAY_EARLY;
+						std::tie(params[3], params[4]) = GetTimetableParameters(std::abs(ident->lateness_counter));
 					}
 					break;
 				}
 
 				case VST_PROFIT_LIFETIME: {
 					str = STR_VEHICLE_LIST_PROFIT_THIS_YEAR_LAST_YEAR_LIFETIME;
-					params[3] = v->GetDisplayProfitLifetime();
+					params[3] = ident->GetDisplayProfitLifetime();
 					break;
 				}
 
@@ -2956,6 +3140,13 @@ static_assert(WID_VD_DETAILS_TRAIN_VEHICLES   == WID_VD_DETAILS_CARGO_CARRIED + 
 static_assert(WID_VD_DETAILS_CAPACITY_OF_EACH == WID_VD_DETAILS_CARGO_CARRIED + TDW_TAB_CAPACITY);
 static_assert(WID_VD_DETAILS_TOTAL_CARGO      == WID_VD_DETAILS_CARGO_CARRIED + TDW_TAB_TOTALS  );
 static_assert(WID_VD_DETAILS_PERFORMANCE      == WID_VD_DETAILS_CARGO_CARRIED + TDW_TAB_PERF  );
+static_assert(WID_VD_DETAILS_CARRIED          == WID_VD_DETAILS_CARGO_CARRIED + TDW_TAB_CARRIED);
+
+/** Row of the "carried road vehicles" tab which is at this line (RoRo), or nullptr. */
+extern const Vehicle *GetTrainDetailsCarriedVehicleRow(VehicleID veh_id, int row);
+
+/** Road vehicle row drawn on this line of the last drawn per-vehicle train details tab (RoRo), or nullptr. */
+extern const Vehicle *GetTrainDetailsCarriedRowAtLine(int line);
 
 /** Vehicle details widgets (other than train). */
 static constexpr std::initializer_list<NWidgetPart> _nested_nontrain_vehicle_details_widgets = {
@@ -3016,6 +3207,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_train_vehicle_detail
 				SetStringTip(STR_VEHICLE_DETAIL_TAB_TOTAL_CARGO, STR_VEHICLE_DETAILS_TRAIN_TOTAL_CARGO_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
 		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_VD_DETAILS_PERFORMANCE), SetMinimalSize(80, 12),
 				SetStringTip(STR_VEHICLE_DETAIL_TAB_PERFORMANCE, STR_VEHICLE_DETAILS_TRAIN_PERFORMANCE_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_VD_DETAILS_CARRIED), SetMinimalSize(80, 12),
+				SetStringTip(STR_VEHICLE_DETAIL_TAB_CARRIED, STR_VEHICLE_DETAILS_TRAIN_CARRIED_TOOLTIP), SetFill(1, 0), SetResize(1, 0),
 		NWidget(WWT_RESIZEBOX, Colours::Grey),
 	EndContainer(),
 };
@@ -3054,6 +3247,73 @@ std::span<const StringID> GetServiceIntervalDropDownTexts()
 	}
 }
 
+/**
+ * Where the "carried road vehicles" rows of the last drawn details panel ended up: the details window
+ * needs this to open the window of the vehicle whose line was clicked (ships and aircraft have no tab
+ * bar, so their list is at the bottom of their details panel, which is not a matrix widget).
+ */
+struct CarriedListLayout {
+	VehicleID carrier = VehicleID::Invalid();
+	int first_row_y = 0;  ///< Window coordinate of the first row.
+	int line_height = 0;
+	int rows = 0;
+};
+static CarriedListLayout _carried_list_layout;
+
+/**
+ * Draw the road vehicles carried by a ship or aircraft at the bottom of its details panel.
+ * Trains list them in the "vehicles" tab instead, which scrolls.
+ * @param carrier The carrier vehicle.
+ * @param r The rect to draw in.
+ * @param y The first line to use.
+ * @return The next free line.
+ */
+int DrawCarriedRoadVehicles(const Vehicle *carrier, const Rect &r, int y)
+{
+	std::vector<const Vehicle *> carried;
+	RVTransportGetCarriedVehicles(carrier, carried);
+	if (carried.empty()) return y;
+
+	DrawString(r.left, r.right, y, STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLES, TextColour::LightBlue);
+	y += GetCharacterHeight(FontSize::Normal);
+
+	/* Remember where the rows ended up, so that the details window can open the window of the vehicle
+	 * which was clicked (see CarriedVehicleAtPoint()). */
+	_carried_list_layout.carrier = carrier->index;
+	_carried_list_layout.first_row_y = y;
+	_carried_list_layout.line_height = GetCharacterHeight(FontSize::Normal);
+	_carried_list_layout.rows = static_cast<int>(carried.size());
+
+	for (const Vehicle *rv : carried) {
+		DrawString(r.left + WidgetDimensions::scaled.framerect.left, r.right, y, GetString(STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE, rv->index));
+		y += GetCharacterHeight(FontSize::Normal);
+	}
+	return y;
+}
+
+/**
+ * Which road vehicle of this carrier is drawn at this window position? Used by the details window to
+ * open the window of the vehicle whose line was clicked (ships and aircraft have no tabs, so their list
+ * is at the bottom of their details panel).
+ * @param carrier The carrier whose details panel was drawn last.
+ * @param pt The clicked point, in window coordinates.
+ * @return The road vehicle on that line, or nullptr.
+ */
+static const Vehicle *CarriedVehicleAtPoint(const Vehicle *carrier, const Point &pt)
+{
+	if (carrier == nullptr || _carried_list_layout.carrier != carrier->index) return nullptr;
+	if (_carried_list_layout.line_height <= 0 || _carried_list_layout.rows <= 0) return nullptr;
+	if (pt.y < _carried_list_layout.first_row_y) return nullptr;
+
+	const int row = (pt.y - _carried_list_layout.first_row_y) / _carried_list_layout.line_height;
+	if (row < 0 || row >= _carried_list_layout.rows) return nullptr;
+
+	std::vector<const Vehicle *> carried;
+	RVTransportGetCarriedVehicles(carrier, carried);
+	if (row >= static_cast<int>(carried.size())) return nullptr;
+	return carried[row];
+}
+
 /** Class for managing the vehicle details window. */
 struct VehicleDetailsWindow : Window {
 	TrainDetailsWindowTabs tab = TDW_TAB_CARGO; ///< For train vehicles: which tab is displayed.
@@ -3063,6 +3323,7 @@ struct VehicleDetailsWindow : Window {
 	bool vehicle_slots_line_shown = false;
 	bool vehicle_speed_restriction_line_shown = false;
 	bool vehicle_speed_adaptation_line_shown = false;
+	bool vehicle_carried_line_shown = false;   ///< RoRo: "carrying N road vehicles" is shown at the top.
 
 	enum DropDownAction {
 		VDWDDA_CLEAR_SPEED_RESTRICTION,
@@ -3087,6 +3348,25 @@ struct VehicleDetailsWindow : Window {
 		this->owner = v->owner;
 		this->tab = TDW_TAB_CARGO;
 		if (v->type == VehicleType::Train && _shift_pressed) this->tab = TDW_TAB_TOTALS;
+
+		this->UpdateEngineDependentWidgets();
+	}
+
+	/**
+	 * A consist with no engine at all has no reliability to decay and no speed to restrict, so
+	 * the service interval and the speed restriction controls have nothing to act on. Grey them
+	 * out; the consist may still be coupled to an engine later, so this is refreshed whenever the
+	 * window is invalidated.
+	 */
+	void UpdateEngineDependentWidgets()
+	{
+		const Vehicle *v = Vehicle::Get(this->window_number);
+		const bool engine_less = v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0;
+		if (!engine_less) return;
+
+		this->SetWidgetDisabledState(WID_VD_DECREASE_SERVICING_INTERVAL, true);
+		this->SetWidgetDisabledState(WID_VD_INCREASE_SERVICING_INTERVAL, true);
+		this->SetWidgetDisabledState(WID_VD_SERVICE_INTERVAL_DROPDOWN, true);
 	}
 
 	void Close(int data = 0) override
@@ -3111,10 +3391,13 @@ struct VehicleDetailsWindow : Window {
 		}
 		if (!gui_scope) return;
 		const Vehicle *v = Vehicle::Get(this->window_number);
-		if (v->type == VehicleType::Road || v->type == VehicleType::Ship) {
+		/* The consist may have gained or lost an engine, which decides whether the service
+		 * interval and speed restriction controls apply to it. */
+		this->UpdateEngineDependentWidgets();
+		if (v->type == VehicleType::Road || v->type == VehicleType::Ship || v->type == VehicleType::Aircraft) {
 			const NWidgetBase *nwid_info = this->GetWidget<NWidgetBase>(WID_VD_MIDDLE_DETAILS);
-			uint aimed_height = this->GetRoadOrShipVehDetailsHeight(v);
-			/* If the number of articulated parts changes, the size of the window must change too. */
+			uint aimed_height = this->GetVehDetailsHeight(v);
+			/* If the number of articulated parts or carried road vehicles changes, the size of the window must change too. */
 			if (aimed_height != nwid_info->current_y) {
 				this->ReInit();
 			}
@@ -3127,14 +3410,17 @@ struct VehicleDetailsWindow : Window {
 	}
 
 	/**
-	 * Gets the desired height for the road vehicle and ship details panel.
-	 * @param v Road vehicle being shown.
+	 * Gets the desired height for the road vehicle, ship and aircraft details panel.
+	 * @param v Vehicle being shown.
 	 * @return Desired height in pixels.
 	 */
-	uint GetRoadOrShipVehDetailsHeight(const Vehicle *v)
+	uint GetVehDetailsHeight(const Vehicle *v)
 	{
 		uint desired_height;
-		if (v->Next() != nullptr) {
+		if (v->type == VehicleType::Aircraft) {
+			/* An aircraft always has its shadow part, but its details panel has a fixed height. */
+			desired_height = 5 * GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal * 2;
+		} else if (v->Next() != nullptr) {
 			/* An articulated RV has its text drawn under the sprite instead of after it, hence 15 pixels extra. */
 			desired_height = 4 * GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal * 2;
 			if (v->type == VehicleType::Road) desired_height += ScaleGUITrad(15);
@@ -3144,6 +3430,14 @@ struct VehicleDetailsWindow : Window {
 			}
 		} else {
 			desired_height = 5 * GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal * 2;
+		}
+
+		/* RoRo: ships and aircraft list the road vehicles they carry at the bottom of the panel. */
+		if (v->type == VehicleType::Ship || v->type == VehicleType::Aircraft) {
+			const uint carried = RVTransportCountOnCarrier(v);
+			if (carried != 0) {
+				desired_height += (carried + 1) * GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal * 2;
+			}
 		}
 		return desired_height;
 	}
@@ -3174,6 +3468,12 @@ struct VehicleDetailsWindow : Window {
 		return (v->type == VehicleType::Train && _settings_game.vehicle.train_speed_adaptation);
 	}
 
+	/** RoRo: does this carrier hold road vehicles (then the count is shown at the top)? */
+	bool ShouldShowCarriedLine(const Vehicle *v) const
+	{
+		return v->type != VehicleType::Road && RVTransportCountOnCarrier(v) > 0;
+	}
+
 	std::vector<TraceRestrictSlotID> GetVehicleSlots(const Vehicle *v) const
 	{
 		std::vector<TraceRestrictSlotID> slots;
@@ -3198,12 +3498,14 @@ struct VehicleDetailsWindow : Window {
 				this->vehicle_slots_line_shown = ShouldShowSlotsLine(v);
 				this->vehicle_speed_restriction_line_shown = ShouldShowSpeedRestrictionLine(v);
 				this->vehicle_speed_adaptation_line_shown = ShouldShowSpeedAdaptationLine(v);
+				this->vehicle_carried_line_shown = ShouldShowCarriedLine(v);
 				int lines = 4;
 				if (this->vehicle_group_line_shown) lines++;
 				if (this->vehicle_weight_ratio_line_shown) lines++;
 				if (this->vehicle_slots_line_shown) lines++;
 				if (this->vehicle_speed_restriction_line_shown) lines++;
 				if (this->vehicle_speed_adaptation_line_shown) lines++;
+				if (this->vehicle_carried_line_shown) lines++;
 				size.height = lines * GetCharacterHeight(FontSize::Normal) + padding.height;
 
 				format_buffer buffer;
@@ -3254,11 +3556,8 @@ struct VehicleDetailsWindow : Window {
 				switch (v->type) {
 					case VehicleType::Road:
 					case VehicleType::Ship:
-						size.height = this->GetRoadOrShipVehDetailsHeight(v) + padding.height;
-						break;
-
 					case VehicleType::Aircraft:
-						size.height = 5 * GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal * 2 + padding.height;
+						size.height = this->GetVehDetailsHeight(v) + padding.height;
 						break;
 
 					default:
@@ -3370,18 +3669,47 @@ struct VehicleDetailsWindow : Window {
 			case WID_VD_TOP_DETAILS: {
 				Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
 
+				/* A consist with no engine at all (e.g. a fully uncoupled set of wagons) has no
+				 * power, no reachable speed, no reliability to decay and no breakdown history, and
+				 * the lifetime limit comes from the engine it was built around. Every one of those
+				 * values is unknown, so it is shown as a dash next to the label it belongs to. */
+				const bool engine_less = v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0;
+
 				/* Draw running cost */
-				DrawString(tr,
-					GetString(this->GetRunningCostString(),
-						(v->age + DAYS_IN_YEAR < v->max_age) ? STR_VEHICLE_INFO_AGE : STR_VEHICLE_INFO_AGE_RED,
-						DateDeltaToYearDelta(v->age),
-						DateDeltaToYearDelta(v->max_age),
-						v->GetDisplayRunningCost()));
+				if (engine_less) {
+					/* The age is shown through a {STRING2}, which consumes the id and two arguments
+					 * of its own, so the dash still needs both fillers. */
+					DrawString(tr,
+						GetString(this->GetRunningCostString(),
+							STR_VEHICLE_INFO_VALUE_NA,
+							std::monostate{},
+							std::monostate{},
+							v->GetDisplayRunningCost()));
+				} else {
+					DrawString(tr,
+						GetString(this->GetRunningCostString(),
+							(v->age + DAYS_IN_YEAR < v->max_age) ? STR_VEHICLE_INFO_AGE : STR_VEHICLE_INFO_AGE_RED,
+							DateDeltaToYearDelta(v->age),
+							DateDeltaToYearDelta(v->max_age),
+							v->GetDisplayRunningCost()));
+				}
 				tr.top += GetCharacterHeight(FontSize::Normal);
 
 				/* Draw max speed */
 				uint64_t max_speed = PackVelocity(v->GetDisplayMaxSpeed(), v->type);
-				if (v->type == VehicleType::Train ||
+				if (engine_less) {
+					/* The weight belongs to the wagons themselves, so it stays visible; the power
+					 * and the speed need an engine and are left out. The included ratios are dropped
+					 * by passing an empty string, which still has to be followed by the four filler
+					 * arguments that {STRING4} always consumes. */
+					DrawString(tr, GetString(STR_VEHICLE_INFO_FULL_WEIGHT_WITH_RATIOS,
+							v->GetGroundVehicleCache()->cached_weight,
+							STR_EMPTY,
+							std::monostate{},
+							std::monostate{},
+							std::monostate{},
+							std::monostate{}));
+				} else if (v->type == VehicleType::Train ||
 						(v->type == VehicleType::Road && _settings_game.vehicle.roadveh_acceleration_model != AccelerationModel::Original)) {
 					const GroundVehicleCache *gcache = v->GetGroundVehicleCache();
 					if (v->type == VehicleType::Train && (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Original ||
@@ -3404,12 +3732,19 @@ struct VehicleDetailsWindow : Window {
 
 				bool should_show_weight_ratio = this->ShouldShowWeightRatioLine(v);
 				if (should_show_weight_ratio) {
-					DrawString(tr,
-						GetString(STR_VEHICLE_INFO_WEIGHT_RATIOS,
-							STR_VEHICLE_INFO_POWER_WEIGHT_RATIO,
-							(100 * Train::From(v)->gcache.cached_power) / std::max<uint>(1, Train::From(v)->gcache.cached_weight),
-							Train::From(v)->GetAccelerationType() == VehicleAccelerationModel::Maglev ? STR_EMPTY : STR_VEHICLE_INFO_TE_WEIGHT_RATIO,
-							(100 * Train::From(v)->gcache.cached_max_te) / std::max<uint>(1, Train::From(v)->gcache.cached_weight)));
+					if (engine_less) {
+						/* Both ratios divide a power or a tractive effort by the weight, and the
+						 * numerators only exist when there is an engine, so show a dash for each
+						 * next to the label naming it. */
+						DrawString(tr, STR_VEHICLE_INFO_WEIGHT_RATIOS_NA);
+					} else {
+						DrawString(tr,
+							GetString(STR_VEHICLE_INFO_WEIGHT_RATIOS,
+								STR_VEHICLE_INFO_POWER_WEIGHT_RATIO,
+								(100 * Train::From(v)->gcache.cached_power) / std::max<uint>(1, Train::From(v)->gcache.cached_weight),
+								Train::From(v)->GetAccelerationType() == VehicleAccelerationModel::Maglev ? STR_EMPTY : STR_VEHICLE_INFO_TE_WEIGHT_RATIO,
+								(100 * Train::From(v)->gcache.cached_max_te) / std::max<uint>(1, Train::From(v)->gcache.cached_weight)));
+					}
 					tr.top += GetCharacterHeight(FontSize::Normal);
 				}
 
@@ -3450,8 +3785,14 @@ struct VehicleDetailsWindow : Window {
 						}
 					}
 					uint8_t total_engines = Train::From(v)->tcache.cached_num_engines;
-					assert(total_engines > 0);
-					DrawString(tr, GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, ToPercent16(total_reliability / total_engines), ToPercent16(total_max_reliability / total_engines), total_breakdowns));
+					if (total_engines > 0) {
+						DrawString(tr, GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, ToPercent16(total_reliability / total_engines), ToPercent16(total_max_reliability / total_engines), total_breakdowns));
+					} else {
+						/* A consist without engines has no reliability and never breaks down, so
+						 * there is nothing to report; show a dash next to each label rather than
+						 * leave the line blank, which would make the lines below appear to shift. */
+						DrawString(tr, STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS_NA);
+					}
 				} else {
 					DrawString(tr, GetString(STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS, ToPercent16(v->reliability), ToPercent16(v->GetEngine()->reliability), v->breakdowns_since_last_service));
 				}
@@ -3503,11 +3844,20 @@ struct VehicleDetailsWindow : Window {
 					tr.top += GetCharacterHeight(FontSize::Normal);
 				}
 
+				/* RoRo: a carrier says how many road vehicles it has on board, without the player
+				 * having to open the "information" tab and scroll to the end of the vehicle list. */
+				bool should_show_carried = this->ShouldShowCarriedLine(v);
+				if (should_show_carried) {
+					DrawString(tr, GetString(STR_VEHICLE_STATUS_CARRYING_ROAD_VEHICLES, RVTransportCountOnCarrier(v)));
+					tr.top += GetCharacterHeight(FontSize::Normal);
+				}
+
 				if (this->vehicle_weight_ratio_line_shown != should_show_weight_ratio ||
 						this->vehicle_weight_ratio_line_shown != should_show_weight_ratio ||
 						this->vehicle_slots_line_shown != should_show_slots ||
 						this->vehicle_speed_restriction_line_shown != should_show_speed_restriction ||
-						this->vehicle_speed_adaptation_line_shown != should_show_speed_adaptation) {
+						this->vehicle_speed_adaptation_line_shown != should_show_speed_adaptation ||
+						this->vehicle_carried_line_shown != should_show_carried) {
 					const_cast<VehicleDetailsWindow *>(this)->ReInit();
 				}
 				break;
@@ -3600,6 +3950,8 @@ struct VehicleDetailsWindow : Window {
 			case WID_VD_INCREASE_SERVICING_INTERVAL:   // increase int
 			case WID_VD_DECREASE_SERVICING_INTERVAL: { // decrease int
 				const Vehicle *v = Vehicle::Get(this->window_number);
+				/* Nothing decays on a consist without an engine, so there is no interval to set. */
+				if (v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0) break;
 				int mod;
 				if (!v->ServiceIntervalIsPercent() && EconTime::UsingWallclockUnits()) {
 					mod = _ctrl_pressed ? 1 : 5;
@@ -3617,6 +3969,7 @@ struct VehicleDetailsWindow : Window {
 
 			case WID_VD_SERVICE_INTERVAL_DROPDOWN: {
 				const Vehicle *v = Vehicle::Get(this->window_number);
+				if (v->type == VehicleType::Train && Train::From(v)->tcache.cached_num_engines == 0) break;
 				ShowDropDownMenu(this,
 						GetServiceIntervalDropDownTexts(),
 						v->ServiceIntervalIsCustom() ? (v->ServiceIntervalIsPercent() ? 2 : 1) : 0, widget, 0, 0, 0, DDSF_SHARED);
@@ -3628,22 +3981,65 @@ struct VehicleDetailsWindow : Window {
 			case WID_VD_DETAILS_CAPACITY_OF_EACH:
 			case WID_VD_DETAILS_TOTAL_CARGO:
 			case WID_VD_DETAILS_PERFORMANCE:
+			case WID_VD_DETAILS_CARRIED:
 				this->SetWidgetsLoweredState(false,
 					WID_VD_DETAILS_CARGO_CARRIED,
 					WID_VD_DETAILS_TRAIN_VEHICLES,
 					WID_VD_DETAILS_CAPACITY_OF_EACH,
 					WID_VD_DETAILS_TOTAL_CARGO,
-					WID_VD_DETAILS_PERFORMANCE);
+					WID_VD_DETAILS_PERFORMANCE,
+					WID_VD_DETAILS_CARRIED);
 
 				this->tab = (TrainDetailsWindowTabs)(widget - WID_VD_DETAILS_CARGO_CARRIED);
 				this->SetDirty();
 				break;
+
+			case WID_VD_MATRIX: {
+				/* RoRo: a line which lists a carried road vehicle opens the window of that vehicle. Trains
+				 * list them on their "carried" tab and, under the wagon holding them, on every tab which
+				 * has a line per wagon; the other vehicle types have no such lines here. */
+				const Vehicle *v = Vehicle::Get(this->window_number);
+				if (v->type != VehicleType::Train) break;
+
+				const NWidgetBase *matrix = this->GetWidget<NWidgetBase>(WID_VD_MATRIX);
+				if (matrix == nullptr || pt.x < matrix->pos_x || pt.x >= matrix->pos_x + (int)matrix->current_x ||
+						pt.y < matrix->pos_y || pt.y >= matrix->pos_y + (int)matrix->current_y) {
+					break;
+				}
+				const int line_height = std::max<int>(this->resize.step_height, 1);
+				const int row = this->vscroll->GetPosition() + (pt.y - matrix->pos_y) / line_height;
+				const Vehicle *rv = (this->tab == TDW_TAB_CARRIED)
+						? GetTrainDetailsCarriedVehicleRow(this->window_number, row)
+						: GetTrainDetailsCarriedRowAtLine(row);
+				if (rv != nullptr) {
+					ShowVehicleViewWindow(rv);
+					ScrollMainWindowTo(rv->x_pos, rv->y_pos, rv->z_pos);
+				}
+				break;
+			}
+
+			case WID_VD_MIDDLE_DETAILS: {
+				/* RoRo: ships and aircraft have no tab bar, so their carried road vehicles are listed at
+				 * the bottom of this panel; a click on such a line opens that vehicle's window. */
+				const Vehicle *v = Vehicle::Get(this->window_number);
+				if (v->type != VehicleType::Road) {
+					const Vehicle *rv = CarriedVehicleAtPoint(v, pt);
+					if (rv != nullptr) {
+						ShowVehicleViewWindow(rv);
+						ScrollMainWindowTo(rv->x_pos, rv->y_pos, rv->z_pos);
+					}
+				}
+				break;
+			}
 
 			case WID_VD_EXTRA_ACTIONS: {
 				const Vehicle *v = Vehicle::Get(this->window_number);
 				DropDownList list;
 				if (v->type == VehicleType::Train) {
 					bool change_allowed = IsVehicleControlAllowed(v, _local_company);
+					/* A speed limit needs a reachable speed to be measured against, so a consist
+					 * without any engine cannot have one set. */
+					if (Train::From(v)->tcache.cached_num_engines == 0) change_allowed = false;
 					list.push_back(MakeDropDownListStringItem(STR_VEHICLE_DETAILS_REMOVE_SPEED_RESTRICTION, VDWDDA_CLEAR_SPEED_RESTRICTION, !change_allowed || Train::From(v)->speed_restriction == 0));
 					list.push_back(MakeDropDownListStringItem(STR_VEHICLE_DETAILS_SET_SPEED_RESTRICTION, VDWDDA_SET_SPEED_RESTRICTION, !change_allowed));
 				}
@@ -4225,6 +4621,18 @@ public:
 			AppendStringWithArgsInPlace(buffer, AdjustVehicleViewVelocityStringID(str), args);
 		};
 
+		/* RoRo: road vehicles taking part in road vehicle transport show their state. */
+		if ((v->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) != 0) {
+			AppendStringInPlace(buffer, STR_VEHICLE_STATUS_BEING_TRANSPORTED);
+			show_order_number();
+			return buffer.to_string();
+		}
+		if ((v->rv_transport_flags & RVTF_WAITING) != 0) {
+			AppendStringInPlace(buffer, STR_VEHICLE_STATUS_WAITING_TO_BE_TRANSPORTED);
+			show_order_number();
+			return buffer.to_string();
+		}
+
 		if (v->vehstatus.Test(VehState::Crashed)) {
 			AppendStringInPlace(buffer, STR_VEHICLE_STATUS_CRASHED);
 		} else if ((v->breakdown_ctr == 1 || (v->type == VehicleType::Train && Train::From(v)->flags.Any(VehicleRailFlagsIsBroken))) && !mouse_over_start_stop) {
@@ -4244,7 +4652,7 @@ public:
 				breakdown_str = STR_BREAKDOWN_TYPE_CRITICAL + w->breakdown_type;
 
 				if (w->breakdown_type == BREAKDOWN_LOW_SPEED) {
-					breakdown_param = std::min(w->First()->GetDisplayMaxSpeed(), w->breakdown_severity >> ((v->type == VehicleType::Train) ? 0 : 1));
+					breakdown_param = std::min(w->Primary()->GetDisplayMaxSpeed(), w->breakdown_severity >> ((v->type == VehicleType::Train) ? 0 : 1));
 				} else if (w->breakdown_type == BREAKDOWN_LOW_POWER) {
 					if (v->type == VehicleType::Train) {
 						uint32_t power, te;
@@ -4291,7 +4699,7 @@ public:
 			} else {
 				append(STR_VEHICLE_STATUS_TRAIN_REVERSING, v->GetDisplaySpeed());
 			}
-		} else if (v->type == VehicleType::Aircraft && Aircraft::From(v)->flags.Test(VehicleAirFlag::DestinationTooFar) && !v->current_order.IsType(OT_LOADING)) {
+		} else if (v->type == VehicleType::Aircraft && HasBit(Aircraft::From(v)->flags, VAF_DEST_TOO_FAR) && !v->current_order.IsType(OT_LOADING)) {
 			append(STR_VEHICLE_STATUS_AIRCRAFT_TOO_FAR);
 		} else { // vehicle is in a "normal" state, show current order
 			switch (v->current_order.GetType()) {
@@ -4343,6 +4751,25 @@ public:
 							v->current_order.GetDestination().ToStationID(), PackVelocity(v->GetDisplaySpeed(), v->type));
 					break;
 				}
+
+				case OT_GOTO_COUPLE:
+					text_colour = TextColour::LightBlue;
+					append(STR_VEHICLE_STATUS_HEADING_FOR_COUPLE_VEL, PackVelocity(v->GetDisplaySpeed(), v->type));
+					break;
+
+				case OT_WAIT_COUPLE:
+					text_colour = TextColour::LightBlue;
+					if (v->type == VehicleType::Train && TrainFitStation(Train::From(v))) {
+						append(STR_VEHICLE_STATUS_WAITING_FOR_COUPLE);
+					} else {
+						append(STR_VEHICLE_STATUS_WAITING_FOR_COUPLE_WRONG);
+					}
+					break;
+
+				case OT_DECOUPLE:
+					text_colour = TextColour::LightBlue;
+					append(STR_VEHICLE_STATUS_DECOUPLING);
+					break;
 
 				case OT_WAITING: {
 					append(STR_VEHICLE_STATUS_TRAIN_WAITING_TIMETABLE);
@@ -4426,16 +4853,17 @@ public:
 
 			case WID_VV_LOCATION: // center main view
 				if (_ctrl_pressed) {
-					ShowExtraViewportWindow(TileVirtXY(v->x_pos, v->y_pos));
+					const Vehicle *shown = RVTransportGetFollowVehicle(v);
+					ShowExtraViewportWindow(TileVirtXY(shown->x_pos, shown->y_pos));
 					this->HandleButtonClick(widget);
 				} else {
 					const Window *mainwindow = GetMainWindow();
 					if (click_count > 1 && mainwindow->viewport->zoom < ZoomLevel::DrawMap) {
-						/* main window 'follows' vehicle */
+						/* main window 'follows' vehicle (a carried road vehicle is followed at its carrier) */
 						mainwindow->viewport->follow_vehicle = v->index;
 					} else {
 						if (mainwindow->viewport->follow_vehicle == v->index) mainwindow->viewport->follow_vehicle = VehicleID::Invalid();
-						const Vehicle *moving_front = v->GetMovingFront();
+						const Vehicle *moving_front = RVTransportGetFollowVehicle(v)->GetMovingFront();
 						ScrollMainWindowTo(moving_front->x_pos, moving_front->y_pos, moving_front->z_pos);
 					}
 					this->HandleButtonClick(widget);
@@ -4800,7 +5228,7 @@ bool VehicleClicked(const Vehicle *v)
 	assert(v != nullptr);
 	if (!(_thd.place_mode & HT_VEHICLE)) return false;
 
-	v = v->First();
+	v = v->Primary();
 	if (!v->IsPrimaryVehicle()) return false;
 
 	return _thd.GetCallbackWnd()->OnVehicleSelect(v);
@@ -4837,7 +5265,7 @@ void StopGlobalFollowVehicle(const Vehicle *v)
 {
 	Window *w = FindWindowById(WindowClass::MainWindow, 0);
 	if (w != nullptr && w->viewport->follow_vehicle == v->index) {
-		const Vehicle *moving_front = v->GetMovingFront();
+		const Vehicle *moving_front = RVTransportGetFollowVehicle(v)->GetMovingFront();
 		ScrollMainWindowTo(moving_front->x_pos, moving_front->y_pos, moving_front->z_pos, true); // lock the main view on the vehicle's last position
 		w->viewport->CancelFollow(*w);
 	}

@@ -124,6 +124,19 @@ std::optional<std::string> GetClipboardContents()
 	return [ string UTF8String ];
 }
 
+/**
+ * Put text on the clipboard (COCOA).
+ *
+ * @param contents The text to put on the clipboard.
+ * @return Whether the clipboard accepted the text.
+ */
+bool SetClipboardContents(const std::string &contents)
+{
+	NSPasteboard *pb = [ NSPasteboard generalPasteboard ];
+	[ pb clearContents ];
+	return [ pb setString:[ NSString stringWithUTF8String:contents.c_str() ] forType:NSPasteboardTypeString ] == YES;
+}
+
 /** Set the application's bundle directory.
  *
  * This is needed since OS X application bundles do not have a

@@ -36,10 +36,13 @@ enum VarTypes {
 	SLE_FILE_STRING   = 10,
 	SLE_FILE_STRUCT   = 11,
 
-	/* End of values storable in save games */
-	SLE_FILE_TABLE_END = 12,
-
 	SLE_FILE_VEHORDERID = 12,
+	SLE_FILE_U128       = 13, ///< 128 bit unsigned integer, used for bit sets which need more than 64 bits.
+
+	/* End of values storable in save games; must be greater than every SLE_FILE_* value above.
+	 * NOTE: this value is part of the savegame format, so it has to match in sl/saveload_types.h
+	 * and saveload/saveload.h. */
+	SLE_FILE_TABLE_END = 14,
 
 	SLE_FILE_TYPE_MASK = 0xF, ///< Mask to get the file-type (and not any flags).
 	SLE_FILE_HAS_LENGTH_FIELD = 1 << 4, ///< Bit stored in savegame to indicate field has a length field for each entry.
@@ -54,6 +57,7 @@ enum VarTypes {
 	SLE_VAR_U32   =  6 << 4,
 	SLE_VAR_I64   =  7 << 4,
 	SLE_VAR_U64   =  8 << 4,
+	SLE_VAR_U128  = 10 << 4, ///< 128 bit unsigned integer.
 	SLE_VAR_NULL  =  9 << 4, ///< useful to write zeros in savegame.
 	SLE_VAR_STR   = 12 << 4, ///< string pointer
 	SLE_VAR_STRQ  = 13 << 4, ///< string pointer enclosed in quotes
@@ -76,6 +80,7 @@ enum VarTypes {
 	SLE_UINT32       = SLE_FILE_U32 | SLE_VAR_U32,
 	SLE_INT64        = SLE_FILE_I64 | SLE_VAR_I64,
 	SLE_UINT64       = SLE_FILE_U64 | SLE_VAR_U64,
+	SLE_UINT128      = SLE_FILE_U128 | SLE_VAR_U128,
 	SLE_CHAR         = SLE_FILE_I8  | SLE_VAR_CHAR,
 	SLE_STRINGID     = SLE_FILE_STRINGID | SLE_VAR_U32,
 	SLE_STRING       = SLE_FILE_STRING   | SLE_VAR_STR,

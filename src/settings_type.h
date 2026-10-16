@@ -177,6 +177,7 @@ struct DifficultySettings {
 	bool     economy;                               ///< how volatile is the economy
 	TrainFlipReversingAllowed train_flip_reverse_allowed; ///< which stations can the train reverse at?
 	bool     disasters;                             ///< are disasters enabled
+	bool     rain;                                  ///< is random rain enabled
 	uint8_t  town_council_tolerance;                ///< minimum required town ratings to be allowed to demolish stuff
 	bool     infinite_money;                        ///< whether spending money despite negative balance is allowed
 	bool     money_cheat_in_multiplayer;            ///< is the money cheat permitted for non-admin multiplayer clients
@@ -348,6 +349,7 @@ struct GUISettings : public TimeSettings {
 	uint8_t     loading_indicators;                              ///< show loading indicators
 	DefaultRailRoadType default_rail_road_type;                  ///< the default rail type for the rail/road/tram GUI
 	uint8_t     default_road_type;                               ///< the default road/tram types for the road/tram GUI
+	uint8_t     default_air_type;                              ///< the default air type for the air GUI
 	uint8_t     toolbar_pos;                                     ///< position of toolbars, 0=left, 1=center, 2=right
 	uint8_t     statusbar_pos;                                   ///< position of statusbar, 0=left, 1=center, 2=right
 	uint8_t     window_snap_radius;                              ///< windows snap at each other if closer than this
@@ -423,6 +425,20 @@ struct GUISettings : public TimeSettings {
 	bool        station_dragdrop;                                ///< whether drag and drop is enabled for stations
 	bool        station_show_coverage;                           ///< whether to highlight coverage area
 	bool        persistent_buildingtools;                        ///< keep the building tools active after usage
+	bool   blueprint_paste_rail;             ///< Blueprint patch: paste rail transport infrastructure
+	bool   blueprint_paste_road;             ///< Blueprint patch: paste road transport infrastructure
+	bool   blueprint_paste_water;            ///< Blueprint patch: paste water transport infrastructure
+	bool   blueprint_paste_air;              ///< Blueprint patch: paste airports
+	bool   blueprint_convert_railtype;       ///< Blueprint patch: convert pasted rail to the current rail type
+	bool   blueprint_mirror_signals;         ///< Blueprint patch: mirror pasted signals
+	bool   blueprint_upgrade_bridges;        ///< Blueprint patch: upgrade pasted bridges
+	bool   blueprint_with_stations;          ///< Blueprint patch: paste stations and waypoints too
+	uint8_t blueprint_terraform_mode;         ///< Blueprint patch: terraforming while pasting (0 none, 1 minimal, 2 full)
+	bool   blueprint_undo_terrain;           ///< Blueprint patch: restore the landscape too when undoing a paste
+	bool   blueprint_undo_rail;              ///< Blueprint patch: undo rail infrastructure
+	bool   blueprint_undo_road;              ///< Blueprint patch: undo road infrastructure
+	bool   blueprint_undo_water;             ///< Blueprint patch: undo water infrastructure
+	bool   blueprint_undo_air;               ///< Blueprint patch: undo airports
 	uint32_t    last_newgrf_count;                               ///< the numbers of NewGRFs we found during the last scan
 	uint8_t     missing_strings_threshold;                       ///< the number of missing strings before showing the warning
 	uint8_t     graph_line_thickness;                            ///< the thickness of the lines in the various graph guis
@@ -633,6 +649,7 @@ struct NetworkSettings {
 	uint8_t       max_clients;                            ///< maximum amount of clients
 	CalTime::Year restart_game_year;                      ///< year the server restarts
 	uint16_t      restart_hours;                          ///< number of hours to run the server before automatic restart
+	uint16_t      invite_code_keepalive_interval;         ///< interval, in minutes, of the invite-code registration self-check with the Game Coordinator; 0 disables the check
 	uint8_t       min_active_clients;                     ///< minimum amount of active clients to unpause the game
 	bool        reload_cfg;                               ///< reload the config file before restarting
 	std::string last_joined;                              ///< Last joined server
@@ -852,6 +869,9 @@ struct VehicleSettings {
 	uint8_t                roadveh_slope_steepness;               ///< Steepness of hills for road vehicles when using realistic acceleration
 	bool                   wagon_speed_limits;                    ///< enable wagon speed limits
 	bool                   train_speed_adaptation;                ///< Faster trains slow down when behind slower trains
+	uint8_t                rv_transport_carrier_parts;            ///< Carrying road vehicles (RoRo): which carrier parts may take them (RVTransportCarrierParts)
+	uint16_t               rv_transport_unload_warn_days;         ///< Carrying road vehicles (RoRo): warn when a carried road vehicle was not unloaded for this many days (0 = no warning)
+	bool                   rv_transport_enabled;                  ///< Carrying road vehicles (RoRo): may road vehicles be loaded onto carriers at all (unloading always works)
 	bool                   slow_road_vehicles_in_curves;          ///< Road vehicles slow down in curves.
 	bool                   disable_elrails;                       ///< when true, the elrails are disabled
 	UnitID                 max_trains;                            ///< max trains in game per company
@@ -880,6 +900,8 @@ struct VehicleSettings {
 	bool                   roadveh_articulated_overtaking;        ///< enable articulated road vehicles overtaking other vehicles
 	bool                   roadveh_cant_quantum_tunnel;           ///< enable or disable vehicles quantum tunnelling through other vehicles when blocked
 	bool                   drive_through_train_depot;             ///< enable drive-through train depot emulation
+	bool                   train_service_at_station;              ///< allow trains to be serviced at stations (requires infrastructure maintenance)
+	bool                   train_no_depot_temporary_stop;         ///< forbid trains from temporarily stopping in depots and routing through them
 	uint16_t               through_load_speed_limit;              ///< maximum speed for through load
 	uint16_t               rail_depot_speed_limit;                ///< maximum speed entering/existing rail depots
 	bool                   non_leading_engines_keep_name;         ///< allow engines moved to a non-leading position to retain their custom name
@@ -930,7 +952,10 @@ struct EconomySettings {
 	bool     station_noise_level;            ///< build new airports when the town noise level is still within accepted limits
 	uint16_t town_noise_population[3];       ///< population to base decision on noise evaluation (@see town_council_tolerance)
 	bool     infrastructure_sharing[4];      ///< enable infrastructure sharing for rail/road/water/air
+	bool     allow_coupling_other_company_trains; ///< allow coupling with trains owned by other companies
 	uint     sharing_fee[4];                 ///< fees for infrastructure sharing for rail/road/water/air
+	bool     infrastructure_sharing_rv;      ///< enable road vehicle transport between companies
+	uint     rv_sharing_fee;                 ///< fee for road vehicle transport between companies, per 1000 tonnes per 8 tiles
 	bool     sharing_payment_in_debt;        ///< allow fee payment for companies with more loan than money (switch off to prevent MP exploits)
 	bool     allow_town_level_crossings;     ///< towns are allowed to build level crossings
 	TownTunnelMode town_build_tunnels;       ///< if/when towns are allowed to build road tunnels
@@ -990,6 +1015,7 @@ struct StationSettings {
 	bool     truncate_cargo;                   ///< enable automatic truncation of station cargo
 	bool     distant_join_stations;            ///< allow to join non-adjacent stations
 	bool     never_expire_airports;            ///< never expire airports
+	bool     allow_modify_airports;            ///< allow change the layout of airports
 	uint8_t  station_spread;                   ///< amount a station may spread
 	uint8_t  catchment_increase;               ///< amount by which station catchment is increased
 	bool     cargo_class_rating_wait_time;     ///< station rating tolerance to time since last cargo pickup depends on cargo class

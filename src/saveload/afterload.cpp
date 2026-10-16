@@ -30,6 +30,7 @@
 #include "../train.h"
 #include "../station_base.h"
 #include "../waypoint_base.h"
+#include "../roadveh_transport.h"
 #include "../roadstop_base.h"
 #include "../tunnelbridge.h"
 #include "../tunnelbridge_map.h"
@@ -37,6 +38,10 @@
 #include "../elrail_func.h"
 #include "../signs_func.h"
 #include "../aircraft.h"
+#include "../air.h"
+#include "../air_map.h"
+#include "../airport_gui.h"
+#include "../sl/vehicle_sl.h"
 #include "../object_map.h"
 #include "../object_base.h"
 #include "../tree_map.h"
@@ -77,6 +82,7 @@
 #include "../timer/timer.h"
 #include "../timer/timer_game_tick.h"
 #include "../picker_func.h"
+#include "../linkgraph/linkgraph.h"
 #include "../pathfinder/water_regions.h"
 #include "../tile_cmd.h"
 
@@ -309,6 +315,27 @@ static void InitializeWindowsAndCaches()
 	}
 	for (RoadVehicle *rv : RoadVehicle::IterateFrontOnly()) {
 		rv->CargoChanged();
+	}
+
+	/* RoRo: make sure no road vehicle is left carried by a carrier which is not there any more. */
+	RVTransportValidateAfterLoad();
+
+	/* Road vehicles in a tunnel carry RVSB_WORMHOLE as their state and are hidden, and
+	 * RoadVehicle::GetCurrentMaxSpeed() relies on that: a wormhole vehicle which is not hidden
+	 * is expected to stand on a bridge, and the bridge type of a tunnel does not exist. A
+	 * savegame can hold a road vehicle which breaks that pairing (it is not restored anywhere
+	 * else, and the historic "vehicles in a tunnel" pass is limited to SLV_152 and earlier),
+	 * which aborts the first tick after loading. Put such a vehicle back into the tunnel it is
+	 * standing in; at a tunnel entrance the frame decides whether it is visible, so leave that
+	 * to the vehicle itself. */
+	for (Vehicle *v : Vehicle::Iterate()) {
+		if (v->type != VehicleType::Road) continue;
+		RoadVehicle *rv = RoadVehicle::From(v);
+		if (rv->state != RVSB_WORMHOLE || v->vehstatus.Test(VehState::Hidden)) continue;
+		if (!IsTunnelTile(v->tile) || !IsTunnelTile(TileVirtXY(v->x_pos, v->y_pos))) continue;
+
+		v->vehstatus.Set(VehState::Hidden);
+		v->UpdateIsDrawn();
 	}
 
 	RecomputePrices();
@@ -659,6 +686,151 @@ void IterateVehicleAndOrderListOrders(F func)
 }
 
 /**
+ * Whether the savegame predates the multi-tile airports and the new aircraft controller.
+ * Savegames written by this patch pack store the legacy aircraft position unless they use the new
+ * aircraft controller; savegames from upstream do not use the patch pack tables, so use the
+ * savegame version for those.
+ * @return true iff the savegame uses the old airport/aircraft format.
+ */
+static bool IsSavegameBeforeMultitileAirports()
+{
+	if (SlXvGetUpstreamVersion() != SL_MIN_VERSION) return DidLoadLegacyAircraftData();
+	return IsSavegameVersionBefore(SLV_CUSTOM_SUBSIDY_DURATION);
+}
+
+/**
+ * Cargo types have been extended from 64 to 128 slots and the built-in "Vehicles (Road)" cargo has
+ * moved from slot NUM_GRF_CARGO - 2 to slot RV_TRANSPORT_CARGO_SLOT. Savegames written before that
+ * change store the old slot, so remap all cargo references in them.
+ */
+static void FixupCargoTypes128()
+{
+	if (SlXvIsFeaturePresent(XSLFI_CARGO_TYPES_128)) return;
+	if (SlXvIsFeatureMissing(XSLFI_ROAD_VEH_TRANSPORT)) return;
+
+	static constexpr CargoType old_slot{NUM_GRF_CARGO - 2}; ///< Cargo slot the built-in "Vehicles (Road)" cargo used to occupy.
+	static constexpr CargoType new_slot{RV_TRANSPORT_CARGO_SLOT}; ///< Cargo slot the built-in "Vehicles (Road)" cargo occupies now.
+
+	/* If a NewGRF claims the old slot, it never held the built-in cargo in this savegame. */
+	if (CargoSpec::Get(old_slot)->grffile != nullptr) return;
+
+	auto remap = [](CargoType &cargo) {
+		if (cargo == old_slot) cargo = new_slot;
+	};
+
+	for (Vehicle *v : Vehicle::Iterate()) {
+		remap(v->cargo_type);
+	}
+
+	IterateVehicleAndOrderListOrders([&](Order *order) {
+		CargoType refit_cargo = order->GetRefitCargo();
+		if (refit_cargo == old_slot) order->SetRefit(new_slot);
+		order->MoveCargoTypeFlags(old_slot, new_slot);
+	});
+
+	for (Subsidy *s : Subsidy::Iterate()) remap(s->cargo_type);
+
+	for (LinkGraph *lg : LinkGraph::Iterate()) {
+		if (lg->Cargo() == old_slot) lg->SetCargo(new_slot);
+	}
+
+	for (Town *t : Town::Iterate()) {
+		for (Town::SuppliedCargo &sc : t->supplied) remap(sc.cargo);
+		for (Town::AcceptedCargo &ac : t->accepted) remap(ac.cargo);
+	}
+
+	for (Industry *i : Industry::Iterate()) {
+		for (uint j = 0; j < i->produced_cargo_count; j++) remap(i->produced[j].cargo);
+		for (uint j = 0; j < i->accepted_cargo_count; j++) remap(i->accepted[j].cargo);
+	}
+
+	for (Company *c : Company::Iterate()) {
+		std::swap(c->cur_economy.delivered_cargo[old_slot], c->cur_economy.delivered_cargo[new_slot]);
+		for (CompanyEconomyEntry &e : c->old_economy) {
+			std::swap(e.delivered_cargo[old_slot], e.delivered_cargo[new_slot]);
+		}
+	}
+
+	for (Station *st : Station::Iterate()) {
+		std::swap(st->goods[old_slot], st->goods[new_slot]);
+
+		if (st->always_accepted.Test(old_slot)) {
+			st->always_accepted.Reset(old_slot);
+			st->always_accepted.Set(new_slot);
+		}
+
+		if (st->station_cargo_history_cargoes.Test(old_slot)) {
+			/* The history of each cargo is stored in the order of the cargo slots, so the entry of
+			 * the old slot has to be moved to the position the new slot takes in that order. */
+			size_t rank = CountBits(st->station_cargo_history_cargoes.base() & ((Uint128{1} << to_underlying(old_slot)) - Uint128{1}));
+			if (rank < st->station_cargo_history.size()) {
+				auto entry = std::move(st->station_cargo_history[rank]);
+				st->station_cargo_history.erase(st->station_cargo_history.begin() + rank);
+				st->station_cargo_history.push_back(std::move(entry));
+			}
+			st->station_cargo_history_cargoes.Reset(old_slot);
+			st->station_cargo_history_cargoes.Set(new_slot);
+		}
+	}
+}
+
+/**
+ * Validate the persisted transient couple target/claim state of every consist.
+ * Claims referencing vehicles that are gone, no longer approaching, or whose
+ * counterpart no longer points back are cleared, so all peers (re)starting
+ * from the same save derive identical claim state.
+ */
+static void AfterLoadValidateCoupleClaims()
+{
+	if (SlXvIsFeatureMissing(XSLFI_COUPLE_CLAIM_STATE)) return;
+
+	/* Restore the persisted claim state onto the train primaries. */
+	SlApplyCoupleClaims();
+
+	/* Claim data written by the same build (current feature version, e.g. the
+	 * map snapshot a joining client downloads) is authoritative: it mirrors
+	 * the live server's couple state, including halves that look one-sided
+	 * because the counterpart is re-derived during play. Wiping "inconsistent"
+	 * entries here would make the joining client drop state the server still
+	 * acts on, and re-derive it differently -> desync on join. Only sanitize
+	 * migrated data from older feature versions. */
+	if (_sl_xv_feature_versions[XSLFI_COUPLE_CLAIM_STATE] >= 2) return;
+
+	for (Train *t : Train::Iterate()) {
+		if (!t->IsPrimaryVehicle()) continue;
+
+		if (t->couple_target != VehicleID::Invalid()) {
+			Train *tgt = Train::GetIfValid(t->couple_target);
+			bool ok = tgt != nullptr && tgt->Primary() != t && tgt->Primary()->current_order.IsType(OT_WAIT_COUPLE)
+					&& !tgt->Primary()->vehstatus.Test(VehState::Crashed);
+			if (ok) {
+				Train *claimant = Train::GetIfValid(tgt->Primary()->couple_claimant);
+				ok = claimant == t && claimant->current_order.IsType(OT_GOTO_COUPLE)
+						&& !claimant->vehstatus.Test(VehState::Crashed);
+			}
+			if (!ok) t->couple_target = VehicleID::Invalid();
+		}
+
+		if (t->couple_claimant != VehicleID::Invalid()) {
+			Train *claimant = Train::GetIfValid(t->couple_claimant);
+			bool ok = claimant != nullptr && claimant != t && claimant->current_order.IsType(OT_GOTO_COUPLE)
+					&& !claimant->vehstatus.Test(VehState::Crashed);
+			if (ok) {
+				Train *tgt = Train::GetIfValid(claimant->couple_target);
+				ok = tgt != nullptr && tgt->Primary() == t;
+			}
+			if (!ok) {
+				t->couple_claimant = VehicleID::Invalid();
+				t->couple_claim_cost = 0;
+			}
+		}
+
+		if (t->couple_body_hold && !t->current_order.IsType(OT_WAIT_COUPLE)) t->couple_body_hold = false;
+	}
+
+}
+
+/**
  * Perform a (large) amount of savegame conversion *magic* in order to
  * load older savegames and to fill the caches for various purposes.
  * @return True iff conversion went without a problem.
@@ -690,6 +862,8 @@ bool AfterLoadGame()
 
 	GamelogTestRevision();
 	GamelogTestMode();
+
+	FixupCargoTypes128();
 
 	RebuildTownKdtree();
 	RebuildStationKdtree();
@@ -2691,7 +2865,13 @@ bool AfterLoadGame()
 	if (IsEffectiveUpstreamSavegameVersionBefore(SLV_BUOYS_AT_0_0)) {
 		/* Tile for no orders is now INVALID_TILE instead of 0. */
 		for (Vehicle *v : Vehicle::Iterate()) {
-			if (v->dest_tile == 0) v->SetDestTile(INVALID_TILE);
+			if (v->dest_tile != TileIndex{}) continue;
+			if (v->type == VehicleType::Aircraft) {
+				/* Aircraft dest_tile is managed by the aircraft controller. */
+				v->dest_tile = INVALID_TILE;
+				continue;
+			}
+			v->SetDestTile(INVALID_TILE);
 		}
 	}
 
@@ -2935,8 +3115,8 @@ bool AfterLoadGame()
 	if (IsSavegameVersionBefore(SLV_140)) {
 		for (Station *st : Station::Iterate()) {
 			if (st->airport.tile != INVALID_TILE) {
-				st->airport.w = st->airport.GetSpec()->size_x;
-				st->airport.h = st->airport.GetSpec()->size_y;
+				st->airport.w = st->airport.GetSpec()->layouts[0].size_x;
+				st->airport.h = st->airport.GetSpec()->layouts[0].size_y;
 			}
 		}
 	}
@@ -2982,23 +3162,106 @@ bool AfterLoadGame()
 		}
 	}
 
-	/* In old versions it was possible to remove an airport while a plane was
-	 * taking off or landing. This gives all kind of problems when building
-	 * another airport in the same station so we don't allow that anymore.
-	 * For old savegames with such aircraft we just throw them in the air and
-	 * treat the aircraft like they were flying already. */
-	if (IsSavegameVersionBefore(SLV_146)) {
+	/* Data structure on airport has changed. */
+	if (IsSavegameBeforeMultitileAirports()) {
+		/* Old saves stored the airport tile gfx in m5; move it to m4 and
+		 * rebuild the tiles from the airport specs. */
+		for (TileIndex t(0); t < Map::Size(); t++) {
+			if (!IsTileType(t, TileType::Station)) continue;
+			if (GetStationType(t) != StationType::Airport) continue;
+			Tile(t).m4() = Tile(t).m5();
+			Tile(t).m5() = 0;
+		}
+		AfterLoadSetAirportTileTypes();
+	} else {
+		for (Station *st : Station::Iterate()) {
+			st->UpdateAirportDataStructure();
+		}
+	}
+
+	if (IsSavegameBeforeMultitileAirports()) {
+		/* Delete already crashed zeppelins. */
+		DeleteCrashedZeppelins();
+
+		/* We have to redeploy aircraft. */
 		for (Aircraft *v : Aircraft::Iterate()) {
-			if (!v->IsNormalAircraft()) continue;
-			Station *st = GetTargetAirportIfValid(v);
-			if (st == nullptr && v->state != FLYING) {
-				v->state = FLYING;
-				UpdateAircraftCache(v);
-				AircraftNextAirportPos_and_Order(v);
-				/* get aircraft back on running altitude */
-				if (!v->vehstatus.Test(VehState::Crashed)) {
-					GetAircraftFlightLevelBounds(v, &v->z_pos, nullptr);
-					SetAircraftPosition(v, v->x_pos, v->y_pos, GetAircraftFlightLevel(v));
+			if (!v->IsPrimaryVehicle()) continue;
+
+			Aircraft *u = v->Next(); // shadow
+			assert(u != nullptr);
+			v->flags = 0;
+
+			/* Assign dest_tile. */
+			v->dest_tile = TileIndex{};
+
+			int z = v->z_pos;
+			if (v->vehstatus.Test(VehState::Hidden)) {
+				assert(IsHangarTile(v->tile));
+				/* Keep aircraft in hangars. */
+				v->state = AS_HANGAR;
+				v->dest_tile = v->tile;
+				v->direction = u->direction = DiagDirToDir(GetHangarDirection(v->tile));
+				v->trackdir = u->trackdir = DiagDirToDiagTrackdir(GetHangarDirection(v->tile));
+				v->next_trackdir = INVALID_TRACKDIR;
+				v->wait_counter = 0;
+				v->x_pos = (v->x_pos & ~0xF) + 8;
+				v->y_pos = (v->y_pos & ~0xF) + 8;
+				v->current_order.Free();
+				ProcessOrders(v);
+			} else {
+				/* Set the state and position first: leaving the station below resolves sprites. */
+				v->state = AS_FLYING_NO_DEST;
+				v->next_trackdir = INVALID_TRACKDIR;
+				v->trackdir = v->Next()->trackdir = TRACKDIR_X_NE;
+				v->direction = u->direction = Direction::NE;
+				v->x_pos = (v->x_pos & ~0xF) + 8;
+				v->y_pos = (v->y_pos & ~0xF) + 8;
+				v->tile = TileVirtXY(v->x_pos, v->y_pos);
+
+				if (v->current_order.IsType(OT_LOADING)) {
+					v->vehicle_flags.Reset(VehicleFlag::LoadingFinished);
+					v->LeaveStation();
+				}
+
+				v->current_order.Free();
+				GetAircraftFlightLevelBounds(v, nullptr, &z);
+				ProcessOrders(v);
+				AircraftUpdateNextPos(v);
+			}
+
+			SetAircraftPosition(v, v->x_pos, v->y_pos, z);
+		}
+
+		InitializeAirportGui();
+	}
+
+	if (IsSavegameBeforeMultitileAirports()) {
+		/* Update go to hangar orders so they store the DepotID instead of StationID. */
+		for (Aircraft *a : Aircraft::Iterate()) {
+			if (!a->IsNormalAircraft()) continue;
+
+			/* Update current order. */
+			if (a->current_order.IsType(OT_GOTO_DEPOT)) {
+				Station *st = Station::GetIfValid(a->current_order.GetDestination().ToStationID());
+				Depot *dep = (st != nullptr) ? st->airport.hangar : nullptr;
+				if (dep == nullptr) {
+					/* Aircraft heading to a removed hangar. */
+					a->current_order.MakeDummy();
+				} else {
+					a->current_order.SetDestination(dep->index);
+				}
+			}
+
+			/* Update each aircraft order list once. */
+			if (a->orders == nullptr) continue;
+			if (a->orders->GetFirstSharedVehicle() != a) continue;
+
+			for (Order *order : a->Orders()) {
+				if (!order->IsType(OT_GOTO_DEPOT)) continue;
+				StationID station_id = order->GetDestination().ToStationID();
+				Station *st = Station::GetIfValid(station_id);
+				if (st != nullptr && st->airport.hangar != nullptr) {
+					order->SetDestination(st->airport.hangar->index);
 				}
 			}
 		}
@@ -3434,7 +3697,7 @@ bool AfterLoadGame()
 				 * Set it to the reliability of the front engine or the maximum, whichever is lower. */
 				const Engine *e = Engine::Get(v->engine_type);
 				v->reliability_spd_dec = e->reliability_spd_dec;
-				v->reliability = std::min(v->First()->reliability, e->reliability);
+				v->reliability = std::min(v->Primary()->reliability, e->reliability);
 			}
 		}
 	}
@@ -3477,7 +3740,7 @@ bool AfterLoadGame()
 	if (SlXvIsFeatureMissing(XSLFI_CONSIST_BREAKDOWN_FLAG)) {
 		for (Train *v : Train::Iterate()) {
 			if (v->breakdown_ctr != 0 && (v->IsEngine() || v->IsMultiheaded())) {
-				v->First()->flags.Set(VehicleRailFlag::ConsistBreakdown);
+				v->Primary()->flags.Set(VehicleRailFlag::ConsistBreakdown);
 			}
 		}
 	}
@@ -3561,9 +3824,6 @@ bool AfterLoadGame()
 	/* The center of train vehicles was changed, fix up spacing. */
 	if (IsSavegameVersionBefore(SLV_164)) FixupTrainLengths();
 
-	/* In version 2.2 of the savegame, we have new airports, so status of all aircraft is reset.
-	 * This has to be called after all map array updates */
-	if (IsSavegameVersionBefore(SLV_2, 2)) UpdateOldAircraft();
 
 	if (SlXvIsFeaturePresent(XSLFI_SPRINGPP)) {
 		// re-arrange vehicle_flags
@@ -4107,6 +4367,7 @@ bool AfterLoadGame()
 		for (Station *st : Station::Iterate()) UpdateStationAcceptance(st, false);
 	}
 
+
 	// setting moved from game settings to company settings
 	if (SlXvIsFeaturePresent(XSLFI_ORDER_OCCUPANCY, 1, 1)) {
 		for (Company *c : Company::Iterate()) {
@@ -4256,7 +4517,7 @@ bool AfterLoadGame()
 	if (SlXvIsFeatureMissing(XSLFI_CONSIST_SPEED_RD_FLAG)) {
 		for (Train *t : Train::Iterate()) {
 			if ((t->track & TRACK_BIT_WORMHOLE && !t->vehstatus.Test(VehState::Hidden)) || t->track == TRACK_BIT_DEPOT) {
-				t->First()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
+				t->Primary()->flags.Set(VehicleRailFlag::ConsistSpeedReduction);
 			}
 		}
 	}
@@ -4394,7 +4655,10 @@ bool AfterLoadGame()
 				if (!(ds.GetScheduledDispatchStartTick() >= 0 && ds.IsScheduledDispatchValid()) && ds.GetScheduledDispatch().empty()) {
 					order_list->GetScheduledDispatchScheduleSet().clear();
 				} else {
-					VehicleOrderID idx = order_list->GetFirstSharedVehicle()->GetFirstWaitingLocation(false);
+					const Vehicle *first_shared = order_list->GetFirstSharedVehicle();
+					/* Player-created schedule lists may have no vehicles at all. */
+					if (first_shared == nullptr) continue;
+					VehicleOrderID idx = first_shared->GetFirstWaitingLocation(false);
 					if (idx != INVALID_VEH_ORDER_ID) {
 						order_list->GetOrderAt(idx)->SetDispatchScheduleIndex(0);
 					}
@@ -4666,6 +4930,8 @@ bool AfterLoadGame()
 	}
 
 	UpdateCargoScalers();
+
+	AfterLoadValidateCoupleClaims();
 
 	if (_networking && !_network_server) {
 		SlProcessVENC();

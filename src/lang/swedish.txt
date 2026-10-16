@@ -6050,3 +6050,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Märkesf
 STR_BADGE_CONFIG_PREVIEW                                        :Förhandsvisning
 STR_BADGE_CONFIG_NAME                                           :Namn
 STR_BADGE_FILTER_ANY_LABEL                                      :Någon {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} är {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Ritning
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Välj ett område med din egen infrastruktur att kopiera till den aktiva ritningsplatsen
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Klistra in innehållet i den aktiva ritningsplatsen på kartan
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Klistra in järnvägsinfrastruktur
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Klistra in väginfrastruktur
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Klistra in sjöfartsinfrastruktur
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Klistra in flyginfrastruktur
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Omvandla järnvägsinfrastruktur till den nuvarande rälstypen vid inklistring
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Spegla signaler vid inklistring
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Uppgradera broar vid inklistring
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Klistra även in stationer och vägpunkter
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraformera marken vid inklistring. Klicka för att växla: ingen terraformering, minimal terraformering, full terraformering
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Nuvarande transformation, klicka för att återställa
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rotera ritningen 90 grader moturs
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rotera ritningen 90 grader medurs
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Spegla ritningen längs NV-SÖ-axeln
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Spegla ritningen längs NÖ-SV-axeln
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Höjdförskjutning vid inklistring
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Öka höjden som ritningen klistras in på
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Minska höjden som ritningen klistras in på
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Information om Blueprint-patchen
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Det markerade området innehåller ingen infrastruktur som ägs av ditt företag
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Det markerade området är för stort att kopiera
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Ritningen är för stor att klistra in i ett flerspelarspel
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Visa ritningsverktygsfältet för att kopiera och klistra in infrastruktur
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Visa ritningsverktygsfältet för att kopiera och klistra in infrastruktur
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Kan inte klistra in ritningen här...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Byt till den här ritningsplatsen. Om platsen har ett namn eller innehåll visas namnet och en förhandsvisning när muspekaren hålls över. Dubbelklicka för att byta namn
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportera
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importera
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-patch, version {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Exportera aktiv plats...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Exportera alla platser till fil...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importera till aktiv plats...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importera alla platser från fil...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Ritningen kunde inte kopieras till urklipp
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Urklipp är tomt
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Exportera ritning
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importera ritning
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopiera till urklipp
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Klistra in från urklipp
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Ersätta ritningen?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Den aktiva platsen innehåller redan en ritning. Vill du ersätta den?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Ersätta alla ritningar?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Detta ersätter innehållet i alla ritningsplatser. Vill du fortsätta?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Byt namn på ritning
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Exportera alla ritningar till fil
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importera alla ritningar från fil
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Ersätta fil?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}En fil med det namnet finns redan. Vill du ersätta den?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Exportera eller importera ritningar
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klicka på en fil för att välja den, eller en mapp för att öppna den
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Texten är ingen giltig ritning
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ogiltigt filnamn
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Ritningsfilen hittades inte, eller är inte en giltig ritningsuppsättning
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Ritningsfilen kunde inte skrivas

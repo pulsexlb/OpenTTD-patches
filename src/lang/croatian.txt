@@ -5328,3 +5328,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Nacrt
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Odaberite područje vlastite infrastrukture za kopiranje u aktivni utor nacrta
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Zalijepi sadržaj aktivnog utora nacrta na kartu
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Zalijepi željezničku infrastrukturu
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Zalijepi cestovnu infrastrukturu
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Zalijepi vodnu infrastrukturu
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Zalijepi zračnu infrastrukturu
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Pretvori željezničku infrastrukturu u trenutni tip tračnica pri lijepljenju
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Zrcali signale pri lijepljenju
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Nadogradi mostove pri lijepljenju
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Zalijepi i postaje i međutočke
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Teraformiraj teren pri lijepljenju. Kliknite za promjenu: bez teraformiranja, minimalno teraformiranje, potpuno teraformiranje
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Trenutna transformacija, kliknite za poništavanje
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rotiraj nacrt za 90 stupnjeva suprotno od kazaljke na satu
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rotiraj nacrt za 90 stupnjeva u smjeru kazaljke na satu
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Zrcali nacrt oko osi SZ-JI
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Zrcali nacrt oko osi SI-JZ
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Pomak visine pri lijepljenju
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Povećaj visinu na kojoj se nacrt lijepi
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Smanji visinu na kojoj se nacrt lijepi
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informacije o zakrpi Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Odabrano područje ne sadrži infrastrukturu vaše tvrtke
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Odabrano područje je preveliko za kopiranje
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Nacrt je prevelik za lijepljenje u igri za više igrača
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Prikaži alatnu traku nacrta za kopiranje i lijepljenje infrastrukture
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Prikaži alatnu traku nacrta za kopiranje i lijepljenje infrastrukture
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Nacrt se ovdje ne može zalijepiti...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Prebaci na ovaj utor nacrta. Ako utor ima naziv ili sadržaj, prelazak mišem prikazuje naziv i pregled. Dvoklik za preimenovanje
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Izvezi
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Uvezi
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Izvoz/Uvoz
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Zakrpa Blueprint, verzija {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Izvezi aktivni utor...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Izvezi sve utore u datoteku...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Uvezi u aktivni utor...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Uvezi sve utore iz datoteke...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Nacrt se nije mogao kopirati u međuspremnik
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Međuspremnik je prazan
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Izvoz nacrta
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Uvoz nacrta
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopiraj u međuspremnik
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Zalijepi iz međuspremnika
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Zamijeniti nacrt?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Aktivni utor već sadrži nacrt. Želite li ga zamijeniti?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Zamijeniti sve nacrte?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Ovo će zamijeniti sadržaj svih utora nacrta. Želite li nastaviti?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Preimenuj nacrt
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Izvezi sve nacrte u datoteku
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Uvezi sve nacrte iz datoteke
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Zamijeniti datoteku?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Datoteka s tim nazivom već postoji. Želite li je zamijeniti?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Izvezi ili uvezi nacrte
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Kliknite datoteku da je odaberete, ili mapu da je otvorite
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Tekst nije valjani nacrt
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nevaljani naziv datoteke
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Datoteka s nacrtima nije pronađena, ili nije valjani skup nacrta
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Datoteka s nacrtima nije mogla biti zapisana

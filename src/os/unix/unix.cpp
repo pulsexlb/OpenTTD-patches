@@ -291,6 +291,15 @@ std::optional<std::string> GetClipboardContents()
 
 	return std::nullopt;
 }
+
+bool SetClipboardContents([[maybe_unused]] const std::string &contents)
+{
+#ifdef WITH_SDL2
+	return SDL_SetClipboardText(contents.c_str()) == 0;
+#else
+	return false;
+#endif
+}
 #endif
 
 

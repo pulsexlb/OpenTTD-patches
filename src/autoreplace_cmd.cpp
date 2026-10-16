@@ -36,7 +36,6 @@
 
 extern void ChangeVehicleViewports(VehicleID from_index, VehicleID to_index);
 extern void ChangeVehicleNews(VehicleID from_index, VehicleID to_index);
-extern void ChangeVehicleViewWindow(VehicleID from_index, VehicleID to_index);
 
 /**
  * Figure out if two engines got at least one type of cargo in common (refitting if needed)
@@ -185,7 +184,7 @@ static bool VerifyAutoreplaceRefitForOrders(const Vehicle *v, EngineID engine_ty
 	CargoTypes union_refit_mask_a = GetUnionOfArticulatedRefitMasks(v->engine_type, false);
 	CargoTypes union_refit_mask_b = GetUnionOfArticulatedRefitMasks(engine_type, false);
 
-	const Vehicle *u = (v->type == VehicleType::Train) ? v->First() : v;
+	const Vehicle *u = (v->type == VehicleType::Train) ? v->Primary() : v;
 	for (const Order *o : u->Orders()) {
 		if (!o->IsRefit() || o->IsAutoRefit()) continue;
 		CargoType cargo_type = o->GetRefitCargo();
@@ -207,7 +206,7 @@ static int GetIncompatibleRefitOrderIdForAutoreplace(const Vehicle *v, EngineID 
 {
 	CargoTypes union_refit_mask = GetUnionOfArticulatedRefitMasks(engine_type, false);
 
-	const Vehicle *u = (v->type == VehicleType::Train) ? v->First() : v;
+	const Vehicle *u = (v->type == VehicleType::Train) ? v->Primary() : v;
 
 	const OrderList *orders = u->orders;
 	if (orders == nullptr) return -1;
@@ -316,7 +315,7 @@ static CommandCost BuildReplacementVehicleRefitFailure(EngineID e, const Vehicle
 {
 	if (!IsLocalCompany() || !flags.Test(DoCommandFlag::Execute)) return CommandCost();
 
-	VehicleID old_veh_id = (old_veh->type == VehicleType::Train) ? Train::From(old_veh)->First()->index : old_veh->index;
+	VehicleID old_veh_id = (old_veh->type == VehicleType::Train) ? Train::From(old_veh)->Primary()->index : old_veh->index;
 	EncodedString headline;
 
 	int order_id = GetIncompatibleRefitOrderIdForAutoreplace(old_veh, e);
@@ -944,8 +943,8 @@ CommandCost CmdAutoreplaceVehicle(DoCommandFlags flags, VehicleID veh_id, bool s
 	if (v->type == VehicleType::Train) {
 		Train *t = Train::From(v);
 		if (t->IsArticulatedPart() || t->IsRearDualheaded()) return CMD_ERROR;
-		free_wagon = !t->IsFrontEngine();
-		if (free_wagon && t->First()->IsFrontEngine()) return CMD_ERROR;
+		free_wagon = !t->IsPrimaryVehicle();
+		if (free_wagon && t->First()->IsPrimaryVehicle()) return CMD_ERROR;
 	} else {
 		if (!v->IsPrimaryVehicle()) return CMD_ERROR;
 	}

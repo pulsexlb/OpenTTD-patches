@@ -31,6 +31,7 @@
 #include "rail.h"
 #include "rail_gui.h"
 #include "roadveh.h"
+#include "roadveh_transport.h"
 #include "scope_info.h"
 #include "screenshot.h"
 #include "settings_internal.h"
@@ -366,6 +367,13 @@ static int32_t GetDefaultServiceInterval(const IntSettingDesc &sd, VehicleType t
  * Callback for when the player changes the timekeeping units.
  * @param Unused.
  */
+static void ModifyAirportLayout(int32_t)
+{
+	CloseWindowByClass(WindowClass::BuildToolbar);
+	extern AirType _last_built_airtype;
+	_last_built_airtype = AIRTYPE_BEGIN;
+}
+
 static void ChangeTimekeepingUnits(int32_t)
 {
 	/* If service intervals are in time units (calendar days or real-world minutes), reset them to the correct defaults if not already in a game. */
@@ -483,6 +491,9 @@ static void TrainAccelerationModelChanged(int32_t new_value)
 		if (t->IsFrontEngine()) {
 			t->tcache.cached_max_curve_speed = t->GetCurveSpeedLimit();
 			t->UpdateAcceleration();
+			/* The recomputation only updates the chain head; re-broadcast the
+			 * consist-level caches or the other vehicles keep stale copies. */
+			t->BroadcastConsistCaches();
 			if (t->lookahead != nullptr) t->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
 		}
 	}
@@ -560,14 +571,14 @@ static void TrainBrakingModelChanged(int32_t new_value)
 		for (Train *v : Train::IterateFrontOnly()) {
 			v_cur = v;
 			Train *moving_front = v->GetMovingFront();
-			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || HasBit(v->subtype, GVSF_VIRTUAL) || moving_front->track == TRACK_BIT_DEPOT) continue;
+			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried() || moving_front->track == TRACK_BIT_DEPOT) continue;
 			TryPathReserve(v, true, HasStationTileRail(moving_front->tile));
 		}
 		_long_reserve_disabled = false;
 		for (Train *v : Train::IterateFrontOnly()) {
 			v_cur = v;
 			Train *moving_front = v->GetMovingFront();
-			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || HasBit(v->subtype, GVSF_VIRTUAL) || moving_front->track == TRACK_BIT_DEPOT) continue;
+			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried() || moving_front->track == TRACK_BIT_DEPOT) continue;
 			TryPathReserve(v, true, HasStationTileRail(moving_front->tile));
 			if (v->lookahead != nullptr) v->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
 		}
@@ -577,7 +588,7 @@ static void TrainBrakingModelChanged(int32_t new_value)
 		for (Train *v : Train::IterateFrontOnly()) {
 			v_cur = v;
 			Train *moving_front = v->GetMovingFront();
-			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || HasBit(v->subtype, GVSF_VIRTUAL) || moving_front->track == TRACK_BIT_DEPOT) {
+			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried() || moving_front->track == TRACK_BIT_DEPOT) {
 				v->lookahead.reset();
 				continue;
 			}
@@ -665,8 +676,8 @@ static void AircraftRangeChanged(int32_t)
 		v->acache.cached_max_range_sqr = v->acache.cached_max_range * v->acache.cached_max_range;
 
 		/* Reset destination is too far state */
-		if (v->flags.Test(VehicleAirFlag::DestinationTooFar)) {
-			v->flags.Reset(VehicleAirFlag::DestinationTooFar);
+		if (HasBit(v->flags, VAF_DEST_TOO_FAR)) {
+			ClrBit(v->flags, VAF_DEST_TOO_FAR);
 			SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
 			DeleteVehicleNews(v->index, AdviceType::AircraftDestinationTooFar);
 		}
@@ -685,6 +696,7 @@ static void TownFoundingChanged(int32_t new_value)
 static void InvalidateVehTimetableWindow(int32_t new_value)
 {
 	InvalidateWindowClassesData(WindowClass::VehicleTimetable, VIWD_MODIFY_ORDERS);
+		InvalidateWindowClassesData(WindowClass::OrderListTimetable, VIWD_MODIFY_ORDERS);
 	InvalidateWindowClassesData(WindowClass::ScheduledDispatchSlots, VIWD_MODIFY_ORDERS);
 	SetWindowClassesDirty(WindowClass::TraceRestrict);
 }
@@ -692,6 +704,7 @@ static void InvalidateVehTimetableWindow(int32_t new_value)
 static void ChangeTimetableInTicksMode(int32_t new_value)
 {
 	SetWindowClassesDirty(WindowClass::VehicleOrders);
+		SetWindowClassesDirty(WindowClass::OrderListEditor);
 	InvalidateVehTimetableWindow(new_value);
 }
 
@@ -833,7 +846,9 @@ static void EnableSingleVehSharedOrderGuiChanged(int32_t new_value)
 		InvalidateWindowClassesData(GetWindowClassForVehicleType(type));
 	}
 	SetWindowClassesDirty(WindowClass::VehicleTimetable);
+		SetWindowClassesDirty(WindowClass::OrderListEditor);
 	InvalidateWindowClassesData(WindowClass::VehicleOrders);
+		InvalidateWindowClassesData(WindowClass::OrderListTimetable);
 }
 
 static void CheckYapfRailSignalPenalties(int32_t new_value)

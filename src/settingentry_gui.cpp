@@ -999,6 +999,8 @@ SettingsContainer &GetSettingsTree()
 				routing->Add(new SettingEntry("pf.forbid_90_deg"));
 				routing->Add(new SettingEntry("pf.reroute_rv_on_layout_change"));
 				routing->Add(new SettingEntry("vehicle.drive_through_train_depot"));
+				routing->Add(new SettingEntry("vehicle.train_service_at_station"));
+				routing->Add(new SettingEntry("vehicle.train_no_depot_temporary_stop"));
 			}
 
 			SettingsPage *orders = vehicles->Add(new SettingsPage(STR_CONFIG_SETTING_VEHICLES_ORDERS));
@@ -1014,6 +1016,15 @@ SettingsContainer &GetSettingsTree()
 			vehicles->Add(new SettingEntry("vehicle.non_leading_engines_keep_name"));
 		}
 
+		/* Road vehicles carried by other vehicles (RoRo): its own page, so that everything this
+		 * feature adds can be found in one place. */
+		SettingsPage *rv_transport = main->Add(new SettingsPage(STR_CONFIG_SETTING_ROAD_VEHICLE_TRANSPORT));
+		{
+			rv_transport->Add(new SettingEntry("vehicle.rv_transport_enabled"));
+	rv_transport->Add(new SettingEntry("vehicle.rv_transport_carrier_parts"));
+	rv_transport->Add(new SettingEntry("vehicle.rv_transport_unload_warn_days"));
+		}
+
 		SettingsPage *limitations = main->Add(new SettingsPage(STR_CONFIG_SETTING_LIMITATIONS));
 		{
 			limitations->Add(new SettingEntry("construction.command_pause_level"));
@@ -1025,6 +1036,7 @@ SettingsContainer &GetSettingsTree()
 			limitations->Add(new SettingEntry("construction.max_tunnel_length"));
 			limitations->Add(new SettingEntry("construction.chunnel"));
 			limitations->Add(new SettingEntry("station.never_expire_airports"));
+			limitations->Add(new SettingEntry("station.allow_modify_airports"));
 			limitations->Add(new SettingEntry("vehicle.never_expire_vehicles"));
 			limitations->Add(new SettingEntry("vehicle.vehicle_intro_randomisation"));
 			limitations->Add(new SettingEntry("vehicle.no_expire_vehicles_after"));
@@ -1225,6 +1237,7 @@ SettingsContainer &GetSettingsTree()
 				trees->Add(new SettingEntry("construction.tree_growth_rate"));
 			}
 
+			environment->Add(new SettingEntry("difficulty.rain"));
 			environment->Add(new SettingEntry("construction.flood_from_edges"));
 			environment->Add(new SettingEntry("construction.map_edge_mode"));
 			environment->Add(new SettingEntry("station.cargo_class_rating_wait_time"));
@@ -1250,13 +1263,16 @@ SettingsContainer &GetSettingsTree()
 			SettingsPage *sharing = ai->Add(new SettingsPage(STR_CONFIG_SETTING_SHARING));
 			{
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[0]"));
+				sharing->Add(new SettingEntry("economy.allow_coupling_other_company_trains"));
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[1]"));
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[2]"));
 				sharing->Add(new SettingEntry("economy.infrastructure_sharing[3]"));
+				sharing->Add(new SettingEntry("economy.infrastructure_sharing_rv"));
 				sharing->Add(new SettingEntry("economy.sharing_fee[0]"));
 				sharing->Add(new SettingEntry("economy.sharing_fee[1]"));
 				sharing->Add(new SettingEntry("economy.sharing_fee[2]"));
 				sharing->Add(new SettingEntry("economy.sharing_fee[3]"));
+				sharing->Add(new SettingEntry("economy.rv_sharing_fee"));
 				sharing->Add(new SettingEntry("economy.sharing_payment_in_debt"));
 			}
 
@@ -1271,6 +1287,7 @@ SettingsContainer &GetSettingsTree()
 		SettingsPage *network = main->Add(new SettingsPage(STR_CONFIG_SETTING_NETWORK));
 		{
 			network->Add(new SettingEntry("network.use_relay_service"));
+			network->Add(new SettingEntry("network.invite_code_keepalive_interval"));
 		}
 
 		main->Init();

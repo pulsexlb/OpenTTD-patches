@@ -5927,3 +5927,64 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
 STR_BADGE_FILTER_ANY_LABEL                                      :Qualunque {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} è {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Progetto
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Seleziona un'area della tua infrastruttura da copiare nello slot progetto attivo
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Incolla il contenuto dello slot progetto attivo sulla mappa
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Incolla l'infrastruttura ferroviaria
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Incolla l'infrastruttura stradale
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Incolla l'infrastruttura navale
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Incolla l'infrastruttura aerea
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Converti l'infrastruttura ferroviaria al tipo di rotaia attuale quando incolli
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Specchia i segnali quando incolli
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Aggiorna i ponti quando incolli
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Incolla anche stazioni e waypoint
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraforma il terreno quando incolli. Clicca per alternare: nessun terraforming, terraforming minimo, terraforming completo
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Trasformazione attuale, clicca per reimpostare
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Ruota il progetto di 90 gradi in senso antiorario
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Ruota il progetto di 90 gradi in senso orario
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Rifletti il progetto rispetto all'asse NO-SE
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Rifletti il progetto rispetto all'asse NE-SO
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Scostamento di altezza applicato quando incolli
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Aumenta l'altezza a cui viene incollato il progetto
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Diminuisci l'altezza a cui viene incollato il progetto
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informazioni sulla patch Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}L'area selezionata non contiene infrastrutture della tua compagnia
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}L'area selezionata è troppo grande da copiare
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Progetto troppo grande da incollare in una partita multigiocatore
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Mostra la barra degli strumenti progetto per copiare e incollare l'infrastruttura
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Mostra la barra degli strumenti progetto per copiare e incollare l'infrastruttura
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Impossibile incollare il progetto qui...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Passa a questo slot progetto. Se lo slot ha un nome o contenuto, al passaggio del mouse vengono mostrati il nome e un'anteprima. Doppio clic per rinominare
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Esporta
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importa
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Esp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patch Blueprint, versione {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Esporta slot attivo...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Esporta tutti gli slot su file...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importa nello slot attivo...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importa tutti gli slot da file...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Impossibile copiare il progetto negli appunti
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Gli appunti sono vuoti
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Esporta progetto
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importa progetto
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Copia negli appunti
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Incolla dagli appunti
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Sostituire il progetto?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Lo slot attivo contiene già un progetto. Vuoi sostituirlo?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Sostituire tutti i progetti?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Questo sostituirà il contenuto di tutti gli slot progetto. Vuoi continuare?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Rinomina progetto
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Esporta tutti i progetti su file
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importa tutti i progetti da file
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Sostituire il file?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Esiste già un file con questo nome. Vuoi sostituirlo?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Esporta o importa progetti
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Fai clic su un file per selezionarlo, o su una cartella per aprirla
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Il testo non è un progetto valido
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nome file non valido
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}File di progetto non trovato, oppure non è un insieme di progetti valido
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Impossibile scrivere il file di progetto

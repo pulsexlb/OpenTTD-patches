@@ -14,6 +14,7 @@
 #include "economy_type.h"
 #include "livery.h"
 #include "rail_type.h"
+#include "air_type.h"
 #include "road_type.h"
 #include "fileio_type.h"
 #include "newgrf_badge_type.h"
@@ -114,6 +115,7 @@ enum class GrfSpecFeature : uint8_t {
 	Badges, ///< Badges feature
 
 	NewLandscape,
+	AirTypes, ///< Air types feature (fork-only: must not occupy a GRF-visible feature ID)
 	FakeTowns, ///< Fake town GrfSpecFeature for NewGRF debugging (parent scope)
 	End, ///< End marker
 

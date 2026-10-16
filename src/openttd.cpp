@@ -48,6 +48,7 @@
 #include "progress.h"
 #include "strings_func.h"
 #include "date_func.h"
+#include "weather.h"
 #include "vehicle_func.h"
 #include "gamelog.h"
 #include "animated_tile_func.h"
@@ -1573,6 +1574,7 @@ void StateGameLoop()
 		RunTileLoop();
 		CallVehicleTicks();
 		CallLandscapeTick();
+		WeatherTick();
 		TimerManager<TimerGameTick>::Elapsed(1);
 		BasePersistentStorageArray::SwitchMode(PSM_LEAVE_GAMELOOP);
 		UpdateLandscapingLimits();
@@ -1625,6 +1627,7 @@ void StateGameLoop()
 			OnTick_Companies(true);
 		}
 		OnTick_LinkGraph();
+		WeatherTick();
 		TimerManager<TimerGameTick>::Elapsed(1);
 		BasePersistentStorageArray::SwitchMode(PSM_LEAVE_GAMELOOP);
 

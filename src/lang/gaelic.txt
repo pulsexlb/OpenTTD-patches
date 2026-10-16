@@ -5396,3 +5396,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plana
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Tagh raon dhen bhun-structar agad fhèin gus lethbhreac a chur dhan t-slot plana ghnìomhach
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Cuir susbaint an t-slot plana ghnìomhaich air a' mhapa
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Cuir ann bun-structar rèile
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Cuir ann bun-structar rathaid
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Cuir ann bun-structar uisge
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Cuir ann bun-structar adhair
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Iompaich bun-structar rèile dhan t-seòrsa rèile làithreach nuair a thèid a chur ann
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Sgàthanaich comharran nuair a thèid an cur ann
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Àrdaich drochaidean nuair a thèid an cur ann
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Cuir ann stèiseanan is puingean-slighe cuideachd
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Cum an talamh nuair a thèid a chur ann. Briog gus atharrachadh: gun chumadh-tìre, cumadh-tìre as lugha, cumadh-tìre slàn
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}An cruth-atharrachadh làithreach, briog gus ath-shuidheachadh
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Cuairtich am plana 90 ceum tuathal
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Cuairtich am plana 90 ceum deiseil
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Sgàthanaich am plana mun aiseal iar-thuath gu ear-dheas
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Sgàthanaich am plana mun aiseal ear-thuath gu iar-dheas
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Frith-àireamh àirde nuair a thèid a chur ann
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Meudaich an àirde far an tèid am plana a chur ann
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Lùghdaich an àirde far an tèid am plana a chur ann
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Fiosrachadh mun bhrèid Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Chan eil bun-structar sam bith aig a' chompanaidh agad san raon a thagh thu
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Tha an raon a thagh thu ro mhòr airson lethbhreac a dhèanamh dheth
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Tha am plana ro mhòr airson a chur ann an geama ioma-chluicheadair
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Seall bàr-inneal nam planaichean gus bun-structar a chopaigeadh 's a chur ann
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Seall bàr-inneal nam planaichean gus bun-structar a chopaigeadh 's a chur ann
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Cha ghabh am plana a chur ann an-seo...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Gearr leum dhan t-slot plana seo. Ma tha ainm no susbaint san t-slot, seallaidh fantainn os a chionn an t-ainm is ro-shealladh. Dèan dà-chliog gus ath-ainmeachadh
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Às-phortaich
+STR_BLUEPRINT_IMPORT                                            :{BLACK}In-phortaich
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Às-/In-phort
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Brèid Blueprint, tionndadh {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Às-phortaich an t-slot gnìomhach...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Às-phortaich na slotaichean uile gu faidhle...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :In-phortaich dhan t-slot ghnìomhach...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :In-phortaich na slotaichean uile o fhaidhle...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Cha b' urrainn lethbhreac dhen phlana a chur dhan stòr-bhòrd
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Tha an stòr-bhòrd falamh
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Às-phortaich plana
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}In-phortaich plana
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Cuir lethbhreac dhan stòr-bhòrd
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Cuir ann on stòr-bhòrd
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}An plana a chur na àite?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Tha plana san t-slot ghnìomhach mu thràth. A bheil thu airson a chur na àite?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}An cur na planaichean uile na àite?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Cuiridh seo susbaint gach slot plana na àite. A bheil thu airson leantainn air adhart?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Ath-ainmich am plana
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Às-phortaich na planaichean uile gu faidhle
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}In-phortaich na planaichean uile o fhaidhle
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}An cur an fhaidhle na àite?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Tha faidhle ann leis an ainm sin mu thràth. A bheil thu airson a chur na àite?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Às-phortaich no in-phortaich planaichean
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Briog air faidhle gus a thaghadh, no air pasgan gus fhosgladh
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Chan e plana dligheach a th' anns an teacsa
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ainm faidhle mì-dhligheach
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Cha deach faidhle plana a lorg, no chan e seata phlanaichean dligheach a th' ann
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Cha b' urrainn am faidhle plana a sgrìobhadh

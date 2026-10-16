@@ -5171,3 +5171,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Načrt
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Izberite območje lastne infrastrukture za kopiranje v aktivno mesto načrta
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Prilepi vsebino aktivnega mesta načrta na zemljevid
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Prilepi železniško infrastrukturo
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Prilepi cestno infrastrukturo
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Prilepi vodno infrastrukturo
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Prilepi letalsko infrastrukturo
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Pretvori železniško infrastrukturo v trenutno vrsto tirov pri lepljenju
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Zrcali signale pri lepljenju
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Nadgradi mostove pri lepljenju
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Prilepi tudi postaje in točke poti
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Preoblikuj teren pri lepljenju. Kliknite za preklop: brez preoblikovanja, minimalno preoblikovanje, polno preoblikovanje
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Trenutna preobrazba, kliknite za ponastavitev
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Zavrti načrt za 90 stopinj v nasprotni smeri urinega kazalca
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Zavrti načrt za 90 stopinj v smeri urinega kazalca
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Zrcali načrt čez os SZ-JV
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Zrcali načrt čez os SV-JZ
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Višinski zamik pri lepljenju
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Povečaj višino, na kateri se načrt prilepi
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Zmanjšaj višino, na kateri se načrt prilepi
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informacije o popravku Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Izbrano območje ne vsebuje infrastrukture vašega podjetja
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Izbrano območje je preveliko za kopiranje
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Načrt je prevelik za lepljenje v večigralski igri
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Prikaži orodno vrstico načrtov za kopiranje in lepljenje infrastrukture
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Prikaži orodno vrstico načrtov za kopiranje in lepljenje infrastrukture
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Načrta tukaj ni mogoče prilepiti...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Preklopi na to mesto načrta. Če ima mesto ime ali vsebino, lebdenje z miško prikaže ime in predogled. Dvokliknite za preimenovanje
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Izvozi
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Uvozi
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Izvoz/Uvoz
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Popravek Blueprint, različica {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Izvozi aktivno mesto...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Izvozi vsa mesta v datoteko...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Uvozi v aktivno mesto...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Uvozi vsa mesta iz datoteke...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Načrta ni bilo mogoče kopirati v odložišče
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Odložišče je prazno
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Izvoz načrta
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Uvoz načrta
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopiraj v odložišče
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Prilepi iz odložišča
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Zamenjati načrt?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Aktivno mesto že vsebuje načrt. Ali ga želite zamenjati?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Zamenjati vse načrte?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}To bo zamenjalo vsebino vseh mest načrtov. Ali želite nadaljevati?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Preimenuj načrt
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Izvozi vse načrte v datoteko
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Uvozi vse načrte iz datoteke
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Zamenjati datoteko?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Datoteka s tem imenom že obstaja. Ali jo želite zamenjati?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Izvozi ali uvozi načrte
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Kliknite datoteko, da jo izberete, ali mapo, da jo odprete
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Besedilo ni veljaven načrt
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Neveljavno ime datoteke
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Datoteka z načrti ni bila najdena, ali pa ni veljaven nabor načrtov
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Datoteke z načrti ni bilo mogoče zapisati

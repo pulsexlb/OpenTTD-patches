@@ -54,7 +54,7 @@ static const SpriteID SPR_LARGE_SMALL_WINDOW = 682;
 
 /** Extra graphic spritenumbers */
 static const SpriteID SPR_OPENTTD_BASE   = 4896;
-static const uint16_t OPENTTD_SPRITE_COUNT = 192;
+static const uint16_t OPENTTD_SPRITE_COUNT = 212;
 
 /* Halftile-selection sprites */
 static const SpriteID SPR_HALFTILE_SELECTION_FLAT = SPR_OPENTTD_BASE;
@@ -175,6 +175,22 @@ static const SpriteID SPR_PLAYER_HOST                = SPR_OPENTTD_BASE + 190;
 static const SpriteID SPR_EXTRA_MENU                 = SPR_OPENTTD_BASE + 191;
 
 static const SpriteID SPR_IMG_CARGOFLOW              = SPR_OPENTTD_BASE + 174;
+
+/* Blueprint toolbar icons. */
+static const SpriteID SPR_BLUEPRINT_COPY             = SPR_OPENTTD_BASE + 192;
+static const SpriteID SPR_BLUEPRINT_PASTE            = SPR_OPENTTD_BASE + 193;
+static const SpriteID SPR_BLUEPRINT_ROTATE_CCW       = SPR_OPENTTD_BASE + 194;
+static const SpriteID SPR_BLUEPRINT_ROTATE_CW        = SPR_OPENTTD_BASE + 195;
+static const SpriteID SPR_BLUEPRINT_REFLECT_NW_SE    = SPR_OPENTTD_BASE + 196;
+static const SpriteID SPR_BLUEPRINT_REFLECT_NE_SW    = SPR_OPENTTD_BASE + 197;
+/* 8 sprites: rotation (0..3 quarter turns anticlockwise) + 4 if reflected. */
+static const SpriteID SPR_BLUEPRINT_TRANSFORM_FIRST  = SPR_OPENTTD_BASE + 198;
+static const SpriteID SPR_BLUEPRINT_MIRROR_SIGNALS   = SPR_OPENTTD_BASE + 206;
+static const SpriteID SPR_BLUEPRINT_TOOLBAR          = SPR_OPENTTD_BASE + 207;
+static const SpriteID SPR_BLUEPRINT_UNDO             = SPR_OPENTTD_BASE + 208;
+static const SpriteID SPR_BLUEPRINT_UNDO_LIST        = SPR_OPENTTD_BASE + 209;
+static const SpriteID SPR_BLUEPRINT_EXPORT_IMPORT    = SPR_OPENTTD_BASE + 210;
+static const SpriteID SPR_BLUEPRINT_OPTIONS          = SPR_OPENTTD_BASE + 211;
 
 static const SpriteID SPR_SIGNALS_BASE  = SPR_OPENTTD_BASE + OPENTTD_SPRITE_COUNT;
 static const uint16_t PRESIGNAL_SPRITE_COUNT                   =  48;
@@ -374,8 +390,45 @@ static const uint16_t DUP_ORIGINAL_SIGNALS_SPRITE_COUNT = 16;
 static const SpriteID SPR_DUP_SIGNALS_BASE = SPR_DUP_ORIGINAL_SIGNALS_BASE + DUP_ORIGINAL_SIGNALS_SPRITE_COUNT;
 static const uint16_t DUP_SIGNALS_SPRITE_COUNT = PRESIGNAL_SEMAPHORE_AND_PBS_SPRITE_COUNT;
 
+/* Air type sprites are appended after the last base sprite block. */
+static const SpriteID SPR_AIRTYPE_BASE = SPR_DUP_SIGNALS_BASE + DUP_SIGNALS_SPRITE_COUNT;
+static const uint16_t AIRTYPE_ICONS            = 11;
+static const uint16_t AIRTYPE_CURSORS          = 11;
+static const uint16_t AIRTYPE_TILES            = 107;
+static const uint16_t AIRTYPE_EXTRA_TRACKS_YELLOW = 19;
+static const uint16_t AIRTYPE_SPRITES          = AIRTYPE_ICONS + AIRTYPE_CURSORS + AIRTYPE_TILES;
+static const SpriteID SPR_AIRPORT_TYPE_GRAVEL  = SPR_AIRTYPE_BASE;
+static const SpriteID SPR_AIRPORT_TYPE_ASPHALT = SPR_AIRPORT_TYPE_GRAVEL + AIRTYPE_SPRITES;
+static const SpriteID SPR_AIRPORT_TYPE_WATER   = SPR_AIRPORT_TYPE_ASPHALT + AIRTYPE_SPRITES;
+static const SpriteID SPR_AIRPORT_TYPE_DARK    = SPR_AIRPORT_TYPE_WATER + AIRTYPE_SPRITES;
+static const SpriteID SPR_AIRPORT_TYPE_YELLOW  = SPR_AIRPORT_TYPE_DARK + AIRTYPE_SPRITES;
+
+static const uint16_t AIRPORT_SPRITES_GROUND = 0;
+static const uint16_t AIRPORT_SPRITES_OFFSET_RUNWAYS = 5;
+static const uint16_t AIRPORT_SPRITES_OFFSET_RUNWAYS_START = 8;
+static const uint16_t AIRPORT_SPRITES_OFFSET_RUNWAYS_END = 16;
+static const uint16_t AIRPORT_SPRITES_OFFSET_RUNWAYS_DONT_ALLOW_LANDING = 4;
+static const uint16_t AIRPORT_SPRITES_OFFSET_HANGARS = 29;
+static const uint16_t AIRPORT_SPRITES_OFFSET_TERMINALS = 41;
+static const uint16_t AIRPORT_TILES_OFFSET_TERMINALS = 33;
+static const uint16_t AIRTYPE_SPRITE_COUNT = AIRTYPE_SPRITES * 5 + AIRTYPE_EXTRA_TRACKS_YELLOW;
+
+/** Airport preview sprites */
+static const SpriteID SPR_AIRTYPE_PREVIEW_BASE             = SPR_AIRTYPE_BASE + AIRTYPE_SPRITE_COUNT;
+static const SpriteID SPR_AIRTYPE_PREVIEW_SMALL            = SPR_AIRTYPE_PREVIEW_BASE;
+static const SpriteID SPR_AIRTYPE_PREVIEW_LARGE            = SPR_AIRTYPE_PREVIEW_BASE + 1 * 4;
+static const SpriteID SPR_AIRTYPE_PREVIEW_HELIPORT         = SPR_AIRTYPE_PREVIEW_BASE + 2 * 4;
+static const SpriteID SPR_AIRTYPE_PREVIEW_METROPOLITAN     = SPR_AIRTYPE_PREVIEW_BASE + 3 * 4;
+static const SpriteID SPR_AIRTYPE_PREVIEW_INTERNATIONAL    = SPR_AIRTYPE_PREVIEW_BASE + 4 * 4;
+static const SpriteID SPR_AIRTYPE_PREVIEW_COMMUTER         = SPR_AIRTYPE_PREVIEW_BASE + 5 * 4;
+static const SpriteID SPR_AIRTYPE_PREVIEW_HELIDEPOT        = SPR_AIRTYPE_PREVIEW_BASE + 6 * 4;
+static const SpriteID SPR_AIRTYPE_PREVIEW_INTERCONTINENTAL = SPR_AIRTYPE_PREVIEW_BASE + 7 * 4;
+static const SpriteID SPR_AIRTYPE_PREVIEW_HELISTATION      = SPR_AIRTYPE_PREVIEW_BASE + 8 * 4;
+static const uint16_t SPR_AIRTYPE_PREVIEW_COUNT            = 9 * 4;
+static const uint16_t AIRTYPE_SPRITE_TOTAL_COUNT           = AIRTYPE_SPRITE_COUNT + SPR_AIRTYPE_PREVIEW_COUNT;
+
 /* From where can we start putting NewGRFs? */
-static const SpriteID SPR_NEWGRFS_BASE = SPR_DUP_SIGNALS_BASE + DUP_SIGNALS_SPRITE_COUNT;
+static const SpriteID SPR_NEWGRFS_BASE = SPR_AIRTYPE_BASE + AIRTYPE_SPRITE_TOTAL_COUNT;
 
 /* Manager face sprites */
 static const SpriteID SPR_GRADIENT = 874; // background gradient behind manager face
@@ -1247,6 +1300,8 @@ static const SpriteID SPR_CARGO_TOFFEE                = 4320;
 static const SpriteID SPR_CARGO_BUBBLES               = 4321;
 static const SpriteID SPR_CARGO_PLASTIC               = 4322;
 static const SpriteID SPR_CARGO_BATTERIES             = 4323;
+static const SpriteID SPR_CARGO_VEHICLES              = 4302;  // placeholder: shares the goods sprite until dedicated graphics exist
+static const SpriteID SPR_CARGO_RAILVEHICLES          = 4302;  // placeholder: shares the goods sprite until dedicated graphics exist
 static const SpriteID SPR_CARGO_NOTHING               = SPR_ASCII_SPACE; // Placeholder for void cargo slots.
 
 /* Effect vehicles */

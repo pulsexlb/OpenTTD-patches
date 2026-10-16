@@ -6051,3 +6051,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Filtros 
 STR_BADGE_CONFIG_PREVIEW                                        :Pré-visualizar imagem
 STR_BADGE_CONFIG_NAME                                           :Nome
 STR_BADGE_FILTER_ANY_LABEL                                      :Qua{G 0 l l l is is}quer {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} {G 0 é é é são são} {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Planta
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Selecionar uma área da sua própria infraestrutura para copiar para o espaço de planta ativo
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Colar o conteúdo do espaço de planta ativo no mapa
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Colar infraestrutura ferroviária
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Colar infraestrutura rodoviária
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Colar infraestrutura marítima
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Colar infraestrutura aérea
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Converter a infraestrutura ferroviária para o tipo de carril atual ao colar
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Espelhar os sinais ao colar
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Melhorar as pontes ao colar
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Colar também estações e pontos de passagem
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraformar o terreno ao colar. Clique para alternar: sem terraformação, terraformação mínima, terraformação completa
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Transformação atual, clique para repor
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rodar a planta 90 graus no sentido anti-horário
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rodar a planta 90 graus no sentido horário
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Espelhar a planta em relação ao eixo NO-SE
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Espelhar a planta em relação ao eixo NE-SO
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Desvio de altura aplicado ao colar
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Aumentar a altura a que a planta é colada
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Diminuir a altura a que a planta é colada
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informações sobre o patch Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}A área selecionada não contém infraestrutura da sua companhia
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}A área selecionada é demasiado grande para copiar
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Planta demasiado grande para colar num jogo multijogador
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Mostrar a barra de ferramentas de plantas para copiar e colar infraestrutura
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Mostrar a barra de ferramentas de plantas para copiar e colar infraestrutura
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Não é possível colar a planta aqui...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Mudar para este espaço de planta. Se o espaço tiver nome ou conteúdo, pairar o rato mostra o nome e uma pré-visualização. Duplo clique para renomear
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportar
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importar
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Patch Blueprint, versão {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Exportar espaço ativo...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Exportar todos os espaços para um ficheiro...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importar para o espaço ativo...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importar todos os espaços a partir de um ficheiro...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Não foi possível copiar a planta para a área de transferência
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}A área de transferência está vazia
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Exportar planta
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importar planta
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Copiar para a área de transferência
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Colar da área de transferência
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Substituir a planta?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}O espaço ativo já contém uma planta. Deseja substituí-la?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Substituir todas as plantas?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Isto irá substituir o conteúdo de todos os espaços de planta. Deseja continuar?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Renomear planta
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Exportar todas as plantas para um ficheiro
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importar todas as plantas de um ficheiro
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Substituir ficheiro?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Já existe um ficheiro com esse nome. Deseja substituí-lo?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Exportar ou importar plantas
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Clique num ficheiro para o selecionar, ou numa pasta para a abrir
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}O texto não é uma planta válida
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nome de ficheiro inválido
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Ficheiro de planta não encontrado, ou conjunto de plantas inválido
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Não foi possível escrever o ficheiro de planta

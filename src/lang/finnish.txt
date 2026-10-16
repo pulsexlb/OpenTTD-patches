@@ -6050,3 +6050,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Tunnussu
 STR_BADGE_CONFIG_PREVIEW                                        :Esikatselu
 STR_BADGE_CONFIG_NAME                                           :Nimi
 STR_BADGE_FILTER_ANY_LABEL                                      :Mikä tahansa {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} on {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Suunnitelma
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Valitse oman infrastruktuurisi alue kopioitavaksi aktiiviseen suunnitelmapaikkaan
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Liitä aktiivisen suunnitelmapaikan sisältö kartalle
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Liitä rautatieinfrastruktuuri
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Liitä tieinfrastruktuuri
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Liitä vesiliikenteen infrastruktuuri
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Liitä lentoliikenteen infrastruktuuri
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Muunna rautatieinfrastruktuuri nykyiseen raidetyyppiin liitettäessä
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Peilaa opastimet liitettäessä
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Päivitä sillat liitettäessä
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Liitä myös asemat ja reittipisteet
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Muokkaa maastoa liitettäessä. Napsauta vaihtaaksesi: ei maastonmuokkausta, vähäinen muokkaus, täysi muokkaus
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Nykyinen muunnos, napsauta palauttaaksesi
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Kierrä suunnitelmaa 90 astetta vastapäivään
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Kierrä suunnitelmaa 90 astetta myötäpäivään
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Peilaa suunnitelma luode-kaakko-akselin suhteen
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Peilaa suunnitelma koillinen-lounas-akselin suhteen
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Korkeussiirtymä liitettäessä
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Kasvata korkeutta, jolle suunnitelma liitetään
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Pienennä korkeutta, jolle suunnitelma liitetään
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Tietoja Blueprint-lisäosasta
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Valittu alue ei sisällä yhtiösi omistamaa infrastruktuuria
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Valittu alue on liian suuri kopioitavaksi
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Suunnitelma on liian suuri liitettäväksi moninpelissä
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Näytä suunnitelmatyökalurivi infrastruktuurin kopiointiin ja liittämiseen
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Näytä suunnitelmatyökalurivi infrastruktuurin kopiointiin ja liittämiseen
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Suunnitelmaa ei voi liittää tähän...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Vaihda tähän suunnitelmapaikkaan. Jos paikalla on nimi tai sisältöä, osoittaminen näyttää nimen ja esikatselun. Nimeä uudelleen kaksoisnapsauttamalla
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Vie
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Tuo
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Vie/Tuo
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-lisäosa, versio {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Vie aktiivinen paikka...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Vie kaikki paikat tiedostoon...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Tuo aktiiviseen paikkaan...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Tuo kaikki paikat tiedostosta...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Suunnitelmaa ei voitu kopioida leikepöydälle
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Leikepöytä on tyhjä
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Vie suunnitelma
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Tuo suunnitelma
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopioi leikepöydälle
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Liitä leikepöydältä
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Korvataanko suunnitelma?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Aktiivisessa paikassa on jo suunnitelma. Haluatko korvata sen?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Korvataanko kaikki suunnitelmat?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Tämä korvaa kaikkien suunnitelmapaikkojen sisällön. Haluatko jatkaa?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Nimeä suunnitelma uudelleen
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Vie kaikki suunnitelmat tiedostoon
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Tuo kaikki suunnitelmat tiedostosta
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Korvataanko tiedosto?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Tämänniminen tiedosto on jo olemassa. Haluatko korvata sen?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Vie tai tuo suunnitelmia
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Valitse tiedosto napsauttamalla sitä, tai avaa kansio napsauttamalla sitä
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Teksti ei ole kelvollinen suunnitelma
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Virheellinen tiedostonimi
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Suunnitelmatiedostoa ei löytynyt, tai se ei ole kelvollinen suunnitelmakokoelma
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Suunnitelmatiedostoa ei voitu kirjoittaa

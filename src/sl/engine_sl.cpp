@@ -133,7 +133,8 @@ void Save_ERNC()
 			if (e->info.callback_mask.Test(VehicleCallbackMask::CustomRefit)) {
 				count++;
 				SlWriteUint16(e->index);
-				SlWriteUint64(e->info.refit_mask.base());
+				SlWriteUint64(e->info.refit_mask.base().lo);
+				SlWriteUint64(e->info.refit_mask.base().hi);
 			}
 		}
 	});
@@ -162,7 +163,7 @@ void Load_ERNC()
 	_engine_refit_network_caches.reserve(count);
 	for (uint32_t idx = 0; idx < count; idx++) {
 		EngineID id = static_cast<EngineID>(SlReadUint16());
-		CargoTypes refit_mask{SlReadUint64()};
+		CargoTypes refit_mask{Uint128{SlReadUint64(), SlReadUint64()}};
 		_engine_refit_network_caches.push_back({ id, refit_mask });
 	}
 }

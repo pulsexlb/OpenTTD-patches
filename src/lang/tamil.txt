@@ -5357,3 +5357,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}வரைபடம்
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}செயலில் உள்ள வரைபட இடத்தில் நகலெடுக்க உங்கள் சொந்த கட்டமைப்பின் பகுதியைத் தேர்ந்தெடுக்கவும்
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}செயலில் உள்ள வரைபட இடத்தின் உள்ளடக்கத்தை நிலப்படத்தில் ஒட்டவும்
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}இரயில் கட்டமைப்பை ஒட்டு
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}சாலை கட்டமைப்பை ஒட்டு
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}நீர் கட்டமைப்பை ஒட்டு
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}வான் கட்டமைப்பை ஒட்டு
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}ஒட்டும்போது இரயில் கட்டமைப்பை தற்போதைய தண்டவாள வகைக்கு மாற்று
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}ஒட்டும்போது சிக்னல்களை பிரதிபலி
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}ஒட்டும்போது பாலங்களை மேம்படுத்து
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}நிலையங்களையும் வழிப்புள்ளிகளையும் சேர்த்து ஒட்டு
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}ஒட்டும்போது நிலத்தை மாற்று. மாற்ற கிளிக் செய்யவும்: நில மாற்றம் இல்லை, குறைந்தபட்ச மாற்றம், முழு மாற்றம்
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}தற்போதைய உருமாற்றம், மீட்டமைக்க கிளிக் செய்யவும்
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}வரைபடத்தை 90 டிகிரி இடஞ்சுழியாக சுழற்று
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}வரைபடத்தை 90 டிகிரி வலஞ்சுழியாக சுழற்று
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}வரைபடத்தை வடமேற்கு-தென்கிழக்கு அச்சில் பிரதிபலி
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}வரைபடத்தை வடகிழக்கு-தென்மேற்கு அச்சில் பிரதிபலி
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}ஒட்டும்போது உயர இடைவெளி
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}வரைபடம் ஒட்டப்படும் உயரத்தை அதிகரி
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}வரைபடம் ஒட்டப்படும் உயரத்தை குறை
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Blueprint இணைப்பு பற்றிய தகவல்
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}தேர்ந்தெடுத்த பகுதியில் உங்கள் நிறுவனத்தின் கட்டமைப்பு இல்லை
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}தேர்ந்தெடுத்த பகுதி நகலெடுக்க மிகப் பெரியது
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}பல வீரர் விளையாட்டில் ஒட்ட வரைபடம் மிகப் பெரியது
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}கட்டமைப்பை நகலெடுத்து ஒட்ட வரைபட கருவிப்பட்டையை காட்டு
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}கட்டமைப்பை நகலெடுத்து ஒட்ட வரைபட கருவிப்பட்டையை காட்டு
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}வரைபடத்தை இங்கே ஒட்ட முடியாது...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}இந்த வரைபட இடத்திற்கு மாறு. இடத்திற்கு பெயர் அல்லது உள்ளடக்கம் இருந்தால், சுட்டியை மேலே வைத்தால் பெயரும் முன்னோட்டமும் காட்டப்படும். மறுபெயரிட இருமுறை கிளிக் செய்யவும்
+STR_BLUEPRINT_EXPORT                                            :{BLACK}ஏற்றுமதி
+STR_BLUEPRINT_IMPORT                                            :{BLACK}இறக்குமதி
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}ஏற்றுமதி/இறக்குமதி
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint இணைப்பு, பதிப்பு {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :செயலில் உள்ள இடத்தை ஏற்றுமதி செய்...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :அனைத்து இடங்களையும் கோப்பிற்கு ஏற்றுமதி செய்...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :செயலில் உள்ள இடத்திற்கு இறக்குமதி செய்...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :அனைத்து இடங்களையும் கோப்பிலிருந்து இறக்குமதி செய்...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}வரைபடத்தை கிளிப்போர்டுக்கு நகலெடுக்க முடியவில்லை
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}கிளிப்போர்டு காலியாக உள்ளது
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}வரைபட ஏற்றுமதி
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}வரைபட இறக்குமதி
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}கிளிப்போர்டுக்கு நகலெடு
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}கிளிப்போர்டிலிருந்து ஒட்டு
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}வரைபடத்தை மாற்றவா?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}செயலில் உள்ள இடத்தில் ஏற்கனவே ஒரு வரைபடம் உள்ளது. அதை மாற்ற விரும்புகிறீர்களா?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}அனைத்து வரைபடங்களையும் மாற்றவா?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}இது அனைத்து வரைபட இடங்களின் உள்ளடக்கத்தையும் மாற்றும். தொடர விரும்புகிறீர்களா?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}வரைபடத்தை மறுபெயரிடு
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}அனைத்து வரைபடங்களையும் கோப்பிற்கு ஏற்றுமதி செய்
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}அனைத்து வரைபடங்களையும் கோப்பிலிருந்து இறக்குமதி செய்
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}கோப்பை மாற்றவா?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}அந்த பெயரில் ஒரு கோப்பு ஏற்கனவே உள்ளது. அதை மாற்ற விரும்புகிறீர்களா?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}வரைபடங்களை ஏற்றுமதி அல்லது இறக்குமதி செய்க
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}தேர்ந்தெடுக்க கோப்பைக் கிளிக் செய்யவும், அல்லது திறக்க கோப்புறையைக் கிளிக் செய்யவும்
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}உரை சரியான வரைபடம் அல்ல
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}தவறான கோப்பு பெயர்
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}வரைபடக் கோப்பு கிடைக்கவில்லை, அல்லது சரியான வரைபடத் தொகுப்பு அல்ல
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}வரைபடக் கோப்பை எழுத முடியவில்லை

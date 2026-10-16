@@ -5980,3 +5980,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Kennzeic
 STR_BADGE_CONFIG_PREVIEW                                        :Vorschaubild
 STR_BADGE_CONFIG_NAME                                           :Name
 STR_BADGE_FILTER_ANY_LABEL                                      :{G "Beliebiger" "Beliebige" "Beliebiges" "Beliebige"} {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} ist {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Blaupause
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Einen Bereich der eigenen Infrastruktur auswählen, um ihn in den aktiven Blaupausen-Slot zu kopieren
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Den Inhalt des aktiven Blaupausen-Slots auf der Karte einfügen
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Schieneninfrastruktur einfügen
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Straßeninfrastruktur einfügen
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Wasserinfrastruktur einfügen
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Luftverkehrsinfrastruktur einfügen
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Schieneninfrastruktur beim Einfügen in den aktuellen Schienentyp umwandeln
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Signale beim Einfügen spiegeln
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Brücken beim Einfügen modernisieren
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Auch Stationen und Wegpunkte einfügen
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Beim Einfügen Land terraformen. Klicken zum Umschalten: kein Terraforming, minimales Terraforming, volles Terraforming
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Aktuelle Transformation, zum Zurücksetzen klicken
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Die Blaupause um 90 Grad gegen den Uhrzeigersinn drehen
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Die Blaupause um 90 Grad im Uhrzeigersinn drehen
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Die Blaupause an der NW-SO-Achse spiegeln
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Die Blaupause an der NO-SW-Achse spiegeln
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Höhenversatz beim Einfügen
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Die Höhe erhöhen, auf der die Blaupause eingefügt wird
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Die Höhe verringern, auf der die Blaupause eingefügt wird
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Informationen über den Blueprint-Patch
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Der ausgewählte Bereich enthält keine Infrastruktur der eigenen Firma
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Der ausgewählte Bereich ist zum Kopieren zu groß
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Blaupause zu groß zum Einfügen in einem Mehrspielerspiel
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Blaupausen-Werkzeugleiste zum Kopieren und Einfügen von Infrastruktur anzeigen
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Blaupausen-Werkzeugleiste zum Kopieren und Einfügen von Infrastruktur anzeigen
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Blaupause kann hier nicht eingefügt werden...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Zu diesem Blaupausen-Slot wechseln. Ist der Slot benannt oder hat Inhalt, zeigt Daraufzeigen den Namen und eine Vorschau. Doppelklick zum Umbenennen
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportieren
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importieren
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Ex-/Import
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint-Patch, Version {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Aktiven Slot exportieren...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Alle Slots in Datei exportieren...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :In aktiven Slot importieren...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Alle Slots aus Datei importieren...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Die Blaupause konnte nicht in die Zwischenablage kopiert werden
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Die Zwischenablage ist leer
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Blaupause exportieren
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Blaupause importieren
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}In Zwischenablage kopieren
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Aus Zwischenablage einfügen
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Blaupause ersetzen?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Der aktive Slot enthält bereits eine Blaupause. Soll sie ersetzt werden?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Alle Blaupausen ersetzen?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Dies ersetzt den Inhalt aller Blaupausen-Slots. Möchten Sie fortfahren?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Blaupause umbenennen
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Alle Blaupausen in Datei exportieren
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Alle Blaupausen aus Datei importieren
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Datei ersetzen?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Eine Datei mit diesem Namen existiert bereits. Möchten Sie sie ersetzen?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Blaupausen exportieren oder importieren
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Klicken Sie auf eine Datei, um sie auszuwählen, oder auf einen Ordner, um ihn zu öffnen
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Der Text ist keine gültige Blaupause
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Ungültiger Dateiname
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Blaupausen-Datei nicht gefunden oder keine gültige Blaupausen-Sammlung
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Die Blaupausen-Datei konnte nicht geschrieben werden

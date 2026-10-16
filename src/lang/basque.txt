@@ -4847,3 +4847,63 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING} ({VELOCITY})
 
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Planoa
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Hautatu zure azpiegituraren eremu bat plano-slot aktibora kopiatzeko
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Itsatsi plano-slot aktiboaren edukia mapan
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Itsatsi trenbide-azpiegitura
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Itsatsi errepide-azpiegitura
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Itsatsi ur-azpiegitura
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Itsatsi aire-azpiegitura
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Bihurtu trenbide-azpiegitura uneko trenbide motara itsastean
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Ispilatu seinaleak itsastean
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Hobetu zubiak itsastean
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Itsatsi geltokiak eta ibilbide-puntuak ere
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Moldatu lurra itsastean. Egin klik txandakatzeko: lur-moldaketarik ez, gutxieneko moldaketa, moldaketa osoa
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Uneko eraldaketa, egin klik berrezartzeko
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Biratu planoa 90 gradu erlojuaren kontrako noranzkoan
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Biratu planoa 90 gradu erlojuaren noranzkoan
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Ispilatu planoa ipar-mendebalde eta hego-ekialde ardatzarekiko
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Ispilatu planoa ipar-ekialde eta hego-mendebalde ardatzarekiko
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Altuera-desplazamendua itsastean
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Handitu planoa itsasten den altuera
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Txikitu planoa itsasten den altuera
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Blueprint patch-ari buruzko informazioa
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}Hautatutako eremuak ez du zure konpainiaren azpiegiturarik
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}Hautatutako eremua handiegia da kopiatzeko
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Planoa handiegia da hainbat jokalariko partida batean itsasteko
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Erakutsi plano tresna-barra azpiegitura kopiatzeko eta itsasteko
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Erakutsi plano tresna-barra azpiegitura kopiatzeko eta itsasteko
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Ezin da planoa hemen itsatsi...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Aldatu plano-slot honetara. Slotak izena edo edukia badu, gainean jarrita izena eta aurrebista bat erakusten dira. Egin klik bikoitza berrizendatzeko
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Esportatu
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Inportatu
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Esp/Inp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint patch-a, {RAW_STRING} bertsioa
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Esportatu slot aktiboa...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Esportatu slot guztiak fitxategi batera...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Inportatu slot aktibora...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Inportatu slot guztiak fitxategi batetik...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Ezin izan da planoa arbelean kopiatu
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}Arbela hutsik dago
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Esportatu planoa
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Inportatu planoa
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Kopiatu arbelean
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Itsatsi arbeletik
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Planoa ordezkatu?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Slot aktiboak badu plano bat. Ordezkatu nahi duzu?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Plano guztiak ordezkatu?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Honek plano-slot guztien edukia ordezkatuko du. Jarraitu nahi duzu?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Berrizendatu planoa
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Esportatu plano guztiak fitxategi batera
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Inportatu plano guztiak fitxategi batetik
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Fitxategia ordezkatu?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Izen hori duen fitxategi bat badago jada. Ordezkatu nahi duzu?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Planoak esportatu edo inportatu
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Egin klik fitxategi batean hautatzeko, edo karpeta batean irekitzeko
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}Testua ez da balizko plano bat
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Fitxategi-izen baliogabea
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Ez da plano-fitxategia aurkitu, edo ez da baliozko plano-multzoa
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Ezin izan da plano-fitxategia idatzi

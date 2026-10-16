@@ -11,6 +11,7 @@
 #define SCHDISPATCH_H
 
 #include "date_func.h"
+#include "command_type.h"
 #include "order_type.h"
 #include "vehicle_type.h"
 #include "settings_type.h"
@@ -20,6 +21,11 @@ void ShowSchdispatchWindow(const Vehicle *v);
 void SchdispatchInvalidateWindows(const Vehicle *v);
 
 const struct LastDispatchRecord *GetVehicleLastDispatchRecord(const Vehicle *v, uint16_t schedule_index);
+
+/** Resolve a sch-dispatch command target to an order list; sets *veh for vehicle targets. */
+OrderList *ResolveSchDispatchTarget(OrderTargetType target_type, uint32_t id, Vehicle **veh);
+/** Check ownership of a sch-dispatch command target. */
+CommandCost CheckSchDispatchOwnership(OrderTargetType target_type, const OrderList *ol, const Vehicle *v);
 
 /**
  * Result type for EvaluateDispatchSlotConditionalOrderGeneral.

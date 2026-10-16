@@ -6155,3 +6155,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Jelvény
 STR_BADGE_CONFIG_PREVIEW                                        :Előnézet kép
 STR_BADGE_CONFIG_NAME                                           :Név
 STR_BADGE_FILTER_ANY_LABEL                                      :Bármelyik {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Tervrajz
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Jelölj ki egy területet a saját infrastruktúrádból, hogy az aktív tervrajzhelyre másold
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Az aktív tervrajzhely tartalmának beillesztése a térképre
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Vasúti infrastruktúra beillesztése
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Közúti infrastruktúra beillesztése
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Vízi infrastruktúra beillesztése
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Légi infrastruktúra beillesztése
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Vasúti infrastruktúra átalakítása a jelenlegi síntípusra beillesztéskor
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Jelzők tükrözése beillesztéskor
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Hidak korszerűsítése beillesztéskor
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Állomások és útpontok beillesztése is
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terep átalakítása beillesztéskor. Kattints a váltáshoz: nincs tereprendezés, minimális tereprendezés, teljes tereprendezés
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Jelenlegi átalakítás, kattints a visszaállításhoz
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}A tervrajz elforgatása 90 fokkal az óramutató járásával ellentétesen
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}A tervrajz elforgatása 90 fokkal az óramutató járása szerint
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}A tervrajz tükrözése az ÉNy-DK tengelyre
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}A tervrajz tükrözése az ÉK-DNy tengelyre
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Beillesztéskor alkalmazott magasságeltolás
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}A beillesztési magasság növelése
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}A beillesztési magasság csökkentése
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Információ a Blueprint patchről
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}A kijelölt terület nem tartalmaz a vállalatod tulajdonában lévő infrastruktúrát
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}A kijelölt terület túl nagy a másoláshoz
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}A tervrajz túl nagy a beillesztéshez többjátékos játékban
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Tervrajz-eszköztár megjelenítése az infrastruktúra másolásához és beillesztéséhez
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Tervrajz-eszköztár megjelenítése az infrastruktúra másolásához és beillesztéséhez
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}A tervrajz ide nem illeszthető be...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Váltás erre a tervrajzhelyre. Ha a helynek van neve vagy tartalma, az egér fölé vitele megjeleníti a nevet és egy előnézetet. Dupla kattintás az átnevezéshez
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportálás
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importálás
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint patch, verzió: {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Aktív hely exportálása...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Összes hely exportálása fájlba...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importálás az aktív helyre...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Összes hely importálása fájlból...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}A tervrajzot nem sikerült a vágólapra másolni
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}A vágólap üres
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Tervrajz exportálása
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Tervrajz importálása
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Másolás a vágólapra
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Beillesztés a vágólapról
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Lecseréled a tervrajzot?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}Az aktív helyen már van tervrajz. Le akarod cserélni?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Lecseréled az összes tervrajzot?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Ez lecseréli az összes tervrajzhely tartalmát. Szeretnéd folytatni?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Tervrajz átnevezése
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Az összes tervrajz exportálása fájlba
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Az összes tervrajz importálása fájlból
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Lecseréled a fájlt?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Már létezik egy ilyen nevű fájl. Le akarod cserélni?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Tervrajzok exportálása vagy importálása
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Kattints egy fájlra a kiválasztásához, vagy egy mappára a megnyitásához
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}A szöveg nem érvényes tervrajz
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Érvénytelen fájlnév
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}A tervrajzfájl nem található, vagy nem érvényes tervrajzkészlet
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}A tervrajzfájlt nem sikerült írni

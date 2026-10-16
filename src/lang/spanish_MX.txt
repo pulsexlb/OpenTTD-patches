@@ -5958,3 +5958,64 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Filtros 
 STR_BADGE_CONFIG_PREVIEW                                        :Vista previa de imagen
 STR_BADGE_CONFIG_NAME                                           :Nombre
 STR_BADGE_FILTER_ANY_LABEL                                      :Cualquier {STRING}
+STR_BADGE_FILTER_IS_LABEL                                       :{STRING} es {STRING}
+
+# Blueprint feature
+STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
+STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Plano
+STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Seleccionar un área de tu propia infraestructura para copiarla en la ranura de plano activa
+STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Pegar el contenido de la ranura de plano activa en el mapa
+STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Pegar infraestructura ferroviaria
+STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Pegar infraestructura de carretera
+STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Pegar infraestructura marítima
+STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Pegar infraestructura aérea
+STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Convertir la infraestructura ferroviaria al tipo de riel actual al pegar
+STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Reflejar las señales al pegar
+STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Mejorar los puentes al pegar
+STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Pegar también estaciones y puntos de ruta
+STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraformar el terreno al pegar. Haz clic para alternar: sin terraformación, terraformación mínima, terraformación completa
+STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Transformación actual, haz clic para restablecer
+STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rotar el plano 90 grados en sentido antihorario
+STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rotar el plano 90 grados en sentido horario
+STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Reflejar el plano sobre el eje NO-SE
+STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Reflejar el plano sobre el eje NE-SO
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Desplazamiento de altura aplicado al pegar
+STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Aumentar la altura a la que se pega el plano
+STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Disminuir la altura a la que se pega el plano
+STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Información sobre el parche Blueprint
+STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}El área seleccionada no contiene infraestructura de tu compañía
+STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}El área seleccionada es demasiado grande para copiar
+STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}El plano es demasiado grande para pegarlo en una partida multijugador
+STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Mostrar la barra de planos para copiar y pegar infraestructura
+STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Mostrar la barra de planos para copiar y pegar infraestructura
+STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}No se puede pegar el plano aquí...
+STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Cambiar a esta ranura de plano. Si la ranura tiene nombre o contenido, al pasar el cursor se muestra el nombre y una vista previa. Haz doble clic para renombrar
+STR_BLUEPRINT_EXPORT                                            :{BLACK}Exportar
+STR_BLUEPRINT_IMPORT                                            :{BLACK}Importar
+STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Parche Blueprint, versión {RAW_STRING}
+STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Exportar ranura activa...
+STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Exportar todas las ranuras a un archivo...
+STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Importar a la ranura activa...
+STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Importar todas las ranuras desde un archivo...
+STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}No se pudo copiar el plano al portapapeles
+STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}El portapapeles está vacío
+STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Exportar plano
+STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Importar plano
+STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Copiar al portapapeles
+STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Pegar desde el portapapeles
+STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}¿Reemplazar el plano?
+STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}La ranura activa ya contiene un plano. ¿Quieres reemplazarlo?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}¿Reemplazar todos los planos?
+STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}Esto reemplazará el contenido de todas las ranuras de plano. ¿Quieres continuar?
+STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Renombrar plano
+STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Exportar todos los planos a un archivo
+STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Importar todos los planos desde un archivo
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}¿Reemplazar archivo?
+STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}Ya existe un archivo con ese nombre. ¿Quieres reemplazarlo?
+STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Exportar o importar planos
+STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Haz clic en un archivo para seleccionarlo, o en una carpeta para abrirla
+STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}El texto no es un plano válido
+STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Nombre de archivo no válido
+STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Archivo de plano no encontrado, o no es un conjunto de planos válido
+STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}No se pudo escribir el archivo de plano

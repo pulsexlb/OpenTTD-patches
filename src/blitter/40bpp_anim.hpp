@@ -32,6 +32,7 @@ public:
 	void ScrollBuffer(void *video, int left, int top, int width, int height, int scroll_x, int scroll_y) override;
 	void Draw(Blitter::BlitterParams *bp, BlitterMode mode, ZoomLevel zoom) override;
 	void DrawColourMappingRect(void *dst, int width, int height, PaletteID pal) override;
+	void DarkenRect(void *dst, int width, int height, uint8_t nom) override;
 	Sprite *Encode(SpriteType sprite_type, const SpriteLoader::SpriteCollection &sprite, SpriteAllocator &allocator) override;
 	size_t BufferSize(uint width, uint height) override;
 	Blitter::PaletteAnimation UsePaletteAnimation() override;

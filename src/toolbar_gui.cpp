@@ -23,11 +23,15 @@
 #include "road.h"
 #include "road_gui.h"
 #include "dock_gui.h"
+#include "airport_gui.h"
+
+AirType _last_built_airtype = AIRTYPE_BEGIN;
 #include "water_map.h"
 #include "date_func.h"
 #include "vehicle_func.h"
 #include "sound_func.h"
 #include "terraform_gui.h"
+#include "blueprint_gui.h"
 #include "object.h"
 #include "newgrf_object.h"
 #include "strings_func.h"
@@ -58,6 +62,7 @@
 #include "goal_gui.h"
 #include "story_base.h"
 #include "plans_func.h"
+#include "orderlist_gui.h"
 #include "toolbar_gui.h"
 #include "framerate_type.h"
 #include "zoning.h"
@@ -471,6 +476,7 @@ enum class MapMenuEntries : uint8_t {
 	ShowTownDirectory, ///< Open window with list of towns.
 	ShowIndustryDirectory, ///< Open window with list of industries.
 	ShowPlans, ///< Open plan window.
+	ShowOrderListManager, ///< Open order list manager window.
 };
 
 static CallBackFunction ToolbarMapClick(Window *w)
@@ -481,6 +487,7 @@ static CallBackFunction ToolbarMapClick(Window *w)
 	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_LINGRAPH_LEGEND,         MapMenuEntries::ShowLinkGraph,         false));
 	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_SIGN_LIST,               MapMenuEntries::ShowSignList,          false));
 	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_PLAN_LIST,               MapMenuEntries::ShowPlans,             false));
+	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_ORDER_LIST_MANAGER,     MapMenuEntries::ShowOrderListManager,  false));
 	PopupMainToolbarMenu(w, WID_TN_SMALL_MAP, std::move(list), 0);
 	return CallBackFunction::None;
 }
@@ -514,6 +521,7 @@ static CallBackFunction MenuClickMap(int index)
 		case MapMenuEntries::ShowTownDirectory:     ShowTownDirectory(); break;
 		case MapMenuEntries::ShowIndustryDirectory: ShowIndustryDirectory(); break;
 		case MapMenuEntries::ShowPlans:             ShowPlansWindow(); break;
+		case MapMenuEntries::ShowOrderListManager:  ShowOrderListManager(); break;
 	}
 	return CallBackFunction::None;
 }
@@ -1016,9 +1024,15 @@ static CallBackFunction MenuClickBuildWater(int)
 
 static CallBackFunction ToolbarBuildAirClick(Window *w)
 {
-	DropDownList list;
-	list.push_back(MakeDropDownListIconItem(SPR_IMG_AIRPORT, PAL_NONE, STR_AIRCRAFT_MENU_AIRPORT_CONSTRUCTION, 0, false));
-	ShowDropDownList(w, std::move(list), 0, WID_TN_AIR, 140, GetToolbarDropDownOptions());
+	if (_settings_game.station.allow_modify_airports) {
+		DropDownList list = GetAirTypeDropDownList();
+		ShowDropDownList(w, std::move(list), _last_built_airtype, WID_TN_AIR, 140, GetToolbarDropDownOptions());
+	} else {
+		DropDownList list;
+		list.push_back(MakeDropDownListIconItem(SPR_IMG_AIRPORT, PAL_NONE, STR_AIRCRAFT_MENU_AIRPORT_CONSTRUCTION, 0, false));
+		ShowDropDownList(w, std::move(list), 0, WID_TN_AIR, 140, GetToolbarDropDownOptions());
+	}
+	if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
 	return CallBackFunction::None;
 }
 
@@ -1027,9 +1041,12 @@ static CallBackFunction ToolbarBuildAirClick(Window *w)
  *
  * @return #CallBackFunction::None
  */
-static CallBackFunction MenuClickBuildAir(int)
+static CallBackFunction MenuClickBuildAir(int index)
 {
-	ShowBuildAirToolbar();
+	if (_settings_game.station.allow_modify_airports) {
+		_last_built_airtype = (AirType)index;
+	}
+	ShowBuildAirToolbar(_last_built_airtype);
 	return CallBackFunction::None;
 }
 
@@ -1062,6 +1079,24 @@ static CallBackFunction MenuClickForest(int index)
 		case 2: return SelectSignTool();
 		case 3: ShowBuildObjectPicker(); break;
 	}
+	return CallBackFunction::None;
+}
+
+/* --- Blueprint button --- */
+
+static CallBackFunction ToolbarBlueprintClick(Window *w)
+{
+	ShowBlueprintToolbar();
+	w->HandleButtonClick(WID_TN_BLUEPRINT);
+	return CallBackFunction::None;
+}
+
+/* --- Undo button --- */
+
+static CallBackFunction ToolbarBlueprintUndoClick(Window *w)
+{
+	ShowBlueprintUndoToolbar();
+	w->HandleButtonClick(WID_TN_BLUEPRINT_UNDO);
 	return CallBackFunction::None;
 }
 
@@ -1573,9 +1608,11 @@ static MenuClickedProc * const _menu_clicked_procs[] = {
 	MenuClickBuildWater,  // 24
 	MenuClickBuildAir,    // 25
 	MenuClickForest,      // 26
-	MenuClickMusicWindow, // 27
-	MenuClickNewspaper,   // 28
-	MenuClickHelp,        // 29
+	nullptr,                 // 27
+	nullptr,                 // 28
+	MenuClickMusicWindow, // 29
+	MenuClickNewspaper,   // 30
+	MenuClickHelp,        // 31
 };
 
 /** Full blown container to make it behave exactly as we want :) */
@@ -2024,6 +2061,8 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_WATER,
 			WID_TN_AIR,
 			WID_TN_LANDSCAPE,
+			WID_TN_BLUEPRINT,
+			WID_TN_BLUEPRINT_UNDO,
 			WID_TN_MUSIC_SOUND,
 			WID_TN_MESSAGES,
 			WID_TN_HELP
@@ -2202,6 +2241,8 @@ static ToolbarButtonProc * const _toolbar_button_procs[] = {
 	ToolbarBuildWaterClick,
 	ToolbarBuildAirClick,
 	ToolbarForestClick,
+	ToolbarBlueprintClick,
+	ToolbarBlueprintUndoClick,
 	ToolbarMusicClick,
 	ToolbarNewspaperClick,
 	ToolbarHelpClick,
@@ -2242,7 +2283,7 @@ struct MainToolbarWindow : Window {
 		/* If spectator, disable all construction buttons
 		 * ie : Build road, rail, ships, airports and landscaping
 		 * Since enabled state is the default, just disable when needed */
-		this->SetWidgetsDisabledState(_local_company == COMPANY_SPECTATOR, WID_TN_RAILS, WID_TN_ROADS, WID_TN_TRAMS, WID_TN_WATER, WID_TN_AIR, WID_TN_LANDSCAPE);
+		this->SetWidgetsDisabledState(_local_company == COMPANY_SPECTATOR, WID_TN_RAILS, WID_TN_ROADS, WID_TN_TRAMS, WID_TN_WATER, WID_TN_AIR, WID_TN_LANDSCAPE, WID_TN_BLUEPRINT, WID_TN_BLUEPRINT_UNDO);
 		/* disable company list drop downs, if there are no companies */
 		this->SetWidgetsDisabledState(Company::GetNumItems() == 0, WID_TN_STATIONS, WID_TN_FINANCES, WID_TN_TRAINS, WID_TN_ROADVEHS, WID_TN_SHIPS, WID_TN_AIRCRAFT);
 
@@ -2300,7 +2341,7 @@ struct MainToolbarWindow : Window {
 			case MTHK_BUILD_ROAD: ShowBuildRoadToolbar(_last_built_roadtype); break;
 			case MTHK_BUILD_TRAM: ShowBuildRoadToolbar(_last_built_tramtype); break;
 			case MTHK_BUILD_DOCKS: ShowBuildDocksToolbar(); break;
-			case MTHK_BUILD_AIRPORT: ShowBuildAirToolbar(); break;
+			case MTHK_BUILD_AIRPORT: ToolbarBuildAirClick(this); break;
 			case MTHK_BUILD_TREES: ShowBuildTreesToolbar(); break;
 			case MTHK_MUSIC: ShowMusicWindow(); break;
 			case MTHK_SCRIPT_DEBUG: ShowScriptDebugWindow(); break;
@@ -2460,6 +2501,8 @@ static constexpr std::tuple<WidgetID, WidgetType, SpriteID> _toolbar_button_spri
 	{WID_TN_WATER,        WWT_IMGBTN,     SPR_IMG_BUILDWATER},
 	{WID_TN_AIR,          WWT_IMGBTN,     SPR_IMG_BUILDAIR},
 	{WID_TN_LANDSCAPE,    WWT_IMGBTN,     SPR_IMG_LANDSCAPING},
+	{WID_TN_BLUEPRINT,    WWT_PUSHIMGBTN, SPR_BLUEPRINT_TOOLBAR},
+	{WID_TN_BLUEPRINT_UNDO, WWT_PUSHIMGBTN, SPR_BLUEPRINT_UNDO},
 	{WID_TN_MUSIC_SOUND,  WWT_IMGBTN,     SPR_IMG_MUSIC},
 	{WID_TN_MESSAGES,     WWT_IMGBTN,     SPR_IMG_MESSAGES},
 	{WID_TN_HELP,         WWT_IMGBTN,     SPR_IMG_QUERY},

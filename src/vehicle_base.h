@@ -83,6 +83,7 @@ enum GroundVehicleSubtypeFlags : uint8_t {
 	GVSF_FREE_WAGON       = 4, ///< First in a wagon chain (in depot) (not used for road vehicles).
 	GVSF_MULTIHEADED      = 5, ///< Engine is multiheaded (not used for road vehicles).
 	GVSF_VIRTUAL          = 6, ///< Used for virtual trains during template design, it is needed to skip checks for tile or depot status
+	GVSF_FRONT_WAGON      = 7, ///< First wagon of a consist without a front engine (used for train coupling/decoupling)
 };
 
 /**
@@ -218,6 +219,9 @@ struct GroundVehicleCache;
 extern NamedSaveLoadTable GetVehicleDescription(VehicleType vt);
 struct LoadgameState;
 struct GRFFile;
+struct VehicleCommonStructHandler;
+void ResetChainNonFrontMarkers(Vehicle *head);
+void ResetChainNonFrontMarkers(Vehicle *head);
 
 namespace upstream_sl {
 	class SlVehicleCommon;
@@ -258,6 +262,8 @@ private:
 	Vehicle *next = nullptr;                     ///< pointer to the next vehicle in the chain
 	Vehicle *previous = nullptr;                 ///< NOSAVE: pointer to the previous vehicle in the chain
 	Vehicle *first = nullptr;                    ///< NOSAVE: pointer to the first vehicle in the chain
+	Vehicle *primary = nullptr;                  ///< NOSAVE: pointer to the vehicle carrying the consist info; nullptr means same as #first
+	uint8_t consist_primary = 0;                 ///< SAVE(XSLFI_TRAIN_PRIMARY): temporary flag used to persist which vehicle of the chain is the primary
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order
@@ -265,6 +271,7 @@ private:
 
 public:
 	friend NamedSaveLoadTable GetVehicleDescription(VehicleType vt); ///< So we can use private/protected variables in the saveload code
+	friend struct ::VehicleCommonStructHandler;                      ///< Saves the common vehicle description (needs #consist_primary)
 	friend void FixOldVehicles(LoadgameState &ls);
 	friend void AfterLoadVehiclesPhase1(bool part_of_load);     ///< So we can set the #previous and #first pointers while loading
 	friend bool LoadOldVehicle(LoadgameState &ls, int num);     ///< So we can set the proper next pointer while loading
@@ -304,6 +311,14 @@ public:
 	uint8_t breakdown_type = 0;                  ///< Type of breakdown
 	uint8_t breakdown_chance_factor = 0;         ///< Improved breakdowns: current multiplier for breakdown_chance * 128, used for head vehicle only
 	Owner owner = INVALID_OWNER;                 ///< Which company owns the vehicle?
+
+	/* Road vehicle transport (RoRo): this road vehicle is carried by another vehicle (train/ship/aircraft). */
+	uint8_t rv_transport_flags = 0;                          ///< RoRo: bit0 = waiting to be transported, bit1 = being transported
+	VehicleID transported_by = VehicleID::Invalid();         ///< RoRo: host carrier front vehicle at the time this road vehicle was loaded. Informational only: consist surgery (splitting, joining, rearranging) does not update it, so which carrier really holds this vehicle is derived from #transported_host_part, see RVTransportGetCarrier().
+	VehicleID transported_host_part = VehicleID::Invalid();  ///< RoRo: host part (wagon/ship part/aircraft body) this vehicle occupies. This decides which carrier holds it and how much of that part's capacity it takes.
+	uint16_t transported_weight = 0;                         ///< RoRo: weight in tonnes this vehicle occupies on the host part
+	StationID transported_from = StationID::Invalid();      ///< RoRo: station this vehicle was loaded on its host at (the transport fee is charged on the distance from there)
+	uint32_t transport_wait_tick = 0;                        ///< RoRo: tick when this vehicle started waiting to be transported
 
 	SpriteID colourmap{};                        ///< NOSAVE: cached colour mapping
 
@@ -368,12 +383,15 @@ public:
 	uint16_t running_ticks = 0;                  ///< Number of ticks this vehicle was not stopped this day
 
 	VehStates vehstatus{};                       ///< Status
+	uint16_t wait_counter = 0;                   ///< waiting ticks (servicing, waiting in front of a signal or forced proceeding)
 	uint8_t subtype = 0;                         ///< subtype (Filled with values from #AircraftSubType/#DisasterSubType/#EffectVehicleType/#GroundVehicleSubtypeFlags)
 	GroupID group_id = GroupID::Invalid();       ///< Index of group Pool array
 
 	Order current_order{};                       ///< The current order (+ status, like: loading)
 
 	OrderList *orders = nullptr;                 ///< Pointer to the order list for this vehicle
+	OrderListID primary_order = OrderListID::Invalid();        ///< The order list this vehicle belongs to; equals #orders->index unless it is currently away on an execute-schedule detour
+	VehicleOrderID primary_order_index = INVALID_VEH_ORDER_ID; ///< While executing another order list: position in #primary_order to resume at; #INVALID_VEH_ORDER_ID otherwise
 
 	NO_UNIQUE_ADDRESS NewGRFCache grf_cache{};   ///< Cache of often used calculated NewGRF values
 	Direction cur_image_valid_dir = Direction::Invalid; ///< NOSAVE: direction for which cur_image does not need to be regenerated on the next tick
@@ -442,7 +460,7 @@ public:
 	 * Is this vehicle the moving front of the vehicle chain?
 	 * @return \c true iff this vehicle is the moving front of the vehicle chain.
 	 */
-	bool IsMovingFront() const { return this->First()->IsPrimaryVehicle() && (this->IsDrivingBackwards() ? this->Next() : this->Previous()) == nullptr; }
+	bool IsMovingFront() const { return this->Primary()->IsPrimaryVehicle() && (this->IsDrivingBackwards() ? this->Next() : this->Previous()) == nullptr; }
 
 	/**
 	 * Get the moving front of the vehicle chain.
@@ -658,15 +676,18 @@ public:
 	 */
 	bool IsStoppedInDepot() const
 	{
-		assert(this == this->First());
+		/* Physical state: always evaluated on the chain head, callable on any vehicle. */
+		const Vehicle *f = this->First();
 		/* Free wagons have no VehState::Stopped state */
-		if (this->IsPrimaryVehicle() && !this->vehstatus.Test(VehState::Stopped)) return false;
-		return this->IsChainInDepot();
+		if (f->IsPrimaryVehicle() && !f->vehstatus.Test(VehState::Stopped)) return false;
+		return f->IsChainInDepot();
 	}
 
 	bool IsWaitingInDepot() const {
-		assert(this == this->First());
-		return this->current_order.IsType(OT_WAITING) && this->IsChainInDepot();
+		/* The waiting order is consist info carried by the primary vehicle; the
+		 * depot check is physical and evaluated on the chain head. Callable on
+		 * any vehicle of the chain. */
+		return this->Primary()->current_order.IsType(OT_WAITING) && this->First()->IsChainInDepot();
 	}
 
 	/**
@@ -729,6 +750,12 @@ public:
 
 	void SetNext(Vehicle *next);
 	inline void SetFirst(Vehicle *f) { this->first = f; }
+	inline void SetLast(Vehicle *l) { this->last = l; }
+	inline void SetPrimary(Vehicle *p) { this->primary = p; }
+	/* Raw pointer assignment without the chain-consistency walks of SetNext();
+	 * only for code that relinks an entire chain in one pass. */
+	inline void SetNextRaw(Vehicle *n) { this->next = n; }
+	inline void SetPreviousRaw(Vehicle *p) { this->previous = p; }
 
 	/**
 	 * Get the next vehicle of this vehicle.
@@ -749,6 +776,16 @@ public:
 	 * @return the first vehicle of the chain.
 	 */
 	inline Vehicle *First() const { return this->first; }
+
+	/**
+	 * Get the primary vehicle of this vehicle chain, i.e. the vehicle that
+	 * carries the consist information (orders, group, unit number, etc.).
+	 * Unlike #First() this does not follow the physical chain head; the two
+	 * may be different vehicles. Defaults to #First() unless a primary
+	 * vehicle was explicitly set for the chain.
+	 * @return the primary vehicle of the chain.
+	 */
+	inline Vehicle *Primary() const { return (this->primary != nullptr) ? this->primary : this->first; }
 
 	/**
 	 * Get the last vehicle of this vehicle chain.
@@ -828,6 +865,18 @@ public:
 	 * @return true if there are other vehicles sharing the same order
 	 */
 	inline bool IsOrderListShared() const { return this->orders != nullptr && this->orders->IsShared(); }
+
+	/**
+	 * Is this vehicle currently away on an execute-schedule detour, i.e. is it
+	 * following another order list than its primary (home) order list?
+	 */
+	inline bool IsExecutingSchedule() const { return this->orders != nullptr && this->primary_order != OrderListID::Invalid() && this->orders->index != this->primary_order; }
+
+	/**
+	 * Finished one full pass of the order list being executed: return to the
+	 * primary order list and resume at the remembered position.
+	 */
+	void ReturnFromExecuteSchedule();
 
 	/**
 	 * Get the number of orders this vehicle has.
@@ -913,6 +962,7 @@ public:
 
 	bool NeedsServicing() const;
 	bool NeedsAutomaticServicing() const;
+	bool IsServiceIntervalDue() const;
 
 	/**
 	 * Determine the location for the station where the vehicle goes to next.
@@ -988,20 +1038,30 @@ private:
 	/**
 	 * Advance cur_real_order_index to the next real order.
 	 * cur_implicit_order_index is not touched.
+	 * @return whether the index wrapped past the end of the order list.
 	 */
-	void SkipToNextRealOrderIndex()
+	bool SkipToNextRealOrderIndex()
 	{
+		bool wrapped = false;
 		if (this->GetNumManualOrders() > 0) {
 			/* Advance to next real order */
 			do {
 				this->cur_real_order_index++;
-				if (this->cur_real_order_index >= this->GetNumOrders()) this->cur_real_order_index = 0;
-			} while (this->GetOrder(this->cur_real_order_index)->IsType(OT_IMPLICIT));
+				if (this->cur_real_order_index >= this->GetNumOrders()) {
+					this->cur_real_order_index = 0;
+					wrapped = true;
+				}
+			} while (this->GetOrder(this->cur_real_order_index)->IsType(OT_IMPLICIT) || this->GetOrder(this->cur_real_order_index)->IsType(OT_DECOUPLE));
 			this->cur_timetable_order_index = this->cur_real_order_index;
 		} else {
+			wrapped = this->cur_real_order_index != 0 || this->GetNumOrders() <= 1;
 			this->cur_real_order_index = 0;
 			this->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
 		}
+		/* Wrapped past the end: a vehicle executing another order list has now
+		 * finished one full pass and must return to its own order list. */
+		if (wrapped && this->IsExecutingSchedule()) this->ReturnFromExecuteSchedule();
+		return wrapped;
 	}
 
 public:
@@ -1019,13 +1079,21 @@ public:
 
 		assert(this->cur_real_order_index == 0 || this->cur_real_order_index < this->GetNumOrders());
 
+		bool wrapped = false;
 		/* Advance to next implicit order */
 		do {
 			this->cur_implicit_order_index++;
-			if (this->cur_implicit_order_index >= this->GetNumOrders()) this->cur_implicit_order_index = 0;
+			if (this->cur_implicit_order_index >= this->GetNumOrders()) {
+				this->cur_implicit_order_index = 0;
+				wrapped = true;
+			}
 		} while (this->cur_implicit_order_index != this->cur_real_order_index && !this->GetOrder(this->cur_implicit_order_index)->IsType(OT_IMPLICIT));
 
 		InvalidateVehicleOrder(this, 0);
+
+		/* See SkipToNextRealOrderIndex: returning is a no-op when the real
+		 * index already returned us home. */
+		if (wrapped && this->IsExecutingSchedule()) this->ReturnFromExecuteSchedule();
 	}
 
 	/**
@@ -1100,6 +1168,19 @@ public:
 	bool HasEngineType() const;
 	bool HasDepotOrder() const;
 	void HandlePathfindingResult(bool path_found);
+
+	/** Bit in #rv_transport_flags: this road vehicle is carried by another vehicle (RoRo). */
+	static constexpr uint8_t RV_TRANSPORT_CARRIED = 1 << 1;
+
+	/**
+	 * Check if this vehicle is excluded from most game systems: template/virtual
+	 * vehicles and road vehicles which are currently carried by another vehicle.
+	 * @return True if the vehicle should not take part in normal game systems.
+	 */
+	inline bool IsVirtualOrCarried() const
+	{
+		return HasBit(this->subtype, GVSF_VIRTUAL) || (this->rv_transport_flags & RV_TRANSPORT_CARRIED) != 0;
+	}
 
 	/**
 	 * Check if the vehicle is a front engine.
@@ -1454,6 +1535,12 @@ struct SpecializedVehicle : public Base {
 	 * @return first vehicle in the chain
 	 */
 	inline T *First() const { return (T *)this->Vehicle::First(); }
+
+	/**
+	 * Get the primary vehicle of the chain (consist info carrier)
+	 * @return primary vehicle in the chain
+	 */
+	inline T *Primary() const { return (T *)this->Vehicle::Primary(); }
 
 	/**
 	 * Get the last vehicle in the chain
