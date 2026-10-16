@@ -11,7 +11,6 @@
 #include "../debug.h"
 #include "../vehicle_func.h"
 #include "../train.h"
-#include "../train_cmd.h"
 #include "../roadveh.h"
 #include "../ship.h"
 #include "../aircraft.h"
@@ -177,6 +176,59 @@ void ConvertOldMultiheadToNew()
 }
 
 
+/** need to be called to load aircraft from old version */
+void UpdateOldAircraft()
+{
+	/* set airport_flags to 0 for all airports just to be sure */
+	for (Station *st : Station::Iterate()) {
+		st->airport.blocks = {}; // reset airport
+	}
+
+	for (Aircraft *a : Aircraft::Iterate()) {
+		/* airplane has another vehicle with subtype 4 (shadow), helicopter also has 3 (rotor)
+		 * skip those */
+		if (a->IsNormalAircraft()) {
+			/* airplane in terminal stopped doesn't hurt anyone, so goto next */
+			if (a->vehstatus.Test(VehState::Stopped) && a->state == 0) {
+				a->state = HANGAR;
+				continue;
+			}
+
+			AircraftLeaveHangar(a, a->direction); // make airplane visible if it was in a depot for example
+			a->vehstatus.Reset(VehState::Stopped); // make airplane moving
+			UpdateAircraftCache(a);
+			a->cur_speed = a->vcache.cached_max_speed; // so aircraft don't have zero speed while in air
+			if (!a->current_order.IsType(OT_GOTO_STATION) && !a->current_order.IsType(OT_GOTO_DEPOT)) {
+				/* reset current order so aircraft doesn't have invalid "station-only" order */
+				a->current_order.MakeDummy();
+			}
+			a->state = FLYING;
+			AircraftNextAirportPos_and_Order(a); // move it to the entry point of the airport
+			GetNewVehiclePosResult gp = GetNewVehiclePos(a);
+			a->tile = TileIndex{0}; // aircraft in air is tile=0
+
+			/* correct speed of helicopter-rotors */
+			if (a->subtype == AIR_HELICOPTER) a->Next()->Next()->cur_speed = 32;
+
+			/* set new position x,y,z */
+			GetAircraftFlightLevelBounds(a, &a->z_pos, nullptr);
+			SetAircraftPosition(a, gp.x, gp.y, GetAircraftFlightLevel(a));
+		}
+	}
+
+	/* Clear aircraft from loading vehicles, if we bumped them into the air. */
+	for (Station *st : Station::Iterate()) {
+		for (auto iter = st->loading_vehicles.begin(); iter != st->loading_vehicles.end(); /* nothing */) {
+			Vehicle *v = *iter;
+			if (v->type == VehicleType::Aircraft && !v->current_order.IsType(OT_LOADING)) {
+				iter = st->loading_vehicles.erase(iter);
+				delete v->cargo_payment;
+			} else {
+				++iter;
+			}
+		}
+	}
+}
 
 /**
  * Check all vehicles to ensure their engine type is valid
@@ -252,7 +304,6 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 
 		if (part_of_load) v->fill_percent_te_id = INVALID_TE_ID;
 		v->first = nullptr;
-		v->primary = nullptr;
 		v->last = nullptr;
 		if (v->IsGroundVehicle()) v->GetGroundVehicleCache()->first_engine = EngineID::Invalid();
 	}
@@ -305,27 +356,6 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 				}
 			}
 		}
-
-		if (!SlXvIsFeaturePresent(XSLFI_VEHICLE_PRIMARY_ORDER)) {
-			/* Older savegames do not know about the primary order list: every
-			 * vehicle simply belongs to the order list it currently has. */
-			for (Vehicle *v : Vehicle::Iterate()) {
-				si_v = v;
-				if (v->orders != nullptr && v->primary_order == OrderListID::Invalid()) {
-					v->primary_order = v->orders->index;
-				}
-			}
-		}
-
-		/* Order lists that have no vehicles are never passed to Initialize(); recompute their
-		 * derived counters, which are not saved and would otherwise stay zero (or get corrupted
-		 * by later edits). This covers player-created order lists as well as the home list of a
-		 * vehicle that is away on an execute-schedule detour: a zero #num_manual_orders there
-		 * makes #SkipToNextRealOrderIndex fall back to order 0 and lose the resume position. */
-		for (OrderList *ol : OrderList::Iterate()) {
-			if (ol->GetNumVehicles() != 0) continue;
-			ol->RecalculateDerivedCounters();
-		}
 	}
 
 	for (Vehicle *v : Vehicle::Iterate()) {
@@ -343,33 +373,6 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 				u->last = v;
 			}
 		}
-
-		/* Fill the primary pointers. The flag is only saved with XSLFI_TRAIN_PRIMARY,
-		 * for older savegames it is zero and primary defaults to first. */
-		if (v->Previous() == nullptr) {
-			/* Locate the flagged primary carrier first (there is exactly one per
-			 * chain; vehicles ahead of it must not receive an intermediate
-			 * value), then assign it to every member of the chain. */
-			Vehicle *primary = v;
-			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-				if (u->consist_primary != 0) {
-					primary = u;
-					break;
-				}
-			}
-			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-				u->primary = primary;
-			}
-			if (v->type == VehicleType::Train && v->index.base() <= 40) {
-				for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-				}
-				for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-					/* Note: first/last are not necessarily filled yet at this
-					 * point in the iteration (tails may come later), so only
-					 * next/previous are dumped here. */
-				}
-			}
-		}
 	}
 
 	if (part_of_load) {
@@ -377,7 +380,7 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 			/* Before 105 there was no order for shared orders, thus it messed up horribly */
 			for (Vehicle *v : Vehicle::Iterate()) {
 				si_v = v;
-				if (v->Primary() != v || v->orders != nullptr || v->previous_shared != nullptr || v->next_shared == nullptr) continue;
+				if (v->First() != v || v->orders != nullptr || v->previous_shared != nullptr || v->next_shared == nullptr) continue;
 
 				/* As above, allocating OrderList here is safe. */
 				assert(OrderList::CanAllocateItem());
@@ -483,13 +486,9 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 		switch (v->type) {
 			case VehicleType::Train: {
 				Train *t = Train::From(v);
-				/* Every chain needs its caches recomputed after load. The gate
-				 * runs on the primary vehicle (which may sit mid-chain when it
-				 * is not the chain head), while the cache recomputation itself
-				 * is always anchored on the physical chain head. */
-				if (t->Primary()->IsPrimaryVehicle() || t->IsFreeWagon()) {
+				if (t->IsFrontEngine() || t->IsFreeWagon()) {
 					t->gcache.last_speed = t->cur_speed; // update displayed train speed
-					t->First()->ConsistChanged(CCF_SAVELOAD);
+					t->ConsistChanged(CCF_SAVELOAD);
 				}
 				break;
 			}
@@ -598,12 +597,7 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 						rotor->UpdateSpriteSeqBound();
 					}
 
-					Aircraft *aircraft = Aircraft::From(v);
-					const AircraftState saved_cache_state = aircraft->last_cached_state;
-					UpdateAircraftCache(aircraft, true);
-					/* VENC restores the server's cached values later. Preserve when it last
-					 * evaluated callbacks, so a joining client refreshes on the same tick. */
-					if (SlXvIsFeaturePresent(XSLFI_AIRCRAFT_CACHE_STATE)) aircraft->last_cached_state = saved_cache_state;
+					UpdateAircraftCache(Aircraft::From(v), true);
 				}
 				break;
 
@@ -635,11 +629,7 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 
 		v->UpdateDeltaXY();
 		v->coord.left = INVALID_COORD;
-		/* Carried vehicles were taken off the vehicle tile hash when they were loaded onto their
-		 * carrier (RVTransportAttach), and the hash itself is not part of the savegame. Rebuilding
-		 * their entry here would put phantoms back on the tiles they were picked up from - station
-		 * platforms, usually - and make the unload platform choice differ from the running game. */
-		if ((v->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) == 0) v->UpdatePosition();
+		v->UpdatePosition();
 		if (v->type != VehicleType::Ship || v->Previous() == nullptr) v->UpdateViewport(false);
 		v->cargo.AssertCountConsistency();
 	}
@@ -745,12 +735,7 @@ void FixupTrainLengths()
 	}
 }
 
-/** Value of _pos for savegames which do not store the legacy aircraft position. */
-static constexpr uint8_t LEGACY_AIRCRAFT_POS_NONE = 0xFF;
-
 static uint8_t  _cargo_periods;
-static uint8_t  _pos;             ///< Current aircraft position (used for old saves), or LEGACY_AIRCRAFT_POS_NONE.
-static uint8_t  _old_state;       ///< Old aircraft state (used for old saves).
 static uint16_t _cargo_source;
 static uint32_t _cargo_source_xy;
 static uint16_t _cargo_count;
@@ -781,9 +766,6 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 
 	void Save(Vehicle *v) const override
 	{
-		v->consist_primary = (v->Primary() == v) ? 1 : 0;
-		if (v->type == VehicleType::Train && v->index.base() <= 40 && v->Primary()->index.base() <= 40) {
-		}
 		SlObjectSaveFiltered(v, this->GetLoadDescription());
 	}
 
@@ -1045,12 +1027,6 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("unitnumber",                 SLE_CONDVAR(Vehicle, unitnumber,                SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_8)),
 		NSL("unitnumber",                 SLE_CONDVAR(Vehicle, unitnumber,                SLE_UINT16,                 SLV_8, SL_MAX_VERSION)),
 		NSL("owner",                          SLE_VAR(Vehicle, owner,                     SLE_UINT8)),
-		NSL("rv_transport_flags",        SLE_CONDVAR_X(Vehicle, rv_transport_flags,       SLE_UINT8,  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
-		NSL("transported_by",            SLE_CONDVAR_X(Vehicle, transported_by,           SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
-		NSL("transported_host_part",     SLE_CONDVAR_X(Vehicle, transported_host_part,    SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
-		NSL("transported_weight",        SLE_CONDVAR_X(Vehicle, transported_weight,       SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
-		NSL("transported_from",          SLE_CONDVAR_X(Vehicle, transported_from,         SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
-		NSL("transport_wait_tick",       SLE_CONDVAR_X(Vehicle, transport_wait_tick,      SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
 		NSL("tile",                       SLE_CONDVAR(Vehicle, tile,                      SLE_FILE_U16 | SLE_VAR_U32, SL_MIN_VERSION, SLV_6)),
 		NSL("tile",                       SLE_CONDVAR(Vehicle, tile,                      SLE_UINT32,                 SLV_6, SL_MAX_VERSION)),
 		NSL("dest_tile",                  SLE_CONDVAR(Vehicle, dest_tile,                 SLE_FILE_U16 | SLE_VAR_U32, SL_MIN_VERSION, SLV_6)),
@@ -1077,8 +1053,6 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("progress",                       SLE_VAR(Vehicle, progress,                  SLE_UINT8)),
 
 		NSL("vehstatus",                      SLE_VAR(Vehicle, vehstatus,                 SLE_UINT8)),
-		NSL("consist_primary",          SLE_CONDVAR_X(Vehicle, consist_primary,           SLE_UINT8,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_PRIMARY))),
-		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),
 		NSL("last_loading_station",     SLE_CONDVAR_X(Vehicle, last_loading_station,      SLE_UINT16,                 SLV_182, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_CHILLPP, SL_CHILLPP_232))),
@@ -1115,12 +1089,11 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		/* This next line is for version 4 and prior compatibility.. it temporarily reads
 		 type and flags (which were both 4 bits) into type. Later on this is
 		 converted correctly */
-		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_FILE_U8 | SLE_VAR_U16,   SL_MIN_VERSION, SLV_5)),
+		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_UINT8,                  SL_MIN_VERSION, SLV_5)),
 		NSL("current_order.dest",         SLE_CONDVAR(Vehicle, current_order.dest,        SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 
 		/* Orders for version 5 and on */
-		NSL("current_order.type",        SLE_CONDVAR_X(Vehicle, current_order.type,        SLE_FILE_U8 | SLE_VAR_U16,   SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 0, 0))),
-		NSL("current_order.type",        SLE_CONDVAR_X(Vehicle, current_order.type,        SLE_UINT16,                  SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 1))),
+		NSL("current_order.type",         SLE_CONDVAR(Vehicle, current_order.type,        SLE_UINT8,                  SLV_5, SL_MAX_VERSION)),
 		NSL("current_order.flags",      SLE_CONDVAR_X(Vehicle, current_order.flags,       SLE_FILE_U8 | SLE_VAR_U16,  SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 0, 0))),
 		NSL("current_order.flags",      SLE_CONDVAR_X(Vehicle, current_order.flags,       SLE_UINT16,                 SLV_5, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 1))),
 		NSL("current_order.dest",         SLE_CONDVAR(Vehicle, current_order.dest,        SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),
@@ -1135,7 +1108,6 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("current_order.travel_time",SLE_CONDVAR_X(Vehicle, current_order.travel_time, SLE_FILE_U16 | SLE_VAR_U32, SLV_67, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA, 0, 5))),
 		NSL("current_order.travel_time",SLE_CONDVAR_X(Vehicle, current_order.travel_time, SLE_UINT32,                 SLV_67, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA, 6))),
 		NSL("current_order.max_speed",    SLE_CONDVAR(Vehicle, current_order.max_speed,   SLE_UINT16,                 SLV_174, SL_MAX_VERSION)),
-		NSL("current_order.decouple_flags", SLE_CONDVAR(Vehicle, current_order.decouple_flags, SLE_UINT8,             SL_MIN_VERSION, SL_MAX_VERSION)),
 
 		NSLT_STRUCT<VehicleOrderExtraDataStructHandler>("current_order.extra"),
 
@@ -1146,9 +1118,6 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("orders",                    SLEG_CONDVAR(_old_order_item_ref,                SLE_FILE_U16 | SLE_VAR_U32, SL_MIN_VERSION, SLV_69)),
 		NSL("orders",                    SLEG_CONDVAR(_old_order_item_ref,                SLE_UINT32,                 SLV_69, SLV_105)),
 		NSL("orders",                     SLE_CONDREF(Vehicle, orders,                    REF_ORDERLIST,              SLV_105, SL_MAX_VERSION)),
-
-		NSL("primary_order",            SLE_CONDVAR_X(Vehicle, primary_order,              SLE_UINT16,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_VEHICLE_PRIMARY_ORDER))),
-		NSL("primary_order_index",      SLE_CONDVAR_X(Vehicle, primary_order_index,        SLE_UINT16,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_VEHICLE_PRIMARY_ORDER))),
 
 		NSL("age",                        SLE_CONDVAR(Vehicle, age,                       SLE_FILE_U16 | SLE_VAR_I32, SL_MIN_VERSION, SLV_31)),
 		NSL("age",                        SLE_CONDVAR(Vehicle, age,                       SLE_INT32,                  SLV_31, SL_MAX_VERSION)),
@@ -1300,31 +1269,22 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("", SLE_INCLUDE(IncludeBaseVehicleDescription)),
 		NSLT_STRUCT<VehicleCommonStructHandler>("common"),
 
-		NSL("trackdir",                  SLE_CONDVAR(Aircraft, trackdir,               SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
-		NSL("state",                      SLE_CONDVAR(Aircraft, state,                  SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
-		NSL("last_cached_state", SLE_CONDVAR_X(Aircraft, last_cached_state, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_CACHE_STATE))),
-		NSL("next_trackdir",              SLE_CONDVAR(Aircraft, next_trackdir,           SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
-		NSL("next_pos.x",                 SLE_CONDVAR(Aircraft, next_pos.x,              SLE_UINT32,                  SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
-		NSL("next_pos.y",                 SLE_CONDVAR(Aircraft, next_pos.y,              SLE_UINT32,                  SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
-		NSL("next_pos.pos",               SLE_CONDVAR(Aircraft, next_pos.pos,            SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
-		NSL("crashed_counter",           SLE_VAR(Aircraft, crashed_counter,            SLE_UINT16)),
-		NSL("aircraft_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION)),
-		NSL("pos",                       SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SL_MIN_VERSION, SL_MAX_VERSION)), // legacy aircraft position, LEGACY_AIRCRAFT_POS_NONE for savegames using the new aircraft controller
+		NSL("crashed_counter",               SLE_VAR(Aircraft, crashed_counter,         SLE_UINT16)),
+		NSL("pos",                           SLE_VAR(Aircraft, pos,                     SLE_UINT8)),
 
-		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,          SLE_FILE_U8  | SLE_VAR_U16,  SL_MIN_VERSION, SLV_5)),
-		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,          SLE_UINT16,                  SLV_5, SL_MAX_VERSION)),
+		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,           SLE_FILE_U8  | SLE_VAR_U16,  SL_MIN_VERSION, SLV_5)),
+		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,           SLE_UINT16,                  SLV_5, SL_MAX_VERSION)),
 
-		NSL("old_state",                 SLEG_CONDVAR(_old_state,                      SLE_UINT8,                   SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION)),
-		NSL("previous_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SLV_2, SLV_CUSTOM_SUBSIDY_DURATION)),
-		NSL("last_direction",            SLE_CONDVAR(Aircraft, last_direction,         SLE_UINT8,                   SLV_2, SL_MAX_VERSION)),
-		NSL("number_consecutive_turns",  SLE_CONDVAR(Aircraft, number_consecutive_turns, SLE_UINT8,                SLV_2, SL_MAX_VERSION)),
+		NSL("state",                         SLE_VAR(Aircraft, state,                   SLE_UINT8)),
+
+		NSL("previous_pos",              SLE_CONDVAR(Aircraft, previous_pos,            SLE_UINT8,                   SLV_2, SL_MAX_VERSION)),
+		NSL("last_direction",            SLE_CONDVAR(Aircraft, last_direction,          SLE_UINT8,                   SLV_2, SL_MAX_VERSION)),
+		NSL("number_consecutive_turns",  SLE_CONDVAR(Aircraft, number_consecutive_turns,SLE_UINT8,                   SLV_2, SL_MAX_VERSION)),
 		NSL("",                       SLE_CONDNULL_X(2,                                                              SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP))),
 		NSL("",                       SLE_CONDNULL_X(2,                                                              SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CHILLPP))),
 
-		NSL("turn_counter",              SLE_CONDVAR(Aircraft, turn_counter,           SLE_UINT8,                   SLV_136, SL_MAX_VERSION)),
-		NSL("flags",                     SLE_CONDVAR(Aircraft, flags,                  SLE_UINT8,                   SLV_167, SL_MAX_VERSION)),
-		NSL("path.td",                   SLE_CONDRING(Aircraft, path.td,               SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
-		NSL("path.tile",                 SLE_CONDRING(Aircraft, path.tile,             SLE_UINT32,                  SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
+		NSL("turn_counter",              SLE_CONDVAR(Aircraft, turn_counter,            SLE_UINT8,                   SLV_136, SL_MAX_VERSION)),
+		NSL("flags",                     SLE_CONDVAR(Aircraft, flags,                   SLE_UINT8,                   SLV_167, SL_MAX_VERSION)),
 
 		NSL("",                         SLE_CONDNULL(13,                                                             SLV_2, SLV_144)), // old reserved space
 	};
@@ -1428,9 +1388,6 @@ static const NamedSaveLoad _table_vehicle_desc[] = {
 /** Will be called when the vehicles need to be saved. */
 static void Save_VEHS()
 {
-	/* The legacy aircraft position is not stored by the new aircraft controller. */
-	_pos = LEGACY_AIRCRAFT_POS_NONE;
-
 	SaveLoadTableData slt = SlTableHeader(_table_vehicle_desc);
 
 	/* Write the vehicles */
@@ -1460,9 +1417,6 @@ static void Save_VEHS()
 void Load_VEHS()
 {
 	_cargo_count = 0;
-
-	/* Assume the savegame uses the new aircraft controller until a legacy aircraft position is read. */
-	_pos = LEGACY_AIRCRAFT_POS_NONE;
 
 	_cpp_packets.clear();
 	_veh_cpp_packets.clear();
@@ -1525,11 +1479,6 @@ void Load_VEHS()
 			 *  in those versions, they both were 4 bits big) to type and flags */
 			v->current_order.flags = GB(v->current_order.type, 4, 4);
 			v->current_order.type &= 0x0F;
-		}
-
-		if (!IsSavegameVersionBefore(SLV_5) && SlXvIsFeatureMissing(XSLFI_ORDER_DECOUPLE)) {
-			/* Savegames from before the order type field was widened use the old bit layout. */
-			v->current_order.ConvertLegacyTypeLayout();
 		}
 
 		/* Advanced vehicle lists got added */
@@ -1809,10 +1758,10 @@ static void LogVehicleVENCMessage(const Vehicle *v, const char *var)
 
 	extern void WriteVehicleInfo(format_target &buffer, const Vehicle *u, const Vehicle *v, uint length);
 	uint length = 0;
-	for (const Vehicle *u = v->Primary(); u != v; u = u->Next()) {
+	for (const Vehicle *u = v->First(); u != v; u = u->Next()) {
 		length++;
 	}
-	WriteVehicleInfo(buffer, v, v->Primary(), length);
+	WriteVehicleInfo(buffer, v, v->First(), length);
 	debug_print(DebugLevelID::desync, 0, buffer);
 	LogDesyncMsg(buffer.to_string());
 }
@@ -1900,138 +1849,6 @@ static ChunkSaveLoadSpecialOpResult Special_VENC(uint32_t chunk_id, ChunkSaveLoa
 	return CSLSOR_NONE;
 }
 
-/** Persisted transient couple target/claim state of one train primary. */
-struct CoupleClaimSave {
-	VehicleID vehicle;
-	VehicleID couple_target;
-	VehicleID couple_claimant;
-	uint32_t couple_claim_cost;
-	uint8_t couple_body_hold;
-};
-
-static std::vector<CoupleClaimSave> _couple_claims;
-
-void SlResetCoupleClaims()
-{
-	_couple_claims.clear();
-}
-
-void Save_CPLM()
-{
-	assert(_sl_xv_feature_versions[XSLFI_COUPLE_CLAIM_STATE] != 0);
-
-	SlAutolength([]() {
-		std::vector<CoupleClaimSave> claims;
-		for (Train *t : Train::Iterate()) {
-			if (t->couple_target == VehicleID::Invalid() && t->couple_claimant == VehicleID::Invalid() && !t->couple_body_hold) continue;
-			claims.push_back({t->index, t->couple_target, t->couple_claimant, t->couple_claim_cost, static_cast<uint8_t>(t->couple_body_hold ? 1 : 0)});
-		}
-
-		SlWriteUint32((uint32_t)claims.size());
-		for (const CoupleClaimSave &cs : claims) {
-			SlWriteUint32(cs.vehicle.base());
-			SlWriteUint32(cs.couple_target.base());
-			SlWriteUint32(cs.couple_claimant.base());
-			SlWriteUint32(cs.couple_claim_cost);
-			SlWriteByte(cs.couple_body_hold);
-		}
-	});
-}
-
-void Load_CPLM()
-{
-	_couple_claims.clear();
-	if (SlGetFieldLength() == 0) return;
-
-	uint32_t count = SlReadUint32();
-	const bool wide_ids = SlXvIsFeaturePresent(XSLFI_COUPLE_CLAIM_STATE, 2);
-	const uint32_t record_size = wide_ids ? 17 : 13;
-	if (count > VehicleID::End().base() || SlGetFieldLength() != 4ULL + uint64_t(count) * record_size) {
-		SlErrorCorrupt("Invalid couple claim record count");
-	}
-	_couple_claims.resize(count);
-	for (CoupleClaimSave &cs : _couple_claims) {
-		cs.vehicle = static_cast<VehicleID>(SlReadUint32());
-		if (wide_ids) {
-			cs.couple_target = static_cast<VehicleID>(SlReadUint32());
-			cs.couple_claimant = static_cast<VehicleID>(SlReadUint32());
-		} else {
-			/* Version 1 truncated both IDs, including the invalid sentinel. */
-			const uint16_t target = SlReadUint16();
-			const uint16_t claimant = SlReadUint16();
-			cs.couple_target = target == UINT16_MAX ? VehicleID::Invalid() : VehicleID(target);
-			cs.couple_claimant = claimant == UINT16_MAX ? VehicleID::Invalid() : VehicleID(claimant);
-		}
-		cs.couple_claim_cost = SlReadUint32();
-		cs.couple_body_hold = SlReadByte() != 0;
-	}
-}
-
-void SlApplyCoupleClaims()
-{
-	for (const CoupleClaimSave &cs : _couple_claims) {
-		Train *t = Train::GetIfValid(cs.vehicle);
-		if (t == nullptr) continue;
-		t->couple_target = cs.couple_target;
-		t->couple_claimant = cs.couple_claimant;
-		t->couple_claim_cost = cs.couple_claim_cost;
-		t->couple_body_hold = cs.couple_body_hold != 0;
-	}
-	_couple_claims.clear();
-}
-
-static ChunkSaveLoadSpecialOpResult Special_CPLM(uint32_t chunk_id, ChunkSaveLoadSpecialOp op)
-{
-	switch (op) {
-		case CSLSO_SHOULD_SAVE_CHUNK:
-			if (_sl_xv_feature_versions[XSLFI_COUPLE_CLAIM_STATE] == 0) return CSLSOR_DONT_SAVE_CHUNK;
-			break;
-
-		default:
-			break;
-	}
-	return CSLSOR_NONE;
-}
-
-void Save_CSFC()
-{
-	assert(_sl_xv_feature_versions[XSLFI_COUPLE_SEARCH_FAIL_CACHE] != 0);
-
-	SlAutolength([]() {
-		SlWriteUint32((uint32_t)_couple_search_last_fail.size());
-		for (const auto &it : _couple_search_last_fail) {
-			SlWriteUint32(it.first.base());
-			SlWriteUint64(it.second);
-		}
-	});
-}
-
-void Load_CSFC()
-{
-	_couple_search_last_fail.clear();
-	if (SlGetFieldLength() == 0) return;
-
-	uint32_t count = SlReadUint32();
-	for (uint32_t i = 0; i < count; i++) {
-		VehicleID id = static_cast<VehicleID>(SlReadUint32());
-		uint64_t tick = SlReadUint64();
-		_couple_search_last_fail[id] = tick;
-	}
-}
-
-static ChunkSaveLoadSpecialOpResult Special_CSFC(uint32_t chunk_id, ChunkSaveLoadSpecialOp op)
-{
-	switch (op) {
-		case CSLSO_SHOULD_SAVE_CHUNK:
-			if (_sl_xv_feature_versions[XSLFI_COUPLE_SEARCH_FAIL_CACHE] == 0) return CSLSOR_DONT_SAVE_CHUNK;
-			break;
-
-		default:
-			break;
-	}
-	return CSLSOR_NONE;
-}
-
 void Load_VLKA()
 {
 	std::vector<SaveLoad> lookahead_desc = SlFilterNamedSaveLoadTable(GetVehicleLookAheadDescription());
@@ -2070,22 +1887,11 @@ void Load_VUBS()
 	}
 }
 
-/**
- * Whether the loaded savegame stores the legacy aircraft position, i.e. predates the new aircraft controller.
- * @return true iff the savegame uses the legacy aircraft controller data.
- */
-bool DidLoadLegacyAircraftData()
-{
-	return _pos != LEGACY_AIRCRAFT_POS_NONE;
-}
-
 static const ChunkHandler veh_chunk_handlers[] = {
 	{ 'VEHS', Save_VEHS, Load_VEHS, Ptrs_VEHS, nullptr, CH_SPARSE_TABLE },
 	{ 'VEOX', nullptr,   Load_VEOX, nullptr,   nullptr, CH_READONLY },
 	{ 'VESR', Save_VESR, Load_VESR, nullptr,   nullptr, CH_SPARSE_TABLE },
 	{ 'VENC', Save_VENC, Load_VENC, nullptr,   nullptr, CH_RIFF,         Special_VENC },
-	{ 'CPLM', Save_CPLM, Load_CPLM, nullptr,  nullptr, CH_RIFF,         Special_CPLM },
-	{ 'CSFC', Save_CSFC, Load_CSFC, nullptr,  nullptr, CH_RIFF,         Special_CSFC },
 	{ 'VLKA', nullptr,   Load_VLKA, nullptr,   nullptr, CH_READONLY },
 	{ 'VUBS', nullptr,   Load_VUBS, nullptr,   nullptr, CH_READONLY },
 };

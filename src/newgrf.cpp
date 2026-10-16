@@ -28,7 +28,6 @@
 #include "newgrf_badge_config.h"
 #include "newgrf_cargo.h"
 #include "newgrf_sound.h"
-#include "air.h"
 #include "newgrf_station.h"
 #include "industrytype.h"
 #include "newgrf_canal.h"
@@ -341,6 +340,7 @@ Engine *GetNewEngine(const GRFFile *file, VehicleType type, uint16_t internal_id
 		_gted[e->index].railtypelabels.clear();
 		for (RailType rt : e->VehInfo<RailVehicleInfo>().railtypes) _gted[e->index].railtypelabels.push_back(GetRailTypeInfo(rt)->label);
 	}
+
 	GrfMsg(5, "Created new engine at index {} for GRFID {:x}, type {}, index {}", e->index, std::byteswap(file->grfid), type, internal_id);
 
 	return e;
@@ -481,7 +481,6 @@ static const EnumIndexArray<const char *, GrfSpecFeature, GrfSpecFeature::End> _
 	"RoadStops",
 	"Badges",
 	"NewLandscape",
-	"AirTypes",
 	"FakeTowns",
 };
 
@@ -584,9 +583,6 @@ void ResetNewGRFData()
 
 	/* Copy/reset original road type info data */
 	ResetRoadTypes();
-
-	/* Reset air type information */
-	ResetAirTypes();
 
 	/* Allocate temporary refit/cargo class data */
 	_gted.resize(Engine::GetPoolSize());
@@ -825,7 +821,7 @@ static CargoLabel GetActiveCargoLabel(const std::variant<CargoLabel, MixedCargoT
 static void CalculateRefitMasks()
 {
 	CargoTypes original_known_cargoes{};
-	for (CargoType cargo_type{}; cargo_type != NUM_GRF_CARGO; ++cargo_type) {
+	for (CargoType cargo_type : EnumRange(NUM_CARGO)) {
 		if (IsDefaultCargo(cargo_type)) original_known_cargoes.Set(cargo_type);
 	}
 
@@ -966,20 +962,6 @@ static void CalculateRefitMasks()
 						default: ErrorUnknownCallbackResult(file->grfid, CBID_VEHICLE_CUSTOM_REFIT, callback);
 					}
 				}
-			}
-			/* Road vehicle transport: trains, ships and aircraft can always be refitted to the
-			 * dedicated "Vehicles (Road)" cargo. */
-			if (e->type == VehicleType::Train || e->type == VehicleType::Ship || e->type == VehicleType::Aircraft) {
-				CargoType vehicles_cargo = RV_TRANSPORT_CARGO_SLOT;
-				if (IsValidCargoType(vehicles_cargo)) ei->refit_mask.Set(vehicles_cargo);
-			}
-			/* Train transport: only ships may be refitted to the dedicated "Vehicles (Train)" cargo,
-			 * so that a train can never be carried by a ship's or aircraft's counterpart: an aircraft
-			 * can never take a train (the rail cargo is a ship hold's property), and this keeps the
-			 * refit option from being offered to aircraft at all. */
-			if (e->type == VehicleType::Ship) {
-				CargoType rail_cargo = RAIL_TRANSPORT_CARGO_SLOT;
-				if (IsValidCargoType(rail_cargo)) ei->refit_mask.Set(rail_cargo);
 			}
 		}
 
@@ -1895,9 +1877,6 @@ static void AfterLoadGRFs()
 	InitRailTypes();
 	InitRoadTypes();
 	InitRoadTypesCaches();
-
-	/* Set up custom air types */
-	InitAirTypes();
 
 	for (Engine *e : Engine::IterateType(VehicleType::Road)) {
 		if (_gted[e->index].rv_max_speed != 0) {

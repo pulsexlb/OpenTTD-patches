@@ -16,7 +16,6 @@
 #include "vehicle_gui_base.h"
 #include "window_gui.h"
 #include "zoom_func.h"
-#include "roadveh_transport.h"
 
 #include "table/strings.h"
 
@@ -47,16 +46,11 @@ void DrawAircraftDetails(const Aircraft *v, const Rect &r)
 		}
 
 		if (u->cargo_cap != 0) {
-			const uint cargo_count = RVTransportGetPartCargoAmount(u);
+			uint cargo_count = u->cargo.StoredCount();
 
 			if (cargo_count != 0) {
-				if (u->cargo.StoredCount() != 0) {
-					/* Cargo names (fix pluralness) */
-					DrawString(r.left, r.right, y, GetString(STR_VEHICLE_DETAILS_CARGO_FROM, u->cargo_type, cargo_count, u->cargo.GetFirstStation()));
-				} else {
-					/* RoRo: the amount is the road vehicles on this body, which come from no station. */
-					DrawString(r.left, r.right, y, GetString(STR_JUST_CARGO, u->cargo_type, cargo_count));
-				}
+				/* Cargo names (fix pluralness) */
+				DrawString(r.left, r.right, y, GetString(STR_VEHICLE_DETAILS_CARGO_FROM, u->cargo_type, cargo_count, u->cargo.GetFirstStation()));
 				y += GetCharacterHeight(FontSize::Normal);
 				feeder_share += u->cargo.GetFeederShare();
 			}
@@ -65,10 +59,6 @@ void DrawAircraftDetails(const Aircraft *v, const Rect &r)
 
 	y += WidgetDimensions::scaled.vsep_normal;
 	DrawString(r.left, r.right, y, GetString(STR_VEHICLE_INFO_FEEDER_CARGO_VALUE, feeder_share));
-	y += GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal;
-
-	/* RoRo: road vehicles this aircraft carries. */
-	DrawCarriedRoadVehicles(v, r, y);
 }
 
 

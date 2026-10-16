@@ -10,7 +10,6 @@
 #ifndef TRAIN_CMD_H
 #define TRAIN_CMD_H
 
-#include "3rdparty/cpp-btree/btree_map.h"
 #include "command_type.h"
 #include "vehicle_type.h"
 
@@ -26,15 +25,5 @@ DEF_CMD_TUPLE_LT (Commands::MoveRailVehicle,          CmdMoveRailVehicle,       
 DEF_CMD_TUPLE_LT (Commands::ForceTrainProceed,        CmdForceTrainProceed,         {}, CommandType::VehicleManagement,   CmdDataT<VehicleID>)
 DEF_CMD_TUPLE_LT (Commands::ReverseTrainDirection,    CmdReverseTrainDirection,     {}, CommandType::VehicleManagement,   CmdDataT<VehicleID, bool>)
 DEF_CMD_TUPLE_LT (Commands::SetTrainSpeedRestriction, CmdSetTrainSpeedRestriction,  {}, CommandType::VehicleManagement,   CmdDataT<VehicleID, uint16_t>)
-
-/** Tick of the last failed couple target search, per train (see DoTrainCouplePathfind).
- *  Persisted in the savegame (chunk CSFC, feature XSLFI_COUPLE_SEARCH_FAIL_CACHE):
- *  it gates couple target searches, so it must not differ between a long-running
- *  server and a freshly loading client. */
-extern btree::btree_map<VehicleID, uint64_t> _couple_search_last_fail;
-
-void ClearCoupleSearchLastFail();
-void CancelTrainCoupleCheckpoint(Train *train);
-bool TrainShouldWaitForCoupleAtCheckpoint(Train *train, bool *at_checkpoint = nullptr, StationID arrived = StationID::Invalid());
 
 #endif /* TRAIN_CMD_H */

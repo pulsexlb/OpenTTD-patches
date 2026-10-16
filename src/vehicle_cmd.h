@@ -15,8 +15,6 @@
 #include "vehicle_type.h"
 #include "vehiclelist.h"
 
-CommandCost CheckVehicleStartStopCallback(const Vehicle *v);
-
 enum class SellVehicleFlags : uint8_t {
 	None                  = 0,         ///< No flag set.
 	SellChain             = (1U << 0), ///< Sell the vehicle and all vehicles following it in the chain.

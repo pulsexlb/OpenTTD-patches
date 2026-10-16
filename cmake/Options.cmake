@@ -63,11 +63,6 @@ function(set_options)
     option(OPTION_ALLOW_INVALID_SIGNATURE "Allow loading of content with invalid signatures" OFF)
     option(OPTION_LINE_IN_DOXYGEN_WARNINGS "Print line number in doxygen warnings" ON)
 
-    # Road vehicle transport (RoRo): the 'rvtransport' console command is a debug and self-test tool
-    # which the regression scripts in testrun\ drive. It is not part of a playtest build, so this is
-    # off by default; enable it for the test build.
-    option(RORO_DEBUG_COMMANDS "Build the 'rvtransport' console debug/test command (road vehicle transport)" OFF)
-
     if (OPTION_DOCS_ONLY)
         set(OPTION_TOOLS_ONLY ON PARENT_SCOPE)
     endif()
@@ -104,7 +99,6 @@ function(show_options)
     message(STATUS "Option Install FHS - ${OPTION_INSTALL_FHS}")
     message(STATUS "Option Use assert - ${OPTION_USE_ASSERTS}")
     message(STATUS "Option Use NSIS - ${OPTION_USE_NSIS}")
-    message(STATUS "Option RoRo debug commands - ${RORO_DEBUG_COMMANDS}")
 
     if(OPTION_SURVEY_KEY)
         message(STATUS "Option Survey Key - USED")
@@ -139,9 +133,5 @@ function(add_definitions_based_on_options)
 
     if(OPTION_ALLOW_INVALID_SIGNATURE)
         add_definitions(-DALLOW_INVALID_SIGNATURE)
-    endif()
-
-    if(RORO_DEBUG_COMMANDS)
-        add_definitions(-DRORO_DEBUG_COMMANDS)
     endif()
 endfunction()

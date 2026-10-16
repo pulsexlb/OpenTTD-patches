@@ -18,7 +18,6 @@
 #include "tile_cmd.h"
 #include "water.h"
 #include "landscape.h"
-#include "air_map.h"
 #include "company_base.h"
 #include "town.h"
 #include "newgrf_animation_base.h"

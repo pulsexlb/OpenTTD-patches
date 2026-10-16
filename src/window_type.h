@@ -120,42 +120,6 @@ enum class WindowClass : uint16_t {
 	BuildSignal,
 
 	/**
-	 * Blueprint (copy and paste) toolbar; %Window numbers:
-	 *   - 0 = #BlueprintToolbarWidgets
-	 */
-	BlueprintToolbar,
-
-	/**
-	 * Blueprint undo toolbar; %Window numbers:
-	 *   - 0 = #BlueprintUndoToolbarWidgets
-	 */
-	BlueprintUndoToolbar,
-
-	/**
-	 * Blueprint undo history; %Window numbers:
-	 *   - 0 = #BlueprintUndoListWidgets
-	 */
-	BlueprintUndoList,
-
-	/**
-	 * Blueprint toolbar description; %Window numbers:
-	 *   - 0 = #BlueprintInfoWidgets
-	 */
-	BlueprintInfo,
-
-	/**
-	 * Blueprint text export/import dialog; %Window numbers:
-	 *   - 0 = #BlueprintTextWidgets
-	 */
-	BlueprintText,
-
-	/**
-	 * Blueprint export/import-all-slots file dialog; %Window numbers:
-	 *   - 0 = #BlueprintFileWidgets
-	 */
-	BlueprintFile,
-
-	/**
 	 * Small map; %Window numbers:
 	 *   - 0 = #SmallMapWidgets
 	 */
@@ -263,19 +227,11 @@ enum class WindowClass : uint16_t {
 	 */
 	VehicleDetails,
 
-	/** Visual editor for a train decoupling order; window number is #VehicleID. */
-
 	/**
 	 * Vehicle refit; %Window numbers:
 	 *   - #VehicleID = #VehicleRefitWidgets
 	 */
 	VehicleRefit,
-
-	/**
-	 * Vehicle cargo types; %Window numbers:
-	 *   - #VehicleID = #VehicleCargoTypesWidgets
-	 */
-	VehicleCargoTypes,
 
 	/**
 	 * Vehicle orders; %Window numbers:
@@ -294,18 +250,6 @@ enum class WindowClass : uint16_t {
 	 *   - #VehicleID = #CargoTypeOrdersWidgets
 	 */
 	VehicleCargoTypeUnloadOrders,
-
-	/**
-	 * Road vehicle transport (RoRo) selection criteria of an order; %Window numbers:
-	 *   - #VehicleID = #RVTransportCriteriaWidgets
-	 */
-	VehicleRVTransportCriteria,
-
-	/**
-	 * Coupling selection criteria of an order; %Window numbers:
-	 *   - #VehicleID = #CoupleCriteriaWidgets
-	 */
-	VehicleCoupleCriteria,
 
 	/**
 	 * Vehicle order import errors; %Window numbers:
@@ -509,9 +453,6 @@ enum class WindowClass : uint16_t {
 	 *   - #TransportType::Rail = #BuildRailStationWidgets
 	 */
 	BuildStation,
-	BuildHeliport,                 ///< Build heliport window.
-	BuildAirportInfrastructure,    ///< Build airport infrastructure window.
-	SelectTrackGfx,                ///< Select gfx for airport track tiles.
 
 	/**
 	 * Build bus station; %Window numbers:
@@ -898,36 +839,6 @@ enum class WindowClass : uint16_t {
 	 * Plans window.
 	 */
 	Plans,
-
-	/**
-	 * Order list manager window; %Window numbers:
-	 *   - 0 = #OrderListWidgets
-	 */
-	OrderList,
-
-	/**
-	 * Player-created order list editor (reuses #OrdersWindow); %Window numbers:
-	 *   - id = #OrderListWidgets-based editor window
-	 */
-	OrderListEditor,
-
-	/**
-	 * Player-created order list timetable (reuses #TimetableWindow); %Window numbers:
-	 *   - id = #VehicleTimetableWidgets-based window
-	 */
-	OrderListTimetable,
-
-	/**
-	 * Player-created order list scheduled dispatch (reuses #SchdispatchWindow); %Window numbers:
-	 *   - id = target order list id
-	 */
-	OrderListSchedule,
-
-	/**
-	 * Decouple schedule picker popup; %Window numbers:
-	 *   - id = the #OrdersWindow window number the picker was opened from
-	 */
-	DecoupleSchedulePicker,
 
 	TemplateReplacementGuiMain,
 	BuildVirtualTrain,

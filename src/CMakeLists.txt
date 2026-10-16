@@ -55,9 +55,7 @@ add_files(
     aircraft.h
     aircraft_cmd.cpp
     aircraft_gui.cpp
-    air.cpp
     airport.cpp
-    airport_cmd.cpp
     airport.h
     airport_gui.cpp
     animated_tile.cpp
@@ -83,12 +81,6 @@ add_files(
     base_media_sounds.h
     base_station_base.h
     bitmap_type.h
-    blueprint.cpp
-    blueprint.h
-    blueprint_cmd.h
-    blueprint_gui.cpp
-    blueprint_gui.h
-    blueprint_version.h
     bmp.cpp
     bmp.h
     bootstrap_gui.cpp
@@ -410,13 +402,10 @@ add_files(
     order_serialisation.cpp
     order_serialisation.h
     order_serialisation_gui.cpp
-    orderlist_gui.cpp
-    orderlist_gui.h
     osk_gui.cpp
     palette.cpp
     palette_func.h
     pbs.cpp
-    pbs_air.cpp
     pbs.h
     picker_func.h
     picker_gui.cpp
@@ -466,8 +455,6 @@ add_files(
     roadveh.h
     roadveh_cmd.cpp
     roadveh_gui.cpp
-    roadveh_transport.cpp
-    roadveh_transport.h
     safeguards.h
     schdispatch.h
     schdispatch_cmd.cpp
@@ -686,10 +673,6 @@ add_files(
     water_cmd.h
     water_map.h
     waypoint.cpp
-    rain_overlay.cpp
-    rain_overlay.h
-    weather.cpp
-    weather.h
     waypoint_base.h
     waypoint_cmd.cpp
     waypoint_cmd.h

@@ -31,7 +31,6 @@
 #include "order_backup.h"
 #include "zoom_func.h"
 #include "error.h"
-#include "roadveh_transport.h"
 #include "tbtr_template_vehicle.h"
 #include "core/geometry_func.hpp"
 #include "departures_gui.h"
@@ -364,7 +363,7 @@ struct DepotWindow : Window {
 
 		switch (v->type) {
 			case VehicleType::Train: {
-				const Train *u = Train::From(v)->First();
+				const Train *u = Train::From(v);
 				free_wagon = u->IsFreeWagon();
 
 				uint x_space = free_wagon ?
@@ -403,13 +402,10 @@ struct DepotWindow : Window {
 		if (free_wagon) {
 			DrawString(text, STR_DEPOT_NO_ENGINE);
 		} else {
-			/* Identity fields (unit number, running flag, age) come from the
-			 * primary vehicle; the drawn images come from the chain head. */
-			const Vehicle *ident = v->Primary();
 			Rect flag = r.WithWidth(this->flag_size.width, rtl).WithHeight(this->flag_size.height).Translate(0, diff_y);
-			DrawSpriteIgnorePadding((ident->vehstatus.Test(VehState::Stopped)) ? SPR_FLAG_VEH_STOPPED : SPR_FLAG_VEH_RUNNING, PAL_NONE, flag, SA_CENTER);
+			DrawSpriteIgnorePadding((v->vehstatus.Test(VehState::Stopped)) ? SPR_FLAG_VEH_STOPPED : SPR_FLAG_VEH_RUNNING, PAL_NONE, flag, SA_CENTER);
 
-			DrawString(text, GetString(STR_JUST_COMMA, ident->unitnumber), (ident->max_age - DAYS_IN_LEAP_YEAR) >= ident->age || (ident->type == VehicleType::Train && Train::From(ident)->IsFrontWagon()) ? TextColour::Black : TextColour::Red);
+			DrawString(text, GetString(STR_JUST_COMMA, v->unitnumber), (v->max_age - DAYS_IN_LEAP_YEAR) >= v->age ? TextColour::Black : TextColour::Red);
 		}
 	}
 
@@ -553,17 +549,17 @@ struct DepotWindow : Window {
 					[[fallthrough]];
 
 				case VehicleType::Road:
-					if (xm <= this->flag_size.width) return {.action = DepotGUIAction::StartStop, .vehicle = vehicle->Primary()};
+					if (xm <= this->flag_size.width) return {.action = DepotGUIAction::StartStop, .vehicle = vehicle};
 					break;
 
 				case VehicleType::Ship:
 				case VehicleType::Aircraft:
-					if (xm <= this->flag_size.width && ym >= (uint)(GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal)) return {.action = DepotGUIAction::StartStop, .vehicle = vehicle->Primary()};
+					if (xm <= this->flag_size.width && ym >= (uint)(GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal)) return {.action = DepotGUIAction::StartStop, .vehicle = vehicle};
 					break;
 
 				default: NOT_REACHED();
 			}
-			return {.action = DepotGUIAction::ShowVehicle, .vehicle = vehicle->Primary()};
+			return {.action = DepotGUIAction::ShowVehicle, .vehicle = vehicle};
 		}
 
 		if (this->type != VehicleType::Train) return {.action = DepotGUIAction::DragVehicle, .vehicle = vehicle};
@@ -571,14 +567,14 @@ struct DepotWindow : Window {
 		/* Clicking on the counter */
 		if (xm >= matrix_widget->current_x - this->count_width) {
 			if (is_wagon) return {.action = DepotGUIAction::Error};
-			return  {.action = DepotGUIAction::ShowVehicle, .vehicle = vehicle->Primary()};
+			return  {.action = DepotGUIAction::ShowVehicle, .vehicle = vehicle};
 		}
 
 		/* Account for the header */
 		x -= this->header_width;
 
 		/* find the vehicle in this row that was clicked */
-		const Train *wagon = Train::From(vehicle)->First();
+		const Train *wagon = Train::From(vehicle);
 		for (; wagon != nullptr; wagon = wagon->Next()) {
 			x -= wagon->GetDisplayImageWidth();
 			if (x < 0) break;
@@ -783,7 +779,7 @@ struct DepotWindow : Window {
 			uint max_width = ScaleSpriteTrad(VEHICLEINFO_FULL_VEHICLE_WIDTH);
 			for (uint num = 0; num < this->vehicle_list.size(); num++) {
 				uint width = 0;
-				for (const Train *v = Train::From(this->vehicle_list[num])->First(); v != nullptr; v = v->Next()) {
+				for (const Train *v = Train::From(this->vehicle_list[num]); v != nullptr; v = v->Next()) {
 					width += v->GetDisplayImageWidth();
 				}
 				max_width = std::max(max_width, width);
@@ -913,7 +909,7 @@ struct DepotWindow : Window {
 		for (const Vehicle *w = v; w != nullptr; w = w->Next()) {
 			if (w->cargo_cap > 0 && w->cargo_type < NUM_CARGO) {
 				capacity[w->cargo_type] += w->cargo_cap;
-				loaded  [w->cargo_type] += RVTransportGetPartCargoAmount(w);
+				loaded  [w->cargo_type] += w->cargo.StoredCount();
 			}
 
 			if (w->type == VehicleType::Train && !w->HasArticulatedPart()) {
@@ -1095,10 +1091,7 @@ struct DepotWindow : Window {
 				new_vehicle_over = result.vehicle->index;
 			} else if (result.wagon != nullptr && result.vehicle != result.wagon &&
 					result.wagon->index != this->sel &&
-					/* A chain can start with a wagon now that the primary may sit mid-chain, so
-					 * there is no previous vehicle to compare against. That wagon heads another
-					 * train, which makes this a valid insertion point rather than a no-op move. */
-					(result.wagon->Previous() == nullptr || result.wagon->Previous()->index != this->sel)) { // ..over an existing wagon.
+					result.wagon->Previous()->index != this->sel) { // ..over an existing wagon.
 				new_vehicle_over = result.wagon->index;
 			}
 		}
@@ -1126,8 +1119,8 @@ struct DepotWindow : Window {
 						} else if (result.wagon == nullptr || result.wagon->index != sel) {
 							this->vehicle_over = VehicleID::Invalid();
 							TrainDepotMoveVehicle(result.wagon, sel, result.vehicle);
-						} else if (result.vehicle != nullptr && result.vehicle->Primary()->IsPrimaryVehicle()) {
-							ShowVehicleViewWindow(result.vehicle->Primary());
+						} else if (result.vehicle != nullptr && result.vehicle->IsFrontEngine()) {
+							ShowVehicleViewWindow(result.vehicle);
 						}
 					}
 				} else if (result.action == DepotGUIAction::DragVehicle && result.vehicle != nullptr && sel == result.vehicle->index) {
@@ -1275,11 +1268,10 @@ void ShowDepotTooltip(Window *w, const TileIndex tile)
 
 	for (const Vehicle *v : VehiclesOnTile(tile, GetDepotVehicleType(tile))) {
 		if (v->IsInDepot()) {
-			const Vehicle *carrier = v->First()->Primary();
-			if (carrier->IsPrimaryVehicle()) {
+			if (v->IsPrimaryVehicle()) {
 				totals.total_vehicle_count++;
-				if (carrier->IsWaitingInDepot()) totals.waiting_vehicle_count++;
-				if (carrier->IsStoppedInDepot()) totals.stopped_vehicle_count++;
+				if (v->IsWaitingInDepot()) totals.waiting_vehicle_count++;
+				if (v->IsStoppedInDepot()) totals.stopped_vehicle_count++;
 			}
 			if (v->type == VehicleType::Train) {
 				const Train *t = Train::From(v);

@@ -23,7 +23,6 @@
 #include "../signs_cmd.h"
 #include "../tracerestrict_cmd.h"
 #include "../vehicle_cmd.h"
-#include "../order_cmd.h"
 
 #include "../3rdparty/fmt/ranges.h"
 #include "../3rdparty/fmt/std.h"
@@ -103,8 +102,6 @@ TEST_CASE("CmdDataT simple tests")
 	CHECK(CmdPayload<Commands::RemovePlan>::Make(PlanID{5}) != CmdPayload<Commands::RemovePlan>::Make(PlanID{6}));
 
 	CHECK(TestCommandPayload<Commands::AddPlan>({}, {}));
-	CHECK(TestCommandPayload<Commands::CreateOrderList>({"A", OrderListID{513}, true}, {0x41, 0, 1, 2, 1}));
-	CHECK(TestCommandPayload<Commands::MoveOrderListToGroup>({OrderListID{513}, OrderListID::Invalid()}, {1, 2, 255, 255}));
 	CHECK(TestCommandPayload<Commands::RemovePlan>({ PlanID{5} }, { 5, 0 }));
 	CHECK(TestCommandPayload<Commands::RenamePlan>({ PlanID{6}, "abc" }, { 6, 0, 0x61, 0x62, 0x63, 0 }));
 	CHECK(TestCommandPayload<Commands::RenamePlan>({ PlanID{6}, "abcdefabcdefabcdefabcdefabcdef" }, { 6, 0, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0 }));

@@ -363,7 +363,6 @@ static const std::vector<ChunkHandler> &ChunkHandlers()
 	extern const ChunkHandlerTable _train_speed_adaptation_chunk_handlers;
 	extern const ChunkHandlerTable _new_signal_chunk_handlers;
 	extern const ChunkHandlerTable _debug_chunk_handlers;
-	extern const ChunkHandlerTable _weather_chunk_handlers;
 
 	/** List of all chunks in a savegame. */
 	static const ChunkHandlerTable _chunk_handler_tables[] = {
@@ -412,7 +411,6 @@ static const std::vector<ChunkHandler> &ChunkHandlers()
 		_train_speed_adaptation_chunk_handlers,
 		_new_signal_chunk_handlers,
 		_debug_chunk_handlers,
-		_weather_chunk_handlers,
 	};
 
 	static std::vector<ChunkHandler> _chunk_handlers;
@@ -1062,38 +1060,6 @@ void WriteValue(void *ptr, VarType conv, int64_t val)
 	}
 }
 
-/**
- * Return a 128 bit version of the value of a setting.
- * @param ptr pointer to the variable
- * @param conv type of variable, can be a non-clean
- * type, eg one with other flags because it is parsed
- * @return returns the value of the pointer-setting
- */
-Uint128 ReadValue128(const void *ptr, VarType conv)
-{
-	switch (GetVarMemType(conv)) {
-		case SLE_VAR_U128: return *(const Uint128 *)ptr;
-		case SLE_VAR_U64:  return Uint128{*(const uint64_t *)ptr};
-		default: NOT_REACHED();
-	}
-}
-
-/**
- * Write the 128 bit value of a setting
- * @param ptr pointer to the variable
- * @param conv type of variable, can be a non-clean type, eg
- *             with other flags. It is parsed upon read
- * @param val the new value being given to the variable
- */
-void WriteValue128(void *ptr, VarType conv, Uint128 val)
-{
-	switch (GetVarMemType(conv)) {
-		case SLE_VAR_U128: *(Uint128 *)ptr = val; break;
-		case SLE_VAR_U64:  *(uint64_t *)ptr = val.lo; break;
-		default: NOT_REACHED();
-	}
-}
-
 void SlSaveValue(int64_t x, VarType conv)
 {
 	/* Write the value to the file and check if its value is in the desired range */
@@ -1108,30 +1074,6 @@ void SlSaveValue(int64_t x, VarType conv)
 		case SLE_FILE_U32:                                   SlWriteUint32((uint32_t)x);break;
 		case SLE_FILE_I64:
 		case SLE_FILE_U64:                                   SlWriteUint64(x);break;
-		default: NOT_REACHED();
-	}
-}
-
-/**
- * Write a 128 bit value to the file.
- * @param x the value to write
- * @param conv type of variable
- */
-void SlSaveValue128(Uint128 x, VarType conv)
-{
-	switch (GetVarFileType(conv)) {
-		case SLE_FILE_U128:
-			SlWriteUint64(x.lo);
-			SlWriteUint64(x.hi);
-			break;
-		case SLE_FILE_I64:
-		case SLE_FILE_U64: SlWriteUint64(x.lo); break;
-		case SLE_FILE_I32:
-		case SLE_FILE_U32: SlWriteUint32((uint32_t)x.lo); break;
-		case SLE_FILE_I16:
-		case SLE_FILE_U16: SlWriteUint16((uint16_t)x.lo); break;
-		case SLE_FILE_I8:
-		case SLE_FILE_U8:  SlWriteByte((uint8_t)x.lo); break;
 		default: NOT_REACHED();
 	}
 }
@@ -1165,32 +1107,6 @@ int64_t SlLoadValue(VarType conv)
 }
 
 /**
- * Read a 128 bit value from the file.
- * @param conv type of variable
- * @return the value read
- */
-Uint128 SlLoadValue128(VarType conv)
-{
-	Uint128 x;
-	switch (GetVarFileType(conv)) {
-		case SLE_FILE_U128:
-			x.lo = SlReadUint64();
-			x.hi = SlReadUint64();
-			break;
-		case SLE_FILE_I64:
-		case SLE_FILE_U64: x.lo = SlReadUint64(); break;
-		case SLE_FILE_I32:
-		case SLE_FILE_U32: x.lo = SlReadUint32(); break;
-		case SLE_FILE_I16:
-		case SLE_FILE_U16: x.lo = SlReadUint16(); break;
-		case SLE_FILE_I8:
-		case SLE_FILE_U8:  x.lo = SlReadByte(); break;
-		default: NOT_REACHED();
-	}
-	return x;
-}
-
-/**
  * Handle all conversion and typechecking of variables here.
  * In the case of saving, read in the actual value from the struct
  * and then write them to file, endian safely. Loading a value
@@ -1201,22 +1117,6 @@ Uint128 SlLoadValue128(VarType conv)
 template <SaveLoadAction action>
 static void SlSaveLoadConvGeneric(void *ptr, VarType conv)
 {
-	if (GetVarMemType(conv) == SLE_VAR_U128) {
-		switch (action) {
-			case SLA_SAVE:
-				SlSaveValue128(ReadValue128(ptr, conv), conv);
-				break;
-			case SLA_LOAD_CHECK:
-			case SLA_LOAD:
-				WriteValue128(ptr, conv, SlLoadValue128(conv));
-				break;
-			case SLA_PTRS: break;
-			case SLA_NULL: break;
-			default: NOT_REACHED();
-		}
-		return;
-	}
-
 	switch (action) {
 		case SLA_SAVE: {
 			SlSaveValue(ReadValue(ptr, conv), conv);
@@ -4273,12 +4173,10 @@ static SaveLoadResult DoLoad(std::shared_ptr<LoadFilter> reader, bool load_check
 
 	SlXvResetState();
 	SlResetVENC();
-	SlResetCoupleClaims();
 	SlResetTNNC();
 	SlResetERNC();
 	auto guard = scope_guard([&]() {
 		SlResetVENC();
-		SlResetCoupleClaims();
 		SlResetTNNC();
 	});
 

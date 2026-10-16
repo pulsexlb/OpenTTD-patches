@@ -16,7 +16,6 @@
 #include "slope_type.h"
 #include "company_func.h"
 #include "vehicle_func.h"
-#include "roadveh_transport.h"
 
 #include "safeguards.h"
 
@@ -35,8 +34,6 @@ void GroundVehicle<T, Type>::PowerChanged()
 	uint16_t max_track_speed = this->vcache.cached_max_speed; // Max track speed in internal units.
 
 	this->CalculatePower(total_power, max_te, false);
-	if (this->index.base() <= 6 && Type == VehicleType::Train) {
-	}
 
 	for (const T *u = v; u != nullptr; u = u->Next()) {
 		number_of_parts++;
@@ -62,10 +59,8 @@ void GroundVehicle<T, Type>::PowerChanged()
 	this->gcache.cached_air_drag = air_drag + 3 * air_drag * number_of_parts / 20;
 
 	if (this->gcache.cached_power != total_power || this->gcache.cached_max_te != max_te) {
-		/* Stop the vehicle if it has no power, unless it is a front wagon (can be coupled/decoupled). */
-		if (total_power == 0 && !this->IsFrontWagon()) {
-			this->vehstatus.Set(VehState::Stopped);
-		}
+		/* Stop the vehicle if it has no power. */
+		if (total_power == 0) this->vehstatus.Set(VehState::Stopped);
 
 		this->gcache.cached_power = total_power;
 		this->gcache.cached_max_te = max_te;
@@ -139,10 +134,6 @@ void GroundVehicle<T, Type>::CargoChanged()
 	if (Type == VehicleType::Train) {
 		Train::From(this)->tcache.cached_centre_mass = (weight != 0) ? (mass_offset / weight) : (this->gcache.cached_total_length / 2);
 	}
-
-	/* RoRo: the road vehicles this carrier holds are part of its weight, so that accelerating,
-	 * climbing and braking account for them (this always runs on the front vehicle). */
-	weight += RVTransportGetCarriedWeightTonnes(this);
 
 	/* Store consist weight in cache. */
 	this->gcache.cached_weight = std::max(1u, weight);
@@ -277,8 +268,6 @@ GroundVehicleAcceleration GroundVehicle<T, Type>::GetAcceleration()
 		this->breakdown_chance_factor = Clamp<uint64_t>(breakdown_factor >> 16, 5, 255);
 	}
 
-	if (mass == 0) {
-	}
 	int braking_accel;
 	if (Type == VehicleType::Train && Train::From(this)->UsingRealisticBraking()) {
 		/* Assume that every part of a train is braked, not just the engine.

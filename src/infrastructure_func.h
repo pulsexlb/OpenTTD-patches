@@ -16,24 +16,12 @@
 #include "company_func.h"
 #include "tile_map.h"
 
-/**
- * Transfer a sharing fee from the company of the vehicle to the company owning the infrastructure.
- * @param v           the vehicle whose company pays
- * @param infra_owner the company receiving the money
- * @param cost        the amount, in 1/256ths of a currency unit
- */
-void PaySharingFee(Vehicle *v, Owner infra_owner, Money cost);
 void PayStationSharingFee(Vehicle *v, const Station *st);
 void PayDailyTrackSharingFee(Train *v);
 
 bool CheckSharingChangePossible(VehicleType type, bool new_value);
 void HandleSharingCompanyDeletion(Owner owner);
 void UpdateAllBlockSignals(Owner owner = INVALID_OWNER);
-
-inline bool IsTrainCouplingAllowed(Owner first_owner, Owner second_owner)
-{
-	return first_owner == second_owner || _settings_game.economy.allow_coupling_other_company_trains;
-}
 
 inline bool IsInfrastructureSharingEnabled(VehicleType vt)
 {

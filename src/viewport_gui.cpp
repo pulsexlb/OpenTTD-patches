@@ -348,7 +348,7 @@ void ShowTooltipForTile(Window *w, const TileIndex tile)
 			break;
 		}
 		case TileType::Station: {
-			if (IsHangarTile(tile)) {
+			if (IsHangar(tile)) {
 				ShowDepotTooltip(w, tile);
 			} else if (IsBuoy(tile) || IsRailWaypoint(tile) || IsRoadWaypoint(tile)) {
 				ShowWaypointViewportTooltip(w, tile);

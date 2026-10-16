@@ -8,7 +8,6 @@
 /** @file water_cmd.cpp Handling of water tiles. */
 
 #include "stdafx.h"
-#include "blueprint.h"
 #include "landscape.h"
 #include "landscape_cmd.h"
 #include "viewport_func.h"
@@ -31,8 +30,6 @@
 #include "clear_map.h"
 #include "tree_map.h"
 #include "aircraft.h"
-#include "air.h"
-#include "air_map.h"
 #include "effectvehicle_func.h"
 #include "tunnelbridge_map.h"
 #include "station_base.h"
@@ -177,7 +174,6 @@ CommandCost CmdBuildShipDepot(DoCommandFlags flags, TileIndex tile, Axis axis)
 
 		MakeShipDepot(tile,  _current_company, depot->index, DepotPart::North, axis, wc1);
 		MakeShipDepot(tile2, _current_company, depot->index, DepotPart::South, axis, wc2);
-		RecordBlueprintUndoShipDepot(tile, axis);
 		CheckForDockingTile(tile);
 		CheckForDockingTile(tile2);
 		MarkTileDirtyByTile(tile);
@@ -423,7 +419,6 @@ static CommandCost DoBuildLock(TileIndex tile, DiagDirection dir, DoCommandFlags
 		}
 
 		MakeLock(tile, _current_company, dir, wc_lower, wc_upper, wc_middle);
-		RecordBlueprintUndoLock(tile, dir);
 		CheckForDockingTile(tile - delta);
 		CheckForDockingTile(tile + delta);
 		MarkTileDirtyByTile(tile);
@@ -582,9 +577,6 @@ CommandCost CmdBuildCanal(DoCommandFlags flags, TileIndex tile, TileIndex start_
 						Company::Get(_current_company)->infrastructure.water++;
 						DirtyCompanyInfrastructureWindows(_current_company);
 					}
-					/* Only a company's canal is undoable; rivers and sea belong to
-					 * the scenario editor and have no owner to undo for. */
-					RecordBlueprintUndoCanal(current_tile);
 					break;
 			}
 			MarkTileDirtyByTile(current_tile);
@@ -784,14 +776,13 @@ bool IsWateredTile(TileIndex tile, Direction from)
 
 				return IsTileOnWater(tile);
 			}
-			if (IsAirportTile(tile)) return IsTileOnWater(tile);
 			return (IsDock(tile) && IsTileFlat(tile)) || IsBuoy(tile);
 
 		case TileType::Industry: {
 			/* Do not draw waterborders inside of industries.
 			 * Note: There is no easy way to detect the industry of an oilrig tile. */
 			TileIndex src_tile = tile + TileOffsByDir(from);
-			if ((IsTileType(src_tile, TileType::Station) && (IsOilRig(src_tile) || IsBuiltInHeliportTile(src_tile))) ||
+			if ((IsTileType(src_tile, TileType::Station) && IsOilRig(src_tile)) ||
 			    (IsTileType(src_tile, TileType::Industry) && GetIndustryIndex(src_tile) == GetIndustryIndex(tile))) return true;
 
 			return IsTileOnWater(tile);
@@ -1150,9 +1141,11 @@ static void FloodAircraftProc(Aircraft *v)
 	if (!IsAirportTile(v->tile) || GetTileMaxZ(v->tile) != 0) return;
 	if (v->subtype == AIR_SHADOW) return;
 
-	/* Aircraft on an airport tile at heliport height are flooded. */
+	/* We compare v->z_pos against delta_z + 1 because the shadow
+	 * is at delta_z and the actual aircraft at delta_z + 1. */
 	const Station *st = Station::GetByTile(v->tile);
-	if (v->z_pos != GetTileMaxPixelZ(v->tile) + 1) return;
+	const AirportFTAClass *airport = st->airport.GetFTA();
+	if (v->z_pos != airport->delta_z + 1) return;
 
 	FloodVehicle(v);
 }
@@ -1433,9 +1426,6 @@ void TileLoopWaterFlooding(FloodingBehaviour flooding_behaviour, TileIndex tile)
 
 				/* Buoys and docks cannot be flooded, and when removed turn into flooding water. */
 				if (IsTileType(dest, TileType::Station) && (IsBuoy(dest) || IsDock(dest))) continue;
-
-				/* Airports built on water cannot be flooded, they are built on the water surface. */
-				if (IsAirportTile(dest) && GetAirTypeInfo(GetAirType(dest))->build_on_water) continue;
 
 				/* This neighbour tile might be floodable later if the tile is cleared, so allow flooding to continue. */
 				continue_flooding = true;

@@ -15,27 +15,19 @@
 #include "timetable.h"
 #include "strings_func.h"
 #include "company_func.h"
-#include "company_gui.h"
 #include "dropdown_type.h"
-#include "dropdown_common_type.h"
 #include "dropdown_func.h"
 #include "textbuf_gui.h"
 #include "string_func.h"
 #include "tilehighlight_func.h"
 #include "network/network.h"
 #include "station_base.h"
-#include "depot_base.h"
-#include "depot_map.h"
-#include "roadveh_transport.h"
 #include "industry.h"
 #include "waypoint_base.h"
 #include "core/geometry_func.hpp"
 #include "infrastructure_func.h"
 #include "hotkeys.h"
 #include "aircraft.h"
-#include "train.h"
-#include "vehicle_gui.h"
-#include "gui.h"
 #include "date_func.h"
 #include "engine_func.h"
 #include "vehicle_func.h"
@@ -46,20 +38,13 @@
 #include "scope.h"
 #include "zoom_func.h"
 #include "order_cmd.h"
-#include "orderlist_edit.h"
-#include "schedule_group_gui.h"
 #include "group_cmd.h"
-#include "group.h"
 #include "core/backup_type.hpp"
 #include "core/string_consumer.hpp"
 #include "fios.h"
 
 #include "widgets/order_widget.h"
 
-#include "gfx_func.h"
-#include "window_func.h"
-#include "querystring_gui.h"
-#include "stringfilter_type.h"
 #include "table/strings.h"
 
 #include "safeguards.h"
@@ -91,14 +76,13 @@ static const uint32_t _cargo_type_unload_order_dropdown_hidden_mask = 0x8; // 01
 
 DropDownList GetSlotDropDownList(Owner owner, TraceRestrictSlotID slot_id, int &selected, VehicleType vehtype, bool show_other_types);
 DropDownList GetSlotGroupDropDownList(Owner owner, TraceRestrictSlotGroupID slot_group_id, int &selected, VehicleType vehtype);
-DropDownList GetGroupDropDownList(Owner owner, GroupID group_id, int &selected, bool include_default = true, VehicleType vehtype = VehicleType::Train);
 DropDownList GetCounterDropDownList(Owner owner, TraceRestrictCounterID ctr_id, int &selected);
 
 StringID GetSlotGroupWarning(TraceRestrictSlotGroupID slot_group, Owner owner);
 
 static bool ModifyOrder(const Vehicle *v, VehicleOrderID order_id, ModifyOrderFlags mof, uint16_t data, bool error_msg = true)
 {
-	return Command<Commands::ModifyOrder>::Post(error_msg ? STR_ERROR_CAN_T_MODIFY_THIS_ORDER : (StringID)0, v->tile, OrderTargetType::Vehicle, v->index.base(), order_id, mof, data, {}, {});
+	return Command<Commands::ModifyOrder>::Post(error_msg ? STR_ERROR_CAN_T_MODIFY_THIS_ORDER : (StringID)0, v->tile, v->index, order_id, mof, data, {}, {});
 }
 
 struct CargoTypeOrdersWindow : public Window {
@@ -279,12 +263,12 @@ public:
 
 			if (action_type == order_action_type) return;
 
-			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, OrderTargetType::Vehicle, this->vehicle->index.base(), this->order_id, mof, action_type, cargo_id, {});
+			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, this->vehicle->index, this->order_id, mof, action_type, cargo_id, {});
 
 			this->GetWidget<NWidgetCore>(widget)->SetStringTip(this->cargo_type_order_dropdown[this->GetOrderActionTypeForCargo(cargo_id)], STR_CARGO_TYPE_LOAD_ORDERS_DROP_TOOLTIP + this->variant);
 			this->SetWidgetDirty(widget);
 		} else if (widget == WID_CTO_SET_TO_ALL_DROPDOWN) {
-			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, OrderTargetType::Vehicle, this->vehicle->index.base(), this->order_id, mof, action_type, INVALID_CARGO, {});
+			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, this->vehicle->index, this->order_id, mof, action_type, INVALID_CARGO, {});
 
 			for (int i = 0; i < (int)_sorted_standard_cargo_specs.size(); i++) {
 				const CargoSpec *cs = _sorted_cargo_specs[i];
@@ -440,1218 +424,12 @@ static WindowDesc _cargo_type_unload_orders_widgets (__FILE__, __LINE__,
  */
 void ShowCargoTypeOrdersWindow(const Vehicle *v, Window *parent, VehicleOrderID order_id, CargoTypeOrdersWindowVariant variant)
 {
-	if (v == nullptr) return; // standalone order lists do not support per-cargo order editing
 	WindowDesc &desc = (variant == CTOWV_LOAD) ? _cargo_type_load_orders_widgets : _cargo_type_unload_orders_widgets;
 	CloseWindowById(desc.cls, v->index);
 	CargoTypeOrdersWindow *w = new CargoTypeOrdersWindow(desc, v, order_id, variant);
 	w->parent = parent;
 }
 
-
-
-
-/** Widgets of the #RVTransportWindow (road vehicle transport, RoRo). */
-enum RVTransportWidgets : WidgetID {
-	WID_RVT_CAPTION,          ///< Caption of the window.
-	WID_RVT_LOAD_STATE_LABEL, ///< Label of the candidate load state criterion.
-	WID_RVT_LOAD_STATE,       ///< Candidate load state criterion.
-	WID_RVT_CARGO_LABEL,      ///< Label of the candidate cargo criterion.
-	WID_RVT_CARGO,            ///< Candidate cargo criterion.
-	WID_RVT_CARGO_MODE_LABEL, ///< Label of the candidate cargo mode criterion.
-	WID_RVT_CARGO_MODE,       ///< Candidate cargo mode criterion (can carry / is carrying).
-	WID_RVT_MIN_WAIT_LABEL,   ///< Label of the minimum waiting time criterion.
-	WID_RVT_MIN_WAIT,         ///< Minimum waiting time criterion.
-	WID_RVT_SLOT_LABEL,       ///< Label of the trace restrict slot criterion.
-	WID_RVT_SLOT,             ///< Trace restrict slot criterion.
-	WID_RVT_SLOT_VTYPE_PREV,  ///< Switch the slot dropdown to the previous vehicle type.
-	WID_RVT_SLOT_VTYPE,       ///< Vehicle type whose slots the slot dropdown shows.
-	WID_RVT_SLOT_VTYPE_NEXT,  ///< Switch the slot dropdown to the next vehicle type.
-	WID_RVT_SLOT_GROUP_LABEL, ///< Label of the trace restrict slot group criterion.
-	WID_RVT_SLOT_GROUP,       ///< Trace restrict slot group criterion.
-	WID_RVT_SLOT_GROUP_VTYPE_PREV, ///< Switch the slot group dropdown to the previous vehicle type.
-	WID_RVT_SLOT_GROUP_VTYPE, ///< Vehicle type whose slot groups the slot group dropdown shows.
-	WID_RVT_SLOT_GROUP_VTYPE_NEXT, ///< Switch the slot group dropdown to the next vehicle type.
-	WID_RVT_GROUP_LABEL,      ///< Label of the vehicle group criterion.
-	WID_RVT_GROUP,            ///< Vehicle group criterion.
-	WID_RVT_GROUP_VTYPE_PREV, ///< Switch the vehicle group dropdown to the previous vehicle type.
-	WID_RVT_GROUP_VTYPE,      ///< Vehicle type whose vehicle groups the group dropdown shows.
-	WID_RVT_GROUP_VTYPE_NEXT, ///< Switch the vehicle group dropdown to the next vehicle type.
-	WID_RVT_MAX_LABEL,        ///< Label of the per-visit load limit.
-	WID_RVT_MAX,              ///< Per-visit load limit (how many road vehicles are taken at once).
-	WID_RVT_CLOSE,            ///< Close button.
-};
-
-/** Values used by the dropdowns of the road vehicle transport window. */
-static const int RVTC_CARGO_ANY = 0xFF;         ///< "Any cargo" entry of the cargo dropdown.
-static const int RVTC_CARGO_MODE_ANY = 2;        ///< Cargo criterion: unrestricted (entry of the cargo mode dropdown).
-static const int RVTC_CARGO_MODE_CAN_CARRY = 0; ///< Cargo criterion: the candidate must be able to carry the cargo.
-static const int RVTC_CARGO_MODE_CARRYING = 1;  ///< Cargo criterion: the candidate must currently carry the cargo.
-
-/** Value of the "any" entry of the trace restrict slot criterion. The slot list itself is built with
- * trace restrict slot ids, which start at 0, so this needs a value no slot id can have. */
-static const int RVTC_SLOT_ANY = 0xFFFE;
-
-/** Value of the "any" entry of the trace restrict slot group criterion (valid slot group ids are
- * below 0xFFF0, so no slot group id can have this value). */
-static const int RVTC_SLOT_GROUP_ANY = 0xFFFF;
-
-/** Value of the "any" entry of the vehicle group criterion (the group pool is limited to 64000
- * entries, so no group id can have this value). */
-static const int RVTC_GROUP_ANY = 0xFFFF;
-
-/** Waiting times which the "minimum waiting time" criterion offers (in days). */
-static const uint16_t _rv_transport_min_wait_presets[] = { 0, 1, 2, 5, 10, 30, 60 };
-
-	/** Numbers of road vehicles the per-visit load limit offers (0 = no limit). */
-	static const uint8_t _rv_transport_max_presets[] = { 0, 1, 2, 3, 5, 10 };
-
-/** Vehicle types the trace restrict slot selector cycles through. */
-static const VehicleType _rv_transport_slot_types[] = { VehicleType::Road, VehicleType::Train };
-
-/**
- * Complete text of the load state criterion for a button: a widget string can only be a plain
- * StringID (it cannot carry a parameter), so every value has a string of its own.
- */
-static StringID RVTransportLoadStateCriterionText(uint8_t state)
-{
-	if (state == RVTLS_EMPTY) return STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_EMPTY;
-	if (state == RVTLS_FULL) return STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_FULL;
-	return STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_ANY;
-}
-
-/** Complete text of the minimum waiting time criterion for a button (one string per preset). */
-static StringID RVTransportMinWaitCriterionText(uint16_t days)
-{
-	switch (days) {
-		case 0:  return STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_NONE;
-		case 1:  return STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_1;
-		case 2:  return STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_2;
-		case 5:  return STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_5;
-		case 10: return STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_10;
-		case 30: return STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_30;
-		case 60: return STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_60;
-		default: return STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_CUSTOM; // a value set from the console, not a preset
-	}
-}
-
-/**
- * Complete text of the per-visit load limit button. As with the other criteria, a widget string cannot
- * carry a parameter, so the presets have strings of their own and everything else is "custom".
- */
-static StringID RVTransportMaxLoadText(uint8_t max_load)
-{
-	switch (max_load) {
-		case 0:  return STR_RV_TRANSPORT_CRITERIA_MAX_ANY;
-		case 1:  return STR_RV_TRANSPORT_CRITERIA_MAX_1;
-		case 2:  return STR_RV_TRANSPORT_CRITERIA_MAX_2;
-		case 3:  return STR_RV_TRANSPORT_CRITERIA_MAX_3;
-		case 5:  return STR_RV_TRANSPORT_CRITERIA_MAX_5;
-		case 10: return STR_RV_TRANSPORT_CRITERIA_MAX_10;
-		default: return STR_RV_TRANSPORT_CRITERIA_MAX_CUSTOM;
-	}
-}
-
-/**
- * The content a criteria window edits: either a vehicle's order list or a standalone (player
- * created) order list. Both order editing windows in this file work on either, so the target
- * abstracted here is what their order access, their commands and their owner/type lookups go through.
- */
-struct OrderCriteriaTarget {
-	const Vehicle *vehicle = nullptr;              ///< Vehicle whose orders are edited, or nullptr for a standalone list.
-	OrderListID list_id = OrderListID::Invalid();  ///< Standalone order list, when there is no vehicle.
-	Owner owner = OWNER_NONE;                      ///< Owner whose slots/groups the criteria dropdowns show.
-	VehicleType ref_type = VehicleType::Train;     ///< Vehicle type whose slots/groups the criteria dropdowns show.
-	WindowClass parent_class = WindowClass::VehicleOrders; ///< Class of the order window the criteria window was opened from.
-	WindowNumber window_number = 0;                ///< Window number of that order window.
-
-	bool IsList() const { return this->vehicle == nullptr; }
-
-	const Order *GetOrder(VehicleOrderID i) const
-	{
-		return this->IsList() ? OrderList::Get(this->list_id)->GetOrderAt(i) : this->vehicle->GetOrder(i);
-	}
-
-	uint GetNumOrders() const
-	{
-		return this->IsList() ? (uint)OrderList::Get(this->list_id)->GetNumOrders() : (uint)this->vehicle->GetNumOrders();
-	}
-
-	OrderTargetType TargetKind() const { return this->IsList() ? OrderTargetType::OrderList : OrderTargetType::Vehicle; }
-	uint32_t TargetId() const { return this->IsList() ? this->list_id.base() : this->vehicle->index.base(); }
-	TileIndex CmdTile() const { return this->IsList() ? TileIndex{} : this->vehicle->tile; } // TileIndex{} == 0 passes the command tile gate for tile-less commands
-};
-
-/**
- * Window with every road vehicle transport (RoRo) setting of one station order: whether road
- * vehicles are loaded here (or unloaded here, for a road vehicle itself), whether the carrier waits
- * for them, and which road vehicles are taken (load state, cargo, minimum waiting time, declared
- * destination). The order window only has one entry which opens this window.
- */
-class RVTransportWindow : public Window {
-private:
-	OrderCriteriaTarget target; ///< Vehicle or standalone order list whose order is edited.
-	VehicleOrderID order_id;    ///< Order which is being edited.
-	const Order *order;         ///< The order itself (used to check the window is still valid).
-	uint order_count;           ///< Number of orders the target had when the window was opened.
-
-	/**
-	 * Snapshot of the settings which are shown, so that the buttons and dropdowns can be refreshed
-	 * when the order changes. The order commands are executed asynchronously, and they do not
-	 * invalidate this window, so the state is polled instead of relying on an invalidation.
-	 */
-	struct SettingsSnapshot {
-		uint8_t flags = 0;
-		uint8_t load_state = 0;
-		uint8_t cargo_mode = 0;
-		uint8_t cargo = 0;
-		uint16_t min_wait = 0;
-		uint16_t slot = 0;
-		uint16_t slot_group = 0;
-		uint16_t group = 0;
-		uint8_t max_load = 0;
-
-		bool operator==(const SettingsSnapshot &other) const
-		{
-			return this->flags == other.flags && this->load_state == other.load_state && this->cargo_mode == other.cargo_mode &&
-					this->cargo == other.cargo && this->min_wait == other.min_wait && this->slot == other.slot &&
-					this->slot_group == other.slot_group && this->group == other.group &&
-					this->max_load == other.max_load;
-		}
-	};
-
-	SettingsSnapshot last_settings{}; ///< Settings the widgets currently show.
-
-	VehicleType slot_veh_type = VehicleType::Road;       ///< Vehicle type whose slots the slot dropdown shows (train / road vehicle).
-	VehicleType slot_group_veh_type = VehicleType::Road; ///< Vehicle type whose slot groups the slot group dropdown shows (train / road vehicle).
-	VehicleType group_veh_type = VehicleType::Road;      ///< Vehicle type whose vehicle groups the group dropdown shows (train / road vehicle).
-
-	/** Cycle a criterion dropdown's vehicle type by the given step (either direction wraps). */
-	void CycleCriterionVehType(VehicleType &cur, ModifyOrderFlags clear_mof, int step)
-	{
-		const size_t count = lengthof(_rv_transport_slot_types);
-		size_t i = 0;
-		for (; i < count; ++i) {
-			if (_rv_transport_slot_types[i] == cur) break;
-		}
-		const VehicleType new_type = _rv_transport_slot_types[(i + count + step % (int)count) % count];
-		if (new_type == cur) return;
-		cur = new_type;
-		/* The selected value belongs to the previous type, so clear the criterion. */
-		this->ModifyOrder(clear_mof, uint16_t{0});
-		this->UpdateWidgetTexts();
-		this->SetDirty();
-	}
-
-	/** Cycle the slot dropdown's vehicle type by the given step (either direction wraps). */
-	void CycleSlotVehType(int step)
-	{
-		this->CycleCriterionVehType(this->slot_veh_type, MOF_RV_SLOT, step);
-	}
-
-	/** Cycle the slot group dropdown's vehicle type by the given step (either direction wraps). */
-	void CycleSlotGroupVehType(int step)
-	{
-		this->CycleCriterionVehType(this->slot_group_veh_type, MOF_RV_SLOT_GROUP, step);
-	}
-
-	/** Cycle the vehicle group dropdown's vehicle type by the given step (either direction wraps). */
-	void CycleGroupVehType(int step)
-	{
-		this->CycleCriterionVehType(this->group_veh_type, MOF_RV_GROUP, step);
-	}
-
-	/** Derive the slot dropdown's vehicle type from the order's currently selected slot. */
-	void UpdateSlotVehTypeFromOrder()
-	{
-		const uint16_t slot_raw = this->order->GetRVTransportSlot();
-		if (slot_raw != 0) {
-			const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{static_cast<uint16_t>(slot_raw - 1)});
-			if (slot != nullptr) this->slot_veh_type = slot->vehicle_type;
-		}
-		const uint16_t sg_raw = this->order->GetRVTransportSlotGroup();
-		if (sg_raw != 0) {
-			const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(TraceRestrictSlotGroupID{static_cast<uint16_t>(sg_raw - 1)});
-			if (sg != nullptr) this->slot_group_veh_type = sg->vehicle_type;
-		}
-		const uint16_t grp_raw = this->order->GetRVTransportGroup();
-		if (grp_raw != 0) {
-			const Group *g = Group::GetIfValid(GroupID{static_cast<uint16_t>(grp_raw - 1)});
-			if (g != nullptr) this->group_veh_type = g->vehicle_type;
-		}
-	}
-
-	/** Read the settings which the widgets should show. */
-	SettingsSnapshot GetSettings() const
-	{
-		SettingsSnapshot s;
-		s.flags = this->order->GetRVTransportFlags();
-		s.load_state = this->order->GetRVTransportLoadState();
-		s.cargo_mode = this->order->GetRVTransportCargoMode();
-		s.cargo = this->order->GetRVTransportCargo();
-		s.min_wait = this->order->GetRVTransportMinWait();
-		s.slot = this->order->GetRVTransportSlot();
-		s.slot_group = this->order->GetRVTransportSlotGroup();
-		s.group = this->order->GetRVTransportGroup();
-		s.max_load = this->order->GetRVTransportMax();
-		return s;
-	}
-
-	/** Show the current settings on the buttons and dropdowns. */
-	void UpdateWidgetTexts()
-	{
-		/* The window only contains the selection criteria; the load/unload toggles live in the
-		 * order window's load/unload dropdowns now. */
-		this->GetWidget<NWidgetCore>(WID_RVT_LOAD_STATE)->SetString(RVTransportLoadStateCriterionText(this->order->GetRVTransportLoadState()));
-
-		const uint8_t cargo_mode = this->order->GetRVTransportCargoMode();
-		const CargoType cargo = static_cast<CargoType>(this->order->GetRVTransportCargo());
-		if (cargo_mode == RVTC_ANY || !IsValidCargoType(cargo)) {
-			this->GetWidget<NWidgetCore>(WID_RVT_CARGO)->SetString(STR_ORDER_RV_LOAD_STATE_ANY);
-		} else {
-			this->GetWidget<NWidgetCore>(WID_RVT_CARGO)->SetString(CargoSpec::Get(cargo)->name);
-		}
-		/* The cargo mode dropdown names the current restriction, or "any" when there is none. */
-		this->GetWidget<NWidgetCore>(WID_RVT_CARGO_MODE)->SetString(cargo_mode == RVTC_ANY ? STR_ORDER_RV_LOAD_STATE_ANY :
-				(cargo_mode == RVTC_CAN_CARRY ? STR_RV_TRANSPORT_CRITERIA_CAN_CARRY : STR_RV_TRANSPORT_CRITERIA_IS_CARRYING));
-
-		this->GetWidget<NWidgetCore>(WID_RVT_MIN_WAIT)->SetString(RVTransportMinWaitCriterionText(this->order->GetRVTransportMinWait()));
-
-		/* Trace restrict slot ("路签"): the road vehicle must be an occupant of that slot. */
-		const uint16_t slot_raw = this->order->GetRVTransportSlot();
-		if (slot_raw == 0) {
-			this->GetWidget<NWidgetCore>(WID_RVT_SLOT)->SetString(STR_ORDER_RV_LOAD_STATE_ANY);
-		} else {
-			const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{static_cast<uint16_t>(slot_raw - 1)});
-			/* A widget string cannot carry a parameter, so a deleted slot is shown as "any" as well. */
-			this->GetWidget<NWidgetCore>(WID_RVT_SLOT)->SetString((slot != nullptr) ? STR_RV_TRANSPORT_CRITERIA_SLOT_SET : STR_ORDER_RV_LOAD_STATE_ANY);
-		}
-		/* Which vehicle type's slots the slot dropdown shows. */
-		this->GetWidget<NWidgetCore>(WID_RVT_SLOT_VTYPE)->SetString(this->slot_veh_type == VehicleType::Train ?
-				STR_RV_TRANSPORT_CRITERIA_SLOT_TRAIN : STR_RV_TRANSPORT_CRITERIA_SLOT_ROAD);
-
-		/* Trace restrict slot group ("路签组"): the candidate must hold a slot of that group. */
-		const uint16_t sg_raw = this->order->GetRVTransportSlotGroup();
-		if (sg_raw == 0) {
-			this->GetWidget<NWidgetCore>(WID_RVT_SLOT_GROUP)->SetString(STR_ORDER_COUPLE_ANY_GROUP);
-		} else {
-			const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(TraceRestrictSlotGroupID{static_cast<uint16_t>(sg_raw - 1)});
-			this->GetWidget<NWidgetCore>(WID_RVT_SLOT_GROUP)->SetString((sg != nullptr) ? STR_RV_TRANSPORT_CRITERIA_SLOT_GROUP_SET : STR_ORDER_COUPLE_ANY_GROUP);
-		}
-		/* Which vehicle type's slot groups the slot group dropdown shows. */
-		this->GetWidget<NWidgetCore>(WID_RVT_SLOT_GROUP_VTYPE)->SetString(this->slot_group_veh_type == VehicleType::Train ?
-				STR_RV_TRANSPORT_CRITERIA_SLOT_TRAIN : STR_RV_TRANSPORT_CRITERIA_SLOT_ROAD);
-
-		/* Vehicle group ("载具组"): the candidate must belong to that group. */
-		const uint16_t grp_raw = this->order->GetRVTransportGroup();
-		if (grp_raw == 0) {
-			this->GetWidget<NWidgetCore>(WID_RVT_GROUP)->SetString(STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
-		} else {
-			const Group *g = Group::GetIfValid(GroupID{static_cast<uint16_t>(grp_raw - 1)});
-			this->GetWidget<NWidgetCore>(WID_RVT_GROUP)->SetString((g != nullptr) ? STR_RV_TRANSPORT_CRITERIA_GROUP_SET : STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
-		}
-		/* Which vehicle type's groups the group dropdown shows. */
-		this->GetWidget<NWidgetCore>(WID_RVT_GROUP_VTYPE)->SetString(this->group_veh_type == VehicleType::Train ?
-				STR_RV_TRANSPORT_CRITERIA_SLOT_TRAIN : STR_RV_TRANSPORT_CRITERIA_SLOT_ROAD);
-
-		this->GetWidget<NWidgetCore>(WID_RVT_MAX)->SetString(RVTransportMaxLoadText(this->order->GetRVTransportMax()));
-	}
-
-	/**
-	 * Show the name of the selected trace restrict slot on the slot dropdown. The widget string
-	 * mechanism is bypassed because the text carries the slot's name as a parameter.
-	 */
-	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
-	{
-		if (widget == WID_RVT_SLOT) {
-			const uint16_t slot_raw = this->order->GetRVTransportSlot();
-			if (slot_raw != 0) {
-				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{static_cast<uint16_t>(slot_raw - 1)});
-				if (slot != nullptr) return slot->name;
-			}
-			return GetString(STR_ORDER_RV_LOAD_STATE_ANY);
-		}
-		if (widget == WID_RVT_SLOT_GROUP) {
-			const uint16_t sg_raw = this->order->GetRVTransportSlotGroup();
-			if (sg_raw != 0) {
-				const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(TraceRestrictSlotGroupID{static_cast<uint16_t>(sg_raw - 1)});
-				if (sg != nullptr) return GetString(STR_TRACE_RESTRICT_SLOT_GROUP_NAME, sg->index.base());
-			}
-			return GetString(STR_ORDER_COUPLE_ANY_GROUP);
-		}
-		if (widget == WID_RVT_GROUP) {
-			const uint16_t grp_raw = this->order->GetRVTransportGroup();
-			if (grp_raw != 0) {
-				const Group *g = Group::GetIfValid(GroupID{static_cast<uint16_t>(grp_raw - 1)});
-				if (g != nullptr) return GetString(STR_GROUP_NAME, g->index);
-			}
-			return GetString(STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
-		}
-		return Window::GetWidgetString(widget, stringid);
-	}
-
-	/** Is the edited order still there? */
-	bool CheckOrderStillValid() const
-	{
-		if (this->target.GetNumOrders() != this->order_count) return false;
-		return this->target.GetOrder(this->order_id) == this->order;
-	}
-
-	/** Apply an order change through the real order modification command. */
-	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO)
-	{
-		if (!this->CheckOrderStillValid()) return;
-		Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->target.CmdTile(), this->target.TargetKind(), this->target.TargetId(),
-				this->order_id, mof, data, cargo, {});
-	}
-
-	/** Currently selected cargo of the cargo criterion, or INVALID_CARGO when the criterion is off. */
-	CargoType GetSelectedCargo() const
-	{
-		if (this->order->GetRVTransportCargoMode() == RVTC_ANY) return INVALID_CARGO;
-		const CargoType cargo = static_cast<CargoType>(this->order->GetRVTransportCargo());
-		return IsValidCargoType(cargo) ? cargo : INVALID_CARGO;
-	}
-
-	/** Build the dropdown which selects the load state criterion. */
-	DropDownList BuildLoadStateList() const
-	{
-		const uint8_t current = this->order->GetRVTransportLoadState();
-		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == RVTLS_ANY, STR_ORDER_RV_LOAD_STATE_ANY, RVTLS_ANY));
-		list.push_back(MakeDropDownListCheckedItem(current == RVTLS_EMPTY, STR_ORDER_RV_LOAD_STATE_EMPTY, RVTLS_EMPTY));
-		list.push_back(MakeDropDownListCheckedItem(current == RVTLS_FULL, STR_ORDER_RV_LOAD_STATE_FULL, RVTLS_FULL));
-		return list;
-	}
-
-	/** Build the dropdown which selects the cargo criterion. */
-	DropDownList BuildCargoList() const
-	{
-		const CargoType current = this->GetSelectedCargo();
-		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == INVALID_CARGO, STR_ORDER_RV_LOAD_STATE_ANY, RVTC_CARGO_ANY));
-		list.push_back(MakeDropDownListDividerItem());
-		for (const CargoSpec *cs : _sorted_cargo_specs) {
-			list.push_back(MakeDropDownListCheckedItem(current == cs->Index(), cs->name, cs->Index()));
-		}
-		return list;
-	}
-
-	/** Build the dropdown which selects the cargo mode criterion. */
-	DropDownList BuildCargoModeList() const
-	{
-		const uint8_t current = this->order->GetRVTransportCargoMode();
-		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == RVTC_ANY, STR_ORDER_RV_LOAD_STATE_ANY, RVTC_CARGO_MODE_ANY));
-		list.push_back(MakeDropDownListDividerItem());
-		list.push_back(MakeDropDownListCheckedItem(current == RVTC_CAN_CARRY, STR_RV_TRANSPORT_CRITERIA_CAN_CARRY, RVTC_CARGO_MODE_CAN_CARRY));
-		list.push_back(MakeDropDownListCheckedItem(current == RVTC_IS_CARRYING, STR_RV_TRANSPORT_CRITERIA_IS_CARRYING, RVTC_CARGO_MODE_CARRYING));
-		return list;
-	}
-
-	/** Build the dropdown which selects the minimum waiting time criterion. */
-	DropDownList BuildMinWaitList() const
-	{
-		const uint16_t current = this->order->GetRVTransportMinWait();
-		DropDownList list;
-		for (const uint16_t days : _rv_transport_min_wait_presets) {
-			std::string text = (days == 0) ? GetString(STR_ORDER_RV_MIN_WAIT_NONE) : GetString(STR_ORDER_RV_MIN_WAIT_DAYS, days);
-			list.push_back(MakeDropDownListCheckedItem(current == days, std::move(text), days));
-		}
-		return list;
-	}
-
-	/** Build the dropdown which selects the per-visit load limit (how many road vehicles are taken). */
-	DropDownList BuildMaxList() const
-	{
-		const uint8_t current = this->order->GetRVTransportMax();
-		DropDownList list;
-		for (const uint8_t max_load : _rv_transport_max_presets) {
-			std::string text = (max_load == 0) ? GetString(STR_RV_TRANSPORT_CRITERIA_MAX_ANY) : GetString(STR_RV_TRANSPORT_CRITERIA_MAX_N, max_load);
-			list.push_back(MakeDropDownListCheckedItem(current == max_load, std::move(text), max_load));
-		}
-		return list;
-	}
-
-	/**
-	 * Build the dropdown which selects the trace restrict slot criterion ("路签").
-	 *
-	 * This is the list the "try acquire trace restrict slot" order offers: a normal click shows the own
-	 * company's road vehicle slots, holding shift also shows the other companies' public ones grouped
-	 * per company, and holding control shows the recently used ones. The criterion needs an "any" entry
-	 * of its own, which takes the place of the entry which creates a new trace restrict slot - this
-	 * window cannot create one.
-	 */
-	DropDownList BuildSlotList() const
-	{
-		const uint16_t current = this->order->GetRVTransportSlot();
-		const TraceRestrictSlotID slot_id = (current == 0) ? TraceRestrictSlotID{} : TraceRestrictSlotID{static_cast<uint16_t>(current - 1)};
-
-		int selected;
-		DropDownList slots = GetSlotDropDownList(this->target.owner, slot_id, selected, this->slot_veh_type, false);
-
-		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == 0, STR_ORDER_RV_LOAD_STATE_ANY, RVTC_SLOT_ANY));
-		for (auto &item : slots) {
-			/* Leave out the entry which creates a new trace restrict slot, and the divider which
-			 * separates it from the slots: the "any" entry above is in its place. */
-			if (item->result == NEW_TRACE_RESTRICT_SLOT_ID.base()) continue;
-			if (list.size() == 1 && item->result == -1) continue;
-			list.push_back(std::move(item));
-		}
-		return list;
-	}
-
-	/** Build the dropdown which selects the trace restrict slot group criterion ("路签组").
-	 *
-	 * Same list as the "try acquire slot in group" order offers; the criterion needs an "any"
-	 * entry of its own. The vehicle type selector decides whether train or road vehicle slot
-	 * groups are shown.
-	 */
-	DropDownList BuildSlotGroupList() const
-	{
-		const uint16_t current = this->order->GetRVTransportSlotGroup();
-		const TraceRestrictSlotGroupID sg_id = (current == 0) ? TraceRestrictSlotGroupID{} : TraceRestrictSlotGroupID{static_cast<uint16_t>(current - 1)};
-
-		int selected;
-		DropDownList groups = GetSlotGroupDropDownList(this->target.owner, sg_id, selected, this->slot_group_veh_type);
-
-		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == 0, STR_ORDER_COUPLE_ANY_GROUP, RVTC_SLOT_GROUP_ANY));
-		for (auto &item : groups) {
-			list.push_back(std::move(item));
-		}
-		return list;
-	}
-
-	/** Build the dropdown which selects the vehicle group criterion ("载具组"). The vehicle type
-	 * selector decides whether train or road vehicle groups are shown. */
-	DropDownList BuildGroupList() const
-	{
-		const uint16_t current = this->order->GetRVTransportGroup();
-		const GroupID group_id = (current == 0) ? GroupID::Invalid() : GroupID{static_cast<uint16_t>(current - 1)};
-
-		int selected;
-		DropDownList groups = GetGroupDropDownList(this->target.owner, group_id, selected, false, this->group_veh_type);
-
-		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == 0, STR_ORDER_COUPLE_ANY_VEHICLE_GROUP, RVTC_GROUP_ANY));
-		for (auto &item : groups) {
-			list.push_back(std::move(item));
-		}
-		return list;
-	}
-
-public:
-	RVTransportWindow(WindowDesc &desc, const OrderCriteriaTarget &target, VehicleOrderID order_id) : Window(desc)
-	{
-		this->target = target;
-		this->order_id = order_id;
-		this->order_count = target.GetNumOrders();
-		this->order = target.GetOrder(order_id);
-
-		this->CreateNestedTree();
-		/* Show the type of the selected slot (train / road vehicle) on the slot type selector. */
-		this->UpdateSlotVehTypeFromOrder();
-		/* Set the widget texts before the layout is computed, so that the dropdowns are sized to fit
-		 * their current value (there is no fixed minimum width for them). */
-		this->UpdateWidgetTexts();
-		this->FinishInitNested(target.window_number);
-		this->last_settings = this->GetSettings();
-		this->owner = target.owner;
-	}
-
-	/**
-	 * Refresh the widgets when the order changed. The order commands run asynchronously and do not
-	 * invalidate this window, and the game may well be paused while the player edits, so this polls
-	 * from the realtime tick (which runs regardless of the pause state).
-	 */
-	void OnRealtimeTick([[maybe_unused]] uint delta_ms) override
-	{
-		if (!this->CheckOrderStillValid()) {
-			this->Close();
-			return;
-		}
-		this->order = this->target.GetOrder(this->order_id);
-		const SettingsSnapshot current = this->GetSettings();
-		if (!(current == this->last_settings)) {
-			this->last_settings = current;
-			this->UpdateWidgetTexts();
-			/* Re-run the layout so the dropdowns fit the (possibly longer) new value. */
-			this->ReInit();
-			this->SetDirty();
-		}
-	}
-
-	void Close(int data = 0) override
-	{
-		FocusWindowById(this->target.parent_class, this->target.window_number);
-		this->Window::Close();
-	}
-
-	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
-	{
-		if (!this->CheckOrderStillValid()) {
-			this->Close();
-			return;
-		}
-
-		switch (widget) {
-			/* A dropdown widget has to open its list itself. */
-			case WID_RVT_LOAD_STATE:
-				ShowDropDownList(this, this->BuildLoadStateList(), -1, WID_RVT_LOAD_STATE, 0);
-				return;
-			case WID_RVT_CARGO:
-				ShowDropDownList(this, this->BuildCargoList(), -1, WID_RVT_CARGO, 0);
-				return;
-			case WID_RVT_CARGO_MODE:
-				ShowDropDownList(this, this->BuildCargoModeList(), -1, WID_RVT_CARGO_MODE, 0);
-				return;
-			case WID_RVT_MIN_WAIT:
-				ShowDropDownList(this, this->BuildMinWaitList(), -1, WID_RVT_MIN_WAIT, 0);
-				return;
-			case WID_RVT_SLOT:
-				/* The list works with trace restrict slot ids, the criterion stores them offset by one. */
-				ShowDropDownList(this, this->BuildSlotList(),
-						(this->order->GetRVTransportSlot() == 0) ? RVTC_SLOT_ANY : static_cast<int>(this->order->GetRVTransportSlot() - 1),
-						WID_RVT_SLOT, 0);
-				return;
-
-			case WID_RVT_SLOT_VTYPE_PREV:
-				this->CycleSlotVehType(-1);
-				return;
-			case WID_RVT_SLOT_VTYPE_NEXT:
-				this->CycleSlotVehType(1);
-				return;
-			case WID_RVT_SLOT_VTYPE:
-				this->CycleSlotVehType(1);
-				return;
-			case WID_RVT_SLOT_GROUP:
-				/* The list works with trace restrict slot group ids, the criterion stores them offset by one. */
-				ShowDropDownList(this, this->BuildSlotGroupList(),
-						(this->order->GetRVTransportSlotGroup() == 0) ? RVTC_SLOT_GROUP_ANY : static_cast<int>(this->order->GetRVTransportSlotGroup() - 1),
-						WID_RVT_SLOT_GROUP, 0);
-				return;
-			case WID_RVT_SLOT_GROUP_VTYPE_PREV:
-				this->CycleSlotGroupVehType(-1);
-				return;
-			case WID_RVT_SLOT_GROUP_VTYPE_NEXT:
-				this->CycleSlotGroupVehType(1);
-				return;
-			case WID_RVT_SLOT_GROUP_VTYPE:
-				this->CycleSlotGroupVehType(1);
-				return;
-			case WID_RVT_GROUP:
-				/* The list works with group ids, the criterion stores them offset by one. */
-				ShowDropDownList(this, this->BuildGroupList(),
-						(this->order->GetRVTransportGroup() == 0) ? RVTC_GROUP_ANY : static_cast<int>(this->order->GetRVTransportGroup() - 1),
-						WID_RVT_GROUP, 0);
-				return;
-			case WID_RVT_GROUP_VTYPE_PREV:
-				this->CycleGroupVehType(-1);
-				return;
-			case WID_RVT_GROUP_VTYPE_NEXT:
-				this->CycleGroupVehType(1);
-				return;
-			case WID_RVT_GROUP_VTYPE:
-				this->CycleGroupVehType(1);
-				return;
-			case WID_RVT_MAX:
-				ShowDropDownList(this, this->BuildMaxList(), -1, WID_RVT_MAX, 0);
-				return;
-
-			case WID_RVT_CLOSE:
-				this->Close();
-				return;
-
-			default:
-				return;
-		}
-
-		InvalidateWindowData(WindowClass::VehicleOrders, this->window_number, 0);
-		this->SetDirty();
-	}
-
-	void OnDropdownSelect(WidgetID widget, int index, int) override
-	{
-		if (!this->CheckOrderStillValid()) return;
-
-		const CargoType cargo = this->GetSelectedCargo();
-		switch (widget) {
-			case WID_RVT_LOAD_STATE:
-				this->ModifyOrder(MOF_RV_LOAD_STATE, static_cast<uint16_t>(index));
-				break;
-
-			case WID_RVT_CARGO:
-				/* Keep the current mode (can carry / is carrying) and only change the cargo. */
-				if (index == RVTC_CARGO_ANY) {
-					this->ModifyOrder(MOF_RV_CARGO_MODE, RVTC_ANY, INVALID_CARGO);
-				} else {
-					const uint8_t mode = (this->order->GetRVTransportCargoMode() == RVTC_IS_CARRYING) ? RVTC_IS_CARRYING : RVTC_CAN_CARRY;
-					this->ModifyOrder(MOF_RV_CARGO_MODE, mode, static_cast<CargoType>(index));
-				}
-				break;
-
-			case WID_RVT_CARGO_MODE:
-				if (index == RVTC_CARGO_MODE_ANY) {
-					/* Unrestricted: clear the whole cargo criterion. */
-					this->ModifyOrder(MOF_RV_CARGO_MODE, RVTC_ANY, INVALID_CARGO);
-				} else if (cargo == INVALID_CARGO) {
-					/* A mode without a cargo is meaningless: start with the first cargo of the game. */
-					if (!_sorted_cargo_specs.empty()) {
-						this->ModifyOrder(MOF_RV_CARGO_MODE, (index == RVTC_CARGO_MODE_CARRYING) ? RVTC_IS_CARRYING : RVTC_CAN_CARRY,
-								_sorted_cargo_specs.front()->Index());
-					}
-				} else {
-					this->ModifyOrder(MOF_RV_CARGO_MODE, (index == RVTC_CARGO_MODE_CARRYING) ? RVTC_IS_CARRYING : RVTC_CAN_CARRY, cargo);
-				}
-				break;
-
-			case WID_RVT_MIN_WAIT:
-				this->ModifyOrder(MOF_RV_MIN_WAIT, static_cast<uint16_t>(index));
-				break;
-
-			case WID_RVT_SLOT:
-				/* The list works with trace restrict slot ids, the criterion stores them offset by one,
-				 * with 0 meaning "any". */
-				if (index == RVTC_SLOT_ANY) {
-					this->ModifyOrder(MOF_RV_SLOT, uint16_t{0});
-				} else if (index >= 0) {
-					TraceRestrictRecordRecentSlot(TraceRestrictSlotID{static_cast<uint16_t>(index)});
-					this->ModifyOrder(MOF_RV_SLOT, static_cast<uint16_t>(index + 1));
-				}
-				break;
-
-			case WID_RVT_SLOT_GROUP:
-				/* The list works with trace restrict slot group ids, the criterion stores them offset
-				 * by one, with 0 meaning "any". */
-				if (index == RVTC_SLOT_GROUP_ANY) {
-					this->ModifyOrder(MOF_RV_SLOT_GROUP, uint16_t{0});
-				} else if (index >= 0) {
-					TraceRestrictRecordRecentSlotGroup(TraceRestrictSlotGroupID{static_cast<uint16_t>(index)});
-					this->ModifyOrder(MOF_RV_SLOT_GROUP, static_cast<uint16_t>(index + 1));
-				}
-				break;
-
-			case WID_RVT_GROUP:
-				/* The list works with group ids, the criterion stores them offset by one, with 0
-				 * meaning "any". */
-				if (index == RVTC_GROUP_ANY) {
-					this->ModifyOrder(MOF_RV_GROUP, uint16_t{0});
-				} else if (index >= 0) {
-					this->ModifyOrder(MOF_RV_GROUP, static_cast<uint16_t>(index + 1));
-				}
-				break;
-
-			case WID_RVT_MAX:
-				this->ModifyOrder(MOF_RV_MAX, static_cast<uint16_t>(index));
-				break;
-
-			default:
-				return;
-		}
-
-		InvalidateWindowData(WindowClass::VehicleOrders, this->window_number, 0);
-		this->SetDirty();
-	}
-
-	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
-	{
-		if (!this->CheckOrderStillValid()) {
-			this->Close();
-			return;
-		}
-		this->order = this->target.GetOrder(this->order_id);
-		this->UpdateWidgetTexts();
-		this->ReInit();
-		this->SetDirty();
-	}
-};
-
-/** Widgets of the road vehicle transport window. */
-static constexpr NWidgetPart _nested_rv_transport_widgets[] = {
-	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_CLOSEBOX, Colours::Grey),
-		NWidget(WWT_CAPTION, Colours::Grey, WID_RVT_CAPTION), SetStringTip(STR_RV_TRANSPORT_CRITERIA_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
-		NWidget(WWT_SHADEBOX, Colours::Grey),
-		NWidget(WWT_DEFSIZEBOX, Colours::Grey),
-		NWidget(WWT_STICKYBOX, Colours::Grey),
-	EndContainer(),
-	NWidget(WWT_PANEL, Colours::Grey),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_RVT_LOAD_STATE_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_LOAD_STATE, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_RVT_LOAD_STATE), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_RVT_CARGO_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_CARGO, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_RVT_CARGO), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_RVT_CARGO_MODE_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_CARGO_MODE, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_RVT_CARGO_MODE), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_RVT_MIN_WAIT_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_MIN_WAIT, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_RVT_MIN_WAIT), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_RVT_SLOT_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_SLOT, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_RVT_SLOT), SetFill(0, 0), SetResize(0, 0),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_RVT_SLOT_VTYPE_PREV), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Left, STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP),
-			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RVT_SLOT_VTYPE), SetMinimalSize(40, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_SLOT_ROAD, STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_RVT_SLOT_VTYPE_NEXT), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Right, STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_RVT_SLOT_GROUP_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_SLOT_GROUP, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_RVT_SLOT_GROUP), SetFill(0, 0), SetResize(0, 0),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_RVT_SLOT_GROUP_VTYPE_PREV), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Left, STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP),
-			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RVT_SLOT_GROUP_VTYPE), SetMinimalSize(40, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_SLOT_ROAD, STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_RVT_SLOT_GROUP_VTYPE_NEXT), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Right, STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_RVT_GROUP_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_GROUP, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_RVT_GROUP), SetFill(0, 0), SetResize(0, 0),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_RVT_GROUP_VTYPE_PREV), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Left, STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP),
-			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_RVT_GROUP_VTYPE), SetMinimalSize(40, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_SLOT_ROAD, STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_RVT_GROUP_VTYPE_NEXT), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Right, STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_RVT_MAX_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_RV_TRANSPORT_CRITERIA_MAX, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_RVT_MAX), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-	EndContainer(),
-	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_TEXTBTN, Colours::Grey, WID_RVT_CLOSE), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_CARGO_TYPE_ORDERS_CLOSE_BUTTON, STR_TOOLTIP_CLOSE_WINDOW),
-		NWidget(WWT_RESIZEBOX, Colours::Grey),
-	EndContainer(),
-};
-
-/** Window description of the road vehicle transport window. */
-static WindowDesc _rv_transport_desc(__FILE__, __LINE__,
-	WindowPosition::Automatic, "road_vehicle_transport_criteria", 260, 130,
-	WindowClass::VehicleRVTransportCriteria, WindowClass::VehicleOrders,
-	WindowDefaultFlag::Construction,
-	_nested_rv_transport_widgets
-);
-
-/**
- * Show the window with all road vehicle transport settings of an order.
- * @param parent The parent order window.
- * @param target The vehicle or standalone order list the order belongs to.
- * @param order_id Which order to edit.
- */
-void ShowRVTransportWindow(Window *parent, const OrderCriteriaTarget &target, VehicleOrderID order_id)
-{
-	CloseWindowById(WindowClass::VehicleRVTransportCriteria, target.window_number);
-	RVTransportWindow *w = new RVTransportWindow(_rv_transport_desc, target, order_id);
-	w->parent = parent;
-}
-
-/** Widgets of the #CoupleOptionsWindow (coupling selection criteria of a train couple order). */
-enum CoupleCriteriaWidgets : WidgetID {
-	WID_CPO_CAPTION,          ///< Caption of the window.
-	WID_CPO_SLOT_GROUP_LABEL, ///< Label of the trace restrict slot group criterion.
-	WID_CPO_SLOT_GROUP,       ///< Trace restrict slot group criterion.
-	WID_CPO_GROUP_LABEL,      ///< Label of the vehicle group criterion.
-	WID_CPO_GROUP,            ///< Vehicle group criterion.
-	WID_CPO_LOAD_LABEL,       ///< Label of the load state criterion.
-	WID_CPO_LOAD,             ///< Load state criterion (any / empty / full).
-	WID_CPO_CARGO_LABEL,      ///< Label of the cargo criterion.
-	WID_CPO_CARGO,            ///< Cargo criterion.
-	WID_CPO_VALUE_LABEL,      ///< Label of the unit count criterion.
-	WID_CPO_VALUE,            ///< Unit count criterion (opens a query).
-	WID_CPO_CLOSE,            ///< Close button.
-};
-
-/** Value of the "any cargo" entry of the cargo dropdown (no cargo type can have this index). */
-static const int CPO_CARGO_ANY = 0xFF;
-
-/** Value of the "any vehicle group" entry of the vehicle group dropdown (the group pool is limited
- * to 64000 entries, so no group id can have this value). */
-static const int CPO_GROUP_ANY = 0xFFFF;
-
-/** Value of the "any slot group" entry of the slot group dropdown (valid slot group ids are
- * below 0xFFF0, so no slot group id can have this value). */
-static const int CPO_SLOT_GROUP_ANY = 0xFFFF;
-
-/** Values of the load state dropdown entries. */
-static const int CPO_LOAD_ANY = 0;
-static const int CPO_LOAD_EMPTY = 1;
-static const int CPO_LOAD_FULL = 2;
-
-/**
- * Window with every selection criterion of a train couple order which does not have its own
- * button in the order window: the trace restrict slot group, the vehicle group, the load state,
- * the cargo type and the unit count of the consist to couple with.
- */
-class CoupleOptionsWindow : public Window {
-private:
-	OrderCriteriaTarget target; ///< Vehicle or standalone order list whose order is edited.
-	VehicleOrderID order_id;    ///< Order which is being edited.
-	const Order *order;         ///< The order itself (used to check the window is still valid).
-	uint order_count;           ///< Number of orders the target had when the window was opened.
-
-	/** Snapshot of the criteria which are shown, to refresh the dropdowns when the order changes. */
-	struct SettingsSnapshot {
-		uint8_t load = 0;
-		uint8_t cargo = 0;
-		uint8_t units = 0;
-		uint16_t slot_group = 0;
-		uint16_t group = 0;
-
-		bool operator==(const SettingsSnapshot &other) const
-		{
-			return this->load == other.load && this->cargo == other.cargo && this->units == other.units &&
-					this->slot_group == other.slot_group && this->group == other.group;
-		}
-	};
-
-	SettingsSnapshot last_settings{}; ///< Settings the widgets currently show.
-
-	WidgetID query_text_widget = INVALID_WIDGET; ///< Widget which opened the text query.
-
-	/** Read the criteria which the widgets should show. */
-	SettingsSnapshot GetSettings() const
-	{
-		SettingsSnapshot s;
-		s.load = to_underlying(this->order->GetCoupleLoad());
-		s.cargo = this->order->HasCoupleCargoType() ? (uint8_t)this->order->GetCoupleCargoType() : (uint8_t)CARGO_NO_REFIT;
-		s.units = this->order->GetNumCouple();
-		s.slot_group = this->order->GetCoupleSlotGroup().base();
-		s.group = this->order->GetCoupleGroup().base();
-		return s;
-	}
-
-	/** Show the current criteria on the dropdowns. The parameterized names (slot group name,
-	 * vehicle group name, cargo name, unit count) are resolved by #GetWidgetString; these are the
-	 * fallbacks used while no parameter is available. */
-	void UpdateWidgetTexts()
-	{
-		this->GetWidget<NWidgetCore>(WID_CPO_SLOT_GROUP)->SetString(STR_ORDER_COUPLE_ANY_GROUP);
-		this->GetWidget<NWidgetCore>(WID_CPO_GROUP)->SetString(STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
-		this->GetWidget<NWidgetCore>(WID_CPO_LOAD)->SetString(STR_ORDER_COUPLE_ANY + to_underlying(this->order->GetCoupleLoad()));
-		this->GetWidget<NWidgetCore>(WID_CPO_CARGO)->SetString(STR_ORDER_COUPLE_ANY_CARGO);
-	}
-
-	/** Is the edited order still there? */
-	bool CheckOrderStillValid() const
-	{
-		if (this->target.GetNumOrders() != this->order_count) return false;
-		return this->target.GetOrder(this->order_id) == this->order;
-	}
-
-	/** Apply an order change through the real order modification command. */
-	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO)
-	{
-		if (!this->CheckOrderStillValid()) return;
-		Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->target.CmdTile(), this->target.TargetKind(), this->target.TargetId(),
-				this->order_id, mof, data, cargo, {});
-	}
-
-	/** Currently selected cargo of the cargo criterion, or INVALID_CARGO when the criterion is off. */
-	CargoType GetSelectedCargo() const
-	{
-		if (!this->order->HasCoupleCargoType()) return INVALID_CARGO;
-		const CargoType cargo = this->order->GetCoupleCargoType();
-		return IsValidCargoType(cargo) ? cargo : INVALID_CARGO;
-	}
-
-	/** Build the dropdown which selects the trace restrict slot group criterion. The list works
-	 * with raw slot group ids, with the "any" entry using a value no group id can have. */
-	DropDownList BuildSlotGroupList() const
-	{
-		const TraceRestrictSlotGroupID current = this->order->GetCoupleSlotGroup();
-
-		int selected;
-		DropDownList groups = GetSlotGroupDropDownList(this->target.owner, current, selected, this->target.ref_type);
-
-		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == TraceRestrictSlotGroupID::Invalid(), STR_ORDER_COUPLE_ANY_GROUP, CPO_SLOT_GROUP_ANY));
-		for (auto &item : groups) {
-			list.push_back(std::move(item));
-		}
-		return list;
-	}
-
-	/** Build the dropdown which selects the vehicle group criterion. */
-	DropDownList BuildGroupList() const
-	{
-		const GroupID current = this->order->GetCoupleGroup();
-
-		int selected;
-		/* The default group is left out: a train in the default group has no user-assigned group,
-		 * so "any vehicle group" is the appropriate criterion for it. */
-		DropDownList groups = GetGroupDropDownList(this->target.owner, current, selected, false, this->target.ref_type);
-
-		DropDownList list;
-		/* "Any" needs a result value no group id can have: the first user-created group has id 0. */
-		list.push_back(MakeDropDownListCheckedItem(current == GroupID::Invalid(), STR_ORDER_COUPLE_ANY_VEHICLE_GROUP, CPO_GROUP_ANY));
-		for (auto &item : groups) {
-			list.push_back(std::move(item));
-		}
-		return list;
-	}
-
-	/** Build the dropdown which selects the load state criterion. */
-	DropDownList BuildLoadList() const
-	{
-		const uint8_t current = to_underlying(this->order->GetCoupleLoad());
-		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == ODC_ANY, STR_ORDERS_COUPLE_LOAD_ANY, CPO_LOAD_ANY));
-		list.push_back(MakeDropDownListCheckedItem(current == ODC_IS_EMPTY, STR_ORDERS_COUPLE_LOAD_EMPTY, CPO_LOAD_EMPTY));
-		list.push_back(MakeDropDownListCheckedItem(current == ODC_IS_FULL, STR_ORDERS_COUPLE_LOAD_FULL, CPO_LOAD_FULL));
-		return list;
-	}
-
-	/** Build the dropdown which selects the cargo criterion. */
-	DropDownList BuildCargoList() const
-	{
-		const CargoType current = this->GetSelectedCargo();
-		DropDownList list;
-		list.push_back(MakeDropDownListCheckedItem(current == INVALID_CARGO, STR_ORDER_COUPLE_ANY_CARGO, CPO_CARGO_ANY));
-		list.push_back(MakeDropDownListDividerItem());
-		for (const CargoSpec *cs : _sorted_cargo_specs) {
-			list.push_back(MakeDropDownListCheckedItem(current == cs->Index(), cs->name, cs->Index()));
-		}
-		return list;
-	}
-
-public:
-	CoupleOptionsWindow(WindowDesc &desc, const OrderCriteriaTarget &target, VehicleOrderID order_id) : Window(desc)
-	{
-		this->target = target;
-		this->order_id = order_id;
-		this->order_count = target.GetNumOrders();
-		this->order = target.GetOrder(order_id);
-
-		this->CreateNestedTree();
-		/* Set the widget texts before the layout is computed, so that the dropdowns are sized to fit
-		 * their current value. */
-		this->UpdateWidgetTexts();
-		this->FinishInitNested(target.window_number);
-		this->last_settings = this->GetSettings();
-		this->owner = target.owner;
-	}
-
-	void Close(int data = 0) override
-	{
-		FocusWindowById(this->target.parent_class, this->target.window_number);
-		this->Window::Close();
-	}
-
-	/**
-	 * Refresh the widgets when the order changed. The order commands run asynchronously and do not
-	 * invalidate this window, and the game may well be paused while the player edits, so this polls
-	 * from the realtime tick (which runs regardless of the pause state).
-	 */
-	void OnRealtimeTick([[maybe_unused]] uint delta_ms) override
-	{
-		if (!this->CheckOrderStillValid()) {
-			this->Close();
-			return;
-		}
-		this->order = this->target.GetOrder(this->order_id);
-		const SettingsSnapshot current = this->GetSettings();
-		if (!(current == this->last_settings)) {
-			this->last_settings = current;
-			this->UpdateWidgetTexts();
-			this->ReInit();
-			this->SetDirty();
-		}
-	}
-
-	/**
-	 * Show the name of the selected slot group / vehicle group / unit count on its widget. The widget
-	 * string mechanism is bypassed because the text carries a parameter.
-	 */
-	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
-	{
-		switch (widget) {
-			case WID_CPO_SLOT_GROUP: {
-				const uint16_t slot_group = this->order->GetCoupleSlotGroup().base();
-				if (slot_group != INVALID_TRACE_RESTRICT_SLOT_GROUP.base()) {
-					const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(slot_group);
-					if (sg != nullptr) return GetString(STR_TRACE_RESTRICT_SLOT_GROUP_NAME, slot_group);
-				}
-				return GetString(STR_ORDER_COUPLE_ANY_GROUP);
-			}
-
-			case WID_CPO_GROUP: {
-				const Group *g = Group::GetIfValid(this->order->GetCoupleGroup());
-				if (g != nullptr) return GetString(STR_GROUP_NAME, g->index);
-				return GetString(STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
-			}
-
-			case WID_CPO_CARGO: {
-				if (!this->order->HasCoupleCargoType()) return GetString(STR_ORDER_COUPLE_ANY_CARGO);
-				const CargoType cargo = this->order->GetCoupleCargoType();
-				if (IsValidCargoType(cargo)) return GetString(CargoSpec::Get(cargo)->name);
-				return GetString(STR_ORDER_COUPLE_ANY_CARGO);
-			}
-
-			case WID_CPO_VALUE:
-				return GetString(STR_JUST_INT, this->order->GetNumCouple());
-
-			default:
-				return Window::GetWidgetString(widget, stringid);
-		}
-	}
-
-	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
-	{
-		if (!this->CheckOrderStillValid()) {
-			this->Close();
-			return;
-		}
-
-		switch (widget) {
-			case WID_CPO_SLOT_GROUP:
-				ShowDropDownList(this, this->BuildSlotGroupList(), -1, WID_CPO_SLOT_GROUP, 0);
-				return;
-			case WID_CPO_GROUP:
-				ShowDropDownList(this, this->BuildGroupList(), -1, WID_CPO_GROUP, 0);
-				return;
-			case WID_CPO_LOAD:
-				ShowDropDownList(this, this->BuildLoadList(), -1, WID_CPO_LOAD, 0);
-				return;
-			case WID_CPO_CARGO:
-				ShowDropDownList(this, this->BuildCargoList(), -1, WID_CPO_CARGO, 0);
-				return;
-			case WID_CPO_VALUE:
-				this->query_text_widget = WID_CPO_VALUE;
-				ShowQueryString(GetString(STR_JUST_INT, this->order->GetNumCouple()), STR_ORDER_COUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
-				return;
-			case WID_CPO_CLOSE:
-				this->Close();
-				return;
-
-			default:
-				return;
-		}
-	}
-
-	void OnDropdownSelect(WidgetID widget, int index, int) override
-	{
-		if (!this->CheckOrderStillValid()) return;
-
-		switch (widget) {
-			case WID_CPO_SLOT_GROUP:
-				/* The dropdown result is the raw slot group id; the order stores group id + 1
-				 * with 0 meaning "any". */
-				if (index == CPO_SLOT_GROUP_ANY) {
-					this->ModifyOrder(MOF_COUPLE_SLOT_GROUP, 0);
-				} else if (index >= 0) {
-					this->ModifyOrder(MOF_COUPLE_SLOT_GROUP, static_cast<uint16_t>(index + 1));
-				}
-				break;
-
-			case WID_CPO_GROUP:
-				/* The dropdown result is the group id itself (0 = the first user-created group),
-				 * except for the "any" entry; the order stores group id + 1 with 0 meaning "any". */
-				if (index == CPO_GROUP_ANY) {
-					this->ModifyOrder(MOF_COUPLE_GROUP, 0);
-				} else if (index >= 0) {
-					this->ModifyOrder(MOF_COUPLE_GROUP, static_cast<uint16_t>(index + 1));
-				}
-				break;
-
-			case WID_CPO_LOAD:
-				this->ModifyOrder(MOF_COUPLE_LOAD, index == CPO_LOAD_EMPTY ? ODC_IS_EMPTY : (index == CPO_LOAD_FULL ? ODC_IS_FULL : ODC_ANY));
-				break;
-
-			case WID_CPO_CARGO:
-				if (index == CPO_CARGO_ANY) {
-					this->ModifyOrder(MOF_COUPLE_CARGO, 0, CARGO_NO_REFIT);
-				} else if (index >= 0) {
-					this->ModifyOrder(MOF_COUPLE_CARGO, 0, static_cast<CargoType>(index));
-				}
-				break;
-
-			default:
-				return;
-		}
-
-		this->SetDirty();
-	}
-
-	void OnQueryTextFinished(std::optional<std::string> str) override
-	{
-		if (!str.has_value() || str->empty()) return;
-		if (this->query_text_widget != WID_CPO_VALUE) return;
-		auto try_value = ParseInteger<uint>(*str);
-		if (!try_value.has_value()) return;
-		this->ModifyOrder(MOF_COUPLE_VALUE, Clamp(*try_value, 0U, 127U));
-	}
-
-	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
-	{
-		if (!this->CheckOrderStillValid()) {
-			this->Close();
-			return;
-		}
-		this->order = this->target.GetOrder(this->order_id);
-		this->UpdateWidgetTexts();
-		this->ReInit();
-		this->SetDirty();
-	}
-};
-
-/** Widgets of the coupling criteria window. */
-static constexpr NWidgetPart _nested_couple_options_widgets[] = {
-	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_CLOSEBOX, Colours::Grey),
-		NWidget(WWT_CAPTION, Colours::Grey, WID_CPO_CAPTION), SetStringTip(STR_ORDER_COUPLE_OPTIONS_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
-		NWidget(WWT_SHADEBOX, Colours::Grey),
-		NWidget(WWT_DEFSIZEBOX, Colours::Grey),
-		NWidget(WWT_STICKYBOX, Colours::Grey),
-	EndContainer(),
-	NWidget(WWT_PANEL, Colours::Grey),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_SLOT_GROUP_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_COUPLE_SLOT_GROUP_LABEL, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_CPO_SLOT_GROUP), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_GROUP_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_COUPLE_GROUP_LABEL, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_CPO_GROUP), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_LOAD_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_COUPLE_LOAD_LABEL, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_CPO_LOAD), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_CARGO_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_COUPLE_CARGO_LABEL, STR_NULL),
-			NWidget(WWT_DROPDOWN, Colours::Grey, WID_CPO_CARGO), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-		NWidget(NWID_HORIZONTAL),
-			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_VALUE_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_COUPLE_VALUE_LABEL, STR_NULL),
-			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_CPO_VALUE), SetFill(0, 0), SetResize(0, 0),
-		EndContainer(),
-	EndContainer(),
-	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_TEXTBTN, Colours::Grey, WID_CPO_CLOSE), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_CARGO_TYPE_ORDERS_CLOSE_BUTTON, STR_TOOLTIP_CLOSE_WINDOW),
-		NWidget(WWT_RESIZEBOX, Colours::Grey),
-	EndContainer(),
-};
-
-/** Window description of the coupling criteria window. */
-static WindowDesc _couple_options_desc(__FILE__, __LINE__,
-	WindowPosition::Automatic, "couple_criteria", 240, 130,
-	WindowClass::VehicleCoupleCriteria, WindowClass::VehicleOrders,
-	WindowDefaultFlag::Construction,
-	_nested_couple_options_widgets
-);
-
-/**
- * Show the window with all coupling selection criteria of a couple order.
- * @param parent The parent order window.
- * @param target The vehicle or standalone order list the order belongs to.
- * @param order_id Which order to edit.
- */
-void ShowCoupleOptionsWindow(Window *parent, const OrderCriteriaTarget &target, VehicleOrderID order_id)
-{
-	CloseWindowById(WindowClass::VehicleCoupleCriteria, target.window_number);
-	CoupleOptionsWindow *w = new CoupleOptionsWindow(_couple_options_desc, target, order_id);
-	w->parent = parent;
-}
 
 /** Order load types that could be given to station orders. */
 static const StringID _station_load_types[][8][8] = {
@@ -1800,23 +578,6 @@ static const StringID _order_unload_dropdown[] = {
 	STR_ORDER_DROP_CARGO_TYPE_UNLOAD,
 };
 
-/**
- * Result values of the road vehicle transport (RoRo) entries which the order window appends to the
- * load and unload dropdowns, and to the manage-order dropdown of a road vehicle's own orders. The
- * values must not collide with the OrderLoadType/OrderUnloadType values used by the standard
- * entries.
- */
-enum RVTransportDropDownResult {
-	RVDD_TRANSPORT     = 0x100, ///< Open the window with the road vehicle transport (RoRo) selection criteria.
-	RVDD_LOAD_ANY      = 0x101, ///< Carrier: load any road vehicles.
-	RVDD_LOAD_MATCH    = 0x102, ///< Carrier: only load road vehicles heading for the carrier's next stop.
-	RVDD_LOAD_WAIT     = 0x103, ///< Carrier: keep waiting until road vehicles have been loaded.
-	RVDD_UNLOAD        = 0x111, ///< Carrier: unload the road vehicles which want to get off here.
-	RVDD_UNLOAD_ALL    = 0x112, ///< Carrier: unload every road vehicle here.
-	RVDD_RV_WAIT       = 0x700, ///< Road vehicle: wait to be transported here. Kept out of the 0x1xx-0x6xx ranges used by the order management menu.
-	RVDD_RV_UNLOAD     = 0x701, ///< Road vehicle: be unloaded here.
-};
-
 enum OrderDropDownID {
 	ODDI_GO_TO,
 	ODDI_GO_TO_NEAREST_DEPOT,
@@ -1824,51 +585,12 @@ enum OrderDropDownID {
 	ODDI_SHARE,
 	ODDI_INSERT_FROM_VEHICLE,
 	ODDI_TRY_ACQUIRE_SLOT,
-	ODDI_EXECUTE_SCHEDULE,
 	ODDI_RELEASE_SLOT,
 	ODDI_RELEASE_SLOT_GROUP,
 	ODDI_CHANGE_COUNTER,
 	ODDI_LABEL_TEXT,
 	ODDI_LABEL_DEPARTURES_VIA,
-	ODDI_WAIT_FOR_COUPLE,
-	ODDI_GO_TO_COUPLE,
-	ODDI_DECOUPLE_SAME_DIR,
 };
-
-static const StringID _order_decouple_orders_drowdown[] = {
-	/* Index must match _order_decouple_orders_drowdown_flags (value 2 is the
-	 * retired ODOF_INHERIT_ORDERS and is not selectable). */
-	STR_ORDERS_DECOUPLE_KEEP_ORDERS,          // 0
-	STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD,  // 1
-	STR_ORDERS_DECOUPLE_LOAD_AND_WAIT,        // 2
-	STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE,      // 3
-	STR_ORDERS_DECOUPLE_LOAD_AND_SCHEDULE,    // 4
-	STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE,     // 5
-};
-
-/* Dropdown index -> OrderDecoupleOrdersFlags; the dropdown skips the retired value 2. */
-static const OrderDecoupleOrdersFlags _order_decouple_orders_drowdown_flags[] = {
-	ODOF_KEEP_ORDERS,
-	ODOF_KEEP_ORDERS_NO_LOAD,
-	ODOF_LOAD_AND_WAIT,
-	ODOF_WAIT_FOR_COUPLE,
-	ODOF_LOAD_AND_SCHEDULE,
-	ODOF_EXECUTE_SCHEDULE,
-};
-
-static_assert(lengthof(_order_decouple_orders_drowdown) == lengthof(_order_decouple_orders_drowdown_flags));
-
-/**
- * Get the dropdown index of a decouple orders flag, so the current selection
- * can be marked when the dropdown is opened.
- */
-static int DecoupleOrdersDropdownIndex(OrderDecoupleOrdersFlags flag)
-{
-	for (uint i = 0; i < lengthof(_order_decouple_orders_drowdown_flags); i++) {
-		if (_order_decouple_orders_drowdown_flags[i] == flag) return i;
-	}
-	return 0; // Unreachable: the order accessors clamp to a valid flag.
-}
 
 static const StringID _order_manage_list_dropdown[] = {
 	STR_ORDER_REVERSE_ORDER_LIST,
@@ -1878,10 +600,6 @@ static const StringID _order_manage_list_dropdown[] = {
 	STR_ORDER_IMPORT_ORDER_LIST_APPEND,
 	STR_ORDER_IMPORT_ORDER_LIST_APPEND_REVERSED
 };
-
-struct OrdersWindow;
-
-void ShowDecoupleSchedulePicker(OrdersWindow &w, bool first, OrderDecoupleOrdersFlags type);
 
 /** Variables for conditional orders; this defines the order of appearance in the dropdown box */
 static const OrderConditionVariable _order_conditional_variable[] = {
@@ -1907,7 +625,6 @@ static const OrderConditionVariable _order_conditional_variable[] = {
 	OrderConditionVariable::DispatchSlot,
 	OrderConditionVariable::Percent,
 	OrderConditionVariable::DrivingBackwards,
-	OrderConditionVariable::DecouplePart,
 	OrderConditionVariable::Unconditionally,
 };
 
@@ -2047,17 +764,6 @@ static int DepotActionStringIndex(const Order *order)
 	}
 }
 
-/**
- * With the train_no_depot_temporary_stop setting every train always stops in a depot, so the
- * depot action of a train order is fixed to "stop" and cannot be changed by the player.
- */
-static bool IsDepotActionFixedToStop(const Vehicle *v, const Order *order)
-{
-	return _settings_game.vehicle.train_no_depot_temporary_stop &&
-			v != nullptr && v->type == VehicleType::Train &&
-			order != nullptr && order->IsType(OT_GOTO_DEPOT);
-}
-
 static const StringID _order_refit_action_dropdown[] = {
 	STR_ORDER_DROP_REFIT_AUTO,
 	STR_ORDER_DROP_REFIT_AUTO_ANY,
@@ -2079,9 +785,8 @@ static const StringID _order_timetable_dropdown[] = {
 StringID OrderStringForVariable(const Vehicle *v, OrderConditionVariable ocv)
 {
 	if (ocv > OrderConditionVariable::End) return STR_UNDEFINED;
-	const bool is_train = (v != nullptr && v->type == VehicleType::Train);
-	if (ocv == OrderConditionVariable::VehicleInSlot && !is_train) return STR_ORDER_CONDITIONAL_VEHICLE_IN_SLOT;
-	if (ocv == OrderConditionVariable::VehicleInSlotGroup && !is_train) return STR_ORDER_CONDITIONAL_VEHICLE_IN_SLOT_GROUP;
+	if (ocv == OrderConditionVariable::VehicleInSlot && v->type != VehicleType::Train) return STR_ORDER_CONDITIONAL_VEHICLE_IN_SLOT;
+	if (ocv == OrderConditionVariable::VehicleInSlotGroup && v->type != VehicleType::Train) return STR_ORDER_CONDITIONAL_VEHICLE_IN_SLOT_GROUP;
 
 	static constexpr std::array<StringID, to_underlying(OrderConditionVariable::End)> ocv_names{
 		STR_ORDER_CONDITIONAL_LOAD_PERCENTAGE,
@@ -2106,8 +811,7 @@ StringID OrderStringForVariable(const Vehicle *v, OrderConditionVariable ocv)
 		STR_ORDER_CONDITIONAL_DISPATCH_SLOT,
 		STR_ORDER_CONDITIONAL_CARGO_WAITING_AMOUNT_PERCENTAGE,
 		STR_ORDER_CONDITIONAL_TRAIN_IN_SLOT_GROUP,
-		STR_ORDER_CONDITIONAL_DRIVING_BACKWARDS,
-		STR_ORDER_CONDITIONAL_DECOUPLE_PART
+		STR_ORDER_CONDITIONAL_DRIVING_BACKWARDS
 	};
 	return ocv_names[to_underlying(ocv)];
 }
@@ -2122,73 +826,6 @@ static StringID GetDepotOrderGoToString(const Order &order)
 }
 
 /**
- * Append the "(...)" group which the order list shows for a station order of a road vehicle carrier:
- * the road vehicle transport parts of the order (wait, load, unload) inside the parentheses,
- * followed by a single "(other options)" marker when selection criteria are set, instead of listing
- * every criterion in the order list. The group replaces the normal-cargo load/unload parentheses,
- * which for a carrier order would only say "no loading / no unloading".
- * @param line The line to append to.
- * @param order The station order.
- */
-/** Standalone text of a normal-cargo load type, for the road vehicle transport order summary. */
-static StringID RVTransportCargoLoadText(OrderLoadType load)
-{
-	switch (load) {
-		case OrderLoadType::FullLoad:      return STR_ORDER_DROP_FULL_LOAD_ALL;
-		case OrderLoadType::FullLoadAny:   return STR_ORDER_DROP_FULL_LOAD_ANY;
-		case OrderLoadType::NoLoad:        return STR_ORDER_DROP_NO_LOADING;
-		case OrderLoadType::CargoTypeLoad: return STR_ORDER_DROP_CARGO_TYPE_LOAD;
-		default:                           return STR_ORDER_RV_CARGO_LOAD_DEFAULT; // LoadIfPossible
-	}
-}
-
-/** Standalone text of a normal-cargo unload type, for the road vehicle transport order summary. */
-static StringID RVTransportCargoUnloadText(OrderUnloadType unload)
-{
-	switch (unload) {
-		case OrderUnloadType::Unload:          return STR_ORDER_DROP_UNLOAD;
-		case OrderUnloadType::Transfer:        return STR_ORDER_DROP_TRANSFER;
-		case OrderUnloadType::NoUnload:        return STR_ORDER_DROP_NO_UNLOADING;
-		case OrderUnloadType::CargoTypeUnload: return STR_ORDER_DROP_CARGO_TYPE_UNLOAD;
-		default:                               return STR_ORDER_RV_CARGO_UNLOAD_DEFAULT; // UnloadIfPossible
-	}
-}
-
-static void AppendRVTransportOrderSummary(format_buffer &line, const Order &order)
-{
-	const uint8_t rvf = order.GetRVTransportFlags();
-	line.push_back(' ');
-	line.push_back('(');
-	bool first = true;
-	auto part = [&](StringID str) {
-		if (str == INVALID_STRING_ID) return;
-		if (!first) line.append(", ");
-		first = false;
-		line.append(GetString(str));
-	};
-	if ((rvf & ORVTF_WAIT) != 0) part(STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES);
-	/* The load side is either road vehicles or normal cargo (they are mutually exclusive); the
-	 * normal-cargo side is shown with its own wording, so a mixed order shows both parts. */
-	if ((rvf & ORVTF_LOAD) != 0) {
-		part(((rvf & ORVTF_MATCH_DEST) != 0) ? STR_ORDER_DROP_RV_LOAD_NEXT : STR_ORDER_DROP_LOAD_ROAD_VEHICLES);
-	} else {
-		part(RVTransportCargoLoadText(order.GetLoadType()));
-	}
-	if ((rvf & ORVTF_UNLOAD) != 0) {
-		part(((rvf & ORVTF_UNLOAD_ALL) != 0) ? STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES : STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES);
-	} else {
-		part(RVTransportCargoUnloadText(order.GetUnloadType()));
-	}
-	if (order.GetRVTransportLoadState() != RVTLS_ANY || order.GetRVTransportCargoMode() != RVTC_ANY ||
-			order.GetRVTransportMinWait() != 0 || order.GetRVTransportSlot() != 0 || order.GetRVTransportSlotGroup() != 0 ||
-			order.GetRVTransportGroup() != 0 || order.GetRVTransportMax() != 0) {
-		line.push_back(' ');
-		line.append(GetString(STR_ORDER_RV_TRANSPORT_MORE_OPTIONS));
-	}
-	line.push_back(')');
-}
-
-/**
  * Draws an order in order or timetable GUI
  * @param v Vehicle the order belongs to
  * @param order The order to draw
@@ -2200,17 +837,17 @@ static void AppendRVTransportOrderSummary(format_buffer &line, const Order &orde
  * @param middle X position between order index and order text
  * @param right Right border for text drawing
  */
-void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int y, bool selected, bool timetable, int left, int middle, int right, bool dispatch_enabled, const OrderList *orders)
+void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int y, bool selected, bool timetable, int left, int middle, int right)
 {
 	bool rtl = _current_text_dir == TD_RTL;
 
 	SpriteID sprite = rtl ? SPR_ARROW_LEFT : SPR_ARROW_RIGHT;
 	Dimension sprite_size = GetSpriteSize(sprite);
-	if (v != nullptr && v->cur_real_order_index == order_index) {
+	if (v->cur_real_order_index == order_index) {
 		/* Draw two arrows before the next real order. */
 		DrawSprite(sprite, PAL_NONE, rtl ? right -     sprite_size.width : left,                     y + ((int)GetCharacterHeight(FontSize::Normal) - (int)sprite_size.height) / 2);
 		DrawSprite(sprite, PAL_NONE, rtl ? right - 2 * sprite_size.width : left + sprite_size.width, y + ((int)GetCharacterHeight(FontSize::Normal) - (int)sprite_size.height) / 2);
-	} else if (v != nullptr && v->cur_implicit_order_index == order_index) {
+	} else if (v->cur_implicit_order_index == order_index) {
 		/* Draw one arrow before the next implicit order; the next real order will still get two arrows. */
 		DrawSprite(sprite, PAL_NONE, rtl ? right -     sprite_size.width : left,                     y + ((int)GetCharacterHeight(FontSize::Normal) - (int)sprite_size.height) / 2);
 	}
@@ -2245,10 +882,10 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 		case OT_GOTO_STATION: {
 			OrderLoadType load = order->GetLoadType();
 			OrderUnloadType unload = order->GetUnloadType();
-			bool valid_station = (v != nullptr) ? CanVehicleUseStation(v, Station::Get(order->GetDestination().ToStationID())) : true;
+			bool valid_station = CanVehicleUseStation(v, Station::Get(order->GetDestination().ToStationID()));
 
 			AppendStringInPlace(line, valid_station ? STR_ORDER_GO_TO_STATION : STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION,
-					STR_ORDER_GO_TO + ((v == nullptr || v->IsGroundVehicle()) ? order->GetNonStopType() : 0),
+					STR_ORDER_GO_TO + (v->IsGroundVehicle() ? order->GetNonStopType() : 0),
 					order->GetDestination().ToStationID());
 
 			if (timetable) {
@@ -2260,95 +897,47 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				timetable_wait_time_valid = true;
 			} else {
 				/* Show non-stop, refit and stop location only in the order window. */
-				/* The road vehicle transport feature has two independent sets of bits, so an order can
-				 * carry both readings at once: the carrier ones (load/unload road vehicles) are
-				 * summarised in the parentheses below, the road vehicle's own ones ("wait to be
-				 * transported" / "be unloaded here") as a suffix. Which of them has any effect
-				 * depends on the vehicle running the order; a vehicle-less standalone/shared order
-				 * list simply shows what it carries. */
-				const uint8_t rvf = order->GetRVTransportFlags();
-				const bool rv_transport = (rvf & (ORVTF_LOAD | ORVTF_UNLOAD)) != 0;
-				const bool rv_own = (rvf & (ORVTF_OWN_WAIT | ORVTF_OWN_UNLOAD)) != 0;
-
 				if (!(order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)) {
-					if (rv_transport) {
-						/* A road vehicle carrier's order shows its road vehicle transport parts
-						 * inside the parentheses instead of the normal-cargo load/unload text. */
-						AppendRVTransportOrderSummary(line, *order);
-					} else {
-						StringID str = _station_load_types[order->IsRefit()][to_underlying(unload)][to_underlying(load)];
-						if (str != INVALID_STRING_ID) {
-							if (order->IsRefit()) {
-								AppendStringInPlace(line, str, order->IsAutoRefit() ? STR_ORDER_AUTO_REFIT_ANY : CargoSpec::Get(order->GetRefitCargo())->name);
-							} else {
-								AppendStringInPlace(line, str);
-							}
+					StringID str = _station_load_types[order->IsRefit()][to_underlying(unload)][to_underlying(load)];
+					if (str != INVALID_STRING_ID) {
+						if (order->IsRefit()) {
+							AppendStringInPlace(line, str, order->IsAutoRefit() ? STR_ORDER_AUTO_REFIT_ANY : CargoSpec::Get(order->GetRefitCargo())->name);
+						} else {
+							AppendStringInPlace(line, str);
 						}
 					}
 				}
 
-				if ((v == nullptr || v->type == VehicleType::Train) && (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) == 0) {
+				if (v->type == VehicleType::Train && (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) == 0) {
 					/* Only show the stopping location if other than the default chosen by the player. */
 					if (!_settings_client.gui.hide_default_stop_location || order->GetStopLocation() != _settings_client.gui.stop_location) {
 						AppendStringInPlace(line, STR_ORDER_STOP_LOCATION_NEAR_END + to_underlying(order->GetStopLocation()));
 					}
 				}
-				if (order->GetDecouple() == ODF_DECOUPLE) {
-					line.push_back(' ');
-					AppendStringInPlace(line, STR_ORDER_DECOUPLE);
-				}
-				if ((v != nullptr && v->type == VehicleType::Road) && order->GetRoadVehTravelDirection() != DiagDirection::Invalid) {
+				if (v->type == VehicleType::Road && order->GetRoadVehTravelDirection() != DiagDirection::Invalid) {
 					line.push_back(' ');
 					AppendStringInPlace(line, STR_ORDER_RV_DIR_NE + to_underlying(order->GetRoadVehTravelDirection()));
-				}
-
-				/* RoRo: the road vehicle's own "wait to be transported" / "be unloaded here" toggles as
-				 * a suffix. A carrier's own road vehicle transport parts are already in the
-				 * parentheses above, and its selection criteria are only shown as the "(other
-				 * options)" marker (see AppendRVTransportOrderSummary). */
-				if (rv_own) {
-					if ((rvf & ORVTF_OWN_WAIT) != 0) {
-						line.push_back(' ');
-						AppendStringInPlace(line, STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED);
-					}
-					if ((rvf & ORVTF_OWN_UNLOAD) != 0) {
-						line.push_back(' ');
-						AppendStringInPlace(line, STR_ORDER_DROP_BE_UNLOADED_HERE);
-					}
 				}
 			}
 			break;
 		}
 
-		case OT_GOTO_DEPOT: {
-			/* For standalone lists derive the depot wording from the depot tile. */
-			VehicleType dvt = v != nullptr ? v->type : VehicleType::Train;
-			if (v == nullptr) {
-				const Depot *dep = Depot::GetIfValid(order->GetDestination().ToDepotID());
-				if (dep != nullptr) {
-					TileIndex dt = dep->xy;
-					if (IsHangarTile(dt))               dvt = VehicleType::Aircraft;
-					else if (IsShipDepotTile(dt))       dvt = VehicleType::Ship;
-					else if (IsRoadDepotTile(dt))       dvt = VehicleType::Road;
-					else                                dvt = VehicleType::Train;
-				}
-			}
+		case OT_GOTO_DEPOT:
 			if (!(order->GetDepotActionType() & ODATFB_NEAREST_DEPOT)) {
-				AppendStringInPlace(line, STR_ORDER_GO_TO_DEPOT_FORMAT, GetDepotOrderGoToString(*order), dvt, order->GetDestination().ToDepotID());
-			} else if (dvt == VehicleType::Aircraft) {
+				AppendStringInPlace(line, STR_ORDER_GO_TO_DEPOT_FORMAT, GetDepotOrderGoToString(*order), v->type, order->GetDestination().ToDepotID());
+			} else if (v->type == VehicleType::Aircraft) {
 				/* Going to the nearest hangar. */
 				AppendStringInPlace(line, STR_ORDER_GO_TO_NEAREST_HANGAR_FORMAT, GetDepotOrderGoToString(*order));
 			} else {
-				/* Going to the nearest depot; standalone lists fall back to generic wording. */
-				AppendStringInPlace(line, STR_ORDER_GO_TO_NEAREST_DEPOT_FORMAT, GetDepotOrderGoToString(*order),
-						STR_ORDER_TRAIN_DEPOT + to_underlying(dvt));
+				/* Going to the nearest depot. */
+				AppendStringInPlace(line, STR_ORDER_GO_TO_NEAREST_DEPOT_FORMAT, GetDepotOrderGoToString(*order), STR_ORDER_TRAIN_DEPOT + to_underlying(v->type));
 			}
 
 			if (!timetable && (order->GetDepotActionType() & ODATFB_SELL)) {
 				AppendStringInPlace(line, STR_ORDER_SELL_ORDER);
 			} else {
 				/* Do not show stopping in the depot in the timetable window. */
-				if (!timetable && ((order->GetDepotActionType() & ODATFB_HALT) || IsDepotActionFixedToStop(v, order))) {
+				if (!timetable && (order->GetDepotActionType() & ODATFB_HALT)) {
 					AppendStringInPlace(line, STR_ORDER_STOP_ORDER);
 				}
 
@@ -2371,7 +960,6 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				AppendStringInPlace(line, STR_ORDER_WAIT_TO_UNBUNCH);
 			}
 			break;
-		}
 
 		case OT_GOTO_WAYPOINT: {
 			StringID str = (order->GetNonStopType() & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS) ? STR_ORDER_GO_NON_STOP_TO_WAYPOINT : STR_ORDER_GO_TO_WAYPOINT;
@@ -2382,7 +970,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				AppendStringInPlace(line, STR_TIMETABLE_STAY_FOR, str, value);
 				timetable_wait_time_valid = true;
 			}
-			if (!timetable && v != nullptr && v->type == VehicleType::Road && order->GetRoadVehTravelDirection() != DiagDirection::Invalid) {
+			if (!timetable && v->type == VehicleType::Road && order->GetRoadVehTravelDirection() != DiagDirection::Invalid) {
 				line.push_back(' ');
 				AppendStringInPlace(line, STR_ORDER_RV_DIR_NE + to_underlying(order->GetRoadVehTravelDirection()));
 			}
@@ -2445,7 +1033,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 					case OrderConditionComparator::IsFalse:
 					case OrderConditionComparator::Equal:
 					case OrderConditionComparator::NotEqual: {
-						const StringID *strs = (v != nullptr && v->type == VehicleType::Train) ? _order_conditional_condition_is_in_slot : _order_conditional_condition_is_in_slot_non_train;
+						const StringID *strs = v->type == VehicleType::Train ? _order_conditional_condition_is_in_slot : _order_conditional_condition_is_in_slot_non_train;
 						comparator = strs[to_underlying(order->GetConditionComparator())];
 						break;
 					}
@@ -2468,7 +1056,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				switch (order->GetConditionComparator()) {
 					case OrderConditionComparator::IsTrue:
 					case OrderConditionComparator::IsFalse: {
-						const StringID *strs = (v != nullptr && v->type == VehicleType::Train) ? _order_conditional_condition_is_in_slot : _order_conditional_condition_is_in_slot_non_train;
+						const StringID *strs = v->type == VehicleType::Train ? _order_conditional_condition_is_in_slot : _order_conditional_condition_is_in_slot_non_train;
 						comparator = strs[to_underlying(order->GetConditionComparator())];
 						break;
 					}
@@ -2564,7 +1152,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				std::string schedule_str;
 				if (schedule_id != UINT16_MAX) {
 					bool have_name = false;
-					if (v != nullptr && schedule_id < v->orders->GetScheduledDispatchScheduleCount()) {
+					if (schedule_id < v->orders->GetScheduledDispatchScheduleCount()) {
 						const DispatchSchedule &ds = v->orders->GetDispatchScheduleByIndex(schedule_id);
 						selected_schedule = &ds;
 						if (!ds.ScheduleName().empty()) {
@@ -2643,16 +1231,11 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 						value,
 						STR_ORDER_CONDITIONAL_COMPARATOR_HAS + to_underlying(order->GetConditionComparator()) - to_underlying(OrderConditionComparator::IsTrue),
 						CargoSpec::Get(order->GetConditionValue())->name);
-			} else if (ocv == OrderConditionVariable::DecouplePart) {
-				AppendStringInPlace(line, STR_ORDER_CONDITIONAL_DECOUPLE_PART_DISPLAY,
-						order->GetConditionSkipToOrder() + 1,
-						STR_ORDER_CONDITIONAL_COMPARATOR_EQUALS + to_underlying(order->GetConditionComparator()),
-						STR_ORDER_CONDITIONAL_DECOUPLE_PART_NONE + order->GetConditionValue());
 			} else {
 				OrderConditionComparator occ = order->GetConditionComparator();
 				uint value = order->GetConditionValue();
 				if (ocv == OrderConditionVariable::MaxSpeed) {
-					value = ConvertSpeedToDisplaySpeed(value, v != nullptr ? v->type : VehicleType::Train);
+					value = ConvertSpeedToDisplaySpeed(value, v->type);
 				}
 				AppendStringInPlace(line, (occ == OrderConditionComparator::IsTrue || occ == OrderConditionComparator::IsFalse) ? STR_ORDER_CONDITIONAL_TRUE_FALSE : STR_ORDER_CONDITIONAL_NUM,
 						order->GetConditionSkipToOrder() + 1,
@@ -2706,7 +1289,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			if (order->GetDestination() == INVALID_TRACE_RESTRICT_SLOT_GROUP) {
 				AppendStringInPlace(line, str, STR_TRACE_RESTRICT_VARIABLE_UNDEFINED_RED, std::monostate{});
 			} else {
-				StringID warning = GetSlotGroupWarning(order->GetDestination().ToSlotGroupID(), v != nullptr ? v->owner : OWNER_NONE);
+				StringID warning = GetSlotGroupWarning(order->GetDestination().ToSlotGroupID(), v->owner);
 				AppendStringInPlace(line, str, warning != STR_NULL ? warning : STR_TRACE_RESTRICT_SLOT_GROUP_NAME, order->GetDestination().base());
 			}
 			break;
@@ -2735,18 +1318,6 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				AppendStringInPlace(line, str, STR_TRACE_RESTRICT_VARIABLE_UNDEFINED_RED, std::monostate{}, order->GetXData());
 			} else {
 				AppendStringInPlace(line, str, STR_TRACE_RESTRICT_COUNTER_NAME, order->GetDestination(), order->GetXData());
-			}
-			break;
-		}
-
-		case OT_EXECUTE_SCHEDULE: {
-			OrderListID target_id = order->GetDestination().ToOrderListID();
-			const OrderList *target = OrderList::GetIfValid(target_id);
-			if (target == nullptr) {
-				AppendStringInPlace(line, STR_ORDER_EXECUTE_SCHEDULE_UNDEFINED, STR_TRACE_RESTRICT_VARIABLE_UNDEFINED_RED, std::monostate{});
-			} else {
-				std::string name = target->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, target->index.base() + 1) : target->GetName();
-				AppendStringInPlace(line, STR_ORDER_EXECUTE_SCHEDULE, name);
 			}
 			break;
 		}
@@ -2795,86 +1366,11 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			break;
 		}
 
-		case OT_GOTO_COUPLE: {
-			std::vector<StringParameter> couple_params;
-			if (const Station *cst = order->HasCoupleStation() ? Station::GetIfValid(order->GetCoupleStation()) : nullptr; cst != nullptr) {
-				couple_params.emplace_back(STR_STATION_NAME);
-				couple_params.emplace_back(cst->index);
-			} else {
-				/* The {STRING1} code always consumes one argument; pad so the
-				 * following load-condition parameter keeps its position. */
-				couple_params.emplace_back(STR_ORDER_COUPLE_ANY);
-				couple_params.emplace_back(std::monostate{});
-			}
-			couple_params.emplace_back(STR_ORDER_COUPLE_ANY + to_underlying(order->GetCoupleLoad()));
-			StringID couple_str = STR_ORDER_GO_TO_COUPLE;
-			if (order->HasCoupleCargoType()) {
-				couple_str = STR_ORDER_GO_TO_COUPLE_CARGO;
-				couple_params.emplace_back(CargoSpec::Get(order->GetCoupleCargoType())->name);
-			}
-			AppendStringWithArgsInPlace(line, couple_str, couple_params);
-			uint num_c = order->GetNumCouple();
-			if (num_c > 0) {
-				AppendStringInPlace(line, STR_ORDER_COUPLE_UNITS, num_c);
-			}
-			if (order->HasCoupleSlot()) {
-				AppendStringInPlace(line, STR_ORDER_COUPLE_SLOT, STR_TRACE_RESTRICT_SLOT_NAME, order->GetCoupleSlot().base());
-			}
-			if (order->HasCoupleSlotGroup()) {
-				const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(order->GetCoupleSlotGroup());
-				if (sg != nullptr) {
-					AppendStringInPlace(line, STR_ORDER_COUPLE_SLOT_GROUP, STR_TRACE_RESTRICT_SLOT_GROUP_NAME, sg->index.base());
-				}
-			}
-			if (order->HasCoupleGroup()) {
-				const Group *g = Group::GetIfValid(order->GetCoupleGroup());
-				if (g != nullptr) {
-					AppendStringInPlace(line, STR_ORDER_COUPLE_GROUP, STR_GROUP_NAME, g->index);
-				}
-			}
-			if (order->GetCoupleUseWaitingSchedule()) {
-				AppendStringInPlace(line, STR_ORDER_COUPLE_USE_WAITING_SCHEDULE_SUFFIX);
-			}
-			if (order->HasCoupleCheckPoint()) AppendStringInPlace(line, STR_ORDER_COUPLE_CHECK_AT, order->GetCoupleCheckPoint());
-			break;
-		}
-
-		case OT_WAIT_COUPLE:
-			AppendStringInPlace(line, STR_ORDER_WAIT_FOR_COUPLE);
-			if (order->HasWaitCoupleStation() && Station::IsValidID(order->GetWaitCoupleStation())) AppendStringInPlace(line, STR_ORDER_WAIT_COUPLE_AT, order->GetWaitCoupleStation());
-			break;
-
-		case OT_DECOUPLE: {
-			uint num_d = order->GetNumDecouple();
-			auto decouple_orders_str = [&](OrderDecoupleOrdersFlags type, OrderListID schedule_id) -> std::string {
-				switch (type) {
-					case ODOF_KEEP_ORDERS: return GetString(STR_ORDER_DECOUPLE_KEEP_ORDERS);
-					case ODOF_KEEP_ORDERS_NO_LOAD: return GetString(STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD);
-					case ODOF_WAIT_FOR_COUPLE: return GetString(STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE);
-					case ODOF_LOAD_AND_WAIT: return GetString(STR_ORDER_DECOUPLE_LOAD_AND_WAIT);
-					case ODOF_EXECUTE_SCHEDULE:
-					case ODOF_LOAD_AND_SCHEDULE: {
-						const OrderList *ol = OrderList::GetIfValid(schedule_id);
-						std::string name = (ol == nullptr || ol->GetName().empty()) ? GetString(STR_ORDER_LIST_DEFAULT_NAME, schedule_id.base() + 1) : ol->GetName();
-						return GetString(type == ODOF_LOAD_AND_SCHEDULE ? STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE : STR_ORDER_DECOUPLE_USE_SCHEDULE, name);
-					}
-					default: NOT_REACHED();
-				}
-			};
-			AppendStringInPlace(line, num_d == 0 ? STR_ORDER_DECOUPLE_DETAILS_AUTO : STR_ORDER_DECOUPLE_DETAILS, num_d,
-					decouple_orders_str(order->GetDecoupleFirstOrdersType(), order->GetDecoupleFirstScheduleID()),
-					decouple_orders_str(order->GetDecoupleSecondOrdersType(), order->GetDecoupleSecondScheduleID()));
-			/* Each split part can independently keep the original direction. */
-			if (order->GetDecoupleFirstSameDirExit()) AppendStringInPlace(line, STR_ORDER_DECOUPLE_SAME_DIR_FIRST);
-			if (order->GetDecoupleSecondSameDirExit()) AppendStringInPlace(line, STR_ORDER_DECOUPLE_SAME_DIR_SECOND);
-			break;
-		}
-
 		default: NOT_REACHED();
 	}
 
 	/* Check range for aircraft. */
-	if (v != nullptr && v->type == VehicleType::Aircraft && Aircraft::From(v)->GetRange() > 0 && order->IsGotoOrder()) {
+	if (v->type == VehicleType::Aircraft && Aircraft::From(v)->GetRange() > 0 && order->IsGotoOrder()) {
 		const Order *next = v->orders->GetNext(order);
 		if (GetOrderDistance(order, next, v) > Aircraft::From(v)->acache.cached_max_range_sqr) {
 			AppendStringInPlace(line, STR_ORDER_OUT_OF_RANGE);
@@ -2888,13 +1384,13 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 	int edge = DrawString(rtl ? left : middle, rtl ? middle : right, y, line, colour);
 	line.clear();
 
-	if (dispatch_enabled && order->IsScheduledDispatchOrder(false) && edge != 0 && orders != nullptr) {
+	if (v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) && order->IsScheduledDispatchOrder(false) && edge != 0) {
 		StringID str = (order->IsWaitTimetabled() || !timetable) ? STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER : STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER_NO_WAIT_TIME;
-		const DispatchSchedule &ds = orders->GetDispatchScheduleByIndex(order->GetDispatchScheduleIndex());
+		const DispatchSchedule &ds = v->orders->GetDispatchScheduleByIndex(order->GetDispatchScheduleIndex());
 		if (!ds.ScheduleName().empty()) {
 			AppendStringInPlace(line, str, STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER_NAMED_SCHEDULE, ds.ScheduleName());
 		} else {
-			AppendStringInPlace(line, str, orders->GetScheduledDispatchScheduleCount() > 1 ? STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER_SCHEDULE_INDEX : STR_EMPTY,
+			AppendStringInPlace(line, str, v->orders->GetScheduledDispatchScheduleCount() > 1 ? STR_TIMETABLE_SCHEDULED_DISPATCH_ORDER_SCHEDULE_INDEX : STR_EMPTY,
 					order->GetDispatchScheduleIndex() + 1);
 		}
 		edge = DrawString(rtl ? left : edge + 3, rtl ? edge - 3 : right, y, line, colour);
@@ -2995,51 +1491,6 @@ static Order GetOrderCmdFromTile(const Vehicle *v, TileIndex tile)
 	return order;
 }
 
-/**
- * Tile-to-order conversion for standalone order lists.
- * Unlike the vehicle version there is no transport type, so every destination
- * type is accepted and infrastructure permission checks are skipped.
- */
-static Order GetOrderCmdFromTileStandalone(TileIndex tile)
-{
-	Order order;
-
-	/* check depot first */
-	if (IsRailDepotTile(tile) || IsRoadDepotTile(tile) || IsShipDepotTile(tile) || IsHangarTile(tile)) {
-		order.MakeGoToDepot(GetDepotDestinationIndex(tile),
-				{OrderDepotTypeFlag::PartOfOrders},
-				(_settings_client.gui.new_nonstop || _settings_game.order.nonstop_only) ? ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS : ONSF_STOP_EVERYWHERE);
-		if (_ctrl_pressed) order.SetDepotOrderType((order.GetDepotOrderType() ^ OrderDepotTypeFlags{OrderDepotTypeFlag::Service}));
-		return order;
-	}
-
-	/* waypoints and buoys */
-	if (IsRailWaypointTile(tile) || IsRoadWaypointTile(tile) || IsBuoyTile(tile)) {
-		order.MakeGoToWaypoint(GetStationIndex(tile));
-		return order;
-	}
-
-	/* stations */
-	if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry)) {
-		const BaseStation *st = nullptr;
-		if (IsTileType(tile, TileType::Station)) {
-			st = Station::GetByTile(tile);
-		} else {
-			const Industry *in = Industry::GetByTile(tile);
-			st = in->neutral_station;
-		}
-		if (st != nullptr && st->facilities != StationFacilities{}) {
-			order.MakeGoToStation(st->index);
-			if (_ctrl_pressed) order.SetLoadType(OrderLoadType::FullLoadAny);
-			order.SetStopLocation(_settings_client.gui.stop_location);
-			return order;
-		}
-	}
-
-	order.Free();
-	return order;
-}
-
 /** Hotkeys for order window. */
 enum OrderHotKeys : int32_t {
 	OHK_SKIP,
@@ -3113,7 +1564,6 @@ private:
 		OPOS_COND_STATION,
 		OPOS_CONDITIONAL_RETARGET,
 		OPOS_DEPARTURE_VIA,
-		OPOS_COUPLE_STATION,
 		OPOS_END,
 	};
 
@@ -3127,8 +1577,6 @@ private:
 		DP_GROUNDVEHICLE_ROW_TEXT_LABEL  = 4, ///< Display the row for text label orders in the top row of the train/rv order window.
 		DP_GROUNDVEHICLE_ROW_DEPARTURES  = 5, ///< Display the row for departure via label orders in the top row of the train/rv order window.
 		DP_GROUNDVEHICLE_ROW_EMPTY       = 6, ///< Display the row for no buttons in the top row of the train/rv order window.
-		DP_GROUNDVEHICLE_ROW_COUPLE      = 7, ///< Display the row for couple orders in the top row of the train order window.
-		DP_GROUNDVEHICLE_ROW_DECOUPLE    = 8, ///< Display the row for decouple options of a decouple flagged order in the train order window.
 
 		/* WID_O_SEL_TOP_LEFT */
 		DP_LEFT_LOAD       = 0, ///< Display 'load' in the left button of the top row of the train/rv order window.
@@ -3179,9 +1627,8 @@ private:
 		DP_COND_AUX4_REFIT_MODE = 0, ///< Display refit mode button
 
 		/* WID_O_SEL_BOTTOM_MIDDLE */
-		DP_BOTTOM_MIDDLE_DELETE        = 0, ///< Display 'delete' in the middle button of the bottom row of the vehicle order window.
-		DP_BOTTOM_MIDDLE_STOP_SHARING  = 1, ///< Display 'stop sharing' in the middle button of the bottom row of the vehicle order window.
-		DP_BOTTOM_MIDDLE_EXIT_EXECUTE  = 2, ///< Display 'exit execution' in the middle button of the bottom row of the vehicle order window.
+		DP_BOTTOM_MIDDLE_DELETE       = 0, ///< Display 'delete' in the middle button of the bottom row of the vehicle order window.
+		DP_BOTTOM_MIDDLE_STOP_SHARING = 1, ///< Display 'stop sharing' in the middle button of the bottom row of the vehicle order window.
 
 		/* WID_O_SEL_SHARED */
 		DP_SHARED_LIST       = 0, ///< Display shared order list button
@@ -3196,89 +1643,12 @@ private:
 	VehicleOrderID order_over = INVALID_VEH_ORDER_ID; ///< Order over which another order is dragged, \c INVALID_VEH_ORDER_ID if none.
 	OrderPlaceObjectState goto_type = OPOS_NONE;
 	Scrollbar *vscroll = nullptr;
-	Scrollbar *decouple_scroll = nullptr;
-	int current_decouple_plane = SZSP_NONE;
 	bool can_do_refit = false;     ///< Vehicle chain can be refitted in depot.
 	bool can_do_autorefit = false; ///< Vehicle chain can be auto-refitted.
 	int query_text_widget = -1;    ///< widget which most recently called ShowQueryString
 	std::array<int, 4> current_aux_planes{};
 	int current_value_plane = 0;
 	int current_mgmt_plane = 0;
-	OrderListID list_id = OrderListID::Invalid(); ///< Target list id when editing a standalone (player-created) order list.
-
-public:
-	/** Owner the picked schedule must be visible to. */
-	Owner TargetOwner() const { return this->HasVehicle() ? this->vehicle->owner : (this->order_list != nullptr ? this->order_list->GetCompany() : OWNER_NONE); }
-
-	/** Build the target of a criteria window (which edits the same order content this window does). */
-	OrderCriteriaTarget CriteriaTarget() const
-	{
-		OrderCriteriaTarget t;
-		t.vehicle = this->vehicle;
-		t.list_id = this->HasVehicle() ? OrderListID::Invalid() : this->list_id;
-		t.owner = this->TargetOwner();
-		t.ref_type = this->RefType();
-		t.parent_class = this->window_class;
-		t.window_number = this->window_number;
-		return t;
-	}
-
-private:
-	/* ---- target mode helpers: order-content access goes through these ---- */
-	VehicleOrderID NumOrders() const { return this->HasVehicle() ? this->vehicle->GetNumOrders() : (this->order_list != nullptr ? this->order_list->GetNumOrders() : 0); }
-	const Order *OrderAt(VehicleOrderID i) const { return this->HasVehicle() ? this->vehicle->GetOrder(i) : (this->order_list != nullptr ? this->order_list->GetOrderAt(i) : nullptr); }
-	bool IsLocalTarget() const
-	{
-		/* Coupling may re-key a competitor's read-only window to our train.
-		 * Ownership alone does not mean this tree has editing controls. */
-		return this->TargetOwner() == _local_company && this->GetWidget<NWidgetStacked>(WID_O_SEL_BOTTOM_MIDDLE) != nullptr;
-	}
-	bool IsDispatchEnabled() const {
-		if (this->HasVehicle()) {
-			if (this->vehicle->orders != nullptr && this->vehicle->orders->IsPlayerCreated()) return this->vehicle->orders->IsDispatchEnabled();
-			return this->vehicle->vehicle_flags.Test(VehicleFlag::ScheduledDispatch);
-		}
-		return this->order_list != nullptr && this->order_list->IsDispatchEnabled();
-	}
-	OrderTargetType TargetKind() const { return this->HasVehicle() ? OrderTargetType::Vehicle : OrderTargetType::OrderList; }
-	uint32_t TargetId() const { return this->HasVehicle() ? this->vehicle->index.base() : this->list_id.base(); }
-	TileIndex CmdTile() const { return this->HasVehicle() ? this->vehicle->tile : TileIndex{}; } // TileIndex{} == 0 passes the command tile gate for tile-less commands
-	VehicleType RefType() const { return this->HasVehicle() ? this->vehicle->type : VehicleType::Train; }
-	const OrderList *Target() const { return this->GetTargetOrders(); }
-
-	void PostInsert(const Order &order, VehicleOrderID sel)
-	{
-		if (this->HasVehicle()) {
-			DoCommandP<Commands::InsertOrder>(this->CmdTile(), InsertOrderCmdData(this->vehicle->index, sel, order), STR_ERROR_CAN_T_INSERT_NEW_ORDER, CommandCallback::InsertOrder);
-		} else {
-			DoCommandP<Commands::InsertOrder>(this->CmdTile(), InsertOrderCmdData(this->list_id, sel, order), STR_ERROR_CAN_T_INSERT_NEW_ORDER, CommandCallback::InsertOrder);
-		}
-	}
-
-	void PostModify(VehicleOrderID sel_ord, ModifyOrderFlags mof, uint16_t data, CargoType cargo = {}, std::string text = {})
-	{
-		if (this->HasVehicle()) {
-			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->CmdTile(), OrderTargetType::Vehicle, this->vehicle->index.base(), sel_ord, mof, data, cargo, std::move(text));
-		} else {
-			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->CmdTile(), OrderTargetType::OrderList, this->list_id.base(), sel_ord, mof, data, cargo, std::move(text));
-		}
-	}
-
-	bool PostMove(VehicleOrderID from_order, VehicleOrderID to_order, uint16_t count)
-	{
-		if (this->HasVehicle()) {
-			return Command<Commands::MoveOrder>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, this->CmdTile(), OrderTargetType::Vehicle, this->vehicle->index.base(), from_order, to_order, count);
-		}
-		return Command<Commands::MoveOrder>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, this->CmdTile(), OrderTargetType::OrderList, this->list_id.base(), from_order, to_order, count);
-	}
-
-	bool PostDelete(VehicleOrderID sel)
-	{
-		if (this->HasVehicle()) {
-			return Command<Commands::DeleteOrder>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, this->CmdTile(), OrderTargetType::Vehicle, this->vehicle->index.base(), sel);
-		}
-		return Command<Commands::DeleteOrder>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, this->CmdTile(), OrderTargetType::OrderList, this->list_id.base(), sel);
-	}
 
 	/**
 	 * Return the memorised selected order.
@@ -3288,7 +1658,7 @@ private:
 	VehicleOrderID OrderGetSel() const
 	{
 		int num = this->selected_order;
-		return (num >= 0 && num < NumOrders()) ? num : NumOrders();
+		return (num >= 0 && num < vehicle->GetNumOrders()) ? num : vehicle->GetNumOrders();
 	}
 
 	/**
@@ -3304,7 +1674,7 @@ private:
 		int32_t sel = this->vscroll->GetScrolledRowFromWidget(y, this, WID_O_ORDER_LIST, WidgetDimensions::scaled.framerect.top);
 		if (sel == INT32_MAX) return INVALID_VEH_ORDER_ID;
 		/* One past the orders is the 'End of Orders' line. */
-		assert(IsInsideBS(sel, 0, NumOrders() + 1));
+		assert(IsInsideBS(sel, 0, vehicle->GetNumOrders() + 1));
 		return sel;
 	}
 
@@ -3330,7 +1700,7 @@ private:
 
 			case OrderConditionVariable::VehicleInSlot:
 			case OrderConditionVariable::VehicleInSlotGroup:
-				return (v != nullptr && v->type == VehicleType::Train) ? _order_conditional_condition_is_in_slot : _order_conditional_condition_is_in_slot_non_train;
+				return v->type == VehicleType::Train ? _order_conditional_condition_is_in_slot : _order_conditional_condition_is_in_slot_non_train;
 
 			case OrderConditionVariable::DispatchSlot: {
 				const uint16_t value = order->GetConditionValue();
@@ -3356,203 +1726,12 @@ private:
 
 	bool InsertNewOrder(const Order &order)
 	{
-		this->PostInsert(order, this->OrderGetSel());
-		return true;
+		return DoCommandP<Commands::InsertOrder>(this->vehicle->tile, InsertOrderCmdData(this->vehicle->index, this->OrderGetSel(), order), STR_ERROR_CAN_T_INSERT_NEW_ORDER, CommandCallback::InsertOrder);
 	}
 
-	bool InsertNewOrderAt(const Order &order, VehicleOrderID sel)
+	bool ModifyOrder(VehicleOrderID sel_ord, ModifyOrderFlags mof, uint16_t data, bool error_msg = true)
 	{
-		this->PostInsert(order, sel);
-		return true;
-	}
-
-	bool ModifyOrder(VehicleOrderID sel_ord, ModifyOrderFlags mof, uint16_t data, bool error_msg = true, CargoType cargo = {}, std::string text = {})
-	{
-		this->PostModify(sel_ord, mof, data, cargo, std::move(text));
-		return true;
-	}
-
-	/** Duplicate the selected order in place (works for both vehicle and standalone-list targets). */
-	void OrderClick_Duplicate()
-	{
-		VehicleOrderID sel = this->OrderGetSel();
-		const Order *src = this->OrderAt(sel);
-		if (src == nullptr) return;
-		/* Decouple orders and their station orders form an inseparable pair;
-		 * duplicating either one would create a decouple without its station
-		 * (or vice versa), so refuse via every entry point (menu, hotkey). */
-		if (src->IsType(OT_DECOUPLE) || (src->IsType(OT_GOTO_STATION) && src->GetDecouple() == ODF_DECOUPLE)) return;
-
-		Order copy(*src);
-		copy.SetTravelTimetabled(false);
-		copy.SetTravelTime(0);
-		copy.SetTravelFixed(false);
-		copy.SetDispatchScheduleIndex(-1);
-		this->PostInsert(copy, sel + 1);
-	}
-
-	/**
-	 * Is this vehicle a dedicated road vehicle carrier, i.e. every cargo-carrying part of its chain
-	 * is refitted to the dedicated road vehicle transport cargo? A dedicated carrier never
-	 * transports normal cargo, so its order buttons and dropdowns advertise (and its new orders
-	 * default to) road vehicle transport; every other vehicle defaults to the normal-cargo options.
-	 */
-	bool IsVehicleOnlyCarrier() const
-	{
-		return RVTransportVehicleCarriesOnlyVehicles(this->vehicle);
-	}
-
-	/**
-	 * Whether the vehicle's own transport options ("wait to be transported" / "be unloaded here")
-	 * apply to the order being edited. They only make sense on a vehicle which can itself be carried
-	 * by a carrier (a road vehicle or a train), but a standalone/shared order list is not bound to a
-	 * vehicle and may be run by any of them, so such a list offers the options as well; the flags
-	 * simply do nothing for the vehicle types which never act on them.
-	 * @return true when the options have to be offered.
-	 */
-	bool OwnTransportTogglesApply() const
-	{
-		if (!this->HasVehicle()) return true;
-		return this->vehicle->type == VehicleType::Road || this->vehicle->type == VehicleType::Train;
-	}
-
-	/**
-	 * Is this a road vehicle (as opposed to a carrier or a train)? A carried vehicle's own toggles
-	 * live in the manage-order menu, so its station order buttons keep the normal-cargo labels.
-	 */
-	bool IsRoadVehicle() const
-	{
-		return this->HasVehicle() && this->vehicle->type == VehicleType::Road;
-	}
-
-	/**
-	 * Whether the carrier side of the road vehicle transport options ("load road vehicles" /
-	 * "unload road vehicles" and the selection criteria) is offered for the order being edited.
-	 * That is the case for every vehicle type but a road vehicle - a road vehicle is never a
-	 * carrier of other road vehicles - and for a standalone/shared order list, which may be run
-	 * by a carrier just as well as by a road vehicle.
-	 * @return true when the options have to be offered.
-	 */
-	bool CarrierTransportTogglesApply() const
-	{
-		return !this->HasVehicle() || this->vehicle->type != VehicleType::Road;
-	}
-
-	/**
-	 * Build the road vehicle transport entries of the load dropdown: the two load modes ("load any"
-	 * / "load for the next stop") as plain entries, the "wait for road vehicles" checkbox (it can be
-	 * active together with either load mode) and the entry which opens the selection criteria window.
-	 * "Wait" and the criteria-window entry are only usable while the order actually loads road
-	 * vehicles, as they are meaningful only in that mode.
-	 * @param order The selected station order.
-	 * @return The list of entries.
-	 */
-	DropDownList BuildRVLoadDropDown(const Order *order) const
-	{
-		DropDownList list;
-		const uint8_t rvf = order->GetRVTransportFlags();
-		const bool loads = (rvf & ORVTF_LOAD) != 0;
-		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_RV_LOAD_ANY, RVDD_LOAD_ANY));
-		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_RV_LOAD_NEXT, RVDD_LOAD_MATCH));
-		list.push_back(MakeDropDownListCheckedItem((rvf & ORVTF_WAIT) != 0, STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES, RVDD_LOAD_WAIT, false, !loads));
-		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_RV_LOAD_OPTIONS, RVDD_TRANSPORT, false, !loads));
-		return list;
-	}
-
-	/**
-	 * Build the road vehicle transport entries of the unload dropdown: the two unload options as
-	 * plain entries. There is no criteria entry because the selection criteria only concern loading.
-	 * @return The list of entries.
-	 */
-	DropDownList BuildRVUnloadDropDown() const
-	{
-		DropDownList list;
-		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES, RVDD_UNLOAD));
-		list.push_back(MakeDropDownListStringItem(STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES, RVDD_UNLOAD_ALL));
-		return list;
-	}
-
-	/**
-	 * Build the standard cargo load/unload dropdown entries.
-	 * @param unload Whether to build the unload entries (instead of the load entries).
-	 * @return The list of entries.
-	 */
-	DropDownList BuildCargoLoadUnloadDropDown(bool unload) const
-	{
-		DropDownList list;
-		const StringID *array = unload ? _order_unload_dropdown : _order_full_load_dropdown;
-		const uint count = unload ? lengthof(_order_unload_dropdown) : lengthof(_order_full_load_dropdown);
-		for (uint i = 0; i < count; i++) {
-			if (array[i] == STR_EMPTY) continue;
-			list.push_back(MakeDropDownListStringItem(array[i], i));
-		}
-		return list;
-	}
-
-	/**
-	 * Build the contents of the load dropdown.
-	 * Both the normal-cargo load types and the road vehicle transport options are offered, separated
-	 * by a divider; which group comes first depends on whether this vehicle is a dedicated road
-	 * vehicle carrier. The normal-cargo and road vehicle transport loads are mutually exclusive, so
-	 * choosing one clear the other.
-	 * @return The dropdown list.
-	 */
-	DropDownList BuildLoadDropDownList() const
-	{
-		const Order *order = OrderAt(this->OrderGetSel());
-		const bool station = (order != nullptr) && order->IsType(OT_GOTO_STATION);
-		const bool is_carrier = this->CarrierTransportTogglesApply();
-
-		DropDownList cargo_items = this->BuildCargoLoadUnloadDropDown(false);
-		/* The road vehicle transport options only apply to a carrier (train/ship/aircraft) order; a
-		 * road vehicle's own "wait to be transported" toggle lives in the manage-order menu. */
-		DropDownList rv_items = (station && is_carrier) ? this->BuildRVLoadDropDown(order) : DropDownList{};
-
-		DropDownList list;
-		if (this->IsVehicleOnlyCarrier()) {
-			/* A dedicated carrier presents the road vehicle transport options first. */
-			for (auto &i : rv_items) list.push_back(std::move(i));
-			if (!rv_items.empty()) list.push_back(MakeDropDownListDividerItem());
-			for (auto &i : cargo_items) list.push_back(std::move(i));
-		} else {
-			for (auto &i : cargo_items) list.push_back(std::move(i));
-			if (!rv_items.empty()) list.push_back(MakeDropDownListDividerItem());
-			for (auto &i : rv_items) list.push_back(std::move(i));
-		}
-		return list;
-	}
-
-	/**
-	 * Build the contents of the unload dropdown.
-	 * Both the normal-cargo unload types and the road vehicle transport options are offered, separated
-	 * by a divider; which group comes first depends on whether this vehicle is a dedicated road
-	 * vehicle carrier. The normal-cargo and road vehicle transport unloads are mutually exclusive, so
-	 * choosing one clear the other.
-	 * @return The dropdown list.
-	 */
-	DropDownList BuildUnloadDropDownList() const
-	{
-		const Order *order = OrderAt(this->OrderGetSel());
-		const bool station = (order != nullptr) && order->IsType(OT_GOTO_STATION);
-		const bool is_carrier = this->CarrierTransportTogglesApply();
-
-		DropDownList cargo_items = this->BuildCargoLoadUnloadDropDown(true);
-		/* The road vehicle transport options only apply to a carrier (train/ship/aircraft) order; a
-		 * road vehicle's own "be unloaded here" toggle lives in the manage-order menu. */
-		DropDownList rv_items = (station && is_carrier) ? this->BuildRVUnloadDropDown() : DropDownList{};
-
-		DropDownList list;
-		if (this->IsVehicleOnlyCarrier()) {
-			/* A dedicated carrier presents the road vehicle transport options first. */
-			for (auto &i : rv_items) list.push_back(std::move(i));
-			if (!rv_items.empty()) list.push_back(MakeDropDownListDividerItem());
-			for (auto &i : cargo_items) list.push_back(std::move(i));
-		} else {
-			for (auto &i : cargo_items) list.push_back(std::move(i));
-			if (!rv_items.empty()) list.push_back(MakeDropDownListDividerItem());
-			for (auto &i : rv_items) list.push_back(std::move(i));
-		}
-		return list;
+		return ::ModifyOrder(this->vehicle, sel_ord, mof, data, error_msg);
 	}
 
 	/**
@@ -3572,7 +1751,6 @@ private:
 			HT_RECT,              // OPOS_COND_STATION
 			HT_NONE,              // OPOS_CONDITIONAL_RETARGET
 			HT_RECT,              // OPOS_DEPARTURE_VIA
-			HT_RECT,              // OPOS_COUPLE_STATION
 		};
 		SetObjectToPlaceWnd(ANIMCURSOR_PICKSTATION, PAL_NONE, goto_place_style[type - 1], this);
 		this->goto_type = type;
@@ -3580,139 +1758,7 @@ private:
 		this->SetWidgetDirty(WID_O_COND_AUX_VIA);
 		this->SetWidgetDirty(WID_O_COND_AUX_STATION);
 		this->SetWidgetDirty(WID_O_MGMT_BTN);
-		this->SetWidgetDirty(WID_O_COUPLE_STATION);
 	}
-
-	void OrderClick_WaitForCouple()
-	{
-		Order order;
-		order.MakeWaitCouple();
-		this->PostInsert(order, this->OrderGetSel());
-	}
-
-	void OrderClick_Couple()
-	{
-		Order order;
-		order.MakeGoToCouple();
-		this->PostInsert(order, this->OrderGetSel());
-	}
-
-	static StringID GetCoupleCandidateResultString(CoupleCandidateResult result)
-	{
-		switch (result) {
-			case CoupleCandidateResult::NotWaiting:  return STR_COUPLE_DIAGNOSTIC_NOT_WAITING;
-			case CoupleCandidateResult::Claimed:     return STR_COUPLE_DIAGNOSTIC_CLAIMED;
-			case CoupleCandidateResult::Crashed:     return STR_COUPLE_DIAGNOSTIC_CRASHED;
-			case CoupleCandidateResult::Stopped:     return STR_COUPLE_DIAGNOSTIC_STOPPED;
-			case CoupleCandidateResult::Owner:       return STR_COUPLE_DIAGNOSTIC_OWNER;
-			case CoupleCandidateResult::Load:        return STR_COUPLE_DIAGNOSTIC_LOAD;
-			case CoupleCandidateResult::Cargo:       return STR_COUPLE_DIAGNOSTIC_CARGO;
-			case CoupleCandidateResult::UnitCount:   return STR_COUPLE_DIAGNOSTIC_UNIT_COUNT;
-			case CoupleCandidateResult::Slot:        return STR_COUPLE_DIAGNOSTIC_SLOT;
-			case CoupleCandidateResult::SlotGroup:   return STR_COUPLE_DIAGNOSTIC_SLOT_GROUP;
-			case CoupleCandidateResult::Group:       return STR_COUPLE_DIAGNOSTIC_GROUP;
-			case CoupleCandidateResult::Station:     return STR_COUPLE_DIAGNOSTIC_STATION;
-			case CoupleCandidateResult::Platform:    return STR_COUPLE_DIAGNOSTIC_PLATFORM;
-			case CoupleCandidateResult::Arrangement: return STR_COUPLE_DIAGNOSTIC_ARRANGEMENT;
-			default:                                  return STR_NULL;
-		}
-	}
-
-	/** Build the coupling report on demand; no pathfinder or claim state is changed. */
-	void ShowCoupleDiagnostics()
-	{
-		const Order *order = this->OrderAt(this->OrderGetSel());
-		if (!this->HasVehicle() || this->vehicle->type != VehicleType::Train || order == nullptr || !order->IsType(OT_GOTO_COUPLE)) return;
-
-		const Train *moving = Train::From(this->vehicle)->Primary();
-		constexpr size_t RESULT_COUNT = to_underlying(CoupleCandidateResult::Arrangement) + 1;
-		std::array<uint, RESULT_COUNT> counts{};
-
-		for (Train *candidate : Train::Iterate()) {
-			if (candidate != candidate->First() || candidate == moving->First()) continue;
-			CoupleCandidateResult result = GetCoupleCandidateResult(moving, *order, candidate, candidate->tile, true, UINT32_MAX);
-			counts[to_underlying(result)]++;
-		}
-
-		std::string report;
-		const Train *target = Train::GetIfValid(moving->couple_target);
-		bool active = moving->current_order.IsType(OT_GOTO_COUPLE) && moving->cur_implicit_order_index == this->OrderGetSel();
-		if (active && target != nullptr) {
-			report = GetString(STR_COUPLE_DIAGNOSTIC_TARGET, target->Primary()->index);
-			const Train *claimant = GetCoupleClaimant(target);
-			report += "\n";
-			report += claimant == moving ? GetString(STR_COUPLE_DIAGNOSTIC_CLAIM_SELF) :
-					(claimant != nullptr ? GetString(STR_COUPLE_DIAGNOSTIC_CLAIM_OTHER, claimant->index) : GetString(STR_COUPLE_DIAGNOSTIC_CLAIM_NONE));
-		} else if (counts[to_underlying(CoupleCandidateResult::Valid)] != 0) {
-			report = GetString(STR_COUPLE_DIAGNOSTIC_PATH_UNKNOWN);
-		} else {
-			report = GetString(STR_COUPLE_DIAGNOSTIC_NO_CANDIDATE);
-		}
-		if (!active) report = GetString(STR_COUPLE_DIAGNOSTIC_NOT_ACTIVE) + "\n" + report;
-
-		for (size_t i = 0; i < counts.size(); i++) {
-			CoupleCandidateResult result = static_cast<CoupleCandidateResult>(i);
-			if (counts[i] == 0 || result == CoupleCandidateResult::Valid || result == CoupleCandidateResult::NotCoupleOrder) continue;
-			report += "\n";
-			report += GetString(STR_COUPLE_DIAGNOSTIC_REJECTION, GetCoupleCandidateResultString(result), counts[i]);
-		}
-
-		ShowErrorMessage(GetEncodedString(STR_COUPLE_DIAGNOSTIC_CAPTION), GetEncodedString(STR_JUST_RAW_STRING, report), WarningLevel::Info);
-	}
-
-	void OrderClick_OrdersFirst(int index)
-	{
-		this->OrderClick_OrdersType(index, true);
-	}
-
-	void OrderClick_OrdersSecond(int index)
-	{
-		this->OrderClick_OrdersType(index, false);
-	}
-
-public:
-	/**
-	 * Get the modify-order flag storing a decouple schedule picker selection.
-	 * @param first true for the first part of the train, false for the second
-	 * @param type the decouple orders type the selection applies to
-	 */
-	ModifyOrderFlags DecoupleScheduleMof(bool first, OrderDecoupleOrdersFlags type) const
-	{
-		if (type == ODOF_LOAD_AND_SCHEDULE) {
-			return first ? MOF_DECOUPLE_FIRST_LOAD_SCHEDULE : MOF_DECOUPLE_SECOND_LOAD_SCHEDULE;
-		}
-		return first ? MOF_DECOUPLE_FIRST_SCHEDULE : MOF_DECOUPLE_SECOND_SCHEDULE;
-	}
-
-	/**
-	 * Apply a schedule picked in the decouple schedule picker window.
-	 * @param first true for the first part of the train, false for the second
-	 * @param type the decouple orders type the selection applies to
-	 * @param id the picked order list
-	 */
-	void DecoupleSchedulePicked(bool first, OrderDecoupleOrdersFlags type, OrderListID id)
-	{
-		this->ModifyOrder(this->OrderGetSel(), this->DecoupleScheduleMof(first, type), id.base());
-	}
-
-	/**
-	 * Handle a selection in the decouple orders dropdown.
-	 * @param index the selected dropdown index
-	 * @param first true for the first part of the train, false for the second
-	 */
-	void OrderClick_OrdersType(int index, bool first)
-	{
-		if (index < 0 || (uint)index >= lengthof(_order_decouple_orders_drowdown_flags)) return;
-		OrderDecoupleOrdersFlags flag = _order_decouple_orders_drowdown_flags[index];
-		if (flag == ODOF_EXECUTE_SCHEDULE || flag == ODOF_LOAD_AND_SCHEDULE) {
-			/* Open the schedule picker window for this part. */
-			ShowDecoupleSchedulePicker(*this, first, flag);
-			return;
-		}
-		this->ModifyOrder(this->OrderGetSel(), first ? MOF_FIRST_ORDERS : MOF_SECOND_ORDERS, to_underlying(flag));
-	}
-
-private:
 
 	/**
 	 * Handle the click on the full load button.
@@ -3722,18 +1768,9 @@ private:
 	void OrderClick_FullLoad(OrderLoadType load_type, bool toggle = false)
 	{
 		VehicleOrderID sel_ord = this->OrderGetSel();
-		const Order *order = OrderAt(sel_ord);
+		const Order *order = this->vehicle->GetOrder(sel_ord);
 
 		if (order == nullptr) return;
-
-		/* RoRo: choosing a normal-cargo load leaves road vehicle transport - loading road vehicles
-		 * and its selection options (destination match, waiting) are mutually exclusive with loading
-		 * normal cargo. A road vehicle's own "wait to be transported" is a separate toggle and is not
-		 * touched here. */
-		if (order->IsType(OT_GOTO_STATION) && this->CarrierTransportTogglesApply()) {
-			const uint8_t flags = order->GetRVTransportFlags() & ~(ORVTF_LOAD | ORVTF_MATCH_DEST | ORVTF_WAIT);
-			if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
-		}
 
 		if (toggle && order->GetLoadType() == load_type) {
 			load_type = OrderLoadType::LoadIfPossible; // reset to 'default'
@@ -3742,93 +1779,7 @@ private:
 			this->ModifyOrder(sel_ord, MOF_LOAD, to_underlying(load_type));
 		}
 
-		/* A standalone list has no engine to offer cargo types for, so the per-cargo
-		 * window (which needs the vehicle) is only reachable for a vehicle's orders. */
-		if (load_type == OrderLoadType::CargoTypeLoad && this->HasVehicle()) ShowCargoTypeOrdersWindow(this->vehicle, this, sel_ord, CTOWV_LOAD);
-	}
-
-	/**
-	 * Handle the click on the full load button of a road vehicle carrier: toggles between the
-	 * default "load any road vehicles" and "load road vehicles going to the next stop", like the
-	 * cargo button toggles the full load type.
-	 */
-	void OrderClick_RVLoadToggle()
-	{
-		VehicleOrderID sel_ord = this->OrderGetSel();
-		const Order *order = OrderAt(sel_ord);
-		if (order == nullptr || !order->IsType(OT_GOTO_STATION)) return;
-
-		uint8_t flags = order->GetRVTransportFlags() | ORVTF_LOAD;
-		flags ^= ORVTF_MATCH_DEST;
-		if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
-
-		/* RoRo: loading road vehicles is mutually exclusive with loading normal cargo. */
-		if (order->GetLoadType() != OrderLoadType::NoLoad) {
-			this->ModifyOrder(sel_ord, MOF_LOAD, to_underlying(OrderLoadType::NoLoad));
-		}
-	}
-
-	/**
-	 * Handle the click on the unload button of a road vehicle carrier: toggles between the default
-	 * "unload the road vehicles which want to get off here" and "unload all road vehicles", like
-	 * the cargo button toggles the unload type.
-	 */
-	void OrderClick_RVUnloadToggle()
-	{
-		VehicleOrderID sel_ord = this->OrderGetSel();
-		const Order *order = OrderAt(sel_ord);
-		if (order == nullptr || !order->IsType(OT_GOTO_STATION)) return;
-
-		uint8_t flags = order->GetRVTransportFlags() | ORVTF_UNLOAD;
-		flags ^= ORVTF_UNLOAD_ALL;
-		if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
-
-		/* RoRo: unloading road vehicles is mutually exclusive with unloading normal cargo. */
-		if (order->GetUnloadType() != OrderUnloadType::NoUnload) {
-			this->ModifyOrder(sel_ord, MOF_UNLOAD, to_underlying(OrderUnloadType::NoUnload));
-		}
-	}
-
-	/**
-	 * Handle a road vehicle transport load choice from the load dropdown: set the given vehicle
-	 * transport load flags, and (being mutually exclusive) stop loading normal cargo. The normal-cargo
-	 * load type is always reset, so that the two systems never load at the same station order.
-	 */
-	void OrderClick_RVLoad(uint8_t load_flags)
-	{
-		VehicleOrderID sel_ord = this->OrderGetSel();
-		const Order *order = OrderAt(sel_ord);
-		if (order == nullptr || !order->IsType(OT_GOTO_STATION)) return;
-
-		/* Only the load-side bits change: unloading road vehicles is an independent choice which may
-		 * stay set on the same order (the mutual exclusion is only between loading and unloading
-		 * *normal cargo*). */
-		const uint8_t flags = (order->GetRVTransportFlags() & (ORVTF_UNLOAD | ORVTF_UNLOAD_ALL)) |
-				(load_flags & (ORVTF_LOAD | ORVTF_MATCH_DEST | ORVTF_WAIT));
-		if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
-		if (order->GetLoadType() != OrderLoadType::NoLoad) {
-			this->ModifyOrder(sel_ord, MOF_LOAD, to_underlying(OrderLoadType::NoLoad));
-		}
-	}
-
-	/**
-	 * Handle a road vehicle transport unload choice from the unload dropdown: set the given vehicle
-	 * transport unload flags, and (being mutually exclusive) stop unloading normal cargo.
-	 */
-	void OrderClick_RVUnload(uint8_t unload_flags)
-	{
-		VehicleOrderID sel_ord = this->OrderGetSel();
-		const Order *order = OrderAt(sel_ord);
-		if (order == nullptr || !order->IsType(OT_GOTO_STATION)) return;
-
-		/* Only the unload-side bits change: loading road vehicles is an independent choice which may
-		 * stay set on the same order. */
-		const uint8_t flags = (order->GetRVTransportFlags() & (ORVTF_LOAD | ORVTF_MATCH_DEST | ORVTF_WAIT)) |
-				(unload_flags & (ORVTF_UNLOAD | ORVTF_UNLOAD_ALL));
-		if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
-		if (order->GetUnloadType() != OrderUnloadType::NoUnload) {
-			this->ModifyOrder(sel_ord, MOF_UNLOAD, to_underlying(OrderUnloadType::NoUnload));
-		}
+		if (load_type == OrderLoadType::CargoTypeLoad) ShowCargoTypeOrdersWindow(this->vehicle, this, sel_ord, CTOWV_LOAD);
 	}
 
 	/**
@@ -3840,7 +1791,7 @@ private:
 		VehicleOrderID sel_ord = this->OrderGetSel();
 
 		if (i < 0) {
-			const Order *order = OrderAt(sel_ord);
+			const Order *order = this->vehicle->GetOrder(sel_ord);
 			if (order == nullptr) return;
 			i = (order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) ? DA_ALWAYS_GO : DA_SERVICE;
 		}
@@ -3854,7 +1805,7 @@ private:
 	{
 		Order order;
 		order.MakeGoToDepot(DepotID::Invalid(), {OrderDepotTypeFlag::PartOfOrders},
-				(_settings_client.gui.new_nonstop || _settings_game.order.nonstop_only) && this->RefType() != VehicleType::Ship ? ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS : ONSF_STOP_EVERYWHERE);
+				(_settings_client.gui.new_nonstop || _settings_game.order.nonstop_only) && this->vehicle->IsGroundVehicle() ? ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS : ONSF_STOP_EVERYWHERE);
 		order.SetDepotActionType(ODATFB_NEAREST_DEPOT);
 
 		this->InsertNewOrder(order);
@@ -3867,17 +1818,6 @@ private:
 	{
 		Order order;
 		order.MakeTryAcquireSlot();
-
-		this->InsertNewOrder(order);
-	}
-
-	/**
-	 * Handle the click on the execute-schedule button.
-	 */
-	void OrderClick_ExecuteSchedule()
-	{
-		Order order;
-		order.MakeExecuteSchedule();
 
 		this->InsertNewOrder(order);
 	}
@@ -3934,17 +1874,9 @@ private:
 	void OrderClick_Unload(OrderUnloadType unload_type, bool toggle = false)
 	{
 		VehicleOrderID sel_ord = this->OrderGetSel();
-		const Order *order = OrderAt(sel_ord);
+		const Order *order = this->vehicle->GetOrder(sel_ord);
 
 		if (order == nullptr) return;
-
-		/* RoRo: choosing a normal-cargo unload leaves road vehicle transport - unloading road vehicles
-		 * (and unload-all) is mutually exclusive with unloading normal cargo. A road vehicle's own
-		 * "be unloaded here" is a separate toggle and is not touched here. */
-		if (order->IsType(OT_GOTO_STATION) && this->CarrierTransportTogglesApply()) {
-			const uint8_t flags = order->GetRVTransportFlags() & ~(ORVTF_UNLOAD | ORVTF_UNLOAD_ALL);
-			if (flags != order->GetRVTransportFlags()) this->ModifyOrder(sel_ord, MOF_RV_TRANSPORT, flags);
-		}
 
 		if (toggle && order->GetUnloadType() == unload_type) {
 			unload_type = OrderUnloadType::UnloadIfPossible;
@@ -3960,7 +1892,7 @@ private:
 			this->ModifyOrder(sel_ord, MOF_LOAD, to_underlying(OrderLoadType::NoLoad), false);
 			this->SetWidgetDirty(WID_O_FULL_LOAD);
 		} else if (unload_type == OrderUnloadType::CargoTypeUnload) {
-			if (this->HasVehicle()) ShowCargoTypeOrdersWindow(this->vehicle, this, sel_ord, CTOWV_UNLOAD);
+			ShowCargoTypeOrdersWindow(this->vehicle, this, sel_ord, CTOWV_UNLOAD);
 		}
 	}
 
@@ -3970,10 +1902,10 @@ private:
 	 */
 	void OrderClick_Nonstop(int non_stop)
 	{
-		if (this->HasVehicle() && !this->vehicle->IsGroundVehicle()) return;
+		if (!this->vehicle->IsGroundVehicle()) return;
 
 		VehicleOrderID sel_ord = this->OrderGetSel();
-		const Order *order = OrderAt(sel_ord);
+		const Order *order = this->vehicle->GetOrder(sel_ord);
 
 		if (order == nullptr || order->GetNonStopType() == non_stop) return;
 
@@ -3995,14 +1927,12 @@ private:
 	 */
 	void OrderClick_Skip()
 	{
-		if (!this->HasVehicle()) return; // skipping needs an executing vehicle
-
 		/* Don't skip when there's nothing to skip */
 		if (_ctrl_pressed && this->vehicle->cur_implicit_order_index == this->OrderGetSel()) return;
-		if (NumOrders() <= 1) return;
+		if (this->vehicle->GetNumOrders() <= 1) return;
 
 		Command<Commands::SkipToOrder>::Post(_ctrl_pressed ? STR_ERROR_CAN_T_SKIP_TO_ORDER : STR_ERROR_CAN_T_SKIP_ORDER,
-				this->vehicle->tile, this->vehicle->index, _ctrl_pressed ? this->OrderGetSel() : ((this->vehicle->cur_implicit_order_index + 1) % NumOrders()));
+				this->vehicle->tile, this->vehicle->index, _ctrl_pressed ? this->OrderGetSel() : ((this->vehicle->cur_implicit_order_index + 1) % this->vehicle->GetNumOrders()));
 	}
 
 	/**
@@ -4013,8 +1943,8 @@ private:
 		/* When networking, move one order lower */
 		int selected = this->selected_order + (int)_networking;
 
-		if (this->PostDelete(this->OrderGetSel())) {
-			this->selected_order = selected >= NumOrders() ? -1 : selected;
+		if (Command<Commands::DeleteOrder>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, this->vehicle->tile, this->vehicle->index, this->OrderGetSel())) {
+			this->selected_order = selected >= this->vehicle->GetNumOrders() ? -1 : selected;
 			this->UpdateButtonState();
 		}
 	}
@@ -4027,9 +1957,8 @@ private:
 	 */
 	void OrderClick_StopSharing()
 	{
-		if (!this->HasVehicle()) return;
 		/* Don't try to stop sharing orders if 'End of Shared Orders' isn't selected. */
-		if (!this->vehicle->IsOrderListShared() || this->selected_order != NumOrders()) return;
+		if (!this->vehicle->IsOrderListShared() || this->selected_order != this->vehicle->GetNumOrders()) return;
 		/* If Ctrl is pressed, delete the order list as if we clicked the 'Delete' button. */
 		if (_ctrl_pressed) {
 			this->OrderClick_Delete();
@@ -4052,11 +1981,6 @@ private:
 	 */
 	void OrderClick_Refit(int i, bool auto_refit)
 	{
-		/* A standalone/shared order list has no vehicle, and Commands::OrderRefit (the only
-		 * way to set the refit cargo of an order) works on a vehicle's orders only, so there
-		 * is nothing to do here. */
-		if (!this->HasVehicle()) return;
-
 		if (_ctrl_pressed) {
 			/* Cancel refitting */
 			Command<Commands::OrderRefit>::Post(this->vehicle->tile, this->vehicle->index, this->OrderGetSel(), CARGO_NO_REFIT);
@@ -4080,13 +2004,16 @@ private:
 
 	void OrderClick_DuplicateHotkey()
 	{
-		this->OrderClick_Duplicate();
+		VehicleOrderID sel = this->OrderGetSel();
+		if (this->vehicle->GetOrder(sel) != nullptr) {
+			Command<Commands::DuplicateOrder>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, this->vehicle->tile, this->vehicle->index, sel);
+		}
 	}
 
 	void OrderClick_RetargetJumpHotkey()
 	{
 		VehicleOrderID sel = this->OrderGetSel();
-		const Order *order = OrderAt(sel);
+		const Order *order = this->vehicle->GetOrder(sel);
 		if (order != nullptr && order->IsType(OT_CONDITIONAL)) {
 			this->OrderClick_Goto(OPOS_CONDITIONAL_RETARGET);
 		}
@@ -4113,9 +2040,7 @@ private:
 
 	int GetOrderManagementPlane() const
 	{
-		/* List mode always shows the per-order management button. */
-		if (!this->HasVehicle()) return DP_MGMT_BTN;
-		return this->selected_order == NumOrders() ? DP_MGMT_LIST_BTN : DP_MGMT_BTN;
+		return this->selected_order == this->vehicle->GetNumOrders() ? DP_MGMT_LIST_BTN : DP_MGMT_BTN;
 	}
 
 public:
@@ -4123,11 +2048,6 @@ public:
 	{
 		this->CreateNestedTree();
 		this->vscroll = this->GetScrollbar(WID_O_SCROLLBAR);
-		if (auto *preview = this->GetWidget<NWidgetStacked>(WID_O_SEL_DECOUPLE_PREVIEW); preview != nullptr) {
-			preview->SetDisplayedPlane(SZSP_NONE);
-			this->decouple_scroll = this->GetScrollbar(WID_O_DECOUPLE_SCROLLBAR);
-			this->GetWidget<NWidgetStacked>(WID_O_SEL_DECOUPLE_VALUE)->SetDisplayedPlane(SZSP_NONE);
-		}
 		if (NWidgetCore *nwid = this->GetWidget<NWidgetCore>(WID_O_DEPOT_ACTION); nwid != nullptr) {
 			nwid->SetToolTip(STR_ORDER_TRAIN_DEPOT_ACTION_TOOLTIP + to_underlying(v->type));
 		}
@@ -4166,63 +2086,17 @@ public:
 		this->OnInvalidateData(VIWD_MODIFY_ORDERS);
 	}
 
-	/**
-	 * Editor window for a standalone (player-created) order list.
-	 * Uses the train layout, as it contains every possible editing row; all
-	 * vehicle-type gates are relaxed for the standalone target.
-	 */
-	OrdersWindow(WindowDesc &desc, OrderListID id) : GeneralVehicleWindow(desc, nullptr)
-	{
-		this->order_list = OrderList::GetIfValid(id);
-		assert(this->order_list != nullptr);
-		this->list_id = id;
-
-		this->CreateNestedTree();
-		this->vscroll = this->GetScrollbar(WID_O_SCROLLBAR);
-		if (auto *preview = this->GetWidget<NWidgetStacked>(WID_O_SEL_DECOUPLE_PREVIEW); preview != nullptr) {
-			preview->SetDisplayedPlane(SZSP_NONE);
-			this->decouple_scroll = this->GetScrollbar(WID_O_DECOUPLE_SCROLLBAR);
-		}
-		/* No occupancy data without executing vehicles. */
-		this->GetWidget<NWidgetStacked>(WID_O_SEL_OCCUPANCY)->SetDisplayedPlane(SZSP_NONE);
-		this->current_aux_planes.fill(SZSP_NONE);
-		this->current_value_plane = DP_COND_VALUE_NUMBER;
-		{
-			auto setup_plane = [&](WidgetID wid, int current, bool independent) {
-				NWidgetStacked *sel = this->GetWidget<NWidgetStacked>(wid);
-				sel->independent_planes = independent;
-				sel->SetDisplayedPlane(current);
-			};
-			for (size_t i = 0; i < this->current_aux_planes.size(); i++) {
-				setup_plane((WidgetID)(WID_O_SEL_COND_AUX + i), this->current_aux_planes[i], true);
-			}
-			setup_plane(WID_O_SEL_COND_VALUE, this->current_value_plane, true);
-			setup_plane(WID_O_SEL_MGMT, DP_MGMT_BTN, false);
-			this->current_mgmt_plane = DP_MGMT_BTN;
-		}
-		this->FinishInitNested(id.base());
-
-		this->owner = this->order_list->GetCompany();
-
-		this->OnInvalidateData(VIWD_MODIFY_ORDERS);
-	}
-
 	void Close(int data = 0) override
 	{
 		CloseWindowById(WindowClass::VehicleCargoTypeLoadOrders, this->window_number, false);
 		CloseWindowById(WindowClass::VehicleCargoTypeUnloadOrders, this->window_number, false);
-		CloseWindowById(WindowClass::DecoupleSchedulePicker, this->window_number, false);
-		if (this->HasVehicle()) FocusWindowById(WindowClass::VehicleView, this->window_number);
+		FocusWindowById(WindowClass::VehicleView, this->window_number);
 		this->GeneralVehicleWindow::Close();
 	}
 
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
 	{
 		switch (widget) {
-			case WID_O_DECOUPLE_PREVIEW:
-				size.height = ScaleGUITrad(GetVehicleHeight(VehicleType::Train) + 12) + GetCharacterHeight(FontSize::Normal) + padding.height + 2 * WidgetDimensions::scaled.vsep_normal;
-				break;
-
 			case WID_O_OCCUPANCY_LIST:
 				size.width = GetStringBoundingBox(GetString(STR_ORDERS_OCCUPANCY_PERCENT, GetParamMaxValue(100))).width + 10 + WidgetDimensions::unscaled.framerect.Horizontal();
 				/* FALL THROUGH */
@@ -4240,7 +2114,7 @@ public:
 			case WID_O_COND_VARIABLE: {
 				Dimension d = {0, 0};
 				for (const auto &ocv : _order_conditional_variable) {
-					if (this->RefType() != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DecouplePart)) {
+					if (this->vehicle->type != VehicleType::Train && ocv == OrderConditionVariable::FreePlatforms) {
 						continue;
 					}
 					d = maxdim(d, GetStringBoundingBox(OrderStringForVariable(this->vehicle, ocv)));
@@ -4326,17 +2200,8 @@ public:
 				break;
 		}
 
-		this->vscroll->SetCount(NumOrders() + 1);
+		this->vscroll->SetCount(this->vehicle->GetNumOrders() + 1);
 		if (gui_scope) {
-			if (this->HasVehicle() &&
-					(this->GetWidget<NWidgetStacked>(WID_O_SEL_BOTTOM_MIDDLE) != nullptr) != (this->vehicle->owner == _local_company)) {
-				/* The surviving primary can belong to another company. Rebuild
-				 * the window in GUI scope using that vehicle's proper layout. */
-				const Vehicle *v = this->vehicle;
-				this->Close();
-				ShowOrdersWindow(v);
-				return;
-			}
 			this->UpdateButtonState();
 			InvalidateWindowClassesData(WindowClass::VehicleCargoTypeLoadOrders, 0);
 			InvalidateWindowClassesData(WindowClass::VehicleCargoTypeUnloadOrders, 0);
@@ -4385,37 +2250,34 @@ public:
 
 	void UpdateButtonState()
 	{
-		if (!IsLocalTarget()) {
+		if (this->vehicle->owner != _local_company) {
 			this->GetWidget<NWidgetStacked>(WID_O_SEL_OCCUPANCY)->SetDisplayedPlane(IsWidgetLowered(WID_O_OCCUPANCY_TOGGLE) ? 0 : SZSP_NONE);
 			return; // No buttons are displayed with competitor order windows.
 		}
 
-		bool shared_orders = this->HasVehicle() && this->vehicle->IsOrderListShared();
+		bool shared_orders = this->vehicle->IsOrderListShared();
 		VehicleOrderID sel = this->OrderGetSel();
-		const Order *order = OrderAt(sel);
+		const Order *order = this->vehicle->GetOrder(sel);
 
 		/* Second row. */
 		/* skip */
-		this->SetWidgetDisabledState(WID_O_SKIP, !this->HasVehicle() || NumOrders() <= 1);
+		this->SetWidgetDisabledState(WID_O_SKIP, this->vehicle->GetNumOrders() <= 1);
 
-		/* delete / stop sharing / exit execution */
+		/* delete / stop sharing */
 		NWidgetStacked *delete_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_BOTTOM_MIDDLE);
-		if (this->HasVehicle() && this->vehicle->IsExecutingSchedule() && this->selected_order == NumOrders()) {
-			/* The 'End of executed schedule' order is selected, show the 'exit execution' button. */
-			delete_sel->SetDisplayedPlane(DP_BOTTOM_MIDDLE_EXIT_EXECUTE);
-		} else if (shared_orders && this->selected_order == NumOrders()) {
+		if (shared_orders && this->selected_order == this->vehicle->GetNumOrders()) {
 			/* The 'End of Shared Orders' order is selected, show the 'stop sharing' button. */
 			delete_sel->SetDisplayedPlane(DP_BOTTOM_MIDDLE_STOP_SHARING);
 		} else {
 			/* The 'End of Shared Orders' order isn't selected, show the 'delete' button. */
 			delete_sel->SetDisplayedPlane(DP_BOTTOM_MIDDLE_DELETE);
 			this->SetWidgetDisabledState(WID_O_DELETE,
-				(uint)NumOrders() + ((shared_orders || NumOrders() != 0) ? 1 : 0) <= (uint)this->selected_order);
+				(uint)this->vehicle->GetNumOrders() + ((shared_orders || this->vehicle->GetNumOrders() != 0) ? 1 : 0) <= (uint)this->selected_order);
 
 			/* Set the tooltip of the 'delete' button depending on whether the
 			 * 'End of Orders' order or a regular order is selected. */
 			NWidgetCore *nwi = this->GetWidget<NWidgetCore>(WID_O_DELETE);
-			if (this->selected_order == NumOrders()) {
+			if (this->selected_order == this->vehicle->GetNumOrders()) {
 				nwi->SetStringTip(STR_ORDERS_DELETE_ALL_BUTTON, STR_ORDERS_DELETE_ALL_TOOLTIP);
 			} else {
 				nwi->SetStringTip(STR_ORDERS_DELETE_BUTTON, STR_ORDERS_DELETE_TOOLTIP);
@@ -4443,9 +2305,6 @@ public:
 		NWidgetStacked *mgmt_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_MGMT);
 		mgmt_sel->SetDisplayedPlane(this->GetOrderManagementPlane());
 
-		auto *preview_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_DECOUPLE_PREVIEW);
-		if (preview_sel != nullptr) preview_sel->SetDisplayedPlane(this->GetDecouplePreviewOrder() != nullptr ? 0 : SZSP_NONE);
-
 		auto aux_plane_guard = scope_guard([&]() {
 			bool reinit = false;
 			auto reinit_on_plane_change = [&reinit](NWidgetStacked *sel, int &current) {
@@ -4454,7 +2313,6 @@ public:
 					reinit = true;
 				}
 			};
-			if (preview_sel != nullptr) reinit_on_plane_change(preview_sel, this->current_decouple_plane);
 			reinit_on_plane_change(aux_sel, this->current_aux_planes[0]);
 			reinit_on_plane_change(aux2_sel, this->current_aux_planes[1]);
 			reinit_on_plane_change(aux3_sel, this->current_aux_planes[2]);
@@ -4495,25 +2353,6 @@ public:
 			this->SetWidgetDisabledState(WID_O_UNLOAD,    (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) != 0); // unload
 			this->EnableWidget(WID_O_MGMT_BTN);
 
-				/* RoRo: vehicle carriers show their own load/unload option on the buttons; for a
-				 * road vehicle itself the toggles live in the manage-order menu now. A train may be
-				 * both a carrier and itself carried, so it keeps the carrier button labels. */
-				{
-					/* this->vehicle is nullptr while a standalone/shared order list is edited; such a
-					 * list is not a carrier, so it gets the normal cargo button labels. */
-					const bool is_vehicle_only = !this->IsRoadVehicle() && this->IsVehicleOnlyCarrier();
-				if (is_vehicle_only) {
-					/* Fixed labels, like the cargo buttons always show "full load any cargo" /
-					 * "unload all": the pressed state and the dropdown show which of the two
-					 * options (any / next stop, matching / unload all) is currently active. */
-					this->GetWidget<NWidgetCore>(WID_O_FULL_LOAD)->SetString(STR_ORDER_DROP_RV_LOAD_NEXT);
-					this->GetWidget<NWidgetCore>(WID_O_UNLOAD)->SetString(STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES);
-				} else {
-					this->GetWidget<NWidgetCore>(WID_O_FULL_LOAD)->SetString(STR_ORDER_TOGGLE_FULL_LOAD);
-					this->GetWidget<NWidgetCore>(WID_O_UNLOAD)->SetString(STR_ORDER_TOGGLE_UNLOAD);
-				}
-			}
-
 			switch (order->GetType()) {
 				case OT_GOTO_STATION:
 					if (row_sel != nullptr) {
@@ -4526,21 +2365,14 @@ public:
 						this->EnableWidget(WID_O_NON_STOP);
 						this->SetWidgetLoweredState(WID_O_NON_STOP, order->GetNonStopType() & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);
 					}
-					/* RoRo: a dedicated road vehicle carrier marks the "next stop" / "unload all" options
-					 * as pressed; every other vehicle shows the plain cargo pressed states. */
-					if (!this->IsVehicleOnlyCarrier()) {
-						this->SetWidgetLoweredState(WID_O_FULL_LOAD, order->GetLoadType() == OrderLoadType::FullLoadAny);
-						this->SetWidgetLoweredState(WID_O_UNLOAD, order->GetUnloadType() == OrderUnloadType::Unload);
-					} else {
-						this->SetWidgetLoweredState(WID_O_FULL_LOAD, (order->GetRVTransportFlags() & ORVTF_MATCH_DEST) != 0);
-						this->SetWidgetLoweredState(WID_O_UNLOAD, (order->GetRVTransportFlags() & ORVTF_UNLOAD_ALL) != 0);
-					}
+					this->SetWidgetLoweredState(WID_O_FULL_LOAD, order->GetLoadType() == OrderLoadType::FullLoadAny);
+					this->SetWidgetLoweredState(WID_O_UNLOAD, order->GetUnloadType() == OrderUnloadType::Unload);
 
-				/* Can only do refitting when stopping at the destination and loading cargo.
-				 * Also enable the button if a refit is already set to allow clearing it. */
-				this->SetWidgetDisabledState(WID_O_REFIT_DROPDOWN,
-						order->GetLoadType() == OrderLoadType::NoLoad || (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) ||
-						((!this->can_do_refit || !this->can_do_autorefit) && !order->IsRefit()));
+					/* Can only do refitting when stopping at the destination and loading cargo.
+					 * Also enable the button if a refit is already set to allow clearing it. */
+					this->SetWidgetDisabledState(WID_O_REFIT_DROPDOWN,
+							order->GetLoadType() == OrderLoadType::NoLoad || (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) ||
+							((!this->can_do_refit || !this->can_do_autorefit) && !order->IsRefit()));
 
 					break;
 
@@ -4562,7 +2394,6 @@ public:
 					break;
 
 				case OT_GOTO_DEPOT:
-					this->SetWidgetDisabledState(WID_O_DEPOT_ACTION, IsDepotActionFixedToStop(this->vehicle, order));
 					if (row_sel != nullptr) {
 						row_sel->SetDisplayedPlane(DP_ROW_DEPOT);
 					} else {
@@ -4573,11 +2404,11 @@ public:
 						this->EnableWidget(WID_O_NON_STOP);
 						this->SetWidgetLoweredState(WID_O_NON_STOP, order->GetNonStopType() & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);
 					}
-				/* Disable refit button if the order is no 'always go' order.
-				 * However, keep the service button enabled for refit-orders to allow clearing refits (without knowing about ctrl). */
-				this->SetWidgetDisabledState(WID_O_REFIT,
-						order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service) || (order->GetDepotActionType() & ODATFB_HALT) ||
-						(!this->can_do_refit && !order->IsRefit()));
+					/* Disable refit button if the order is no 'always go' order.
+					 * However, keep the service button enabled for refit-orders to allow clearing refits (without knowing about ctrl). */
+					this->SetWidgetDisabledState(WID_O_REFIT,
+							order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service) || (order->GetDepotActionType() & ODATFB_HALT) ||
+							(!this->can_do_refit && !order->IsRefit()));
 					break;
 
 				case OT_CONDITIONAL: {
@@ -4732,36 +2563,6 @@ public:
 					break;
 				}
 
-				case OT_EXECUTE_SCHEDULE: {
-					if (row_sel != nullptr) {
-						row_sel->SetDisplayedPlane(DP_ROW_SLOT);
-					} else {
-						train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_SLOT);
-					}
-
-					this->GetWidget<NWidgetCore>(WID_O_SLOT)->SetToolTip(STR_ORDER_EXECUTE_SCHEDULE_TOOLTIP);
-					break;
-				}
-
-				case OT_WAIT_COUPLE:
-					train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_SLOT);
-					this->GetWidget<NWidgetCore>(WID_O_SLOT)->SetToolTip(STR_ORDER_WAIT_COUPLE_TARGET_TOOLTIP);
-					break;
-
-				case OT_GOTO_COUPLE: {
-					if (this->HasVehicle()) assert(this->vehicle->type == VehicleType::Train);
-					train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_COUPLE);
-					this->SetWidgetLoweredState(WID_O_COUPLE_STATION, order->HasCoupleStation());
-					break;
-				}
-
-				case OT_DECOUPLE: {
-					if (this->HasVehicle()) assert(this->vehicle->type == VehicleType::Train);
-					train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_DECOUPLE);
-					this->DisableWidget(WID_O_DELETE);
-					break;
-				}
-
 				default: // every other order
 					if (row_sel != nullptr) {
 						row_sel->SetDisplayedPlane(DP_ROW_LOAD);
@@ -4779,128 +2580,26 @@ public:
 			}
 		}
 
-		if (NWidgetStacked *shared_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_SHARED); shared_sel != nullptr) {
-			if (!this->HasVehicle()) {
-				/* Keep the slot occupied (no layout gap) but inert for standalone lists. */
-				shared_sel->SetDisplayedPlane(DP_SHARED_LIST);
-				this->SetWidgetDisabledState(WID_O_SHARED_ORDER_LIST, true);
-			} else {
-				shared_sel->SetDisplayedPlane(_ctrl_pressed ? DP_SHARED_VEH_GROUP : DP_SHARED_LIST);
-			}
-		}
+		this->GetWidget<NWidgetStacked>(WID_O_SEL_SHARED)->SetDisplayedPlane(_ctrl_pressed ? DP_SHARED_VEH_GROUP : DP_SHARED_LIST);
 
 		/* Disable list of vehicles with the same shared orders if there is no list */
 		this->SetWidgetDisabledState(WID_O_SHARED_ORDER_LIST, !(shared_orders || _settings_client.gui.enable_single_veh_shared_order_gui));
 
-		if (this->HasVehicle()) {
-			this->GetWidget<NWidgetStacked>(WID_O_SEL_OCCUPANCY)->SetDisplayedPlane(IsWidgetLowered(WID_O_OCCUPANCY_TOGGLE) ? 0 : SZSP_NONE);
-		}
+		this->GetWidget<NWidgetStacked>(WID_O_SEL_OCCUPANCY)->SetDisplayedPlane(IsWidgetLowered(WID_O_OCCUPANCY_TOGGLE) ? 0 : SZSP_NONE);
 
 		this->SetDirty();
 	}
 
-	/** The inline preview follows the currently selected order, never a cached order index. */
-	const Order *GetDecouplePreviewOrder() const
-	{
-		if (!this->HasVehicle() || this->vehicle->type != VehicleType::Train || !this->IsLocalTarget()) return nullptr;
-		const Order *order = this->OrderAt(this->OrderGetSel());
-		return order != nullptr && order->IsType(OT_DECOUPLE) ? order : nullptr;
-	}
-
-	static int GetCutPosition(const Train *v, const Train *cut)
-	{
-		int position = 0;
-		for (const Train *u = v->First(); u != cut; u = u->Next()) position += u->GetDisplayImageWidth();
-		return position;
-	}
-
-	void DrawDecouplePreview(const Rect &r) const
-	{
-		const Order *order = this->GetDecouplePreviewOrder();
-		if (order == nullptr) return;
-		const Train *v = Train::From(this->vehicle)->Primary();
-		const Train *cut = GetDecoupleVehicleForCount(const_cast<Train *>(v), order->GetNumDecouple());
-		Rect image = r.Shrink(WidgetDimensions::scaled.framerect);
-		DrawString(image.left, image.right, image.top, GetString(STR_DECOUPLE_PREVIEW_COUNT, order->GetNumDecouple()), TextColour::Black);
-		image.top += GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal;
-		DrawTrainImage(v->First(), image.WithHeight(ScaleGUITrad(GetVehicleHeight(VehicleType::Train)), false),
-				VehicleID::Invalid(), EngineImageType::InDetails, this->decouple_scroll->GetPosition());
-		auto draw_cut = [&](const Train *boundary, bool selected) {
-			int offset = GetCutPosition(v, boundary) - this->decouple_scroll->GetPosition();
-			int x = _current_text_dir == TD_RTL ? image.right - offset : image.left + offset;
-			if (!IsInsideMM(x, image.left, image.right + 1)) return;
-			int unit = ScaleGUITrad(1);
-			int marker_top = image.bottom - ScaleGUITrad(8);
-			auto fill = [&](int half_width, int top, int bottom, PixelColour colour) {
-				GfxFillRect(std::max(image.left, x - half_width), top, std::min(image.right, x + half_width), bottom, colour);
-			};
-			if (selected) {
-				fill(2 * unit, image.top, marker_top, PC_BLACK);
-				fill(unit, image.top, marker_top, PC_YELLOW);
-			}
-			fill(4 * unit, marker_top, image.bottom, PC_BLACK);
-			fill(3 * unit, marker_top + unit, image.bottom - unit, selected ? PC_YELLOW : PC_WHITE);
-		};
-		for (const DecoupleCut &boundary : GetDecoupleCuts(const_cast<Train *>(v))) draw_cut(boundary.vehicle, false);
-		/* Automatic orders can choose a cut beyond the manual field's 127 limit. */
-		if (cut != nullptr) draw_cut(cut, true);
-	}
-
-	void SelectDecoupleCut(Point pt)
-	{
-		const Order *order = this->GetDecouplePreviewOrder();
-		if (order == nullptr) return;
-		if (_ctrl_pressed) {
-			this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_VALUE, 0);
-			return;
-		}
-		Rect r = this->GetWidget<NWidgetBase>(WID_O_DECOUPLE_PREVIEW)->GetCurrentRect().Shrink(WidgetDimensions::scaled.framerect);
-		int image_top = r.top + GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal;
-		if (pt.y < image_top) {
-			this->query_text_widget = WID_O_DECOUPLE_VALUE;
-			ShowQueryString(GetString(STR_JUST_INT, order->GetNumDecouple()), STR_ORDER_DECOUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
-			return;
-		}
-		if (pt.y > r.bottom) return;
-		Train *v = Train::Get(this->vehicle->index)->Primary();
-		int wanted = (_current_text_dir == TD_RTL ? r.right - pt.x : pt.x - r.left) + this->decouple_scroll->GetPosition();
-		int best_distance = INT_MAX;
-		uint best_count = 0;
-		for (const DecoupleCut &boundary : GetDecoupleCuts(v)) {
-			int distance = std::abs(GetCutPosition(v, boundary.vehicle) - wanted);
-			if (distance < best_distance) {
-				best_distance = distance;
-				best_count = boundary.num_keep;
-			}
-		}
-		if (best_count == 0) return;
-		this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_VALUE, best_count);
-	}
-
 	void OnPaint() override
 	{
-		if (!IsLocalTarget()) {
+		if (this->vehicle->owner != _local_company) {
 			this->selected_order = -1; // Disable selection any selected row at a competitor order window.
 		} else {
 			this->SetWidgetLoweredState(WID_O_GOTO, this->goto_type != OPOS_NONE && this->goto_type != OPOS_COND_VIA
-					&& this->goto_type != OPOS_COND_STATION && this->goto_type != OPOS_CONDITIONAL_RETARGET
-					&& this->goto_type != OPOS_COUPLE_STATION);
+					&& this->goto_type != OPOS_COND_STATION && this->goto_type != OPOS_CONDITIONAL_RETARGET);
 			this->SetWidgetLoweredState(WID_O_COND_AUX_VIA, this->goto_type == OPOS_COND_VIA);
 			this->SetWidgetLoweredState(WID_O_COND_AUX_STATION, this->goto_type == OPOS_COND_STATION);
-			{
-				/* The couple widgets only exist in the ground-vehicle window layout. */
-				if (this->widget_lookup.find(WID_O_COUPLE_STATION) != this->widget_lookup.end()) {
-					const Order *sel_order = OrderAt(this->OrderGetSel());
-					this->SetWidgetLoweredState(WID_O_COUPLE_STATION, this->goto_type == OPOS_COUPLE_STATION
-							|| (sel_order != nullptr && sel_order->IsType(OT_GOTO_COUPLE) && sel_order->HasCoupleStation()));
-				}
-			}
 			this->SetWidgetLoweredState(WID_O_MGMT_BTN, this->goto_type == OPOS_CONDITIONAL_RETARGET);
-		}
-		if (this->GetDecouplePreviewOrder() != nullptr) {
-			uint width = 0;
-			for (const Train *u = Train::From(this->vehicle)->First(); u != nullptr; u = u->Next()) width += u->GetDisplayImageWidth();
-			this->decouple_scroll->SetCount(width);
 		}
 		this->DrawWidgets();
 	}
@@ -4908,10 +2607,6 @@ public:
 	void DrawWidget(const Rect &r, WidgetID widget) const override
 	{
 		switch (widget) {
-			case WID_O_DECOUPLE_PREVIEW:
-				this->DrawDecouplePreview(r);
-				break;
-
 			case WID_O_ORDER_LIST:
 				DrawOrderListWidget(r);
 				break;
@@ -4930,7 +2625,7 @@ public:
 	{
 		Rect ir = r.Shrink(WidgetDimensions::scaled.frametext, WidgetDimensions::scaled.framerect);
 		bool rtl = _current_text_dir == TD_RTL;
-		uint64_t max_value = GetParamMaxValue(NumOrders(), 2);
+		uint64_t max_value = GetParamMaxValue(this->vehicle->GetNumOrders(), 2);
 		int index_column_width = GetStringBoundingBox(GetString(STR_ORDER_INDEX, max_value)).width + 2 * GetSpriteSize(rtl ? SPR_ARROW_RIGHT : SPR_ARROW_LEFT).width + WidgetDimensions::scaled.hsep_normal;
 		int middle = rtl ? ir.right - index_column_width : ir.left + index_column_width;
 
@@ -4938,7 +2633,7 @@ public:
 		int line_height = this->GetWidget<NWidgetBase>(WID_O_ORDER_LIST)->resize_y;
 
 		int i = this->vscroll->GetPosition();
-		const Order *order = OrderAt(i);
+		const Order *order = this->vehicle->GetOrder(i);
 		/* First draw the highlighting underground if it exists. */
 		if (this->order_over != INVALID_VEH_ORDER_ID) {
 			while (order != nullptr) {
@@ -4956,13 +2651,13 @@ public:
 				y += line_height;
 
 				i++;
-				order = this->Target()->GetNextNoWrap(order);
+				order = this->vehicle->orders->GetNextNoWrap(order);
 			}
 
 			/* Reset counters for drawing the orders. */
 			y = ir.top;
 			i = this->vscroll->GetPosition();
-			order = OrderAt(i);
+			order = this->vehicle->GetOrder(i);
 		}
 
 		/* Draw the orders. */
@@ -4970,24 +2665,15 @@ public:
 			/* Don't draw anything if it extends past the end of the window. */
 			if (!this->vscroll->IsVisible(i)) break;
 
-			DrawOrderString(this->vehicle, order, i, y, i == this->selected_order, false, ir.left, middle, ir.right,
-					this->IsDispatchEnabled(), this->Target());
+			DrawOrderString(this->vehicle, order, i, y, i == this->selected_order, false, ir.left, middle, ir.right);
 			y += line_height;
 
 			i++;
-			order = this->Target()->GetNextNoWrap(order);
+			order = this->vehicle->orders->GetNextNoWrap(order);
 		}
 
 		if (this->vscroll->IsVisible(i)) {
-			std::string str;
-			if (this->HasVehicle() && this->vehicle->IsExecutingSchedule()) {
-				/* The vehicle is away executing another schedule: show which one ends here. */
-				const OrderList *executed = this->vehicle->orders;
-				std::string name = executed->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, executed->index.base() + 1) : executed->GetName();
-				str = GetString(STR_ORDERS_END_OF_EXECUTE_SCHEDULE, name);
-			} else {
-				str = GetString((this->HasVehicle() && this->vehicle->IsOrderListShared()) ? STR_ORDERS_END_OF_SHARED_ORDERS : STR_ORDERS_END_OF_ORDERS);
-			}
+			StringID str = this->vehicle->IsOrderListShared() ? STR_ORDERS_END_OF_SHARED_ORDERS : STR_ORDERS_END_OF_ORDERS;
 			DrawString(rtl ? ir.left : middle, rtl ? middle : ir.right, y, str, (i == this->selected_order) ? TextColour::White : TextColour::Black);
 		}
 	}
@@ -5001,11 +2687,11 @@ public:
 		int i = this->vscroll->GetPosition();
 
 		/* Draw the orders. */
-		while (i < NumOrders()) {
+		while (i < this->vehicle->GetNumOrders()) {
 			/* Don't draw anything if it extends past the end of the window. */
 			if (!this->vscroll->IsVisible(i)) break;
 
-			const Order *order = OrderAt(i);
+			const Order *order = this->vehicle->GetOrder(i);
 
 			uint8_t occupancy = order->GetOccupancy();
 			if (occupancy > 0) {
@@ -5033,7 +2719,7 @@ public:
 		int right = r.right + clicked;
 
 		extern bool HaveTimetableWarnings(const Vehicle *v);
-		if (this->HasVehicle() && HaveTimetableWarnings(this->vehicle)) {
+		if (HaveTimetableWarnings(this->vehicle)) {
 			const Dimension warning_dimensions = GetSpriteSize(SPR_WARNING_SIGN);
 			int spr_offset = std::max(0, ((int)(r.bottom - r.top + 1) - (int)warning_dimensions.height) / 2); // Offset for rendering the sprite vertically centered
 			DrawSprite(SPR_WARNING_SIGN, 0, rtl ? right - warning_dimensions.width - 2 : left + 2, r.top + spr_offset);
@@ -5052,12 +2738,9 @@ public:
 		switch (widget) {
 			case WID_O_COND_VALUE: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 
 				if (order != nullptr && order->IsType(OT_CONDITIONAL)) {
-					if (order->GetConditionVariable() == OrderConditionVariable::DecouplePart) {
-						return GetString(STR_ORDER_CONDITIONAL_DECOUPLE_PART_NONE + order->GetConditionValue());
-					}
 					uint value;
 					switch (order->GetConditionVariable()) {
 						case OrderConditionVariable::CargoLoadPercentage:
@@ -5080,7 +2763,7 @@ public:
 							value = order->GetConditionValue();
 							break;
 					}
-					if (order->GetConditionVariable() == OrderConditionVariable::MaxSpeed) value = ConvertSpeedToDisplaySpeed(value, this->RefType());
+					if (order->GetConditionVariable() == OrderConditionVariable::MaxSpeed) value = ConvertSpeedToDisplaySpeed(value, this->vehicle->type);
 					if (order->GetConditionVariable() == OrderConditionVariable::CargoWaitingAmount) value = ConvertCargoQuantityToDisplayQuantity(static_cast<CargoType>(order->GetConditionValue()), value);
 					return GetString(STR_JUST_COMMA, value);
 				}
@@ -5089,7 +2772,7 @@ public:
 
 			case WID_O_COND_COMPARATOR: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 
 				if (order != nullptr && order->IsType(OT_CONDITIONAL)) {
 					if (order->GetConditionVariable() == OrderConditionVariable::DispatchSlot) {
@@ -5104,7 +2787,7 @@ public:
 			case WID_O_COND_SLOT_GROUP:
 			case WID_O_COND_COUNTER: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 
 				if (order != nullptr && order->IsType(OT_CONDITIONAL)) {
 					uint32_t value = (widget == WID_O_COND_COUNTER) ? order->GetXDataHigh() : order->GetXDataLow();
@@ -5115,13 +2798,12 @@ public:
 
 			case WID_O_COND_SCHED_SELECT: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
-				if (order == nullptr || !order->IsType(OT_CONDITIONAL)) return GetString(STR_TIMETABLE_ASSIGN_SCHEDULE_NONE);
+				const Order *order = this->vehicle->GetOrder(sel);
 
 				uint schedule_index = order->GetConditionDispatchScheduleID();
-				if (order->GetConditionVariable() == OrderConditionVariable::DispatchSlot && schedule_index != UINT16_MAX) {
-					if (schedule_index < this->Target()->GetScheduledDispatchScheduleCount()) {
-						const DispatchSchedule &ds = this->Target()->GetDispatchScheduleByIndex(schedule_index);
+				if (order != nullptr && order->IsType(OT_CONDITIONAL) && order->GetConditionVariable() == OrderConditionVariable::DispatchSlot && schedule_index != UINT16_MAX) {
+					if (schedule_index < this->vehicle->orders->GetScheduledDispatchScheduleCount()) {
+						const DispatchSchedule &ds = this->vehicle->orders->GetDispatchScheduleByIndex(schedule_index);
 						if (!ds.ScheduleName().empty()) {
 							return ds.ScheduleName();
 						}
@@ -5134,7 +2816,7 @@ public:
 
 			case WID_O_COND_SCHED_VALUE: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 
 				if (order != nullptr && order->IsType(OT_CONDITIONAL)) {
 					if (order->GetConditionVariable() == OrderConditionVariable::DispatchSlot) {
@@ -5150,8 +2832,8 @@ public:
 								} else {
 									uint schedule_index = order->GetConditionDispatchScheduleID();
 									if (order != nullptr && order->IsType(OT_CONDITIONAL) && order->GetConditionVariable() == OrderConditionVariable::DispatchSlot && schedule_index != UINT16_MAX) {
-										if (schedule_index < this->Target()->GetScheduledDispatchScheduleCount()) {
-											const DispatchSchedule &ds = this->Target()->GetDispatchScheduleByIndex(schedule_index);
+										if (schedule_index < this->vehicle->orders->GetScheduledDispatchScheduleCount()) {
+											const DispatchSchedule &ds = this->vehicle->orders->GetDispatchScheduleByIndex(schedule_index);
 											std::string_view name = ds.GetSupplementaryName(DispatchSchedule::SupplementaryNameType::RouteID, route_id);
 											if (!name.empty()) return std::string{name};
 										}
@@ -5169,18 +2851,12 @@ public:
 			}
 
 			case WID_O_CAPTION:
-				if (!this->HasVehicle()) {
-					const OrderList *ol = this->order_list;
-					if (ol->GetName().empty()) return GetString(STR_JUST_RAW_STRING, GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1));
-					return GetString(STR_JUST_RAW_STRING, ol->GetName());
-				}
 				return GetString(STR_ORDERS_CAPTION, this->vehicle->index);
 
 			case WID_O_DEPOT_ACTION: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 				if (order == nullptr || !order->IsType(OT_GOTO_DEPOT)) return {};
-				if (IsDepotActionFixedToStop(this->vehicle, order)) return GetString(STR_ORDER_DROP_HALT_DEPOT);
 
 				/* Select the current action selected in the dropdown. The flags don't match the dropdown so we can't just use an index. */
 				if (order->GetDepotActionType() & ODATFB_SELL) {
@@ -5197,7 +2873,6 @@ public:
 			}
 
 			case WID_O_OCCUPANCY_TOGGLE:
-				if (!this->HasVehicle()) return {};
 				const_cast<Vehicle *>(this->vehicle)->RecalculateOrderOccupancyAverage();
 				if (this->vehicle->order_occupancy_average >= 16) {
 					return GetString(STR_ORDERS_OCCUPANCY_PERCENT, this->vehicle->order_occupancy_average - 16);
@@ -5206,16 +2881,9 @@ public:
 
 			case WID_O_SLOT: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 
-				if (order != nullptr && order->IsExecuteScheduleOrder()) {
-					const OrderList *target = OrderList::GetIfValid(order->GetDestination().ToOrderListID());
-					if (target == nullptr) return GetString(STR_TRACE_RESTRICT_VARIABLE_UNDEFINED);
-					std::string name = target->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, target->index.base() + 1) : target->GetName();
-					return GetString(STR_JUST_RAW_STRING, name);
-				} else if (order != nullptr && order->IsType(OT_WAIT_COUPLE)) {
-					return order->HasWaitCoupleStation() && Station::IsValidID(order->GetWaitCoupleStation()) ? GetString(STR_STATION_NAME, order->GetWaitCoupleStation()) : GetString(STR_ORDER_WAIT_COUPLE_HERE);
-				} else if (order != nullptr && order->IsType(OT_SLOT)) {
+				if (order != nullptr && order->IsType(OT_SLOT)) {
 					if (order->GetDestination() == INVALID_TRACE_RESTRICT_SLOT_ID) {
 						return GetString(STR_TRACE_RESTRICT_VARIABLE_UNDEFINED);
 					} else {
@@ -5231,18 +2899,9 @@ public:
 				return {};
 			}
 
-			case WID_O_COUPLE_SLOT: {
-				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
-				if (order != nullptr && order->IsType(OT_GOTO_COUPLE) && order->HasCoupleSlot()) {
-					return GetString(STR_TRACE_RESTRICT_SLOT_NAME, order->GetCoupleSlot().base());
-				}
-				return GetString(STR_ORDER_COUPLE_ANY_SLOT);
-			}
-
 			case WID_O_COUNTER_OP: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 
 				if (order != nullptr && order->IsType(OT_COUNTER)) {
 					return GetString(STR_TRACE_RESTRICT_COUNTER_INCREASE + order->GetCounterOperation());
@@ -5252,7 +2911,7 @@ public:
 
 			case WID_O_CHANGE_COUNTER: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 
 				if (order != nullptr && order->IsType(OT_COUNTER)) {
 					TraceRestrictCounterID value = order->GetDestination().ToCounterID();
@@ -5263,7 +2922,7 @@ public:
 
 			case WID_O_COUNTER_VALUE: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 
 				if (order != nullptr && order->IsType(OT_COUNTER)) {
 					return GetString(STR_JUST_COMMA, order->GetXData());
@@ -5273,7 +2932,7 @@ public:
 
 			case WID_O_DEPARTURE_VIA_TYPE: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 
 				if (order != nullptr && order->IsType(OT_LABEL) && IsDeparturesOrderLabelSubType(order->GetLabelSubType())) {
 					switch (order->GetLabelSubType()) {
@@ -5321,9 +2980,9 @@ public:
 
 				VehicleOrderID sel = this->GetOrderFromPt(pt.y);
 
-				if (_ctrl_pressed && sel < NumOrders()) {
-					TileIndex xy = OrderAt(sel)->GetLocation(this->HasVehicle() ? this->vehicle : nullptr);
-					if (xy == INVALID_TILE) xy = OrderAt(sel)->GetAuxiliaryLocation(_shift_pressed);
+				if (_ctrl_pressed && sel < this->vehicle->GetNumOrders()) {
+					TileIndex xy = this->vehicle->GetOrder(sel)->GetLocation(this->vehicle);
+					if (xy == INVALID_TILE) xy = this->vehicle->GetOrder(sel)->GetAuxiliaryLocation(_shift_pressed);
 					if (xy != INVALID_TILE) ScrollMainWindowToTile(xy);
 					return;
 				}
@@ -5332,27 +2991,27 @@ public:
 				this->CloseChildWindows();
 				HideDropDownMenu(this);
 
-				if (sel == INVALID_VEH_ORDER_ID || !IsLocalTarget()) {
+				if (sel == INVALID_VEH_ORDER_ID || this->vehicle->owner != _local_company) {
 					/* Deselect clicked order */
 					this->selected_order = -1;
 				} else if (sel == this->selected_order) {
-					if (sel >= NumOrders()) {
+					if (sel >= this->vehicle->GetNumOrders()) {
 						this->UpdateButtonState();
 						return;
 					}
 
-					const Order *order = OrderAt(sel);
+					const Order *order = this->vehicle->GetOrder(sel);
 
 					if (order->IsType(OT_LABEL) && order->GetLabelSubType() == OLST_TEXT) {
 						if (this->IsWidgetActiveInLayout(WID_O_TEXT_LABEL)) this->OnClick({}, WID_O_TEXT_LABEL, click_count);
 						return;
 					}
-					if (this->RefType() == VehicleType::Train) {
+					if (this->vehicle->type == VehicleType::Train) {
 						OrderStopLocation osl = static_cast<OrderStopLocation>((to_underlying(order->GetStopLocation()) + 1) % to_underlying(OrderStopLocation::End));
 						if (osl == OrderStopLocation::Through && !_settings_client.gui.show_adv_load_mode_features) {
 							osl = OrderStopLocation::NearEnd;
 						}
-						if (osl == OrderStopLocation::Through && this->HasVehicle()) {
+						if (osl == OrderStopLocation::Through) {
 							for (const Vehicle *u = this->vehicle; u != nullptr; u = u->Next()) {
 								/* Passengers may not be through-loaded */
 								if (u->cargo_cap > 0 && IsCargoInClass(u->cargo_type, CargoClass::Passengers)) {
@@ -5363,7 +3022,7 @@ public:
 						}
 						this->ModifyOrder(sel, MOF_STOP_LOCATION, to_underlying(osl));
 					}
-					if (this->HasVehicle() && this->vehicle->type == VehicleType::Road) {
+					if (this->vehicle->type == VehicleType::Road) {
 						DiagDirection current = order->GetRoadVehTravelDirection();
 						if (_settings_client.gui.show_adv_load_mode_features || current != DiagDirection::Invalid) {
 							uint dir = (to_underlying(current) + 1) & 0xFF;
@@ -5375,7 +3034,7 @@ public:
 					/* Select clicked order */
 					this->selected_order = sel;
 
-					if (IsLocalTarget()) {
+					if (this->vehicle->owner == _local_company) {
 						/* Activate drag and drop */
 						SetObjectToPlaceWnd(SPR_CURSOR_MOUSE, PAL_NONE, HT_DRAG, this);
 					}
@@ -5390,10 +3049,10 @@ public:
 				break;
 
 			case WID_O_MGMT_LIST_BTN: {
-				uint disabled_mask = (NumOrders() < 2 ? 1 : 0) | (NumOrders() < 3 ? 2 : 0);
-				uint order_count = NumOrders();
+				uint disabled_mask = (this->vehicle->GetNumOrders() < 2 ? 1 : 0) | (this->vehicle->GetNumOrders() < 3 ? 2 : 0);
+				uint order_count = this->vehicle->GetNumOrders();
 				for (uint i = 0; i < order_count; i++) {
-					if (OrderAt(i)->IsType(OT_CONDITIONAL)) {
+					if (this->vehicle->GetOrder(i)->IsType(OT_CONDITIONAL)) {
 						disabled_mask |= 2;
 						break;
 					}
@@ -5404,34 +3063,14 @@ public:
 
 			case WID_O_MGMT_BTN: {
 				VehicleOrderID sel = this->OrderGetSel();
-				const Order *order = OrderAt(sel);
+				const Order *order = this->vehicle->GetOrder(sel);
 				if (order == nullptr) break;
 
 				DropDownList list;
-				/* A decouple order is bound to the station order before it and
-				 * cannot exist on its own; duplicating either member of the pair
-				 * would create a broken list, so offer no duplicate entry. */
-				const bool bound_decouple = order->IsType(OT_DECOUPLE) || (order->IsType(OT_GOTO_STATION) && order->GetDecouple() == ODF_DECOUPLE);
-				if (!bound_decouple) list.push_back(MakeDropDownListStringItem(STR_ORDER_DUPLICATE_ORDER, 0, false));
+				list.push_back(MakeDropDownListStringItem(STR_ORDER_DUPLICATE_ORDER, 0, false));
 				if (order->IsType(OT_CONDITIONAL)) list.push_back(MakeDropDownListStringItem(STR_ORDER_CHANGE_JUMP_TARGET, 1, false));
-				if (order->IsType(OT_GOTO_COUPLE)) {
-					list.push_back(MakeDropDownListDividerItem());
-					list.push_back(MakeDropDownListCheckedItem(order->GetCoupleUseWaitingSchedule(), STR_ORDER_COUPLE_USE_WAITING_SCHEDULE, 0x600, false));
-					list.push_back(MakeDropDownListDividerItem());
-					std::string current = GetString(STR_ORDER_COUPLE_CHECK_NONE);
-					if (order->HasCoupleCheckPoint()) {
-						const StationID station = order->GetCoupleCheckPoint();
-						current = GetString(Waypoint::IsValidID(station) ? STR_WAYPOINT_NAME : STR_STATION_NAME, station);
-					}
-					auto check_item = MakeDropDownListStringItem(GetString(STR_ORDER_COUPLE_CHECK_SELECT, current), 0x800, false);
-					check_item->colour_flags.Set(ExtendedTextColourFlag::Forced);
-					list.push_back(std::move(check_item));
-				}
 
-				/* Standalone lists act like trains here: every per-order option is available,
-				 * except constraints that need a real consist (passenger through-load scan). */
-				const bool train_like = this->RefType() == VehicleType::Train;
-				if (train_like && order->IsType(OT_GOTO_STATION) && (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) == 0) {
+				if (this->vehicle->type == VehicleType::Train && order->IsType(OT_GOTO_STATION) && (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) == 0) {
 					const OrderStopLocation osl = order->GetStopLocation();
 					list.push_back(MakeDropDownListDividerItem());
 					list.push_back(MakeDropDownListCheckedItem(osl == OrderStopLocation::NearEnd, STR_ORDER_STOP_LOCATION_NEAR_END, 0x200 + to_underlying(OrderStopLocation::NearEnd), false));
@@ -5439,7 +3078,7 @@ public:
 					list.push_back(MakeDropDownListCheckedItem(osl == OrderStopLocation::FarEnd, STR_ORDER_STOP_LOCATION_FAR_END, 0x200 + to_underlying(OrderStopLocation::FarEnd), false));
 					if (osl == OrderStopLocation::Through || _settings_client.gui.show_adv_load_mode_features) {
 						bool allowed = _settings_client.gui.show_adv_load_mode_features;
-						if (allowed && this->HasVehicle()) {
+						if (allowed) {
 							for (const Vehicle *u = this->vehicle; u != nullptr; u = u->Next()) {
 								/* Passengers may not be through-loaded */
 								if (u->cargo_cap > 0 && IsCargoInClass(u->cargo_type, CargoClass::Passengers)) {
@@ -5450,10 +3089,9 @@ public:
 						}
 						list.push_back(MakeDropDownListCheckedItem(osl == OrderStopLocation::Through, STR_ORDER_STOP_LOCATION_THROUGH, 0x200 + to_underlying(OrderStopLocation::Through), !allowed));
 					}
-					list.push_back(MakeDropDownListCheckedItem(order->GetDecouple() == ODF_DECOUPLE, STR_ORDERS_DECOUPLE_DROP, 0x500, false));
 				}
 
-				if (this->HasVehicle() && this->vehicle->type == VehicleType::Road && (order->IsType(OT_GOTO_STATION) || order->IsType(OT_GOTO_WAYPOINT))) {
+				if (this->vehicle->type == VehicleType::Road && (order->IsType(OT_GOTO_STATION) || order->IsType(OT_GOTO_WAYPOINT))) {
 					const DiagDirection dir = order->GetRoadVehTravelDirection();
 					if (_settings_client.gui.show_adv_load_mode_features || dir != DiagDirection::Invalid) {
 						list.push_back(MakeDropDownListDividerItem());
@@ -5463,15 +3101,6 @@ public:
 						list.push_back(MakeDropDownListCheckedItem(dir == DiagDirection::SW, STR_ORDER_RV_DIR_SW, 0x300 + to_underlying(DiagDirection::SW), false));
 						list.push_back(MakeDropDownListCheckedItem(dir == DiagDirection::NW, STR_ORDER_RV_DIR_NW, 0x300 + to_underlying(DiagDirection::NW), false));
 					}
-				}
-
-				if (this->OwnTransportTogglesApply() && order->IsType(OT_GOTO_STATION)) {
-					/* RoRo: a vehicle's own transport toggles live in this menu. They are also
-					 * offered for a standalone list, which is not bound to a vehicle type. */
-					const uint8_t rvf = order->GetRVTransportFlags();
-					list.push_back(MakeDropDownListDividerItem());
-					list.push_back(MakeDropDownListCheckedItem((rvf & ORVTF_OWN_WAIT) != 0, STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED, RVDD_RV_WAIT, false));
-					list.push_back(MakeDropDownListCheckedItem((rvf & ORVTF_OWN_UNLOAD) != 0, STR_ORDER_DROP_BE_UNLOADED_HERE, RVDD_RV_UNLOAD, false));
 				}
 
 				if (!order->IsType(OT_IMPLICIT)) {
@@ -5488,13 +3117,10 @@ public:
 					add_colour(Colours::Pink);
 				}
 
-				if (this->HasVehicle()) {
-					list.push_back(MakeDropDownListDividerItem());
-					list.push_back(MakeDropDownListStringItem(STR_ORDER_IMPORT_ORDER_LIST_INSERT, 0x400, false));
-					list.push_back(MakeDropDownListStringItem(STR_ORDER_IMPORT_ORDER_LIST_INSERT_REVERSED, 0x401, false));
-				}
+				list.push_back(MakeDropDownListDividerItem());
+				list.push_back(MakeDropDownListStringItem(STR_ORDER_IMPORT_ORDER_LIST_INSERT, 0x400, false));
+				list.push_back(MakeDropDownListStringItem(STR_ORDER_IMPORT_ORDER_LIST_INSERT_REVERSED, 0x401, false));
 
-				if (list.empty()) break; /* Decouple orders offer no per-order actions. */
 				ShowDropDownList(this, std::move(list), -1, widget, 0, DropDownOptions{}, DDSF_SHARED);
 				break;
 			}
@@ -5507,18 +3133,11 @@ public:
 				this->OrderClick_StopSharing();
 				break;
 
-			case WID_O_EXIT_EXECUTE:
-				if (this->HasVehicle() && this->vehicle->IsExecutingSchedule()) {
-					Command<Commands::ExitExecuteSchedule>::Post(STR_ERROR_CAN_T_EXIT_EXECUTE_SCHEDULE, this->vehicle->tile, this->vehicle->index);
-				}
-				break;
-
 			case WID_O_NON_STOP:
 				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
 					this->OrderClick_Nonstop(-1);
 				} else {
-					const Order *o = OrderAt(this->OrderGetSel());
-					if (o == nullptr) break;
+					const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
 					ShowDropDownMenu(this, _order_non_stop_dropdown, o->GetNonStopType(), WID_O_NON_STOP, _settings_game.order.nonstop_only ? 5 : 0,
 							o->IsType(OT_GOTO_STATION) ? 0 : (o->IsType(OT_GOTO_WAYPOINT) ? 3 : 12), 0, DDSF_SHARED);
 				}
@@ -5541,18 +3160,16 @@ public:
 						case OPOS_SHARE:                sel = ODDI_SHARE; break;
 						case OPOS_INSERT_FROM_VEHICLE:  sel = ODDI_INSERT_FROM_VEHICLE; break;
 						case OPOS_CONDITIONAL_RETARGET: sel = -1; break;
-						case OPOS_COUPLE_STATION: sel = -1; break;
 						case OPOS_DEPARTURE_VIA:        sel = ODDI_LABEL_DEPARTURES_VIA; break;
 						default: NOT_REACHED();
 					}
 					DropDownList list;
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_GO_TO, ODDI_GO_TO, false));
-					list.push_back(MakeDropDownListStringItem((this->RefType() == VehicleType::Aircraft) ? STR_ORDER_GO_TO_NEAREST_HANGAR : STR_ORDER_GO_TO_NEAREST_DEPOT, ODDI_GO_TO_NEAREST_DEPOT, false));
+					list.push_back(MakeDropDownListStringItem((this->vehicle->type == VehicleType::Aircraft) ? STR_ORDER_GO_TO_NEAREST_HANGAR : STR_ORDER_GO_TO_NEAREST_DEPOT, ODDI_GO_TO_NEAREST_DEPOT, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_CONDITIONAL, ODDI_CONDITIONAL, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_SHARE, ODDI_SHARE, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_INSERT_FROM_VEHICLE, ODDI_INSERT_FROM_VEHICLE, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_TRY_ACQUIRE_SLOT_BUTTON, ODDI_TRY_ACQUIRE_SLOT, false));
-					list.push_back(MakeDropDownListStringItem(STR_ORDER_EXECUTE_SCHEDULE_BUTTON, ODDI_EXECUTE_SCHEDULE, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_RELEASE_SLOT_BUTTON, ODDI_RELEASE_SLOT, false));
 					if (TraceRestrictSlotGroup::GetNumItems() > 0) {
 						list.push_back(MakeDropDownListStringItem(STR_ORDER_RELEASE_SLOT_GROUP_BUTTON, ODDI_RELEASE_SLOT_GROUP, false));
@@ -5562,11 +3179,6 @@ public:
 					}
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_TEXT_BUTTON, ODDI_LABEL_TEXT, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_DEPARTURES_VIA_BUTTON, ODDI_LABEL_DEPARTURES_VIA, false));
-					if (this->RefType() == VehicleType::Train) {
-						/* Real trains and standalone (player-created) lists, which act like trains. */
-						list.push_back(MakeDropDownListStringItem(STR_ORDER_WAIT_FOR_COUPLE, ODDI_WAIT_FOR_COUPLE, false));
-						list.push_back(MakeDropDownListStringItem(STR_ORDERS_GO_TO_COUPLE, ODDI_GO_TO_COUPLE, false));
-					}
 
 					ShowDropDownList(this, std::move(list), sel, WID_O_GOTO, 0, DropDownOptions{}, DDSF_SHARED);
 				}
@@ -5574,39 +3186,17 @@ public:
 
 			case WID_O_FULL_LOAD:
 				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
-					if (this->IsVehicleOnlyCarrier()) {
-						this->OrderClick_RVLoadToggle();
-					} else {
-						this->OrderClick_FullLoad(OrderLoadType::FullLoadAny, true);
-					}
+					this->OrderClick_FullLoad(OrderLoadType::FullLoadAny, true);
 				} else {
-					/* RoRo: both the normal-cargo and the road vehicle transport options are listed; the
-					 * current selection marks whichever of the two the order uses at the moment. */
-					const Order *lo = OrderAt(this->OrderGetSel());
-					int sel = (lo != nullptr) ? to_underlying(lo->GetLoadType()) : 0;
-					if (lo != nullptr && lo->IsType(OT_GOTO_STATION) && this->CarrierTransportTogglesApply() && (lo->GetRVTransportFlags() & ORVTF_LOAD) != 0) {
-						sel = ((lo->GetRVTransportFlags() & ORVTF_MATCH_DEST) != 0) ? RVDD_LOAD_MATCH : RVDD_LOAD_ANY;
-					}
-					ShowDropDownList(this, this->BuildLoadDropDownList(), sel, WID_O_FULL_LOAD, 0, DropDownOptions{}, DDSF_SHARED);
+					ShowDropDownMenu(this, _order_full_load_dropdown, to_underlying(this->vehicle->GetOrder(this->OrderGetSel())->GetLoadType()), WID_O_FULL_LOAD, 0, 0x22 /* 010 0010 */, 0, DDSF_SHARED);
 				}
 				break;
 
 			case WID_O_UNLOAD:
 				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
-					if (this->IsVehicleOnlyCarrier()) {
-						this->OrderClick_RVUnloadToggle();
-					} else {
-						this->OrderClick_Unload(OrderUnloadType::Unload, true);
-					}
+					this->OrderClick_Unload(OrderUnloadType::Unload, true);
 				} else {
-					/* RoRo: both the normal-cargo and the road vehicle transport options are listed; the
-					 * current selection marks whichever of the two the order uses at the moment. */
-					const Order *lo = OrderAt(this->OrderGetSel());
-					int sel = (lo != nullptr) ? to_underlying(lo->GetUnloadType()) : 0;
-					if (lo != nullptr && lo->IsType(OT_GOTO_STATION) && this->CarrierTransportTogglesApply() && (lo->GetRVTransportFlags() & ORVTF_UNLOAD) != 0) {
-						sel = ((lo->GetRVTransportFlags() & ORVTF_UNLOAD_ALL) != 0) ? RVDD_UNLOAD_ALL : RVDD_UNLOAD;
-					}
-					ShowDropDownList(this, this->BuildUnloadDropDownList(), sel, WID_O_UNLOAD, 0, DropDownOptions{}, DDSF_SHARED);
+					ShowDropDownMenu(this, _order_unload_dropdown, to_underlying(this->vehicle->GetOrder(this->OrderGetSel())->GetUnloadType()), WID_O_UNLOAD, 0, 0x08 /* 00 1000 */, 0, DDSF_SHARED);
 				}
 				break;
 
@@ -5615,7 +3205,7 @@ public:
 				break;
 
 			case WID_O_DEPOT_ACTION:
-				ShowDropDownMenu(this, _order_depot_action_dropdown, DepotActionStringIndex(OrderAt(this->OrderGetSel())),
+				ShowDropDownMenu(this, _order_depot_action_dropdown, DepotActionStringIndex(this->vehicle->GetOrder(this->OrderGetSel())),
 						WID_O_DEPOT_ACTION, 0, _settings_client.gui.show_depot_sell_gui ? 0 : (1 << DA_SELL), 0, DDSF_SHARED);
 				break;
 
@@ -5629,50 +3219,50 @@ public:
 
 			case WID_O_COND_SLOT: {
 				int selected;
-				const Order *order = OrderAt(this->OrderGetSel());
+				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
 				TraceRestrictSlotID value{order->GetXDataLow()};
-				DropDownList list = GetSlotDropDownList(this->TargetOwner(), value, selected, this->RefType(), order->GetConditionVariable() == OrderConditionVariable::SlotOccupancy);
+				DropDownList list = GetSlotDropDownList(this->vehicle->owner, value, selected, this->vehicle->type, order->GetConditionVariable() == OrderConditionVariable::SlotOccupancy);
 				if (!list.empty()) ShowDropDownList(this, std::move(list), selected, WID_O_COND_SLOT, 0, DropDownOptions{}, DDSF_SHARED);
 				break;
 			}
 
 			case WID_O_COND_SLOT_GROUP: {
 				int selected;
-				const Order *order = OrderAt(this->OrderGetSel());
+				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
 				TraceRestrictSlotGroupID value{order->GetXDataLow()};
-				DropDownList list = GetSlotGroupDropDownList(this->TargetOwner(), value, selected, this->RefType());
+				DropDownList list = GetSlotGroupDropDownList(this->vehicle->owner, value, selected, this->vehicle->type);
 				if (!list.empty()) ShowDropDownList(this, std::move(list), selected, WID_O_COND_SLOT_GROUP, 0, DropDownOptions{}, DDSF_SHARED);
 				break;
 			}
 
 			case WID_O_COND_COUNTER: {
 				int selected;
-				TraceRestrictCounterID value{OrderAt(this->OrderGetSel())->GetXDataHigh()};
-				DropDownList list = GetCounterDropDownList(this->TargetOwner(), value, selected);
+				TraceRestrictCounterID value{this->vehicle->GetOrder(this->OrderGetSel())->GetXDataHigh()};
+				DropDownList list = GetCounterDropDownList(this->vehicle->owner, value, selected);
 				if (!list.empty()) ShowDropDownList(this, std::move(list), selected, WID_O_COND_COUNTER, 0, DropDownOptions{}, DDSF_SHARED);
 				break;
 			}
 
 			case WID_O_COND_TIME_DATE: {
-				ShowDropDownMenu(this, _order_time_date_dropdown, OrderAt(this->OrderGetSel())->GetConditionValue(),
+				ShowDropDownMenu(this, _order_time_date_dropdown, this->vehicle->GetOrder(this->OrderGetSel())->GetConditionValue(),
 						WID_O_COND_TIME_DATE, _settings_game.game_time.time_in_minutes ? 0 : 7, 0, 0, DDSF_SHARED);
 				break;
 			}
 
 			case WID_O_COND_TIMETABLE: {
-				ShowDropDownMenu(this, _order_timetable_dropdown, OrderAt(this->OrderGetSel())->GetConditionValue(),
+				ShowDropDownMenu(this, _order_timetable_dropdown, this->vehicle->GetOrder(this->OrderGetSel())->GetConditionValue(),
 						WID_O_COND_TIMETABLE, 0, 0, 0, DDSF_SHARED);
 				break;
 			}
 
 			case WID_O_COND_SCHED_SELECT: {
-				int selected = OrderAt(this->OrderGetSel())->GetConditionDispatchScheduleID();
+				int selected = this->vehicle->GetOrder(this->OrderGetSel())->GetConditionDispatchScheduleID();
 				if (selected == UINT16_MAX) selected = -1;
 
-				uint count = this->Target()->GetScheduledDispatchScheduleCount();
+				uint count = this->vehicle->orders->GetScheduledDispatchScheduleCount();
 				DropDownList list;
 				for (uint i = 0; i < count; ++i) {
-					const DispatchSchedule &ds = this->Target()->GetDispatchScheduleByIndex(i);
+					const DispatchSchedule &ds = this->vehicle->orders->GetDispatchScheduleByIndex(i);
 					if (ds.ScheduleName().empty()) {
 						list.push_back(MakeDropDownListStringItem(GetString(STR_TIMETABLE_ASSIGN_SCHEDULE_ID, i + 1), i, false));
 					} else {
@@ -5684,7 +3274,7 @@ public:
 			}
 
 			case WID_O_COND_SCHED_TEST: {
-				uint16_t value = OrderAt(this->OrderGetSel())->GetConditionValue();
+				uint16_t value = this->vehicle->GetOrder(this->OrderGetSel())->GetConditionValue();
 				DropDownList list;
 				list.push_back(MakeDropDownListStringItem(STR_TRACE_RESTRICT_DISPATCH_SLOT_VEH, ODCS_VEH, false));
 				list.push_back(MakeDropDownListStringItem(STR_TRACE_RESTRICT_DISPATCH_SLOT_NEXT, ODCS_NEXT, false));
@@ -5696,12 +3286,12 @@ public:
 			case WID_O_COND_SCHED_VALUE: {
 				DropDownList list;
 
-				const Order *order = OrderAt(this->OrderGetSel());
+				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
 				const DispatchSchedule *ds = nullptr;
 				uint16_t slot_flags = 0;
 				uint schedule_index = order->GetConditionDispatchScheduleID();
-				if (schedule_index < this->Target()->GetScheduledDispatchScheduleCount()) {
-					ds = &(this->Target()->GetDispatchScheduleByIndex(schedule_index));
+				if (schedule_index < this->vehicle->orders->GetScheduledDispatchScheduleCount()) {
+					ds = &(this->vehicle->orders->GetDispatchScheduleByIndex(schedule_index));
 					for (const DispatchSlot &slot : ds->GetScheduledDispatch()) {
 						slot_flags |= slot.flags;
 					}
@@ -5746,7 +3336,7 @@ public:
 
 			case WID_O_REVERSE: {
 				VehicleOrderID sel_ord = this->OrderGetSel();
-				const Order *order = OrderAt(sel_ord);
+				const Order *order = this->vehicle->GetOrder(sel_ord);
 
 				if (order == nullptr) break;
 
@@ -5756,7 +3346,7 @@ public:
 
 			case WID_O_COND_CARGO:
 			case WID_O_COND_AUX_CARGO: {
-				uint value = OrderAt(this->OrderGetSel())->GetConditionValue();
+				uint value = this->vehicle->GetOrder(this->OrderGetSel())->GetConditionValue();
 				DropDownList list;
 				for (size_t i = 0; i < _sorted_standard_cargo_specs.size(); ++i) {
 					const CargoSpec *cs = _sorted_cargo_specs[i];
@@ -5769,7 +3359,7 @@ public:
 			case WID_O_COND_AUX_VIA: {
 				if (this->goto_type != OPOS_NONE) {
 					ResetObjectToPlace();
-				} else if (OrderAt(this->OrderGetSel())->HasConditionViaStation()) {
+				} else if (this->vehicle->GetOrder(this->OrderGetSel())->HasConditionViaStation()) {
 					this->ModifyOrder(this->OrderGetSel(), MOF_COND_VALUE_3, ORDER_NO_VIA_STATION.base());
 				} else {
 					this->OrderClick_Goto(OPOS_COND_VIA);
@@ -5787,27 +3377,26 @@ public:
 			}
 
 			case WID_O_COND_AUX_REFIT_MODE: {
-				this->ModifyOrder(this->OrderGetSel(), MOF_COND_VALUE_4, HasBit(OrderAt(this->OrderGetSel())->GetXData2(), 16) ? 0 : 1);
+				this->ModifyOrder(this->OrderGetSel(), MOF_COND_VALUE_4, HasBit(this->vehicle->GetOrder(this->OrderGetSel())->GetXData2(), 16) ? 0 : 1);
 				break;
 			}
 
 			case WID_O_TIMETABLE_VIEW:
-					this->HasVehicle() ? ShowTimetableWindow(this->vehicle)
-					                  : ShowOrderListTimetable(this->list_id);
+				ShowTimetableWindow(this->vehicle);
 				break;
 
 			case WID_O_COND_VARIABLE: {
-				const OrderConditionVariable current_ocv = OrderAt(this->OrderGetSel())->GetConditionVariable();
+				const OrderConditionVariable current_ocv = this->vehicle->GetOrder(this->OrderGetSel())->GetConditionVariable();
 				DropDownList list;
 				for (const auto &ocv : _order_conditional_variable) {
-					if (this->RefType() != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DrivingBackwards || ocv == OrderConditionVariable::DecouplePart)) {
+					if (this->vehicle->type != VehicleType::Train && (ocv == OrderConditionVariable::FreePlatforms || ocv == OrderConditionVariable::DrivingBackwards)) {
 						continue;
 					}
 					if (current_ocv != ocv) {
 						if (ocv == OrderConditionVariable::CounterValue && !_settings_client.gui.show_adv_tracerestrict_features) {
 							continue;
 						}
-						if ((ocv == OrderConditionVariable::DispatchSlot) && this->Target()->GetScheduledDispatchScheduleCount() == 0) {
+						if ((ocv == OrderConditionVariable::DispatchSlot) && this->vehicle->orders->GetScheduledDispatchScheduleCount() == 0) {
 							continue;
 						}
 					}
@@ -5818,7 +3407,7 @@ public:
 			}
 
 			case WID_O_COND_COMPARATOR: {
-				const Order *o = OrderAt(this->OrderGetSel());
+				const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
 				if (o->GetConditionVariable() == OrderConditionVariable::DispatchSlot) {
 					DropDownList list;
 
@@ -5835,8 +3424,8 @@ public:
 					const DispatchSchedule *ds = nullptr;
 					uint16_t slot_flags = 0;
 					uint schedule_index = o->GetConditionDispatchScheduleID();
-					if (schedule_index < this->Target()->GetScheduledDispatchScheduleCount()) {
-						ds = &(this->Target()->GetDispatchScheduleByIndex(schedule_index));
+					if (schedule_index < this->vehicle->orders->GetScheduledDispatchScheduleCount()) {
+						ds = &(this->vehicle->orders->GetDispatchScheduleByIndex(schedule_index));
 						for (const DispatchSlot &slot : ds->GetScheduledDispatch()) {
 							slot_flags |= slot.flags;
 						}
@@ -5875,10 +3464,6 @@ public:
 						mask = 0x3F;
 						break;
 
-					case OrderConditionVariable::DecouplePart:
-						mask = 0xFC;
-						break;
-
 					case OrderConditionVariable::VehicleInSlot:
 					case OrderConditionVariable::SlotOccupancy:
 						mask = 0x3C;
@@ -5897,16 +3482,7 @@ public:
 			}
 
 			case WID_O_COND_VALUE: {
-				const Order *order = OrderAt(this->OrderGetSel());
-				if (order != nullptr && order->IsType(OT_CONDITIONAL) && order->GetConditionVariable() == OrderConditionVariable::DecouplePart) {
-					/* Pick one of the three decouple-part values from a dropdown. */
-					DropDownList list;
-					list.push_back(MakeDropDownListStringItem(STR_ORDER_CONDITIONAL_DECOUPLE_PART_NONE, 0, false));
-					list.push_back(MakeDropDownListStringItem(STR_ORDER_CONDITIONAL_DECOUPLE_PART_FIRST, 1, false));
-					list.push_back(MakeDropDownListStringItem(STR_ORDER_CONDITIONAL_DECOUPLE_PART_SECOND, 2, false));
-					ShowDropDownList(this, std::move(list), order->GetConditionValue(), WID_O_COND_VALUE, 0, DropDownOptions{}, DDSF_SHARED);
-					break;
-				}
+				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
 				uint value;
 				CharSetFilter charset_filter = CS_NUMERAL;
 				switch (order->GetConditionVariable()) {
@@ -5933,7 +3509,7 @@ public:
 						value = order->GetConditionValue();
 						break;
 				}
-				if (order->GetConditionVariable() == OrderConditionVariable::MaxSpeed) value = ConvertSpeedToDisplaySpeed(value, this->RefType());
+				if (order->GetConditionVariable() == OrderConditionVariable::MaxSpeed) value = ConvertSpeedToDisplaySpeed(value, this->vehicle->type);
 				if (order->GetConditionVariable() == OrderConditionVariable::CargoWaitingAmount) value = ConvertCargoQuantityToDisplayQuantity(static_cast<CargoType>(order->GetConditionValue()), value);
 				this->query_text_widget = widget;
 				ShowQueryString(GetString(STR_JUST_INT, value), STR_ORDER_CONDITIONAL_VALUE_CAPT, (order->GetConditionVariable() == OrderConditionVariable::CargoWaitingAmount) ? 12 : 6, this, charset_filter, {});
@@ -5957,55 +3533,19 @@ public:
 				break;
 
 			case WID_O_SLOT: {
-				const Order *o = OrderAt(this->OrderGetSel());
+				const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
 				if (o == nullptr) return;
-				if (o->IsType(OT_WAIT_COUPLE)) {
-					DropDownList list;
-					int selected = o->HasWaitCoupleStation() ? (int)o->GetWaitCoupleStation().base() + 1 : 0;
-					list.push_back(MakeDropDownListStringItem(STR_ORDER_WAIT_COUPLE_HERE, 0, false));
-					const OrderList *schedule = this->HasVehicle() ? this->vehicle->orders : this->order_list;
-					if (schedule == nullptr) return;
-					for (const Order *candidate : schedule->Orders()) {
-						if (!candidate->IsType(OT_GOTO_STATION) || !Station::IsValidID(candidate->GetDestination().ToStationID())) continue;
-						StationID station = candidate->GetDestination().ToStationID();
-						list.push_back(MakeDropDownListStringItem(GetString(STR_STATION_NAME, station), (int)station.base() + 1, false));
-					}
-					ShowDropDownList(this, std::move(list), selected, WID_O_SLOT, 0, DropDownOption::Filterable, DDSF_SHARED);
-					break;
-				}
-				if (o->IsExecuteScheduleOrder()) {
-					DropDownList list;
-					int selected = -1;
-					OrderListID current = o->GetDestination().ToOrderListID();
-					int item_index = 0;
-					list.push_back(MakeDropDownListStringItem(STR_TRACE_RESTRICT_VARIABLE_UNDEFINED, OrderListID::Invalid().base(), false));
-					if (current == OrderListID::Invalid()) selected = item_index;
-					item_index++;
-					for (const ScheduleTreeEntry &entry : GetVisibleScheduleTree(this->TargetOwner())) {
-						const OrderList *ol = entry.order_list;
-						std::string name = ol->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1) : ol->GetName();
-						if (ol->IsScheduleGroup()) {
-							list.push_back(std::make_unique<DropDownUnselectable<DropDownIcon<DropDownListIndentStringItem>>>(SPR_COMPANY_ICON, GetCompanyPalette(ol->GetCompany()), entry.depth, std::move(name), ol->index.base(), false));
-						} else {
-							list.push_back(std::make_unique<DropDownIcon<DropDownListIndentStringItem>>(SPR_COMPANY_ICON, GetCompanyPalette(ol->GetCompany()), entry.depth, std::move(name), ol->index.base(), false));
-						}
-						if (ol->index == current) selected = item_index;
-						item_index++;
-					}
-					ShowDropDownList(this, std::move(list), selected, WID_O_SLOT, 0, DropDownOption::Filterable, DDSF_SHARED);
-					break;
-				}
 				if (o->IsType(OT_SLOT_GROUP)) {
 					int selected;
-					TraceRestrictSlotGroupID value = OrderAt(this->OrderGetSel())->GetDestination().ToSlotGroupID();
-					DropDownList list = GetSlotGroupDropDownList(this->TargetOwner(), value, selected, this->RefType());
+					TraceRestrictSlotGroupID value = this->vehicle->GetOrder(this->OrderGetSel())->GetDestination().ToSlotGroupID();
+					DropDownList list = GetSlotGroupDropDownList(this->vehicle->owner, value, selected, this->vehicle->type);
 					if (!list.empty()) ShowDropDownList(this, std::move(list), selected, WID_O_SLOT, 0, DropDownOptions{}, DDSF_SHARED);
 					break;
 				}
 
 				int selected;
-				TraceRestrictSlotID value = OrderAt(this->OrderGetSel())->GetDestination().ToSlotID();
-				DropDownList list = GetSlotDropDownList(this->TargetOwner(), value, selected, this->RefType(), false);
+				TraceRestrictSlotID value = this->vehicle->GetOrder(this->OrderGetSel())->GetDestination().ToSlotID();
+				DropDownList list = GetSlotDropDownList(this->vehicle->owner, value, selected, this->vehicle->type, false);
 				if (!list.empty()) ShowDropDownList(this, std::move(list), selected, WID_O_SLOT, 0, DropDownOptions{}, DDSF_SHARED);
 				break;
 			}
@@ -6015,28 +3555,28 @@ public:
 				list.push_back(MakeDropDownListStringItem(STR_TRACE_RESTRICT_COUNTER_INCREASE, 0, false));
 				list.push_back(MakeDropDownListStringItem(STR_TRACE_RESTRICT_COUNTER_DECREASE, 1, false));
 				list.push_back(MakeDropDownListStringItem(STR_TRACE_RESTRICT_COUNTER_SET, 2, false));
-				int selected = OrderAt(this->OrderGetSel())->GetCounterOperation();
+				int selected = this->vehicle->GetOrder(this->OrderGetSel())->GetCounterOperation();
 				ShowDropDownList(this, std::move(list), selected, WID_O_COUNTER_OP, 0, DropDownOptions{}, DDSF_SHARED);
 				break;
 			}
 
 			case WID_O_CHANGE_COUNTER: {
 				int selected;
-				TraceRestrictCounterID value = OrderAt(this->OrderGetSel())->GetDestination().ToCounterID();
-				DropDownList list = GetCounterDropDownList(this->TargetOwner(), value, selected);
+				TraceRestrictCounterID value = this->vehicle->GetOrder(this->OrderGetSel())->GetDestination().ToCounterID();
+				DropDownList list = GetCounterDropDownList(this->vehicle->owner, value, selected);
 				if (!list.empty()) ShowDropDownList(this, std::move(list), selected, WID_O_CHANGE_COUNTER, 0, DropDownOptions{}, DDSF_SHARED);
 				break;
 			}
 
 			case WID_O_COUNTER_VALUE: {
-				const Order *order = OrderAt(this->OrderGetSel());
+				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
 				this->query_text_widget = widget;
 				ShowQueryString(GetString(STR_JUST_INT, order->GetXData()), STR_TRACE_RESTRICT_VALUE_CAPTION, 10, this, CS_NUMERAL, {});
 				break;
 			}
 
 			case WID_O_TEXT_LABEL: {
-				const Order *order = OrderAt(this->OrderGetSel());
+				const Order *order = this->vehicle->GetOrder(this->OrderGetSel());
 				this->query_text_widget = widget;
 				ShowQueryString(order->GetLabelText(), STR_ORDER_LABEL_TEXT_CAPTION, NUM_CARGO - 1, this, CS_ALPHANUMERAL, {});
 				break;
@@ -6046,77 +3586,8 @@ public:
 				DropDownList list;
 				list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_DEPARTURES_SHOW_AS_VIA, OLST_DEPARTURES_VIA, false));
 				list.push_back(MakeDropDownListStringItem(STR_ORDER_LABEL_DEPARTURES_REMOVE_VIA, OLST_DEPARTURES_REMOVE_VIA, false));
-				int selected = OrderAt(this->OrderGetSel())->GetLabelSubType();
+				int selected = this->vehicle->GetOrder(this->OrderGetSel())->GetLabelSubType();
 				ShowDropDownList(this, std::move(list), selected, WID_O_DEPARTURE_VIA_TYPE, 0, DropDownOptions{}, DDSF_SHARED);
-				break;
-			}
-
-			case WID_O_COUPLE_SLOT: {
-				const Order *order = OrderAt(this->OrderGetSel());
-				int selected = (order != nullptr && order->IsType(OT_GOTO_COUPLE) && order->HasCoupleSlot()) ? (int)order->GetCoupleSlot().base() : (int)INVALID_TRACE_RESTRICT_SLOT_ID.base();
-				DropDownList list;
-				list.push_back(MakeDropDownListStringItem(STR_ORDER_COUPLE_ANY_SLOT, (int)INVALID_TRACE_RESTRICT_SLOT_ID.base(), false));
-				int slot_selected = (order != nullptr && order->IsType(OT_GOTO_COUPLE) && order->HasCoupleSlot()) ? (int)order->GetCoupleSlot().base() : -1;
-				DropDownList slot_list = GetSlotDropDownList(this->TargetOwner(), TraceRestrictSlotID{(uint16_t)slot_selected}, slot_selected, this->RefType(), false);
-				list.insert(list.end(), std::make_move_iterator(slot_list.begin()), std::make_move_iterator(slot_list.end()));
-				ShowDropDownList(this, std::move(list), selected, WID_O_COUPLE_SLOT, 0, DropDownOptions{}, DDSF_SHARED);
-				break;
-			}
-
-			case WID_O_COUPLE_STATION: {
-				const Order *sel_order = OrderAt(this->OrderGetSel());
-				if (this->goto_type != OPOS_NONE) {
-					/* Cancel station picking. */
-					ResetObjectToPlace();
-				} else if (sel_order != nullptr && sel_order->IsType(OT_GOTO_COUPLE) && sel_order->HasCoupleStation()) {
-					/* Restriction active: second click clears it. */
-					this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_STATION, 0);
-				} else {
-					/* Start picking a station on the map. */
-					this->OrderClick_Goto(OPOS_COUPLE_STATION);
-				}
-				break;
-			}
-
-			case WID_O_COUPLE_MORE:
-				ShowCoupleOptionsWindow(this, this->CriteriaTarget(), this->OrderGetSel());
-				break;
-
-			case WID_O_COUPLE_DIAGNOSTICS:
-				this->ShowCoupleDiagnostics();
-				break;
-
-			case WID_O_DECOUPLE_VALUE: {
-				const Order *order = OrderAt(this->OrderGetSel());
-				this->query_text_widget = widget;
-				ShowQueryString(GetString(STR_JUST_INT, order->GetNumDecouple()), STR_ORDER_DECOUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
-				break;
-			}
-
-			case WID_O_DECOUPLE_PREVIEW:
-				this->SelectDecoupleCut(pt);
-				break;
-
-			case WID_O_ORDERS_FIRST:
-			case WID_O_ORDERS_SECOND: {
-				/* Clicking anywhere opens the dropdown; the selection is only changed there. */
-				const Order *order = OrderAt(this->OrderGetSel());
-				int selected = 0;
-				if (order != nullptr && order->IsType(OT_DECOUPLE)) {
-					OrderDecoupleOrdersFlags flag = (widget == WID_O_ORDERS_FIRST) ? order->GetDecoupleFirstOrdersType() : order->GetDecoupleSecondOrdersType();
-					selected = DecoupleOrdersDropdownIndex(flag);
-				}
-				bool first = widget == WID_O_ORDERS_FIRST;
-				DropDownList list;
-				for (uint i = 0; i < lengthof(_order_decouple_orders_drowdown); i++) {
-					list.push_back(MakeDropDownListCheckedItem(i == selected, _order_decouple_orders_drowdown[i], i, false));
-				}
-				if (order != nullptr && order->IsType(OT_DECOUPLE)) {
-					bool checked = first ? order->GetDecoupleFirstSameDirExit() : order->GetDecoupleSecondSameDirExit();
-					list.push_back(MakeDropDownListDividerItem());
-					list.push_back(MakeDropDownListCheckedItem(checked, STR_ORDER_DECOUPLE_SAME_DIR_EXIT, ODDI_DECOUPLE_SAME_DIR, false));
-				}
-				ShowDropDownList(this, std::move(list), selected, widget);
 				break;
 			}
 		}
@@ -6135,9 +3606,9 @@ public:
 			if (!try_value.has_value()) return;
 			uint value = *try_value;
 
-			switch (OrderAt(sel)->GetConditionVariable()) {
+			switch (this->vehicle->GetOrder(sel)->GetConditionVariable()) {
 				case OrderConditionVariable::MaxSpeed:
-					value = Clamp(ConvertDisplaySpeedToSpeed(value, this->RefType()), 0, 2047);
+					value = Clamp(ConvertDisplaySpeedToSpeed(value, this->vehicle->type), 0, 2047);
 					break;
 
 				case OrderConditionVariable::Percent:
@@ -6149,7 +3620,7 @@ public:
 					break;
 
 				case OrderConditionVariable::CargoWaitingAmount:
-					value = Clamp(ConvertDisplayQuantityToCargoQuantity(static_cast<CargoType>(OrderAt(sel)->GetConditionValue()), value), 0, 0xFFFF);
+					value = Clamp(ConvertDisplayQuantityToCargoQuantity(static_cast<CargoType>(this->vehicle->GetOrder(sel)->GetConditionValue()), value), 0, 0xFFFF);
 					break;
 
 				case OrderConditionVariable::CounterValue:
@@ -6179,28 +3650,20 @@ public:
 			this->ModifyOrder(sel, MOF_COUNTER_VALUE, value);
 		}
 
-		if (this->query_text_widget == WID_O_DECOUPLE_VALUE && str.has_value() && !str->empty()) {
-			auto try_value = ParseInteger<uint>(*str);
-			if (!try_value.has_value()) return;
-			this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_VALUE, Clamp<uint>(*try_value, 0, 127));
-		}
-
 		if (this->query_text_widget == WID_O_ADD_VEH_GROUP) {
 			Command<Commands::CreateGroupFromList>::Post(STR_ERROR_GROUP_CAN_T_CREATE, VehicleListIdentifier(VehicleListType::SingleVehicle, this->vehicle->type, this->vehicle->owner, this->vehicle->index), CargoFilterCriteria::CF_ANY, str.has_value() ? *str : std::string{});
 		}
 
 		if (this->query_text_widget == WID_O_TEXT_LABEL && str.has_value()) {
-			this->PostModify(this->OrderGetSel(), MOF_LABEL_TEXT, {}, {}, *str);
+			Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->vehicle->tile, this->vehicle->index, this->OrderGetSel(), MOF_LABEL_TEXT, {}, {}, *str);
 		}
 
 		if (!str.has_value() || str->empty()) return;
 
 		auto create_slot_counter = [&](ModifyOrderFlags mof, bool counter) {
 			using Payload = CmdPayload<Commands::ModifyOrder>;
-			OrderTargetType tt = this->TargetKind();
-			uint32_t tid = this->TargetId();
-			Payload follow_up_payload = Payload::Make(tt, tid, this->OrderGetSel(), mof, {}, {}, {});
-			TraceRestrictFollowUpCmdData follow_up{ BaseCommandContainer<Commands::ModifyOrder>((StringID)0, this->CmdTile(), std::move(follow_up_payload)) };
+			Payload follow_up_payload = Payload::Make(this->vehicle->index, this->OrderGetSel(), mof, {}, {}, {});
+			TraceRestrictFollowUpCmdData follow_up{ BaseCommandContainer<Commands::ModifyOrder>((StringID)0, this->vehicle->tile, std::move(follow_up_payload)) };
 			if (counter) {
 				TraceRestrictCreateCounterCmdData data;
 				data.name = std::move(*str);
@@ -6208,7 +3671,7 @@ public:
 				DoCommandP<Commands::CreateTracerestrictCounter>(data, STR_TRACE_RESTRICT_ERROR_COUNTER_CAN_T_CREATE, CommandCallback::CreateTraceRestrictCounter);
 			} else {
 				TraceRestrictCreateSlotCmdData data;
-				data.vehtype = this->RefType();
+				data.vehtype = this->vehicle->type;
 				data.parent = INVALID_TRACE_RESTRICT_SLOT_GROUP;
 				data.name = std::move(*str);
 				data.max_occupancy = TRACE_RESTRICT_SLOT_DEFAULT_MAX_OCCUPANCY;
@@ -6236,10 +3699,6 @@ public:
 				create_slot_counter(MOF_SLOT, false);
 				break;
 
-			case WID_O_COUPLE_SLOT:
-				create_slot_counter(MOF_COUPLE_SLOT, false);
-				break;
-
 			case WID_O_CHANGE_COUNTER:
 				create_slot_counter(MOF_COUNTER_ID, true);
 				break;
@@ -6257,42 +3716,10 @@ public:
 				break;
 
 			case WID_O_FULL_LOAD:
-				switch (index) {
-					case RVDD_TRANSPORT:
-						/* RoRo: open the window with the road vehicle transport selection criteria. */
-						HideDropDownMenu(this);
-						ShowRVTransportWindow(this, this->CriteriaTarget(), this->OrderGetSel());
-						return;
-					case RVDD_LOAD_ANY:
-						this->OrderClick_RVLoad(ORVTF_LOAD);
-						return;
-					case RVDD_LOAD_MATCH:
-						this->OrderClick_RVLoad(ORVTF_LOAD | ORVTF_MATCH_DEST);
-						return;
-					case RVDD_LOAD_WAIT: {
-						const Order *o = OrderAt(this->OrderGetSel());
-						if (o == nullptr) return;
-						uint8_t flags = (o->GetRVTransportFlags() | ORVTF_LOAD) ^ ORVTF_WAIT;
-						this->OrderClick_RVLoad(flags);
-						return;
-					}
-					default:
-						break;
-				}
 				this->OrderClick_FullLoad(static_cast<OrderLoadType>(index));
 				break;
 
 			case WID_O_UNLOAD:
-				switch (index) {
-					case RVDD_UNLOAD:
-						this->OrderClick_RVUnload(ORVTF_UNLOAD);
-						return;
-					case RVDD_UNLOAD_ALL:
-						this->OrderClick_RVUnload(ORVTF_UNLOAD | ORVTF_UNLOAD_ALL);
-						return;
-					default:
-						break;
-				}
 				this->OrderClick_Unload(static_cast<OrderUnloadType>(index));
 				break;
 
@@ -6304,34 +3731,13 @@ public:
 					case ODDI_SHARE:                this->OrderClick_Goto(OPOS_SHARE); break;
 					case ODDI_INSERT_FROM_VEHICLE:  this->OrderClick_Goto(OPOS_INSERT_FROM_VEHICLE); break;
 					case ODDI_TRY_ACQUIRE_SLOT:     this->OrderClick_TryAcquireSlot(); break;
-					case ODDI_EXECUTE_SCHEDULE:     this->OrderClick_ExecuteSchedule(); break;
 					case ODDI_RELEASE_SLOT:         this->OrderClick_ReleaseSlot(); break;
 					case ODDI_RELEASE_SLOT_GROUP:   this->OrderClick_ReleaseSlotGroup(); break;
 					case ODDI_CHANGE_COUNTER:       this->OrderClick_ChangeCounter(); break;
 					case ODDI_LABEL_TEXT:           this->OrderClick_TextLabel(); break;
 					case ODDI_LABEL_DEPARTURES_VIA: this->OrderClick_Goto(OPOS_DEPARTURE_VIA); break;
-					case ODDI_WAIT_FOR_COUPLE:       this->OrderClick_WaitForCouple(); break;
-					case ODDI_GO_TO_COUPLE:          this->OrderClick_Couple(); break;
 					default: NOT_REACHED();
 				}
-				break;
-
-			case WID_O_ORDERS_FIRST:
-				if (index == ODDI_DECOUPLE_SAME_DIR) {
-					const Order *o = OrderAt(this->OrderGetSel());
-					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_FIRST_SAME_DIR, o->GetDecoupleFirstSameDirExit() ? 0 : 1);
-					break;
-				}
-				this->OrderClick_OrdersFirst(index);
-				break;
-
-			case WID_O_ORDERS_SECOND:
-				if (index == ODDI_DECOUPLE_SAME_DIR) {
-					const Order *o = OrderAt(this->OrderGetSel());
-					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_SECOND_SAME_DIR, o->GetDecoupleSecondSameDirExit() ? 0 : 1);
-					break;
-				}
-				this->OrderClick_OrdersSecond(index);
 				break;
 
 			case WID_O_DEPOT_ACTION:
@@ -6347,7 +3753,7 @@ public:
 				break;
 
 			case WID_O_COND_COMPARATOR: {
-				const Order *o = OrderAt(this->OrderGetSel());
+				const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
 				if (o == nullptr) return;
 				if (o->GetConditionVariable() == OrderConditionVariable::DispatchSlot) {
 					this->ModifyOrder(this->OrderGetSel(), MOF_COND_COMPARATOR, index >> 16);
@@ -6368,8 +3774,8 @@ public:
 						const DispatchSchedule *ds = nullptr;
 						uint16_t slot_flags = 0;
 						uint schedule_index = o->GetConditionDispatchScheduleID();
-						if (schedule_index < this->Target()->GetScheduledDispatchScheduleCount()) {
-							ds = &(this->Target()->GetDispatchScheduleByIndex(schedule_index));
+						if (schedule_index < this->vehicle->orders->GetScheduledDispatchScheduleCount()) {
+							ds = &(this->vehicle->orders->GetDispatchScheduleByIndex(schedule_index));
 							for (const DispatchSlot &slot : ds->GetScheduledDispatch()) {
 								slot_flags |= slot.flags;
 							}
@@ -6392,10 +3798,6 @@ public:
 			}
 
 			case WID_O_COND_CARGO:
-				this->ModifyOrder(this->OrderGetSel(), MOF_COND_VALUE, index);
-				break;
-
-			case WID_O_COND_VALUE:
 				this->ModifyOrder(this->OrderGetSel(), MOF_COND_VALUE, index);
 				break;
 
@@ -6441,7 +3843,7 @@ public:
 				break;
 
 			case WID_O_COND_SCHED_VALUE: {
-				const Order *o = OrderAt(this->OrderGetSel());
+				const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
 				if (o == nullptr) return;
 				if (o->GetConditionVariable() == OrderConditionVariable::DispatchSlot) {
 					switch (index >> 16) {
@@ -6458,7 +3860,7 @@ public:
 			}
 
 			case WID_O_COND_SCHED_TEST: {
-				const Order *o = OrderAt(this->OrderGetSel());
+				const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
 				if (o == nullptr) return;
 				const uint16_t mask = GetBitMaskSC<uint16_t>(ODCB_SRC_START, ODCB_SRC_COUNT);
 				uint16_t value = (o->GetConditionValue() & ~mask);
@@ -6468,16 +3870,8 @@ public:
 			}
 
 			case WID_O_SLOT: {
-				const Order *o = OrderAt(this->OrderGetSel());
+				const Order *o = this->vehicle->GetOrder(this->OrderGetSel());
 				if (o == nullptr) return;
-				if (o->IsType(OT_WAIT_COUPLE)) {
-					this->ModifyOrder(this->OrderGetSel(), MOF_WAIT_COUPLE_STATION, index);
-					break;
-				}
-				if (o->IsExecuteScheduleOrder()) {
-					this->ModifyOrder(this->OrderGetSel(), MOF_EXECUTE_SCHEDULE, index);
-					break;
-				}
 				if (o->IsType(OT_SLOT_GROUP)) {
 					TraceRestrictRecordRecentSlotGroup(TraceRestrictSlotGroupID(index));
 					this->ModifyOrder(this->OrderGetSel(), MOF_SLOT_GROUP, index);
@@ -6491,23 +3885,6 @@ public:
 				}
 				TraceRestrictRecordRecentSlot(TraceRestrictSlotID(index));
 				this->ModifyOrder(this->OrderGetSel(), MOF_SLOT, index);
-				break;
-			}
-
-			case WID_O_COUPLE_SLOT: {
-				const Order *o = OrderAt(this->OrderGetSel());
-				if (o == nullptr) return;
-				if (index == NEW_TRACE_RESTRICT_SLOT_ID) {
-					this->query_text_widget = widget;
-					ShowSlotCreationQueryString(*this);
-					break;
-				}
-				if (index == (int)INVALID_TRACE_RESTRICT_SLOT_ID.base()) {
-					this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_SLOT, INVALID_TRACE_RESTRICT_SLOT_ID.base());
-					break;
-				}
-				TraceRestrictRecordRecentSlot(TraceRestrictSlotID(index));
-				this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_SLOT, index);
 				break;
 			}
 
@@ -6530,8 +3907,6 @@ public:
 				break;
 
 			case WID_O_MGMT_LIST_BTN:
-				/* The whole list-management dropdown needs an executing vehicle. */
-				if (!this->HasVehicle()) break;
 				switch (index) {
 					case 0: this->OrderClick_ReverseOrderList(ReverseOrderOperation::Reverse); break;
 					case 1: this->OrderClick_ReverseOrderList(ReverseOrderOperation::AppendReversed); break;
@@ -6560,65 +3935,9 @@ public:
 					this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRAVEL_DIR, index & 0xFF);
 					break;
 				}
-				if (index == 0x800) {
-					const Order *order = OrderAt(this->OrderGetSel());
-					if (order == nullptr || !order->IsType(OT_GOTO_COUPLE)) break;
-					DropDownList list;
-					int selected = 0x10000;
-					auto none_item = MakeDropDownListCheckedItem(!order->HasCoupleCheckPoint(), STR_ORDER_COUPLE_CHECK_NONE, 0x10000, false);
-					none_item->colour_flags.Set(ExtendedTextColourFlag::Forced);
-					list.push_back(std::move(none_item));
-					for (VehicleOrderID i = 0; i < this->OrderGetSel(); ++i) {
-						const Order *point = OrderAt(i);
-						if (point == nullptr || (!point->IsType(OT_GOTO_STATION) && !point->IsType(OT_GOTO_WAYPOINT))) continue;
-						const StationID station = point->GetDestination().ToStationID();
-						const int result = 0x10001 + station.base();
-						const bool checked = order->HasCoupleCheckPoint() && order->GetCoupleCheckPoint() == station;
-						if (checked) selected = result;
-						std::string name = GetString(point->IsType(OT_GOTO_WAYPOINT) ? STR_WAYPOINT_NAME : STR_STATION_NAME, station);
-						auto item = MakeDropDownListCheckedItem(checked, GetString(STR_ORDER_COUPLE_CHECK_ITEM, GetString(STR_ORDER_INDEX, i + 1), name), result, false);
-						/* Embedded station/string colours must not hide text on the selected background. */
-						item->colour_flags.Set(ExtendedTextColourFlag::Forced);
-						list.push_back(std::move(item));
-					}
-					ShowDropDownList(this, std::move(list), selected, widget, 0, {DropDownOption::Filterable, DropDownOption::ClickOnly}, DDSF_SHARED);
-					break;
-				}
-				if (index >= 0x10000 && index < 0x20000) {
-					const Order *order = OrderAt(this->OrderGetSel());
-					if (order == nullptr || !order->IsType(OT_GOTO_COUPLE)) break;
-					/* Keep stable destination IDs while the list is open, and recheck eligibility
-					 * after edits from another window or a network client. */
-					const uint32_t value = index - 0x10000;
-					bool valid = value == 0;
-					for (VehicleOrderID i = 0; !valid && i < this->OrderGetSel(); ++i) {
-						const Order *point = OrderAt(i);
-						valid = point != nullptr && (point->IsType(OT_GOTO_STATION) || point->IsType(OT_GOTO_WAYPOINT)) && point->GetDestination().base() + 1 == value;
-					}
-					if (valid) this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_CHECK_POINT, value);
-					break;
-				}
-				if (index == RVDD_RV_WAIT || index == RVDD_RV_UNLOAD) {
-					/* RoRo: toggle a road vehicle's own "wait to be transported" / "be unloaded here". The
-					 * two are mutually exclusive - a vehicle cannot wait to be taken and be put down at the
-					 * same station - so switching one on switches the other off. Clicking the one that is
-					 * already set still turns it off again. */
-					const Order *o = OrderAt(this->OrderGetSel());
-					if (o == nullptr) break;
-					const bool wait = (index == RVDD_RV_WAIT);
-					const uint8_t bit = wait ? ORVTF_OWN_WAIT : ORVTF_OWN_UNLOAD;
-					const uint8_t other = wait ? ORVTF_OWN_UNLOAD : ORVTF_OWN_WAIT;
-					uint8_t flags = o->GetRVTransportFlags();
-					if ((flags & bit) != 0) {
-						flags &= ~bit;
-					} else {
-						flags = (uint8_t)((flags & ~other) | bit);
-					}
-					if (flags != o->GetRVTransportFlags()) this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRANSPORT, flags);
-					break;				}
 				switch (index) {
 					case 0:
-						this->OrderClick_Duplicate();
+						Command<Commands::DuplicateOrder>::Post(STR_ERROR_CAN_T_INSERT_NEW_ORDER, this->vehicle->tile, this->vehicle->index, this->OrderGetSel());
 						break;
 
 					case 1:
@@ -6626,29 +3945,11 @@ public:
 						break;
 
 					case 0x400:
-						if (!this->HasVehicle()) break;
 						ShowSaveLoadDialog(AbstractFileType::Orderlist, SaveLoadOperation::Load, FiosOrderListInfo(this->GetVehicle(), this->OrderGetSel()));
 						break;
 
 					case 0x401:
-						if (!this->HasVehicle()) break;
 						ShowSaveLoadDialog(AbstractFileType::Orderlist, SaveLoadOperation::Load, FiosOrderListInfo(this->GetVehicle(), this->OrderGetSel(), true));
-						break;
-
-					case 0x500:
-						{
-							const Order *dec_order = OrderAt(this->OrderGetSel());
-							if (dec_order == nullptr) break;
-							this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE, dec_order->GetDecouple() == ODF_DECOUPLE ? ODF_NOTHING : ODF_DECOUPLE);
-						}
-						break;
-
-					case 0x600:
-						{
-							const Order *cpl_order = OrderAt(this->OrderGetSel());
-							if (cpl_order == nullptr || !cpl_order->IsType(OT_GOTO_COUPLE)) break;
-							this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_USE_WAITING_SCHEDULE, cpl_order->GetCoupleUseWaitingSchedule() ? 0 : 1);
-						}
 						break;
 
 					default:
@@ -6665,8 +3966,8 @@ public:
 				VehicleOrderID from_order = this->OrderGetSel();
 				VehicleOrderID to_order = this->GetOrderFromPt(pt.y);
 
-				if (!(from_order == to_order || from_order == INVALID_VEH_ORDER_ID || from_order > NumOrders() || to_order == INVALID_VEH_ORDER_ID || to_order > NumOrders()) &&
-						this->PostMove(from_order, to_order, 1)) {
+				if (!(from_order == to_order || from_order == INVALID_VEH_ORDER_ID || from_order > this->vehicle->GetNumOrders() || to_order == INVALID_VEH_ORDER_ID || to_order > this->vehicle->GetNumOrders()) &&
+						Command<Commands::MoveOrder>::Post(STR_ERROR_CAN_T_MOVE_THIS_ORDER, this->vehicle->tile, this->vehicle->index, from_order, to_order, 1)) {
 					this->selected_order = -1;
 					this->UpdateButtonState();
 				}
@@ -6679,12 +3980,6 @@ public:
 
 			case WID_O_STOP_SHARING:
 				this->OrderClick_StopSharing();
-				break;
-
-			case WID_O_EXIT_EXECUTE:
-				if (this->HasVehicle() && this->vehicle->IsExecutingSchedule()) {
-					Command<Commands::ExitExecuteSchedule>::Post(STR_ERROR_CAN_T_EXIT_EXECUTE_SCHEDULE, this->vehicle->tile, this->vehicle->index);
-				}
 				break;
 		}
 
@@ -6699,7 +3994,7 @@ public:
 
 	EventState OnHotkey(int hotkey) override
 	{
-		if (!IsLocalTarget()) return EventState::NotHandled;
+		if (this->vehicle->owner != _local_company) return EventState::NotHandled;
 
 		switch (hotkey) {
 			case OHK_SKIP:           this->OrderClick_Skip(); break;
@@ -6726,7 +4021,7 @@ public:
 	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override
 	{
 		if (this->goto_type == OPOS_GOTO) {
-			const Order cmd = this->HasVehicle() ? GetOrderCmdFromTile(this->vehicle, tile) : GetOrderCmdFromTileStandalone(tile);
+			const Order cmd = GetOrderCmdFromTile(this->vehicle, tile);
 			if (cmd.IsType(OT_NOTHING)) return;
 
 			if (this->InsertNewOrder(cmd)) {
@@ -6743,25 +4038,8 @@ public:
 					const Industry *in = Industry::GetByTile(tile);
 					st = in->neutral_station;
 				}
-				if (st != nullptr && (this->HasVehicle() ? IsInfraUsageAllowed(this->vehicle->type, this->vehicle->owner, st->owner) : true)) {
+				if (st != nullptr && IsInfraUsageAllowed(this->vehicle->type, this->vehicle->owner, st->owner)) {
 					if (this->ModifyOrder(this->OrderGetSel(), (this->goto_type == OPOS_COND_VIA ? MOF_COND_VALUE_3 : MOF_COND_STATION_ID), st->index.base())) {
-						ResetObjectToPlace();
-					}
-				}
-			}
-		} else if (this->goto_type == OPOS_COUPLE_STATION) {
-			if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry)) {
-				const Station *st = nullptr;
-
-				if (IsTileType(tile, TileType::Station)) {
-					st = Station::GetByTile(tile);
-				} else {
-					const Industry *in = Industry::GetByTile(tile);
-					st = in->neutral_station;
-				}
-				if (st != nullptr && st->train_station.tile != INVALID_TILE && (this->HasVehicle() ? IsInfraUsageAllowed(this->vehicle->type, this->vehicle->owner, st->owner) : true)) {
-					/* Encoded as station ID + 1; 0 clears the restriction. */
-					if (this->ModifyOrder(this->OrderGetSel(), MOF_COUPLE_STATION, st->index.base() + 1)) {
 						ResetObjectToPlace();
 					}
 				}
@@ -6776,7 +4054,7 @@ public:
 					const Industry *in = Industry::GetByTile(tile);
 					st = in->neutral_station;
 				}
-				if (st != nullptr && (this->HasVehicle() ? IsInfraUsageAllowed(this->vehicle->type, this->vehicle->owner, st->owner) : true)) {
+				if (st != nullptr && IsInfraUsageAllowed(this->vehicle->type, this->vehicle->owner, st->owner)) {
 					Order order;
 					order.MakeLabel(OLST_DEPARTURES_VIA);
 					order.SetDestination(st->index);
@@ -6791,10 +4069,6 @@ public:
 
 	bool OnVehicleSelect(const Vehicle *v) override
 	{
-		if (!this->HasVehicle()) {
-			/* Standalone lists do not clone orders from vehicles implicitly. */
-			return false;
-		}
 		if (this->goto_type == OPOS_INSERT_FROM_VEHICLE) {
 			if (Command<Commands::InsertOrdersFromVeh>::Post(STR_ERROR_CAN_T_COPY_ORDER_LIST, CommandCallback::InsertOrdersFromVehicle, this->vehicle->tile, this->vehicle->index, v->index, this->OrderGetSel())) {
 				this->selected_order = -1;
@@ -6809,7 +4083,7 @@ public:
 		 * Obviously if you press CTRL on a non-empty orders vehicle you know what you are doing
 		 * TODO: give a warning message */
 		bool share_order = _ctrl_pressed || this->goto_type == OPOS_SHARE;
-		if (NumOrders() != 0 && !share_order) return false;
+		if (this->vehicle->GetNumOrders() != 0 && !share_order) return false;
 
 		if (Command<Commands::CloneOrder>::Post(share_order ? STR_ERROR_CAN_T_SHARE_ORDER_LIST : STR_ERROR_CAN_T_COPY_ORDER_LIST,
 				this->vehicle->tile, share_order ? CO_SHARE : CO_COPY, this->vehicle->index, v->index)) {
@@ -6830,7 +4104,7 @@ public:
 	bool OnVehicleSelect(VehicleList::const_iterator begin, VehicleList::const_iterator end) override
 	{
 		bool share_order = _ctrl_pressed || this->goto_type == OPOS_SHARE;
-		if (NumOrders() != 0 && !share_order) return false;
+		if (this->vehicle->GetNumOrders() != 0 && !share_order) return false;
 
 		if (!share_order) {
 			/* If CTRL is not pressed: If all the vehicles in this list have the same orders, then copy orders */
@@ -6862,7 +4136,6 @@ public:
 		this->SetWidgetDirty(WID_O_COND_AUX_VIA);
 		this->SetWidgetDirty(WID_O_COND_AUX_STATION);
 		this->SetWidgetDirty(WID_O_MGMT_BTN);
-		this->SetWidgetDirty(WID_O_COUPLE_STATION);
 
 		/* Remove drag highlighting if it exists. */
 		if (this->order_over != INVALID_VEH_ORDER_ID) {
@@ -6877,7 +4150,7 @@ public:
 			/* An order is dragged.. */
 			VehicleOrderID from_order = this->OrderGetSel();
 			VehicleOrderID to_order = this->GetOrderFromPt(pt.y);
-			uint num_orders = NumOrders();
+			uint num_orders = this->vehicle->GetNumOrders();
 
 			if (from_order != INVALID_VEH_ORDER_ID && from_order <= num_orders) {
 				if (to_order != INVALID_VEH_ORDER_ID && to_order <= num_orders) { // ..over an existing order.
@@ -6895,16 +4168,13 @@ public:
 	{
 		/* Update the scroll bar */
 		this->vscroll->SetCapacityFromWidget(this, WID_O_ORDER_LIST, WidgetDimensions::scaled.framerect.Vertical());
-		if (this->decouple_scroll != nullptr && this->current_decouple_plane != SZSP_NONE) {
-			this->decouple_scroll->SetCapacity(this->GetWidget<NWidgetBase>(WID_O_DECOUPLE_PREVIEW)->current_x - WidgetDimensions::scaled.framerect.Horizontal());
-		}
 	}
 
 	bool OnTooltip(Point pt, WidgetID widget, TooltipCloseCondition close_cond) override
 	{
 		switch (widget) {
 			case WID_O_SHARED_ORDER_LIST: {
-				if (IsLocalTarget()) {
+				if (this->vehicle->owner == _local_company) {
 					GuiShowTooltips(this, GetEncodedString(STR_ORDERS_VEH_WITH_SHARED_ORDERS_LIST_TOOLTIP_EXTRA, STR_ORDERS_VEH_WITH_SHARED_ORDERS_LIST_TOOLTIP), close_cond);
 					return true;
 				}
@@ -6916,7 +4186,7 @@ public:
 			case WID_O_COND_COUNTER:
 			case WID_O_SLOT:
 			case WID_O_CHANGE_COUNTER:
-				GuiShowTooltips(this, TraceRestrictPrepareSlotCounterSelectTooltip(this->GetWidget<NWidgetCore>(widget)->GetToolTip(), this->RefType()), close_cond);
+				GuiShowTooltips(this, TraceRestrictPrepareSlotCounterSelectTooltip(this->GetWidget<NWidgetCore>(widget)->GetToolTip(), this->vehicle->type), close_cond);
 				return true;
 
 			default:
@@ -6931,7 +4201,7 @@ public:
 
 	void ScrollTowardsOrder(VehicleOrderID order_pos)
 	{
-		this->vscroll->SetCount(NumOrders() + 1);
+		this->vscroll->SetCount(this->vehicle->GetNumOrders() + 1);
 		this->vscroll->ScrollTowards(order_pos);
 		this->SetDirty();
 	}
@@ -6955,209 +4225,6 @@ public:
 		Hotkey(0, "close", OHK_CLOSE),
 	}};
 };
-
-/** Nested widget definition for the decouple schedule picker popup. */
-static constexpr NWidgetPart _nested_decouple_schedule_picker_widgets[] = {
-	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_CLOSEBOX, Colours::Grey),
-		NWidget(WWT_CAPTION, Colours::Grey, WID_DSP_CAPTION), SetStringTip(STR_ORDER_PICK_SCHEDULE_CAPTION, STR_NULL),
-		NWidget(WWT_SHADEBOX, Colours::Grey),
-		NWidget(WWT_STICKYBOX, Colours::Grey),
-	EndContainer(),
-
-	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_EDITBOX, Colours::Grey, WID_DSP_FILTER), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_LIST_FILTER_OSKTITLE, STR_LIST_FILTER_TOOLTIP),
-	EndContainer(),
-
-	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_PANEL, Colours::Grey),
-			NWidget(WWT_INSET, Colours::Grey, WID_DSP_LIST), SetFill(1, 1), SetPadding(2, 1, 2, 2), SetResize(1, 0), SetScrollbar(WID_DSP_SCROLL), SetToolTip(STR_ORDER_PICK_SCHEDULE_LIST_TOOLTIP),
-			EndContainer(),
-		EndContainer(),
-		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_DSP_SCROLL),
-	EndContainer(),
-};
-
-static WindowDesc _decouple_schedule_picker_desc(__FILE__, __LINE__,
-	WindowPosition::Manual, "decouple_schedule_picker", 320, 220,
-	WindowClass::DecoupleSchedulePicker, WindowClass::None,
-	WindowDefaultFlag::Construction,
-	_nested_decouple_schedule_picker_widgets
-);
-
-/**
- * Window to pick the schedule a decoupled train part adopts after decoupling.
- * Lists the same player-created, visible order lists the old attached dropdown
- * offered, in its own popup window.
- */
-struct DecoupleSchedulePickerWindow : Window {
-	OrdersWindow *orders_window = nullptr;  ///< Orders window the picked schedule is applied to; may be closed while the picker is open.
-	bool first = true;                      ///< True when picking for the first part of the train.
-	OrderDecoupleOrdersFlags orders_type = ODOF_EXECUTE_SCHEDULE; ///< Decouple orders type the picked schedule applies to.
-	Owner owner = OWNER_NONE;               ///< Owner the schedule must be visible to.
-	std::vector<OrderListID> list{};        ///< The translation table linking panel rows to their related OrderListID.
-	std::vector<uint> depths{};
-	std::set<OrderListID> collapsed{};
-	StringFilter string_filter;             ///< Filter for schedule names.
-	QueryString filter_editbox;             ///< Filter editbox.
-	Scrollbar *vscroll = nullptr;           ///< Vertical scrollbar of the list of order lists.
-
-	DecoupleSchedulePickerWindow(OrdersWindow *orders_window, bool first, OrderDecoupleOrdersFlags type, Owner owner)
-		: Window(_decouple_schedule_picker_desc), orders_window(orders_window), first(first), orders_type(type), owner(owner),
-		filter_editbox(64 * MAX_CHAR_LENGTH, 64)
-	{
-		this->CreateNestedTree();
-		this->vscroll = this->GetScrollbar(WID_DSP_SCROLL);
-		this->FinishInitNested(orders_window != nullptr ? (WindowNumber)(uint32_t)orders_window->window_number : (WindowNumber)0);
-
-		this->querystrings[WID_DSP_FILTER] = &this->filter_editbox;
-		this->filter_editbox.cancel_button = QueryString::ACTION_CLEAR;
-
-		this->RebuildList();
-	}
-
-	Point OnInitialPosition(int16_t sm_width, int16_t sm_height, int window_number) override
-	{
-		/* Open near the cursor. Prefer below-right; flip when that would go off screen. View is clamped
-		 * between the main toolbar and the status bar. */
-		int scr_top = GetMainViewTop();
-		int scr_bot = GetMainViewBottom();
-
-		Point pt;
-		pt.x = SoftClamp(_cursor.pos.x - (sm_width >> 1), 0, _screen.width - sm_width);
-		pt.y = _cursor.pos.y + 12;
-		if (pt.y + sm_height > scr_bot) pt.y = std::max(_cursor.pos.y - sm_height - 12, scr_top);
-		return pt;
-	}
-
-	void RebuildList()
-	{
-		this->list.clear();
-		this->depths.clear();
-		std::set<OrderListID> matches;
-		for (const OrderList *ol : OrderList::Iterate()) {
-			if (!ol->IsPlayerCreated() || (ol->IsScheduleGroup() ? ol->GetCompany() != this->owner : !ol->IsVisibleToCompany(this->owner))) continue;
-			if (!this->string_filter.IsEmpty()) {
-				this->string_filter.ResetState();
-				this->string_filter.AddLine(ol->GetName());
-				if (!this->string_filter.GetState()) continue;
-			}
-			matches.insert(ol->index);
-			if (ol->GetCompany() == this->owner) {
-				for (OrderListID parent = ol->GetScheduleGroup(); parent != OrderListID::Invalid();) {
-					if (!matches.insert(parent).second) break;
-					const OrderList *group = OrderList::GetIfValid(parent);
-					if (group == nullptr) break;
-					parent = group->GetScheduleGroup();
-				}
-			}
-		}
-		for (const ScheduleTreeEntry &entry : GetVisibleScheduleTree(this->owner, &matches, this->string_filter.IsEmpty() ? &this->collapsed : nullptr)) {
-			this->list.push_back(entry.order_list->index);
-			this->depths.push_back(entry.depth);
-		}
-		this->vscroll->SetCount((uint)this->list.size());
-		this->SetDirty();
-	}
-
-	void UpdateWidgetSize(WidgetID widget, [[maybe_unused]] Dimension &size, [[maybe_unused]] const Dimension &padding, Dimension &fill, Dimension &resize) override
-	{
-		switch (widget) {
-			case WID_DSP_LIST:
-				resize.height = std::max<uint>(GetCharacterHeight(FontSize::Normal), GetSpriteSize(SPR_COMPANY_ICON).height);
-				break;
-		}
-	}
-
-	void DrawWidget(const Rect &r, WidgetID widget) const override
-	{
-		switch (widget) {
-			case WID_DSP_LIST: {
-				Rect ir = r.Shrink(WidgetDimensions::scaled.framerect);
-				uint y = ir.top;
-				if (this->vscroll->GetCount() == 0) {
-					DrawString(ir, STR_STATION_LIST_NONE);
-					return;
-				}
-				for (int32_t i = this->vscroll->GetPosition(); this->vscroll->IsVisible(i) && i < this->vscroll->GetCount(); i++) {
-					const OrderList *ol = OrderList::GetIfValid(this->list[i]);
-					if (ol != nullptr) {
-						std::string name = ol->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, ol->index.base() + 1) : ol->GetName();
-						if (ol->IsScheduleGroup()) name = (this->collapsed.contains(ol->index) && this->string_filter.IsEmpty() ? "+ " : "- ") + name;
-						int indent = std::min<uint>(this->depths[i] * ScaleGUITrad(12), (ir.right - ir.left) / 2);
-						Dimension icon = GetSpriteSize(SPR_COMPANY_ICON);
-						DrawCompanyIcon(ol->GetCompany(), ir.left + indent, y + (this->resize.step_height - icon.height) / 2);
-						DrawString(ir.left + indent + icon.width + WidgetDimensions::scaled.hsep_normal, ir.right, y + (this->resize.step_height - GetCharacterHeight(FontSize::Normal)) / 2, name, TextColour::White);
-					}
-					y += this->resize.step_height;
-				}
-				break;
-			}
-		}
-	}
-
-	void OnResize() override
-	{
-		this->vscroll->SetCapacityFromWidget(this, WID_DSP_LIST, WidgetDimensions::scaled.framerect.Vertical());
-	}
-
-	void OnClick(Point pt, WidgetID widget, int) override
-	{
-		switch (widget) {
-			case WID_DSP_LIST: {
-				int row = this->vscroll->GetScrolledRowFromWidget(pt.y, this, WID_DSP_LIST, WidgetDimensions::scaled.framerect.top);
-				if (row < 0 || (size_t)row >= this->list.size()) break;
-				OrderListID id = this->list[row];
-				if (!OrderList::IsValidID(id)) break;
-				if (OrderList::Get(id)->IsScheduleGroup()) {
-					if (!this->collapsed.erase(id)) this->collapsed.insert(id);
-					this->RebuildList();
-					break;
-				}
-				if (this->orders_window != nullptr) this->orders_window->DecoupleSchedulePicked(this->first, this->orders_type, id);
-				this->Close();
-				break;
-			}
-		}
-	}
-
-	void OnEditboxChanged(WidgetID widget) override
-	{
-		if (widget != WID_DSP_FILTER) return;
-		this->string_filter.SetFilterTerm(this->filter_editbox.text.GetText());
-		this->RebuildList();
-	}
-
-	void OnInvalidateData([[maybe_unused]] int data = 0, [[maybe_unused]] bool gui_scope = true) override
-	{
-		this->RebuildList();
-	}
-};
-
-/**
- * Open the decouple schedule picker window for one part of a decoupled train.
- * @param w the orders window the picker belongs to
- * @param first true for the first part of the train, false for the second
- * @param type the decouple orders type the picked schedule applies to
- */
-void ShowDecoupleSchedulePicker(OrdersWindow &w, bool first, OrderDecoupleOrdersFlags type)
-{
-	/* Count visible schedules first; without any, warn instead of opening an empty picker. */
-	bool any = false;
-	for (const OrderList *ol : OrderList::Iterate()) {
-		if (ol->IsPlayerCreated() && ol->IsVisibleToCompany(w.TargetOwner())) {
-			any = true;
-			break;
-		}
-	}
-	if (!any) {
-		ShowErrorMessage(GetEncodedString(STR_ERROR_NO_SCHEDULE_AVAILABLE), {}, WarningLevel::Warning);
-		return;
-	}
-
-	CloseWindowById(WindowClass::DecoupleSchedulePicker, w.window_number, false);
-	new DecoupleSchedulePickerWindow(&w, first, type, w.TargetOwner());
-}
 
 void InvalidateOrderListWindowOnOrderMove(VehicleID veh, VehicleOrderID from, VehicleOrderID to, uint16_t count)
 {
@@ -7286,37 +4353,10 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 														SetToolTip(STR_ORDER_LABEL_DEPARTURES_VIA_TYPE_TOOLTIP), SetResize(1, 0),
 			EndContainer(),
 			NWidget(WWT_PANEL, Colours::Grey), SetFill(1, 0), SetResize(1, 0), EndContainer(),
-			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
-				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_COUPLE_SLOT), SetMinimalSize(112, 12), SetFill(1, 0),
-												SetStringTip(STR_ORDER_COUPLE_SLOT_BUTTON, STR_ORDER_COUPLE_SLOT_TOOLTIP), SetResize(1, 0),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_STATION), SetMinimalSize(112, 12), SetFill(1, 0),
-												SetStringTip(STR_ORDER_COUPLE_STATION_BUTTON, STR_ORDER_COUPLE_STATION_TOOLTIP), SetResize(1, 0),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_MORE), SetMinimalSize(112, 12), SetFill(1, 0),
-												SetStringTip(STR_ORDER_COUPLE_MORE_BUTTON, STR_ORDER_COUPLE_MORE_TOOLTIP), SetResize(1, 0),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_COUPLE_DIAGNOSTICS), SetMinimalSize(112, 12), SetFill(1, 0),
-												SetStringTip(STR_COUPLE_DIAGNOSTIC_BUTTON, STR_COUPLE_DIAGNOSTIC_TOOLTIP), SetResize(1, 0),
-			EndContainer(),
-			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
-				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_ORDERS_FIRST), SetMinimalSize(124, 12), SetFill(1, 0),
-														SetStringTip(STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON, STR_ORDER_DECOUPLE_FIRST_ORDERS_TOOLTIP), SetResize(1, 0),
-				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_ORDERS_SECOND), SetMinimalSize(124, 12), SetFill(1, 0),
-														SetStringTip(STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON, STR_ORDER_DECOUPLE_SECOND_ORDERS_TOOLTIP), SetResize(1, 0),
-				NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_DECOUPLE_VALUE),
-					NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_DECOUPLE_VALUE), SetMinimalSize(124, 12), SetFill(1, 0),
-															SetStringTip(STR_ORDERS_DECOUPLE_VALUE_BUTTON, STR_ORDER_DECOUPLE_VALUE_TOOLTIP), SetResize(1, 0),
-				EndContainer(),
-			EndContainer(),
 		EndContainer(),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_SHARED),
 			NWidget(WWT_PUSHIMGBTN, Colours::Grey, WID_O_SHARED_ORDER_LIST), SetAspect(1), SetSpriteTip(SPR_SHARED_ORDERS_ICON, STR_ORDERS_VEH_WITH_SHARED_ORDERS_LIST_TOOLTIP),
 			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_ADD_VEH_GROUP), SetAspect(1), SetStringTip(STR_BLACK_PLUS, STR_ORDERS_NEW_GROUP_TOOLTIP),
-		EndContainer(),
-	EndContainer(),
-
-	NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_DECOUPLE_PREVIEW),
-		NWidget(NWID_VERTICAL),
-			NWidget(WWT_PANEL, Colours::Grey, WID_O_DECOUPLE_PREVIEW), SetFill(1, 0), SetResize(1, 0), SetToolTip(STR_ORDERS_DECOUPLE_PREVIEW_TOOLTIP), SetScrollbar(WID_O_DECOUPLE_SCROLLBAR), EndContainer(),
-			NWidget(NWID_HSCROLLBAR, Colours::Grey, WID_O_DECOUPLE_SCROLLBAR),
 		EndContainer(),
 	EndContainer(),
 
@@ -7336,8 +4376,6 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 														SetStringTip(STR_ORDERS_DELETE_BUTTON, STR_ORDERS_DELETE_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_STOP_SHARING), SetMinimalSize(100, 12), SetFill(1, 0),
 														SetStringTip(STR_ORDERS_STOP_SHARING_BUTTON, STR_ORDERS_STOP_SHARING_TOOLTIP), SetResize(1, 0),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_EXIT_EXECUTE), SetMinimalSize(100, 12), SetFill(1, 0),
-														SetStringTip(STR_ORDERS_EXIT_EXECUTE_BUTTON, STR_ORDERS_EXIT_EXECUTE_TOOLTIP), SetResize(1, 0),
 			EndContainer(),
 			NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_GOTO), SetMinimalSize(100, 12), SetFill(1, 0),
 													SetStringTip(STR_ORDERS_GO_TO_BUTTON, STR_ORDERS_GO_TO_TOOLTIP_EXTRA), SetResize(1, 0),
@@ -7345,15 +4383,6 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 		NWidget(WWT_RESIZEBOX, Colours::Grey),
 	EndContainer(),
 };
-
-/** Order-editor description for standalone (player-created) order lists. */
-static WindowDesc _orderlist_editor_desc(__FILE__, __LINE__,
-	WindowPosition::Automatic, "view_order_list_editor", 384, 100,
-	WindowClass::OrderListEditor, WindowClass::None,
-	WindowDefaultFlag::Construction,
-	_nested_orders_train_widgets,
-	&OrdersWindow::hotkeys
-);
 
 static WindowDesc _orders_train_desc(__FILE__, __LINE__,
 	WindowPosition::Automatic, "view_vehicle_orders_train", 384, 100,
@@ -7509,8 +4538,6 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_widgets = {
 													SetStringTip(STR_ORDERS_DELETE_BUTTON, STR_ORDERS_DELETE_TOOLTIP), SetResize(1, 0),
 			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_STOP_SHARING), SetMinimalSize(100, 12), SetFill(1, 0),
 													SetStringTip(STR_ORDERS_STOP_SHARING_BUTTON, STR_ORDERS_STOP_SHARING_TOOLTIP), SetResize(1, 0),
-			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_EXIT_EXECUTE), SetMinimalSize(100, 12), SetFill(1, 0),
-													SetStringTip(STR_ORDERS_EXIT_EXECUTE_BUTTON, STR_ORDERS_EXIT_EXECUTE_TOOLTIP), SetResize(1, 0),
 		EndContainer(),
 		NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_GOTO), SetMinimalSize(100, 12), SetFill(1, 0),
 											SetStringTip(STR_ORDERS_GO_TO_BUTTON, STR_ORDERS_GO_TO_TOOLTIP_EXTRA), SetResize(1, 0),
@@ -7584,18 +4611,7 @@ void CcInsertOrder(const CommandCost &result, const InsertOrderCmdData &data)
 	auto pos = result.GetResultData<VehicleOrderID>();
 	if (!pos.has_value()) return;
 
-	if (data.is_list) {
-		OrdersWindow *lw = dynamic_cast<OrdersWindow *>(FindWindowById(WindowClass::OrderListEditor, data.list.base()));
-		if (lw != nullptr) lw->ScrollTowardsOrder(*pos);
-		return;
-	}
-
-	OrdersWindow *w;
-	if (data.is_list) {
-		w = dynamic_cast<OrdersWindow *>(FindWindowById(WindowClass::OrderListEditor, data.list.base()));
-	} else {
-		w = dynamic_cast<OrdersWindow *>(FindWindowById(WindowClass::VehicleOrders, data.veh));
-	}
+	OrdersWindow *w = dynamic_cast<OrdersWindow *>(FindWindowById(WindowClass::VehicleOrders, data.veh));
 	if (w == nullptr) return;
 
 	w->ScrollTowardsOrder(*pos);
@@ -7609,18 +4625,4 @@ void CcInsertOrdersFromVehicle(const CommandCost &result, VehicleID veh_dst, Veh
 	if (w == nullptr) return;
 
 	w->ScrollTowardsOrder(insert_pos);
-}
-
-/**
- * Show the order editor window for a standalone player-created order list.
- * @param id the id of the order list; only lists owned by the local company can be edited.
- */
-void ShowOrderListEditor(OrderListID id)
-{
-	const OrderList *ol = OrderList::GetIfValid(id);
-	if (ol == nullptr || !ol->IsPlayerCreated() || ol->IsScheduleGroup()) return;
-	if (ol->GetCompany() != _local_company) return;
-
-	if (BringWindowToFrontById(WindowClass::OrderListEditor, id.base()) != nullptr) return;
-	new OrdersWindow(_orderlist_editor_desc, id);
 }

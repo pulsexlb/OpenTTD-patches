@@ -23,15 +23,6 @@ struct OrderListIDTag : public PoolIDTraits<uint16_t, 64000, 0xFFFF> {};
 using OrderListID = PoolID<OrderListIDTag>;
 typedef uint32_t TimetableTicks;
 
-/** What kind of target an order-editing command refers to. */
-enum class OrderTargetType : uint8_t {
-	Vehicle,   ///< The orders of a vehicle (shared order chain).
-	OrderList, ///< A player-created standalone order list.
-};
-
-static const uint MAX_LENGTH_ORDERLIST_NAME_CHARS = 64; ///< The maximum length of an order list name in characters
-
-
 struct DestinationID {
 	static inline constexpr bool fmt_as_base = true;
 	static inline constexpr bool serialisation_as_base = true;
@@ -49,14 +40,12 @@ struct DestinationID {
 	constexpr DestinationID(TraceRestrictSlotID slot) : value(slot.base()) {}
 	constexpr DestinationID(TraceRestrictSlotGroupID sg) : value(sg.base()) {}
 	constexpr DestinationID(TraceRestrictCounterID ctr) : value(ctr.base()) {}
-	constexpr DestinationID(OrderListID ol) : value(ol.base()) {}
 
 	constexpr DepotID ToDepotID() const noexcept { return static_cast<DepotID>(this->value); }
 	constexpr StationID ToStationID() const noexcept { return static_cast<StationID>(this->value); }
 	constexpr TraceRestrictSlotID ToSlotID() const noexcept { return static_cast<TraceRestrictSlotID>(this->value); }
 	constexpr TraceRestrictSlotGroupID ToSlotGroupID() const noexcept { return static_cast<TraceRestrictSlotGroupID>(this->value); }
 	constexpr TraceRestrictCounterID ToCounterID() const noexcept { return static_cast<TraceRestrictCounterID>(this->value); }
-	constexpr OrderListID ToOrderListID() const noexcept { return static_cast<OrderListID>(this->value); }
 	constexpr BaseType base() const noexcept { return this->value; }
 	constexpr const BaseType &base_ref() const noexcept { return this->value; }
 	constexpr BaseType &edit_base() { return this->value; }
@@ -99,41 +88,10 @@ enum OrderType : uint8_t {
 	OT_COUNTER       = 12,
 	OT_LABEL         = 13,
 	OT_SLOT_GROUP    = 14,
-	OT_GOTO_COUPLE,  ///< Go to the station where the train will couple with another train.
-	OT_WAIT_COUPLE,  ///< Wait for another train to couple with this one.
-	OT_DECOUPLE,     ///< Decouple some of the wagons from the train.
-	OT_EXECUTE_SCHEDULE, ///< Execute another order list: switch this vehicle to the target player-created order list.
 	OT_END
 };
 
-using OrderTypeMask = uint32_t;
-
-/** Decouple order flags. */
-enum OrderDecoupleFlags : uint8_t {
-	ODF_NOTHING  = 0, ///< No decoupling.
-	ODF_DECOUPLE = 1, ///< Decouple.
-};
-
-/** Couple order flags. */
-enum OrderCoupleFlags : uint8_t {
-	ODC_ANY      = 0, ///< Couple any train.
-	ODC_IS_EMPTY = 1, ///< Only couple an empty train.
-	ODC_IS_FULL  = 2, ///< Only couple a full train.
-	ODC_END      = 3,
-};
-
-/** Orders for the two parts after decoupling. */
-enum OrderDecoupleOrdersFlags : uint8_t {
-	ODOF_KEEP_ORDERS         = 0, ///< Keep the orders.
-	ODOF_KEEP_ORDERS_NO_LOAD = 1, ///< Keep the orders, but do not load.
-	/* Value 2 was ODOF_INHERIT_ORDERS in earlier savegames; it is no longer
-	 * supported and clamps back to ODOF_KEEP_ORDERS when loaded. */
-	ODOF_WAIT_FOR_COUPLE     = 3, ///< Wait for a couple.
-	ODOF_LOAD_AND_WAIT       = 4, ///< Load/unload at this station, then wait for a couple.
-	ODOF_EXECUTE_SCHEDULE    = 5, ///< Adopt a player-created order list as the part's own schedule.
-	ODOF_LOAD_AND_SCHEDULE   = 6, ///< Load/unload at this station once, then adopt a player-created order list as the part's own schedule.
-	ODOF_END                 = 7,
-};
+using OrderTypeMask = uint16_t;
 
 enum OrderSlotSubType : uint8_t {
 	OSST_RELEASE               = 0,
@@ -283,7 +241,6 @@ enum class OrderConditionVariable : uint8_t {
 	CargoWaitingAmountPercentage = 20, ///< Skip based on the amount of a specific cargo waiting at station, relative to the vehicle capacity
 	VehicleInSlotGroup           = 21, ///< Test if vehicle is in slot group
 	DrivingBackwards             = 22, ///< Skip when the train is driving backwards, upstream value = 8
-	DecouplePart                 = 23, ///< Skip based on which part of a decoupled train this train is
 	End, ///< End marker.
 };
 
@@ -342,35 +299,6 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_COLOUR,          ///< Change the colour value
 	MOF_LABEL_TEXT,      ///< Change the label text value
 	MOF_DEPARTURES_SUBTYPE, ///< Change the label departures subtype
-	MOF_DECOUPLE,        ///< Change decouple option.
-	MOF_DECOUPLE_VALUE,  ///< Change number of decoupled units.
-	MOF_COUPLE_LOAD,     ///< Change load parameters of desired train.
-	MOF_COUPLE_CARGO,    ///< Change cargo parameter for desired train.
-	MOF_COUPLE_VALUE,    ///< Change number of coupled units.
-	MOF_COUPLE_SLOT,    ///< Change trace restrict slot to couple with.
-	MOF_COUPLE_STATION, ///< Change the station to couple at.
-	MOF_WAIT_COUPLE_STATION, ///< Send a waiting train to a selected schedule station before holding.
-	MOF_COUPLE_CHECK_POINT, ///< Check for a matching partner at a selected earlier station or waypoint.
-	MOF_COUPLE_USE_WAITING_SCHEDULE, ///< Take over the waiting consist's schedule at coupling.
-	MOF_COUPLE_SLOT_GROUP,           ///< Change the trace restrict slot group to couple with.
-	MOF_COUPLE_GROUP,                ///< Change the vehicle group the train to couple with must belong to.
-	MOF_FIRST_ORDERS,    ///< Change orders of first part of train after decoupling.
-	MOF_SECOND_ORDERS,   ///< Change orders of second part of train after decoupling.
-	MOF_EXECUTE_SCHEDULE, ///< Change the target order list of an execute-schedule order.
-	MOF_DECOUPLE_FIRST_SCHEDULE,  ///< Change the schedule the first part adopts after decoupling.
-	MOF_DECOUPLE_SECOND_SCHEDULE, ///< Change the schedule the second part adopts after decoupling.
-	MOF_DECOUPLE_FIRST_LOAD_SCHEDULE,  ///< Change the schedule the first part adopts after loading at the decouple station.
-	MOF_DECOUPLE_SECOND_LOAD_SCHEDULE, ///< Change the schedule the second part adopts after loading at the decouple station.
-	MOF_RV_TRANSPORT,    ///< Passes road vehicle transport (RoRo) load/unload flags for a station order.
-	MOF_RV_LOAD_STATE,   ///< Road vehicle transport (RoRo) selection criterion: load state of a candidate.
-	MOF_RV_CARGO_MODE,   ///< Road vehicle transport (RoRo) selection criterion: cargo mode of a candidate (CargoType is passed along).
-	MOF_RV_MIN_WAIT,     ///< Road vehicle transport (RoRo) selection criterion: minimum waiting time of a candidate.
-	MOF_RV_SLOT,         ///< Road vehicle transport (RoRo) selection criterion: trace restrict slot ("路签") a candidate must hold.
-	MOF_RV_MAX,          ///< Road vehicle transport (RoRo): most road vehicles to load in one visit (0 = no limit).
-	MOF_RV_SLOT_GROUP,   ///< Road vehicle transport (RoRo) selection criterion: trace restrict slot group ("路签组") a candidate must hold a slot of.
-	MOF_RV_GROUP,        ///< Road vehicle transport (RoRo) selection criterion: vehicle group ("载具组") a candidate must belong to.
-	MOF_DECOUPLE_FIRST_SAME_DIR,  ///< Allow the first part to leave the decouple station in the same direction as the other part.
-	MOF_DECOUPLE_SECOND_SAME_DIR, ///< Allow the second part to leave the decouple station in the same direction as the other part.
 	MOF_END
 };
 

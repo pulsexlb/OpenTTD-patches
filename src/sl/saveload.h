@@ -15,7 +15,6 @@
 #include "../fios.h"
 #include "../strings_id_type.h"
 #include "../scope.h"
-#include "../core/uint128_type.hpp"
 #include "../3rdparty/cpp-ring-buffer/ring_buffer.hpp"
 #include "../core/tinystring_type.hpp"
 #include "../core/type_util.hpp"
@@ -365,8 +364,6 @@ inline constexpr size_t SlVarSize(VarType type)
 		case SLE_VAR_I64:
 		case SLE_VAR_U64:
 			return sizeof(int64_t);
-		case SLE_VAR_U128:
-			return sizeof(Uint128);
 		case SLE_VAR_NAME:
 			return sizeof(std::string);
 		default:
@@ -1070,9 +1067,6 @@ inline void *GetVariableAddress(const void *object, const SaveLoad &sld)
 int64_t ReadValue(const void *ptr, VarType conv);
 void WriteValue(void *ptr, VarType conv, int64_t val);
 
-Uint128 ReadValue128(const void *ptr, VarType conv);
-void WriteValue128(void *ptr, VarType conv, Uint128 val);
-
 void SlSetArrayIndex(uint index);
 
 template <typename T> requires std::is_base_of_v<struct PoolIDBase, T>
@@ -1238,9 +1232,6 @@ bool SaveloadCrashWithMissingNewGRFs();
 
 void SlResetVENC();
 void SlProcessVENC();
-
-void SlResetCoupleClaims();
-void SlApplyCoupleClaims();
 
 void SlResetTNNC();
 

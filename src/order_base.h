@@ -20,7 +20,6 @@
 #include "station_container.h"
 #include "tile_type.h"
 #include "vehicle_type.h"
-#include "group_type.h"
 #include "cargotype.h"
 #include "company_type.h"
 #include "date_type.h"
@@ -43,22 +42,19 @@ static const StationID ORDER_NO_VIA_STATION{0xFFFE};
 inline uint32_t OrderDestinationRefcountMapKey(DestinationID dest, CompanyID cid, OrderType order_type, VehicleType veh_type)
 {
 	static_assert(sizeof(dest) == 2);
-	static_assert(OT_END <= 32);
-	return (((uint32_t) dest.base()) << 16) | (((uint32_t) cid.base()) << 8) | (((uint32_t) order_type) << 3) | (uint8_t) ((uint32_t) veh_type);
+	static_assert(OT_END <= 16);
+	return (((uint32_t) dest.base()) << 16) | (((uint32_t) cid.base()) << 8) | (((uint32_t) order_type) << 4) | ((uint32_t) veh_type);
 }
-
-void IntialiseOrderDestinationRefcountMap();
 
 template <typename F> void IterateOrderRefcountMapForDestinationID(DestinationID dest, F handler)
 {
-	/* Execute-schedule changes invalidate this derived cache; reads must rebuild it. */
-	if (!_order_destination_refcount_map_valid) IntialiseOrderDestinationRefcountMap();
 	for (auto lb = _order_destination_refcount_map.lower_bound(OrderDestinationRefcountMapKey(dest, (CompanyID) 0, (OrderType) 0, (VehicleType) 0)); lb != _order_destination_refcount_map.end(); ++lb) {
 		if (GB(lb->first, 16, 16) != dest) return;
-		if (lb->second && !handler((CompanyID) GB(lb->first, 8, 8), (OrderType) GB(lb->first, 3, 5), (VehicleType) GB(lb->first, 0, 3), lb->second)) return;
+		if (lb->second && !handler((CompanyID) GB(lb->first, 8, 8), (OrderType) GB(lb->first, 4, 4), (VehicleType) GB(lb->first, 0, 4), lb->second)) return;
 	}
 }
 
+void IntialiseOrderDestinationRefcountMap();
 void ClearOrderDestinationRefcountMap();
 
 /*
@@ -82,9 +78,6 @@ void ClearOrderDestinationRefcountMap();
  * OrderConditionVariable::CargoLoadPercentage: Cargo percentage comparison value
  * OrderConditionVariable::DispatchSlot: Bits 0-15: Dispatch schedule ID
  * OrderConditionVariable::Percent: Bits 0-7: Jump counter
- * OT_GOTO_COUPLE: Bits 0-15: Trace restrict slot ID to couple with (0xFFFF = any), Bits 16-31: Trace restrict slot group ID to couple with (0xFFFF = any)
- * OT_DECOUPLE: Bit 16: First part may leave the decouple station in the same direction as the other part,
- *              Bit 17: Second part may leave the decouple station in the same direction as the other part
  */
 /*
  * xdata2 users:
@@ -94,7 +87,6 @@ void ClearOrderDestinationRefcountMap();
  * OrderConditionVariable::CargoWaitingAmount: Bits 0-15: Station ID to test + 1
  * OrderConditionVariable::CargoWaitingAmountPercentage: Bits 0-15: Station ID to test + 1, Bit 16: Refit mode
  * OrderConditionVariable::DispatchSlot: OCDM_ROUTE_ID: Bits 0-15: Route ID
- * OT_GOTO_COUPLE: Bits 0-15: Couple station ID + 1 (0 = any), Bits 16-31: Vehicle group ID + 1 (0 = any)
  */
 
 struct OrderExtraInfo {
@@ -104,16 +96,6 @@ struct OrderExtraInfo {
 	uint16_t dispatch_index = 0;              ///< Scheduled dispatch index + 1
 	uint8_t xflags = 0;                       ///< Extra flags
 	uint8_t colour = 0;                       ///< Order colour + 1
-	uint8_t rv_transport_flags = 0;           ///< Road vehicle transport (RoRo): load/unload flags for this station order.
-	uint8_t rv_transport_max = 0;             ///< Road vehicle transport (RoRo): maximum number of road vehicles to load (0 = unlimited).
-	uint8_t rv_transport_load_state = 0;      ///< Road vehicle transport (RoRo): candidate load state criterion (RVTransportLoadState).
-	uint8_t rv_transport_cargo_mode = 0;      ///< Road vehicle transport (RoRo): candidate cargo criterion (RVTransportCargoMode).
-	uint8_t rv_transport_cargo = 0;           ///< Road vehicle transport (RoRo): cargo of the cargo criterion.
-	uint16_t rv_transport_min_wait = 0;       ///< Road vehicle transport (RoRo): minimum days the candidate must have been waiting (0 = no minimum).
-	uint16_t rv_transport_slot = 0;           ///< Road vehicle transport (RoRo): trace restrict slot the candidate must hold, slot id + 1 (0 = any).
-	uint16_t rv_transport_slot_group = 0;    ///< Road vehicle transport (RoRo): trace restrict slot group the candidate must hold a slot of, group id + 1 (0 = any).
-	uint16_t rv_transport_group = 0;         ///< Road vehicle transport (RoRo): vehicle group the candidate must belong to, group id + 1 (0 = any).
-	uint16_t rv_transport_dest_station = 0;   ///< Reserved: a dropped criterion ("the first station the candidate declares for unloading"), kept so that savegames written with feature version 2 still load.
 };
 
 namespace upstream_sl {
@@ -149,9 +131,8 @@ private:
 
 	uint16_t flags{};              ///< Load/unload types, depot order/action types.
 	DestinationID dest{};          ///< The destination of the order.
-	uint16_t type{};                ///< The type of order + non-stop flags
+	uint8_t type{};                ///< The type of order + non-stop flags
 	CargoType refit_cargo{};       ///< Refit CargoType
-	uint8_t decouple_flags{};      ///< Couple/decouple types and count.
 	uint8_t occupancy{};           ///< Estimate of vehicle occupancy on departure, for the current order, 0 indicates invalid, 1 - 101 indicate 0 - 100%
 
 	TimetableTicks wait_time{};    ///< How long in ticks to wait at the destination.
@@ -178,18 +159,6 @@ private:
 	}
 
 public:
-	/**
-	 * Move the per-cargo load/unload flags of one cargo slot to another one.
-	 * @param from The cargo slot to move the flags from.
-	 * @param to The cargo slot to move the flags to.
-	 */
-	inline void MoveCargoTypeFlags(CargoType from, CargoType to)
-	{
-		if (!this->extra) return;
-		this->extra->cargo_type_flags[to] = this->extra->cargo_type_flags[from];
-		this->extra->cargo_type_flags[from] = 0;
-	}
-
 	inline uint32_t GetXData() const
 	{
 		return this->extra != nullptr ? this->extra->xdata : 0;
@@ -219,123 +188,6 @@ public:
 	inline void SetXDataHigh(uint16_t data)
 	{
 		SB(this->GetXDataRef(), 16, 16, data);
-	}
-
-	/** Road vehicle transport (RoRo): get load/unload flags of this station order. */
-	inline uint8_t GetRVTransportFlags() const
-	{
-		return this->extra != nullptr ? this->extra->rv_transport_flags : 0;
-	}
-
-	/** Road vehicle transport (RoRo): writable reference to load/unload flags. */
-	inline uint8_t &GetRVTransportFlagsRef()
-	{
-		this->CheckExtraInfoAlloced();
-		return this->extra->rv_transport_flags;
-	}
-
-	/** Road vehicle transport (RoRo): candidate load state criterion (RVTransportLoadState). */
-	inline uint8_t GetRVTransportLoadState() const
-	{
-		return this->extra != nullptr ? this->extra->rv_transport_load_state : 0;
-	}
-
-	/** Road vehicle transport (RoRo): writable reference to the load state criterion. */
-	inline uint8_t &GetRVTransportLoadStateRef()
-	{
-		this->CheckExtraInfoAlloced();
-		return this->extra->rv_transport_load_state;
-	}
-
-	/** Road vehicle transport (RoRo): candidate cargo criterion (RVTransportCargoMode). */
-	inline uint8_t GetRVTransportCargoMode() const
-	{
-		return this->extra != nullptr ? this->extra->rv_transport_cargo_mode : 0;
-	}
-
-	/** Road vehicle transport (RoRo): writable reference to the cargo criterion mode. */
-	inline uint8_t &GetRVTransportCargoModeRef()
-	{
-		this->CheckExtraInfoAlloced();
-		return this->extra->rv_transport_cargo_mode;
-	}
-
-	/** Road vehicle transport (RoRo): cargo of the cargo criterion. */
-	inline uint8_t GetRVTransportCargo() const
-	{
-		return this->extra != nullptr ? this->extra->rv_transport_cargo : 0;
-	}
-
-	/** Road vehicle transport (RoRo): writable reference to the cargo of the cargo criterion. */
-	inline uint8_t &GetRVTransportCargoRef()
-	{
-		this->CheckExtraInfoAlloced();
-		return this->extra->rv_transport_cargo;
-	}
-
-	/** Road vehicle transport (RoRo): minimum waiting time (in days) of a candidate, 0 = no minimum. */
-	inline uint16_t GetRVTransportMinWait() const
-	{
-		return this->extra != nullptr ? this->extra->rv_transport_min_wait : 0;
-	}
-
-	/** Road vehicle transport (RoRo): writable reference to the minimum waiting time. */
-	inline uint16_t &GetRVTransportMinWaitRef()
-	{
-		this->CheckExtraInfoAlloced();
-		return this->extra->rv_transport_min_wait;
-	}
-
-	/** Road vehicle transport (RoRo): trace restrict slot the candidate must hold ("路签"), slot id + 1 (0 = any). */
-	inline uint16_t GetRVTransportSlot() const
-	{
-		return this->extra != nullptr ? this->extra->rv_transport_slot : 0;
-	}
-
-	/** Road vehicle transport (RoRo): writable reference to the trace restrict slot criterion. */
-	inline uint16_t &GetRVTransportSlotRef()
-	{
-		this->CheckExtraInfoAlloced();
-		return this->extra->rv_transport_slot;
-	}
-
-	/** Road vehicle transport (RoRo): trace restrict slot group the candidate must hold a slot of ("路签组"), group id + 1 (0 = any). */
-	inline uint16_t GetRVTransportSlotGroup() const
-	{
-		return this->extra != nullptr ? this->extra->rv_transport_slot_group : 0;
-	}
-
-	/** Road vehicle transport (RoRo): writable reference to the trace restrict slot group criterion. */
-	inline uint16_t &GetRVTransportSlotGroupRef()
-	{
-		this->CheckExtraInfoAlloced();
-		return this->extra->rv_transport_slot_group;
-	}
-
-	/** Road vehicle transport (RoRo): vehicle group the candidate must belong to ("载具组"), group id + 1 (0 = any). */
-	inline uint16_t GetRVTransportGroup() const
-	{
-		return this->extra != nullptr ? this->extra->rv_transport_group : 0;
-	}
-
-	/** Road vehicle transport (RoRo): writable reference to the vehicle group criterion. */
-	inline uint16_t &GetRVTransportGroupRef()
-	{
-		this->CheckExtraInfoAlloced();
-		return this->extra->rv_transport_group;
-	}
-
-	/** Road vehicle transport (RoRo): most road vehicles this order may load in one visit (0 = no limit). */
-	inline uint8_t GetRVTransportMax() const
-	{
-		return this->extra != nullptr ? this->extra->rv_transport_max : 0;
-	}
-
-	/** Road vehicle transport (RoRo): writable reference to the per-visit load limit. */
-	inline uint8_t &GetRVTransportMaxRef()
-	{
-		this->CheckExtraInfoAlloced();
-		return this->extra->rv_transport_max;
 	}
 
 	inline uint32_t GetXData2() const
@@ -375,7 +227,7 @@ public:
 	}
 
 	Order() : flags(0), refit_cargo(CARGO_NO_REFIT), max_speed(UINT16_MAX) {}
-	Order(uint16_t type, uint16_t flags, DestinationID dest) : flags(flags), dest(dest), type(type), refit_cargo(CARGO_NO_REFIT), occupancy(0), wait_time(0), travel_time(0), max_speed(UINT16_MAX) {}
+	Order(uint8_t type, uint16_t flags, DestinationID dest) : flags(flags), dest(dest), type(type), refit_cargo(CARGO_NO_REFIT), occupancy(0), wait_time(0), travel_time(0), max_speed(UINT16_MAX) {}
 	~Order() {}
 
 	Order(const Order& other)
@@ -411,25 +263,16 @@ public:
 	 * Get the type of order of this order.
 	 * @return the order type.
 	 */
-	inline OrderType GetType() const { return (OrderType)GB(this->type, 0, 5); }
+	inline OrderType GetType() const { return (OrderType)GB(this->type, 0, 4); }
 
 	void InvalidateGuiOnRemove();
 	void Free();
-
-	/**
-	 * Convert the order type field from the layout used by savegames which store it in a single
-	 * byte, i.e. savegames which do not have the XSLFI_ORDER_DECOUPLE feature.
-	 */
-	void ConvertLegacyTypeLayout();
 
 	void MakeGoToStation(StationID destination);
 	void MakeGoToDepot(DestinationID destination, OrderDepotTypeFlags order, OrderNonStopFlags non_stop_type = ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS, OrderDepotActionFlags action = ODATF_SERVICE_ONLY, CargoType cargo = CARGO_NO_REFIT);
 	void MakeGoToWaypoint(StationID destination);
 	void MakeLoading(bool ordered);
 	void MakeLeaveStation();
-	void MakeDecouple();
-	void MakeGoToCouple();
-	void MakeWaitCouple();
 	void MakeDummy();
 	void MakeConditional(VehicleOrderID order);
 	void MakeImplicit(StationID destination);
@@ -440,7 +283,6 @@ public:
 	void MakeReleaseSlotGroup();
 	void MakeChangeCounter();
 	void MakeLabel(OrderLabelSubType subtype);
-	void MakeExecuteSchedule();
 
 	/**
 	 * Is this a 'goto' order with a real destination?
@@ -496,134 +338,6 @@ public:
 	inline CargoType GetRefitCargo() const { return this->refit_cargo; }
 
 	void SetRefit(CargoType cargo);
-
-	/**
-	 * Does the couple order have a specific cargo type?
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return true if a specific cargo type is set.
-	 */
-	inline bool HasCoupleCargoType() const { return this->refit_cargo < NUM_CARGO; }
-
-	/**
-	 * Get the cargo type to couple with.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return the cargo type.
-	 */
-	inline CargoType GetCoupleCargoType() const { return this->refit_cargo; }
-
-	/**
-	 * Set the cargo type to couple with.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 */
-	inline void SetCoupleCargoType(CargoType cargo) { this->refit_cargo = cargo; }
-
-	/**
-	 * Does the couple order restrict coupling to a specific trace restrict slot?
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return true if a specific slot is set.
-	 */
-	inline bool HasCoupleSlot() const { return this->GetCoupleSlot() != TraceRestrictSlotID::Invalid(); }
-
-	/**
-	 * Get the trace restrict slot the train must couple with.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return the slot, or #TraceRestrictSlotID::Invalid() if unrestricted.
-	 */
-	inline TraceRestrictSlotID GetCoupleSlot() const
-	{
-		if (this->extra == nullptr) return TraceRestrictSlotID::Invalid();
-		return TraceRestrictSlotID((uint16_t)GB(this->extra->xdata, 0, 16));
-	}
-
-	/**
-	 * Set the trace restrict slot the train must couple with.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @param slot the slot, or #TraceRestrictSlotID::Invalid() for any slot.
-	 */
-	inline void SetCoupleSlot(TraceRestrictSlotID slot) { SB(this->GetXDataRef(), 0, 16, slot.base()); }
-
-	/**
-	 * Does the couple order restrict coupling to a specific trace restrict slot group?
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return true if a specific slot group is set.
-	 */
-	inline bool HasCoupleSlotGroup() const { return this->GetCoupleSlotGroup() != TraceRestrictSlotGroupID::Invalid(); }
-
-	/**
-	 * Get the trace restrict slot group the train must couple with.
-	 * Stored as group ID + 1 with 0 meaning "any": the field is 0 when never set, and 0 is also a
-	 * valid (the first) slot group ID, so a raw-ID convention would make every unset order demand
-	 * slot group 0.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return the slot group, or #TraceRestrictSlotGroupID::Invalid() if unrestricted.
-	 */
-	inline TraceRestrictSlotGroupID GetCoupleSlotGroup() const
-	{
-		uint16_t raw = (this->extra != nullptr) ? (uint16_t)GB(this->extra->xdata, 16, 16) : 0;
-		if (raw == 0) return TraceRestrictSlotGroupID::Invalid();
-		return TraceRestrictSlotGroupID((uint16_t)(raw - 1));
-	}
-
-	/**
-	 * Set the trace restrict slot group the train must couple with.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @param group the slot group, or #TraceRestrictSlotGroupID::Invalid() for any slot group.
-	 */
-	inline void SetCoupleSlotGroup(TraceRestrictSlotGroupID group) { SB(this->GetXDataRef(), 16, 16, group == TraceRestrictSlotGroupID::Invalid() ? 0 : group.base() + 1); }
-
-	/**
-	 * Does the couple order restrict coupling to a specific vehicle group?
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return true if a specific vehicle group is set.
-	 */
-	inline bool HasCoupleGroup() const { return this->GetXData2High() != 0; }
-
-	/**
-	 * Get the vehicle group the train to couple with must belong to.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return the group, or #GroupID::Invalid() if unrestricted.
-	 */
-	inline GroupID GetCoupleGroup() const
-	{
-		if (!this->HasCoupleGroup()) return GroupID::Invalid();
-		return GroupID{(uint16_t)(this->GetXData2High() - 1)};
-	}
-
-	/**
-	 * Set the vehicle group the train to couple with must belong to.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @param group the group, or #GroupID::Invalid() for any group.
-	 */
-	inline void SetCoupleGroup(GroupID group) { this->SetXData2High(group == GroupID::Invalid() ? 0 : group.base() + 1); }
-
-	/**
-	 * Does the couple order restrict coupling to a specific station?
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return true if a specific station is set.
-	 */
-	inline bool HasCoupleStation() const { return this->GetXData2Low() != 0; }
-
-	/**
-	 * Get the station the train must couple at.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @return the station, or #StationID::Invalid() if unrestricted.
-	 */
-	inline StationID GetCoupleStation() const
-	{
-		if (!this->HasCoupleStation()) return StationID::Invalid();
-		return StationID{(uint16_t)(this->GetXData2Low() - 1)};
-	}
-
-	/**
-	 * Set the station the train must couple at.
-	 * @pre IsType(OT_GOTO_COUPLE)
-	 * @param station the station, or #StationID::Invalid() for any station.
-	 */
-	inline void SetCoupleStation(StationID station) { this->SetXData2Low(station == StationID::Invalid() ? 0 : station.base() + 1); }
-	/** Optional station or waypoint where an approaching train checks for a matching partner before continuing its schedule. */
-	inline bool HasCoupleCheckPoint() const { return this->IsType(OT_GOTO_COUPLE) && HasBit(this->GetXFlags(), 6); }
-	inline StationID GetCoupleCheckPoint() const { return this->HasCoupleCheckPoint() ? this->GetDestination().ToStationID() : StationID::Invalid(); }
-	inline void SetCoupleCheckPoint(StationID station) { AssignBit(this->GetXFlagsRef(), 6, station != StationID::Invalid()); this->SetDestination(station); }
 
 	/**
 	 * Update the jump_counter of this order.
@@ -730,12 +444,12 @@ public:
 	 * At which stations must we stop?
 	 * @return Which stations to stop at.
 	 */
-	inline OrderNonStopFlags GetNonStopType() const { return (OrderNonStopFlags)GB(this->type, 7, 2); }
+	inline OrderNonStopFlags GetNonStopType() const { return (OrderNonStopFlags)GB(this->type, 6, 2); }
 	/**
 	 * Where must we stop at the platform?
 	 * @return Where at the platform to stop.
 	 */
-	inline OrderStopLocation GetStopLocation() const { return static_cast<OrderStopLocation>(GB(this->type, 5, 2)); }
+	inline OrderStopLocation GetStopLocation() const { return static_cast<OrderStopLocation>(GB(this->type, 4, 2)); }
 	/**
 	 * What caused us going to the depot?
 	 * @return The reason to go to the depot.
@@ -761,7 +475,7 @@ public:
 	 * What is the comparator to use?
 	 * @return The comparator for the comparison.
 	 */
-	inline OrderConditionComparator GetConditionComparator() const { return static_cast<OrderConditionComparator>(GB(this->type, 9, 3)); }
+	inline OrderConditionComparator GetConditionComparator() const { return static_cast<OrderConditionComparator>(GB(this->type, 5, 3)); }
 
 	/**
 	 * Get the order to skip to.
@@ -774,33 +488,6 @@ public:
 	 * @return The value to compare the variable against.
 	 */
 	inline uint16_t GetConditionValue() const { return GB(this->dest.value, 0, 11); }
-	/** Are we going to decouple? */
-	inline OrderDecoupleFlags GetDecouple() const { return (OrderDecoupleFlags)GB(this->decouple_flags, 0, 1); }
-	/** How many wagons are we keeping */
-	inline uint8_t GetNumDecouple() const { return GB(this->decouple_flags, 1, 7); }
-	/** What kind of train are we looking for */
-	inline OrderCoupleFlags GetCoupleLoad() const { return (OrderCoupleFlags)GB(this->flags, 0, 3); }
-	/** Does the consist take over the waiting consist's schedule at coupling? */
-	inline bool GetCoupleUseWaitingSchedule() const { return HasBit(this->flags, 3); }
-	/** Set whether the consist takes over the waiting consist's schedule at coupling. */
-	inline void SetCoupleUseWaitingSchedule(bool on) { SB(this->flags, 3, 1, on ? 1 : 0); }
-	/** How many wagons are we taking */
-	inline uint8_t GetNumCouple() const { return GB(this->decouple_flags, 1, 7); }
-	/** What orders should first part get */
-	inline OrderDecoupleOrdersFlags GetDecoupleFirstOrdersType() const
-	{
-		auto type = (OrderDecoupleOrdersFlags)GB(this->flags, 0, 3);
-		/* Clamp legacy (ODOF_INHERIT_ORDERS == 2) and out-of-range values. */
-		if (type == (OrderDecoupleOrdersFlags)2 || type >= ODOF_END) return ODOF_KEEP_ORDERS;
-		return type;
-	}
-	/** What orders should second part get */
-	inline OrderDecoupleOrdersFlags GetDecoupleSecondOrdersType() const
-	{
-		auto type = (OrderDecoupleOrdersFlags)GB(this->flags, 4, 3);
-		if (type == (OrderDecoupleOrdersFlags)2 || type >= ODOF_END) return ODOF_KEEP_ORDERS;
-		return type;
-	}
 	/** Get counter for the 'jump xx% of times' option */
 	inline int8_t GetJumpCounter() const { return GB(this->GetXData(), 0, 8); }
 	/** Get counter operation */
@@ -862,12 +549,12 @@ public:
 	 * Set whether we must stop at stations or not.
 	 * @param non_stop_type The new non stop type, i.e. where to stop.
 	 */
-	inline void SetNonStopType(OrderNonStopFlags non_stop_type) { SB(this->type, 7, 2, non_stop_type); }
+	inline void SetNonStopType(OrderNonStopFlags non_stop_type) { SB(this->type, 6, 2, non_stop_type); }
 	/**
 	 * Set where we must stop at the platform.
 	 * @param stop_location The location to stop at.
 	 */
-	inline void SetStopLocation(OrderStopLocation stop_location) { SB(this->type, 5, 2, to_underlying(stop_location)); }
+	inline void SetStopLocation(OrderStopLocation stop_location) { SB(this->type, 4, 2, to_underlying(stop_location)); }
 	/**
 	 * Set the cause to go to the depot.
 	 * @param depot_order_type The reason to go to the depot.
@@ -893,7 +580,7 @@ public:
 	 * Set the comparator to use.
 	 * @param condition_comparator The new comparator to compare with.
 	 */
-	inline void SetConditionComparator(OrderConditionComparator condition_comparator) { SB(this->type, 9, 3, to_underlying(condition_comparator)); }
+	inline void SetConditionComparator(OrderConditionComparator condition_comparator) { SB(this->type, 5, 3, to_underlying(condition_comparator)); }
 
 	/**
 	 * Get the order to skip to.
@@ -906,40 +593,6 @@ public:
 	 * @param value The new value to compare against.
 	 */
 	inline void SetConditionValue(uint16_t value) { SB(this->dest.value, 0, 11, value); }
-	/** Set whether we must decouple or not */
-	inline void SetDecouple(uint8_t value) { SB(this->decouple_flags, 0, 1, value); }
-	/** Set how many units to keep */
-	inline void SetNumDecouple(uint8_t value) { SB(this->decouple_flags, 1, 7, value); }
-	/** Set for how full train we should look for */
-	inline void SetCoupleLoad(OrderCoupleFlags load_type) { SB(this->flags, 0, 3, to_underlying(load_type)); }
-	/** Set how many units to take */
-	inline void SetNumCouple(uint8_t value) { SB(this->decouple_flags, 1, 7, value); }
-	/** A wait-for-couple order can travel to a station before it starts holding. The flag keeps old saves' unused destination field inert. */
-	inline bool HasWaitCoupleStation() const { return this->IsType(OT_WAIT_COUPLE) && HasBit(this->GetXFlags(), 6); }
-	inline StationID GetWaitCoupleStation() const { return this->HasWaitCoupleStation() ? this->GetDestination().ToStationID() : StationID::Invalid(); }
-	inline void SetWaitCoupleStation(StationID station) { AssignBit(this->GetXFlagsRef(), 6, station != StationID::Invalid()); this->SetDestination(station); }
-	/** Set what orders first part should get */
-	inline void SetDecoupleFirstOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 0, 3, to_underlying(orders_type)); }
-	/** Set what orders second part should get */
-	inline void SetDecoupleSecondOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 4, 3, to_underlying(orders_type)); }
-	/* The same-direction-exit bits live in xdata (bits 16/17) and not in flags,
-	 * because only the low 8 bits of flags are persisted in savegames. */
-	/** May the first part leave the decouple station in the same direction as the other part (OT_DECOUPLE only)? */
-	inline bool GetDecoupleFirstSameDirExit() const { return HasBit(this->GetXData(), 16); }
-	/** Set whether the first part may leave the decouple station in the same direction as the other part. */
-	inline void SetDecoupleFirstSameDirExit(bool on) { SB(this->GetXDataRef(), 16, 1, on ? 1 : 0); }
-	/** May the second part leave the decouple station in the same direction as the other part (OT_DECOUPLE only)? */
-	inline bool GetDecoupleSecondSameDirExit() const { return HasBit(this->GetXData(), 17); }
-	/** Set whether the second part may leave the decouple station in the same direction as the other part. */
-	inline void SetDecoupleSecondSameDirExit(bool on) { SB(this->GetXDataRef(), 17, 1, on ? 1 : 0); }
-	/** Get the schedule the first part adopts after decoupling (ODOF_EXECUTE_SCHEDULE and ODOF_LOAD_AND_SCHEDULE only). */
-	inline OrderListID GetDecoupleFirstScheduleID() const { return OrderListID{(uint16_t)this->GetXData()}; }
-	/** Set the schedule the first part adopts after decoupling. */
-	inline void SetDecoupleFirstScheduleID(OrderListID id) { SB(this->GetXDataRef(), 0, 16, id.base()); }
-	/** Get the schedule the second part adopts after decoupling (ODOF_EXECUTE_SCHEDULE and ODOF_LOAD_AND_SCHEDULE only). */
-	inline OrderListID GetDecoupleSecondScheduleID() const { return OrderListID{(uint16_t)this->GetXData2Low()}; }
-	/** Set the schedule the second part adopts after decoupling. */
-	inline void SetDecoupleSecondScheduleID(OrderListID id) { this->SetXData2Low(id.base()); }
 	/** Set counter for the 'jump xx% of times' option */
 	inline void SetJumpCounter(int8_t jump_counter) { SB(this->GetXDataRef(), 0, 8, jump_counter); }
 	/** Set counter operation */
@@ -959,10 +612,9 @@ public:
 	 * explicitly set (but travel_time is actually unused for conditionals). */
 
 	inline bool IsSlotCounterOrder() const { return this->IsType(OT_COUNTER) || this->IsType(OT_SLOT) || this->IsType(OT_SLOT_GROUP); }
-	inline bool IsExecuteScheduleOrder() const { return this->IsType(OT_EXECUTE_SCHEDULE); }
 
 	/** Does this order not have any associated travel or wait times */
-	inline bool HasNoTimetableTimes() const { return this->IsSlotCounterOrder() || this->IsType(OT_LABEL) || this->IsExecuteScheduleOrder() || this->IsType(OT_DECOUPLE) || this->IsType(OT_WAIT_COUPLE); }
+	inline bool HasNoTimetableTimes() const { return this->IsSlotCounterOrder() || this->IsType(OT_LABEL); }
 
 	/**
 	 * Does this order have an explicit wait time set?
@@ -1215,7 +867,6 @@ struct OrderPoolItem : OrderPool::PoolItem<&_order_pool> {
 };
 
 void InsertOrder(Vehicle *v, Order &&new_o, VehicleOrderID sel_ord);
-void SetDecoupleWaitOrderList(Vehicle *v, OrderList *orders);
 void DeleteOrder(Vehicle *v, VehicleOrderID sel_ord);
 
 struct CargoMaskedStationIDVector {
@@ -1542,14 +1193,6 @@ private:
 
 	Colours route_overlay_colour = Colours::White;
 
-	std::string name{};               ///< Name of the order list. Empty for vehicle-owned order lists.
-	bool is_schedule_group = false;   ///< A folder in the standalone schedule manager, never an executable list.
-	OrderListID schedule_group = OrderListID::Invalid(); ///< Parent folder; invalid means ungrouped.
-	Owner company = INVALID_OWNER;    ///< Company owning this player-created order list. INVALID_OWNER for vehicle-owned order lists.
-	bool is_public = false;           ///< Whether this player-created order list is public.
-	bool dispatch_enabled = false;    ///< Whether scheduled dispatch is enabled (mirrors VehicleFlag::ScheduledDispatch).
-	bool separation_enabled = false;  ///< Whether auto timetable separation is enabled (mirrors VehicleFlag::TimetableSeparation).
-
 	VehicleOrderID num_manual_orders = 0; ///< NOSAVE: How many manually added orders are there in the list.
 	uint num_vehicles = 0;                ///< NOSAVE: Number of vehicles that share this order list.
 	Vehicle *first_shared = nullptr;      ///< NOSAVE: pointer to the first vehicle in the shared order chain.
@@ -1608,21 +1251,6 @@ public:
 	void CopyOrderListContents(const OrderList &other);
 
 	void Initialize(Vehicle *v);
-
-	/**
-	 * Recompute the derived counters of a player-created order list that has no
-	 * vehicles. Such lists are never passed to #Initialize, so after loading a
-	 * savegame their manual order count and durations would stay zero otherwise.
-	 */
-	void InitializePlayerCreated();
-
-	/**
-	 * Recompute the counters derived from the orders that are never saved: the number of manual
-	 * orders and the timetable/total durations. Needed for order lists that have no vehicles, as
-	 * those are never passed to #Initialize. Without it #num_manual_orders stays zero and
-	 * #SkipToNextRealOrderIndex degenerates to always using order 0.
-	 */
-	void RecalculateDerivedCounters();
 
 	void RecalculateTimetableDuration();
 
@@ -1716,8 +1344,7 @@ public:
 	 */
 	inline VehicleOrderID GetNumManualOrders() const { return this->num_manual_orders; }
 
-	CargoMaskedStationIDVector GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first = nullptr, uint hops = 0, bool in_target = false) const;
-	std::vector<const Order *> GetNextStoppingOrder(const Vehicle *v, const Order *first = nullptr, uint hops = 0) const;
+	CargoMaskedStationIDVector GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first = nullptr, uint hops = 0) const;
 	const Order *GetNextDecisionNode(const Order *next, uint hops, CargoTypes &cargo_mask) const;
 
 	void InsertOrderAt(Order &&new_order, VehicleOrderID index);
@@ -1749,13 +1376,6 @@ public:
 	 * @param v vehicle to add to the list
 	 */
 	inline void AddVehicle([[maybe_unused]] Vehicle *v) { ++this->num_vehicles; }
-
-	/**
-	 * Make the given vehicle follow this order list, inserting it into this list's shared chain.
-	 * The vehicle must have been removed from its previous list first.
-	 * @param v vehicle to add
-	 */
-	void AssignVehicle(Vehicle *v);
 
 	void RemoveVehicle(Vehicle *v);
 
@@ -1816,46 +1436,6 @@ public:
 	}
 
 	/**
-	 * Is this a player-created order list (not owned by a specific vehicle)?
-	 * A player-created order list has a company set, and is not subject to
-	 * the normal order list lifecycle (it is not freed when the last vehicle
-	 * using it is deleted). The name may still be empty; it will be shown
-	 * as the default name then.
-	 * @return whether this order list is player-created
-	 */
-	inline bool IsPlayerCreated() const { return this->company != INVALID_OWNER; }
-	inline bool IsScheduleGroup() const { return this->is_schedule_group; }
-	inline void SetIsScheduleGroup(bool is_group) { this->is_schedule_group = is_group; }
-	inline OrderListID GetScheduleGroup() const { return this->schedule_group; }
-	inline void SetScheduleGroup(OrderListID parent) { this->schedule_group = parent; }
-
-
-	inline const std::string &GetName() const { return this->name; }
-	inline void SetName(const std::string &name) { this->name = name; }
-
-	inline Owner GetCompany() const { return this->company; }
-	inline void SetCompany(Owner owner) { this->company = owner; }
-
-	inline bool IsPublic() const { return this->is_public; }
-	inline void SetPublic(bool is_public) { this->is_public = is_public; }
-
-	inline bool IsDispatchEnabled() const { return this->dispatch_enabled; }
-	inline void SetDispatchEnabled(bool enabled) { this->dispatch_enabled = enabled; }
-
-	inline bool IsSeparationEnabled() const { return this->separation_enabled; }
-	inline void SetSeparationEnabled(bool enabled) { this->separation_enabled = enabled; }
-
-	/**
-	 * Is this order list visible to the given company (either owned by them or public)?
-	 * @param owner company to check visibility for
-	 * @return whether the order list is visible to the company
-	 */
-	inline bool IsVisibleToCompany(Owner owner) const
-	{
-		return this->IsPlayerCreated() && !this->IsScheduleGroup() && (this->company == owner || this->is_public);
-	}
-
-	/**
 	 * Returns an iterable ensemble of orders
 	 * @return an iterable ensemble of orders
 	 */
@@ -1864,6 +1444,5 @@ public:
 };
 
 void UpdateOrderUIOnDateChange();
-bool AreScheduleGroupsValid();
 
 #endif /* ORDER_BASE_H */

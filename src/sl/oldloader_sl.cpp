@@ -102,7 +102,7 @@ static void FixTTDMapArray()
 static void FixTTDDepots()
 {
 	for (const Depot *d : Depot::Iterate(252)) {
-		if (!IsDepotTile(d->xy) || (!IsHangarTile(d->xy) && GetDepotIndex(d->xy) != d->index)) {
+		if (!IsDepotTile(d->xy) || GetDepotIndex(d->xy) != d->index) {
 			/** Workaround for SVXConverter bug, depots 252-255 could be invalid */
 			delete d;
 		}
@@ -771,10 +771,10 @@ static const OldChunks station_chunk[] = {
 	OCL_SVAR(  OC_UINT8, Station, owner ),
 	OCL_SVAR(  OC_UINT8, Station, facilities ),
 	OCL_SVAR( OC_TTD | OC_UINT8, Station, airport.type ),
-	OCL_SVAR( OC_TTO | OC_FILE_U16 | OC_VAR_U64, Station, airport.flags ),
+	OCL_SVAR( OC_TTO | OC_FILE_U16 | OC_VAR_U64, Station, airport.blocks ),
 	OCL_NULL( 3 ),          ///< bus/truck status, blocked months, no longer in use
 	OCL_CNULL( OC_TTD, 1 ), ///< unknown
-	OCL_SVAR( OC_TTD | OC_FILE_U16 | OC_VAR_U64, Station, airport.flags ),
+	OCL_SVAR( OC_TTD | OC_FILE_U16 | OC_VAR_U64, Station, airport.blocks ),
 	OCL_CNULL( OC_TTD, 2 ), ///< last_vehicle. now last_vehicle_type
 	OCL_CNULL( OC_TTD, 4 ), ///< junk at end of chunk
 
@@ -798,9 +798,9 @@ static bool LoadOldStation(LoadgameState &ls, int num)
 				st->string_id = _old_string_id + 0x2800; // custom name
 			}
 
-			if (HasBit(st->airport.flags, 8)) {
+			if (st->airport.blocks.Test(AirportBlock{8})) {
 				st->airport.type = 1; // large airport
-			} else if (HasBit(st->airport.flags, 6)) {
+			} else if (st->airport.blocks.Test(AirportBlock{6})) {
 				st->airport.type = 3; // oil rig
 			} else {
 				st->airport.type = 0; // small airport
@@ -922,7 +922,7 @@ static bool LoadOldCompanyYearly(LoadgameState &ls, int num)
 static const OldChunks _company_economy_chunk[] = {
 	OCL_SVAR( OC_FILE_I32 | OC_VAR_I64, CompanyEconomyEntry, income ),
 	OCL_SVAR( OC_FILE_I32 | OC_VAR_I64, CompanyEconomyEntry, expenses ),
-	OCL_SVAR( OC_INT32,                 CompanyEconomyEntry, delivered_cargo[31] ),
+	OCL_SVAR( OC_INT32,                 CompanyEconomyEntry, delivered_cargo[NUM_CARGO - 1] ),
 	OCL_SVAR( OC_INT32,                 CompanyEconomyEntry, performance_history ),
 	OCL_SVAR( OC_TTD | OC_FILE_I32 | OC_VAR_I64, CompanyEconomyEntry, company_value ),
 
@@ -1100,7 +1100,7 @@ static const OldChunks vehicle_ship_chunk[] = {
 };
 
 static const OldChunks vehicle_air_chunk[] = {
-	OCL_NULL( 1 ), // Old aircraft position
+	OCL_SVAR(  OC_UINT8, Aircraft, pos ),
 	OCL_SVAR(  OC_FILE_U8 | OC_VAR_U16, Aircraft, targetairport ),
 	OCL_SVAR( OC_UINT16, Aircraft, crashed_counter ),
 	OCL_SVAR(  OC_UINT8, Aircraft, state ),

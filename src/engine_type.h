@@ -16,7 +16,6 @@
 #include "newgrf_callbacks.h"
 #include "rail_type.h"
 #include "road_type.h"
-#include "air_type.h"
 #include "cargo_type.h"
 #include "date_type.h"
 #include "sound_type.h"

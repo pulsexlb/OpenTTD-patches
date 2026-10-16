@@ -89,15 +89,15 @@ void GeneralFmtDumper<Vehicle, const Vehicle *>::fmt_format_value(format_target 
 		dump_name(v);
 		buf.format(", c:{}, ", v->owner);
 		dump_flags(v);
-		if (v->Primary() && v->Primary() != v) {
-			buf.format(", front: {}: (", v->Primary()->index);
-			if (Vehicle::GetIfValid(v->Primary()->index) != v->Primary()) {
-				buf.format("INVALID PTR: {})", fmt::ptr(v->Primary()));
+		if (v->First() && v->First() != v) {
+			buf.format(", front: {}: (", v->First()->index);
+			if (Vehicle::GetIfValid(v->First()->index) != v->First()) {
+				buf.format("INVALID PTR: {})", fmt::ptr(v->First()));
 				return;
 			}
-			dump_name(v->Primary());
+			dump_name(v->First());
 			buf.append(", ");
-			dump_flags(v->Primary());
+			dump_flags(v->First());
 			buf.push_back(')');
 		}
 		buf.push_back(')');

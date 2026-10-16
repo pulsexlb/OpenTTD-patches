@@ -133,7 +133,7 @@ static void GenerateRockyArea(TileIndex end, TileIndex start, bool remove)
 }
 
 /** Checks if the area contains any structures that are important enough to query about first */
-static bool IsQueryConfirmImportantStructureInArea(TileIndex start_tile, TileIndex end_tile, bool diagonal)
+static bool IsQueryConfirmIndustryOrRailStationInArea(TileIndex start_tile, TileIndex end_tile, bool diagonal)
 {
 	if (_settings_client.gui.demolish_confirm_mode == DCM_OFF) return false;
 
@@ -143,7 +143,7 @@ static bool IsQueryConfirmImportantStructureInArea(TileIndex start_tile, TileInd
 		if (_cheats.magic_bulldozer.value && IsTileType(tile, TileType::Industry)) {
 			return true;
 		}
-		if (_settings_client.gui.demolish_confirm_mode == DCM_INDUSTRY_RAIL_STATION && (IsRailStationTile(tile) || IsAirportTile(tile))) {
+		if (_settings_client.gui.demolish_confirm_mode == DCM_INDUSTRY_RAIL_STATION && IsRailStationTile(tile)) {
 			/* Only warn when attempting to remove own stations */
 			if (GetTileOwner(tile) == _local_company) return true;
 		}
@@ -176,7 +176,7 @@ bool GUIPlaceProcDragXY(ViewportDragDropSelectionProcess proc, TileIndex start_t
 			_demolish_area_command = CommandContainer<Commands::ClearArea>(STR_ERROR_CAN_T_CLEAR_THIS_AREA, end_tile,
 					CmdPayload<Commands::ClearArea>::Make(start_tile, _ctrl_pressed), CommandCallback::PlaySound_EXPLOSION);
 
-			if (!_shift_pressed && IsQueryConfirmImportantStructureInArea(start_tile, end_tile, _ctrl_pressed)) {
+			if (!_shift_pressed && IsQueryConfirmIndustryOrRailStationInArea(start_tile, end_tile, _ctrl_pressed)) {
 				ShowQuery(GetEncodedString(STR_QUERY_CLEAR_AREA_CAPTION), GetEncodedString(STR_CLEAR_AREA_CONFIRMATION_TEXT), nullptr, DemolishAreaConfirmationCallback);
 			} else {
 				DemolishAreaConfirmationCallback(nullptr, true);
