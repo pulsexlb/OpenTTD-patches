@@ -14,7 +14,6 @@
 #include "../network/network.h"
 
 #include "saveload_internal.h"
-#include "extended_ver_sl.h"
 #include "vehicle_sl.h"
 
 #include "../safeguards.h"
@@ -139,27 +138,12 @@ NamedSaveLoadTable GetOrderExtraInfoDescription()
 {
 	static const NamedSaveLoad _order_extra_info_desc[] = {
 		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, 32,        SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 1, 2))),
-		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_GRF_CARGO, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 3, 4))),
-		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_CARGO,     SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 5))),
+		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_CARGO, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 3))),
 		NSL("xflags",           SLE_CONDVAR_X(OrderExtraInfo, xflags,           SLE_UINT8,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA))),
 		NSL("xdata",            SLE_CONDVAR_X(OrderExtraInfo, xdata,           SLE_UINT32,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_EXTRA_DATA))),
 		NSL("xdata2",           SLE_CONDVAR_X(OrderExtraInfo, xdata2,          SLE_UINT32,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_EXTRA_DATA, 3))),
 		NSL("dispatch_index",   SLE_CONDVAR_X(OrderExtraInfo, dispatch_index,  SLE_UINT16,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_SCHEDULED_DISPATCH, 3))),
 		NSL("colour",           SLE_CONDVAR_X(OrderExtraInfo, colour,           SLE_UINT8,            SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_EXTRA_DATA, 2))),
-		NSL("rv_transport_flags", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_flags, SLE_UINT8,       SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
-		NSL("rv_transport_max", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_max, SLE_UINT8,           SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT))),
-		/* Selection criteria, added with feature version 2 (older saves simply have no criteria). */
-		NSL("rv_transport_load_state", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_load_state, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
-		NSL("rv_transport_cargo_mode", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_cargo_mode, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
-		NSL("rv_transport_cargo", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_cargo, SLE_UINT8,       SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
-		NSL("rv_transport_min_wait", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_min_wait, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
-		/* Reserved field of a dropped criterion; kept so that feature version 2 savegames still load. */
-		NSL("rv_transport_dest_station", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_dest_station, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 2))),
-		/* Selection criteria added with feature version 3. */
-		NSL("rv_transport_slot", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_slot, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 3))),
-		/* Selection criteria added with feature version 4. */
-		NSL("rv_transport_slot_group", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_slot_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 4))),
-		NSL("rv_transport_group", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 4))),
 	};
 
 	return _order_extra_info_desc;
@@ -188,9 +172,7 @@ struct OrderExtraDataStructHandler final : public TypedSaveLoadStructHandler<Ord
 NamedSaveLoadTable GetOrderDescription()
 {
 	static const NamedSaveLoad _order_desc[] = {
-		NSL("type",         SLE_CONDVAR_X(Order, type,               SLE_FILE_U8 | SLE_VAR_U16,    SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 0, 0))),
-		NSL("type",         SLE_CONDVAR_X(Order, type,               SLE_UINT16,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 1))),
-		NSL("decouple_flags",      SLE_CONDVAR(Order, decouple_flags,    SLE_UINT8,  SL_MIN_VERSION, SL_MAX_VERSION)),
+		NSL("type",                SLE_VAR(Order, type,               SLE_UINT8)),
 		NSL("flags",         SLE_CONDVAR_X(Order, flags,              SLE_FILE_U8 | SLE_VAR_U16,    SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 0, 0))),
 		NSL("flags",         SLE_CONDVAR_X(Order, flags,              SLE_UINT16,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 1))),
 		NSL("",             SLE_CONDNULL_X(1,                                                       SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP))),
@@ -272,10 +254,6 @@ static void Load_ORDR()
 		while ((index = SlIterateArray()) != -1) {
 			OrderPoolItem *item = OrderPoolItem::CreateAtIndex(OrderID(index));
 			SlObjectLoadFiltered(&item->order, slt);
-
-			/* Savegames from before the order type field was widened use the old bit layout. */
-			if (SlXvIsFeatureMissing(XSLFI_ORDER_DECOUPLE)) item->order.ConvertLegacyTypeLayout();
-
 			item->next_ref = _order_item_ref;
 		}
 	}
@@ -475,9 +453,6 @@ struct OrderVectorStructHandlerBase : public SaveLoadStructHandler {
 		orders.resize(SlGetStructListLength(UINT32_MAX));
 		for (Order &order : orders) {
 			SlObjectLoadFiltered(&order, this->GetLoadDescription());
-
-			/* Savegames from before the order type field was widened use the old bit layout. */
-			if (SlXvIsFeatureMissing(XSLFI_ORDER_DECOUPLE)) order.ConvertLegacyTypeLayout();
 		}
 	}
 };
@@ -544,14 +519,6 @@ NamedSaveLoadTable GetOrderListDescription()
 		NSL("",            SLE_CONDNULL_X(21,                                                             SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_JOKERPP))),
 
 		NSLT("route_overlay_colour", SLE_VAR(OrderList, route_overlay_colour, SLE_UINT8)),
-
-		NSL("name",              SLE_SSTR(OrderList, name, SLE_STR)),
-		NSL("is_schedule_group", SLE_CONDVAR_X(OrderList, is_schedule_group, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_LIST_GROUPS))),
-		NSL("schedule_group", SLE_CONDVAR_X(OrderList, schedule_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_LIST_GROUPS))),
-		NSL("company",           SLE_VAR(OrderList, company, SLE_UINT8)),
-		NSL("is_public",         SLE_VAR(OrderList, is_public, SLE_BOOL)),
-		NSL("dispatch_enabled",  SLE_VAR(OrderList, dispatch_enabled, SLE_BOOL)),
-		NSL("separation_enabled", SLE_VAR(OrderList, separation_enabled, SLE_BOOL)),
 
 		NSLT_STRUCTLIST<OrderListDispatchScheduleStructHandler>("dispatch_schedule"),
 		NSLT_STRUCTLIST<OrderListOrderVectorStructHandler>("order_vector"),
@@ -646,7 +613,6 @@ static void Load_ORDL()
 		}
 	}
 
-	if (!AreScheduleGroupsValid()) SlErrorCorrupt("Invalid schedule group hierarchy");
 	_old_scheduled_dispatch_slots.clear();
 }
 

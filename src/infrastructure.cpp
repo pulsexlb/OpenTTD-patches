@@ -35,7 +35,7 @@
  * @param infra_owner The owner of the infrastructure
  * @param cost Amount to transfer as money fraction (shifted 8 bits to the left)
  */
-void PaySharingFee(Vehicle *v, Owner infra_owner, Money cost)
+static void PaySharingFee(Vehicle *v, Owner infra_owner, Money cost)
 {
 	Company *c = Company::Get(v->owner);
 	if (!_settings_game.economy.sharing_payment_in_debt) {
@@ -86,7 +86,7 @@ static bool VehiclePositionIsAllowed(const Vehicle *v, Owner owner = INVALID_OWN
 {
 	switch (v->type) {
 		case VehicleType::Train:
-			if (Train::From(v)->IsVirtualOrCarried()) return true;
+			if (HasBit(Train::From(v)->subtype, GVSF_VIRTUAL)) return true;
 			for (const Vehicle *u = v; u != nullptr; u = u->Next()) {
 				if (!IsValidTile(u->tile)) continue;
 				if (!IsInfraTileUsageAllowed(VehicleType::Train, v->owner, u->tile) || GetTileOwner(u->tile) == owner) return false;
@@ -108,7 +108,7 @@ static bool VehiclePositionIsAllowed(const Vehicle *v, Owner owner = INVALID_OWN
 			return true;
 		case VehicleType::Aircraft: {
 			const Aircraft *a = Aircraft::From(v);
-			if (!a->IsAircraftFlying() && Station::IsValidID(a->targetairport)) {
+			if (a->state != FLYING && Station::IsValidID(a->targetairport)) {
 				Owner station_owner = Station::Get(a->targetairport)->owner;
 				if (!IsInfraUsageAllowed(VehicleType::Aircraft, a->owner, station_owner) || station_owner == owner) return false;
 			}
@@ -137,15 +137,7 @@ static bool OrderDestinationIsAllowed(const Order *order, const Vehicle *v, Owne
 			break;
 		case OT_GOTO_DEPOT:
 			if ((order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0) return true;
-			if (v->type == VehicleType::Aircraft) {
-				const Depot *hangar = GetOrderHangar(*order);
-				if (hangar == nullptr) return true;
-				dest_owner = GetTileOwner(hangar->xy);
-			} else {
-				const Depot *depot = Depot::GetIfValid(order->GetDestination().ToDepotID());
-				if (depot == nullptr) return true;
-				dest_owner = GetTileOwner(depot->xy);
-			}
+			dest_owner = (v->type == VehicleType::Aircraft) ? Station::Get(order->GetDestination().ToStationID())->owner : GetTileOwner(Depot::Get(order->GetDestination().ToDepotID())->xy);
 			break;
 		case OT_LOADING_ADVANCE:
 		case OT_LOADING:
@@ -197,7 +189,7 @@ static void FixAllReservations()
 	/* if this function is called, we can safely assume that sharing of rails is being switched off */
 	assert(!IsInfrastructureSharingEnabled(VehicleType::Train));
 	for (Train *v : Train::IterateFrontOnly()) {
-		if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried()) continue;
+		if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || HasBit(v->subtype, GVSF_VIRTUAL)) continue;
 		/* It might happen that the train reserved additional tracks,
 		 * but FollowTrainReservation can't detect those because they are no longer reachable.
 		 * detect this by first finding the end of the reservation,
@@ -245,7 +237,7 @@ bool CheckSharingChangePossible(VehicleType type, bool new_value)
 
 	StringID error_message = STR_NULL;
 	for (Vehicle *v : Vehicle::IterateTypeFrontOnly(type)) {
-		if (v->IsVirtualOrCarried()) continue;
+		if (HasBit(v->subtype, GVSF_VIRTUAL)) continue;
 
 		/* Check vehicle positiion */
 		if (!VehiclePositionIsAllowed(v)) {
@@ -270,7 +262,7 @@ bool CheckSharingChangePossible(VehicleType type, bool new_value)
 
 	if (type == VehicleType::Train && _settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
 		for (Train *v : Train::IterateFrontOnly()) {
-			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried()) continue;
+			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || HasBit(v->subtype, GVSF_VIRTUAL)) continue;
 			/* It might happen that the train reserved additional tracks,
 			 * but FollowTrainReservation can't detect those because they are no longer reachable.
 			 * detect this by first finding the end of the reservation,

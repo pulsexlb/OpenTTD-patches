@@ -17,7 +17,6 @@
 struct Window *ShowBuildRailToolbar(RailType railtype);
 void ShowBuildRailToolbarWithPickTile(RailType railtype, TileIndex tile);
 void ShowBuildRailStationPickerAndSelect(StationType station_type, const StationSpec *spec);
-RailType GetCurrentRailType();
 void ReinitGuiAfterToggleElrail(bool disable);
 void ResetSignalVariant(int32_t = 0);
 void InitializeRailGUI();

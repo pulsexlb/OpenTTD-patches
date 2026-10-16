@@ -56,8 +56,6 @@ STR_CARGO_PLURAL_TOFFEE                                         :太妃糖
 STR_CARGO_PLURAL_BATTERIES                                      :电池
 STR_CARGO_PLURAL_PLASTIC                                        :塑料
 STR_CARGO_PLURAL_FIZZY_DRINKS                                   :汽水
-STR_CARGO_PLURAL_VEHICLES                                        :载具（汽车）
-STR_CARGO_PLURAL_RAILVEHICLES                                    :载具（火车）
 
 # Singular cargo name
 STR_CARGO_SINGULAR_NOTHING                                      :
@@ -92,8 +90,6 @@ STR_CARGO_SINGULAR_TOFFEE                                       :太妃糖
 STR_CARGO_SINGULAR_BATTERY                                      :电池
 STR_CARGO_SINGULAR_PLASTIC                                      :塑料
 STR_CARGO_SINGULAR_FIZZY_DRINK                                  :汽水
-STR_CARGO_SINGULAR_VEHICLE                                       :汽车
-STR_CARGO_SINGULAR_RAILVEHICLE                                   :载具（火车）
 
 # Quantity of cargo
 STR_QUANTITY_NOTHING                                            :
@@ -128,8 +124,6 @@ STR_QUANTITY_TOFFEE                                             :{WEIGHT_LONG}�
 STR_QUANTITY_BATTERIES                                          :{COMMA}{NBSP}箱电池
 STR_QUANTITY_PLASTIC                                            :{VOLUME_LONG}塑料
 STR_QUANTITY_FIZZY_DRINKS                                       :{COMMA}{NBSP}瓶汽水
-STR_QUANTITY_VEHICLES                                            :{WEIGHT_LONG}的载具（汽车）
-STR_QUANTITY_RAILVEHICLES                                        :{WEIGHT_LONG}的载具（火车）
 STR_QUANTITY_N_A                                                :不适用
 
 # Two letter abbreviation of cargo name
@@ -165,8 +159,6 @@ STR_ABBREV_TOFFEE                                               :太
 STR_ABBREV_BATTERIES                                            :电
 STR_ABBREV_PLASTIC                                              :塑
 STR_ABBREV_FIZZY_DRINKS                                         :汽
-STR_ABBREV_VEHICLES                                              :载具
-STR_ABBREV_RAILVEHICLES                                          :火车
 STR_ABBREV_ALL                                                  :全
 
 # 'Mode' of transport for cargoes
@@ -878,12 +870,8 @@ STR_NEWS_FIRST_AIRCRAFT_ARRIVAL                                 :{BIG_FONT}{BLAC
 STR_NEWS_TRAIN_CRASH                                            :{BIG_FONT}{BLACK}列车相撞！{}{COMMA} 人在爆炸中丧生！
 STR_NEWS_ROAD_VEHICLE_CRASH_DRIVER                              :{BIG_FONT}{BLACK}汽车事故！{}汽车与火车相撞，司机在事故中丧生！
 STR_NEWS_ROAD_VEHICLE_CRASH                                     :{BIG_FONT}{BLACK}汽车事故！{}汽车与火车相撞，{COMMA} 人在事故中丧生！
-STR_NEWS_AIRCRAFT_CAN_T_LAND                                    :{WHITE}{VEHICLE} 无法在机场降落
 STR_NEWS_AIRCRAFT_CRASH                                         :{BIG_FONT}{BLACK}飞机坠毁！{}{COMMA} 人在 {STATION} 的事故中罹难！
 STR_NEWS_PLANE_CRASH_OUT_OF_FUEL                                :{BIG_FONT}{BLACK}飞机坠毁！{}燃油不足，{COMMA} 人在事故中罹难！
-STR_NEWS_ORDER_DECOUPLE_FAILED                                  :{WHITE}无法解挂 {VEHICLE}
-STR_NEWS_ORDER_DECOUPLE_FAILED_REASON                           :{WHITE}无法解挂 {VEHICLE}：{STRING}
-STR_NEWS_ORDER_COUPLE_FAILED                                    :{WHITE}无法连接 {VEHICLE} 和 {VEHICLE}
 
 STR_NEWS_DISASTER_ZEPPELIN                                      :{BIG_FONT}{BLACK}齐柏林飞艇在 {STATION} 失事！
 STR_NEWS_DISASTER_SMALL_UFO                                     :{BIG_FONT}{BLACK}汽车被 UFO 炸毁！
@@ -946,7 +934,6 @@ STR_NEWS_VEHICLE_IS_GETTING_VERY_OLD                            :{WHITE}{VEHICLE
 STR_NEWS_VEHICLE_IS_GETTING_VERY_OLD_AND                        :{WHITE}{VEHICLE} 已经达到报废年限，必须马上更新！
 STR_NEWS_TRAIN_IS_STUCK                                         :{WHITE}{VEHICLE} 无法找到道路
 STR_NEWS_VEHICLE_IS_LOST                                        :{WHITE}{VEHICLE} 无法找到路线
-STR_NEWS_RV_TRANSPORT_UNLOAD_OVERDUE                            :{WHITE}{VEHICLE} 已被运载 {NUM} 天仍未卸下
 STR_NEWS_VEHICLE_UNPROFITABLE_YEAR                              :{WHITE}{VEHICLE} 的去年损益为 {CURRENCY_LONG}
 STR_NEWS_VEHICLE_UNPROFITABLE_PERIOD                            :{WHITE}{VEHICLE} 上期的损益为 {CURRENCY_LONG}
 STR_NEWS_AIRCRAFT_DEST_TOO_FAR                                  :{WHITE}{VEHICLE} 由于距离过远而无法到达目的地
@@ -1371,8 +1358,6 @@ STR_CONFIG_SETTING_TRAIN_FLIP_REVERSE                           :允许列车在
 
 STR_CONFIG_SETTING_DISASTERS                                    :灾难：{STRING}
 STR_CONFIG_SETTING_DISASTERS_HELPTEXT                           :灾难可能引起堵车或者车祸或者建筑损毁
-STR_CONFIG_SETTING_RAIN                                         :随机下雨：{STRING}
-STR_CONFIG_SETTING_RAIN_HELPTEXT                                :地图上会不定期下雨。下雨时世界会变暗，仅为视觉效果
 
 STR_CONFIG_SETTING_CITY_APPROVAL                                :地方政府态度：{STRING}
 STR_CONFIG_SETTING_CITY_APPROVAL_HELPTEXT                       :设置相关参数以决定各公司造成的噪音及环境破坏时，各城镇对该公司的评价及未来城镇建设的影响
@@ -1533,10 +1518,6 @@ STR_CONFIG_SETTING_COMPANY_STARTING_COLOUR_SECONDARY_HELPTEXT   :选择公司初
 
 STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS                        :总允许建设小型机场：{STRING}
 STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS_HELPTEXT               :启用时，每种机场一经面世，就永远可以选择建设
-STR_CONFIG_SETTING_DEFAULT_AIR_TYPE                            :默认航空类型（新游戏/加载游戏后）：{STRING}
-STR_CONFIG_SETTING_DEFAULT_AIR_TYPE_HELPTEXT                   :选择开始或加载游戏后要使用的航空类型。'第一个可用'选择最旧的机场类型，'最后一个可用'选择最新的类型，'最常用'选择当前使用最多的类型
-STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS                    :允许建设自定义机场：{STRING}
-STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS_HELPTEXT           :启用此设置后，每位玩家都可以建设自定义机场
 
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE                            :列车无法找到路线时提示：{STRING}
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE_HELPTEXT                   :启用时将在载具无法到达命令目的地时提示
@@ -1835,12 +1816,6 @@ STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_HELPTEXT            :限制快进时
 STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_VAL                 :{NUM}% 正常游戏速度
 ###setting-zero-is-special
 STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_ZERO                :无限制（以计算机可行的最快速度）
-
-STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL               :邀请码保活检测间隔: {STRING}
-STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_HELPTEXT      :服务器多长时间向 OpenTTD 联机调度服务器确认邀请码状态依然有效。当邀请码检测到无效时服务器将重新向 OpenTTD 联机调度服务器注册邀请码。输入 0 不进行保活检测。
-STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_VAL           :{COMMA} 分钟{P "" s}
-###setting-zero-is-special
-STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_ZERO          :关闭
 
 STR_CONFIG_SETTING_SOUND_TICKER                                 :产业新闻：{STRING}
 STR_CONFIG_SETTING_SOUND_TICKER_HELPTEXT                        :每月初产业新闻音效
@@ -2339,10 +2314,6 @@ STR_CHEAT_CHANGE_DATE                                           :{LTBLUE}改变�
 STR_CHEAT_CHANGE_DATE_QUERY_CAPT                                :{WHITE}改变当前年份
 STR_CHEAT_SETUP_PROD                                            :{LTBLUE}允许修改产量：{ORANGE}{STRING}
 STR_CHEAT_STATION_RATING                                        :{LTBLUE}车站评价固定为 100%：{ORANGE}{STRING}
-STR_CHEAT_RAIN                                                  :{LTBLUE}天气：{ORANGE}{STRING}
-STR_CHEAT_RAIN_AUTO                                             :自动
-STR_CHEAT_RAIN_RAINING                                          :永远下雨
-STR_CHEAT_RAIN_SUNNY                                            :永远晴天
 
 # Livery window
 STR_LIVERY_CAPTION                                              :{WHITE}{COMPANY} 的色彩方案
@@ -3074,17 +3045,11 @@ STR_AIRPORT_INTERCONTINENTAL                                    :洲际机场
 STR_AIRPORT_HELIPORT                                            :直升机停机楼
 STR_AIRPORT_HELIDEPOT                                           :直升机专用机场
 STR_AIRPORT_HELISTATION                                         :直升机小型机场
-STR_AIRPORT_ROTATION_0                                          :默认方向
-STR_AIRPORT_ROTATION_90                                         :旋转 90º
-STR_AIRPORT_ROTATION_180                                        :旋转 180º
-STR_AIRPORT_ROTATION_270                                        :旋转 270º
-STR_AIRPORT_CUSTOM                                           :自定义
 
 STR_AIRPORT_CLASS_SMALL                                         :小型机场
 STR_AIRPORT_CLASS_LARGE                                         :大型机场
 STR_AIRPORT_CLASS_HUB                                           :空运枢纽
 STR_AIRPORT_CLASS_HELIPORTS                                     :直升机机场
-STR_AIRPORT_CLASS_CUSTOMIZED                                    :自定义机场
 
 STR_STATION_BUILD_NOISE                                         :{BLACK}产生的噪音：{GOLD}{COMMA}
 
@@ -4509,18 +4474,6 @@ STR_REPLACE_ENGINES                                             :机车
 STR_REPLACE_WAGONS                                              :挂车
 STR_REPLACE_ALL_RAILTYPE                                        :所有铁路载具
 STR_REPLACE_ALL_ROADTYPE                                        :所有道路载具
-STR_REPLACE_ALL_AIRTYPE                                         :所有航空类型
-
-STR_AIRTYPE_NAME_GRAVEL                                         :碎石机场
-STR_AIRTYPE_NAME_ASPHALT                                        :沥青机场
-STR_AIRTYPE_NAME_WATER                                          :水上机场
-STR_AIRTYPE_NAME_DARK                                           :深色机场
-STR_AIRTYPE_NAME_YELLOW                                         :划线跑道机场
-STR_REPLACE_AIRCRAFT_GRAVEL_VEHICLES                            :碎石机场用飞机
-STR_REPLACE_AIRCRAFT_ASPHALT_VEHICLES                           :沥青机场用飞机
-STR_REPLACE_AIRCRAFT_WATER_VEHICLES                             :水上机场用飞机
-STR_REPLACE_AIRCRAFT_DARK_VEHICLES                              :深色机场用飞机
-STR_REPLACE_AIRCRAFT_YELLOW_VEHICLES                            :划线跑道机场用飞机
 
 ###length 2
 STR_REPLACE_RAILTYPE_TOOLTIP                                    :{BLACK}选择更新载具的对应铁路类型
@@ -4595,13 +4548,6 @@ STR_VEHICLE_STATUS_LOADING_UNLOADING                            :{LTBLUE}正在�
 STR_VEHICLE_STATUS_LEAVING                                      :{LTBLUE}发车
 STR_VEHICLE_STATUS_WAITING_UNBUNCHING                           :{LTBLUE}等待调节班次发车时间
 STR_VEHICLE_STATUS_CRASHED                                      :{RED}已撞毁！
-STR_VEHICLE_STATUS_WAITING_TO_BE_TRANSPORTED                    :{LTBLUE}等待被运载
-STR_VEHICLE_STATUS_BEING_TRANSPORTED                            :{LTBLUE}正在被运载
-STR_VEHICLE_STATUS_CARRYING_ROAD_VEHICLES                       :{LTBLUE}载有 {COMMA} 台载具
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLES                       :载运的载具：
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE                        :{BLACK}{VEHICLE}
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE_EXTRA                  :{BLACK}（{COMMA} 吨）
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE_NONE                   :{LTBLUE}本列车没有载运载具
 STR_VEHICLE_STATUS_BROKEN_DOWN                                  :{RED}抛锚
 STR_VEHICLE_STATUS_STOPPED                                      :{RED}停运
 STR_VEHICLE_STATUS_TRAIN_STOPPING_VEL                           :{RED}{VELOCITY} - 正在停止
@@ -4615,10 +4561,6 @@ STR_VEHICLE_STATUS_HEADING_FOR_WAYPOINT_VEL                     :{LTBLUE}{1:VELO
 STR_VEHICLE_STATUS_HEADING_FOR_DEPOT_VEL                        :{ORANGE}{1:VELOCITY} - 正前往 {0:DEPOT}
 STR_VEHICLE_STATUS_HEADING_FOR_DEPOT_SERVICE_VEL                :{LTBLUE}{1:VELOCITY} - 正前往 {0:DEPOT} 以进行维护
 STR_VEHICLE_STATUS_HEADING_FOR_DEPOT_UNBUNCH_VEL                :{LTBLUE}{1:VELOCITY} - 正前往 {0:DEPOT} 以维护与调节班次
-STR_VEHICLE_STATUS_HEADING_FOR_COUPLE_VEL                       :{LTBLUE}正前往连接，{VELOCITY}
-STR_VEHICLE_STATUS_DECOUPLING                                    :{LTBLUE}解挂中
-STR_VEHICLE_STATUS_WAITING_FOR_COUPLE                           :{LTBLUE}等待连接
-STR_VEHICLE_STATUS_WAITING_FOR_COUPLE_WRONG                     :{RED}无法在车站外连接
 
 STR_VEHICLE_STATUS_CANNOT_REACH_STATION_VEL                     :{LTBLUE}{1:VELOCITY} - 无法前往 {0:STATION}
 STR_VEHICLE_STATUS_CANNOT_REACH_WAYPOINT_VEL                    :{LTBLUE}{1:VELOCITY} - 无法前往 {0:WAYPOINT}
@@ -4638,9 +4580,6 @@ STR_VEHICLE_DETAILS_ROAD_VEHICLE_RENAME                         :{BLACK}命名�
 STR_VEHICLE_DETAILS_SHIP_RENAME                                 :{BLACK}命名船只
 STR_VEHICLE_DETAILS_AIRCRAFT_RENAME                             :{BLACK}命名飞机
 
-STR_VEHICLE_INFO_VALUE_NA                                       :-
-STR_VEHICLE_INFO_WEIGHT_RATIOS_NA                               :{BLACK}功率重量比：{LTBLUE}-{BLACK}  {BLACK}最大牵引力重量比：{LTBLUE}-
-STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS_NA                      :{BLACK}可靠度：{LTBLUE}-{BLACK}上次维护后的故障次数：{LTBLUE}-
 STR_VEHICLE_INFO_AGE                                            :{COMMA} 年（剩余年限：{COMMA}）
 STR_VEHICLE_INFO_AGE_RED                                        :{RED}{COMMA} 年（剩余年限：{COMMA}）
 STR_VEHICLE_INFO_AGE_RUNNING_COST_YR                            :{BLACK}年龄：{LTBLUE}{STRING}{BLACK}   运行成本：{LTBLUE}{CURRENCY_LONG}/年
@@ -4713,8 +4652,6 @@ STR_VEHICLE_DETAILS_TRAIN_TOTAL_CARGO_TOOLTIP                   :{BLACK}显示�
 
 STR_VEHICLE_DETAILS_TRAIN_ARTICULATED_RV_CAPACITY               :{BLACK}容量：{LTBLUE}{STRING}
 
-STR_VEHICLE_DETAILS_HOLD_CAPACITY                               :（{STRING}）
-
 # Vehicle refit
 STR_REFIT_CAPTION                                               :{WHITE}{VEHICLE}（改装）
 STR_REFIT_TITLE                                                 :{GOLD}选择运输的货物类型：
@@ -4762,82 +4699,17 @@ STR_ORDER_GO_NON_STOP_VIA                                       :直达经由
 STR_ORDER_TOOLTIP_NON_STOP                                      :{BLACK}修改当前命令在车站的停靠措施
 
 STR_ORDER_TOGGLE_FULL_LOAD                                      :{BLACK}满载任一货物
-STR_ORDER_DROP_LOAD_IF_POSSIBLE                                 :若有普通货物则装载
-STR_ORDER_DROP_FULL_LOAD_ALL                                    :满载所有普通货物
-STR_ORDER_DROP_FULL_LOAD_ANY                                    :满载任一普通货物
-STR_ORDER_DROP_NO_LOADING                                       :不装载普通货物
-STR_ORDER_DROP_LOAD_ROAD_VEHICLES                               :装载载具
-STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES                             :卸载载具
-STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES                         :卸载所有载具
-STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES_TOOLTIP                 :{BLACK}无视每台车自己订单里声明的卸货站，把车上的载具全部卸在这里。不勾选时，只卸"自己的订单写着要在本站被卸下"的车。
-STR_ORDER_DROP_RV_MATCH_DEST                                    :只装载去下一站的载具
-STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES                           :等待载具
-STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED                           :等待被运载
-STR_ORDER_DROP_BE_UNLOADED_HERE                                 :在此被卸下
-STR_ORDER_DROP_RV_LOAD_STATE                                    :载具条件：{STRING}
-STR_ORDER_RV_LOAD_STATE_ANY                                     :任意
-STR_ORDER_RV_LOAD_STATE_EMPTY                                   :仅空车
-STR_ORDER_RV_LOAD_STATE_FULL                                    :仅满载
-STR_ORDER_DROP_RV_MIN_WAIT                                      :最短等待：{STRING}
-STR_ORDER_RV_MIN_WAIT_NONE                                      :不限
-STR_ORDER_RV_MIN_WAIT_DAYS                                      :{NUM} 天
-STR_ORDER_DROP_RV_MIN_WAIT_NUM                                  :最短等待：{NUM} 天
-STR_ORDER_RV_CARGO_CAN_CARRY                                    :可载货物：
-STR_ORDER_RV_CARGO_IS_CARRYING                                  :正载货物：
-STR_ORDER_RV_SLOT                                               :路签：{TRSLOT}
-STR_ORDER_DROP_RV_TRANSPORT                                     :载具运输…
-STR_ORDER_DROP_RV_LOAD_ANY                                       :装载任意载具
-STR_ORDER_DROP_RV_LOAD_NEXT                                      :装载去下一站的载具
-STR_ORDER_DROP_RV_LOAD_OPTIONS                                   :载具装载选项…
-STR_ORDER_RV_TRANSPORT_MORE_OPTIONS                             :（其他选项）
-STR_ORDER_RV_CARGO_LOAD_DEFAULT                                 :装载普通货物
-STR_ORDER_RV_CARGO_UNLOAD_DEFAULT                               :卸载普通货物
-STR_ERROR_RV_REFIT_SCHEDULE                                      :{WHITE}载具有调度计划时不能在“载具”与普通货物之间互相改装，请先清空调度计划。
-STR_RV_TRANSPORT_CRITERIA_CAPTION                               :载具运输
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE                            :载货状态
-STR_RV_TRANSPORT_CRITERIA_CARGO                                 :货物
-STR_RV_TRANSPORT_CRITERIA_CARGO_MODE                            :货物判据
-STR_RV_TRANSPORT_CRITERIA_CAN_CARRY                             :必须可装载
-STR_RV_TRANSPORT_CRITERIA_IS_CARRYING                           :必须正装载
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT                              :最短等待
-STR_RV_TRANSPORT_CRITERIA_SLOT                                  :路签
-STR_RV_TRANSPORT_CRITERIA_SLOT_SET                              :已指定路签
-STR_RV_TRANSPORT_CRITERIA_SLOT_GROUP                            :路签组
-STR_RV_TRANSPORT_CRITERIA_SLOT_GROUP_SET                        :已指定路签组
-STR_RV_TRANSPORT_CRITERIA_GROUP                                 :载具组
-STR_RV_TRANSPORT_CRITERIA_GROUP_SET                             :已指定载具组
-STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP                         :{BLACK}在汽车路签与火车路签之间切换
-STR_RV_TRANSPORT_CRITERIA_SLOT_ROAD                             :汽车
-STR_RV_TRANSPORT_CRITERIA_SLOT_TRAIN                            :火车
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_ANY                        :任意
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_EMPTY                      :仅空车
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_FULL                       :仅满载
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_NONE                         :不限
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_DAYS                         :{NUM} 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_1                            :1 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_2                            :2 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_5                            :5 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_10                           :10 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_30                           :30 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_60                           :60 天
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_CUSTOM                       :自定义时间
-STR_RV_TRANSPORT_CRITERIA_MAX                                   :最多同时装载
-STR_RV_TRANSPORT_CRITERIA_MAX_ANY                               :不限数量
-STR_RV_TRANSPORT_CRITERIA_MAX_1                                 :最多 1 辆
-STR_RV_TRANSPORT_CRITERIA_MAX_2                                 :最多 2 辆
-STR_RV_TRANSPORT_CRITERIA_MAX_3                                 :最多 3 辆
-STR_RV_TRANSPORT_CRITERIA_MAX_5                                 :最多 5 辆
-STR_RV_TRANSPORT_CRITERIA_MAX_10                                :最多 10 辆
-STR_RV_TRANSPORT_CRITERIA_MAX_N                                 :最多 {NUM} 辆
-STR_RV_TRANSPORT_CRITERIA_MAX_CUSTOM                            :最多自定义数量
-STR_ORDER_RV_MAX_VEHICLES                                       :最多 {NUM} 辆
+STR_ORDER_DROP_LOAD_IF_POSSIBLE                                 :若有则装载
+STR_ORDER_DROP_FULL_LOAD_ALL                                    :满载所有货物
+STR_ORDER_DROP_FULL_LOAD_ANY                                    :满载任一货物
+STR_ORDER_DROP_NO_LOADING                                       :不装载
 STR_ORDER_TOOLTIP_FULL_LOAD                                     :{BLACK}修改当前命令在车站的装载措施
 
 STR_ORDER_TOGGLE_UNLOAD                                         :{BLACK}全部卸载
-STR_ORDER_DROP_UNLOAD_IF_ACCEPTED                               :若接受则卸载普通货物
-STR_ORDER_DROP_UNLOAD                                           :卸载全部普通货物
-STR_ORDER_DROP_TRANSFER                                         :转运普通货物
-STR_ORDER_DROP_NO_UNLOADING                                     :不卸载普通货物
+STR_ORDER_DROP_UNLOAD_IF_ACCEPTED                               :若接受则卸载
+STR_ORDER_DROP_UNLOAD                                           :全部卸载
+STR_ORDER_DROP_TRANSFER                                         :转运
+STR_ORDER_DROP_NO_UNLOADING                                     :不卸载
 STR_ORDER_TOOLTIP_UNLOAD                                        :{BLACK}修改当前命令在车站的卸载措施
 
 STR_ORDER_REFIT                                                 :{BLACK}改装
@@ -4902,10 +4774,6 @@ STR_ORDER_GO_TO_NEAREST_DEPOT                                   :前往最近的
 STR_ORDER_GO_TO_NEAREST_HANGAR                                  :前往最近的机库
 STR_ORDER_CONDITIONAL                                           :条件式跳过命令
 STR_ORDER_SHARE                                                 :共享调度计划
-STR_ORDER_CARGO_TYPE_BUTTON                                       :{BLACK}货物类型
-STR_CARGO_CAPTION                                                 :{WHITE}{VEHICLE}（货物）
-STR_TRAIN_CARGOS_CONFIRM                                          :{BLACK}设置货物
-STR_ORDER_CONDITIONAL_DECOUPLE_PART                             :解挂部分
 STR_ORDERS_GO_TO_TOOLTIP                                        :{BLACK}在选定的命令前插入新命令，或者添加新命令至计划末尾。按 <Ctrl> 键点选车站、路点或车库以分别应用“满载任一货物”、“直达”以及“自动调节班次”。点击另一辆载具以复制其调度计划，按住 <Ctrl> 点选则可共享调度计划。如果调度计划上有任何命令涉及车库，则该载具不会自行维护
 
 STR_ORDERS_VEH_WITH_SHARED_ORDERS_LIST_TOOLTIP                  :{BLACK}显示所有共享此调度计划的载具
@@ -4938,34 +4806,34 @@ STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION                       :{PUSH_COLOUR}{R
 
 STR_ORDER_IMPLICIT                                              :（自动）
 
-STR_ORDER_FULL_LOAD                                             :（等待普通货物满载）
-STR_ORDER_FULL_LOAD_ANY                                         :（等待任一普通货物满载）
-STR_ORDER_NO_LOAD                                               :（不装载普通货物）
-STR_ORDER_UNLOAD                                                :（卸载全部普通货物，装载普通货物）
-STR_ORDER_UNLOAD_FULL_LOAD                                      :（卸载全部普通货物，等待普通货物满载）
-STR_ORDER_UNLOAD_FULL_LOAD_ANY                                  :（卸载全部普通货物，等待任一普通货物满载）
-STR_ORDER_UNLOAD_NO_LOAD                                        :（卸载全部普通货物）
-STR_ORDER_TRANSFER                                              :（转运普通货物，装载普通货物）
-STR_ORDER_TRANSFER_FULL_LOAD                                    :（转运普通货物，等待普通货物满载）
-STR_ORDER_TRANSFER_FULL_LOAD_ANY                                :（转运普通货物，等待任一普通货物满载）
-STR_ORDER_TRANSFER_NO_LOAD                                      :（转运普通货物）
-STR_ORDER_NO_UNLOAD                                             :（不卸载普通货物，装载普通货物）
-STR_ORDER_NO_UNLOAD_FULL_LOAD                                   :（不卸载普通货物，等待普通货物满载）
-STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY                               :（不卸载普通货物，等待任一普通货物满载）
-STR_ORDER_NO_UNLOAD_NO_LOAD                                     :（不卸载普通货物，不装载普通货物）
+STR_ORDER_FULL_LOAD                                             :（等待满载）
+STR_ORDER_FULL_LOAD_ANY                                         :（等待任一货物满载）
+STR_ORDER_NO_LOAD                                               :（不装载）
+STR_ORDER_UNLOAD                                                :（卸载，装载）
+STR_ORDER_UNLOAD_FULL_LOAD                                      :（卸载，等待满载）
+STR_ORDER_UNLOAD_FULL_LOAD_ANY                                  :（卸载，等待任一货物满载）
+STR_ORDER_UNLOAD_NO_LOAD                                        :（卸载，空车离开）
+STR_ORDER_TRANSFER                                              :（转运，装载）
+STR_ORDER_TRANSFER_FULL_LOAD                                    :（转运，等待满载）
+STR_ORDER_TRANSFER_FULL_LOAD_ANY                                :（转运，等待任一货物满载）
+STR_ORDER_TRANSFER_NO_LOAD                                      :（转运，空车离开）
+STR_ORDER_NO_UNLOAD                                             :（不卸载，装载）
+STR_ORDER_NO_UNLOAD_FULL_LOAD                                   :（不卸载，等待满载）
+STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY                               :（不卸载，等待任一货物满载）
+STR_ORDER_NO_UNLOAD_NO_LOAD                                     :（不卸载，不装载）
 
 STR_ORDER_AUTO_REFIT                                            :（改装为运载{STRING}）
-STR_ORDER_FULL_LOAD_REFIT                                       :（改装为运载{STRING}后等待普通货物满载）
-STR_ORDER_FULL_LOAD_ANY_REFIT                                   :（改装为运载{STRING}后等待任一普通货物满载）
-STR_ORDER_UNLOAD_REFIT                                          :（卸载全部普通货物，改装为运载{STRING}后装载普通货物）
-STR_ORDER_UNLOAD_FULL_LOAD_REFIT                                :（卸载全部普通货物，改装为运载{STRING}后等待普通货物满载）
-STR_ORDER_UNLOAD_FULL_LOAD_ANY_REFIT                            :（卸载全部普通货物，改装为运载{STRING}后等待任一普通货物满载）
-STR_ORDER_TRANSFER_REFIT                                        :（转运普通货物，改装为运载{STRING}后装载普通货物）
-STR_ORDER_TRANSFER_FULL_LOAD_REFIT                              :（转运普通货物，改装为运载{STRING}后等待普通货物满载）
-STR_ORDER_TRANSFER_FULL_LOAD_ANY_REFIT                          :（转运普通货物，改装为运载{STRING}后等待任一普通货物满载）
-STR_ORDER_NO_UNLOAD_REFIT                                       :（不卸载普通货物，改装为运载{STRING}后装载普通货物）
-STR_ORDER_NO_UNLOAD_FULL_LOAD_REFIT                             :（不卸载普通货物，改装为运载{STRING}后等待普通货物满载）
-STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY_REFIT                         :（不卸载普通货物，改装为运载{STRING}后等待任一普通货物满载）
+STR_ORDER_FULL_LOAD_REFIT                                       :（改装为运载{STRING}后等待满载）
+STR_ORDER_FULL_LOAD_ANY_REFIT                                   :（改装为运载{STRING}后等待任一货物满载）
+STR_ORDER_UNLOAD_REFIT                                          :（卸载，改装为运载{STRING}后装载）
+STR_ORDER_UNLOAD_FULL_LOAD_REFIT                                :（卸载，改装为运载{STRING}后等待满载）
+STR_ORDER_UNLOAD_FULL_LOAD_ANY_REFIT                            :（卸载，改装为运载{STRING}后等待任一货物满载）
+STR_ORDER_TRANSFER_REFIT                                        :（转运，改装为运载{STRING}后装载）
+STR_ORDER_TRANSFER_FULL_LOAD_REFIT                              :（转运，改装为运载{STRING}后等待满载）
+STR_ORDER_TRANSFER_FULL_LOAD_ANY_REFIT                          :（转运，改装为运载{STRING}后等待任一货物满载）
+STR_ORDER_NO_UNLOAD_REFIT                                       :（不卸载，改装为运载{STRING}后装载）
+STR_ORDER_NO_UNLOAD_FULL_LOAD_REFIT                             :（不卸载，改装为运载{STRING}后等待满载）
+STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY_REFIT                         :（不卸载，改装为运载{STRING}后等待任一货物满载）
 
 STR_ORDER_AUTO_REFIT_ANY                                        :可用货物
 
@@ -4979,104 +4847,6 @@ STR_ORDER_OUT_OF_RANGE                                          :{RED}（下一�
 STR_ORDER_CONDITIONAL_UNCONDITIONAL                             :跳至 #{COMMA}
 STR_ORDER_CONDITIONAL_NUM                                       :跳至 #{COMMA} [如果{STRING}{STRING}{COMMA}]
 STR_ORDER_CONDITIONAL_TRUE_FALSE                                :跳至 #{COMMA} [如果{STRING}{STRING}]
-STR_ORDER_TOGGLE_COUPLE_LOAD                                    :{BLACK}连接空车
-STR_ORDERS_COUPLE_LOAD_ANY                                      :连接任意
-STR_ORDERS_COUPLE_LOAD_EMPTY                                    :连接空车
-STR_ORDERS_COUPLE_LOAD_FULL                                     :连接满载
-STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON                    :{BLACK}第一部分：解挂后调度计划
-STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON                   :{BLACK}第二部分：解挂后调度计划
-STR_ORDER_DECOUPLE_FIRST_ORDERS_TOOLTIP                         :{BLACK}第一部分在解挂后要执行的调度计划
-STR_ORDER_DECOUPLE_SECOND_ORDERS_TOOLTIP                        :{BLACK}第二部分在解挂后要执行的调度计划
-STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :装卸并保留调度计划
-STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :保留调度计划不装卸
-STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :等待连接不装卸
-STR_ORDERS_DECOUPLE_LOAD_AND_SCHEDULE                           :装卸并使用调度计划
-STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                               :装卸并等待连接
-STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :使用调度计划不装卸
-STR_ERROR_NO_SCHEDULE_AVAILABLE                                 :没有可选择的调度计划
-STR_ORDER_PICK_SCHEDULE_CAPTION                                 :{WHITE}选择调度计划
-STR_ORDER_PICK_SCHEDULE_LIST_TOOLTIP                            :{BLACK}选择解挂部分将使用的调度计划
-STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}连接数量
-STR_ORDERS_DECOUPLE_VALUE_BUTTON                                :{BLACK}解挂数量
-STR_ORDERS_DECOUPLE_BUTTON                                      :{BLACK}解挂
-STR_ORDERS_DECOUPLE_DROP                                        :解挂
-STR_ORDERS_DECOUPLE_VALUE                                       :解挂数量
-STR_ORDERS_DECOUPLE_TOOLTIP                                     :{BLACK}在车站解挂列车
-STR_ORDER_COUPLE_VALUE_CAPT                                     :{WHITE}输入要连接的列车应该具有的车厢数量
-STR_ORDER_DECOUPLE_VALUE_CAPT                                   :{WHITE}输入解挂后列车保留的车厢数量
-STR_ORDERS_GO_TO_COUPLE                                         :前往连接
-STR_ORDER_WAIT_FOR_COUPLE                                       :等待连接
-STR_ORDER_GO_TO_COUPLE                                          :在 {STRING} 车站前往连接 {STRING} 列车
-STR_ORDER_GO_TO_COUPLE_CARGO                                    :在 {STRING} 车站前往连接能运载 {STRING} 的 {STRING} 列车
-STR_ORDER_COUPLE_ANY                                            :任意
-STR_ORDER_COUPLE_EMPTY                                          :空车
-STR_ORDER_COUPLE_FULL                                           :满载
-STR_ORDER_COUPLE_SLOT                                          :且有路签 {STRING}
-STR_ORDER_COUPLE_STATION_BUTTON                                :{BLACK}车站
-STR_ORDER_COUPLE_STATION_TOOLTIP                               :{BLACK}在地图上选择一个车站作为对接目标车站。再次点击清除
-STR_ORDER_COUPLE_LOAD_TOOLTIP                                   :{BLACK}选择可以连接的列车：任意、空车或满载
-STR_ORDER_COUPLE_CARGO_TOOLTIP                                  :{BLACK}限制只连接能运载所选货物类型的列车。再次点击清除
-STR_ORDER_COUPLE_VALUE_TOOLTIP                                  :{BLACK}限制只连接具有指定车厢数量的列车（0 表示不限）
-STR_ORDER_DECOUPLE_VALUE_TOOLTIP                                :{BLACK}解挂后本列车保留的车厢数量
-STR_ORDER_COUPLE_USE_WAITING_SCHEDULE                          :使用等待对接列车的调度计划
-STR_ORDER_COUPLE_USE_WAITING_SCHEDULE_SUFFIX                   :（并使用等待对接列车的调度计划）
-STR_ORDER_COUPLE_ANY_SLOT                                     :任意路签
-STR_ORDER_COUPLE_MORE_BUTTON                                   :{BLACK}更多选项
-STR_ORDER_COUPLE_MORE_TOOLTIP                                  :{BLACK}更多连接限制条件：路签组、载具组、空满状态、货物类型与车厢数量
-STR_ORDER_COUPLE_OPTIONS_CAPTION                               :{WHITE}连接条件
-STR_ORDER_COUPLE_SLOT_GROUP_LABEL                              :{BLACK}路签组
-STR_ORDER_COUPLE_GROUP_LABEL                                   :{BLACK}载具组
-STR_ORDER_COUPLE_LOAD_LABEL                                    :{BLACK}空满状态
-STR_ORDER_COUPLE_CARGO_LABEL                                   :{BLACK}货物类型
-STR_ORDER_COUPLE_VALUE_LABEL                                   :{BLACK}车厢数量
-STR_ORDER_COUPLE_ANY_GROUP                                     :任意路签组
-STR_ORDER_COUPLE_ANY_VEHICLE_GROUP                             :任意载具组
-STR_ORDER_COUPLE_ANY_CARGO                                     :任意货物
-STR_ORDER_COUPLE_SLOT_GROUP                                    :且属于路签组 {STRING}
-STR_ORDER_COUPLE_GROUP                                         :且属于载具组 {STRING}
-STR_ORDER_DECOUPLE                                              :（解挂）
-STR_ORDER_DECOUPLE_DETAILS                                      :[解挂并保留 {COMMA} 节车厢] 第一部分 {STRING} 第二部分 {STRING}
-STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[解挂并保留 {COMMA}(自动) 节车厢] 第一部分 {STRING} 第二部分 {STRING}
-STR_ORDER_COUPLE_UNITS                                          :（{COMMA} 节车厢）
-STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :（装卸并保留调度计划）
-STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :（保留调度计划不装卸）
-STR_ORDER_DECOUPLE_LOAD_AND_WAIT                                :（装卸并等待连接）
-STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :（等待连接不装卸）
-STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE                            :（装卸并使用调度计划 {STRING}）
-STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :（使用调度计划 {STRING}）
-STR_ORDER_DECOUPLE_SAME_DIR_EXIT                                :允许等待另一部分离开后同向离开
-STR_ORDER_DECOUPLE_SAME_DIR_FIRST                               :（第一部分可同向离开）
-STR_ORDER_DECOUPLE_SAME_DIR_SECOND                              :（第二部分可同向离开）
-STR_COUPLE_DIAGNOSTIC_BUTTON                                   :{BLACK}诊断
-STR_COUPLE_DIAGNOSTIC_TOOLTIP                                  :{BLACK}显示当前接挂目标、预约关系和候选排除原因
-STR_COUPLE_DIAGNOSTIC_CAPTION                                  :{WHITE}接挂诊断
-STR_COUPLE_DIAGNOSTIC_TARGET                                   :当前目标：{VEHICLE}
-STR_COUPLE_DIAGNOSTIC_CLAIM_SELF                               :预约：已为本列车保留
-STR_COUPLE_DIAGNOSTIC_CLAIM_OTHER                              :预约：已为 {VEHICLE} 保留
-STR_COUPLE_DIAGNOSTIC_CLAIM_NONE                               :预约：无
-STR_COUPLE_DIAGNOSTIC_PATH_UNKNOWN                             :存在符合筛选条件的列车；路径状态未知
-STR_COUPLE_DIAGNOSTIC_NO_CANDIDATE                             :未找到符合条件的列车
-STR_COUPLE_DIAGNOSTIC_REJECTION                                :{STRING}：{COMMA}
-STR_COUPLE_DIAGNOSTIC_NOT_WAITING                              :未处于等待接挂状态
-STR_COUPLE_DIAGNOSTIC_CLAIMED                                  :已被其他列车预约
-STR_COUPLE_DIAGNOSTIC_CRASHED                                  :列车已损毁
-STR_COUPLE_DIAGNOSTIC_STOPPED                                  :列车已手动停车
-STR_COUPLE_DIAGNOSTIC_OWNER                                    :所有权不允许接挂
-STR_COUPLE_DIAGNOSTIC_LOAD                                     :空车或满载筛选不匹配
-STR_COUPLE_DIAGNOSTIC_CARGO                                    :货种不匹配
-STR_COUPLE_DIAGNOSTIC_UNIT_COUNT                               :节数不匹配
-STR_COUPLE_DIAGNOSTIC_SLOT                                     :槽位不匹配
-STR_COUPLE_DIAGNOSTIC_SLOT_GROUP                               :路签组不匹配
-STR_COUPLE_DIAGNOSTIC_GROUP                                    :载具组不匹配
-STR_COUPLE_DIAGNOSTIC_STATION                                  :车站不匹配
-STR_COUPLE_DIAGNOSTIC_PLATFORM                                 :列车未完整容纳在同一站台
-STR_COUPLE_DIAGNOSTIC_ARRANGEMENT                              :编组或 NewGRF 兼容性检查失败
-STR_COUPLE_DIAGNOSTIC_NOT_ACTIVE                               :所选订单尚未执行；仅显示该订单的候选筛选结果
-STR_ORDERS_DECOUPLE_PREVIEW_TOOLTIP                            :{BLACK}点击白色标记选择切点，或点击保留数量手动输入。Ctrl+点击恢复自动解挂。客货仍随原车厢保留。
-STR_DECOUPLE_DIAGNOSTIC_PLATFORM                              :列车未完整容纳在同一站台
-STR_DECOUPLE_DIAGNOSTIC_TOO_SHORT                             :列车不足两个可拆分车辆单位
-STR_DECOUPLE_DIAGNOSTIC_CUT                                   :所选切点会拆开铰接或多头车辆单位
-STR_DECOUPLE_DIAGNOSTIC_ARRANGEMENT                           :编组或 NewGRF 兼容性检查失败
 
 STR_INVALID_ORDER                                               :{RED}（无效命令）
 
@@ -5418,28 +5188,6 @@ STR_ERROR_CAN_T_BUILD_CARGO_TRAM_STATION                        :此处无法建
 STR_ERROR_CAN_T_BUILD_DOCK_HERE                                 :不能在这里新建码头……
 STR_ERROR_CAN_T_BUILD_AIRPORT_HERE                              :不能在这里兴建机场……
 
-STR_ERROR_TOWN_AIRPORT_NOISE                                   :{WHITE}无法建设机场，因为会受到城镇噪音影响
-STR_ERROR_AIRPORT_DISABLED_BY_TILE                              :{WHITE}……按图块建设机场的设置已禁用。
-STR_ERROR_AIRPORT_INCORRECT_AIRTYPE                             :{WHITE}……机场的航空类型不同。
-STR_ERROR_AIRPORT_ALREADY_AIRTYPE                               :{WHITE}……机场已经是此航空类型。
-STR_ERROR_AIRPORT_CAN_T_CONVERT_WATER                           :{WHITE}……无法在水上和非水上航空类型之间转换。
-STR_ERROR_AIRPORT_CAN_T_CONVERT_HELIPORT                        :{WHITE}……无法将直升机场转换为其他航空类型。
-STR_ERROR_AIRPORT_CAN_T_BUILD_HELIPORT                          :{WHITE}……无法使用此航空类型建设直升机场。
-STR_ERROR_AIRPORT_TOO_MUCH_RUNWAYS                              :{WHITE}……超过此航空类型的跑道数量上限。
-STR_ERROR_AIRPORT_NOT_SAME_LEVEL                                :{WHITE}……不在同一水平面上。
-STR_ERROR_AIRPORT_PLAIN_WATER                                   :{WHITE}……必须建设在水面或平原地形上。
-STR_ERROR_AIRPORT_INVALID_AIR_TYPE                              :{WHITE}……图块的航空类型不同。
-STR_ERROR_AIRPORT_CAN_T_HAVE_TRACKS                             :{WHITE}……此图块不能有跑道。
-STR_ERROR_AIRPORT_NO_COMPATIBLE_NEIGHBOURS                      :{WHITE}……无法添加跑道。新跑道必须与相邻图块兼容。
-STR_ERROR_AIRPORT_CAN_T_ADD_TRACK_HANGAR                        :{WHITE}……机库只能有 x 或 y 轴方向的跑道。
-STR_ERROR_AIRPORT_RUNWAY_TOO_SHORT                              :{WHITE}……跑道太短。
-STR_ERROR_AIRPORT_RUNWAY_INCOMPLETE                             :{WHITE}……并非所有跑道都在同一个机场站。
-STR_ERROR_AIRPORT_RUNWAY_CAN_T_BUILD_OVER                       :{WHITE}……无法在这些图块上建设跑道。
-STR_ERROR_AIRPORT_PRESENT_AIRCRAFT                              :{WHITE}……机场内有飞机。
-STR_ERROR_AIRPORT_RUNWAY_OVERLAP                                :{WHITE}……跑道与其他跑道重叠。
-STR_ERROR_AIRPORT_RUNWAY_CAN_T_REMOVE                           :{WHITE}……请正确移除跑道。
-STR_ERROR_AIRPORT_REMOVE_RUNWAYS_FIRST                          :{WHITE}……必须先移除跑道。
-
 STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING                        :{WHITE}与另一车站相连
 STR_ERROR_STATION_TOO_SPREAD_OUT                                :{WHITE}……车站范围过大
 STR_ERROR_STATION_DISALLOWED_NUMBER_TRACKS                      :{WHITE}……轨道数量不正确
@@ -5682,8 +5430,6 @@ STR_ERROR_CAN_T_RENAME_AIRCRAFT_TYPE                            :{WHITE}不能�
 ###length VEHICLE_TYPES
 STR_ERROR_CAN_T_SELL_TRAIN                                      :{WHITE}不能出售列车……
 STR_ERROR_CAN_T_SELL_ROAD_VEHICLE                               :{WHITE}不能出售汽车……
-STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIED                      :{WHITE}不能出售正在被运载的载具
-STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIER                      :{WHITE}请先卸下所运载的载具
 STR_ERROR_CAN_T_SELL_SHIP                                       :{WHITE}不能出售船只……
 STR_ERROR_CAN_T_SELL_AIRCRAFT                                   :{WHITE}不能出售飞机……
 
@@ -5731,7 +5477,6 @@ STR_ERROR_TOO_MANY_ORDERS                                       :{WHITE}命令�
 STR_ERROR_CAN_T_INSERT_NEW_ORDER                                :{WHITE}不能插入新的调度计划……
 STR_ERROR_CAN_T_DELETE_THIS_ORDER                               :{WHITE}不能删除调度计划……
 STR_ERROR_CAN_T_MODIFY_THIS_ORDER                               :{WHITE}不能执行这个命令……
-STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY                       :{WHITE}载具运输只能设置在车站调度计划上
 STR_ERROR_CAN_T_MOVE_THIS_ORDER                                 :{WHITE}不能移动这条命令……
 STR_ERROR_CAN_T_SKIP_ORDER                                      :{WHITE}不能跳过当前命令……
 STR_ERROR_CAN_T_SKIP_TO_ORDER                                   :{WHITE}不能跳转到选定的命令……
@@ -5758,17 +5503,6 @@ STR_ERROR_NO_STOP_COMPATIBLE_TRAM_TYPE                          :{WHITE}没有�
 STR_ERROR_NO_STOP_ARTICULATED_VEHICLE                           :{WHITE}铰接式车辆无站点可停靠。{}铰接式车辆仅可停靠于通过式车站，不可停靠于港湾式车站
 STR_ERROR_AIRPORT_NO_PLANES                                     :{WHITE}这架飞机不能降落在这个直升机场
 STR_ERROR_AIRPORT_NO_HELICOPTERS                                :{WHITE}这架直升机不能降落在这个机场
-STR_BUILD_HELIPORT_CAPTION                                      :{WHITE}直升机场方向
-STR_BUILD_AIRPORT_INFRA_NO_CATCH_CAPTION                    :{WHITE}机场基础设施
-STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION                  :{WHITE}机场航站楼
-STR_BUILD_AIRPORT_INFRA_TOOLTIP                             :{BLACK}选择一段基础设施及其方向
-STR_BUILD_HANGAR_CAPTION                                    :{WHITE}机库方向
-STR_BUILD_HELIPORT_ORIENTATION_TOOLTIP                          :{BLACK}选择直升机场方向
-STR_BUILD_HANGAR_ORIENTATION_TOOLTIP                        :{BLACK}选择机库方向
-STR_SELECT_GFX_AIRPORT_TRACKS_CAPTION                       :{WHITE}选择跑道图块图形
-STR_SELECT_GFX_AIRPORT_TRACKS_TOOLTIP                       :{BLACK}选择机场跑道图块的图形，然后点击跑道图块。
-STR_SELECT_GFX_AIRPORT_TRACKS_DETECT                           :{BLACK}自动
-STR_SELECT_GFX_AIRPORT_TRACKS_DEFAULT                       :{BLACK}默认
 STR_ERROR_NO_RAIL_WAYPOINT                                      :{WHITE}没有铁路路点
 STR_ERROR_NO_ROAD_WAYPOINT                                      :{WHITE}没有道路路点
 STR_ERROR_NO_BUOY                                               :{WHITE}没有浮标
@@ -6295,37 +6029,6 @@ STR_SHIP                                                        :{BLACK}{SHIP}
 STR_TOOLBAR_RAILTYPE_VELOCITY                                   :{STRING}{YELLOW}（{VELOCITY}）
 STR_TOOLBAR_ROADTYPE_VELOCITY                                   :{STRING}{YELLOW}（{VELOCITY}）
 
-STR_TOOLBAR_AIRPORT_GRAVEL_CONSTRUCTION_CAPTION                 :碎石机场建设
-STR_TOOLBAR_AIRPORT_ASPHALT_CONSTRUCTION_CAPTION                :沥青机场建设
-STR_TOOLBAR_AIRPORT_WATER_CONSTRUCTION_CAPTION                  :水上机场建设
-STR_TOOLBAR_AIRPORT_DARK_CONSTRUCTION_CAPTION                   :深色机场建设
-STR_TOOLBAR_AIRPORT_YELLOW_CONSTRUCTION_CAPTION                 :划线跑道机场建设
-STR_TOOLBAR_AIRPORT_GRAVEL_MENU_TEXT                            :碎石机场建设
-STR_TOOLBAR_AIRPORT_ASPHALT_MENU_TEXT                           :沥青机场建设
-STR_TOOLBAR_AIRPORT_WATER_MENU_TEXT                             :水上机场建设
-STR_TOOLBAR_AIRPORT_DARK_MENU_TEXT                              :深色机场建设
-STR_TOOLBAR_AIRPORT_YELLOW_MENU_TEXT                            :划线跑道机场建设
-STR_TOOLBAR_AIRPORT_CAPTION                                    :{WHITE}机场
-STR_TOOLBAR_AIRPORT_BUILD_AIRPORT_TOOLTIP                      :{BLACK}建设机场。Ctrl+点击选择另一个车站合并。按 Shift 仅显示费用估算
-STR_TOOLBAR_AIRPORT_ADD_TILES                                  :{BLACK}设置机场范围
-STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_CATCHMENT                   :{BLACK}建设航站楼
-STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_NO_CATCHMENT                :{BLACK}建设机场基础设施
-STR_TOOLBAR_AIRPORT_SET_TRACKS                                 :{BLACK}设置滑行道
-STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_LANDING                      :{BLACK}建设起降跑道
-STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_NO_LANDING                   :{BLACK}建设起飞跑道
-STR_TOOLBAR_AIRPORT_BUILD_APRON                                :{BLACK}建设停机坪
-STR_TOOLBAR_AIRPORT_BUILD_HELIPAD                              :{BLACK}建设直升机停机坪
-STR_TOOLBAR_AIRPORT_BUILD_HELIPORT                             :{BLACK}建设直升机场
-STR_TOOLBAR_AIRPORT_BUILD_HANGAR_STANDARD                      :{BLACK}建设标准机库
-STR_TOOLBAR_AIRPORT_BUILD_HANGAR_EXTENDED                      :{BLACK}建设扩建机库
-STR_TOOLBAR_AIRPORT_TOGGLE_BUILD_REMOVE                        :{BLACK}切换机场区域、基础设施、停机坪和机库的建设/移除模式
-STR_TOOLBAR_AIRPORT_BUILD_PRE_AIRPORT_TOOLTIP                  :{BLACK}建设预定义的机场布局。Ctrl 启用加入车站。Shift 切换建设/显示费用估算
-STR_TOOLBAR_AIRPORT_CHANGE_AIRTYPE                             :{BLACK}更改机场类型
-STR_TOOLBAR_AIRPORT_ROTATE_GRAPHICS                            :{BLACK}更改地面图形
-STR_TOOLBAR_AIRPORT_ROTATE_GRAPHICS_TOOLTIP                    :{BLACK}点击机场区域以更改其图形
-STR_TOOLBAR_AIRPORT_TOGGLE_GROUND                              :{BLACK}切换地面硬化
-STR_TOOLBAR_AIRPORT_TOGGLE_GROUND_TOOLBAR                      :{BLACK}点击机场地面切换地面硬化
-
 STR_BADGE_NAME_LIST                                             :{STRING}：{GOLD}{STRING}
 STR_BADGE_CONFIG_MENU_TOOLTIP                                   :开启徽章设定
 STR_BADGE_CONFIG_RESET                                          :重置
@@ -6334,164 +6037,3 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}筛选�
 STR_BADGE_CONFIG_PREVIEW                                        :预览图
 STR_BADGE_CONFIG_NAME                                           :名称
 STR_BADGE_FILTER_ANY_LABEL                                      :{STRING}：所有
-
-STR_DECOUPLE_PREVIEW_COUNT                                    :保留 {COMMA} 节（点击手动输入；0 为自动）
-
-# Blueprint feature
-STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
-STR_BLUEPRINT_TOOLBAR                                           :{WHITE}蓝图
-STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}选择一块您自己的基础设施区域，复制到当前蓝图槽位
-STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}将当前蓝图槽位的内容粘贴到地图上
-STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}粘贴铁路基础设施
-STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}粘贴道路基础设施
-STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}粘贴水运基础设施
-STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}粘贴航空基础设施
-STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}粘贴时将铁路基础设施转换为当前铁路类型
-STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}粘贴时镜像信号灯
-STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}粘贴时升级桥梁
-STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}同时粘贴车站和路点
-STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}粘贴时改变地形。点击切换：不改变地形、最小改变、完全改变
-STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}当前变换，点击重置
-STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}将蓝图逆时针旋转90度
-STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}将蓝图顺时针旋转90度
-STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}沿西北-东南轴翻转蓝图
-STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}沿东北-西南轴翻转蓝图
-STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}粘贴时应用的高度偏移
-STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}提高蓝图粘贴的高度
-STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}降低蓝图粘贴的高度
-STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}关于 Blueprint 补丁的信息
-STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}所选区域内没有贵公司的基础设施
-STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}所选区域太大，无法复制
-STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}蓝图太大，无法在多人游戏中粘贴
-STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}显示用于复制和粘贴基础设施的蓝图工具栏
-STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}显示用于复制和粘贴基础设施的蓝图工具栏
-STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}无法在此处粘贴蓝图...
-STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}切换到此蓝图槽位。若槽位有名称或内容，悬停时会显示名称和预览。双击以重命名
-STR_BLUEPRINT_EXPORT                                            :{BLACK}导出
-STR_BLUEPRINT_IMPORT                                            :{BLACK}导入
-STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}导出/导入
-STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint 补丁，版本 {STRING}
-STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :导出当前槽位...
-STR_BLUEPRINT_EXPORT_MENU_ALL                                   :将所有槽位导出到文件...
-STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :导入到当前槽位...
-STR_BLUEPRINT_IMPORT_MENU_ALL                                   :从文件导入所有槽位...
-STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}无法将蓝图复制到剪贴板
-STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}剪贴板为空
-STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}导出蓝图
-STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}导入蓝图
-STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}复制到剪贴板
-STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}从剪贴板粘贴
-STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}替换蓝图？
-STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}当前槽位已有蓝图。要替换它吗？
-STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}替换所有蓝图？
-STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}这将替换所有蓝图槽位的内容。要继续吗？
-STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}重命名蓝图
-STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}将所有蓝图导出到文件
-STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}从文件导入所有蓝图
-STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}替换文件？
-STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}已存在同名文件。要替换它吗？
-STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}导出或导入蓝图
-STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}点击文件以选择，或点击文件夹以打开
-STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}该文本不是有效的蓝图
-STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}文件名无效
-STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}未找到蓝图文件，或不是有效的蓝图集
-STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}无法写入蓝图文件
-
-
-# Blueprint feature (undo toolbar, paste options, import/export, info windows)
-STR_TOOLBAR_TOOLTIP_BLUEPRINT_UNDO                              :{BLACK}显示撤销工具栏，用于撤销您上次建造的内容
-STR_BLUEPRINT_UNDO_TOOLBAR                                      :{WHITE}撤销
-STR_BLUEPRINT_UNDO_LIST_CAPTION                                 :{WHITE}撤销历史
-STR_BLUEPRINT_UNDO_LIST_TRACK                                   :{COMMA}段轨道
-STR_BLUEPRINT_UNDO_LIST_SIGNAL                                  :{COMMA}个信号灯
-STR_BLUEPRINT_UNDO_LIST_RAIL_DEPOT                              :{COMMA}个列车车库
-STR_BLUEPRINT_UNDO_LIST_STATION                                 :{COMMA}个车站
-STR_BLUEPRINT_UNDO_LIST_WAYPOINT                                :{COMMA}个路点
-STR_BLUEPRINT_UNDO_LIST_ROAD                                    :{COMMA}段道路
-STR_BLUEPRINT_UNDO_LIST_ROAD_DEPOT                              :{COMMA}个汽车车库
-STR_BLUEPRINT_UNDO_LIST_ROAD_STOP                               :{COMMA}个公路站
-STR_BLUEPRINT_UNDO_LIST_BRIDGE                                  :{COMMA}座桥
-STR_BLUEPRINT_UNDO_LIST_TUNNEL                                  :{COMMA}条隧道
-STR_BLUEPRINT_UNDO_LIST_CANAL                                   :{COMMA}段运河
-STR_BLUEPRINT_UNDO_LIST_LOCK                                    :{COMMA}座船闸
-STR_BLUEPRINT_UNDO_LIST_SHIP_DEPOT                              :{COMMA}个船坞
-STR_BLUEPRINT_UNDO_LIST_DOCK                                    :{COMMA}个码头
-STR_BLUEPRINT_UNDO_LIST_BUOY                                    :{COMMA}个航标
-STR_BLUEPRINT_UNDO_LIST_AIRPORT                                 :{COMMA}个机场
-STR_BLUEPRINT_UNDO_LIST_LAND                                    :地形
-STR_BLUEPRINT_UNDO_LIST_UNDO_SELECTED                           :{BLACK}撤销所选
-STR_BLUEPRINT_SLOT                                              :{BLACK}{NUM}
-STR_BLUEPRINT_SLOT_SCRATCH                                      :{BLACK}*
-STR_BLUEPRINT_PAGE                                              :{BLACK}{STRING}
-STR_BLUEPRINT_PAGE_MENU_ITEM                                    :{STRING}   {STRING}
-STR_BLUEPRINT_OPTIONS_MENU_RAIL                                 :铁路
-STR_BLUEPRINT_OPTIONS_MENU_ROAD                                 :公路与电车
-STR_BLUEPRINT_OPTIONS_MENU_WATER                                :水运
-STR_BLUEPRINT_OPTIONS_MENU_AIR                                  :机场
-STR_BLUEPRINT_OPTIONS_MENU_WITH_STATIONS                        :车站与路点
-STR_BLUEPRINT_OPTIONS_MENU_CONVERT_RAILTYPE                     :转换为当前铁路类型
-STR_BLUEPRINT_OPTIONS_MENU_MIRROR_SIGNALS                       :镜像信号灯
-STR_BLUEPRINT_OPTIONS_MENU_UPGRADE_BRIDGES                      :升级桥梁
-STR_BLUEPRINT_OPTIONS_MENU_TERRAFORM_NONE                       :地形改造：无
-STR_BLUEPRINT_OPTIONS_MENU_TERRAFORM_MINIMAL                    :地形改造：基础设施之下
-STR_BLUEPRINT_OPTIONS_MENU_TERRAFORM_FULL                       :地形改造：整个区域
-STR_BLUEPRINT_OPTIONS_MENU_RESTORE_LAND                         :恢复地形
-STR_BLUEPRINT_HEIGHT_POSITIVE                                   :{YELLOW}+{NUM}
-STR_BLUEPRINT_HEIGHT_NEGATIVE                                   :{YELLOW}-{NUM}
-STR_BLUEPRINT_CLEAR_MENU_SLOT                                   :清空当前槽位...
-STR_BLUEPRINT_INFO_WINDOW_VERSION                               :{BLACK}蓝图补丁，版本 {STRING}
-STR_BLUEPRINT_INFO_CAPTION_BLUEPRINT                            :{WHITE}关于蓝图工具栏
-STR_BLUEPRINT_INFO_CAPTION_UNDO                                 :{WHITE}关于撤销工具栏
-STR_BLUEPRINT_INFO_TEXT_BLUEPRINT                               :{BLACK}复制您已建造的一部分，然后再把它盖到别处。{}在当前页的八个槽位中选一个，按“复制”并用鼠标框选您自己的基础设施。选好槽位后“粘贴”会自动就绪，光标处会有一个幽灵预览显示将要建造的内容；放不下的部分会显示为红色。蓝图以光标为中心，因此光标所指即您即将建造区域的正中。点击即可建造。{}蓝图在粘贴前可以旋转、镜像以及升高或降低。粘贴选项菜单决定带上哪些种类的基础设施以及如何铺设；其中的地形改造会让地面与所复制的内容相匹配。{}共有六页、每页八个槽位（A 到 F），通过工具栏左端的按钮切换；它的菜单会显示每页哪些槽位已被占用，每页还有各自的颜色，方便您分辨当前所在页。第 8 个槽位之后标有 * 的槽位是用于快速复制粘贴的临时缓冲：它不属于任何页、不会被保存，下次启动时又是空的。复制到其中会立即就绪“粘贴”，刚复制的内容可以直接放回去。{}槽位在重启后仍然保留。蓝图可以导出为文本字符串以便分享，也可以把整页保存到文件。
-STR_BLUEPRINT_INFO_TEXT_UNDO                                    :{BLACK}撤销您所建造的内容，无论是手动建造的还是粘贴的。{}一次操作就是一步：拖动建设的一条轨道会一次性撤销。历史记录按由新到旧列出仍可撤销的内容；选中条目会在地图上标记其所在的图块，按住 Ctrl 点击和按住 Shift 点击可以一次选择多项。{}选项菜单可以把撤销限制为铁路、公路、水运或航空，并决定是否同时恢复地形；修改时菜单会保持打开。{}撤销会移除您建造的内容，但无法恢复您已毁掉的东西：树木、房屋以及被推土机推掉的一切都将永久消失。移除会按通常价格收费。无法移除的部分（例如上面停着列车的轨道，或上面还建着东西的土地）会保留在历史记录中，直到可以移除为止。操作会在一小时后以及游戏重启时被遗忘。
-STR_BLUEPRINT_FILE_DETAILS_CAPTION                              :{BLACK}蓝图页
-STR_BLUEPRINT_FILE_DETAILS_HINT                                 :{BLACK}选择一个文件以查看其内容
-STR_BLUEPRINT_FILE_DETAILS_SLOT_NAMED                           :{BLACK}{NUM}：{STRING}（{COMMA}）
-STR_BLUEPRINT_FILE_DETAILS_SLOT_UNNAMED                         :{BLACK}{NUM}：{COMMA} 个元素
-STR_BLUEPRINT_FILE_DETAILS_SLOT_EMPTY                           :{GRAY}{NUM}：空
-STR_BLUEPRINT_DELETE                                            :{BLACK}删除
-STR_BLUEPRINT_TOOLTIP_DELETE_FILE                               :{BLACK}删除所选蓝图文件
-STR_BLUEPRINT_QUERY_DELETE_FILE_CAPTION                         :{WHITE}删除蓝图文件
-STR_BLUEPRINT_QUERY_DELETE_FILE                                 :{YELLOW}确定要永久删除此文件吗？
-STR_BLUEPRINT_QUERY_CLEAR_SLOT_CAPTION                          :{WHITE}清空蓝图槽位
-STR_BLUEPRINT_QUERY_CLEAR_SLOT                                  :{YELLOW}确定要丢弃此槽位的内容吗？
-STR_BLUEPRINT_TOOLTIP_PAGE                                      :{BLACK}右侧按钮显示的是八槽位蓝图页中的哪一页。点击可切换为六页中的另一页。每页都有自己的颜色，并各自保存八个蓝图
-STR_BLUEPRINT_TOOLTIP_SLOT_SCRATCH                              :{BLACK}临时槽位，用于不想保留的快速复制粘贴。它不属于任何页，不会被保存，也不会被导出——复制到其中绝不会覆盖您编号的槽位
-STR_BLUEPRINT_TOOLTIP_PASTE_OPTIONS                             :{BLACK}决定粘贴的内容与方式：铁路、公路、水运和航空筛选，车站，铁路转换，信号镜像，桥梁升级以及地形改造模式。修改时菜单会保持打开
-STR_BLUEPRINT_TOOLTIP_UNDO                                      :{BLACK}撤销蓝图粘贴：以通常的移除价格再次移除您上次粘贴所建造的内容。它不会撤销您手动建造的轨道、公路或其他内容。粘贴会在一小时后以及游戏重启时被遗忘
-STR_BLUEPRINT_TOOLTIP_UNDO_LIST                                 :{BLACK}显示撤销历史
-STR_BLUEPRINT_TOOLTIP_UNDO_OPTIONS                              :{BLACK}决定撤销会收回的内容：铁路、公路、水运和航空筛选，以及是否同时恢复地形。修改时菜单会保持打开
-STR_BLUEPRINT_TOOLTIP_UNDO_LIST_LIST                            :{BLACK}仍可撤销的内容，由新到旧。点击选择，按住 Ctrl 点击可添加或移除一项，按住 Shift 点击可选择一段范围
-STR_BLUEPRINT_TOOLTIP_UNDO_LIST_UNDO_SELECTED                   :{BLACK}撤销所有所选内容，最新的优先
-STR_BLUEPRINT_ERROR_NOTHING_TO_UNDO                             :{WHITE}没有可撤销的近期粘贴
-STR_BLUEPRINT_ERROR_UNDO_TOO_LARGE                              :{WHITE}该粘贴过大，无法在多人游戏中撤销
-STR_ERROR_CAN_T_UNDO_BLUEPRINT_PASTE                            :{WHITE}无法撤销该粘贴...
-
-# Strings newly present after the merge (jgrpp and upstream)
-STR_LANDSCAPING_MENU_PLACE_OBJECT                               :放置物体
-STR_ORDER_COUPLE_SLOT_BUTTON                                    :{BLACK}槽位
-STR_ORDER_COUPLE_SLOT_TOOLTIP                                   :{BLACK}列车必须与之编组的路径信号槽位
-STR_CONFIG_SETTING_TRAIN_FLIP_REVERSE_ALL                       :全部
-STR_CONFIG_SETTING_TRAIN_FLIP_REVERSE_END_OF_LINE_ONLY          :仅线路端点
-STR_CONFIG_SETTING_TRAIN_FLIP_REVERSE_NONE                      :无
-STR_CONFIG_SETTING_TRAIN_FLIP_REVERSE_HELPTEXT                  :选择列车可以在哪里掉头以反向行驶。选择“全部”时列车可以在任意位置掉头。选择“仅线路端点”时，如果前方存在可行路线，列车不会在车站内掉头。选择“无”时列车无法掉头，必要时将倒退行驶；如果尾部车厢没有驾驶室，速度会降低
-STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE                       :默认铁路、公路与电车类型（新游戏/载入游戏后）：{STRING}
-STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_FIRST                 :最早可用
-STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_LAST                  :最新可用
-STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_MOST_USED             :使用最多
-STR_CONFIG_SETTING_DEFAULT_RAIL_ROAD_TYPE_HELPTEXT              :开始或载入游戏后默认选择的铁路、公路与电车类型。“最早可用”选择最旧的轨道类型，“最新可用”选择最新的轨道类型，“使用最多”选择当前使用最多的类型
-STR_TERRAFORM_TOOLTIP_LOWER_A_CORNER_OF_LAND                    :{BLACK}降低一角或一片土地。若范围为 1x1，点击并拖动可降低第一个选中的角，并将选中区域整平到该角的新高度。按住 Ctrl 点击并拖动可沿对角线框选区域。同时按住 Shift 则只显示费用估算
-STR_TERRAFORM_TOOLTIP_RAISE_A_CORNER_OF_LAND                    :{BLACK}升高一角或一片土地。若范围为 1x1，点击并拖动可升高第一个选中的角，并将选中区域整平到该角的新高度。按住 Ctrl 点击并拖动可沿对角线框选区域。同时按住 Shift 则只显示费用估算
-STR_SAVELOAD_NEW_DIRECTORY_BUTTON                               :{BLACK}新建文件夹
-STR_SAVELOAD_NEW_DIRECTORY_TOOLTIP                              :{BLACK}在当前位置新建一个文件夹
-STR_SAVELOAD_NEW_DIRECTORY_QUERY_CAPTION                        :{WHITE}请输入新文件夹的名称
-STR_ORDER_CONDITIONAL_DRIVING_BACKWARDS                         :反向行驶
-STR_ERROR_CANNOT_CREATE_DIRECTORY                               :无法创建文件夹...
-STR_ERROR_DIRECTORY_NAME_IN_USE                                 :已存在同名的文件或文件夹
-STR_ERROR_DIRECTORY_ILLEGAL_NAME                                :文件夹名称不能包含特殊字符
-STR_ERROR_DIRECTORY_LEADING_DOT                                 :文件夹名称不能以点开头
-STR_ERROR_DIRECTORY_PERMISSION_DENIED                           :您没有权限在此创建文件夹
-STR_ERROR_BRIDGE_TOO_LOW_FOR_TRAIN_DEPOT                        :桥梁对列车车库而言低了 {HEIGHT}
-STR_ERROR_BRIDGE_TOO_LOW_FOR_ROADVEH_DEPOT                      :桥梁对汽车车库而言低了 {HEIGHT}
-STR_ERROR_BRIDGE_TOO_LOW_FOR_SHIP_DEPOT                         :桥梁对船坞而言低了 {HEIGHT}
-STR_ERROR_BRIDGE_TOO_LOW_FOR_OBJECT                             :桥梁对物体而言低了 {HEIGHT}

@@ -7,8 +7,6 @@
 
 /** @file newgrf_debug_data.h Data 'tables' for NewGRF debugging. */
 
-#include "../air_map.h"
-
 #include "../newgrf_house.h"
 #include "../newgrf_engine.h"
 #include "../newgrf_roadtype.h"
@@ -138,10 +136,10 @@ class NIHVehicle : public NIHelper {
 	bool IsInspectable(uint index) const override        { return true; }
 	bool ShowExtraInfoOnly(uint index) const override    { return Vehicle::Get(index)->GetGRF() == nullptr; }
 	bool ShowSpriteDumpButton(uint index) const override { return true; }
-	InspectTargetId GetParent(uint index) const override { const Vehicle *first = Vehicle::Get(index)->Primary(); return InspectTargetId(GetGrfSpecFeature(first->type), first->index.base()); }
+	InspectTargetId GetParent(uint index) const override { const Vehicle *first = Vehicle::Get(index)->First(); return InspectTargetId(GetGrfSpecFeature(first->type), first->index.base()); }
 	const void *GetInstance(uint index) const override   { return Vehicle::Get(index); }
 	const void *GetSpec(uint index) const override       { return Vehicle::Get(index)->GetEngine(); }
-	std::string GetName(uint index) const override       { return GetString(STR_VEHICLE_NAME, Vehicle::Get(index)->Primary()->index.base()); }
+	std::string GetName(uint index) const override       { return GetString(STR_VEHICLE_NAME, Vehicle::Get(index)->First()->index.base()); }
 	uint32_t GetGRFID(uint index) const override         { return Vehicle::Get(index)->GetGRFID(); }
 	std::span<const BadgeID> GetBadges(uint index) const override { return Vehicle::Get(index)->GetEngine()->badges; }
 
@@ -452,8 +450,9 @@ class NIHVehicle : public NIHelper {
 		}
 		if (v->type == VehicleType::Aircraft) {
 			const Aircraft *a = Aircraft::From(v);
-			output.buffer.format("  state: {}", static_cast<uint>(a->state));
-			if (a->IsPrimaryVehicle()) output.buffer.format(" ({})", static_cast<uint>(a->state));
+			output.buffer.format("  Pos: {}, prev pos: {}, state: {}",
+					a->pos, a->previous_pos, a->state);
+			if (a->IsPrimaryVehicle()) output.buffer.format(" ({})", AirportMovementStateToString(a->state));
 			output.buffer.format(", flags: 0x{:X}", a->flags);
 			output.FinishPrint();
 			if (BaseStation::IsValidID(a->targetairport)) {
@@ -2615,7 +2614,6 @@ static const EnumIndexArray<const NIFeature *, GrfSpecFeature, GrfSpecFeature::F
 	&_nif_roadstop,        // GrfSpecFeature::RoadStops
 	nullptr,               // GrfSpecFeature::Badges
 	&_nif_newlandscape,    // GrfSpecFeature::NewLandscape
-	nullptr,               // GrfSpecFeature::AirTypes
 	&_nif_town,            // GrfSpecFeature::FakeTowns
 	&_nif_station_struct,  // GrfSpecFeature::FakeStationStruct
 	&_nif_tracerestrict,   // GrfSpecFeature::FakeTracerestrict

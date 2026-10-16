@@ -455,8 +455,7 @@ uint32_t Station::GetNewGRFVariable(const ResolverObject &object, uint16_t varia
 {
 	switch (variable) {
 		case 0x48: { // Accepted cargo types
-			/* The variable is limited to 32 bits, which covers the cargo types a NewGRF can use. */
-			uint32_t value = static_cast<uint32_t>(GetAcceptanceMask(this).base().lo);
+			uint32_t value = GetAcceptanceMask(this).base();
 			return value;
 		}
 
@@ -464,8 +463,8 @@ uint32_t Station::GetNewGRFVariable(const ResolverObject &object, uint16_t varia
 		case 0xF1: return (this->airport.tile != INVALID_TILE) ? this->airport.GetSpec()->ttd_airport_type : ATP_TTDP_LARGE;
 		case 0xF2: return (this->truck_stops != nullptr) ? this->truck_stops->status.base() : 0;
 		case 0xF3: return (this->bus_stops != nullptr)   ? this->bus_stops->status.base()   : 0;
-		case 0xF6: return GB(this->airport.flags, 0, 8);
-		case 0xF7: return GB(this->airport.flags, 8, 8);
+		case 0xF6: return this->airport.blocks.base();
+		case 0xF7: return GB(this->airport.blocks.base(), 8, 8);
 	}
 
 	/* Handle cargo variables with parameter, 0x60 to 0x65 and 0x69 */

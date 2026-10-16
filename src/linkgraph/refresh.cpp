@@ -18,16 +18,6 @@
 #include "../safeguards.h"
 
 /**
- * Make an identifier of the order lists of a hop's endpoints, so that hops
- * crossing into executed schedules are distinguished from same-index hops in
- * the vehicle's own list.
- */
-static uint32_t ScheduleHopLists(const OrderList *from, const OrderList *to)
-{
-	return static_cast<uint32_t>((from->index.base() << 16) | to->index.base());
-}
-
-/**
  * Refresh all links the given vehicle will visit.
  * @param v Vehicle to refresh links for.
  * @param allow_merge If the refresher is allowed to merge or extend link graphs.
@@ -85,14 +75,10 @@ static uint32_t ScheduleHopLists(const OrderList *from, const OrderList *to)
  */
 LinkRefresher::LinkRefresher(Vehicle *vehicle, HopSet *seen_hops, bool allow_merge, bool is_full_loading, CargoTypes cargo_mask) :
 	vehicle(vehicle), seen_hops(seen_hops), cargo(INVALID_CARGO), allow_merge(allow_merge),
-	is_full_loading(is_full_loading), cargo_mask(cargo_mask), walk_orders(vehicle->orders)
+	is_full_loading(is_full_loading), cargo_mask(cargo_mask)
 {
-	/* Assemble list of capacities and set last loading stations to 0.
-	 * The primary may sit mid-chain or at the physical tail (decoupled parts
-	 * driving away reversed), so start at the physical head to cover the
-	 * whole consist; otherwise the capacities stay empty and RefreshStats
-	 * would skip every cargo. */
-	for (Vehicle *v = this->vehicle->First(); v != nullptr; v = v->Next()) {
+	/* Assemble list of capacities and set last loading stations to 0. */
+	for (Vehicle *v = this->vehicle; v != nullptr; v = v->Next()) {
 		this->refit_capacities.push_back(RefitDesc(v->cargo_type, v->cargo_cap, v->refit_cap));
 		if (v->refit_cap > 0) {
 			assert(v->cargo_type < NUM_CARGO);
@@ -111,8 +97,7 @@ bool LinkRefresher::HandleRefit(CargoType refit_cargo)
 	this->cargo = refit_cargo;
 	RefitList::iterator refit_it = this->refit_capacities.begin();
 	bool any_refit = false;
-	/* See the constructor: cover the whole physical consist. */
-	for (Vehicle *v = this->vehicle->First(); v != nullptr; v = v->Next()) {
+	for (Vehicle *v = this->vehicle; v != nullptr; v = v->Next()) {
 		const Engine *e = Engine::Get(v->engine_type);
 		if (!e->info.refit_mask.Test(this->cargo)) {
 			++refit_it;
@@ -191,7 +176,7 @@ LinkRefresher::TimetableTravelTime LinkRefresher::UpdateTimetableTravelSoFar(con
 			if (from->GetConditionVariable() == OrderConditionVariable::Unconditionally) {
 				/* Taken branch travel time */
 				travel.time_so_far += from->GetWaitTime();
-				from = this->walk_orders->GetOrderAt(from->GetConditionSkipToOrder());
+				from = this->vehicle->orders->GetOrderAt(from->GetConditionSkipToOrder());
 				travel.flags.Set(TimetableTravelTimeFlag::NoTravelTime);
 			} else if (!travel.flags.Test(TimetableTravelTimeFlag::AllowCondition)) {
 				/* Unexpected conditional branch, give up */
@@ -199,7 +184,7 @@ LinkRefresher::TimetableTravelTime LinkRefresher::UpdateTimetableTravelSoFar(con
 				return travel;
 			} else {
 				/* Non-taken branch, ignore travel time field */
-				from = this->walk_orders->GetNext(from);
+				from = this->vehicle->orders->GetNext(from);
 				travel.flags.Reset(TimetableTravelTimeFlag::NoTravelTime);
 			}
 		} else {
@@ -210,7 +195,7 @@ LinkRefresher::TimetableTravelTime LinkRefresher::UpdateTimetableTravelSoFar(con
 				}
 				travel.time_so_far += from->GetWaitTime();
 			}
-			from = this->walk_orders->GetNext(from);
+			from = this->vehicle->orders->GetNext(from);
 			travel.flags.Reset(TimetableTravelTimeFlag::NoTravelTime);
 		}
 
@@ -257,25 +242,25 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 			if (next->GetConditionVariable() == OrderConditionVariable::Unconditionally) {
 				const Order *current = next;
 				CargoTypes this_cargo_mask = this->cargo_mask;
-				next = this->walk_orders->GetNextDecisionNode(
-						this->walk_orders->GetOrderAt(next->GetConditionSkipToOrder()),
+				next = this->vehicle->orders->GetNextDecisionNode(
+						this->vehicle->orders->GetOrderAt(next->GetConditionSkipToOrder()),
 						num_hops++, this_cargo_mask);
 				assert(this_cargo_mask == this->cargo_mask);
 				travel = this->UpdateTimetableTravelSoFar(current, next, travel);
 				continue;
 			}
 			CargoTypes this_cargo_mask = this->cargo_mask;
-			const Order *target = this->walk_orders->GetOrderAt(next->GetConditionSkipToOrder());
-			const Order *skip_to = this->walk_orders->GetNextDecisionNode(target, num_hops, this_cargo_mask);
+			const Order *target = this->vehicle->orders->GetOrderAt(next->GetConditionSkipToOrder());
+			const Order *skip_to = this->vehicle->orders->GetNextDecisionNode(target, num_hops, this_cargo_mask);
 			assert(this_cargo_mask == this->cargo_mask);
-			if (skip_to != nullptr && num_hops < std::min<uint>(64, this->walk_orders->GetNumOrders()) && skip_to != next) {
+			if (skip_to != nullptr && num_hops < std::min<uint>(64, this->vehicle->orders->GetNumOrders()) && skip_to != next) {
 				/* Make copies of capacity tracking lists. There is potential
 				 * for optimization here: If the vehicle never refits we don't
 				 * need to copy anything. */
 
 				/* Record the branch before executing it,
 				 * to avoid recursively executing it again. */
-				Hop hop(this->walk_orders->GetIndexOfOrder(cur), this->walk_orders->GetIndexOfOrder(skip_to), this->cargo, flags, ScheduleHopLists(this->walk_orders, this->walk_orders));
+				Hop hop(this->vehicle->orders->GetIndexOfOrder(cur), this->vehicle->orders->GetIndexOfOrder(skip_to), this->cargo, flags);
 				auto iter = this->seen_hops->lower_bound(hop);
 				if (iter == this->seen_hops->end() || *iter != hop) {
 					this->seen_hops->insert(iter, hop);
@@ -294,77 +279,12 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 		 * depot.*/
 		CargoTypes this_cargo_mask = this->cargo_mask;
 		const Order *current = next;
-		const Order *following = this->walk_orders->GetNext(current);
-		bool list_changed = false;
-		if (!this->resume_stack.empty() && this->walk_orders != this->vehicle->orders
-				&& this->walk_orders->GetIndexOfOrder(following) == 0) {
-			/* One full pass of the executed schedule is finished: the vehicle
-			 * returns to its primary order list (ReturnFromExecuteSchedule uses
-			 * the outermost home, not the immediately suspended list), so
-			 * unwind the whole stack and resume at the bottom entry. */
-			this->walk_orders = this->resume_stack.front().first;
-			following = this->resume_stack.front().second;
-			this->resume_stack.clear();
-			list_changed = true;
-		}
-		if (following->IsExecuteScheduleOrder() && this->resume_stack.size() < 8) {
-			/* The vehicle will jump into the target schedule: continue the
-			 * prediction there, suspending the current list. The depth limit
-			 * only guards against runaway recursion; cycles in the executed
-			 * schedules are broken by the seen-hop check. */
-			OrderList *target = OrderList::GetIfValid(following->GetDestination().ToOrderListID());
-			if (target != nullptr && target != this->walk_orders && target->GetNumOrders() > 0
-					&& target->IsPlayerCreated() && target->IsVisibleToCompany(this->vehicle->owner)) {
-				this->resume_stack.emplace_back(this->walk_orders, this->walk_orders->GetNext(following));
-				this->walk_orders = target;
-				following = target->GetFirstOrder();
-				list_changed = true;
-			}
-		}
-		if (following->IsType(OT_DECOUPLE)) {
-			/* The consist splits here: each part may adopt a player-created
-			 * schedule afterwards. Refresh cargo links into both referenced
-			 * schedules while the whole consist is still standing at this
-			 * station, so the schedules' own stations are part of the link
-			 * graph even before the split happens. The front part keeps
-			 * walking this list below (GetNextDecisionNode skips the decouple
-			 * order), so the stations after the decouple are still visited. */
-			for (OrderListID schedule_id : { following->GetDecoupleFirstScheduleID(), following->GetDecoupleSecondScheduleID() }) {
-				OrderList *target = OrderList::GetIfValid(schedule_id);
-				if (target == nullptr || target == this->walk_orders || target->GetNumOrders() == 0
-						|| !target->IsPlayerCreated() || !target->IsVisibleToCompany(this->vehicle->owner)) continue;
-
-				/* Skip a leading stop at the station the consist currently stands at. */
-				const Order *start = target->GetFirstOrder();
-				if (cur->IsType(OT_GOTO_STATION) || cur->IsType(OT_IMPLICIT)) {
-					const StationID cur_station = cur->GetDestination().ToStationID();
-					for (uint skipped = 0; skipped < target->GetNumOrders(); ++skipped) {
-						if (!(start->IsType(OT_GOTO_STATION) || start->IsType(OT_IMPLICIT))) break;
-						if (start->GetDestination() != cur_station) break;
-						start = target->GetNext(start);
-					}
-				}
-
-				CargoTypes sched_cargo_mask = this->cargo_mask;
-				const Order *first_target = target->GetNextDecisionNode(start, num_hops, sched_cargo_mask);
-				if (first_target == nullptr) continue;
-
-				LinkRefresher branch(*this);
-				branch.walk_orders = target;
-				branch.RefreshLinks(cur, first_target, { 0, TimetableTravelTimeFlag::NoWaitTime }, flags, num_hops + 1);
-			}
-		}
-		next = this->walk_orders->GetNextDecisionNode(following, num_hops++, this_cargo_mask);
+		next = this->vehicle->orders->GetNextDecisionNode(
+				this->vehicle->orders->GetNext(next), num_hops++, this_cargo_mask);
 		assert(this_cargo_mask == this->cargo_mask);
 
-		if (list_changed) {
-			/* "current" and "next" live in different order lists now, so there
-			 * is no meaningful travel time between them. */
-			travel.flags.Set(TimetableTravelTimeFlag::Invalid);
-		} else {
-			travel.flags.Set(TimetableTravelTimeFlag::AllowCondition);
-			travel = this->UpdateTimetableTravelSoFar(current, next, travel);
-		}
+		travel.flags.Set(TimetableTravelTimeFlag::AllowCondition);
+		travel = this->UpdateTimetableTravelSoFar(current, next, travel);
 	}
 	return std::make_pair(next, travel);
 }
@@ -485,19 +405,8 @@ void LinkRefresher::RefreshLinks(const Order *cur, const Order *next, TimetableT
 		}
 
 		std::tie(next, travel) = this->PredictNextOrder(cur, next, travel, flags, num_hops);
-		if (next == nullptr && !this->resume_stack.empty()) {
-			/* The executed schedule had no stops at all: the vehicle passes
-			 * through it and resumes its primary order list. */
-			this->walk_orders = this->resume_stack.front().first;
-			next = this->resume_stack.front().second;
-			this->resume_stack.clear();
-		}
 		if (next == nullptr) break;
-		/* "cur" may still belong to the vehicle's own list right after jumping
-		 * into an executed schedule, so look up its index in the list holding it. */
-		OrderList *cur_orders = (this->walk_orders->GetIndexOfOrder(cur) != INVALID_VEH_ORDER_ID) ? this->walk_orders : this->vehicle->orders;
-		Hop hop(cur_orders->GetIndexOfOrder(cur), this->walk_orders->GetIndexOfOrder(next), this->cargo, {},
-				ScheduleHopLists(cur_orders, this->walk_orders));
+		Hop hop(this->vehicle->orders->GetIndexOfOrder(cur), this->vehicle->orders->GetIndexOfOrder(next), this->cargo);
 		auto iter = this->seen_hops->lower_bound(hop);
 		if (iter != this->seen_hops->end() && *iter == hop) {
 			break;

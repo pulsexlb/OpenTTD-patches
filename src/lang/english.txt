@@ -56,8 +56,6 @@ STR_CARGO_PLURAL_TOFFEE                                         :Toffee
 STR_CARGO_PLURAL_BATTERIES                                      :Batteries
 STR_CARGO_PLURAL_PLASTIC                                        :Plastic
 STR_CARGO_PLURAL_FIZZY_DRINKS                                   :Fizzy Drinks
-STR_CARGO_PLURAL_VEHICLES                                        :Vehicles (Car)
-STR_CARGO_PLURAL_RAILVEHICLES                                    :Vehicles (Train)
 
 # Singular cargo name
 STR_CARGO_SINGULAR_NOTHING                                      :
@@ -92,8 +90,6 @@ STR_CARGO_SINGULAR_TOFFEE                                       :Toffee
 STR_CARGO_SINGULAR_BATTERY                                      :Battery
 STR_CARGO_SINGULAR_PLASTIC                                      :Plastic
 STR_CARGO_SINGULAR_FIZZY_DRINK                                  :Fizzy Drink
-STR_CARGO_SINGULAR_VEHICLE                                       :Vehicle (Car)
-STR_CARGO_SINGULAR_RAILVEHICLE                                   :Vehicle (Train)
 
 # Quantity of cargo
 STR_QUANTITY_NOTHING                                            :
@@ -128,8 +124,6 @@ STR_QUANTITY_TOFFEE                                             :{WEIGHT_LONG} o
 STR_QUANTITY_BATTERIES                                          :{COMMA} batter{P y ies}
 STR_QUANTITY_PLASTIC                                            :{VOLUME_LONG} of plastic
 STR_QUANTITY_FIZZY_DRINKS                                       :{COMMA} fizzy drink{P "" s}
-STR_QUANTITY_VEHICLES                                            :{WEIGHT_LONG} of vehicles (car)
-STR_QUANTITY_RAILVEHICLES                                        :{WEIGHT_LONG} of vehicles (train)
 STR_QUANTITY_N_A                                                :N/A
 
 # Two letter abbreviation of cargo name
@@ -165,8 +159,6 @@ STR_ABBREV_TOFFEE                                               :TF
 STR_ABBREV_BATTERIES                                            :BA
 STR_ABBREV_PLASTIC                                              :PL
 STR_ABBREV_FIZZY_DRINKS                                         :FZ
-STR_ABBREV_VEHICLES                                              :VC
-STR_ABBREV_RAILVEHICLES                                          :VT
 STR_ABBREV_ALL                                                  :ALL
 
 # 'Mode' of transport for cargoes
@@ -418,8 +410,6 @@ STR_TOOLBAR_TOOLTIP_BUILD_TRAMWAYS                              :{BLACK}Build tr
 STR_TOOLBAR_TOOLTIP_BUILD_SHIP_DOCKS                            :{BLACK}Build waterway infrastructure
 STR_TOOLBAR_TOOLTIP_BUILD_AIRPORTS                              :{BLACK}Build airports
 STR_TOOLBAR_TOOLTIP_LANDSCAPING                                 :{BLACK}Open landscaping menu, tree menu, or place a sign
-STR_TOOLBAR_TOOLTIP_BLUEPRINT                                   :{BLACK}Show blueprint toolbar for copying and pasting infrastructure
-STR_TOOLBAR_TOOLTIP_BLUEPRINT_UNDO                              :{BLACK}Show the undo toolbar, for taking back what you last built
 STR_TOOLBAR_TOOLTIP_SHOW_SOUND_MUSIC_WINDOW                     :{BLACK}Open sound/music window
 STR_TOOLBAR_TOOLTIP_SHOW_LAST_MESSAGE_NEWS                      :{BLACK}Open last message/news report, messages history or delete all messages
 STR_TOOLBAR_TOOLTIP_LAND_BLOCK_INFORMATION                      :{BLACK}Open land information, screenshot menu, OpenTTD credits, or developer tools
@@ -881,7 +871,6 @@ STR_NEWS_FIRST_AIRCRAFT_ARRIVAL                                 :{BIG_FONT}{BLAC
 STR_NEWS_TRAIN_CRASH                                            :{BIG_FONT}{BLACK}Train Crash!{}{COMMA} die in fireball after collision
 STR_NEWS_ROAD_VEHICLE_CRASH_DRIVER                              :{BIG_FONT}{BLACK}Road Vehicle Crash!{}Driver dies in fireball after collision with train
 STR_NEWS_ROAD_VEHICLE_CRASH                                     :{BIG_FONT}{BLACK}Road Vehicle Crash!{}{COMMA} die in fireball after collision with train
-STR_NEWS_AIRCRAFT_CAN_T_LAND                                    :{WHITE}{VEHICLE} can't land on airport
 STR_NEWS_AIRCRAFT_CRASH                                         :{BIG_FONT}{BLACK}Plane Crash!{}{COMMA} die in fireball at {STATION}
 STR_NEWS_PLANE_CRASH_OUT_OF_FUEL                                :{BIG_FONT}{BLACK}Plane Crash!{}Aircraft ran out of fuel, {COMMA} die in fireball
 
@@ -946,119 +935,11 @@ STR_NEWS_VEHICLE_IS_GETTING_VERY_OLD                            :{WHITE}{VEHICLE
 STR_NEWS_VEHICLE_IS_GETTING_VERY_OLD_AND                        :{WHITE}{VEHICLE} is getting very old and urgently needs replacing
 STR_NEWS_TRAIN_IS_STUCK                                         :{WHITE}{VEHICLE} can't find a path to continue
 STR_NEWS_VEHICLE_IS_LOST                                        :{WHITE}{VEHICLE} is lost
-STR_NEWS_RV_TRANSPORT_UNLOAD_OVERDUE                            :{WHITE}{VEHICLE} has been carried for {NUM} days without being unloaded
 STR_NEWS_VEHICLE_UNPROFITABLE_YEAR                              :{WHITE}{VEHICLE}'s profit last year was {CURRENCY_LONG}
 STR_NEWS_VEHICLE_UNPROFITABLE_PERIOD                            :{WHITE}{VEHICLE}'s profit last period was {CURRENCY_LONG}
 STR_NEWS_AIRCRAFT_DEST_TOO_FAR                                  :{WHITE}{VEHICLE} can't get to the next destination because it is out of range
 
 STR_NEWS_ORDER_REFIT_FAILED                                     :{WHITE}{VEHICLE} stopped because an ordered refit failed
-STR_NEWS_ORDER_DECOUPLE_FAILED                                  :{WHITE}Failed to decouple {VEHICLE}
-STR_NEWS_ORDER_DECOUPLE_FAILED_REASON                           :{WHITE}Failed to decouple {VEHICLE}: {STRING}
-STR_NEWS_ORDER_COUPLE_FAILED                                    :{WHITE}Failed to couple {VEHICLE} and {VEHICLE}
-STR_VEHICLE_STATUS_HEADING_FOR_COUPLE_VEL                       :{LTBLUE}Heading for couple, {VELOCITY}
-STR_VEHICLE_STATUS_DECOUPLING                                    :{LTBLUE}Decoupling
-STR_VEHICLE_STATUS_WAITING_FOR_COUPLE                           :{LTBLUE}Waiting for locomotive
-STR_VEHICLE_STATUS_WAITING_FOR_COUPLE_WRONG                     :{RED}Can't couple outside the station
-STR_ORDER_TOGGLE_COUPLE_LOAD                                    :{BLACK}Couple empty
-STR_ORDERS_COUPLE_LOAD_ANY                                      :Couple any
-STR_ORDERS_COUPLE_LOAD_EMPTY                                    :Couple empty
-STR_ORDERS_COUPLE_LOAD_FULL                                     :Couple full
-STR_ORDERS_DECOUPLE_FIRST_KEEP_ORDERS_BUTTON                    :{BLACK}First: orders after decoupling
-STR_ORDERS_DECOUPLE_SECOND_KEEP_ORDERS_BUTTON                   :{BLACK}Second: orders after decoupling
-STR_ORDER_DECOUPLE_FIRST_ORDERS_TOOLTIP                         :{BLACK}What the first part does after decoupling
-STR_ORDER_DECOUPLE_SECOND_ORDERS_TOOLTIP                        :{BLACK}What the second part does after decoupling
-STR_ORDERS_DECOUPLE_KEEP_ORDERS                                 :Load and keep orders
-STR_ORDERS_DECOUPLE_KEEP_ORDERS_NO_LOAD                         :Keep orders without loading
-STR_ORDERS_DECOUPLE_WAIT_FOR_COUPLE                             :Wait for couple without loading
-STR_ORDERS_DECOUPLE_LOAD_AND_SCHEDULE                           :Load and use a schedule
-STR_ORDERS_DECOUPLE_LOAD_AND_WAIT                               :Load and wait for couple
-STR_ORDERS_DECOUPLE_EXECUTE_SCHEDULE                            :Use a schedule without loading
-STR_ERROR_NO_SCHEDULE_AVAILABLE                                 :There is no schedule to select
-STR_ORDER_PICK_SCHEDULE_CAPTION                                 :{WHITE}Select a schedule
-STR_ORDER_PICK_SCHEDULE_LIST_TOOLTIP                            :{BLACK}Select the schedule the decoupled part will use
-STR_ORDERS_COUPLE_VALUE_BUTTON                                  :{BLACK}Units couple
-STR_ORDER_COUPLE_SLOT_BUTTON                                   :{BLACK}Slot
-STR_ORDER_COUPLE_SLOT_TOOLTIP                                 :{BLACK}The trace restrict slot the train must couple with
-STR_ORDER_COUPLE_STATION_BUTTON                                :{BLACK}Station
-STR_ORDER_COUPLE_STATION_TOOLTIP                               :{BLACK}Select a station on the map to restrict coupling to. Click again to clear
-STR_ORDER_COUPLE_MORE_BUTTON                                   :{BLACK}More options
-STR_ORDER_COUPLE_MORE_TOOLTIP                                  :{BLACK}Further coupling criteria: trace restrict slot group, vehicle group, load state, cargo type and unit count
-STR_ORDER_COUPLE_OPTIONS_CAPTION                               :{WHITE}Coupling criteria
-STR_ORDER_COUPLE_SLOT_GROUP_LABEL                              :{BLACK}Trace restrict slot group
-STR_ORDER_COUPLE_GROUP_LABEL                                   :{BLACK}Vehicle group
-STR_ORDER_COUPLE_LOAD_LABEL                                    :{BLACK}Load state
-STR_ORDER_COUPLE_CARGO_LABEL                                   :{BLACK}Cargo type
-STR_ORDER_COUPLE_VALUE_LABEL                                   :{BLACK}Unit count
-STR_ORDER_COUPLE_ANY_GROUP                                     :Any slot group
-STR_ORDER_COUPLE_ANY_VEHICLE_GROUP                             :Any vehicle group
-STR_ORDER_COUPLE_ANY_CARGO                                     :Any cargo
-STR_ORDER_COUPLE_SLOT_GROUP                                    : in slot group {STRING1}
-STR_ORDER_COUPLE_GROUP                                         : of group {STRING1}
-STR_ORDER_COUPLE_LOAD_TOOLTIP                                   :{BLACK}Which trains this train may couple with: any, empty or full
-STR_ORDER_COUPLE_CARGO_TOOLTIP                                  :{BLACK}Restrict coupling to a train that can carry the selected cargo type. Click again to clear
-STR_ORDER_COUPLE_VALUE_TOOLTIP                                  :{BLACK}Restrict coupling to a train with this many units (0 for any)
-STR_ORDER_DECOUPLE_VALUE_TOOLTIP                                :{BLACK}How many units stay in this train after decoupling
-STR_ORDER_COUPLE_USE_WAITING_SCHEDULE                          :Use the waiting train's schedule
-STR_ORDER_COUPLE_USE_WAITING_SCHEDULE_SUFFIX                   :(and use the waiting train's schedule)
-STR_ORDERS_DECOUPLE_VALUE_BUTTON                                :{BLACK}Units decouple
-STR_ORDERS_DECOUPLE_BUTTON                                      :{BLACK}Decouple
-STR_ORDERS_DECOUPLE_DROP                                        :Decouple
-STR_ORDERS_DECOUPLE_VALUE                                       :Units decouple
-STR_ORDERS_DECOUPLE_TOOLTIP                                     :{BLACK}Decouple train at the station
-STR_ORDER_COUPLE_VALUE_CAPT                                     :{WHITE}Enter how many units the train to couple with must have
-STR_ORDER_DECOUPLE_VALUE_CAPT                                   :{WHITE}Enter how many units will stay in train after decoupling
-STR_ORDERS_GO_TO_COUPLE                                         :Go to couple
-STR_ORDER_WAIT_FOR_COUPLE                                       :Wait for couple
-STR_ORDER_GO_TO_COUPLE                                          :Go to couple at the {STRING1} station with a {STRING} train
-STR_ORDER_GO_TO_COUPLE_CARGO                                    :Go to couple at the {STRING1} station with a {STRING} train that can carry {STRING}
-STR_ORDER_COUPLE_ANY                                            :any
-STR_ORDER_COUPLE_EMPTY                                          :empty
-STR_ORDER_COUPLE_FULL                                           :full
-STR_ORDER_COUPLE_ANY_SLOT                                     :Any slot
-STR_ORDER_COUPLE_SLOT                                          : in slot {STRING1}
-STR_ORDER_DECOUPLE                                              :(Decouple)
-STR_ORDER_DECOUPLE_DETAILS                                      :[Decouple and keep {COMMA} units] First part {RAW_STRING} Second part {RAW_STRING}
-STR_ORDER_DECOUPLE_DETAILS_AUTO                                 :[Decouple and keep {COMMA}(auto) units] First part {RAW_STRING} Second part {RAW_STRING}
-STR_ORDER_COUPLE_UNITS                                          :(with {COMMA} units)
-STR_ORDER_DECOUPLE_KEEP_ORDERS                                  :(Load and keep orders)
-STR_ORDER_DECOUPLE_KEEP_ORDERS_NO_LOAD                          :(Keep orders without loading)
-STR_ORDER_DECOUPLE_LOAD_AND_WAIT                                :(Load and wait for couple)
-STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :(Wait for couple without loading)
-STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE                            :(Load and use schedule {RAW_STRING})
-STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :(Use schedule {RAW_STRING})
-STR_ORDER_DECOUPLE_SAME_DIR_EXIT                                :Allow leaving in the same direction once the other part has left
-STR_ORDER_DECOUPLE_SAME_DIR_FIRST                               :(First part may follow the other part's exit)
-STR_ORDER_DECOUPLE_SAME_DIR_SECOND                              :(Second part may follow the other part's exit)
-STR_COUPLE_DIAGNOSTIC_BUTTON                                   :{BLACK}Diagnostics
-STR_COUPLE_DIAGNOSTIC_TOOLTIP                                  :{BLACK}Show the current coupling target, claim and candidate rejection reasons
-STR_COUPLE_DIAGNOSTIC_CAPTION                                  :{WHITE}Coupling diagnostics
-STR_COUPLE_DIAGNOSTIC_TARGET                                   :Current target: {VEHICLE}
-STR_COUPLE_DIAGNOSTIC_CLAIM_SELF                               :Claim: reserved for this train
-STR_COUPLE_DIAGNOSTIC_CLAIM_OTHER                              :Claim: reserved for {VEHICLE}
-STR_COUPLE_DIAGNOSTIC_CLAIM_NONE                               :Claim: none
-STR_COUPLE_DIAGNOSTIC_PATH_UNKNOWN                             :Matching trains exist; path status is unknown
-STR_COUPLE_DIAGNOSTIC_NO_CANDIDATE                             :No matching train was found
-STR_COUPLE_DIAGNOSTIC_REJECTION                                :{STRING}: {COMMA}
-STR_COUPLE_DIAGNOSTIC_NOT_WAITING                              :Not waiting for coupling
-STR_COUPLE_DIAGNOSTIC_CLAIMED                                  :Reserved by another train
-STR_COUPLE_DIAGNOSTIC_CRASHED                                  :Crashed
-STR_COUPLE_DIAGNOSTIC_STOPPED                                  :Manually stopped
-STR_COUPLE_DIAGNOSTIC_OWNER                                    :Ownership does not allow coupling
-STR_COUPLE_DIAGNOSTIC_LOAD                                     :Empty/full-load filter does not match
-STR_COUPLE_DIAGNOSTIC_CARGO                                    :Cargo type does not match
-STR_COUPLE_DIAGNOSTIC_UNIT_COUNT                               :Unit count does not match
-STR_COUPLE_DIAGNOSTIC_SLOT                                     :Slot does not match
-STR_COUPLE_DIAGNOSTIC_SLOT_GROUP                               :Slot group does not match
-STR_COUPLE_DIAGNOSTIC_GROUP                                    :Vehicle group does not match
-STR_COUPLE_DIAGNOSTIC_STATION                                  :Station does not match
-STR_COUPLE_DIAGNOSTIC_PLATFORM                                 :Train does not fit on one station platform
-STR_COUPLE_DIAGNOSTIC_ARRANGEMENT                              :Consist or NewGRF compatibility check failed
-STR_COUPLE_DIAGNOSTIC_NOT_ACTIVE                               :Selected order is not currently executing; showing its candidate filters only
-STR_ORDERS_DECOUPLE_PREVIEW_TOOLTIP                            :{BLACK}Click a white marker to select the split, or click the retained count to enter it manually. Ctrl+click restores automatic decoupling. Cargo stays with its vehicles.
-STR_DECOUPLE_DIAGNOSTIC_PLATFORM                              :the train is not fully contained by one station platform
-STR_DECOUPLE_DIAGNOSTIC_TOO_SHORT                             :the train has fewer than two separable vehicle units
-STR_DECOUPLE_DIAGNOSTIC_CUT                                   :the selected cut would split an articulated or multiheaded unit
-STR_DECOUPLE_DIAGNOSTIC_ARRANGEMENT                           :a consist or NewGRF compatibility check failed
 STR_NEWS_VEHICLE_AUTORENEW_FAILED                               :{WHITE}Autorenew failed on {VEHICLE}{}{STRING1}
 
 STR_NEWS_NEW_VEHICLE_NOW_AVAILABLE                              :{BIG_FONT}{BLACK}New {STRING} now available!
@@ -1482,8 +1363,6 @@ STR_CONFIG_SETTING_TRAIN_FLIP_REVERSE_NONE                      :None
 
 STR_CONFIG_SETTING_DISASTERS                                    :Disasters: {STRING2}
 STR_CONFIG_SETTING_DISASTERS_HELPTEXT                           :Toggle disasters which may occasionally block or destroy vehicles or infrastructure
-STR_CONFIG_SETTING_RAIN                                         :Random rain: {STRING2}
-STR_CONFIG_SETTING_RAIN_HELPTEXT                                :Occasionally let it rain over the whole map. Rain darkens the world and is purely visual
 
 STR_CONFIG_SETTING_CITY_APPROVAL                                :Local authority attitude: {STRING2}
 STR_CONFIG_SETTING_CITY_APPROVAL_HELPTEXT                       :Choose how much noise and environmental damage by companies affect their town rating and further construction actions in the town
@@ -1642,12 +1521,8 @@ STR_CONFIG_SETTING_COMPANY_STARTING_COLOUR_HELPTEXT             :Choose starting
 STR_CONFIG_SETTING_COMPANY_STARTING_COLOUR_SECONDARY            :Starting company secondary colour: {STRING2}
 STR_CONFIG_SETTING_COMPANY_STARTING_COLOUR_SECONDARY_HELPTEXT   :Choose starting secondary colour for the company, if using a NewGRF that enables it
 
-STR_CONFIG_SETTING_DEFAULT_AIR_TYPE                            :Default air type (after new game/game load): {STRING2}
-STR_CONFIG_SETTING_DEFAULT_AIR_TYPE_HELPTEXT                   :Air type to select after starting or loading a game. 'first available' selects the oldest type of airport, 'last available' selects the newest one, and 'most used' selects the type which is currently most in use
 STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS                        :Airports never expire: {STRING2}
 STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS_HELPTEXT               :Enabling this setting makes each airport type stay available forever after its introduction
-STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS                    :Allow building customized airports: {STRING2}
-STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS_HELPTEXT           :Enabling this setting allows each player being able to build customized airports.
 
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE                            :Warn if vehicle is lost: {STRING2}
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE_HELPTEXT                   :Trigger messages about vehicles unable to find a path to their ordered destination
@@ -1951,12 +1826,6 @@ STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_HELPTEXT            :Limit on how fa
 STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_VAL                 :{NUM}% normal game speed
 ###setting-zero-is-special
 STR_CONFIG_SETTING_FAST_FORWARD_SPEED_LIMIT_ZERO                :No limit (as fast as your computer allows)
-
-STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL               :Invite code keepalive check interval: {STRING2}
-STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_HELPTEXT      :How often the server verifies that the Game Coordinator still knows its invite code, by requesting the public server list. If the invite code is missing, the server reconnects and re-registers immediately. Lower values detect registration loss sooner at the cost of a small amount of extra traffic to the Game Coordinator
-STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_VAL           :{COMMA} minute{P "" s}
-###setting-zero-is-special
-STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_ZERO          :Disabled (do not verify invite code registration)
 
 STR_CONFIG_SETTING_SOUND_TICKER                                 :News ticker: {STRING2}
 STR_CONFIG_SETTING_SOUND_TICKER_HELPTEXT                        :Play sound for summarised news messages
@@ -2381,7 +2250,6 @@ STR_VIDEO_DRIVER_ERROR_HARDWARE_ACCELERATION_CRASH              :GPU driver cras
 
 # Intro window
 STR_INTRO_CAPTION                                               :{WHITE}OpenTTD
-STR_INTRO_CAPTION_BLUEPRINT                                     :{WHITE}OpenTTD Blueprint
 STR_INTRO_VERSION                                               :OpenTTD {REV}
 
 STR_INTRO_NEW_GAME                                              :{BLACK}New Game
@@ -2456,10 +2324,6 @@ STR_CHEAT_CHANGE_DATE                                           :{LTBLUE}Change 
 STR_CHEAT_CHANGE_DATE_QUERY_CAPT                                :{WHITE}Change current year
 STR_CHEAT_SETUP_PROD                                            :{LTBLUE}Enable modifying production values: {ORANGE}{STRING}
 STR_CHEAT_STATION_RATING                                        :{LTBLUE}Fix station ratings at 100%: {ORANGE}{STRING}
-STR_CHEAT_RAIN                                                  :{LTBLUE}Weather: {ORANGE}{STRING}
-STR_CHEAT_RAIN_AUTO                                             :Automatic
-STR_CHEAT_RAIN_RAINING                                          :Always raining
-STR_CHEAT_RAIN_SUNNY                                            :Always clear
 
 # Livery window
 STR_LIVERY_CAPTION                                              :{WHITE}{COMPANY} - Colour Scheme
@@ -2983,17 +2847,6 @@ STR_RAIL_NAME_MAGLEV                                            :Maglev
 # Rail depot construction window
 STR_BUILD_DEPOT_TRAIN_ORIENTATION_CAPTION                       :{WHITE}Train Depot Orientation
 STR_BUILD_DEPOT_TRAIN_ORIENTATION_TOOLTIP                       :{BLACK}Select railway depot orientation
-STR_BUILD_HELIPORT_CAPTION                                      :{WHITE}Heliport Orientation
-STR_BUILD_AIRPORT_INFRA_NO_CATCH_CAPTION                    :{WHITE}Infrastructure without cargo catchment
-STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION                  :{WHITE}Infrastructure with cargo catchment
-STR_BUILD_AIRPORT_INFRA_TOOLTIP                             :{BLACK}Select a piece of infrastructre and its orientation
-STR_BUILD_HANGAR_CAPTION                                    :{WHITE}Hangar Orientation
-STR_BUILD_HELIPORT_ORIENTATION_TOOLTIP                          :{BLACK}Select heliport orientation
-STR_BUILD_HANGAR_ORIENTATION_TOOLTIP                        :{BLACK}Select hangar orientation
-STR_SELECT_GFX_AIRPORT_TRACKS_CAPTION                       :{WHITE}Selection of graphics for track tiles
-STR_SELECT_GFX_AIRPORT_TRACKS_TOOLTIP                       :{BLACK}Select the graphics for airport track tiles and click on airport track tiles.
-STR_SELECT_GFX_AIRPORT_TRACKS_DETECT                           :{BLACK}Automatic
-STR_SELECT_GFX_AIRPORT_TRACKS_DEFAULT                       :{BLACK}Default
 
 # Rail waypoint construction window
 STR_WAYPOINT_CAPTION                                            :{WHITE}Waypoint
@@ -3202,58 +3055,11 @@ STR_AIRPORT_INTERCONTINENTAL                                    :Intercontinenta
 STR_AIRPORT_HELIPORT                                            :Heliport
 STR_AIRPORT_HELIDEPOT                                           :Helidepot
 STR_AIRPORT_HELISTATION                                         :Helistation
-STR_AIRPORT_ROTATION_0                                          :Default orientation
-STR_AIRPORT_ROTATION_90                                         :90º rotated
-STR_AIRPORT_ROTATION_180                                        :180º rotated
-STR_AIRPORT_ROTATION_270                                        :270º rotated
-STR_AIRPORT_CUSTOM                                           :Custom
 
 STR_AIRPORT_CLASS_SMALL                                         :Small airports
 STR_AIRPORT_CLASS_LARGE                                         :Large airports
 STR_AIRPORT_CLASS_HUB                                           :Hub airports
 STR_AIRPORT_CLASS_HELIPORTS                                     :Helicopter airports
-STR_AIRPORT_CLASS_CUSTOMIZED                                    :Customized airports
-
-STR_AIRTYPE_NAME_GRAVEL                                         :Gravel airport
-STR_AIRTYPE_NAME_ASPHALT                                        :Asphalt airport
-STR_AIRTYPE_NAME_WATER                                          :Water airport
-STR_AIRTYPE_NAME_DARK                                           :Darker airport
-STR_AIRTYPE_NAME_YELLOW                                         :Drawn tracks airport
-STR_REPLACE_AIRCRAFT_GRAVEL_VEHICLES                            :Gravel aircraft
-STR_REPLACE_AIRCRAFT_ASPHALT_VEHICLES                           :Asphalt aircraft
-STR_REPLACE_AIRCRAFT_WATER_VEHICLES                             :Water aircraft
-STR_REPLACE_AIRCRAFT_DARK_VEHICLES                              :Dark aircraft
-STR_REPLACE_AIRCRAFT_YELLOW_VEHICLES                            :Drawn tracks aircraft
-STR_TOOLBAR_AIRPORT_GRAVEL_CONSTRUCTION_CAPTION                 :Gravel Airport Construction
-STR_TOOLBAR_AIRPORT_ASPHALT_CONSTRUCTION_CAPTION                :Asphalt Airport Construction
-STR_TOOLBAR_AIRPORT_WATER_CONSTRUCTION_CAPTION                  :Water Airport Construction
-STR_TOOLBAR_AIRPORT_DARK_CONSTRUCTION_CAPTION                   :Darker Airport Construction
-STR_TOOLBAR_AIRPORT_YELLOW_CONSTRUCTION_CAPTION                 :Drawn Tracks Airport Construction
-STR_TOOLBAR_AIRPORT_GRAVEL_MENU_TEXT                            :Gravel airport construction
-STR_TOOLBAR_AIRPORT_ASPHALT_MENU_TEXT                           :Asphalt airport construction
-STR_TOOLBAR_AIRPORT_WATER_MENU_TEXT                             :Water airport construction
-STR_TOOLBAR_AIRPORT_DARK_MENU_TEXT                              :Darker airport construction
-STR_TOOLBAR_AIRPORT_YELLOW_MENU_TEXT                            :Drawn tracks airport construction
-STR_TOOLBAR_AIRPORT_CAPTION                                    :{WHITE}Airports
-STR_TOOLBAR_AIRPORT_BUILD_AIRPORT_TOOLTIP                      :{BLACK}Build airport. Ctrl+Click to select another station to join. Also press Shift to show cost estimate only
-STR_TOOLBAR_AIRPORT_ADD_TILES                                  :{BLACK}Add or remove airport tiles to an airport
-STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_CATCHMENT                   :{BLACK}Define as infrastructure with catchment
-STR_TOOLBAR_AIRPORT_INFRASTRUCTURE_NO_CATCHMENT                :{BLACK}Define as infrastructure without catchment
-STR_TOOLBAR_AIRPORT_SET_TRACKS                                 :{BLACK}Set tracks
-STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_LANDING                      :{BLACK}Define a runway allowing landing
-STR_TOOLBAR_AIRPORT_DEFINE_RUNWAY_NO_LANDING                   :{BLACK}Define a runway forbidding landing
-STR_TOOLBAR_AIRPORT_BUILD_APRON                                :{BLACK}Build an apron
-STR_TOOLBAR_AIRPORT_BUILD_HELIPAD                              :{BLACK}Build a helipad
-STR_TOOLBAR_AIRPORT_BUILD_HELIPORT                             :{BLACK}Build a heliport
-STR_TOOLBAR_AIRPORT_BUILD_HANGAR_STANDARD                      :{BLACK}Build a standard hangar
-STR_TOOLBAR_AIRPORT_BUILD_HANGAR_EXTENDED                      :{BLACK}Build an extended hangar
-STR_TOOLBAR_AIRPORT_TOGGLE_BUILD_REMOVE                        :{BLACK}Toggle build/remove for airport tiles, infrastructure, aprons and hangars
-STR_TOOLBAR_AIRPORT_BUILD_PRE_AIRPORT_TOOLTIP                  :{BLACK}Build a predefined airport layout. Ctrl enables joining stations. Shift toggles building/showing cost estimate
-STR_TOOLBAR_AIRPORT_CHANGE_AIRTYPE                             :{BLACK}Change the airtype of an airport
-STR_TOOLBAR_AIRPORT_ROTATE_GRAPHICS                            :{BLACK}Change track graphics
-STR_TOOLBAR_AIRPORT_ROTATE_GRAPHICS_TOOLTIP                    :{BLACK}Click over a simple airport tile to change its graphics (experimental; only works on the Drawn tracks airtype)
-STR_TOOLBAR_AIRPORT_TOGGLE_GROUND                              :{BLACK}Toggle ground graphics
-STR_TOOLBAR_AIRPORT_TOGGLE_GROUND_TOOLBAR                      :{BLACK}Click over a simple airport tile to show or hide the airtype ground sprite.
 
 STR_STATION_BUILD_NOISE                                         :{BLACK}Noise generated: {GOLD}{COMMA}
 
@@ -3263,136 +3069,6 @@ STR_LANDSCAPING_TOOLTIP_LOWER_A_CORNER_OF_LAND                  :{BLACK}Lower a 
 STR_LANDSCAPING_TOOLTIP_RAISE_A_CORNER_OF_LAND                  :{BLACK}Raise a corner of land. Click+Drag to raise the first selected corner and level the selected area to the new corner height. Ctrl+Click+Drag to select the area diagonally. Also press Shift to show cost estimate only
 STR_LANDSCAPING_LEVEL_LAND_TOOLTIP                              :{BLACK}Level an area of land to the height of the first selected corner. Ctrl+Click+Drag to select the area diagonally. Also press Shift to show cost estimate only
 STR_LANDSCAPING_TOOLTIP_PURCHASE_LAND                           :{BLACK}Purchase land for future use. Ctrl+Click+Drag to select the area diagonally. Also press Shift to show cost estimate only
-STR_LANDSCAPING_TOOLTIP_SHOW_BLUEPRINT_TOOLBAR                  :{BLACK}Show blueprint toolbar for copying and pasting infrastructure
-
-# Blueprint toolbar
-STR_BLUEPRINT_TOOLBAR                                           :{WHITE}Blueprint
-STR_BLUEPRINT_UNDO_TOOLBAR                                      :{WHITE}Undo
-STR_BLUEPRINT_UNDO_LIST_CAPTION                                 :{WHITE}Undo history
-STR_BLUEPRINT_UNDO_LIST_TRACK                                   :{COMMA} track
-STR_BLUEPRINT_UNDO_LIST_SIGNAL                                  :{COMMA} signal{P "" s}
-STR_BLUEPRINT_UNDO_LIST_RAIL_DEPOT                              :{COMMA} train depot{P "" s}
-STR_BLUEPRINT_UNDO_LIST_STATION                                 :{COMMA} station{P "" s}
-STR_BLUEPRINT_UNDO_LIST_WAYPOINT                                :{COMMA} waypoint{P "" s}
-STR_BLUEPRINT_UNDO_LIST_ROAD                                    :{COMMA} road
-STR_BLUEPRINT_UNDO_LIST_ROAD_DEPOT                              :{COMMA} road depot{P "" s}
-STR_BLUEPRINT_UNDO_LIST_ROAD_STOP                               :{COMMA} road stop{P "" s}
-STR_BLUEPRINT_UNDO_LIST_BRIDGE                                  :{COMMA} bridge{P "" s}
-STR_BLUEPRINT_UNDO_LIST_TUNNEL                                  :{COMMA} tunnel{P "" s}
-STR_BLUEPRINT_UNDO_LIST_CANAL                                   :{COMMA} canal
-STR_BLUEPRINT_UNDO_LIST_LOCK                                    :{COMMA} lock{P "" s}
-STR_BLUEPRINT_UNDO_LIST_SHIP_DEPOT                              :{COMMA} ship depot{P "" s}
-STR_BLUEPRINT_UNDO_LIST_DOCK                                    :{COMMA} dock{P "" s}
-STR_BLUEPRINT_UNDO_LIST_BUOY                                    :{COMMA} buoy{P "" s}
-STR_BLUEPRINT_UNDO_LIST_AIRPORT                                 :{COMMA} airport{P "" s}
-STR_BLUEPRINT_UNDO_LIST_LAND                                    :landscape
-STR_BLUEPRINT_UNDO_LIST_UNDO_SELECTED                           :{BLACK}Undo selected
-STR_BLUEPRINT_SLOT                                              :{BLACK}{NUM}
-STR_BLUEPRINT_SLOT_SCRATCH                                      :{BLACK}*
-STR_BLUEPRINT_PAGE                                              :{BLACK}{RAW_STRING}
-STR_BLUEPRINT_PAGE_MENU_ITEM                                    :{RAW_STRING}   {RAW_STRING}
-STR_BLUEPRINT_OPTIONS_MENU_RAIL                                 :Rail
-STR_BLUEPRINT_OPTIONS_MENU_ROAD                                 :Road and tram
-STR_BLUEPRINT_OPTIONS_MENU_WATER                                :Water
-STR_BLUEPRINT_OPTIONS_MENU_AIR                                  :Airports
-STR_BLUEPRINT_OPTIONS_MENU_WITH_STATIONS                        :Stations and waypoints
-STR_BLUEPRINT_OPTIONS_MENU_CONVERT_RAILTYPE                     :Convert to current rail type
-STR_BLUEPRINT_OPTIONS_MENU_MIRROR_SIGNALS                       :Mirror signals
-STR_BLUEPRINT_OPTIONS_MENU_UPGRADE_BRIDGES                      :Upgrade bridges
-STR_BLUEPRINT_OPTIONS_MENU_TERRAFORM_NONE                       :Terraform: none
-STR_BLUEPRINT_OPTIONS_MENU_TERRAFORM_MINIMAL                    :Terraform: under the elements
-STR_BLUEPRINT_OPTIONS_MENU_TERRAFORM_FULL                       :Terraform: the whole area
-STR_BLUEPRINT_OPTIONS_MENU_RESTORE_LAND                         :Restore the land
-STR_BLUEPRINT_HEIGHT_POSITIVE                                   :{YELLOW}+{NUM}
-STR_BLUEPRINT_HEIGHT_NEGATIVE                                   :{YELLOW}-{NUM}
-STR_BLUEPRINT_EXPORT                                            :{BLACK}Export
-STR_BLUEPRINT_IMPORT                                            :{BLACK}Import
-STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}Exp/Imp
-STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint patch, version {RAW_STRING}
-STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :Export active slot...
-STR_BLUEPRINT_EXPORT_MENU_ALL                                   :Export this page to a file...
-STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :Import into active slot...
-STR_BLUEPRINT_CLEAR_MENU_SLOT                                   :Clear active slot...
-STR_BLUEPRINT_IMPORT_MENU_ALL                                   :Import a page from a file...
-STR_BLUEPRINT_EXPORT_CAPTION                                    :{WHITE}Export blueprint
-STR_BLUEPRINT_IMPORT_CAPTION                                    :{WHITE}Import blueprint
-STR_BLUEPRINT_COPY_TO_CLIPBOARD                                 :{BLACK}Copy to clipboard
-STR_BLUEPRINT_PASTE_FROM_CLIPBOARD                              :{BLACK}Paste from clipboard
-STR_BLUEPRINT_QUERY_OVERWRITE_CAPTION                           :{WHITE}Replace blueprint?
-STR_BLUEPRINT_QUERY_OVERWRITE                                   :{YELLOW}The active slot already contains a blueprint. Do you want to replace it?
-STR_BLUEPRINT_QUERY_OVERWRITE_ALL_CAPTION                       :{WHITE}Replace this page?
-STR_BLUEPRINT_QUERY_OVERWRITE_ALL                               :{YELLOW}This will replace all eight slots on the current page. Other pages are left alone. Do you want to continue?
-STR_BLUEPRINT_QUERY_RENAME_CAPTION                              :{WHITE}Rename blueprint
-STR_BLUEPRINT_QUERY_EXPORT_FILE_CAPTION                         :{WHITE}Export blueprint page to file
-STR_BLUEPRINT_QUERY_IMPORT_FILE_CAPTION                         :{WHITE}Import blueprint page from file
-STR_BLUEPRINT_INFO_WINDOW_VERSION                               :{BLACK}Blueprint patch, version {RAW_STRING}
-STR_BLUEPRINT_INFO_CAPTION_BLUEPRINT                            :{WHITE}About the Blueprint toolbar
-STR_BLUEPRINT_INFO_CAPTION_UNDO                                 :{WHITE}About the Undo toolbar
-STR_BLUEPRINT_INFO_TEXT_BLUEPRINT                               :{BLACK}Copy a piece of what you have built, then stamp it down again elsewhere.{}{}Pick one of the eight slots on the current page, press Copy and drag a rectangle over your own infrastructure. Picking a slot arms Paste for you, so a ghost follows the cursor showing what would be built; parts that do not fit are drawn red. The blueprint sits centred on the cursor, so the cursor marks the middle of what you are about to build. Click to build it.{}{}The blueprint can be rotated, mirrored and raised or lowered before pasting. The paste options menu decides which kinds of infrastructure come along and how they are laid down; terraforming there reshapes the ground to match what was copied.{}{}There are six pages of eight slots, A to F, chosen from the button at the left end of the toolbar; its menu shows which slots on each page are taken, and each page has its own colour so you can see which one you are on. The slot marked * after slot 8 is a scratch buffer for a quick copy and paste: it belongs to no page, is never saved and is empty again next time you start. Copying into it arms Paste at once, so what you just copied is ready to go straight back down.{}{}Slots survive restarts. A blueprint can be exported as a text string to share, or a whole page saved to a file.
-STR_BLUEPRINT_INFO_TEXT_UNDO                                    :{BLACK}Take back what you built, whether you built it by hand or pasted it.{}{}One action is one step: a dragged line of track comes out in one go. The history lists what can still be taken back, newest first; selecting entries marks their tiles on the map, and Ctrl+click and Shift+click select several at once.{}{}The options menu restricts an undo to rail, road, water or air, and decides whether the ground goes back as well; it stays open while you change it.{}{}Undo removes what you built. It cannot restore what you destroyed: trees, houses and anything a bulldozer took are gone for good. Removal is charged at the usual prices. What cannot be removed, such as track with a train on it or land with something still built on it, stays in the history until it can. Actions are forgotten after an hour, and when the game is restarted.
-STR_BLUEPRINT_FILE_DETAILS_CAPTION                              :{BLACK}Blueprint page
-STR_BLUEPRINT_FILE_DETAILS_HINT                                 :{BLACK}Select a file to see what it holds
-STR_BLUEPRINT_FILE_DETAILS_SLOT_NAMED                           :{BLACK}{NUM}: {RAW_STRING} ({COMMA})
-STR_BLUEPRINT_FILE_DETAILS_SLOT_UNNAMED                         :{BLACK}{NUM}: {COMMA} item{P "" s}
-STR_BLUEPRINT_FILE_DETAILS_SLOT_EMPTY                           :{GRAY}{NUM}: empty
-STR_BLUEPRINT_DELETE                                            :{BLACK}Delete
-STR_BLUEPRINT_TOOLTIP_DELETE_FILE                               :{BLACK}Delete the selected blueprint file
-STR_BLUEPRINT_QUERY_DELETE_FILE_CAPTION                         :{WHITE}Delete blueprint file
-STR_BLUEPRINT_QUERY_DELETE_FILE                                 :{YELLOW}Delete this file for good?
-STR_BLUEPRINT_QUERY_CLEAR_SLOT_CAPTION                          :{WHITE}Clear blueprint slot
-STR_BLUEPRINT_QUERY_CLEAR_SLOT                                  :{YELLOW}Throw away the contents of this slot?
-STR_BLUEPRINT_QUERY_OVERWRITE_FILE_CAPTION                      :{WHITE}Replace file?
-STR_BLUEPRINT_QUERY_OVERWRITE_FILE                              :{YELLOW}A file with that name already exists. Do you want to replace it?
-STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}Switch to this blueprint slot. If the slot is named or has content, hovering shows its name and a preview. Double-click to rename
-STR_BLUEPRINT_TOOLTIP_PAGE                                      :{BLACK}Which page of eight blueprint slots the buttons to the right show. Click to pick another of the six. Each page has its own colour, and holds its own eight blueprints
-STR_BLUEPRINT_TOOLTIP_SLOT_SCRATCH                              :{BLACK}The scratch slot, for a quick copy and paste you do not want to keep. It belongs to no page, is not saved and is not exported - copying into it never overwrites one of your numbered slots
-STR_BLUEPRINT_TOOLTIP_PASTE_OPTIONS                             :{BLACK}What gets pasted, and how: the rail, road, water and air filters, stations, rail conversion, signal mirroring, bridge upgrades and the terraform mode. The menu stays open while you change them
-STR_BLUEPRINT_TOOLTIP_EXPORT_IMPORT                             :{BLACK}Export or import blueprints
-STR_BLUEPRINT_TOOLTIP_FILE_LIST                                 :{BLACK}Click a file to select it, or a folder to open it
-STR_BLUEPRINT_TOOLTIP_COPY                                      :{BLACK}Select an area of your own infrastructure to copy into the active blueprint slot
-STR_BLUEPRINT_TOOLTIP_PASTE                                     :{BLACK}Paste the contents of the active blueprint slot onto the map
-STR_BLUEPRINT_TOOLTIP_UNDO                                      :{BLACK}Undo blueprint paste: remove again what your last paste built, at the usual removal prices. This does not undo track, road or anything else you built by hand. Pastes are forgotten an hour later, and when the game is restarted
-STR_BLUEPRINT_TOOLTIP_UNDO_LIST                                 :{BLACK}Show the undo history
-STR_BLUEPRINT_TOOLTIP_UNDO_OPTIONS                              :{BLACK}What an undo takes back: the rail, road, water and air filters, and whether the land goes back as well. The menu stays open while you change them
-STR_BLUEPRINT_TOOLTIP_UNDO_LIST_LIST                            :{BLACK}What can still be undone, newest first. Click to select, Ctrl+click to add or remove one, Shift+click to select a range
-STR_BLUEPRINT_TOOLTIP_UNDO_LIST_UNDO_SELECTED                   :{BLACK}Undo everything selected, newest first
-STR_BLUEPRINT_TOOLTIP_PASTE_RAIL                                :{BLACK}Paste rail transport infrastructure
-STR_BLUEPRINT_TOOLTIP_PASTE_ROAD                                :{BLACK}Paste road transport infrastructure
-STR_BLUEPRINT_TOOLTIP_PASTE_WATER                               :{BLACK}Paste water transport infrastructure
-STR_BLUEPRINT_TOOLTIP_PASTE_AIR                                 :{BLACK}Paste air transport infrastructure
-STR_BLUEPRINT_TOOLTIP_CONVERT_RAILTYPE                          :{BLACK}Convert rail infrastructure to the current rail type when pasting
-STR_BLUEPRINT_TOOLTIP_MIRROR_SIGNALS                            :{BLACK}Mirror signals when pasting
-STR_BLUEPRINT_TOOLTIP_UPGRADE_BRIDGES                           :{BLACK}Upgrade bridges when pasting
-STR_BLUEPRINT_TOOLTIP_WITH_STATIONS                             :{BLACK}Paste stations and waypoints too
-STR_BLUEPRINT_TOOLTIP_TERRAFORM                                 :{BLACK}Terraform land when pasting. Click to cycle: no terraforming, minimal terraforming, full terraforming
-STR_BLUEPRINT_TOOLTIP_TRANSFORMATION                            :{BLACK}Current transformation, click to reset
-STR_BLUEPRINT_TOOLTIP_ROTATE_CCW                                :{BLACK}Rotate the blueprint 90 degrees anticlockwise
-STR_BLUEPRINT_TOOLTIP_ROTATE_CW                                 :{BLACK}Rotate the blueprint 90 degrees clockwise
-STR_BLUEPRINT_TOOLTIP_REFLECT_NW_SE                             :{BLACK}Reflect the blueprint against the NW-SE axis
-STR_BLUEPRINT_TOOLTIP_REFLECT_NE_SW                             :{BLACK}Reflect the blueprint against the NE-SW axis
-STR_BLUEPRINT_TOOLTIP_HEIGHT_DISPLAY                            :{BLACK}Height offset applied when pasting
-STR_BLUEPRINT_TOOLTIP_HEIGHT_UP                                 :{BLACK}Increase the height at which the blueprint is pasted
-STR_BLUEPRINT_TOOLTIP_HEIGHT_DOWN                               :{BLACK}Decrease the height at which the blueprint is pasted
-STR_BLUEPRINT_TOOLTIP_INFO                                      :{BLACK}Patch version, and what this toolbar does
-STR_BLUEPRINT_ERROR_NOTHING_TO_COPY                             :{WHITE}The selected area contains no infrastructure owned by your company
-STR_BLUEPRINT_ERROR_CLIPBOARD_EXPORT                            :{WHITE}Could not copy the blueprint to the clipboard
-STR_BLUEPRINT_ERROR_CLIPBOARD_PASTE                             :{WHITE}The clipboard is empty
-STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}The text is not a valid blueprint
-STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}Invalid file name
-STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}Blueprint file not found, or not a valid blueprint set
-STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}Could not write the blueprint file
-STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}The selected area is too large to copy
-STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Blueprint too large to paste in a multiplayer game
-STR_BLUEPRINT_ERROR_MISSING_NEWGRF                              :{WHITE}A NewGRF station or waypoint style required by this blueprint is not available
-STR_BLUEPRINT_ERROR_MISSING_SIGNAL_STYLE                        :{WHITE}A NewGRF signal style required by this blueprint is not loaded or enabled
-STR_BLUEPRINT_ERROR_MISSING_OBJECT                              :{WHITE}A NewGRF object required by this blueprint is not loaded or enabled
-STR_BLUEPRINT_ERROR_OBJECT_ORIENTATION                          :{WHITE}A NewGRF object does not support the rotated footprint; reset the blueprint rotation or reflection
-STR_BLUEPRINT_UNDO_LIST_OBJECT                                  :{COMMA} object{P "" s}
-STR_BLUEPRINT_OPTIONS_MENU_OBJECTS                              :NewGRF objects (OBJ)
-STR_BLUEPRINT_ERROR_NOTHING_TO_UNDO                             :{WHITE}There is no recent paste left to undo
-STR_BLUEPRINT_ERROR_UNDO_TOO_LARGE                              :{WHITE}That paste is too large to undo in a multiplayer game
-STR_ERROR_CAN_T_PASTE_BLUEPRINT                                 :{WHITE}Can't paste blueprint here...
-STR_ERROR_CAN_T_UNDO_BLUEPRINT_PASTE                            :{WHITE}Can't undo that paste...
 
 # Object construction window
 STR_OBJECT_BUILD_CAPTION                                        :{WHITE}Object Selection
@@ -4811,7 +4487,6 @@ STR_REPLACE_STOP_BUTTON_TOOLTIP                                 :{BLACK}Press to
 STR_REPLACE_ENGINE_WAGON_SELECT_TOOLTIP                         :{BLACK}Switch between engine and wagon replacement windows
 STR_REPLACE_ENGINES                                             :Engines
 STR_REPLACE_WAGONS                                              :Wagons
-STR_REPLACE_ALL_AIRTYPE                                         :Replace all air types
 STR_REPLACE_ALL_RAILTYPE                                        :All rail vehicles
 STR_REPLACE_ALL_ROADTYPE                                        :All road vehicles
 
@@ -4888,13 +4563,6 @@ STR_VEHICLE_STATUS_LOADING_UNLOADING                            :{LTBLUE}Loading
 STR_VEHICLE_STATUS_LEAVING                                      :{LTBLUE}Leaving
 STR_VEHICLE_STATUS_WAITING_UNBUNCHING                           :{LTBLUE}Waiting to unbunch
 STR_VEHICLE_STATUS_CRASHED                                      :{RED}Crashed!
-STR_VEHICLE_STATUS_WAITING_TO_BE_TRANSPORTED                    :{LTBLUE}Waiting to be transported
-STR_VEHICLE_STATUS_BEING_TRANSPORTED                            :{LTBLUE}Being transported
-STR_VEHICLE_STATUS_CARRYING_ROAD_VEHICLES                       :{LTBLUE}Carrying {COMMA} vehicles
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLES                       :Carried vehicles:
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE                        :{BLACK}{VEHICLE}
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE_EXTRA                  :{BLACK} ({COMMA}t)
-STR_VEHICLE_DETAILS_CARRIED_ROAD_VEHICLE_NONE                   :{LTBLUE}This train is not carrying any vehicle
 STR_VEHICLE_STATUS_BROKEN_DOWN                                  :{RED}Broken down
 STR_VEHICLE_STATUS_STOPPED                                      :{RED}Stopped
 STR_VEHICLE_STATUS_TRAIN_STOPPING_VEL                           :{RED}{VELOCITY} - Stopping
@@ -4927,9 +4595,6 @@ STR_VEHICLE_DETAILS_ROAD_VEHICLE_RENAME                         :{BLACK}Name roa
 STR_VEHICLE_DETAILS_SHIP_RENAME                                 :{BLACK}Name ship
 STR_VEHICLE_DETAILS_AIRCRAFT_RENAME                             :{BLACK}Name aircraft
 
-STR_VEHICLE_INFO_VALUE_NA                                       :-
-STR_VEHICLE_INFO_WEIGHT_RATIOS_NA                               :{BLACK}Power / weight: {LTBLUE}-{BLACK}  Max. T.E / weight: {LTBLUE}-
-STR_VEHICLE_INFO_RELIABILITY_BREAKDOWNS_NA                      :{BLACK}Reliability: {LTBLUE}-{BLACK}  {BLACK}Breakdowns since last service: {LTBLUE}-
 STR_VEHICLE_INFO_AGE                                            :{COMMA} year{P "" s} (lifetime: {COMMA} year{P "" s})
 STR_VEHICLE_INFO_AGE_RED                                        :{RED}{COMMA} year{P "" s} (lifetime: {COMMA} year{P "" s})
 STR_VEHICLE_INFO_AGE_RUNNING_COST_YR                            :{BLACK}Age: {LTBLUE}{STRING2}{BLACK}   Running Cost: {LTBLUE}{CURRENCY_LONG}/year
@@ -5002,8 +4667,6 @@ STR_VEHICLE_DETAILS_TRAIN_TOTAL_CARGO_TOOLTIP                   :{BLACK}Show tot
 
 STR_VEHICLE_DETAILS_TRAIN_ARTICULATED_RV_CAPACITY               :{BLACK}Capacity: {LTBLUE}{RAW_STRING}
 
-STR_VEHICLE_DETAILS_HOLD_CAPACITY                               : ({RAW_STRING})
-
 # Vehicle refit
 STR_REFIT_CAPTION                                               :{WHITE}{VEHICLE} (Refit)
 STR_REFIT_TITLE                                                 :{GOLD}Select cargo type to carry:
@@ -5051,89 +4714,21 @@ STR_ORDER_GO_NON_STOP_VIA                                       :Go non-stop via
 STR_ORDER_TOOLTIP_NON_STOP                                      :{BLACK}Change the stopping behaviour of the highlighted order
 
 STR_ORDER_TOGGLE_FULL_LOAD                                      :{BLACK}Full load any cargo
-STR_ORDER_DROP_LOAD_IF_POSSIBLE                                 :Load normal cargo if available
-STR_ORDER_DROP_FULL_LOAD_ALL                                    :Full load all normal cargo
-STR_ORDER_DROP_FULL_LOAD_ANY                                    :Full load any normal cargo
-STR_ORDER_DROP_NO_LOADING                                       :No normal cargo loading
-STR_ORDER_DROP_LOAD_ROAD_VEHICLES                               :Load vehicles
-STR_ORDER_DROP_UNLOAD_ROAD_VEHICLES                             :Unload vehicles
-STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES                         :Unload all vehicles
-STR_ORDER_DROP_UNLOAD_ALL_ROAD_VEHICLES_TOOLTIP                 :{BLACK}Unload every vehicle here, including the ones whose own schedule says they want to get off somewhere else. Without this, only the vehicles which name this station in their own orders are dropped here.
-STR_ORDER_DROP_RV_MATCH_DEST                                    :Only vehicles for the next stop
-STR_ORDER_DROP_WAIT_FOR_ROAD_VEHICLES                           :Wait for vehicles
-STR_ORDER_DROP_WAIT_TO_BE_TRANSPORTED                           :Wait to be transported
-STR_ORDER_DROP_BE_UNLOADED_HERE                                 :Be unloaded here
-STR_ORDER_DROP_RV_LOAD_STATE                                    :Vehicles: {STRING}
-STR_ORDER_RV_LOAD_STATE_ANY                                     :any
-STR_ORDER_RV_LOAD_STATE_EMPTY                                   :empty only
-STR_ORDER_RV_LOAD_STATE_FULL                                    :full only
-STR_ORDER_DROP_RV_MIN_WAIT                                      :Wait at least: {STRING}
-STR_ORDER_RV_MIN_WAIT_NONE                                      :no minimum
-STR_ORDER_RV_MIN_WAIT_DAYS                                      :{NUM} day{P "" s}
-STR_ORDER_DROP_RV_MIN_WAIT_NUM                                  :Wait at least: {NUM} day{P "" s}
-STR_ORDER_RV_CARGO_CAN_CARRY                                    :Cargo: 
-STR_ORDER_RV_CARGO_IS_CARRYING                                  :Carrying: 
-STR_ORDER_RV_SLOT                                               :Slot: {TRSLOT}
-STR_ORDER_DROP_RV_TRANSPORT                                     :Vehicles transport...
-STR_ORDER_DROP_RV_LOAD_ANY                                       :Load any vehicles
-STR_ORDER_DROP_RV_LOAD_NEXT                                      :Load vehicles going to the next stop
-STR_ORDER_DROP_RV_LOAD_OPTIONS                                   :Vehicles loading options...
-STR_ORDER_RV_TRANSPORT_MORE_OPTIONS                             :(other options)
-STR_ORDER_RV_CARGO_LOAD_DEFAULT                                 :Load normal cargo
-STR_ORDER_RV_CARGO_UNLOAD_DEFAULT                               :Unload normal cargo
-STR_ERROR_RV_REFIT_SCHEDULE                                      :{WHITE}Can't convert between vehicle transport and normal cargo while the vehicle has a schedule; clear its orders first.
-STR_RV_TRANSPORT_CRITERIA_CAPTION                               :Vehicles transport
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE                            :Load state
-STR_RV_TRANSPORT_CRITERIA_CARGO                                 :Cargo
-STR_RV_TRANSPORT_CRITERIA_CARGO_MODE                            :Cargo criterion
-STR_RV_TRANSPORT_CRITERIA_CAN_CARRY                             :must be able to carry
-STR_RV_TRANSPORT_CRITERIA_IS_CARRYING                           :must be carrying
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT                              :Minimum waiting time
-STR_RV_TRANSPORT_CRITERIA_SLOT                                  :Trace restrict slot
-STR_RV_TRANSPORT_CRITERIA_SLOT_SET                              :a slot is set
-STR_RV_TRANSPORT_CRITERIA_SLOT_GROUP                            :Trace restrict slot group
-STR_RV_TRANSPORT_CRITERIA_SLOT_GROUP_SET                        :a slot group is set
-STR_RV_TRANSPORT_CRITERIA_GROUP                                 :Vehicle group
-STR_RV_TRANSPORT_CRITERIA_GROUP_SET                             :a vehicle group is set
-STR_RV_TRANSPORT_CRITERIA_SLOT_TYPE_TIP                         :{BLACK}Switch the slot list between road vehicle and train slots
-STR_RV_TRANSPORT_CRITERIA_SLOT_ROAD                             :Road
-STR_RV_TRANSPORT_CRITERIA_SLOT_TRAIN                            :Trains
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_ANY                        :any
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_EMPTY                      :empty only
-STR_RV_TRANSPORT_CRITERIA_LOAD_STATE_FULL                       :full only
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_NONE                         :no minimum
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_DAYS                         :{NUM} day{P "" s}
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_1                            :1 day
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_2                            :2 days
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_5                            :5 days
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_10                           :10 days
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_30                           :30 days
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_60                           :60 days
-STR_RV_TRANSPORT_CRITERIA_MIN_WAIT_CUSTOM                       :a custom time
-STR_RV_TRANSPORT_CRITERIA_MAX                                   :Most vehicles at once
-STR_RV_TRANSPORT_CRITERIA_MAX_ANY                               :Take any number
-STR_RV_TRANSPORT_CRITERIA_MAX_1                                 :Take at most 1
-STR_RV_TRANSPORT_CRITERIA_MAX_2                                 :Take at most 2
-STR_RV_TRANSPORT_CRITERIA_MAX_3                                 :Take at most 3
-STR_RV_TRANSPORT_CRITERIA_MAX_5                                 :Take at most 5
-STR_RV_TRANSPORT_CRITERIA_MAX_10                                :Take at most 10
-STR_RV_TRANSPORT_CRITERIA_MAX_N                                 :Take at most {NUM}
-STR_RV_TRANSPORT_CRITERIA_MAX_CUSTOM                            :Take at most a custom number
-STR_ORDER_RV_MAX_VEHICLES                                       :at most {NUM}
+STR_ORDER_DROP_LOAD_IF_POSSIBLE                                 :Load if available
+STR_ORDER_DROP_FULL_LOAD_ALL                                    :Full load all cargo
+STR_ORDER_DROP_FULL_LOAD_ANY                                    :Full load any cargo
+STR_ORDER_DROP_NO_LOADING                                       :No loading
 STR_ORDER_TOOLTIP_FULL_LOAD                                     :{BLACK}Change the loading behaviour of the highlighted order
 
 STR_ORDER_TOGGLE_UNLOAD                                         :{BLACK}Unload all
-STR_ORDER_DROP_UNLOAD_IF_ACCEPTED                               :Unload normal cargo if accepted
-STR_ORDER_DROP_UNLOAD                                           :Unload all normal cargo
-STR_ORDER_DROP_TRANSFER                                         :Transfer normal cargo
-STR_ORDER_DROP_NO_UNLOADING                                     :No normal cargo unloading
+STR_ORDER_DROP_UNLOAD_IF_ACCEPTED                               :Unload if accepted
+STR_ORDER_DROP_UNLOAD                                           :Unload all
+STR_ORDER_DROP_TRANSFER                                         :Transfer
+STR_ORDER_DROP_NO_UNLOADING                                     :No unloading
 STR_ORDER_TOOLTIP_UNLOAD                                        :{BLACK}Change the unloading behaviour of the highlighted order
 
 STR_ORDER_REFIT                                                 :{BLACK}Refit
 STR_ORDER_REFIT_TOOLTIP                                         :{BLACK}Select what cargo type to refit to in this order. Ctrl+Click to remove refit instruction
-STR_ORDER_CARGO_TYPE_BUTTON                                       :{BLACK}Cargo type
-STR_CARGO_CAPTION                                                 :{WHITE}{VEHICLE} (Cargos)
-STR_TRAIN_CARGOS_CONFIRM                                          :{BLACK}Set Cargo
 STR_ORDER_REFIT_AUTO                                            :{BLACK}Refit at station
 STR_ORDER_REFIT_AUTO_TOOLTIP                                    :{BLACK}Select what cargo type to refit to in this order. Ctrl+Click to remove refit instruction. Refitting at stations will only be done if the vehicle allows it
 STR_ORDER_DROP_REFIT_AUTO                                       :Fixed cargo
@@ -5165,7 +4760,6 @@ STR_ORDER_CONDITIONAL_UNCONDITIONALLY                           :Always
 STR_ORDER_CONDITIONAL_REMAINING_LIFETIME                        :Remaining lifetime (years)
 STR_ORDER_CONDITIONAL_MAX_RELIABILITY                           :Maximum reliability
 STR_ORDER_CONDITIONAL_DRIVING_BACKWARDS                         :Driving backwards
-STR_ORDER_CONDITIONAL_DECOUPLE_PART                             :Decouple part
 ###next-name-looks-similar
 
 STR_ORDER_CONDITIONAL_COMPARATOR_TOOLTIP                        :{BLACK}How to compare the vehicle data to the given value
@@ -5228,34 +4822,34 @@ STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION                       :{PUSH_COLOUR}{R
 
 STR_ORDER_IMPLICIT                                              :{SPACE}(Implicit)
 
-STR_ORDER_FULL_LOAD                                             :{SPACE}(Full load normal cargo)
-STR_ORDER_FULL_LOAD_ANY                                         :{SPACE}(Full load any normal cargo)
-STR_ORDER_NO_LOAD                                               :{SPACE}(No normal cargo loading)
-STR_ORDER_UNLOAD                                                :{SPACE}(Unload all normal cargo and take normal cargo)
-STR_ORDER_UNLOAD_FULL_LOAD                                      :{SPACE}(Unload all normal cargo and wait for full normal cargo load)
-STR_ORDER_UNLOAD_FULL_LOAD_ANY                                  :{SPACE}(Unload all normal cargo and wait for any full normal cargo load)
-STR_ORDER_UNLOAD_NO_LOAD                                        :{SPACE}(Unload all normal cargo)
-STR_ORDER_TRANSFER                                              :{SPACE}(Transfer normal cargo and take normal cargo)
-STR_ORDER_TRANSFER_FULL_LOAD                                    :{SPACE}(Transfer normal cargo and wait for full normal cargo load)
-STR_ORDER_TRANSFER_FULL_LOAD_ANY                                :{SPACE}(Transfer normal cargo and wait for any full normal cargo load)
-STR_ORDER_TRANSFER_NO_LOAD                                      :{SPACE}(Transfer normal cargo)
-STR_ORDER_NO_UNLOAD                                             :{SPACE}(No normal cargo unloading and take normal cargo)
-STR_ORDER_NO_UNLOAD_FULL_LOAD                                   :{SPACE}(No normal cargo unloading and wait for full normal cargo load)
-STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY                               :{SPACE}(No normal cargo unloading and wait for any full normal cargo load)
-STR_ORDER_NO_UNLOAD_NO_LOAD                                     :{SPACE}(No normal cargo unloading and no normal cargo loading)
+STR_ORDER_FULL_LOAD                                             :{SPACE}(Full load)
+STR_ORDER_FULL_LOAD_ANY                                         :{SPACE}(Full load any cargo)
+STR_ORDER_NO_LOAD                                               :{SPACE}(No loading)
+STR_ORDER_UNLOAD                                                :{SPACE}(Unload and take cargo)
+STR_ORDER_UNLOAD_FULL_LOAD                                      :{SPACE}(Unload and wait for full load)
+STR_ORDER_UNLOAD_FULL_LOAD_ANY                                  :{SPACE}(Unload and wait for any full load)
+STR_ORDER_UNLOAD_NO_LOAD                                        :{SPACE}(Unload and leave empty)
+STR_ORDER_TRANSFER                                              :{SPACE}(Transfer and take cargo)
+STR_ORDER_TRANSFER_FULL_LOAD                                    :{SPACE}(Transfer and wait for full load)
+STR_ORDER_TRANSFER_FULL_LOAD_ANY                                :{SPACE}(Transfer and wait for any full load)
+STR_ORDER_TRANSFER_NO_LOAD                                      :{SPACE}(Transfer and leave empty)
+STR_ORDER_NO_UNLOAD                                             :{SPACE}(No unloading and take cargo)
+STR_ORDER_NO_UNLOAD_FULL_LOAD                                   :{SPACE}(No unloading and wait for full load)
+STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY                               :{SPACE}(No unloading and wait for any full load)
+STR_ORDER_NO_UNLOAD_NO_LOAD                                     :{SPACE}(No unloading and no loading)
 
 STR_ORDER_AUTO_REFIT                                            :{SPACE}(Refit to {STRING})
-STR_ORDER_FULL_LOAD_REFIT                                       :{SPACE}(Full load normal cargo with refit to {STRING})
-STR_ORDER_FULL_LOAD_ANY_REFIT                                   :{SPACE}(Full load any normal cargo with refit to {STRING})
-STR_ORDER_UNLOAD_REFIT                                          :{SPACE}(Unload all normal cargo and take normal cargo with refit to {STRING})
-STR_ORDER_UNLOAD_FULL_LOAD_REFIT                                :{SPACE}(Unload all normal cargo and wait for full normal cargo load with refit to {STRING})
-STR_ORDER_UNLOAD_FULL_LOAD_ANY_REFIT                            :{SPACE}(Unload all normal cargo and wait for any full normal cargo load with refit to {STRING})
-STR_ORDER_TRANSFER_REFIT                                        :{SPACE}(Transfer normal cargo and take normal cargo with refit to {STRING})
-STR_ORDER_TRANSFER_FULL_LOAD_REFIT                              :{SPACE}(Transfer normal cargo and wait for full normal cargo load with refit to {STRING})
-STR_ORDER_TRANSFER_FULL_LOAD_ANY_REFIT                          :{SPACE}(Transfer normal cargo and wait for any full normal cargo load with refit to {STRING})
-STR_ORDER_NO_UNLOAD_REFIT                                       :{SPACE}(No normal cargo unloading and take normal cargo with refit to {STRING})
-STR_ORDER_NO_UNLOAD_FULL_LOAD_REFIT                             :{SPACE}(No normal cargo unloading and wait for full normal cargo load with refit to {STRING})
-STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY_REFIT                         :{SPACE}(No normal cargo unloading and wait for any full normal cargo load with refit to {STRING})
+STR_ORDER_FULL_LOAD_REFIT                                       :{SPACE}(Full load with refit to {STRING})
+STR_ORDER_FULL_LOAD_ANY_REFIT                                   :{SPACE}(Full load any cargo with refit to {STRING})
+STR_ORDER_UNLOAD_REFIT                                          :{SPACE}(Unload and take cargo with refit to {STRING})
+STR_ORDER_UNLOAD_FULL_LOAD_REFIT                                :{SPACE}(Unload and wait for full load with refit to {STRING})
+STR_ORDER_UNLOAD_FULL_LOAD_ANY_REFIT                            :{SPACE}(Unload and wait for any full load with refit to {STRING})
+STR_ORDER_TRANSFER_REFIT                                        :{SPACE}(Transfer and take cargo with refit to {STRING})
+STR_ORDER_TRANSFER_FULL_LOAD_REFIT                              :{SPACE}(Transfer and wait for full load with refit to {STRING})
+STR_ORDER_TRANSFER_FULL_LOAD_ANY_REFIT                          :{SPACE}(Transfer and wait for any full load with refit to {STRING})
+STR_ORDER_NO_UNLOAD_REFIT                                       :{SPACE}(No unloading and take cargo with refit to {STRING})
+STR_ORDER_NO_UNLOAD_FULL_LOAD_REFIT                             :{SPACE}(No unloading and wait for full load with refit to {STRING})
+STR_ORDER_NO_UNLOAD_FULL_LOAD_ANY_REFIT                         :{SPACE}(No unloading and wait for any full load with refit to {STRING})
 
 STR_ORDER_AUTO_REFIT_ANY                                        :available cargo
 
@@ -5613,27 +5207,6 @@ STR_ERROR_CAN_T_BUILD_TRUCK_STATION                             :Can't build lor
 STR_ERROR_CAN_T_BUILD_PASSENGER_TRAM_STATION                    :Can't build passenger tram station...
 STR_ERROR_CAN_T_BUILD_CARGO_TRAM_STATION                        :Can't build freight tram station...
 STR_ERROR_CAN_T_BUILD_DOCK_HERE                                 :Can't build dock here...
-STR_ERROR_TOWN_AIRPORT_NOISE                                   :{WHITE}Can't build the airport because the town will be disturbed by the noise
-STR_ERROR_AIRPORT_DISABLED_BY_TILE                              :{WHITE}... setting about building by tile is disabled.
-STR_ERROR_AIRPORT_INCORRECT_AIRTYPE                             :{WHITE}... airport has a different air type.
-STR_ERROR_AIRPORT_ALREADY_AIRTYPE                               :{WHITE}... airport has this air type already.
-STR_ERROR_AIRPORT_CAN_T_CONVERT_WATER                           :{WHITE}... can't convert between water and non-water airtypes.
-STR_ERROR_AIRPORT_CAN_T_CONVERT_HELIPORT                        :{WHITE}... can't convert heliport to another airtype.
-STR_ERROR_AIRPORT_CAN_T_BUILD_HELIPORT                          :{WHITE}... can't build heliport with this airtype.
-STR_ERROR_AIRPORT_TOO_MUCH_RUNWAYS                              :{WHITE}... exceeding maximum number of runways for this air type.
-STR_ERROR_AIRPORT_NOT_SAME_LEVEL                                :{WHITE}... not at the same level.
-STR_ERROR_AIRPORT_PLAIN_WATER                                   :{WHITE}... must be built on water and plain terrain.
-STR_ERROR_AIRPORT_INVALID_AIR_TYPE                              :{WHITE}... tile has a different air type.
-STR_ERROR_AIRPORT_CAN_T_HAVE_TRACKS                             :{WHITE}... tile can't have tracks.
-STR_ERROR_AIRPORT_NO_COMPATIBLE_NEIGHBOURS                      :{WHITE}... can't add track. New track must be compatible with neighbour tiles.
-STR_ERROR_AIRPORT_CAN_T_ADD_TRACK_HANGAR                        :{WHITE}... hangars can only have tracks on x or y axis. revise
-STR_ERROR_AIRPORT_RUNWAY_TOO_SHORT                              :{WHITE}... runway too short.
-STR_ERROR_AIRPORT_RUNWAY_INCOMPLETE                             :{WHITE}... not all runway is on the same airport station.
-STR_ERROR_AIRPORT_RUNWAY_CAN_T_BUILD_OVER                       :{WHITE}... it is not possible to build the runway over those tiles.
-STR_ERROR_AIRPORT_PRESENT_AIRCRAFT                              :{WHITE}... aircraft present in the airport.
-STR_ERROR_AIRPORT_RUNWAY_OVERLAP                                :{WHITE}... runway overlaps other runways.
-STR_ERROR_AIRPORT_RUNWAY_CAN_T_REMOVE                           :{WHITE}... remove runways correctly.
-STR_ERROR_AIRPORT_REMOVE_RUNWAYS_FIRST                          :{WHITE}... must remove runways first.
 STR_ERROR_CAN_T_BUILD_AIRPORT_HERE                              :Can't build airport here...
 
 STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING                        :adjoins more than one existing station/loading area
@@ -5882,8 +5455,6 @@ STR_ERROR_CAN_T_RENAME_AIRCRAFT_TYPE                            :Can't rename ai
 ###length VEHICLE_TYPES
 STR_ERROR_CAN_T_SELL_TRAIN                                      :Can't sell railway vehicle...
 STR_ERROR_CAN_T_SELL_ROAD_VEHICLE                               :Can't sell road vehicle...
-STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIED                      :Can't sell a vehicle which is being transported
-STR_ERROR_RV_TRANSPORT_CANNOT_SELL_CARRIER                      :Unload the carried vehicles first
 STR_ERROR_CAN_T_SELL_SHIP                                       :Can't sell ship...
 STR_ERROR_CAN_T_SELL_AIRCRAFT                                   :Can't sell aircraft...
 
@@ -5931,7 +5502,6 @@ STR_ERROR_TOO_MANY_ORDERS                                       :too many orders
 STR_ERROR_CAN_T_INSERT_NEW_ORDER                                :Can't insert new order...
 STR_ERROR_CAN_T_DELETE_THIS_ORDER                               :Can't delete this order...
 STR_ERROR_CAN_T_MODIFY_THIS_ORDER                               :Can't modify this order...
-STR_ERROR_RV_TRANSPORT_STATION_ORDER_ONLY                       :Vehicles transport can only be set on a station order
 STR_ERROR_CAN_T_MOVE_THIS_ORDER                                 :Can't move this order...
 STR_ERROR_CAN_T_SKIP_ORDER                                      :Can't skip current order...
 STR_ERROR_CAN_T_SKIP_TO_ORDER                                   :Can't skip to selected order...
@@ -6492,5 +6062,3 @@ STR_BADGE_CONFIG_FILTERS                                        :{WHITE}Badge Fi
 STR_BADGE_CONFIG_PREVIEW                                        :Preview Image
 STR_BADGE_CONFIG_NAME                                           :Name
 STR_BADGE_FILTER_ANY_LABEL                                      :Any {STRING}
-
-STR_DECOUPLE_PREVIEW_COUNT                                    :Retain {COMMA} units (click to enter; 0 = automatic).

@@ -38,13 +38,6 @@ static ChangeInfoResult AircraftVehicleChangeInfo(uint first, uint last, int pro
 		AircraftVehicleInfo *avi = &e->VehInfo<AircraftVehicleInfo>();
 
 		switch (prop) {
-			case 0x05: { // Air type
-				/* The air type property no longer has any effect; read and
-				 * discard it so aircraft GRFs using it still load fine. */
-				buf.ReadByte();
-				break;
-			}
-
 			case 0x08: { // Sprite ID
 				uint8_t spriteid = buf.ReadByte();
 				uint8_t orig_spriteid = spriteid;

@@ -47,14 +47,6 @@ enum VehicleRefitWidgets : WidgetID {
 	WID_VR_REFIT,                 ///< Perform the refit.
 };
 
-/** Widgets of the #CargoTypesWindow class. */
-enum VehicleCargoTypesWidgets {
-	WID_VCT_CAPTION,               ///< Caption of window.
-	WID_VCT_MATRIX,                ///< List of cargos.
-	WID_VCT_SCROLLBAR,             ///< Scrollbar for the cargos options.
-	WID_VCT_SET,                   ///< Set the cargo type.
-};
-
 /** Widgets of the #VehicleDetailsWindow class. */
 enum VehicleDetailsWidgets : WidgetID {
 	WID_VD_CAPTION,                     ///< Caption of window.
@@ -71,7 +63,6 @@ enum VehicleDetailsWidgets : WidgetID {
 	WID_VD_DETAILS_CAPACITY_OF_EACH,    ///< Show the capacity of all train parts.
 	WID_VD_DETAILS_TOTAL_CARGO,         ///< Show the capacity and carried cargo amounts aggregated per cargo of the train.
 	WID_VD_DETAILS_PERFORMANCE,         ///< Show train performance statistics for empty and fully loaded.
-	WID_VD_DETAILS_CARRIED,             ///< Show the road vehicles this train carries (RoRo), rows are clickable.
 	WID_VD_EXTRA_ACTIONS,               ///< Extra actions drop-down.
 };
 

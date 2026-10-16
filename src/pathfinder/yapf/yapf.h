@@ -15,7 +15,6 @@
 #include "../../vehicle_type.h"
 #include "../../ship.h"
 #include "../../roadveh.h"
-#include "../../vehicle_func.h"
 #include "../pathfinder_type.h"
 
 /**
@@ -49,23 +48,6 @@ bool YapfShipCheckReverse(const Ship *v, Trackdir *trackdir);
 Trackdir YapfRoadVehicleChooseTrack(const RoadVehicle *v, TileIndex tile, DiagDirection enterdir, TrackdirBits trackdirs, bool &path_found, RoadVehPathCache &path_cache);
 
 /**
- * Cost of the cheapest path a road vehicle could drive from a road tile to a station, or UINT32_MAX
- * when it cannot get there within the node budget. The vehicle is not touched at all (no path cache,
- * no "pathfinder lost" handling), so this can be called repeatedly to compare candidate tiles.
- * @param v                the RV the path is for
- * @param tile             the road tile to start from
- * @param enterdir         diagonal direction which the RV enters this tile from
- * @param station          the station to drive to
- * @param travel_direction direction the RV must be travelling in on arrival, or DiagDirection::Invalid
- * @param max_nodes        node budget for this search
- * @param cost            [out] cost of the path, only valid when this returns true
- * @return whether the station was reached; false means the node budget ran out or there is no path
- *         at all, and  cost then does not describe the distance to the station
- */
-bool YapfRoadVehicleProbeToStation(const RoadVehicle *v, TileIndex tile, DiagDirection enterdir, StationID station,
-		DiagDirection travel_direction, int max_nodes, int &cost);
-
-/**
  * Finds the best path for given train using YAPF.
  * @param v        the train that needs to find a path
  * @param tile     the tile to find the path from (should be next tile the train is about to enter)
@@ -78,8 +60,6 @@ bool YapfRoadVehicleProbeToStation(const RoadVehicle *v, TileIndex tile, DiagDir
  * @return         the best track for next turn
  */
 Track YapfTrainChooseTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, struct PBSTileInfo *target, TileIndex *dest);
-struct Train;
-Track YapfTrainCoupleTrack(const Train *v, bool dont_reserve, Train **couple_target = nullptr, uint32_t *couple_cost = nullptr);
 
 /**
  * Used when user sends road vehicle to the nearest depot or if road vehicle needs servicing using YAPF.
@@ -121,13 +101,4 @@ bool YapfTrainCheckDepotReverse(const Train *v, TileIndex forward_depot, TileInd
  */
 bool YapfTrainFindNearestSafeTile(const Train *v, TileIndex tile, Trackdir td, bool override_railtype);
 
-/** Vehicle transport: can a train leaving the given tile/trackdir reach the given rail station? */
-bool YapfTrainCanReachStation(const Train *v, TileIndex tile, Trackdir td, StationID station);
-
 #endif /* YAPF_H */
-
-struct Aircraft;
-struct PBSTileInfo;
-struct AircraftPathChoice;
-enum AircraftState : uint8_t;
-Trackdir YapfAircraftFindPath(const Aircraft *v, PBSTileInfo &best_dest, bool &path_found, AircraftState dest_state, AircraftPathChoice &path_cache);

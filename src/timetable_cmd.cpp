@@ -21,8 +21,6 @@
 #include "settings_type.h"
 #include "scope.h"
 #include "timetable_cmd.h"
-#include "schdispatch.h"
-#include "order_cmd.h"
 
 #include "widgets/vehicle_widget.h"
 
@@ -154,230 +152,9 @@ static void ChangeTimetable(Vehicle *v, VehicleOrderID order_number, uint32_t va
 }
 
 /**
- * Change/update a particular timetable entry of a player-created order list.
- * Mirrors ChangeTimetable() but without any vehicle-state handling: lists have
- * no executing vehicle, so lateness syncing, current-order mirroring and
- * dispatch-flag checks do not apply.
- */
-static void ChangeTimetableOnOrderList(OrderList *ol, VehicleOrderID order_number, uint32_t val, ModifyTimetableFlags mtf, bool timetabled, bool ignore_lock = false)
-{
-	Order *order = ol->GetOrderAt(order_number);
-	assert(order != nullptr);
-
-	int total_delta = 0;
-	int timetable_delta = 0;
-
-	switch (mtf) {
-		case MTF_WAIT_TIME:
-			if (!ignore_lock && order->IsWaitFixed()) return;
-			if (!order->IsType(OT_CONDITIONAL)) {
-				total_delta = val - order->GetWaitTime();
-				timetable_delta = (timetabled ? val : 0) - order->GetTimetabledWait();
-			}
-			order->SetWaitTime(val);
-			order->SetWaitTimetabled(timetabled);
-			break;
-
-		case MTF_TRAVEL_TIME:
-			if (!ignore_lock && order->IsTravelFixed()) return;
-			if (!order->IsType(OT_CONDITIONAL)) {
-				total_delta = val - order->GetTravelTime();
-				timetable_delta = (timetabled ? val : 0) - order->GetTimetabledTravel();
-			}
-			if (order->IsType(OT_CONDITIONAL)) assert_msg(val == order->GetTravelTime(), "{} == {}", val, order->GetTravelTime());
-			order->SetTravelTime(val);
-			order->SetTravelTimetabled(timetabled);
-			break;
-
-		case MTF_TRAVEL_SPEED:
-			order->SetMaxSpeed(val);
-			break;
-
-		case MTF_SET_WAIT_FIXED:
-			order->SetWaitFixed(val != 0);
-			break;
-
-		case MTF_SET_TRAVEL_FIXED:
-			order->SetTravelFixed(val != 0);
-			break;
-
-		case MTF_SET_LEAVE_TYPE:
-			order->SetLeaveType((OrderLeaveType)val);
-			break;
-
-		case MTF_ASSIGN_SCHEDULE:
-			if ((int)val >= 0) {
-				for (int n = 0; n < (int)ol->GetNumOrders(); n++) {
-					Order *o = ol->GetOrderAt(n);
-					if (o->GetDispatchScheduleIndex() == (int)val) {
-						o->SetDispatchScheduleIndex(-1);
-					}
-				}
-			}
-			order->SetDispatchScheduleIndex((int)val);
-			break;
-
-		default:
-			NOT_REACHED();
-	}
-	ol->UpdateTotalDuration(total_delta);
-	ol->UpdateTimetableDuration(timetable_delta);
-
-	/* Refresh the standalone order-list windows and any vehicles sharing this list. */
-	SetTimetableWindowsDirty(nullptr, STWDF_SCHEDULED_DISPATCH);
-}
-
-/**
- * Change timetable data of an order in a player-created order list.
- * The player edits every value by hand: there is no previous estimate that
- * could be empty, so the HasNoTimetableTimes() guard of the vehicle path does
- * not apply. Vehicle-type based restrictions are dropped as well.
- */
-static CommandCost CmdChangeTimetableOnStandaloneList(DoCommandFlags flags, OrderList *ol, VehicleOrderID order_number, ModifyTimetableFlags mtf, uint32_t data, ModifyTimetableCtrlFlags ctrl_flags)
-{
-	CommandCost ret = CheckOwnership(ol->GetCompany());
-	if (ret.Failed()) return ret;
-
-	Order *order = ol->GetOrderAt(order_number);
-	if (order == nullptr || order->IsType(OT_IMPLICIT)) return CMD_ERROR;
-
-	if (mtf >= MTF_END) return CMD_ERROR;
-
-	bool clear_field = ctrl_flags.Test(ModifyTimetableCtrlFlag::ClearField);
-
-	TimetableTicks wait_time   = order->GetWaitTime();
-	TimetableTicks travel_time = order->GetTravelTime();
-	int max_speed   = order->GetMaxSpeed();
-	bool wait_fixed = order->IsWaitFixed();
-	bool travel_fixed = order->IsTravelFixed();
-	OrderLeaveType leave_type = order->GetLeaveType();
-	int dispatch_index = order->GetDispatchScheduleIndex();
-	switch (mtf) {
-		case MTF_WAIT_TIME:
-			wait_time = data;
-			if (clear_field && wait_time != 0) return CMD_ERROR;
-			break;
-
-		case MTF_TRAVEL_TIME:
-			travel_time = data;
-			if (clear_field && travel_time != 0) return CMD_ERROR;
-			break;
-
-		case MTF_TRAVEL_SPEED:
-			max_speed = static_cast<uint16_t>(data);
-			if (max_speed == 0) max_speed = UINT16_MAX; // Disable speed limit.
-			break;
-
-		case MTF_SET_WAIT_FIXED:
-			wait_fixed = data != 0;
-			break;
-
-		case MTF_SET_TRAVEL_FIXED:
-			travel_fixed = data != 0;
-			break;
-
-		case MTF_SET_LEAVE_TYPE:
-			leave_type = (OrderLeaveType)data;
-			if (leave_type >= OLT_END) return CMD_ERROR;
-			break;
-
-		case MTF_ASSIGN_SCHEDULE:
-			dispatch_index = (int)data;
-			if (dispatch_index < -1 || dispatch_index >= (int)ol->GetScheduledDispatchScheduleCount()) return CMD_ERROR;
-			break;
-
-		default:
-			NOT_REACHED();
-	}
-
-	if (wait_time != order->GetWaitTime() || leave_type != order->GetLeaveType()) {
-		switch (order->GetType()) {
-			case OT_GOTO_STATION:
-				if (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) {
-					if (mtf == MTF_WAIT_TIME && clear_field) break;
-					return CommandCost(STR_ERROR_TIMETABLE_NOT_STOPPING_HERE);
-				}
-				break;
-
-			default: break;
-		}
-	}
-
-	if (dispatch_index != order->GetDispatchScheduleIndex()) {
-		switch (order->GetType()) {
-			case OT_GOTO_STATION:
-				if (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) {
-					if (mtf == MTF_ASSIGN_SCHEDULE && dispatch_index == -1) break;
-					return CommandCost(STR_ERROR_TIMETABLE_NOT_STOPPING_HERE);
-				}
-				break;
-
-			default: break;
-		}
-	}
-
-	if (travel_time != order->GetTravelTime() && order->IsType(OT_CONDITIONAL)) return CMD_ERROR;
-	if (travel_fixed != order->IsTravelFixed() && order->IsType(OT_CONDITIONAL)) return CMD_ERROR;
-	if (max_speed != order->GetMaxSpeed() && order->IsType(OT_CONDITIONAL)) return CMD_ERROR;
-	if (leave_type != order->GetLeaveType() && order->IsType(OT_CONDITIONAL)) return CMD_ERROR;
-
-	if (flags.Test(DoCommandFlag::Execute)) {
-		switch (mtf) {
-			case MTF_WAIT_TIME:
-				/* Set time if changing the value or confirming an estimated time as timetabled. */
-				if (wait_time != order->GetWaitTime() || (clear_field == order->IsWaitTimetabled())) {
-					ChangeTimetableOnOrderList(ol, order_number, wait_time, MTF_WAIT_TIME, !clear_field, true);
-				}
-				break;
-
-			case MTF_TRAVEL_TIME:
-				if (travel_time != order->GetTravelTime() || (clear_field == order->IsTravelTimetabled())) {
-					ChangeTimetableOnOrderList(ol, order_number, travel_time, MTF_TRAVEL_TIME, !clear_field, true);
-				}
-				break;
-
-			case MTF_TRAVEL_SPEED:
-				if (max_speed != order->GetMaxSpeed()) {
-					ChangeTimetableOnOrderList(ol, order_number, max_speed, MTF_TRAVEL_SPEED, max_speed != UINT16_MAX, true);
-				}
-				break;
-
-			case MTF_SET_WAIT_FIXED:
-				if (wait_fixed != order->IsWaitFixed()) {
-					ChangeTimetableOnOrderList(ol, order_number, wait_fixed ? 1 : 0, MTF_SET_WAIT_FIXED, false, true);
-				}
-				break;
-
-			case MTF_SET_TRAVEL_FIXED:
-				if (travel_fixed != order->IsTravelFixed()) {
-					ChangeTimetableOnOrderList(ol, order_number, travel_fixed ? 1 : 0, MTF_SET_TRAVEL_FIXED, false, true);
-				}
-				break;
-
-			case MTF_SET_LEAVE_TYPE:
-				if (leave_type != order->GetLeaveType()) {
-					ChangeTimetableOnOrderList(ol, order_number, leave_type, MTF_SET_LEAVE_TYPE, true);
-				}
-				break;
-
-			case MTF_ASSIGN_SCHEDULE:
-				if (dispatch_index != order->GetDispatchScheduleIndex()) {
-					ChangeTimetableOnOrderList(ol, order_number, dispatch_index, MTF_ASSIGN_SCHEDULE, true);
-				}
-				break;
-
-			default: NOT_REACHED();
-		}
-	}
-
-	return CommandCost();
-}
-
-/**
  * Change timetable data of an order.
  * @param flags Operation to perform.
- * @param is_list whether #id refers to an order list instead of a vehicle
- * @param id ID of the vehicle or order list
+ * @param veh Vehicle with the orders to change.
  * @param order_number Order index to modify.
  * @param mtf Timetable data to change (@see ModifyTimetableFlags)
  * @param data The data to modify as specified by \c mtf.
@@ -385,16 +162,9 @@ static CommandCost CmdChangeTimetableOnStandaloneList(DoCommandFlags flags, Orde
  * @param ctrl_flags Control flags (ModifyTimetableCtrlFlag::ClearField to clear timetable wait/travel time)
  * @return the cost of this operation or an error
  */
-CommandCost CmdChangeTimetable(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, VehicleOrderID order_number, ModifyTimetableFlags mtf, uint32_t data, ModifyTimetableCtrlFlags ctrl_flags)
+CommandCost CmdChangeTimetable(DoCommandFlags flags, VehicleID veh, VehicleOrderID order_number, ModifyTimetableFlags mtf, uint32_t data, ModifyTimetableCtrlFlags ctrl_flags)
 {
-	const bool is_list = target_type == OrderTargetType::OrderList;
-	if (is_list) {
-		OrderList *ol = OrderList::GetIfValid(OrderListID(static_cast<uint16_t>(id)));
-		if (id >= OrderListID::End().base() || ol == nullptr || !ol->IsPlayerCreated() || ol->IsScheduleGroup()) return CMD_ERROR;
-		return CmdChangeTimetableOnStandaloneList(flags, ol, order_number, mtf, data, ctrl_flags);
-	}
-
-	Vehicle *v = Vehicle::GetIfValid(VehicleID(id));
+	Vehicle *v = Vehicle::GetIfValid(veh);
 	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
 
 	CommandCost ret = CheckOwnership(v->owner);
@@ -565,42 +335,16 @@ CommandCost CmdChangeTimetable(DoCommandFlags flags, OrderTargetType target_type
 /**
  * Change timetable data of all orders of a vehicle.
  * @param flags Operation to perform.
- * @param is_list whether #id refers to an order list instead of a vehicle
- * @param id ID of the vehicle or order list
+ * @param veh Vehicle with the orders to change.
  * @param mtf Timetable data to change (@see ModifyTimetableFlags)
  * @param data The data to modify as specified by \c mtf.
  *             0 to clear times, UINT16_MAX to clear speed limit.
  * @param ctrl_flags Control flags (ModifyTimetableCtrlFlag::ClearField to clear timetable wait/travel time)
  * @return the cost of this operation or an error
  */
-CommandCost CmdBulkChangeTimetable(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, ModifyTimetableFlags mtf, uint32_t data, ModifyTimetableCtrlFlags ctrl_flags)
+CommandCost CmdBulkChangeTimetable(DoCommandFlags flags, VehicleID veh, ModifyTimetableFlags mtf, uint32_t data, ModifyTimetableCtrlFlags ctrl_flags)
 {
-	const bool is_list = target_type == OrderTargetType::OrderList;
-	if (is_list) {
-		OrderList *ol = OrderList::GetIfValid(OrderListID(static_cast<uint16_t>(id)));
-		if (id >= OrderListID::End().base() || ol == nullptr || !ol->IsPlayerCreated() || ol->IsScheduleGroup()) return CMD_ERROR;
-
-		CommandCost ret = CheckOwnership(ol->GetCompany());
-		if (ret.Failed()) return ret;
-
-		if (mtf >= MTF_END) return CMD_ERROR;
-		if (ol->GetNumOrders() == 0) return CMD_ERROR;
-
-		if (flags.Test(DoCommandFlag::Execute)) {
-			for (VehicleOrderID order_number = 0; order_number < ol->GetNumOrders(); order_number++) {
-				Order *order = ol->GetOrderAt(order_number);
-				if (order == nullptr || order->IsType(OT_IMPLICIT)) continue;
-
-				/* Exclude waypoints from set all wait times command */
-				if (mtf == MTF_WAIT_TIME && !ctrl_flags.Test(ModifyTimetableCtrlFlag::ClearField) && order->IsType(OT_GOTO_WAYPOINT)) continue;
-
-				CmdChangeTimetable(flags, OrderTargetType::OrderList, id, order_number, mtf, data, ctrl_flags);
-			}
-		}
-		return CommandCost();
-	}
-
-	Vehicle *v = Vehicle::GetIfValid(VehicleID(id));
+	Vehicle *v = Vehicle::GetIfValid(veh);
 	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
 
 	CommandCost ret = CheckOwnership(v->owner);
@@ -618,7 +362,7 @@ CommandCost CmdBulkChangeTimetable(DoCommandFlags flags, OrderTargetType target_
 			/* Exclude waypoints from set all wait times command */
 			if (mtf == MTF_WAIT_TIME && !ctrl_flags.Test(ModifyTimetableCtrlFlag::ClearField) && order->IsType(OT_GOTO_WAYPOINT)) continue;
 
-			Command<Commands::ChangeTimetable>::Do(flags, OrderTargetType::Vehicle, v->index.base(), order_number, mtf, data, ctrl_flags);
+			Command<Commands::ChangeTimetable>::Do(flags, v->index, order_number, mtf, data, ctrl_flags);
 		}
 	}
 
@@ -870,42 +614,30 @@ CommandCost CmdAutomateTimetable(DoCommandFlags flags, VehicleID veh, bool autom
 /**
  * Enable or disable auto timetable separation
  * @param flags Operation to perform.
- * @param target_type The target type (vehicle or order list).
- * @param id The vehicle or order list index.
+ * @param veh Vehicle index.
  * @param separation Whether to enable/disable auto separatiom.
  * @return the cost of this operation or an error
  */
-CommandCost CmdTimetableSeparation(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, bool separation)
+CommandCost CmdTimetableSeparation(DoCommandFlags flags, VehicleID veh, bool separation)
 {
-	Vehicle *v = nullptr;
-	OrderList *ol = ResolveSchDispatchTarget(target_type, id, &v);
-	if (ol == nullptr) return CMD_ERROR;
+	Vehicle *v = Vehicle::GetIfValid(veh);
+	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
 
-	CommandCost ret = CheckSchDispatchOwnership(target_type, ol, v);
+	CommandCost ret = CheckOwnership(v->owner);
 	if (ret.Failed()) return ret;
 
-	if (separation && (ol->IsPlayerCreated() ? ol->IsDispatchEnabled() : (v != nullptr && v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch)))) return CommandCost(STR_ERROR_SEPARATION_MUTUALLY_EXCLUSIVE);
-	if (separation && v != nullptr && v->HasUnbunchingOrder()) return CommandCost(STR_ERROR_SEPARATION_MUTUALLY_EXCLUSIVE);
+	if (separation && (v->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) || v->HasUnbunchingOrder())) return CommandCost(STR_ERROR_SEPARATION_MUTUALLY_EXCLUSIVE);
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		if (ol->IsPlayerCreated()) {
-			/* The list owns the separation state; all vehicles sharing it mirror
-			 * the state in their flags so the runtime and vehicle UIs agree. */
-			ol->SetSeparationEnabled(separation);
-			for (Vehicle *v2 = ol->GetFirstSharedVehicle(); v2 != nullptr; v2 = v2->NextShared()) {
-				v2->vehicle_flags.Set(VehicleFlag::TimetableSeparation, separation);
-				v2->vehicle_flags.Reset(VehicleFlag::SeparationActive);
-				if (separation) v2->timetable_start = StateTicks{0};
+		for (Vehicle *v2 = v->FirstShared(); v2 != nullptr; v2 = v2->NextShared()) {
+			if (separation) {
+				v2->vehicle_flags.Set(VehicleFlag::TimetableSeparation);
+			} else {
+				v2->vehicle_flags.Reset(VehicleFlag::TimetableSeparation);
 			}
-		} else if (v != nullptr) {
-			for (Vehicle *v2 = v->FirstShared(); v2 != nullptr; v2 = v2->NextShared()) {
-				v2->vehicle_flags.Set(VehicleFlag::TimetableSeparation, separation);
-				v2->vehicle_flags.Reset(VehicleFlag::SeparationActive);
-				if (separation) v2->timetable_start = StateTicks{0};
-			}
+			v2->vehicle_flags.Reset(VehicleFlag::SeparationActive);
 		}
 		SetTimetableWindowsDirty(v, STWDF_SCHEDULED_DISPATCH);
-		InvalidateStandaloneOrderGUIs();
 	}
 
 	return CommandCost();
@@ -957,7 +689,7 @@ std::vector<TimetableProgress> PopulateSeparationState(const Vehicle *v_start)
 			// Do not try to separate vehicles on depot service or halt orders
 			separation_valid = false;
 		}
-		if (order->IsSlotCounterOrder() || order->IsType(OT_DUMMY) || order->IsType(OT_LABEL) || order->IsExecuteScheduleOrder()) {
+		if (order->IsSlotCounterOrder() || order->IsType(OT_DUMMY) || order->IsType(OT_LABEL)) {
 			// Do not try to separate vehicles on slot, change counter, or invalid orders
 			separation_valid = false;
 		}

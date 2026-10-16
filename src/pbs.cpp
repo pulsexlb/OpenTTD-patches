@@ -8,8 +8,6 @@
 /** @file pbs.cpp PBS support routines. */
 
 #include "stdafx.h"
-#include <deque>
-#include <queue>
 #include "debug.h"
 #include "viewport_func.h"
 #include "vehicle_func.h"
@@ -19,7 +17,6 @@
 #include "newgrf_newsignals.h"
 #include "train_speed_adaptation.h"
 #include "bridge_signal_map.h"
-#include "3rdparty/cpp-btree/btree_set.h"
 
 #include "table/strings.h"
 
@@ -77,37 +74,6 @@ void SetRailStationPlatformReservation(TileIndex start, DiagDirection dir, bool 
 		MarkTileDirtyByTile(tile, VMDF_NOT_MAP_MODE);
 		tile = TileAdd(tile, diff);
 	} while (IsCompatibleTrainStationTile(tile, start));
-}
-
-/**
- * Check whether a station platform is free of any other train.
- * @param v     The train to ignore.
- * @param start Starting tile of the platform.
- * @param dir   Direction in which to follow the platform.
- * @return true if no other train occupies the platform.
- */
-bool IsRailStationPlatformFree(const Train *v, TileIndex start, DiagDirection dir)
-{
-	TileIndex     tile = start;
-	TileIndexDiff diff = TileOffsByDiagDir(dir);
-
-	assert_tile(IsRailStationTile(start), start);
-	assert_tile(GetRailStationAxis(start) == DiagDirToAxis(dir), start);
-
-	do {
-		for (const Vehicle *u : Vehicle::Iterate()) {
-			if (u->type != VehicleType::Train || u->vehstatus.Test(VehState::Crashed)) continue;
-			/* Hidden vehicles are carried by another vehicle and are not on the rail network any
-			 * more, but their tile field still points at where they were loaded: they must not
-			 * keep the platform marked as occupied. */
-			if (u->vehstatus.Test(VehState::Hidden)) continue;
-			const Train *t = Train::From(u);
-			if (t->Primary()->index == v->Primary()->index) continue;
-			if (t->tile == tile) return false;
-		}
-		tile = TileAdd(tile, diff);
-	} while (IsCompatibleTrainStationTile(tile, start));
-	return true;
 }
 
 /**
@@ -901,7 +867,7 @@ static void CheckTrainsOnTrack(FindTrainOnTrackInfo &info, TileIndex tile)
 			}
 		}
 		if (t->track & TRACK_BIT_WORMHOLE || HasBit((TrackBits)t->track, TrackdirToTrack(info.res.trackdir))) {
-			t = t->Primary();
+			t = t->First();
 
 			/* ALWAYS return the lowest ID (anti-desync!) */
 			if (info.best == nullptr || t->index < info.best->index) info.best = t;
@@ -978,7 +944,7 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 	ftoti.res.okay = flags.Test(FollowTrainReservationFlag::OkayUnused) ? false : IsSafeWaitingPosition(v, ftoti.res.tile, ftoti.res.trackdir, true, _settings_game.pf.forbid_90_deg);
 	if (train_on_res != nullptr) {
 		CheckTrainsOnTrack(ftoti, ftoti.res.tile);
-		if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
+		if (ftoti.best != nullptr) *train_on_res = ftoti.best->First();
 		if (*train_on_res == nullptr && IsRailStationTile(ftoti.res.tile)) {
 			/* The target tile is a rail station. The track follower
 			 * has stopped on the last platform tile where we haven't
@@ -987,13 +953,13 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(ftoti.res.trackdir)));
 			for (TileIndex st_tile = ftoti.res.tile + diff; *train_on_res == nullptr && IsCompatibleTrainStationTile(st_tile, ftoti.res.tile); st_tile += diff) {
 				CheckTrainsOnTrack(ftoti, st_tile);
-				if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
+				if (ftoti.best != nullptr) *train_on_res = ftoti.best->First();
 			}
 		}
 		if (*train_on_res == nullptr && IsTileType(ftoti.res.tile, TileType::TunnelBridge) && IsTrackAcrossTunnelBridge(ftoti.res.tile, TrackdirToTrack(ftoti.res.trackdir)) && !IsTunnelBridgeWithSignalSimulation(ftoti.res.tile)) {
 			/* The target tile is a bridge/tunnel, also check the other end tile. */
 			CheckTrainsOnTrack(ftoti, GetOtherTunnelBridgeEnd(ftoti.res.tile));
-			if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
+			if (ftoti.best != nullptr) *train_on_res = ftoti.best->First();
 		}
 	}
 	return ftoti.res;
@@ -1070,7 +1036,7 @@ static int ScanTrainPositionForLookAheadStation(Train *moving_front, TileIndex s
 				uint forward_length = BaseStation::GetByTile(tile)->GetPlatformLength(tile, forward_dir);
 				uint reverse_length = BaseStation::GetByTile(tile)->GetPlatformLength(tile, ReverseDiagDir(forward_dir));
 
-				TrainReservationLookAhead &lookahead = *(moving_front->Primary()->lookahead);
+				TrainReservationLookAhead &lookahead = *(moving_front->First()->lookahead);
 
 				if (u == moving_front) {
 					for (uint i = 1; i < forward_length; i++) {
@@ -1398,11 +1364,11 @@ Train *GetTrainForReservation(TileIndex tile, Track track)
 		 * search in this direction as the reservation can't come from this side.*/
 		if (HasOnewaySignalBlockingTrackdir(tile, ReverseTrackdir(trackdir)) && !HasPbsSignalOnTrackdir(tile, trackdir)) continue;
 
-	FindTrainOnTrackInfo ftoti;
-	ftoti.res = FollowReservation(GetTileOwner(tile), rts, tile, trackdir, FRF_IGNORE_ONEWAY, nullptr, nullptr);
+		FindTrainOnTrackInfo ftoti;
+		ftoti.res = FollowReservation(GetTileOwner(tile), rts, tile, trackdir, FRF_IGNORE_ONEWAY, nullptr, nullptr);
 
-	CheckTrainsOnTrack(ftoti, ftoti.res.tile);
-	if (ftoti.best != nullptr) return ftoti.best;
+		CheckTrainsOnTrack(ftoti, ftoti.res.tile);
+		if (ftoti.best != nullptr) return ftoti.best;
 
 		/* Special case for stations: check the whole platform for a vehicle. */
 		if (IsRailStationTile(ftoti.res.tile)) {
@@ -1548,284 +1514,9 @@ bool TrainReservationPassesThroughTile(const Train *v, TileIndex search_tile)
  * @param forbid_90deg Don't allow trains to make 90 degree turns
  * @return True if it is a safe position
  */
-/**
- * Check whether a vehicle of the couple partner of \a v stands on \a tile.
- * Only meaningful for trains with a goto-couple order and a claimed target.
- */
-bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile)
-{
-	if (!v->current_order.IsType(OT_GOTO_COUPLE)) return false;
-	const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
-	if (tgt == nullptr) return false;
-	const Train *partner = tgt->Primary();
-	for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
-		if (u->Primary() == partner) return true;
-	}
-	return false;
-}
-
-/**
- * Check whether a vehicle that is neither \a v's own consist nor its claimed
- * couple partner stands on \a tile. For a goto-couple train this is exactly the
- * "something else is in the way" test: the partner and ourselves may share the
- * track, anything else may not.
- */
-bool HasForeignConsistOnTile(const Train *v, TileIndex tile)
-{
-	const Train *mover = v->Primary();
-	const Train *partner = nullptr;
-	if (v->current_order.IsType(OT_GOTO_COUPLE)) {
-		const Train *tgt = Train::GetIfValid(mover->couple_target);
-		if (tgt != nullptr) partner = tgt->Primary();
-	}
-	for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
-		const Train *up = u->Primary();
-		if (up != mover && up != partner) return true;
-	}
-	return false;
-}
-
-/**
- * Check whether the continuous station platform strip containing \a tile
- * also holds a vehicle of \a partner. Two parallel platforms of the same
- * station are separate strips: walking along the track axis from \a tile
- * can never reach a different platform, unlike a mere compatibility check
- * (which only compares station, axis and direction).
- */
-static bool CouplePlatformStripHasPartner(const Train *partner, TileIndex tile)
-{
-	if (!IsRailStationTile(tile)) return false;
-	Track tr = GetRailStationTrack(tile);
-
-	auto strip_tile_has_partner = [&](TileIndex t) {
-		for (const Train *u : VehiclesOnTile<VehicleType::Train>(t)) {
-			if (u->Primary() == partner) return true;
-		}
-		return false;
-	};
-
-	if (strip_tile_has_partner(tile)) return true;
-
-	for (DiagDirection dd = DiagDirection::Begin; dd < DiagDirection::End; dd++) {
-		if (!(DiagdirReachesTracks(dd) & TrackToTrackBits(tr))) continue;
-		TileIndex t = tile;
-		for (;;) {
-			t = TileAdd(t, TileOffsByDiagDir(dd));
-			if (!IsRailStationTile(t) || !IsCompatibleTrainStationTile(t, tile)) break;
-			if (strip_tile_has_partner(t)) return true;
-		}
-	}
-	return false;
-}
-
-/**
- * Check whether \a tile belongs to the couple partner of \a v: either a
- * vehicle of the partner stands on it, or it is a station tile of the same
- * continuous platform strip as (one of the body tiles of) the partner.
- */
-bool IsCouplePartnerTile(const Train *v, TileIndex tile)
-{
-	if (IsCouplePartnerVehicleTile(v, tile)) return true;
-	if (!v->current_order.IsType(OT_GOTO_COUPLE) || !IsRailStationTile(tile)) return false;
-	const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
-	if (tgt == nullptr) return false;
-	return CouplePlatformStripHasPartner(tgt->Primary(), tile);
-}
-
-/** Tile budget for the couple approach walk. */
-static constexpr uint COUPLE_APPROACH_BUDGET = 256;
-
-enum class CoupleApproachOutcome {
-	Unreachable,     ///< the partner could not be reached at all
-	Reached,         ///< the route to the partner holds nothing but the partner and ourselves
-	Blocked,         ///< a foreign consist stands on the route to the partner
-};
-
-/**
- * Walk from the approaching consist towards \a tgt and report whether it is reached with nothing
- * but ourselves in between (see #IsCoupleApproachPathClearTo).
- *
- * The train would drive the shortest route the track layout offers to the partner. Every other
- * consist standing on that route -- on the track the train travels, before the partner itself --
- * is in the way, and the couple has to wait for it to move instead of driving around it. A detour
- * the layout forces (a loop, or a station platform only reachable from its far end) is fine: it is
- * simply the shortest route that exists, and it is the foreign consists met *on* it that block.
- *
- * The route is measured in moves and every other consist is passed through, so the search finds
- * the route the train would naturally drive even when a foreign consist stands on it (that is what
- * is then reported). A clean and a blocked state of the same tile are kept apart so a clean route
- * is never discarded in favour of a blocked one.
- *
- * @param v the approaching consist with a goto-couple order.
- * @param tgt the claimed partner.
- */
-static CoupleApproachOutcome CoupleApproachSearch(const Train *v, const Train *tgt)
-{
-	const Train *partner = tgt->Primary();
-	const Train *mover = v->Primary();
-	const Train *moving_front = mover->GetMovingFront();
-	const Train *moving_back = mover->GetMovingBack();
-
-	auto partner_on = [&](TileIndex t) {
-		for (const Train *u : VehiclesOnTile<VehicleType::Train>(t)) {
-			if (u->Primary() == partner) return true;
-		}
-		return false;
-	};
-	auto foreign_on = [&](TileIndex t, TrackBits mover_track) {
-		for (const Train *u : VehiclesOnTile<VehicleType::Train>(t)) {
-			const Train *up = u->Primary();
-			if (up == partner || up == mover) continue;
-			/* Only a foreign consist occupying the track bit we travel blocks;
-			 * one on a different track sharing the same tile does not. */
-			if ((u->track & mover_track) != TRACK_BIT_NONE) return true;
-		}
-		return false;
-	};
-
-	/* Already touching the partner: that contact is the whole point of the order. */
-	if (partner_on(moving_front->tile) || partner_on(moving_back->tile)) {
-		return CoupleApproachOutcome::Reached;
-	}
-
-	/* Anything else sharing one of our tiles is already in the way. */
-	if (foreign_on(moving_front->tile, moving_front->track) || foreign_on(moving_back->tile, moving_back->track)) {
-		return CoupleApproachOutcome::Blocked;
-	}
-
-	/* The way between us and the partner, walked from both ends of the consist: a couple is
-	 * very often made by reversing into the partner, and a walk from the leading vehicle alone
-	 * never looks that way. */
-	Trackdir front_td = moving_front->GetVehicleTrackdir();
-	Trackdir back_td = moving_back->GetVehicleTrackdir();
-	if (back_td != INVALID_TRACKDIR) back_td = ReverseTrackdir(back_td);
-	if (front_td == INVALID_TRACKDIR && back_td == INVALID_TRACKDIR) {
-		return CoupleApproachOutcome::Unreachable;
-	}
-
-	struct CoupleWalkNode {
-		TileIndex tile;
-		Trackdir td;
-		uint cost;         ///< moves taken to reach this step
-		bool met_foreign;  ///< a foreign consist was passed on the way here
-	};
-
-	auto visit_key = [](TileIndex t, Trackdir td) {
-		return ((uint64_t)t.base() << 8) | (uint8_t)td;
-	};
-	auto node_greater = [](const CoupleWalkNode &a, const CoupleWalkNode &b) {
-		if (a.cost != b.cost) return a.cost > b.cost;
-		return a.met_foreign > b.met_foreign;      // a clean route is explored before a blocked one
-	};
-	std::priority_queue<CoupleWalkNode, std::vector<CoupleWalkNode>, decltype(node_greater)> todo(node_greater);
-	btree::btree_map<uint64_t, uint> best;
-	auto relax = [&](TileIndex t, Trackdir td, uint cost, bool met_foreign) {
-		/* The clean and the blocked state of a tile are distinct nodes. */
-		uint64_t key = visit_key(t, td) * 2 + (met_foreign ? 1 : 0);
-		auto it = best.find(key);
-		if (it != best.end()) {
-			if (it->second <= cost) return;
-		} else if (best.size() >= COUPLE_APPROACH_BUDGET) {
-			return;
-		}
-		best[key] = cost;
-		todo.push({t, td, cost, met_foreign});
-	};
-	relax(moving_front->tile, front_td, 0, false);
-	relax(moving_back->tile, back_td, 0, false);
-
-	CFollowTrackRail ft(v, v->GetIndirectCompatibleRailTypes());
-	while (!todo.empty()) {
-		CoupleWalkNode n = todo.top();
-		todo.pop();
-
-		if (!ft.Follow(n.tile, n.td)) continue;
-		if (!IsValidTile(ft.new_tile) || IsRailDepotTile(ft.new_tile)) continue;
-
-		/* The follower jumps whole station platforms in one step and lands past them, so a
-		 * partner standing on one is stepped over and never seen. Look at every tile the step
-		 * covered, from the first skipped one up to where it landed. A tunnel or bridge
-		 * interior is jumped the same way, but those tiles are virtual and carry no vehicles,
-		 * which IsValidTile filters out. */
-		TileIndexDiff step = TileOffsByDiagDir(ft.exitdir);
-		TrackBits mover_track = TrackToTrackBits(TrackdirToTrack(n.td));
-		bool saw_foreign = false;
-		bool reached = false;
-		for (uint i = 1; i <= ft.tiles_skipped + 1; i++) {
-			TileIndex t = ft.new_tile - step * (ft.tiles_skipped + 1 - i);
-			if (!IsValidTile(t) || t == n.tile) continue;
-			/* A foreign consist standing on the track we travel is in the way even when it shares
-			 * the partner's own tile (coupled consists overlap there), so it is checked first. */
-			if (foreign_on(t, mover_track)) saw_foreign = true;
-			/* The contact happens where the partner is met; tiles past it are not travelled. */
-			if (partner_on(t)) { reached = true; break; }
-		}
-		if (reached) {
-			/* This is the first (shortest) route to the partner. A foreign consist met on the way
-			 * is in the way even though the route got past it. */
-			return (n.met_foreign || saw_foreign) ? CoupleApproachOutcome::Blocked : CoupleApproachOutcome::Reached;
-		}
-		const bool met_foreign = n.met_foreign || saw_foreign;
-
-		TrackdirBits tdb = ft.new_td_bits & DiagdirReachesTrackdirs(ft.exitdir);
-		for (Trackdir ntd : SetTrackdirBitIterator(tdb)) {
-			relax(ft.new_tile, ntd, n.cost + 1, met_foreign);
-		}
-	}
-
-	return CoupleApproachOutcome::Unreachable;
-}
-
-/**
- * Check whether the way from the approaching consist to the claimed couple partner is free of
- * other consists, that is, whether nothing but the partner and ourselves stands on it.
- *
- * The shortest route the track layout offers to the partner is walked and the first consist met on
- * it decides: the partner means the approach is clear, any other consist means it is blocked and
- * the couple has to wait for that consist to move instead of driving around it. A detour the layout
- * forces (a loop, or a platform only reachable from its far end) is that shortest route and thus
- * accepted; only consists standing *on* it block.
- *
- * @param v the approaching consist with a goto-couple order.
- * @param tgt the claimed partner.
- * @return true iff the partner can be approached without a foreign consist in the way.
- */
-bool IsCoupleApproachPathClearTo(const Train *v, const Train *tgt)
-{
-	if (tgt == nullptr) return false;
-
-	return CoupleApproachSearch(v, tgt) == CoupleApproachOutcome::Reached;
-}
-
-bool IsCoupleApproachPathClear(const Train *v)
-{
-	return IsCoupleApproachPathClearTo(v, Train::GetIfValid(v->Primary()->couple_target));
-}
-
 bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bool include_line_end, bool forbid_90deg)
 {
 	if (IsRailDepotTile(tile)) return true;
-
-	/* A train going to couple may stop on its partner's platform: the tile
-	 * holding the partner, a tile of the same continuous platform strip, or
-	 * the tile directly in front of the partner. The contact happens en
-	 * route. */
-	if (v->current_order.IsType(OT_GOTO_COUPLE)) {
-		const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
-		if (tgt != nullptr) {
-			const Train *partner = tgt->Primary();
-			bool found = CouplePlatformStripHasPartner(partner, tile);
-			if (!found) {
-				CFollowTrackRail cft(v, v->GetIndirectCompatibleRailTypes());
-				if (cft.Follow(tile, trackdir)) {
-					for (const Train *u : VehiclesOnTile<VehicleType::Train>(cft.new_tile)) {
-						if (u->Primary() == partner) found = true;
-					}
-				}
-			}
-			if (found) return true;
-		}
-	}
 
 	/* For non-pbs signals, stop on the signal tile. */
 	if (HasBlockSignalOnTrackdir(tile, trackdir)) return true;
@@ -1927,16 +1618,7 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 	TrackBits reserved = GetReservedTrackbits(tile);
 
 	/* Tile reserved? Can never be a free waiting position. */
-	if (TrackOverlapsTracks(reserved, track)) {
-		/* A train going to couple may share its partner's platform reservation,
-		 * but only while the way from us to the partner is free of other
-		 * consists: a train on the far side of the partner does not block, a
-		 * train between us and the partner does. */
-		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, tile)) {
-			if (IsCoupleApproachPathClear(v)) return true;
-		}
-		return false;
-	}
+	if (TrackOverlapsTracks(reserved, track)) return false;
 
 	/* Not reserved and depot or not a pbs signal -> free. */
 	if (IsRailDepotTile(tile)) return true;
@@ -1988,15 +1670,7 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 	ft.new_td_bits &= DiagdirReachesTrackdirs(ft.exitdir);
 	if (Rail90DegTurnDisallowedTilesFromTrackdir(ft.old_tile, ft.new_tile, ft.old_td, forbid_90deg)) ft.new_td_bits &= ~TrackdirCrossesTrackdirs(trackdir);
 
-	if (HasReservedTracks(ft.new_tile, TrackdirBitsToTrackBits(ft.new_td_bits))) {
-		/* A tile of the claimed couple partner's platform is the contact point:
-		 * stopping there is allowed, but only while the way from us to the
-		 * partner is free of other consists. */
-		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, ft.new_tile)) {
-			return IsCoupleApproachPathClear(v);
-		}
-		return false;
-	}
+	if (HasReservedTracks(ft.new_tile, TrackdirBitsToTrackBits(ft.new_td_bits))) return false;
 
 	if (ft.new_td_bits != TRACKDIR_BIT_NONE && KillFirstBit(ft.new_td_bits) == TRACKDIR_BIT_NONE) {
 		Trackdir td = FindFirstTrackdir(ft.new_td_bits);

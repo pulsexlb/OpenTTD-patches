@@ -34,7 +34,6 @@
 #include "company_func.h"
 #include "tilehighlight_func.h"
 #include "window_gui.h"
-#include "roadveh_transport.h"
 #include "vehiclelist.h"
 #include "order_backup.h"
 #include "group.h"
@@ -420,7 +419,7 @@ public:
 		for (const Vehicle *w = v; w != nullptr; w = w->Next()) {
 			if (w->cargo_cap > 0 && w->cargo_type < NUM_CARGO) {
 				capacity[w->cargo_type] += w->cargo_cap;
-				loaded  [w->cargo_type] += RVTransportGetPartCargoAmount(w);
+				loaded  [w->cargo_type] += w->cargo.StoredCount();
 			}
 
 			if (w->type == VehicleType::Train && !w->HasArticulatedPart()) {
@@ -547,10 +546,7 @@ public:
 				new_vehicle_over = gdvp.head->index;
 			} else if (gdvp.wagon != nullptr && gdvp.head != gdvp.wagon &&
 					gdvp.wagon->index != this->sel &&
-					/* A chain can start with a wagon now that the primary may sit mid-chain, so
-					 * there is no previous vehicle to compare against. That wagon heads another
-					 * train, which makes this a valid insertion point rather than a no-op move. */
-					(gdvp.wagon->Previous() == nullptr || gdvp.wagon->Previous()->index != this->sel)) { // ..over an existing wagon.
+					gdvp.wagon->Previous()->index != this->sel) { // ..over an existing wagon.
 				new_vehicle_over = gdvp.wagon->index;
 			}
 		}

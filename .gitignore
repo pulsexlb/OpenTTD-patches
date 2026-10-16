@@ -1,7 +1,6 @@
 /.vs
 /.vscode
 /build*
-/ai
 CMakeSettings.json
 docs/aidocs/*
 docs/gamedocs/*
@@ -9,16 +8,3 @@ docs/source/*
 /out
 /vcpkg_installed
 *.tmp
-
-# Local build tooling
-.deps/
-grfcodec/
-openttd.new
-# /build* above would swallow this, but the Android CI (.github/workflows/
-# android.yml) checks the repository out fresh and runs it from there.
-!/build-android-local.sh
-# Signed APKs written by that script.
-/upload/
-
-# Portable Windows build entry point.
-!/build-windows.ps1

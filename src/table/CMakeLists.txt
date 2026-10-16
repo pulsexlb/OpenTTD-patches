@@ -2,6 +2,7 @@ add_subdirectory(settings)
 
 add_files(
     airport_defaults.h
+    airport_movement.h
     airporttile_ids.h
     airporttiles.h
     animcursors.h

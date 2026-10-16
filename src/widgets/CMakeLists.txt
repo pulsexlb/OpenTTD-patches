@@ -2,7 +2,6 @@ add_files(
     ai_widget.h
     airport_widget.h
     autoreplace_widget.h
-    blueprint_widget.h
     bootstrap_widget.h
     bridge_widget.h
     build_vehicle_widget.h
@@ -40,7 +39,6 @@ add_files(
     news_widget.h
     object_widget.h
     order_widget.h
-    orderlist_widget.h
     osk_widget.h
     picker_widget.h
     plans_widget.h

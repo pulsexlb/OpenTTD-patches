@@ -20,7 +20,6 @@
 #include "core/random_func.hpp"
 #include "core/container_func.hpp"
 #include "aircraft.h"
-#include "air_map.h"
 #include "station_base.h"
 #include "company_base.h"
 #include "newgrf_railtype.h"
@@ -35,7 +34,6 @@
 #include "core/format.hpp"
 #include "3rdparty/fmt/ranges.h"
 #include "3rdparty/robin_hood/robin_hood.h"
-#include "roadveh_transport.h"
 
 #include "safeguards.h"
 
@@ -148,81 +146,102 @@ enum TTDPAircraftMovementStates : uint8_t {
  */
 uint8_t MapAircraftMovementState(const Aircraft *v)
 {
-	/* Rotors and shadows have no movement state of their own. */
-	if (!v->IsNormalAircraft()) return AMS_TTDP_HANGAR;
-
 	const Station *st = GetTargetAirportIfValid(v);
 	if (st == nullptr) return AMS_TTDP_FLIGHT_TO_TOWER;
 
+	const AirportFTAClass *afc = st->airport.GetFTA();
+	AirportMovingDataFlags amdflag = afc->MovingData(v->pos)->flags;
+
 	switch (v->state) {
-		case AS_HANGAR:
-			return AMS_TTDP_HANGAR;
+		case HANGAR:
+			/* The international airport is a special case as helicopters can land in
+			 * front of the hangar. Helicopters also change their air.state to
+			 * AirportMovingDataFlag::HeliLower some time before actually descending. */
 
-		case AS_APRON:
-		case AS_HELIPAD:
-		case AS_HELIPORT:
-		case AS_BUILTIN_HELIPORT:
+			/* This condition only occurs for helicopters, during descent,
+			 * to a landing by the hangar of an international airport. */
+			if (amdflag.Test(AirportMovingDataFlag::HeliLower)) return AMS_TTDP_HELI_LAND_AIRPORT;
+
+			/* This condition only occurs for helicopters, before starting descent,
+			 * to a landing by the hangar of an international airport. */
+			if (amdflag.Test(AirportMovingDataFlag::SlowTurn)) return AMS_TTDP_FLIGHT_TO_TOWER;
+
+			/* The final two conditions apply to helicopters or aircraft.
+			 * Has reached hangar? */
+			if (amdflag.Test(AirportMovingDataFlag::ExactPosition)) return AMS_TTDP_HANGAR;
+
+			/* Still moving towards hangar. */
+			return AMS_TTDP_TO_HANGAR;
+
+		case TERM1:
+			if (amdflag.Test(AirportMovingDataFlag::ExactPosition)) return AMS_TTDP_TO_PAD1;
 			return AMS_TTDP_TO_JUNCTION;
 
-		case AS_RUNNING:
-			switch (v->Next()->state) {
-				case AS_HANGAR:
-					return AMS_TTDP_TO_HANGAR;
-				case AS_START_TAKEOFF:
-					return AMS_TTDP_TO_RUNWAY;
-				default:
-					break;
-			}
-			return AMS_TTDP_TO_JUNCTION;
+		case TERM2:
+			if (amdflag.Test(AirportMovingDataFlag::ExactPosition)) return AMS_TTDP_TO_PAD2;
+			return AMS_TTDP_TO_ENTRY_2_AND_3_AND_H;
 
-		case AS_START_TAKEOFF:
-			if (!v->IsHelicopter()) return AMS_TTDP_TO_OUTWAY;
+		case TERM3:
+		case TERM4:
+		case TERM5:
+		case TERM6:
+		case TERM7:
+		case TERM8:
+			/* TTDPatch only has 3 terminals, so treat these states the same */
+			if (amdflag.Test(AirportMovingDataFlag::ExactPosition)) return AMS_TTDP_TO_PAD3;
+			return AMS_TTDP_TO_ENTRY_2_AND_3_AND_H;
 
-			assert(IsAirportTile(v->tile) && IsApron(v->tile));
-			return IsHeliportTile(v->tile) ? AMS_TTDP_HELI_TAKEOFF_HELIPORT : AMS_TTDP_HELI_TAKEOFF_AIRPORT;
+		case HELIPAD1:
+		case HELIPAD2:
+		case HELIPAD3:
+			/* Will only occur for helicopters.*/
+			if (amdflag.Test(AirportMovingDataFlag::HeliLower)) return AMS_TTDP_HELI_LAND_AIRPORT; // Descending.
+			if (amdflag.Test(AirportMovingDataFlag::SlowTurn)) return AMS_TTDP_FLIGHT_TO_TOWER;   // Still hasn't started descent.
+			return AMS_TTDP_TO_JUNCTION; // On the ground.
 
-		case AS_LANDED:
-			if (!v->IsHelicopter()) return AMS_TTDP_BRAKING;
+		case TAKEOFF: // Moving to takeoff position.
+			return AMS_TTDP_TO_OUTWAY;
 
-			assert(IsAirportTile(v->tile) && IsApron(v->tile));
-			return IsHeliportTile(v->tile) ? AMS_TTDP_HELI_LAND_HELIPORT : AMS_TTDP_HELI_LAND_AIRPORT;
-
-		case AS_FLYING_TAKEOFF:
-		case AS_FLYING_LEAVING_AIRPORT:
-			return AMS_TTDP_CLIMBING;
-
-		case AS_TAKEOFF_BEFORE_FLYING:
+		case STARTTAKEOFF: // Accelerating down runway.
 			return AMS_TTDP_TAKEOFF;
 
-		case AS_FLYING_LANDING:
-			return AMS_TTDP_BRAKING;
+		case ENDTAKEOFF: // Ascent
+			return AMS_TTDP_CLIMBING;
 
-		case AS_FLYING_HELICOPTER_TAKEOFF:
-		case AS_FLYING_HELICOPTER_LANDING:
-			return IsHelipadTile(v->tile) ? AMS_TTDP_HELI_LAND_AIRPORT : AMS_TTDP_HELI_LAND_HELIPORT;
+		case HELITAKEOFF: // Helicopter is moving to take off position.
+			if (afc->delta_z == 0) {
+				return amdflag.Test(AirportMovingDataFlag::HeliRaise) ?
+					AMS_TTDP_HELI_TAKEOFF_AIRPORT : AMS_TTDP_TO_JUNCTION;
+			} else {
+				return AMS_TTDP_HELI_TAKEOFF_HELIPORT;
+			}
 
-		case AS_DESCENDING:
-			return v->IsHelicopter() ? AMS_TTDP_FLIGHT_TO_TOWER : AMS_TTDP_FLIGHT_DESCENT;
+		case FLYING:
+			return amdflag.Test(AirportMovingDataFlag::Hold) ? AMS_TTDP_FLIGHT_APPROACH : AMS_TTDP_FLIGHT_TO_TOWER;
 
-		case AS_ON_HOLD_APPROACHING:
-		case AS_FLYING:
-		case AS_FLYING_FALLING:
-		case AS_FLYING_NO_DEST:
-		case AS_ON_HOLD_WAITING:
-			return v->IsHelicopter() ? AMS_TTDP_FLIGHT_TO_TOWER : AMS_TTDP_FLIGHT_APPROACH;
+		case LANDING: // Descent
+			return AMS_TTDP_FLIGHT_DESCENT;
 
-		case AS_IDLE:
-			break;
+		case ENDLANDING: // On the runway braking
+			if (amdflag.Test(AirportMovingDataFlag::Brake)) return AMS_TTDP_BRAKING;
+			/* Landed - moving off runway */
+			return AMS_TTDP_TO_INWAY;
+
+		case HELILANDING:
+		case HELIENDLANDING: // Helicoptor is descending.
+			if (amdflag.Test(AirportMovingDataFlag::HeliLower)) {
+				return afc->delta_z == 0 ?
+					AMS_TTDP_HELI_LAND_AIRPORT : AMS_TTDP_HELI_LAND_HELIPORT;
+			} else {
+				return AMS_TTDP_FLIGHT_TO_TOWER;
+			}
 
 		default:
-			NOT_REACHED();
+			return AMS_TTDP_HANGAR;
 	}
-
-	return AMS_TTDP_HANGAR;
 }
 
 
-/* TTDP style aircraft movement action for GRF Action 2 Var 0xE6 */
 /** TTDP style aircraft movement action for GRF Action 2 Var 0xE6. */
 enum TTDPAircraftMovementActions : uint8_t {
 	AMA_TTDP_IN_HANGAR,
@@ -257,31 +276,40 @@ enum TTDPAircraftMovementActions : uint8_t {
 static uint8_t MapAircraftMovementAction(const Aircraft *v)
 {
 	switch (v->state) {
-		case AS_HANGAR:
+		case HANGAR:
 			return (v->cur_speed > 0) ? AMA_TTDP_LANDING_TO_HANGAR : AMA_TTDP_IN_HANGAR;
 
-		case AS_APRON:
-		case AS_HELIPAD:
+		case TERM1:
+		case HELIPAD1:
 			return (v->current_order.IsType(OT_LOADING)) ? AMA_TTDP_ON_PAD1 : AMA_TTDP_LANDING_TO_PAD1;
 
-		case AS_START_TAKEOFF:      // Moving to takeoff position
-		case AS_TAKEOFF_BEFORE_FLYING:
-		case AS_FLYING_TAKEOFF: // Accelerating down runway
-		case AS_FLYING_LEAVING_AIRPORT:   // Ascent
-		case AS_FLYING_HELICOPTER_TAKEOFF:
+		case TERM2:
+		case HELIPAD2:
+			return (v->current_order.IsType(OT_LOADING)) ? AMA_TTDP_ON_PAD2 : AMA_TTDP_LANDING_TO_PAD2;
+
+		case TERM3:
+		case TERM4:
+		case TERM5:
+		case TERM6:
+		case TERM7:
+		case TERM8:
+		case HELIPAD3:
+			return (v->current_order.IsType(OT_LOADING)) ? AMA_TTDP_ON_PAD3 : AMA_TTDP_LANDING_TO_PAD3;
+
+		case TAKEOFF:      // Moving to takeoff position
+		case STARTTAKEOFF: // Accelerating down runway
+		case ENDTAKEOFF:   // Ascent
+		case HELITAKEOFF:
 			/* @todo Need to find which terminal (or hangar) we've come from. How? */
 			return AMA_TTDP_PAD1_TO_TAKEOFF;
 
-		case AS_ON_HOLD_WAITING:
-		case AS_FLYING:
-		case AS_FLYING_NO_DEST:
+		case FLYING:
 			return AMA_TTDP_IN_FLIGHT;
 
-		case AS_ON_HOLD_APPROACHING:
-		case AS_DESCENDING:
-		case AS_FLYING_LANDING: // On the runway braking
-		case AS_LANDED:
-		case AS_FLYING_HELICOPTER_LANDING:
+		case LANDING:    // Descent
+		case ENDLANDING: // On the runway braking
+		case HELILANDING:
+		case HELIENDLANDING:
 			/* @todo Need to check terminal we're landing to. Is it known yet? */
 			return (v->current_order.IsType(OT_GOTO_DEPOT)) ?
 				AMA_TTDP_LANDING_TO_HANGAR : AMA_TTDP_LANDING_TO_PAD1;
@@ -661,7 +689,7 @@ static uint32_t VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *objec
 		}
 
 		case 0x46: // Motion counter
-			return v->Primary()->motion_counter;
+			return v->First()->motion_counter;
 
 		case 0x47: { // Vehicle cargo info
 			/* Format: ccccwwtt
@@ -726,9 +754,9 @@ static uint32_t VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *objec
 		case 0x4D: // Position within articulated vehicle
 			if (!HasBit(v->grf_cache.cache_valid, NCVV_POSITION_IN_VEHICLE)) {
 				uint8_t artic_before = 0;
-				for (const Vehicle *u = v; u != nullptr && u->IsArticulatedPart(); u = u->Previous()) artic_before++;
+				for (const Vehicle *u = v; u->IsArticulatedPart(); u = u->Previous()) artic_before++;
 				uint8_t artic_after = 0;
-				for (const Vehicle *u = v; u != nullptr && u->HasArticulatedPart(); u = u->Next()) artic_after++;
+				for (const Vehicle *u = v; u->HasArticulatedPart(); u = u->Next()) artic_after++;
 				v->grf_cache.position_in_vehicle = artic_before | artic_after << 8;
 				SetBit(v->grf_cache.cache_valid, NCVV_POSITION_IN_VEHICLE);
 			}
@@ -994,8 +1022,8 @@ static uint32_t VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *objec
 		case 0x39: return v->cargo_type;
 		case 0x3A: return v->cargo_cap;
 		case 0x3B: return GB(v->cargo_cap, 8, 8);
-		case 0x3C: return ClampTo<uint16_t>(v->cargo.StoredCount() + RVTransportExtraCargoAmount(v));
-		case 0x3D: return GB(ClampTo<uint16_t>(v->cargo.StoredCount() + RVTransportExtraCargoAmount(v)), 8, 8);
+		case 0x3C: return ClampTo<uint16_t>(v->cargo.StoredCount());
+		case 0x3D: return GB(ClampTo<uint16_t>(v->cargo.StoredCount()), 8, 8);
 		case 0x3E: return v->cargo.GetFirstStation().base();
 		case 0x3F: return ClampTo<uint8_t>(v->cargo.PeriodsInTransit());
 		case 0x40: return ClampTo<uint16_t>(v->age);
@@ -1079,8 +1107,8 @@ static uint32_t VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *objec
 				case 0x75: return GB(t->gcache.cached_power,  8, 24);
 				case 0x76: return GB(t->gcache.cached_power, 16, 16);
 				case 0x77: return GB(t->gcache.cached_power, 24,  8);
-				case 0x7C: return t->Primary()->index.base();
-				case 0x7D: return GB(t->Primary()->index.base(), 8, 8);
+				case 0x7C: return t->First()->index.base();
+				case 0x7D: return GB(t->First()->index.base(), 8, 8);
 				case 0x7F: return 0; // Used for vehicle reversing hack in TTDP
 			}
 			break;
@@ -1177,7 +1205,7 @@ static uint32_t VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *objec
 		return nullptr;
 	}
 
-	const Order &order = v->Primary()->current_order;
+	const Order &order = v->First()->current_order;
 	bool not_loading = (order.GetUnloadType() == OrderUnloadType::NoUnload) && (order.GetLoadType() == OrderLoadType::NoLoad);
 	bool in_motion = !order.IsType(OT_LOADING) || not_loading;
 
@@ -1188,11 +1216,6 @@ static uint32_t VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *objec
 
 	uint stored = v->cargo.StoredCount();
 	uint capacity = v->cargo_cap;
-
-	/* RoRo: a carrier part which holds road vehicles is drawn with its "loaded" sprite set.
-	 * (Road vehicles are never carriers, so they skip the lookup. Only while the master switch
-	 * is on: the vehicle pool scan must not run on the sprite path when the feature is off.) */
-	if (v->type != VehicleType::Road && _settings_game.vehicle.rv_transport_enabled && RVTransportPartHoldsRoadVehicles(v)) stored = std::max<uint>(stored, capacity);
 	if (v->type == VehicleType::Ship) {
 		for (const Vehicle *u = v->Next(); u != nullptr; u = u->Next()) {
 			stored += u->cargo.StoredCount();
@@ -1247,7 +1270,7 @@ VehicleResolverObject::VehicleResolverObject(EngineID engine_type, const Vehicle
 		CallbackID callback, uint32_t callback_param1, uint32_t callback_param2)
 	: SpecializedResolverObject<VehicleRandomTriggers>(GetEngineGrfFile(engine_type), callback, callback_param1, callback_param2),
 	self_scope(*this, engine_type, v, rotor_in_gui),
-	parent_scope(*this, engine_type, ((v != nullptr) ? v->Primary() : v), rotor_in_gui),
+	parent_scope(*this, engine_type, ((v != nullptr) ? v->First() : v), rotor_in_gui),
 	relative_scope(*this, engine_type, v, rotor_in_gui),
 	cached_relative_count(0)
 {
@@ -1701,14 +1724,7 @@ void AnalyseEngineCallbacks()
 				cb_refit_cap_values.emplace_back(ALL_CARGOTYPES, GetVehicleCallback(CBID_VEHICLE_REFIT_CAPACITY, 0, 0, e->index, nullptr));
 			} else {
 				const CargoType default_cb = e->info.cargo_type;
-				/* The per-cargo refit capacity is only needed for cargos the vehicle can be refitted to,
-				 * which includes internal cargos such as the dedicated "Vehicles (Road)" cargo. The
-				 * NewGRF-visible cargos are included as well, so that the callback is invoked for the
-				 * same set of cargos as it was before internal cargos above slot NUM_GRF_CARGO existed. */
-				CargoTypes refit_cargoes = e->info.refit_mask;
-				for (CargoType c{}; c < NUM_GRF_CARGO; c++) refit_cargoes.Set(c);
-
-				for (CargoType c : refit_cargoes) {
+				for (CargoType c{}; c < NUM_CARGO; c++) {
 					e->info.cargo_type = c;
 					set_cb_refit_cap_value(GetVehicleCallback(CBID_VEHICLE_REFIT_CAPACITY, 0, 0, e->index, nullptr), CargoTypes{c});
 				}
