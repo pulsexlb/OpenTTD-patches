@@ -1,4 +1,4 @@
-/*
+﻿/*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
  * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -3328,6 +3328,24 @@ static inline void DrawAirportGround(TileInfo *ti, const AirTypeInfo *ati, Palet
 }
 
 /**
+ * Warn about an airport tile which claims to be infrastructure but does not refer to a
+ * usable infrastructure sprite, and which is therefore drawn without its buildings.
+ *
+ * Such tiles should not exist, but they can be left behind by savegames of other patch packs
+ * or by older versions of this patch pack. Drawing them anyway keeps the game playable,
+ * instead of taking down the whole game over a single broken tile.
+ *
+ * @param tile The tile which cannot be drawn as an airport tile.
+ * @param att The airport tile type of the tile.
+ * @param at The infrastructure sprite of the tile.
+ */
+static void WarnInvalidAirportTile(TileIndex tile, AirportTileType att, uint at)
+{
+	Debug(misc, 1, "Station {}: airport tile {} has an invalid infrastructure sprite (type {}, sprite {}), drawing it without buildings",
+			GetStationIndex(tile).base(), tile.base(), (unsigned)att, at);
+}
+
+/**
  * Draw an airport tile.
  * @param ti TileInfo of the tile to draw.
  */
@@ -3442,7 +3460,9 @@ static void DrawTile_Airport(TileInfo *ti)
 					t = &_airtype_display_datas[at * 4 + to_underlying(dir)];
 					break;
 				default:
-					NOT_REACHED();
+					WarnInvalidAirportTile(ti->tile, att, at);
+					t = nullptr;
+					break;
 			}
 			break;
 		}
@@ -3453,7 +3473,9 @@ static void DrawTile_Airport(TileInfo *ti)
 			DiagDirection dir = GetAirportTileRotation(ti->tile);
 			switch (at) {
 				default:
-					NOT_REACHED();
+					WarnInvalidAirportTile(ti->tile, att, at);
+					t = nullptr;
+					break;
 				case ATTG_WITH_CATCH_BUILDING_1:
 				case ATTG_WITH_CATCH_BUILDING_2:
 				case ATTG_WITH_CATCH_BUILDING_3:
@@ -3467,13 +3489,16 @@ static void DrawTile_Airport(TileInfo *ti)
 		}
 
 		case ATT_WAITING_POINT:
-			NOT_REACHED();
+			WarnInvalidAirportTile(ti->tile, att, GetTileAirportGfx(ti->tile));
+			[[fallthrough]];
 		case ATT_APRON_BUILTIN_HELIPORT:
 			t = nullptr;
 			break;
 
 		default:
-			NOT_REACHED();
+			WarnInvalidAirportTile(ti->tile, att, GetTileAirportGfx(ti->tile));
+			t = nullptr;
+			break;
 	}
 
 	if (t != nullptr) DrawRailTileSeq(ti, t, TransparencyOption::Buildings, total_offset, 0, palette);

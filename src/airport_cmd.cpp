@@ -86,6 +86,56 @@ void UpdateAircraftOnUpdatedAirport(const Station *st)
 	SetWindowClassesDirty(WindowClass::VehicleOrders);
 }
 
+/**
+ * Convert all airports of the map into custom airports.
+ * Called when the custom airport feature is enabled, so that the airports of an
+ * already running game become custom airports as well.
+ */
+void ConvertAllAirportsToCustom()
+{
+	if (!ConvertAirportsToCustomEnabled()) return;
+
+	bool converted = false;
+	for (Station *st : Station::Iterate()) {
+		if (!st->ConvertAirportToCustom(true)) continue;
+		UpdateAircraftOnUpdatedAirport(st);
+		converted = true;
+	}
+
+	/* The noise of a custom airport is based on its area instead of on its layout. */
+	if (converted) UpdateAirportsNoise();
+
+	LogAirportConversionSummary("Enabling custom airports");
+}
+
+/**
+ * Log how many of the airports of the game are custom airports.
+ *
+ * Converting an airport can be skipped when its tiles do not match the airport spec, in
+ * which case it is not obvious from the game that it was left alone, so failures are
+ * logged at a level which is visible without enabling any debug category.
+ *
+ * @param action Text describing what triggered the conversion, e.g. "Loading the game".
+ */
+void LogAirportConversionSummary(const char *action)
+{
+	uint airports = 0;
+	uint custom = 0;
+	for (const Station *st : Station::Iterate()) {
+		if (st->airport.tile == INVALID_TILE) continue;
+		if (st->airport.type == AT_OILRIG) continue; // Oil rigs are not converted.
+		airports++;
+		if (st->airport.type == AT_CUSTOM) custom++;
+	}
+
+	if (airports == 0) return;
+
+	Debug(misc, 1, "{}: {} of {} airports are custom airports", action, custom, airports);
+	if (custom != airports) {
+		Debug(misc, 0, "{}: {} of {} airports could not be converted to custom airports, their tiles do not match the airport spec (run with '-d misc=2' for details)", action, airports - custom, airports);
+	}
+}
+
 extern CommandCost CheckBuildableTile(TileIndex tile, DiagDirections invalid_dirs, int &allowed_z, bool allow_steep, bool check_bridge = true);
 
 extern CommandCost FindJoiningAirport(StationID existing_station, StationID station_to_join, bool adjacent, TileArea ta, Station **st);
@@ -1761,15 +1811,23 @@ CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airpor
 	Town *post_town = nullptr;
 	uint pre_noise;
 	bool custom_airport = (st != nullptr && st->facilities.Test(StationFacility::Airport));
+	/* With the custom airport feature enabled newly built airports become custom airports too. */
+	const bool will_be_custom = custom_airport || ConvertAirportsToCustomEnabled();
 	uint post_noise;
-	if (custom_airport) {
-		/* Extending an airport turns it into a custom airport, which is charged for its area size. */
-		Airport predicted = st->airport;
+	if (will_be_custom) {
+		/* Custom airports are charged for their area size; predict the resulting airport. */
+		Airport predicted = (st != nullptr) ? st->airport : Airport();
+		if (!custom_airport) {
+			/* A brand new airport: the noise of the area which is about to be built. */
+			predicted.tile = tile;
+			predicted.air_type = air_type;
+			predicted.num_tiles = 0;
+		}
 		predicted.type = AT_CUSTOM;
 		for (TileIndex t : new_airport_tiles) {
 			if (!IsAirportTile(t)) predicted.num_tiles++;
 		}
-		post_noise = CalculateAirportNoiseLevel(predicted, air_type) - CalculateAirportNoiseLevel(st->airport, air_type);
+		post_noise = CalculateAirportNoiseLevel(predicted, air_type) - (custom_airport ? CalculateAirportNoiseLevel(st->airport, air_type) : 0);
 	} else {
 		post_noise = as->GetAirportNoise(air_type);
 	}
@@ -1798,6 +1856,8 @@ CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airpor
 		st->AddFacility(StationFacility::Airport, tile);
 		st->airport.type = airport_type;
 		st->airport.layout = layout;
+		/* The rotation is stored as a diagonal direction, like in the airport tile layout. */
+		st->airport.rotation = static_cast<Direction>(rotation);
 
 		st->rect.BeforeAddRect(tile, w, h, StationRect::ADD_TRY);
 
@@ -1813,9 +1873,23 @@ CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airpor
 			MarkTileDirtyByTile(t);
 		}
 
-		st->LoadAirportTilesFromSpec(airport_area, rotation, air_type);
+		/* With the custom airport feature enabled, the newly built airport is a custom
+		 * airport too: its tiles use the air type graphics (instead of the NewGRF ones),
+		 * and the airport no longer depends on the airport spec. The air type is the one
+		 * the airport is built with, so its surface is kept. */
+		const bool convert_to_custom = ConvertAirportsToCustomEnabled();
 
-		if (custom_airport) st->airport.type = AT_CUSTOM;
+		st->LoadAirportTilesFromSpec(airport_area, rotation, air_type, convert_to_custom);
+
+		if (convert_to_custom) {
+			st->airport.type = AT_CUSTOM;
+			st->airport.layout = 0;
+			/* The noise of the custom airport has already been accounted for above, using the
+			 * same area-based calculation which UpdateAirportsNoise() uses, so there is no need
+			 * to recalculate the noise of every town in the game here. */
+		} else if (custom_airport) {
+			st->airport.type = AT_CUSTOM;
+		}
 
 		/* Replace all hangars with hangars the human user can build. */
 		bool allow_standard_hangars = true;

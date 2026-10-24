@@ -129,6 +129,18 @@ struct AirportTileLayout {
 };
 
 /**
+ * Flags describing how an airport spec is defined.
+ * NewGRF properties which set these flags are expected to be sent by new-format
+ * GRFs only (and must be registered through the Action 0x14 property mapping so
+ * that older engines can ignore them safely).
+ */
+enum AirportSpecFlags : uint8_t {
+	ASF_NONE                  = 0,      ///< No special properties.
+	ASF_NATIVE_CUSTOM_AIRPORT = 1 << 0, ///< The airport is defined for the multi-tile (custom) airport system,
+	                                    ///< so it must not be flattened into a stock airport when loading or building.
+};
+
+/**
  * Defines the data structure for an airport.
  */
 struct AirportSpec : NewGRFSpecBase<AirportClassID> {
@@ -149,12 +161,30 @@ struct AirportSpec : NewGRFSpecBase<AirportClassID> {
 	bool has_heliport;
 	SubstituteGRFFileProps grf_prop;       ///< Properties related to the grf file.
 	std::vector<BadgeID> badges;
+	AirportSpecFlags flags = ASF_NONE;     ///< Flags describing how this airport spec is defined.
 
 	static const AirportSpec *Get(uint8_t type);
 	static AirportSpec *GetWithoutOverride(uint8_t type);
 
 	bool IsAvailable(AirType air_type = INVALID_AIRTYPE) const;
 	bool IsWithinMapBounds(uint8_t table, TileIndex index, uint8_t layout) const;
+
+	/**
+	 * Get the built-in air type an airport of this spec uses when it is converted
+	 * into a custom airport. This is the air type the airport is built with, so the
+	 * converted airport keeps its surface.
+	 * @return A built-in air type.
+	 */
+	AirType GetCustomAirType() const;
+
+	/**
+	 * Whether airports of this spec may be flattened into a custom airport.
+	 * Airports defined for the multi-tile (custom) airport system are kept as they are.
+	 */
+	bool IsConvertibleToCustom() const
+	{
+		return (this->flags & ASF_NATIVE_CUSTOM_AIRPORT) == 0 && !this->layouts.empty();
+	}
 
 	static void ResetAirports();
 

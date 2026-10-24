@@ -90,6 +90,25 @@ AirportSpec AirportSpec::specs[NUM_AIRPORTS]; ///< Airport specifications.
 }
 
 /**
+ * Get the built-in air type an airport of this spec uses when it is converted into
+ * a custom airport.
+ *
+ * This is the air type the airport itself is built with, so that the converted airport
+ * keeps its surface (gravel, asphalt, water, ...). NewGRF airports are assigned one of
+ * the built-in air types when they are defined, and when such a NewGRF is no longer
+ * loaded the spec of the stock airport it substituted is used instead, so this always
+ * yields an air type whose graphics are available without the NewGRF.
+ *
+ * @return A built-in air type.
+ */
+AirType AirportSpec::GetCustomAirType() const
+{
+	/* Converted airports must never refer to an air type which is not built-in. */
+	if (this->airtype == INVALID_AIRTYPE || this->airtype >= AIRTYPE_END) return AIRTYPE_GRAVEL;
+	return this->airtype;
+}
+
+/**
  * Check whether this airport is available to build.
  * @param airtype the airtype to check for, or INVALID_AIRTYPE
  *                to check against default airtype for this airport spec

@@ -686,6 +686,49 @@ void IterateVehicleAndOrderListOrders(F func)
 }
 
 /**
+ * Whether the airport tiles of the game are stored in the original format, i.e. with the airport
+ * tile gfx in m5 instead of in m4.
+ *
+ * Savegames written by upstream OpenTTD or by another patch pack use that format, and those
+ * cannot be told apart from our own savegames by their savegame version or by their extended
+ * version information: other patch packs use the same savegame container, the same savegame
+ * version number and a compatible extended version chunk (JGRPP does). The tile data itself is
+ * however unambiguous: the multi-tile format never stores the tile types which the original
+ * format produces when its gfx ids are read as tile types, and it never stores an infrastructure
+ * tile which refers to a sprite outside of the infrastructure sprite range.
+ *
+ * @return true iff the airport tiles have to be converted from the original format.
+ */
+static bool AirportsUseLegacyTileFormat()
+{
+	for (TileIndex t(0); t < Map::Size(); t++) {
+		if (!IsTileType(t, TileType::Station) || !IsAirportTile(t)) continue;
+
+		const AirportTileType att = GetAirportTileType(t);
+		switch (att) {
+			case ATT_WAITING_POINT:
+				/* Never stored in the multi-tile format, only a gfx id read as a tile type. */
+				return true;
+
+			case ATT_INFRASTRUCTURE_NO_CATCH:
+			case ATT_INFRASTRUCTURE_WITH_CATCH: {
+				if (!HasAirtypeGfx(t)) break;
+				const uint at = GetTileAirportGfx(t);
+				if (att == ATT_INFRASTRUCTURE_NO_CATCH && (at < ATTG_NO_CATCH_FLAG || at >= ATTG_END)) return true;
+				if (att == ATT_INFRASTRUCTURE_WITH_CATCH && at > ATTG_WITH_CATCH_BUILDING_TERMINAL) return true;
+				break;
+			}
+
+			default:
+				/* Tile types 9 and 11 do not exist. */
+				if (att == static_cast<AirportTileType>(9) || att == static_cast<AirportTileType>(11)) return true;
+				break;
+		}
+	}
+	return false;
+}
+
+/**
  * Whether the savegame predates the multi-tile airports and the new aircraft controller.
  * Savegames written by this patch pack store the legacy aircraft position unless they use the new
  * aircraft controller; savegames from upstream do not use the patch pack tables, so use the
@@ -694,8 +737,22 @@ void IterateVehicleAndOrderListOrders(F func)
  */
 static bool IsSavegameBeforeMultitileAirports()
 {
-	if (SlXvGetUpstreamVersion() != SL_MIN_VERSION) return DidLoadLegacyAircraftData();
-	return IsSavegameVersionBefore(SLV_CUSTOM_SUBSIDY_DURATION);
+	/* Savegames written by this patch pack store their extended version information; savegames
+	 * written by upstream OpenTTD or by another patch pack do not. Those never had the multi-tile
+	 * airport format, and their savegame version cannot be used for this decision, as other patch
+	 * packs can use the same savegame version number as this patch pack does (JGRPP 0.72 does).
+	 * Older versions of this patch pack that also lack the extended version information predate
+	 * the multi-tile airports as well. */
+	if (SlXvGetUpstreamVersion() == SL_MIN_VERSION) return true;
+
+	/* The extended version information is not conclusive either, as other patch packs write a
+	 * compatible chunk. The tiles themselves are: when they are not in the multi-tile format,
+	 * the savegame was not written by this patch pack. */
+	if (AirportsUseLegacyTileFormat()) return true;
+
+	/* Savegames with the extended version information also store whether they use the new
+	 * aircraft controller, which was introduced together with the multi-tile airports. */
+	return DidLoadLegacyAircraftData();
 }
 
 /**
@@ -3162,8 +3219,15 @@ bool AfterLoadGame()
 		}
 	}
 
+	/* Savegames which predate the multi-tile airports (including savegames of upstream or of
+	 * other patch packs) do not have the custom airport setting, so it is off for them. Their
+	 * airports are converted into custom airports while their tiles are migrated, which is the
+	 * only form in which the migrated tiles stay consistent, so enable the feature for them. */
+	const bool legacy_airport_tiles = IsSavegameBeforeMultitileAirports();
+	if (legacy_airport_tiles) _settings_game.station.allow_modify_airports = true;
+
 	/* Data structure on airport has changed. */
-	if (IsSavegameBeforeMultitileAirports()) {
+	if (legacy_airport_tiles) {
 		/* Old saves stored the airport tile gfx in m5; move it to m4 and
 		 * rebuild the tiles from the airport specs. */
 		for (TileIndex t(0); t < Map::Size(); t++) {
@@ -3173,13 +3237,18 @@ bool AfterLoadGame()
 			Tile(t).m5() = 0;
 		}
 		AfterLoadSetAirportTileTypes();
+		if (ConvertAirportsToCustomEnabled()) LogAirportConversionSummary("Loading the game");
 	} else {
+		const bool convert_airports = ConvertAirportsToCustomEnabled();
 		for (Station *st : Station::Iterate()) {
+			/* With the custom airport feature enabled, airports are converted into custom
+			 * airports as well. This also drops the NewGRF airport graphics of the tiles. */
+			if (convert_airports && st->ConvertAirportToCustom(true)) continue;
 			st->UpdateAirportDataStructure();
 		}
+		if (convert_airports) LogAirportConversionSummary("Loading the game");
 	}
-
-	if (IsSavegameBeforeMultitileAirports()) {
+	if (legacy_airport_tiles) {
 		/* Delete already crashed zeppelins. */
 		DeleteCrashedZeppelins();
 

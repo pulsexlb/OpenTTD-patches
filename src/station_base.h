@@ -897,7 +897,8 @@ public:
 		return IsAirportTile(tile) && GetStationIndex(tile) == this->index;
 	}
 
-	void LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirType airtype);
+	void LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirType airtype, bool force_airtype_gfx = false);
+	bool ConvertAirportToCustom(bool verify_tiles = false);
 	void UpdateAirportDataStructure();
 	void ClearAirportDataInfrastructure();
 

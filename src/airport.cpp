@@ -1,4 +1,4 @@
-/*
+﻿/*
  * This file is part of OpenTTD.
  * OpenTTD is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 2.
  * OpenTTD is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -11,6 +11,7 @@
 #include "station_base.h"
 #include "depot_base.h"
 #include "air_map.h"
+#include "settings_type.h"
 #include "window_func.h"
 
 #include "debug.h"
@@ -137,10 +138,15 @@ void ConvertOldAirportData(Station *st) {
 	st->airport.layout   = 0;
 
 	/* Old rotation dir values are 0, 2, 4, 6.
-	 * Convert them to 0, 1, 2, 3 (DiagDirection values). */
-	assert(static_cast<uint>(st->airport.rotation) % 2 == 0);
-	assert(static_cast<uint>(st->airport.rotation) <= 6);
-	st->airport.rotation = static_cast<Direction>(static_cast<uint>(st->airport.rotation) / 2);
+	 * Convert them to 0, 1, 2, 3 (DiagDirection values).
+	 * Savegames written by other patch packs or by upstream do not store the rotation, so it
+	 * is invalid there; those airports are never rotated, so fall back to north. */
+	uint rotation = static_cast<uint>(st->airport.rotation);
+	if (rotation > 6 || rotation % 2 != 0) {
+		Debug(misc, 1, "Station {}: airport rotation {} is not a legacy rotation, using north", st->index, rotation);
+		rotation = 0;
+	}
+	st->airport.rotation = static_cast<Direction>(rotation / 2);
 
 	if (st->airport.type > 23) {
 		/* OpenGRF+Airports includes airport types from NEW_AIRPORT_OFFSET to 23.
@@ -148,6 +154,17 @@ void ConvertOldAirportData(Station *st) {
 		Debug(misc, 0, "Unknown airport type: station {} airport type {}", st->index, st->airport.type);
 		return;
 	}
+}
+
+/**
+ * Whether airports are converted into custom airports.
+ * This is tied to the "allow modifying airports" (custom airport) setting: with the
+ * feature enabled every airport is a custom airport, with the feature disabled
+ * airports keep their spec-based form.
+ */
+bool ConvertAirportsToCustomEnabled()
+{
+	return _settings_game.station.allow_modify_airports;
 }
 
 /**
@@ -161,7 +178,17 @@ void AfterLoadSetAirportTileTypes()
 		st->airport.flags = HasBit(st->airport.flags, 63) ? AF_CLOSED_MANUAL : AF_NONE;
 
 		ConvertOldAirportData(st);
-		st->LoadAirportTilesFromSpec(st->airport, (DiagDirection)st->airport.rotation, st->airport.air_type);
+		/* With the custom airport feature enabled the airport is rebuilt as a custom airport;
+		 * otherwise the tiles are rebuilt from the airport spec as usual. */
+		if (ConvertAirportsToCustomEnabled() && st->ConvertAirportToCustom()) continue;
+
+		/* Savegames written by other patch packs or by upstream do not store the rotation of
+		 * the airport; those airports are never rotated, so fall back to north. */
+		uint8_t rotation = static_cast<uint8_t>(st->airport.rotation);
+		if (rotation >= static_cast<uint8_t>(DiagDirection::End)) rotation = 0;
+		st->airport.rotation = static_cast<Direction>(rotation);
+
+		st->LoadAirportTilesFromSpec(st->airport, static_cast<DiagDirection>(rotation), st->airport.air_type);
 		/* The tiles are in the new format now, so derive the airport data (and the hangar depot) from them. */
 		st->UpdateAirportDataStructure();
 	}
@@ -372,7 +399,7 @@ TrackBits RotateTrackBits(TrackBits track_bits, DiagDirection dir)
 	return rotated;
 }
 
-void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirType airtype)
+void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirType airtype, bool force_airtype_gfx)
 {
 	if (this->airport.tile == INVALID_TILE) return;
 
@@ -380,9 +407,23 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 	if (airtype == INVALID_AIRTYPE) airtype = as->airtype;
 	this->airport.air_type = airtype;
 
+	const AirportTileLayout &layout = as->layouts[this->airport.layout];
+
+	uint expected_tiles = 0;
+	for (const AirportTileTable &tile_desc : layout.tiles) {
+		if (tile_desc.type != ATT_INVALID) expected_tiles++;
+	}
+	uint written_tiles = 0;
+
 	for (Tile t : ta) {
 		uint pos = RotatedAirportSpecPosition(t, ta, rotation);
-		const AirportTileTable *airport_tile_desc = &as->layouts[this->airport.layout].tiles[pos];
+		if (pos >= layout.tiles.size()) {
+			/* The saved area is not the size of the airport layout; this should have been
+			 * caught before calling this function, so do not write garbage. */
+			Debug(misc, 1, "Station {}: tile {} ({}, {}) maps outside airport layout {} ({} tiles), skipping", this->index, (uint)t, TileX(t), TileY(t), this->airport.layout, (uint)layout.tiles.size());
+			continue;
+		}
+		const AirportTileTable *airport_tile_desc = &layout.tiles[pos];
 		if (airport_tile_desc->type == ATT_INVALID) continue;
 		if (!this->TileBelongsToAirport(t)) {
 			/* Not every tile in the airport spec area is an airport tile of this station, e.g. the
@@ -397,7 +438,7 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 		SetAirType(t, airtype);
 		SetAirportTileType(t, airport_tile_desc->type);
 
-		bool airtype_gfx = airtype != as->airtype || airport_tile_desc->gfx[static_cast<size_t>(rotation)] == INVALID_AIRPORTTILE;
+		bool airtype_gfx = force_airtype_gfx || airtype != as->airtype || airport_tile_desc->gfx[static_cast<size_t>(rotation)] == INVALID_AIRPORTTILE;
 		SetAirGfxType(t, airtype_gfx);
 		SetTileAirportGfx(t, airtype_gfx ? airport_tile_desc->at_gfx : airport_tile_desc->gfx[static_cast<size_t>(rotation)]);
 
@@ -439,9 +480,162 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 		if (!IsInfrastructure(t)) {
 			SetAirportTileTracks(t, RotateTrackBits(airport_tile_desc->trackbits, rotation));
 		}
+
+		written_tiles++;
+	}
+
+	if (written_tiles != expected_tiles) {
+		Debug(misc, 1, "Station {}: rebuilt {} airport tiles, but layout {} expects {} tiles", this->index, written_tiles, this->airport.layout, expected_tiles);
+	} else {
+		Debug(misc, 4, "Station {}: rebuilt {} airport tiles from layout {} (rotation {})", this->index, written_tiles, this->airport.layout, static_cast<uint>(rotation));
 	}
 
 	this->UpdateAirportDataStructure();
+}
+
+/**
+ * Check whether the tiles of an airport are exactly the tiles the given layout
+ * produces at the given rotation.
+ * @param st The station to check.
+ * @param layout The layout to check against.
+ * @param rotation The rotation to check against.
+ * @return true iff every airport tile of the station matches the layout.
+ */
+static bool AirportTilesMatchLayout(const Station *st, const AirportTileLayout &layout, uint8_t rotation)
+{
+	for (TileIndex t : st->airport) {
+		if (!st->TileBelongsToAirport(t)) continue;
+		uint pos = RotatedAirportSpecPosition(t, st->airport, static_cast<DiagDirection>(rotation));
+		if (pos >= layout.tiles.size()) return false;
+		const AirportTileTable &tile_desc = layout.tiles[pos];
+		if (tile_desc.type == ATT_INVALID) return false;
+		if (tile_desc.type != GetAirportTileType(t)) return false;
+	}
+	return true;
+}
+
+/**
+ * Convert this station's airport into a custom (tile-defined) airport.
+ *
+ * The tiles are rebuilt from the airport spec layout using the air type graphics of
+ * the stock airport the spec belongs to, and the station's airport type is changed to
+ * AT_CUSTOM. Afterwards the airport no longer depends on the airport spec, and
+ * therefore no longer on the NewGRF which provided that spec.
+ *
+ * The airport is only converted when the tiles which would be produced fit the
+ * airport's footprint exactly; otherwise the existing tiles cannot be rewritten
+ * correctly and the airport is left alone. That can happen when the spec no longer
+ * describes these tiles, e.g. because the NewGRF which defined the airport is gone
+ * (so the airport type maps to a different stock airport) or because the NewGRF
+ * changed the layout of the airport.
+ *
+ * @param verify_tiles Also check that the existing tiles match the layout, and if they
+ *        do not match the stored rotation, look for the rotation which does match.
+ *        This is used for savegames which already store the tiles in the new format.
+ * @return true iff the airport has been converted by this call.
+ */
+bool Station::ConvertAirportToCustom(bool verify_tiles)
+{
+	if (this->airport.tile == INVALID_TILE) return false;
+	if (this->airport.type == AT_CUSTOM) return false;
+	if (this->airport.type == AT_OILRIG) return false; // Oil rigs are not converted to custom airports.
+	if (this->airport.type >= NUM_AIRPORTS) return false; // AT_INVALID, AT_DUMMY or garbage from a savegame.
+
+	const AirportSpec *as = this->airport.GetSpec();
+	if (!as->IsConvertibleToCustom()) {
+		Debug(misc, 2, "Station {}: airport type {} is not convertible to a custom airport", this->index, static_cast<uint>(this->airport.type));
+		return false;
+	}
+
+	uint8_t layout = this->airport.layout;
+	if (layout >= as->layouts.size()) {
+		/* Savegames of NewGRF airports which are no longer loaded may refer to a rotated layout. */
+		if (this->airport.type < NEW_AIRPORT_OFFSET) {
+			Debug(misc, 1, "Station {}: layout {} does not exist for airport type {}, not converting to a custom airport", this->index, static_cast<uint>(layout), static_cast<uint>(this->airport.type));
+			return false;
+		}
+		layout = 0;
+	}
+
+	const AirportTileLayout &tile_layout = as->layouts[layout];
+
+	/* The rotation is stored as a diagonal direction; normalise anything else (e.g. a
+	 * Direction or an invalid value from an old savegame) to north. */
+	uint8_t rotation = static_cast<uint8_t>(this->airport.rotation);
+	if (rotation >= static_cast<uint8_t>(DiagDirection::End)) rotation = 0;
+
+	auto rotation_fits = [&](uint8_t rot) -> bool {
+		if (this->airport.w == 0 || this->airport.h == 0) return true; // The dimensions are adopted below.
+		uint w = tile_layout.size_x;
+		uint h = tile_layout.size_y;
+		if (rot % 2 != 0) std::swap(w, h);
+		if (this->airport.w != w || this->airport.h != h) return false;
+		return !verify_tiles || AirportTilesMatchLayout(this, tile_layout, rot);
+	};
+
+	if (!rotation_fits(rotation)) {
+		if (!verify_tiles) {
+			Debug(misc, 1, "Station {}: airport area {}x{} does not match layout {} of airport type {}, not converting to a custom airport", this->index, this->airport.w, this->airport.h, static_cast<uint>(layout), static_cast<uint>(this->airport.type));
+			return false;
+		}
+
+		/* The stored rotation does not describe the tiles (older savegames did not store
+		 * it for airports built in a rotated orientation); find the rotation which does. */
+		bool found = false;
+		for (uint8_t rot = 0; rot < static_cast<uint8_t>(DiagDirection::End); rot++) {
+			if (rot == rotation || !rotation_fits(rot)) continue;
+			rotation = rot;
+			found = true;
+			break;
+		}
+		if (!found) {
+			Debug(misc, 1, "Station {}: airport tiles do not match layout {} of airport type {}, not converting to a custom airport", this->index, static_cast<uint>(layout), static_cast<uint>(this->airport.type));
+			return false;
+		}
+		Debug(misc, 1, "Station {}: airport type {} was built with rotation {}, correcting the stored rotation", this->index, static_cast<uint>(this->airport.type), static_cast<uint>(rotation));
+	}
+
+	/* Adopt the airport dimensions from the layout if they were not stored. */
+	if (this->airport.w == 0 || this->airport.h == 0) {
+		uint w = tile_layout.size_x;
+		uint h = tile_layout.size_y;
+		if (rotation % 2 != 0) std::swap(w, h);
+		this->airport.w = static_cast<uint16_t>(w);
+		this->airport.h = static_cast<uint16_t>(h);
+	}
+
+	const uint8_t old_type = this->airport.type;
+
+	/* Keep the air type the airport currently uses, so that a converted airport keeps its
+	 * surface: the player may have built it with another air type than the default one of
+	 * the airport spec, or changed it afterwards. When the tiles are in the self-describing
+	 * format they store the air type, otherwise (old saves) the air type of the spec is all
+	 * there is. */
+	AirType airtype = this->airport.air_type;
+	if (airtype == INVALID_AIRTYPE && verify_tiles) {
+		for (TileIndex t : this->airport) {
+			if (!this->TileBelongsToAirport(t)) continue;
+			airtype = GetAirType(t);
+			break;
+		}
+	}
+	if (airtype == INVALID_AIRTYPE || airtype >= AIRTYPE_END) airtype = as->GetCustomAirType();
+
+	/* Rebuild the tiles with the air type graphics, i.e. without the (NewGRF) graphics of
+	 * the layout, and then turn the airport into a custom airport. */
+	this->airport.layout = layout;
+	this->airport.rotation = static_cast<Direction>(rotation);
+	this->LoadAirportTilesFromSpec(this->airport, static_cast<DiagDirection>(rotation), airtype, true);
+
+	/* The airport no longer uses the spec, so drop the NewGRF persistent storage as well. */
+	delete this->airport.psa;
+	this->airport.psa = nullptr;
+
+	this->airport.type = AT_CUSTOM;
+	this->airport.layout = 0;
+
+	Debug(misc, 2, "Station {}: converted airport type {} to a custom airport (air type {})", this->index, static_cast<uint>(old_type), static_cast<uint>(airtype));
+	return true;
 }
 
 /** Update cached variables after loading a game or modifying an airport */
@@ -474,13 +668,20 @@ void Station::UpdateAirportDataStructure()
 		if (!this->TileBelongsToAirport(t)) continue;
 		airport_area.Add(t);
 
-		if (first_hangar != INVALID_TILE) continue;
+		/* Savegames written by other patch packs, or older savegames of this patch pack, can
+		 * contain airport tiles whose air type differs from the air type of the airport, or is
+		 * not a valid air type at all. The air type of the airport is authoritative, so correct
+		 * the tile instead of failing an assertion. */
+		const AirType tile_air_type = static_cast<AirType>(GB(Tile(t).m3(), 0, 4));
+		if (this->airport.air_type == INVALID_AIRTYPE && tile_air_type < AIRTYPE_END) this->airport.air_type = tile_air_type;
 
-		if (this->airport.air_type == INVALID_AIRTYPE) this->airport.air_type = GetAirType(t);
+		if (this->airport.air_type != INVALID_AIRTYPE && tile_air_type != this->airport.air_type) {
+			Debug(misc, 1, "Station {}: airport tile {} has air type {}, expected {}, correcting it",
+					this->index, (uint)t.base(), static_cast<uint>(tile_air_type), static_cast<uint>(this->airport.air_type));
+			SetAirType(t, this->airport.air_type);
+		}
 
-		assert(this->airport.air_type == GetAirType(t));
-
-		if (IsHangar(t)) first_hangar = t;
+		if (first_hangar == INVALID_TILE && IsHangar(t)) first_hangar = t;
 	}
 
 	/* Reconnect a saved hangar before allocating anything: the station's
@@ -526,7 +727,7 @@ void Station::UpdateAirportDataStructure()
 		this->airport.Add(t);
 		this->airport.num_tiles++;
 
-		assert(this->airport.air_type == GetAirType(t));
+		assert(this->airport.air_type == INVALID_AIRTYPE || this->airport.air_type == GetAirType(t));
 
 		if (!MayHaveAirTracks(t)) continue;
 
@@ -624,7 +825,13 @@ TrackBits GetAllowedTracks(TileIndex tile)
 			return tracks;
 		}
 
-		default: NOT_REACHED();
+		default:
+			/* Savegames from other patch packs, or older savegames of this patch pack, can contain
+			 * airport tiles which are not in the multi-tile format; those are not usable as airport
+			 * tiles, but they must not take down the game either. */
+			Debug(misc, 1, "Station {}: airport tile {} has an invalid tile type {}, not allowing any tracks",
+					GetStationIndex(tile).base(), tile.base(), (unsigned)GetAirportTileType(tile));
+			return TRACK_BIT_NONE;
 	}
 }
 

@@ -18,6 +18,11 @@
 #include "track_type.h"
 #include "table/airporttile_ids.h"
 
+struct Station;
+
+void UpdateAircraftOnUpdatedAirport(const Station *st);
+void ConvertAllAirportsToCustom();
+
 CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, TileIndex end_tile, AirType air_type, AirportTileType air_tile_type, AirportTiles infra_type, DiagDirection direction, bool adding, bool diagonal);
 CommandCost CmdAddRemoveAirportTiles(DoCommandFlags flags, TileIndex start_tile, TileIndex end_tile, bool adding, AirType at, StationID station_to_join, bool adjacent);
 CommandCost CmdAddRemoveTracksToAirport(DoCommandFlags flags, TileIndex start_tile, TileIndex end_tile, AirType air_type, bool add, Track track);

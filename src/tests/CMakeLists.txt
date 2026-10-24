@@ -1,4 +1,5 @@
 add_test_files(
+    airport_conversion.cpp
     alternating_iterator.cpp
     bitmath_func.cpp
     command.cpp

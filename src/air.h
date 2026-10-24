@@ -236,6 +236,21 @@ void InitAirTypes();
 
 extern std::vector<AirType> _sorted_airtypes;
 
+/**
+ * Whether airports are converted into custom airports.
+ * This is tied to the "allow modifying airports" (custom airport) setting:
+ * enabling the feature converts existing (and newly built) airports into custom
+ * airports, disabling it leaves airports in their spec-based form.
+ */
+bool ConvertAirportsToCustomEnabled();
+
 void AfterLoadSetAirportTileTypes();
+
+/**
+ * Log how many of the airports of the game are custom airports, and warn when some
+ * of them could not be converted.
+ * @param action Text describing what triggered the conversion.
+ */
+void LogAirportConversionSummary(const char *action);
 
 #endif /* AIR_H */
