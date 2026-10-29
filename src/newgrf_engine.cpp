@@ -1474,7 +1474,14 @@ static void DoTriggerVehicleRandomisation(Vehicle *v, VehicleRandomTrigger trigg
 	}
 
 	/* Rerandomise bits. Scopes other than SELF are invalid for rerandomisation. For bug-to-bug-compatibility with TTDP we ignore the scope. */
-	uint16_t new_random_bits = Random();
+	uint16_t new_random_bits = 0;
+	/* Depot rolls are frequently empty: when the NewGRF requests no reseed, the
+	 * value below is masked out entirely and the vehicle state is unchanged.
+	 * Advancing the sync RNG for it turns a harmless one-tick difference in
+	 * hangar entry timing into a hard desync, so only roll when it is used. */
+	if (trigger != VehicleRandomTrigger::Depot || reseed != 0) {
+		new_random_bits = Random();
+	}
 	v->random_bits &= ~reseed;
 	v->random_bits |= (first ? new_random_bits : base_random_bits) & reseed;
 
