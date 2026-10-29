@@ -1270,6 +1270,11 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("critical_breakdown_count", SLE_CONDVAR_X(Train, critical_breakdown_count,  SLE_UINT8,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_IMPROVED_BREAKDOWNS, 2))),
 
 		NSLT_STRUCT<TrainLookaheadStateStructHandler>("lookahead"),
+
+		/* Which part of a decoupled train this consist is (0/1/2), read by the
+		 * DecouplePart order condition. Without this a joining client loses the
+		 * marker and may take a different schedule branch than the server. */
+		NSL("decouple_part",            SLE_CONDVAR_X(Train, decouple_part,           SLE_UINT8,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_DECOUPLE_PART))),
 	};
 
 	static const NamedSaveLoad _roadveh_desc[] = {
