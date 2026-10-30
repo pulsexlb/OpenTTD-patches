@@ -5115,8 +5115,10 @@ public:
 			}
 		}
 
-		/* Disable list of vehicles with the same shared orders if there is no list */
-		this->SetWidgetDisabledState(WID_O_SHARED_ORDER_LIST, !(shared_orders || _settings_client.gui.enable_single_veh_shared_order_gui));
+		/* Disable list of vehicles with the same shared orders if there is no list.
+		 * A standalone order list has no vehicle to show, so the button stays inert there. */
+		this->SetWidgetDisabledState(WID_O_SHARED_ORDER_LIST,
+				!this->HasVehicle() || !(shared_orders || _settings_client.gui.enable_single_veh_shared_order_gui));
 
 		if (this->HasVehicle()) {
 			this->GetWidget<NWidgetStacked>(WID_O_SEL_OCCUPANCY)->SetDisplayedPlane(IsWidgetLowered(WID_O_OCCUPANCY_TOGGLE) ? 0 : SZSP_NONE);
@@ -6548,7 +6550,7 @@ public:
 			this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_VALUE, Clamp<uint>(*try_value, 0, 127));
 		}
 
-		if (this->query_text_widget == WID_O_ADD_VEH_GROUP) {
+		if (this->query_text_widget == WID_O_ADD_VEH_GROUP && this->HasVehicle()) {
 			Command<Commands::CreateGroupFromList>::Post(STR_ERROR_GROUP_CAN_T_CREATE, VehicleListIdentifier(VehicleListType::SingleVehicle, this->vehicle->type, this->vehicle->owner, this->vehicle->index), CargoFilterCriteria::CF_ANY, str.has_value() ? *str : std::string{});
 		}
 
@@ -6983,8 +6985,8 @@ public:
 					this->selected_order = -1;
 					this->UpdateButtonState();
 				}
-				if (from_order == to_order && from_order < this->vehicle->GetNumOrders() && EuclideanDistanceSquared(pt, this->drag_start_pt) <= 40 && (MicrosecondsRealtimeTicks() - this->drag_start_time_us) < 250000) {
-					const Order *order = this->vehicle->GetOrder(from_order);
+				if (from_order == to_order && from_order < NumOrders() && EuclideanDistanceSquared(pt, this->drag_start_pt) <= 40 && (MicrosecondsRealtimeTicks() - this->drag_start_time_us) < 250000) {
+					const Order *order = OrderAt(from_order);
 					if (order != nullptr && order->IsType(OT_LABEL) && order->GetLabelSubType() == OLST_TEXT) {
 						if (this->IsWidgetActiveInLayout(WID_O_TEXT_LABEL)) this->OnClick({}, WID_O_TEXT_LABEL, 1);
 					}
@@ -7961,12 +7963,7 @@ void CcInsertOrder(const CommandCost &result, const InsertOrderCmdData &data)
 		return;
 	}
 
-	OrdersWindow *w;
-	if (data.is_list) {
-		w = dynamic_cast<OrdersWindow *>(FindWindowById(WindowClass::OrderListEditor, data.list.base()));
-	} else {
-		w = dynamic_cast<OrdersWindow *>(FindWindowById(WindowClass::VehicleOrders, data.veh));
-	}
+	OrdersWindow *w = dynamic_cast<OrdersWindow *>(FindWindowById(WindowClass::VehicleOrders, data.veh));
 	if (w == nullptr) return;
 
 	w->ScrollTowardsOrder(*pos);

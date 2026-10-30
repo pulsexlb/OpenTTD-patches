@@ -1353,17 +1353,22 @@ Window *GetMainWindow()
 }
 
 /**
- * Delete a window by its class and window number (if it is open).
- * @param cls Window class
- * @param number Number of the window within the window class
- * @param force force closing; if false don't close when stickied
- * @param data Arbitrary data to pass to the Close function.
+ * Get the order list targeted by this window: the vehicle's orders, or the
+ * standalone (player-created) order list when there is no vehicle.
+ * @return The targeted order list, or \c nullptr if there is none.
  */
 const OrderList *GeneralVehicleWindow::GetTargetOrders() const
 {
 	return this->HasVehicle() ? this->vehicle->orders : this->order_list;
 }
 
+/**
+ * Delete a window by its class and window number (if it is open).
+ * @param cls Window class
+ * @param number Number of the window within the window class
+ * @param force force closing; if false don't close when stickied
+ * @param data Arbitrary data to pass to the Close function.
+ */
 void CloseWindowById(WindowClass cls, WindowNumber number, bool force, int data)
 {
 	Window *w = FindWindowById(cls, number);
