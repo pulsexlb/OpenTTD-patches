@@ -7,13 +7,17 @@ body:
       value: |
         感谢您提供 bug 反馈，请一定记得**上传相关错误存档**，并填写通过存档复现方案。没有它们将难以修复问题。
         对于游戏崩溃，请务必上传 crash 存档，crash 日志与 crash.dmp，相关内容可在 `Documents\\OpenTTD` 或游戏安装目录下找到。
+
         Thanks for taking the time to fill out this bug report! Please be sure to **upload the relevant error savegame** and fill in the reproduction steps using the savegame. Without them, it will be difficult to fix the issue.
         For game crashes, be sure to upload the crash savegame, the crash log, and crash.dmp; these can be found under `Documents\\OpenTTD` or in the game installation directory.
   - type: input
     id: version
     attributes:
       label: pxp 版本 / Version of pxp
-      description: 填写你使用的 pxp 版本，包括操作系统版本 / Fill in below what version of OpenTTD you are using, including your OS.
+      description: |
+        填写你使用的 pxp 版本，包括操作系统版本
+
+        Fill in below what version of OpenTTD you are using, including your OS.
       placeholder: ex. 2611.1, Windows 10
     validations:
       required: true
@@ -21,21 +25,30 @@ body:
     id: expected
     attributes:
       label: 操作与预期效果 / Operation and expected result
-      description: 详细描述你所做的操作，与你希望的结果 / Describe what have you done and what you expected to happen.
+      description: |
+        详细描述你所做的操作，与你希望的结果
+
+        Describe what have you done and what you expected to happen.
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
       label: 游戏实际运行结果 / Actual result
-      description: 描述游戏实际运行效果 / Describe what actually happens.
+      description: |
+        描述游戏实际运行效果
+
+        Describe what actually happens.
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
       label: 复现方法 / Steps to reproduce
-      description: 详细描述如何复现相关问题或崩溃，请同时上传游戏存档与日志（先进行压缩打包） / As detailed as possible, please tell us how we can reproduce this. Remember to attach a savegame and log (zip it first) to make it more clear.
+      description: |
+        详细描述如何复现相关问题或崩溃，请同时上传游戏存档与日志（先进行压缩打包）
+
+        As detailed as possible, please tell us how we can reproduce this. Remember to attach a savegame and log (zip it first) to make it more clear.
       placeholder: |
         1. 加载附带的游戏存档 / Loaded the attached savegame.
         2. 列车 #1 进入了车站 / Train #1 entered the station.
@@ -46,4 +59,5 @@ body:
     attributes:
       value: |
         请再次确认您在任意一个输入框内附带了游戏异常存档（对于崩溃，还需上传崩溃日志），感谢支持。
+
         Please double-check that you have attached the game error savegame in any one of the input fields (for crashes, please also upload the crash log). Thank you for your support.
