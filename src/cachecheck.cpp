@@ -619,11 +619,11 @@ void CheckCaches(bool force_check, std::function<void(std::string_view)> log, Ch
 			}
 		}
 
-#ifdef WITH_ASSERT
+		/* Report inconsistencies instead of asserting: this code also runs
+		 * while a desync report is generated, and must not abort the server. */
 		for (OrderList *order_list : OrderList::Iterate()) {
-			order_list->DebugCheckSanity();
+			order_list->CheckSanity(cclog_output);
 		}
-#endif
 
 		extern void ValidateVehicleTickCaches(std::function<void(std::string_view)> log);
 		ValidateVehicleTickCaches(cclog_output);

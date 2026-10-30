@@ -1316,6 +1316,70 @@ bool OrderList::IsCompleteTimetable() const
 	return true;
 }
 
+/**
+ * Checks the internal consistency of the order list and reports every
+ * inconsistency through \a log instead of asserting.
+ *
+ * This is used from the cache checks, which also run while a desync report is
+ * being generated. Aborting there would kill a server that is only trying to
+ * report a problem, and would discard the very information needed to diagnose
+ * it. The hard assertions are kept in #DebugCheckSanity for the callers where
+ * an inconsistent list is a programming error that must not be ignored.
+ * @param log Callback receiving a description of each inconsistency found.
+ */
+void OrderList::CheckSanity(const std::function<void(std::string_view)> &log) const
+{
+	VehicleOrderID check_num_orders = 0;
+	VehicleOrderID check_num_manual_orders = 0;
+	size_t check_num_vehicles = 0;
+	Ticks check_timetable_duration = 0;
+	Ticks check_total_duration = 0;
+
+	Debug(misc, 6, "Checking OrderList {} for sanity...", this->index);
+
+	for (const Order *o : this->Orders()) {
+		++check_num_orders;
+		if (!o->IsType(OT_IMPLICIT)) ++check_num_manual_orders;
+		if (!o->IsType(OT_CONDITIONAL)) {
+			check_timetable_duration += o->GetTimetabledWait() + o->GetTimetabledTravel();
+			check_total_duration += o->GetWaitTime() + o->GetTravelTime();
+		}
+	}
+
+	if (this->GetNumOrders() != check_num_orders) {
+		log(fmt::format("order list {}: num_orders mismatch: stored {}, counted {}", this->index, this->GetNumOrders(), check_num_orders));
+	}
+	if (this->num_manual_orders != check_num_manual_orders) {
+		log(fmt::format("order list {}: num_manual_orders mismatch: stored {}, counted {}", this->index, this->num_manual_orders, check_num_manual_orders));
+	}
+	if (this->timetable_duration != check_timetable_duration) {
+		log(fmt::format("order list {}: timetable_duration mismatch: stored {}, counted {}", this->index, this->timetable_duration, check_timetable_duration));
+	}
+	if (this->total_duration != check_total_duration) {
+		log(fmt::format("order list {}: total_duration mismatch: stored {}, counted {}", this->index, this->total_duration, check_total_duration));
+	}
+
+	/* Stop after more vehicles than exist in the pool: a corrupted chain may be cyclic. */
+	const size_t max_vehicles = Vehicle::GetNumItems();
+	for (const Vehicle *v = this->first_shared; v != nullptr; v = v->NextShared()) {
+		if (++check_num_vehicles > max_vehicles) {
+			log(fmt::format("order list {}: shared chain is longer than the {} vehicles in the pool (cycle?)", this->index, max_vehicles));
+			return;
+		}
+		if (v->orders != this) {
+			log(fmt::format("order list {}: shared chain vehicle {} has orders pointer {} (primary order list {}), expected order list {}",
+					this->index, v->index, fmt::ptr(v->orders), v->primary_order, this->index));
+		}
+	}
+	if (this->num_vehicles != check_num_vehicles) {
+		log(fmt::format("order list {}: num_vehicles mismatch: stored {}, counted {}", this->index, this->num_vehicles, check_num_vehicles));
+	}
+
+	Debug(misc, 6, "... detected {} orders ({} manual), {} vehicles, {} timetabled, {} total",
+			this->GetNumOrders(), this->num_manual_orders,
+			this->num_vehicles, this->timetable_duration, this->total_duration);
+}
+
 #ifdef WITH_ASSERT
 /**
  * Checks for internal consistency of order list. Triggers assertion if something is wrong.
