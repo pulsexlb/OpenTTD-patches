@@ -81,12 +81,26 @@ function output_hash_list {
 
 function read_source {
 	handle_source "CMakeLists.txt" "$1"
-	while IFS=$'\n' read -r line; do
-		handle_source "$line" "$1"
-	done < <( find -L src -type f \( -name 'CMakeLists.txt' -o -name '*.cpp' -o -name '*.c' -o -name '*.hpp' -o -name '*.h' -o -name '*.sq' -o -name '*.mm' -o -name '*.in' \) -print | LC_ALL=C sort )
-	while IFS=$'\n' read -r line; do
-		handle_source "$line" "$1"
-	done < <( find -L src/lang -type f -name '*.txt' -print | LC_ALL=C sort )
+	# When the source tree is a git checkout, only hash the files that are
+	# actually part of the commit.  Release tarballs are created from the
+	# commit as well, so hashing untracked working-tree files here would make
+	# the release hash differ from the hash computed in CI (with a .git-less
+	# tree), and thus give release builds a "-H..." version suffix.
+	if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+		while IFS=$'\n' read -r line; do
+			handle_source "$line" "$1"
+		done < <( git ls-files -z -- src | tr '\0' '\n' | grep -E '(^|/)CMakeLists\.txt$|\.(cpp|c|hpp|h|sq|mm|in)$' | LC_ALL=C sort )
+		while IFS=$'\n' read -r line; do
+			handle_source "$line" "$1"
+		done < <( git ls-files -z -- src/lang | tr '\0' '\n' | grep -E '\.txt$' | LC_ALL=C sort )
+	else
+		while IFS=$'\n' read -r line; do
+			handle_source "$line" "$1"
+		done < <( find -L src -type f \( -name 'CMakeLists.txt' -o -name '*.cpp' -o -name '*.c' -o -name '*.hpp' -o -name '*.h' -o -name '*.sq' -o -name '*.mm' -o -name '*.in' \) -print | LC_ALL=C sort )
+		while IFS=$'\n' read -r line; do
+			handle_source "$line" "$1"
+		done < <( find -L src/lang -type f -name '*.txt' -print | LC_ALL=C sort )
+	fi
 }
 
 if [ -z "$HASH" -a -z "$NAMES" -a -z "$HASHLIST" -a -z "$TESTOK" -a -z "$WRITE" -a -z "$RELEASETAG" ]; then
