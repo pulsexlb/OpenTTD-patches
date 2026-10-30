@@ -4986,12 +4986,29 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 		 * there, tiles past it are not travelled. */
 		{
 			TileIndexDiff step = TileOffsByDiagDir(ft.exitdir);
+			const TileIndex front_ahead = TileAddByDiagDir(v->GetMovingFront()->tile, ft.exitdir);
 			bool foreign = false;
 			TileIndex foreign_tile = INVALID_TILE;
 			for (int i = 1; i <= ft.tiles_skipped + 1; i++) {
 				TileIndex t = ft.new_tile - step * (ft.tiles_skipped + 1 - i);
 				if (!IsValidTile(t) || !IsRailStationTile(t)) continue;
 				if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerVehicleTile(v, t)) break;
+				if (t == front_ahead) {
+					/* The just-decoupled partner may straddle the cut onto the
+					 * first tile ahead of us; like on the cut tile itself, that
+					 * does not stand in our way (see IsDecouplePartnerOnCutTile).
+					 * Only exempt when nothing but such a partner is there. */
+					bool only_decouple_partner = true;
+					for (const Train *w : VehiclesOnTile<VehicleType::Train>(t)) {
+						const Train *wp = w->Primary();
+						if (wp == v->Primary()) continue;
+						if (!wp->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending})) {
+							only_decouple_partner = false;
+							break;
+						}
+					}
+					if (only_decouple_partner) continue;
+				}
 				if (HasForeignConsistOnTile(v, t)) {
 					foreign = true;
 					foreign_tile = t;
@@ -6029,6 +6046,24 @@ static bool IsCouplePartnerOf(const Train *consist, const Train *other)
 }
 
 /**
+ * Whether \a other is the former partner of a just-performed decouple, still
+ * standing on the cut tile both parts necessarily share: the position where the
+ * two parts meet. That partner does not stand in our way there. Both flags have
+ * to count: an opposite-direction part carries JustDecoupled, a same-direction
+ * part carries SameDirDecouplePending instead, and those two wait for each
+ * other, so only exempting one of them deadlocks both.
+ * @param consist The train whose front tile is the cut tile.
+ * @param other   The vehicle found on that tile.
+ * @param tile    The tile the vehicle was found on.
+ * @return \c true when this is the decouple partner on the shared cut tile.
+ */
+static bool IsDecouplePartnerOnCutTile(const Train *consist, const Train *other, TileIndex tile)
+{
+	if (tile != consist->GetMovingFront()->tile) return false;
+	return other->Primary()->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending});
+}
+
+/**
  * Whether another consist is standing between us and the platform exit, that is, on the part of
  * our own platform we are about to travel along.
  *
@@ -6066,11 +6101,12 @@ static bool IsPlatformAheadOccupied(const Train *consist)
 			 * exemption to that cut tile: once we have turned around to follow the
 			 * partner's direction, the partner still leaving the station stands
 			 * ahead of us on the platform and very much blocks us, and a blanket
-			 * exemption let us reserve a path straight into its tail. JustDecoupled
-			 * is only kept while the part is still in the station it decoupled
+			 * exemption let us reserve a path straight into its tail. The flags
+			 * are only kept while the part is still in the station it decoupled
 			 * at, so this exemption cannot hide a consist we later meet on the
-			 * same platform after having left and returned. */
-			if (u->Primary()->flags.Test(VehicleRailFlag::JustDecoupled) && tile == moving_front->tile) continue;
+			 * same platform after having left and returned. Both decouple flags
+			 * count: the same-direction part carries SameDirDecouplePending. */
+			if (IsDecouplePartnerOnCutTile(consist, u, tile)) continue;
 			return true;
 		}
 	}

@@ -1017,8 +1017,13 @@ Train *FindForeignTrainOnReservation(const Train *v)
 					/* A just-decoupled partner necessarily shares the tile
 					 * around the cut with us (see IsPlatformAheadOccupied); it
 					 * does not stand in our way on that first tile, and the
-					 * partner may wait there for a couple indefinitely. */
-					if (tile == front->tile && u->Primary()->flags.Test(VehicleRailFlag::JustDecoupled)) continue;
+					 * partner may wait there for a couple indefinitely. Both
+					 * decouple flags count: the same-direction part carries
+					 * SameDirDecouplePending, and the two parts wait for each
+					 * other, so exempting only one of them deadlocks both. */
+					const bool cut_tile = tile == front->tile &&
+							u->Primary()->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending});
+					if (cut_tile) continue;
 					result = u;
 					return true;
 				}
