@@ -45,6 +45,13 @@ extern std::vector<ObjectSpec> _object_specs;
 extern AirTypeInfo _airtypes[AIRTYPE_END];
 extern void UpdateAircraftOnUpdatedAirport(const Station *st);
 
+/** GRFIDs used by the NewGRF style/object tests below. */
+static constexpr GrfID TEST_GRFID("\x12\x34\x56\x78");
+static constexpr GrfID TEST_GRFID_ALT("\x87\x65\x43\x21");
+static constexpr GrfID TEST_GRFID_DEAD("\xDE\xAD\xBE\xEF");
+static constexpr GrfID TEST_GRFID_1("\x11\x11\x22\x22");
+static constexpr GrfID TEST_GRFID_2("\x22\x22\x33\x33");
+
 TEST_CASE("Blueprint - signal identity follows remapped and enabled style slots")
 {
 	AutoRestoreBackup mappings(_new_signal_style_mapping, AutoRestoreBackupNoNewValueTag{});
@@ -54,15 +61,15 @@ TEST_CASE("Blueprint - signal identity follows remapped and enabled style slots"
 	GRFFile grf;
 	_new_signal_style_mapping.fill({});
 	_new_signal_styles.fill({});
-	_new_signal_style_mapping[3] = {0x12345678, 9};
+	_new_signal_style_mapping[3] = {TEST_GRFID, 9};
 	_new_signal_styles[3].grffile = &grf;
-	CHECK(ResolveBlueprintSignalStyle({0x12345678, 9}) == 4);
+	CHECK(ResolveBlueprintSignalStyle({TEST_GRFID, 9}) == 4);
 	CHECK(ResolveBlueprintSignalStyle({}) == 0);
-	CHECK_FALSE(ResolveBlueprintSignalStyle({0x12345678, 10}).has_value());
+	CHECK_FALSE(ResolveBlueprintSignalStyle({TEST_GRFID, 10}).has_value());
 	std::swap(_new_signal_style_mapping[3], _new_signal_style_mapping[1]);
 	std::swap(_new_signal_styles[3], _new_signal_styles[1]);
 	_enabled_new_signal_styles_mask = 1 << 2;
-	CHECK(ResolveBlueprintSignalStyle({0x12345678, 9}) == 2);
+	CHECK(ResolveBlueprintSignalStyle({TEST_GRFID, 9}) == 2);
 	AllocateMap(64, 64);
 	auto cleanup = scope_guard([] { DeallocateMap(); });
 	AutoRestoreBackup local(_local_company, OWNER_BEGIN);
@@ -74,9 +81,9 @@ TEST_CASE("Blueprint - signal identity follows remapped and enabled style slots"
 	Blueprint bp;
 	CopyAreaToBlueprint(TileArea(tile, 1, 1), bp);
 	REQUIRE(bp.signals.size() == 1);
-	CHECK(bp.signals[0].spec == BlueprintSpecRef{0x12345678, 9});
+	CHECK(bp.signals[0].spec == BlueprintSpecRef{TEST_GRFID, 9});
 	_enabled_new_signal_styles_mask = 0;
-	CHECK_FALSE(ResolveBlueprintSignalStyle({0x12345678, 9}).has_value());
+	CHECK_FALSE(ResolveBlueprintSignalStyle({TEST_GRFID, 9}).has_value());
 }
 
 TEST_CASE("Blueprint - complete multitile objects copy once and incomplete selections skip them")
@@ -88,7 +95,7 @@ TEST_CASE("Blueprint - complete multitile objects copy once and incomplete selec
 	AutoRestoreBackup current(_current_company, OWNER_BEGIN);
 	auto cleanup = scope_guard([] { ClearBlueprintUndoStack(); _object_pool.CleanPool(); DeallocateMap(); });
 	ObjectSpec &spec = _object_specs[5];
-	spec.grf_prop.grfid = 0x12345678;
+	spec.grf_prop.grfid = TEST_GRFID;
 	spec.grf_prop.local_id = 333;
 	spec.views = 4;
 	spec.size = 0x32;
@@ -101,7 +108,7 @@ TEST_CASE("Blueprint - complete multitile objects copy once and incomplete selec
 	CHECK(bp.height == 3);
 	CHECK(bp.objects[0].offset.x == 0);
 	CHECK(bp.objects[0].offset.y == 0);
-	CHECK(bp.objects[0].spec == BlueprintSpecRef{0x12345678, 333});
+	CHECK(bp.objects[0].spec == BlueprintSpecRef{TEST_GRFID, 333});
 	CHECK(bp.objects[0].view == 2);
 	CHECK(CopyAreaToBlueprint(TileArea(TileXY(10, 10), 1, 3), bp) == 0);
 	CHECK(CopyAreaToBlueprint(TileArea(TileXY(11, 10), 1, 3), bp) == 0);
@@ -127,8 +134,8 @@ TEST_CASE("Blueprint - objects and signal identities survive all eight transform
 	Blueprint bp;
 	bp.width = 5;
 	bp.height = 4;
-	bp.objects.push_back({{1, 1}, {0x12345678, 12}, 0, 4, 2, 3});
-	bp.signals.push_back({{0, 0}, TRACK_X, SignalType::Path, SignalVariant::Electric, true, false, {0x87654321, 8}});
+	bp.objects.push_back({{1, 1}, {TEST_GRFID, 12}, 0, 4, 2, 3});
+	bp.signals.push_back({{0, 0}, TRACK_X, SignalType::Path, SignalVariant::Electric, true, false, {TEST_GRFID_ALT, 8}});
 	for (uint8_t rotation = 0; rotation < 4; ++rotation) for (bool reflected : {false, true}) {
 		Blueprint transformed = TransformBlueprint(bp, rotation, reflected);
 		REQUIRE(transformed.objects.size() == 1);
@@ -160,11 +167,11 @@ TEST_CASE("Blueprint - missing objects and signal styles fail before terrain cha
 	data.height_offset = 3;
 	StringID error;
 	SECTION("object") {
-		data.blueprint.objects.push_back({{0, 0}, {0xDEADBEEF, 12}, 0, 1, 1, 1});
+		data.blueprint.objects.push_back({{0, 0}, {TEST_GRFID_DEAD, 12}, 0, 1, 1, 1});
 		error = STR_BLUEPRINT_ERROR_MISSING_OBJECT;
 	}
 	SECTION("signal") {
-		data.blueprint.signals.push_back({{0, 0}, TRACK_X, SignalType::Path, SignalVariant::Electric, true, false, {0xDEADBEEF, 12}});
+		data.blueprint.signals.push_back({{0, 0}, TRACK_X, SignalType::Path, SignalVariant::Electric, true, false, {TEST_GRFID_DEAD, 12}});
 		error = STR_BLUEPRINT_ERROR_MISSING_SIGNAL_STYLE;
 	}
 	TileIndex tile = TileXY(10, 10);
@@ -189,7 +196,7 @@ TEST_CASE("Blueprint - version four payload has no signal styles or objects")
 	Blueprint bp;
 	REQUIRE(DeserialiseBlueprint(reader, bp, {}));
 	REQUIRE(bp.signals.size() == 1);
-	CHECK(bp.signals[0].spec.grfid == 0);
+	CHECK(bp.signals[0].spec.grfid == GrfID{});
 	CHECK(bp.signals[0].along);
 	CHECK(bp.objects.empty());
 }
@@ -200,7 +207,7 @@ TEST_CASE("Blueprint - object footprints and view indices are validated before b
 	auto cleanup = scope_guard([] { DeallocateMap(); });
 	BlueprintPasteData data;
 	data.blueprint.width = data.blueprint.height = 2;
-	data.blueprint.objects.push_back({{0, 0}, {0x12345678, 1}, 0, 4, 1, 1});
+	data.blueprint.objects.push_back({{0, 0}, {TEST_GRFID, 1}, 0, 4, 1, 1});
 	SECTION("outside bounds") { data.blueprint.objects[0].w = 3; }
 	SECTION("zero width") { data.blueprint.objects[0].w = 0; }
 	SECTION("invalid view") { data.blueprint.objects[0].view = 255; }
@@ -536,11 +543,11 @@ TEST_CASE("Blueprint - paste data serialization round-trip")
 	bp.height = 2;
 	bp.name = "Test Junction";
 	bp.rail_tracks.push_back({{1, 0}, TRACK_LOWER, RAILTYPE_MONO});
-	bp.signals.push_back({{2, 1}, TRACK_X, SignalType::Path, SignalVariant::Semaphore, true, false, {0x11112222, 7}});
-	bp.objects.push_back({{0, 0}, {0x22223333, 500}, 1, 4, 3, 2});
+	bp.signals.push_back({{2, 1}, TRACK_X, SignalType::Path, SignalVariant::Semaphore, true, false, {TEST_GRFID_1, 7}});
+	bp.objects.push_back({{0, 0}, {TEST_GRFID_2, 500}, 1, 4, 3, 2});
 	bp.tunnel_bridges.push_back({{0, 0}, {2, 0}, TransportType::Road, true, 5, INVALID_RAILTYPE, ROADTYPE_ROAD, INVALID_ROADTYPE});
-	bp.station_tiles.push_back({{0, 1}, false, Axis::Y, RAILTYPE_ELECTRIC, StationID{42}, {0x12345678, 321}});
-	bp.road_stops.push_back({{1, 1}, StationType::Bus, true, DiagDirection::Invalid, Axis::X, ROADTYPE_ROAD, INVALID_ROADTYPE, StationID{43}, {0x87654321, 654}});
+	bp.station_tiles.push_back({{0, 1}, false, Axis::Y, RAILTYPE_ELECTRIC, StationID{42}, {TEST_GRFID, 321}});
+	bp.road_stops.push_back({{1, 1}, StationType::Bus, true, DiagDirection::Invalid, Axis::X, ROADTYPE_ROAD, INVALID_ROADTYPE, StationID{43}, {TEST_GRFID_ALT, 654}});
 	bp.corner_heights = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
 
 	std::vector<uint8_t> buffer;
@@ -605,10 +612,10 @@ TEST_CASE("Blueprint - NewGRF styles survive transforms and stay separate in sta
 	Blueprint bp;
 	bp.width = 3;
 	bp.height = 1;
-	bp.station_tiles.push_back({{0, 0}, false, Axis::X, RAILTYPE_RAIL, StationID{1}, {0x12345678, 1}});
-	bp.station_tiles.push_back({{1, 0}, false, Axis::X, RAILTYPE_RAIL, StationID{1}, {0x12345678, 2}});
-	bp.station_tiles.push_back({{2, 0}, true, Axis::X, RAILTYPE_RAIL, StationID{2}, {0x87654321, 3}});
-	bp.road_stops.push_back({{0, 0}, StationType::RoadWaypoint, true, DiagDirection::Invalid, Axis::X, ROADTYPE_ROAD, INVALID_ROADTYPE, StationID{3}, {0x87654321, 4}});
+	bp.station_tiles.push_back({{0, 0}, false, Axis::X, RAILTYPE_RAIL, StationID{1}, {TEST_GRFID, 1}});
+	bp.station_tiles.push_back({{1, 0}, false, Axis::X, RAILTYPE_RAIL, StationID{1}, {TEST_GRFID, 2}});
+	bp.station_tiles.push_back({{2, 0}, true, Axis::X, RAILTYPE_RAIL, StationID{2}, {TEST_GRFID_ALT, 3}});
+	bp.road_stops.push_back({{0, 0}, StationType::RoadWaypoint, true, DiagDirection::Invalid, Axis::X, ROADTYPE_ROAD, INVALID_ROADTYPE, StationID{3}, {TEST_GRFID_ALT, 4}});
 	for (uint rotation = 0; rotation < 4; ++rotation) {
 		for (bool reflected : {false, true}) {
 			Blueprint transformed = TransformBlueprint(bp, rotation, reflected);
@@ -648,8 +655,8 @@ TEST_CASE("Blueprint - legacy station and road stop payloads remain readable")
 	REQUIRE(bp.road_stops.size() == 1);
 	CHECK(bp.station_tiles[0].station == StationID{12});
 	CHECK(bp.road_stops[0].station == StationID{13});
-	CHECK(bp.station_tiles[0].spec.grfid == 0);
-	CHECK(bp.road_stops[0].spec.grfid == 0);
+	CHECK(bp.station_tiles[0].spec.grfid == GrfID{});
+	CHECK(bp.road_stops[0].spec.grfid == GrfID{});
 }
 
 TEST_CASE("Blueprint - missing NewGRF styles fail before changing the landscape")
@@ -658,10 +665,10 @@ TEST_CASE("Blueprint - missing NewGRF styles fail before changing the landscape"
 	BlueprintPasteData data;
 	data.blueprint.width = data.blueprint.height = 1;
 	SECTION("rail station") {
-		data.blueprint.station_tiles.push_back({{0, 0}, false, Axis::X, RAILTYPE_RAIL, StationID{1}, {0xDEADBEEF, 123}});
+		data.blueprint.station_tiles.push_back({{0, 0}, false, Axis::X, RAILTYPE_RAIL, StationID{1}, {TEST_GRFID_DEAD, 123}});
 	}
 	SECTION("road waypoint") {
-		data.blueprint.road_stops.push_back({{0, 0}, StationType::RoadWaypoint, true, DiagDirection::Invalid, Axis::X, ROADTYPE_ROAD, INVALID_ROADTYPE, StationID{1}, {0xDEADBEEF, 123}});
+		data.blueprint.road_stops.push_back({{0, 0}, StationType::RoadWaypoint, true, DiagDirection::Invalid, Axis::X, ROADTYPE_ROAD, INVALID_ROADTYPE, StationID{1}, {TEST_GRFID_DEAD, 123}});
 	}
 	const TileIndex tile = TileXY(10, 10);
 	const TileType before = GetTileType(tile);
@@ -1289,7 +1296,7 @@ TEST_CASE_METHOD(BlueprintRestrictionFixture, "Blueprint - restriction snapshot 
 	MakeRailNormal(target, _current_company, TRACK_BIT_X, RAILTYPE_RAIL);
 	GameRandomSeedChecker random_checker;
 	auto paste_result = CmdPasteBlueprint(DoCommandFlag::Execute, target, transported);
-	INFO("Paste error " << paste_result.GetErrorMessage());
+	INFO("Paste error " << paste_result.GetErrorMessage().base());
 	REQUIRE(paste_result.Succeeded());
 	auto *pasted = GetTraceRestrictProgram(MakeTraceRestrictRefId(target, TRACK_X), false);
 	REQUIRE(pasted != nullptr);

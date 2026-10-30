@@ -31,6 +31,7 @@
 #include "../gfx_type.h"
 #include "../sl/saveload.h"
 #include "../sl/saveload_filter.h"
+#include "../sl/saveload_func.h"
 #include "../strings_func.h"
 
 extern std::string _savegame_format;
@@ -41,7 +42,7 @@ extern void UpdateVehicleTileHash(Vehicle *v, bool remove);
 struct CoupleSnapshotCapture : SaveFilter {
 	std::vector<uint8_t> bytes;
 	CoupleSnapshotCapture() : SaveFilter(nullptr) {}
-	void Write(uint8_t *data, size_t size) override { bytes.insert(bytes.end(), data, data + size); }
+	void Write(const uint8_t *data, size_t size) override { bytes.insert(bytes.end(), data, data + size); }
 };
 
 TEST_CASE("Aircraft - state transitions refresh callback caches even when stopped")
@@ -341,8 +342,8 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - callback trial restores both co
 	SetBit(engine->cb36_properties_used, PROP_TRAIN_USER_DATA);
 	CallbackResultSpriteGroup result(0x400);
 	DeterministicSpriteGroup group(SpriteGroupID::Invalid());
-	group.size = DSG_SIZE_DWORD;
-	group.var_scope = VSG_SCOPE_SELF;
+	group.size = DeterministicSpriteGroupSize::DWord;
+	group.var_scope = VarSpriteGroupScope::Self;
 	DeterministicSpriteGroupAdjust adjust{};
 	adjust.variable = 0x40;
 	adjust.and_mask = UINT32_MAX;

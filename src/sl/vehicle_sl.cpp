@@ -1086,7 +1086,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("progress",                       SLE_VAR(Vehicle, progress,                  SLE_UINT8)),
 
 		NSL("vehstatus",                      SLE_VAR(Vehicle, vehstatus,                 SLE_UINT8)),
-		NSL("consist_primary",          SLE_CONDVAR_X(Vehicle, consist_primary,           SLE_UINT8,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_PRIMARY))),
+		NSL("consist_primary",          SLE_CONDVAR_X(Vehicle, consist_primary,           SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_PRIMARY))),
 		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),
@@ -1150,7 +1150,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("current_order.travel_time",SLE_CONDVAR_X(Vehicle, current_order.travel_time, SLE_FILE_U16 | SLE_VAR_U32, SLV_67, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA, 0, 5))),
 		NSL("current_order.travel_time",SLE_CONDVAR_X(Vehicle, current_order.travel_time, SLE_UINT32,                 SLV_67, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLE_EXTRA, 6))),
 		NSL("current_order.max_speed",    SLE_CONDVAR(Vehicle, current_order.max_speed,   SLE_UINT16,                 SLV_174, SL_MAX_VERSION)),
-		NSL("current_order.decouple_flags", SLE_CONDVAR(Vehicle, current_order.decouple_flags, SLE_UINT8,             SL_MIN_VERSION, SL_MAX_VERSION)),
+		NSL("current_order.decouple_flags", SLE_CONDVAR_X(Vehicle, current_order.decouple_flags, SLE_UINT8,          SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_ORDER_DECOUPLE))),
 
 		NSLT_STRUCT<VehicleOrderExtraDataStructHandler>("current_order.extra"),
 
@@ -1162,8 +1162,8 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("orders",                    SLEG_CONDVAR(_old_order_item_ref,                SLE_UINT32,                 SLV_69, SLV_105)),
 		NSL("orders",                     SLE_CONDREF(Vehicle, orders,                    REF_ORDERLIST,              SLV_105, SL_MAX_VERSION)),
 
-		NSL("primary_order",            SLE_CONDVAR_X(Vehicle, primary_order,              SLE_UINT16,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_VEHICLE_PRIMARY_ORDER))),
-		NSL("primary_order_index",      SLE_CONDVAR_X(Vehicle, primary_order_index,        SLE_UINT16,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_VEHICLE_PRIMARY_ORDER))),
+		NSL("primary_order",            SLE_CONDVAR_X(Vehicle, primary_order,              SLE_UINT16,                 SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_VEHICLE_PRIMARY_ORDER))),
+		NSL("primary_order_index",      SLE_CONDVAR_X(Vehicle, primary_order_index,        SLE_UINT16,                 SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_VEHICLE_PRIMARY_ORDER))),
 		NSL("execute_schedule_stack", SLE_CONDVARVEC_X(Vehicle, execute_schedule_stack, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_VEHICLE_PRIMARY_ORDER, 2))),
 
 		NSL("age",                        SLE_CONDVAR(Vehicle, age,                       SLE_FILE_U16 | SLE_VAR_I32, SL_MIN_VERSION, SLV_31)),
@@ -1330,7 +1330,6 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("next_pos.y",                 SLE_CONDVAR(Aircraft, next_pos.y,              SLE_UINT32,                  SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("next_pos.pos",               SLE_CONDVAR(Aircraft, next_pos.pos,            SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("crashed_counter",           SLE_VAR(Aircraft, crashed_counter,            SLE_UINT16)),
-		NSL("aircraft_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION)),
 		NSL("pos",                       SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SL_MIN_VERSION, SL_MAX_VERSION)), // legacy aircraft position, LEGACY_AIRCRAFT_POS_NONE for savegames using the new aircraft controller
 
 		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,          SLE_FILE_U8  | SLE_VAR_U16,  SL_MIN_VERSION, SLV_5)),

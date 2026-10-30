@@ -190,7 +190,7 @@ NamedSaveLoadTable GetOrderDescription()
 	static const NamedSaveLoad _order_desc[] = {
 		NSL("type",         SLE_CONDVAR_X(Order, type,               SLE_FILE_U8 | SLE_VAR_U16,    SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 0, 0))),
 		NSL("type",         SLE_CONDVAR_X(Order, type,               SLE_UINT16,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_DECOUPLE, 1))),
-		NSL("decouple_flags",      SLE_CONDVAR(Order, decouple_flags,    SLE_UINT8,  SL_MIN_VERSION, SL_MAX_VERSION)),
+		NSL("decouple_flags",      SLE_CONDVAR_X(Order, decouple_flags,    SLE_UINT8,  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_ORDER_DECOUPLE))),
 		NSL("flags",         SLE_CONDVAR_X(Order, flags,              SLE_FILE_U8 | SLE_VAR_U16,    SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 0, 0))),
 		NSL("flags",         SLE_CONDVAR_X(Order, flags,              SLE_UINT16,                   SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_FLAGS_EXTRA, 1))),
 		NSL("",             SLE_CONDNULL_X(1,                                                       SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP))),
@@ -551,13 +551,13 @@ NamedSaveLoadTable GetOrderListDescription()
 
 		NSLT("route_overlay_colour", SLE_VAR(OrderList, route_overlay_colour, SLE_UINT8)),
 
-		NSL("name",              SLE_SSTR(OrderList, name, SLE_STR)),
+		NSL("name",              SLE_CONDSSTR_X(OrderList, name, SLE_STR, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_VECTOR))),
 		NSL("is_schedule_group", SLE_CONDVAR_X(OrderList, is_schedule_group, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_LIST_GROUPS))),
 		NSL("schedule_group", SLE_CONDVAR_X(OrderList, schedule_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_LIST_GROUPS))),
-		NSL("company",           SLE_VAR(OrderList, company, SLE_UINT8)),
-		NSL("is_public",         SLE_VAR(OrderList, is_public, SLE_BOOL)),
-		NSL("dispatch_enabled",  SLE_VAR(OrderList, dispatch_enabled, SLE_BOOL)),
-		NSL("separation_enabled", SLE_VAR(OrderList, separation_enabled, SLE_BOOL)),
+		NSL("company",           SLE_CONDVAR_X(OrderList, company, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_VECTOR))),
+		NSL("is_public",         SLE_CONDVAR_X(OrderList, is_public, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_VECTOR))),
+		NSL("dispatch_enabled",  SLE_CONDVAR_X(OrderList, dispatch_enabled, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_VECTOR))),
+		NSL("separation_enabled", SLE_CONDVAR_X(OrderList, separation_enabled, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ORDER_VECTOR))),
 
 		NSLT_STRUCTLIST<OrderListDispatchScheduleStructHandler>("dispatch_schedule"),
 		NSLT_STRUCTLIST<OrderListOrderVectorStructHandler>("order_vector"),
