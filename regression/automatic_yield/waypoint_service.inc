@@ -10,13 +10,14 @@ void WaypointServiceTick()
  const bool reload=std::getenv("PXP_SERVICE_RELOAD")!=nullptr;
  const bool stopping=mode!="pass";
  const bool reversing=mode=="reverse"||mode=="reverse-only";
+ const bool returning=reversing||mode=="stop-backward";
  static bool setup=false,reached=false,stopped=false,saved=false;
  static uint ticks=0,held=0;static StationID waypoint=StationID::Invalid(),destination=StationID::Invalid();
  if(!setup&&_game_mode==GameMode::Editor){
   demo_started=true;DemoBuild();
   DemoRequire(CmdBuildRailWaypoint(DoCommandFlag::Execute,TileXY(120,40),Axis::X,1,1,StationClassID{STAT_CLASS_WAYP},0,StationID::Invalid(),true),"build waypoint");
   waypoint=GetStationIndex(TileXY(120,40));destination=GetStationIndex(TileXY(235,40));
-  if(reversing){DemoRequire(CmdBuildRailStation(DoCommandFlag::Execute,TileXY(27,40),RAILTYPE_RAIL,Axis::X,1,6,StationClassID{0},0,StationID::Invalid(),true),"return station");destination=GetStationIndex(TileXY(27,40));}
+  if(returning){DemoRequire(CmdBuildRailStation(DoCommandFlag::Execute,TileXY(27,40),RAILTYPE_RAIL,Axis::X,1,6,StationClassID{0},0,StationID::Invalid(),true),"return station");destination=GetStationIndex(TileXY(27,40));}
   while(demo_slow->GetNumOrders())DemoRequire(CmdDeleteOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0}),"clear fixture orders");
   Order point;point.MakeGoToWaypoint(waypoint);point.SetNonStopType(ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);
   DemoRequire(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(demo_slow->index,VehicleOrderID{0},point)),"insert waypoint");
@@ -36,7 +37,7 @@ void WaypointServiceTick()
   demo_log=fopen((std::string(std::getenv("PXP_DEMO_OUTPUT"))+"/reload.log").c_str(),"w");
   for(auto*t:Train::Iterate())if(t->IsPrimaryVehicle()){if(t->unitnumber==1)demo_slow=t;if(t->unitnumber==2)demo_fast=t;}
   assert(demo_slow);_current_company=demo_slow->owner;SetLocalCompany(demo_slow->owner);_pause_mode={};
-  waypoint=GetStationIndex(TileXY(120,40));destination=GetStationIndex(TileXY(reversing?27:235,40));
+  waypoint=GetStationIndex(TileXY(120,40));destination=GetStationIndex(TileXY(returning?27:235,40));
   assert(demo_slow->GetOrder(0)->GetServiceNumber()=="WP123");assert(demo_slow->GetActiveServiceNumber()=="WP123");
   setup=true;reached=true;saved=true;
  }

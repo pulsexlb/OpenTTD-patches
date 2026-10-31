@@ -11057,9 +11057,11 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 
 	if (consist->current_order.IsType(OT_WAITING) && consist->reverse_distance == 0) {
 		if (mode) return true;
+		const Order *waiting_order = consist->GetOrder(consist->cur_real_order_index);
+		const bool waypoint_stop = waiting_order != nullptr && waiting_order->IsType(OT_GOTO_WAYPOINT) && waiting_order->GetWaypointFlags().Test(OrderWaypointFlag::Stop);
 		consist->HandleWaiting(false, true);
 		if (consist->current_order.IsType(OT_WAITING)) return true;
-		if (consist->current_order.IsType(OT_GOTO_COUPLE) && CheckReverseTrain(consist)) {
+		if ((consist->current_order.IsType(OT_GOTO_COUPLE) || (waypoint_stop && (consist->current_order.IsBaseStationOrder() || consist->current_order.IsType(OT_GOTO_DEPOT)))) && CheckReverseTrain(consist)) {
 			ReverseTrainDirection(consist);
 			return true;
 		}
