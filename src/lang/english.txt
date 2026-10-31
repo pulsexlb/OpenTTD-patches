@@ -4891,6 +4891,45 @@ STR_VEHICLE_VIEW_ROAD_VEHICLE_SHOW_DETAILS_TOOLTIP              :{BLACK}Show veh
 STR_VEHICLE_VIEW_SHIP_SHOW_DETAILS_TOOLTIP                      :{BLACK}Show ship details. Ctrl+Click to show ship's group
 STR_VEHICLE_VIEW_AIRCRAFT_SHOW_DETAILS_TOOLTIP                  :{BLACK}Show aircraft details. Ctrl+Click to show aircraft's group
 
+# Client 3D presentation controls
+STR_3D_BUTTON                                                  :{BLACK}3D
+STR_3D_RETRO_TITLE                                             :Retro pixel settings
+STR_3D_RETRO_ENABLE                                            :{BLACK}Enable retro pixels
+STR_3D_RETRO_ENABLE_TIP                                        :{BLACK}Toggle the retro treatment for all 3D map and vehicle views. Pressed buttons are enabled. Your choices are saved on this computer
+STR_3D_RETRO_SIZE                                              :{BLACK}Pixel size
+STR_3D_RETRO_SIZE_1                                            :{BLACK}1x
+STR_3D_RETRO_SIZE_2                                            :{BLACK}2x
+STR_3D_RETRO_SIZE_3                                            :{BLACK}3x
+STR_3D_RETRO_SIZE_4                                            :{BLACK}4x
+STR_3D_RETRO_SIZE_TIP                                          :{BLACK}Choose the size of each pixel block. 1x keeps full detail; 3x is the default
+STR_3D_RETRO_COLOURS                                           :{BLACK}Reduced colours
+STR_3D_RETRO_COLOURS_TIP                                       :{BLACK}Limit the world to 512 colours for a retro look
+STR_3D_RETRO_DITHER                                            :{BLACK}Subtle dithering
+STR_3D_RETRO_DITHER_TIP                                        :{BLACK}Use a small repeating pattern to soften colour transitions. Requires reduced colours
+STR_3D_RETRO_NOTE                                              :{BLACK}Applies to the 3D world. Menus and labels stay sharp. Enable 3D from the toolbar to preview.{}Pressed buttons show your current choices.
+STR_3D_TOOLTIP                                                 :{BLACK}3D display, preferences and camera controls
+STR_3D_ACTIVE                                                  :3D display is enabled
+STR_3D_INACTIVE                                                :Classic 2D display is enabled
+STR_3D_UNSUPPORTED                                             :3D unavailable: use an OpenGL driver and a 32-bit blitter
+STR_3D_ENABLE                                                  :Enable 3D
+STR_3D_GROUND                                                  :Textured terrain
+STR_3D_HINTS                                                   :Camera hints
+STR_3D_SHADOWS_OFF                                             :No shadows
+STR_3D_AUTO_VISIBILITY                                         :Automatic visibility and selection outlines
+STR_3D_SHADOWS_CONTACT                                         :Contact shadows
+STR_3D_SHADOWS_SUN                                             :Contact and sun shadows
+STR_3D_CLASSIC                                                 :Return to classic map angle
+STR_3D_ORBIT                                                   :Toggle rotated / classic map angle
+STR_3D_LEFT                                                    :Rotate left
+STR_3D_RIGHT                                                   :Rotate right
+STR_3D_TILT_UP                                                 :Tilt up
+STR_3D_TILT_DOWN                                               :Tilt down
+STR_3D_HELP_TITLE                                              :3D camera help
+STR_3D_ORBIT_HINT                                              :Rotated map - build at this angle; Home switches to the classic angle
+STR_3D_HELP_TEXT                                               :{BLACK}Use the 3D toolbar menu to enable 3D, change textured terrain, camera hints, shadows and automatic visibility, or return to classic 2D. Automatic visibility fades structures around a build target or selected vehicle and outlines the target; locked transparency categories keep their manual setting. Contact shadows softly darken the ground at the foot of buildings and vehicles; sun shadows add shadows cast by the fixed sun, at some extra cost. These preferences are saved on this computer.{}{BLUE}Map camera{BLACK}{}Rotate and tilt with the menu, hold Ctrl while right-dragging the map, or hold the middle mouse button and drag. Comma / period rotate, Page Up / Page Down tilt, and Home switches between the rotated and classic map angles.{}Build and manage at any map angle. Tools follow the terrain under the pointer; track directions stay aligned with the map. Cab and chase views have no construction targets.{}{BLUE}Vehicle cameras{BLACK}{}Open a vehicle window and use its camera button to cycle normal, cab and chase. The camera hotkey defaults to V. Resize the window for a larger view. Cab and chase views are spectator views.{}{BLUE}Keyboard{BLACK}{}Ctrl+Alt+3 opens this menu. Use Up / Down, Enter to select and Escape to close. Shortcuts can be rebound in hotkeys.cfg.{}{BLUE}Compatibility{BLACK}{}3D requires the Windows OpenGL driver with the 32bpp-optimized or 40bpp-anim blitter. Other configurations use classic 2D and retain your preference for a supported launch.
+
+STR_VEHICLE_VIEW_CAMERA_TOOLTIP                                 :{BLACK}Cycle 3D camera view
+
 ###length VEHICLE_TYPES
 STR_VEHICLE_VIEW_TRAIN_STATUS_START_STOP_TOOLTIP                :{BLACK}Current train action - click to stop/start train
 STR_VEHICLE_VIEW_ROAD_VEHICLE_STATUS_START_STOP_TOOLTIP         :{BLACK}Current vehicle action - click to stop/start vehicle

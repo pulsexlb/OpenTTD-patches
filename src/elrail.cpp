@@ -64,10 +64,26 @@
 #include "elrail_func.h"
 #include "company_base.h"
 #include "newgrf_railtype.h"
+#include "landscape.h"
+#include "road_map.h"
 
 #include "table/elrail_data.h"
 
 #include "safeguards.h"
+
+static std::vector<RailCatenaryPiece> *_catenary_pieces = nullptr; ///< Set while CollectRailCatenary records pieces instead of drawing them.
+
+/** World position of a tile's pylon control point. */
+static std::pair<int, int> PCPPosition(TileIndex tile, DiagDirection pcp_pos)
+{
+	return {TileX(tile) * TILE_SIZE + _x_pcp_offsets[pcp_pos], TileY(tile) * TILE_SIZE + _y_pcp_offsets[pcp_pos]};
+}
+
+/** Record a wire from \p a to \p b for CollectRailCatenary; \p pylons as RailCatenaryPiece. */
+static void RecordCatenaryWire(std::pair<int, int> a, int az, std::pair<int, int> b, int bz, uint8_t pylons)
+{
+	_catenary_pieces->push_back({false, pylons, a.first, a.second, az, b.first, b.second, bz});
+}
 
 /**
  * Get the tile location group of a tile.
@@ -292,6 +308,13 @@ void DrawRailCatenaryOnTunnel(const TileInfo *ti)
 {
 	DiagDirection dir = GetTunnelBridgeDirection(ti->tile);
 
+	if (_catenary_pieces != nullptr) {
+		/* From the pylon at the entrance into the hill. */
+		int z = GetTilePixelZ(ti->tile);
+		RecordCatenaryWire(PCPPosition(ti->tile, ReverseDiagDir(dir)), z, PCPPosition(ti->tile, dir), z, 1);
+		return;
+	}
+
 	SpriteID wire_base = GetWireBase(ti->tile, GetRailType(ti->tile));
 
 	const SortableSpriteStruct &sss = _rail_catenary_sprite_data_tunnel[dir];
@@ -503,6 +526,11 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 						continue; // No neighbour, go looking for a better position
 					}
 
+					if (_catenary_pieces != nullptr) {
+						auto [px, py] = PCPPosition(ti->tile, i);
+						_catenary_pieces->push_back({true, 0, int(x), int(y), elevation, px, py, elevation});
+						break;
+					}
 					AddSortableSpriteToDraw(pylon_base + _pylon_sprites[temp], PAL_NONE, x, y, elevation,
 						{{-1, -1, 0}, {1, 1, BB_HEIGHT_UNDER_BRIDGE}, {1, 1, 0}}, IsTransparencySet(TransparencyOption::Catenary), nullptr, special_flags);
 
@@ -516,7 +544,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 	if (IsTunnelTile(ti->tile)) return;
 
 	/* Don't draw a wire under a low bridge */
-	if (IsBridgeAbove(ti->tile) && !IsTransparencySet(TransparencyOption::Bridges)) {
+	if (IsBridgeAbove(ti->tile) && (_catenary_pieces != nullptr || !IsTransparencySet(TransparencyOption::Bridges))) {
 		int height = GetBridgeHeight(GetNorthernBridgeEnd(ti->tile));
 
 		if (height <= GetTileMaxZ(ti->tile) + 1) return;
@@ -577,6 +605,11 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 
 		assert(pcp_config != 0); // We have a pylon on neither end of the wire, that doesn't work (since we have no sprites for that)
 		assert(!IsSteepSlope(tileh[TileSource::Home]));
+		if (_catenary_pieces != nullptr) {
+			DiagDirection a = _pcp_positions[t][0], b = _pcp_positions[t][1];
+			RecordCatenaryWire(PCPPosition(ti->tile, a), GetPCPElevation(ti->tile, a), PCPPosition(ti->tile, b), GetPCPElevation(ti->tile, b), pcp_config);
+			continue;
+		}
 		const SortableSpriteStruct &sss = _rail_catenary_sprite_data[_rail_wires[tileh_selector][t][pcp_config]];
 
 		/*
@@ -622,9 +655,16 @@ void DrawRailCatenaryOnBridge(const TileInfo *ti)
 
 	uint height = GetBridgePixelHeight(end);
 
-	SpriteID wire_base = GetWireBase(end, GetRailType(end), TileContext::OnBridge);
-
-	AddSortableSpriteToDraw(wire_base + sss->image_offset, PAL_NONE, ti->x, ti->y, height, *sss, IsTransparencySet(TransparencyOption::Catenary));
+	if (_catenary_pieces != nullptr) {
+		/* The sprite names the end with a pylon; X wires run from NE to SW and Y wires from SE to NW, as _pcp_positions. */
+		static const uint8_t pylons[2][3] = {{2, 1, 3}, {1, 2, 3}};
+		Track track = AxisToTrack(axis);
+		RecordCatenaryWire(PCPPosition(ti->tile, _pcp_positions[track][0]), height, PCPPosition(ti->tile, _pcp_positions[track][1]), height,
+			pylons[to_underlying(axis)][(sss - _rail_catenary_sprite_data) - WIRE_X_FLAT_SW - to_underlying(offset)]);
+	} else {
+		SpriteID wire_base = GetWireBase(end, GetRailType(end), TileContext::OnBridge);
+		AddSortableSpriteToDraw(wire_base + sss->image_offset, PAL_NONE, ti->x, ti->y, height, *sss, IsTransparencySet(TransparencyOption::Catenary));
+	}
 
 	SpriteID pylon_base = GetPylonBase(end, GetRailType(end), TileContext::OnBridge);
 
@@ -638,7 +678,12 @@ void DrawRailCatenaryOnBridge(const TileInfo *ti)
 		if (HasBit(tlg, (axis == Axis::X ? 0 : 1))) ppp_pos = ReverseDir(ppp_pos);
 		uint x = ti->x + _x_pcp_offsets[pcp_pos] + _x_ppp_offsets[ppp_pos];
 		uint y = ti->y + _y_pcp_offsets[pcp_pos] + _y_ppp_offsets[ppp_pos];
-		AddSortableSpriteToDraw(pylon_base + _pylon_sprites[ppp_pos], PAL_NONE, x, y, height, pylon_bounds, IsTransparencySet(TransparencyOption::Catenary));
+		if (_catenary_pieces != nullptr) {
+			auto [px, py] = PCPPosition(ti->tile, pcp_pos);
+			_catenary_pieces->push_back({true, 0, int(x), int(y), int(height), px, py, int(height)});
+		} else {
+			AddSortableSpriteToDraw(pylon_base + _pylon_sprites[ppp_pos], PAL_NONE, x, y, height, pylon_bounds, IsTransparencySet(TransparencyOption::Catenary));
+		}
 	}
 
 	/* need a pylon on the southern end of the bridge */
@@ -648,7 +693,12 @@ void DrawRailCatenaryOnBridge(const TileInfo *ti)
 		if (HasBit(tlg, (axis == Axis::X ? 0 : 1))) ppp_pos = ReverseDir(ppp_pos);
 		uint x = ti->x + _x_pcp_offsets[pcp_pos] + _x_ppp_offsets[ppp_pos];
 		uint y = ti->y + _y_pcp_offsets[pcp_pos] + _y_ppp_offsets[ppp_pos];
-		AddSortableSpriteToDraw(pylon_base + _pylon_sprites[ppp_pos], PAL_NONE, x, y, height, pylon_bounds, IsTransparencySet(TransparencyOption::Catenary));
+		if (_catenary_pieces != nullptr) {
+			auto [px, py] = PCPPosition(ti->tile, pcp_pos);
+			_catenary_pieces->push_back({true, 0, int(x), int(y), int(height), px, py, int(height)});
+		} else {
+			AddSortableSpriteToDraw(pylon_base + _pylon_sprites[ppp_pos], PAL_NONE, x, y, height, pylon_bounds, IsTransparencySet(TransparencyOption::Catenary));
+		}
 	}
 }
 
@@ -662,6 +712,12 @@ void DrawRailCatenary(const TileInfo *ti)
 	switch (GetTileType(ti->tile)) {
 		case TileType::Railway:
 			if (IsRailDepot(ti->tile)) {
+				if (_catenary_pieces != nullptr) {
+					/* From the pylon at the exit to the depot door at the tile centre. */
+					int z = GetTileMaxPixelZ(ti->tile);
+					RecordCatenaryWire(PCPPosition(ti->tile, GetRailDepotDirection(ti->tile)), z, {ti->x + TILE_SIZE / 2, ti->y + TILE_SIZE / 2}, z, 1);
+					return;
+				}
 				const SortableSpriteStruct &sss = _rail_catenary_sprite_data_depot[GetRailDepotDirection(ti->tile)];
 
 				SpriteID wire_base = GetWireBase(ti->tile, GetRailType(ti->tile));
@@ -683,6 +739,52 @@ void DrawRailCatenary(const TileInfo *ti)
 }
 
 /** Callback for changes to the electrified rails setting. @copydoc IntSettingDesc::PostChangeCallback */
+/**
+ * Collect the pylons and wires the classic view draws on a tile, for the 3D view.
+ * Runs the same placement code as the drawing functions and records each piece instead of drawing its sprite.
+ * Unlike the drawing, it ignores the viewport transparency and invisibility settings.
+ * @param tile The tile.
+ * @param[out] pieces Receives the pieces.
+ */
+void CollectRailCatenary(TileIndex tile, std::vector<RailCatenaryPiece> &pieces)
+{
+	auto drawn = [](RailType rt) { return HasRailCatenary(rt) && !_settings_game.vehicle.disable_elrails; };
+	TileInfo ti;
+	ti.tile = tile;
+	ti.x = TileX(tile) * TILE_SIZE;
+	ti.y = TileY(tile) * TILE_SIZE;
+	std::tie(ti.tileh, ti.z) = GetFoundationPixelSlope(tile);
+
+	_catenary_pieces = &pieces;
+	switch (GetTileType(tile)) {
+		case TileType::Railway:
+			if (drawn(GetRailType(tile))) DrawRailCatenary(&ti);
+			break;
+
+		case TileType::Road:
+			if (IsLevelCrossing(tile) && drawn(GetRailType(tile))) DrawRailCatenary(&ti);
+			break;
+
+		case TileType::Station:
+			if (HasStationRail(tile) && drawn(GetRailType(tile))) DrawRailCatenary(&ti);
+			break;
+
+		case TileType::TunnelBridge:
+			if (GetTunnelBridgeTransportType(tile) == TransportType::Rail && drawn(GetRailType(tile))) {
+				DrawRailCatenary(&ti);
+				if (IsTunnel(tile)) DrawRailCatenaryOnTunnel(&ti);
+			}
+			break;
+
+		default: break;
+	}
+	if (IsBridgeAbove(tile)) {
+		TileIndex south = GetSouthernBridgeEnd(tile);
+		if (GetTunnelBridgeTransportType(south) == TransportType::Rail && drawn(GetRailType(south))) DrawRailCatenaryOnBridge(&ti);
+	}
+	_catenary_pieces = nullptr;
+}
+
 void SettingsDisableElrail(int32_t new_value)
 {
 	bool disable = (new_value != 0);

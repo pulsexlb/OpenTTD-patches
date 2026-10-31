@@ -190,6 +190,7 @@ struct DropdownWindow : Window {
 	{
 		assert(!this->list.empty());
 		this->drag_mode = !this->options.Test(DropDownOption::ClickOnly);
+		if (this->options.Test(DropDownOption::KeyboardNavigation)) this->drag_mode = _left_button_clicked;
 
 		this->parent_wnd_token = parent->GetWindowToken();
 
@@ -438,6 +439,48 @@ struct DropdownWindow : Window {
 			}
 			y += item_height;
 		}
+	}
+
+	EventState OnKeyPress(char32_t, uint16_t keycode) override
+	{
+		if (!this->options.Test(DropDownOption::KeyboardNavigation)) return EventState::NotHandled;
+		if (keycode == WKC_ESC) {
+			this->Close();
+			return EventState::Handled;
+		}
+		if (keycode != WKC_UP && keycode != WKC_DOWN && keycode != WKC_RETURN) return EventState::NotHandled;
+		this->drag_mode = false;
+		this->click_delay = 0;
+		this->scrolling = 0;
+		int current = -1;
+		for (size_t i = 0; i < this->list.size(); ++i) {
+			if (this->list[i]->result == this->selected_result) current = static_cast<int>(i);
+		}
+		if (keycode == WKC_RETURN) {
+			if (current >= 0 && !this->list[current]->masked && this->list[current]->Selectable()) {
+				Window *w2 = FindWindowByToken(this->parent_wnd_token);
+				this->Close();
+				if (w2 != nullptr) w2->OnDropdownSelect(this->parent_button, this->selected_result, this->selected_click_result);
+			}
+			return EventState::Handled;
+		}
+		int count = static_cast<int>(this->list.size());
+		int step = keycode == WKC_DOWN ? 1 : -1;
+		for (int i = 0; i < count; ++i) {
+			current = (current + step + count) % count;
+			const auto &item = this->list[current];
+			if (item->masked || !item->Selectable()) continue;
+			this->selected_result = item->result;
+			this->selected_click_result = -1;
+			int top = 0;
+			for (int j = 0; j < current; ++j) top += this->list[j]->Height();
+			int bottom = top + item->Height();
+			if (top < this->vscroll->GetPosition()) this->vscroll->SetPosition(top);
+			if (bottom > this->vscroll->GetPosition() + this->vscroll->GetCapacity()) this->vscroll->SetPosition(bottom - this->vscroll->GetCapacity());
+			this->SetDirty();
+			break;
+		}
+		return EventState::Handled;
 	}
 
 	virtual void OnClick(Point pt, WidgetID widget, int click_count) override

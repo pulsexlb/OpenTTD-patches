@@ -122,6 +122,7 @@ typedef std::vector<std::unique_ptr<const DropDownListItem>> DropDownList;
 /** Configuration options for the created DropDownLists. */
 enum class DropDownOption : uint8_t {
 	InstantClose, ///< Set if releasing mouse button should close the list regardless of where the cursor is.
+	KeyboardNavigation, ///< Accept arrows, Enter and Escape (opt-in for simple action lists).
 	Persist, ///< Set if this dropdown should stay open after an option is selected.
 	Filterable, ///< Set if the dropdown is filterable.
 	ClickOnly, ///< Require a new click to select; do not select on the opening mouse release.

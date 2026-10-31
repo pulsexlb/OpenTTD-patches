@@ -403,6 +403,7 @@ if(NOT OPTION_DEDICATED)
     link_package(DBus1)
     link_package(X11)
 
+    set(WITH_OPENGL TRUE)
     if(SDL2_FOUND AND OPENGL_FOUND AND UNIX)
         # SDL2 dynamically loads OpenGL if needed, so do not link to OpenGL when
         # on Linux. For Windows, we need to link to OpenGL as we also have a win32
@@ -415,6 +416,14 @@ if(NOT OPTION_DEDICATED)
 endif()
 
 include(3rdparty/llvm/CheckAtomic)
+
+option(OPTION_3D_PROOF "Build the experimental OpenGL 3D viewport proof" OFF)
+if(OPTION_3D_PROOF)
+    if(NOT WITH_OPENGL OR OPTION_DEDICATED)
+        message(FATAL_ERROR "OPTION_3D_PROOF requires a GUI build with OpenGL")
+    endif()
+    add_definitions(-DWITH_3D_PROOF)
+endif()
 
 if(APPLE)
     link_package(Iconv TARGET Iconv::Iconv)

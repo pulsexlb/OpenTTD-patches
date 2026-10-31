@@ -28,6 +28,63 @@
 #include "../3rdparty/opengl/glext.h"
 
 #include "opengl.h"
+#include "proof3d.h"
+#include <atomic>
+#ifdef WITH_3D_PROOF
+#include "../viewport_type.h"
+#include "../window_gui.h"
+#include "../genworld.h"
+#include "../progress.h"
+#include "../transparency.h"
+#include "../map_func.h"
+#include "../tile_type.h"
+#include "../tile_map.h"
+#include "../rail_map.h"
+#include "../elrail_func.h"
+#include "../airport.h"
+#include "../air_map.h"
+#include "../station_map.h"
+#include "../train.h"
+#include "../roadveh.h"
+#include "../ship.h"
+#include "../aircraft.h"
+#include "../clear_map.h"
+#include "../water_map.h"
+#include "../town_map.h"
+#include "../town.h"
+#include "../industry_map.h"
+#include "../industry.h"
+#include "../effectvehicle_base.h"
+#include "../timer/timer_game_tick.h"
+#include "../time_chrono.h"
+#include "../date_func.h"
+#include "../tree_map.h"
+#include "../object_map.h"
+#include "../object_base.h"
+#include "../engine_base.h"
+#include "asset3d_generated.h"
+#include "asset3d_art.h"
+#include "asset3d_lod.h"
+#include "vehicle3d_lod.h"
+#include "../company_base.h"
+#include "../palette_func.h"
+#include "../road_map.h"
+#include "../bridge_map.h"
+#include "../tunnel_map.h"
+#include "../tunnelbridge_map.h"
+#include "../tunnelbridge.h"
+#include "../tilehighlight_func.h"
+#include "../landscape.h"
+#include "../slope_func.h"
+#include "../tilehighlight_type.h"
+#include "../viewport_func.h"
+#include "terrain3d_math.h"
+#include "rail3d_geometry.h"
+#include "../window_func.h"
+#include "../timer/timer.h"
+#include "../timer/timer_window.h"
+#include "video_driver.hpp"
+#endif
 #include "../core/geometry_func.hpp"
 #include "../core/math_func.hpp"
 #include "../gfx_func.h"
@@ -521,6 +578,9 @@ OpenGLBackend::OpenGLBackend() : cursor_cache(MAX_CACHED_CURSORS)
  */
 OpenGLBackend::~OpenGLBackend()
 {
+#ifdef WITH_3D_PROOF
+	DestroyProof3D();
+#endif
 	if (_glDeleteProgram != nullptr) {
 		_glDeleteProgram(this->remap_program);
 		_glDeleteProgram(this->vid_program);
@@ -804,6 +864,8 @@ static bool VerifyShader(GLuint shader)
 	return result == GL_TRUE;
 }
 
+
+
 /**
  * Check a program for link errors and log them if necessary.
  * @param program Program to check.
@@ -826,6 +888,11 @@ static bool VerifyProgram(GLuint program)
 
 	return result == GL_TRUE;
 }
+
+#ifdef WITH_3D_PROOF
+extern const DiagDirectionIndexArray<uint8_t> _tunnel_visibility_frame; ///< Where a vehicle hides going into a tunnel; the ride-along views fade out by it.
+#include "proof3d_impl.h"
+#endif
 
 /**
  * Create all needed shader programs.
@@ -1069,7 +1136,13 @@ void OpenGLBackend::Paint()
 {
 	_glClear(GL_COLOR_BUFFER_BIT);
 
-	_glDisable(GL_BLEND);
+	/* The 3D layer, when present, is drawn first and shows through the video buffer's transparent holes. */
+#ifdef WITH_3D_PROOF
+	bool layer = DrawProof3DLayer(this->vid_program, this->vao_quad);
+#else
+	bool layer = false;
+#endif
+	if (!layer) _glDisable(GL_BLEND);
 
 	/* Blit video buffer to screen. */
 	_glActiveTexture(GL_TEXTURE0);
@@ -1092,6 +1165,7 @@ void OpenGLBackend::Paint()
 	_glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
 	_glEnable(GL_BLEND);
+	if (layer) _glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 /**
@@ -1249,6 +1323,11 @@ void OpenGLBackend::ReleaseVideoBuffer(const Rect &update_rect)
 		if (this->persistent_mapping_supported) this->sync_vid_mapping = _glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 #endif
 	}
+
+#ifdef WITH_3D_PROOF
+	/* The 3D layer advances with the video buffer it is composited beneath. */
+	FlushProof3DLayer();
+#endif
 }
 
 /**

@@ -69,6 +69,7 @@
 #include "music/music_driver.hpp"
 #include "sound/sound_driver.hpp"
 #include "video/video_driver_base.hpp"
+#include "video/proof3d.h"
 
 #if defined(WITH_FREETYPE) || defined(_WIN32) || defined(WITH_COCOA)
 #define HAS_TRUETYPE_FONT
@@ -138,6 +139,39 @@ extern const std::initializer_list<SettingTable> _secrets_setting_tables{
 };
 
 /* Begin - Callback Functions for the various settings. */
+
+static void Renderer3DChanged(int32_t new_value)
+{
+	SetProof3DEnabled(new_value != 0);
+}
+
+static void Renderer3DGroundChanged(int32_t new_value)
+{
+	SetTerrain3DGroundTextures(new_value != 0);
+}
+
+static void Renderer3DShadowsChanged(int32_t new_value)
+{
+	SetTerrain3DShadows(new_value);
+}
+
+static void Renderer3DHintsChanged(int32_t)
+{
+	MarkWholeScreenDirty();
+}
+
+static void Renderer3DRetroChanged(int32_t)
+{
+	/* Recompose all view clips, including paused and overlapping vehicle windows.
+	 * The source textures and geometry remain reusable. */
+	MarkWholeScreenDirty();
+}
+
+static void Renderer3DVisibilityChanged(int32_t new_value)
+{
+	SetTerrain3DAutoVisibility(new_value != 0);
+}
+
 
 /** Switch setting title depending on wallclock setting. @copydoc IntSettingDesc::GetTitleCallback */
 static StringID SettingTitleWallclock(const IntSettingDesc &sd)

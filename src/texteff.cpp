@@ -26,6 +26,7 @@ struct TextEffect : public ViewportSign {
 	StringID string_id;  ///< String to draw for the text effect, if INVALID_STRING_ID then it's not valid
 	uint8_t duration;    ///< How long the text effect should stay, in ticks (applies only when mode == TextEffectMode::Rising)
 	TextEffectMode mode; ///< Type of text effect
+	int world_x, world_y, world_z; ///< Original authoritative anchor; rising stays a screen-space offset.
 
 	void Reset();
 };
@@ -44,7 +45,7 @@ void TextEffect::Reset()
 }
 
 /* Text Effects */
-TextEffectID AddTextEffect(StringID msg, int center, int y, uint8_t duration, TextEffectMode mode, uint64_t param1, uint64_t param2)
+TextEffectID AddTextEffect(StringID msg, int center, int y, uint8_t duration, TextEffectMode mode, uint64_t param1, uint64_t param2, int world_x, int world_y, int world_z)
 {
 	if (_game_mode == GameMode::Menu) return INVALID_TE_ID;
 
@@ -64,6 +65,9 @@ TextEffectID AddTextEffect(StringID msg, int center, int y, uint8_t duration, Te
 	te.params_1 = param1;
 	te.params_2 = param2;
 	te.mode = mode;
+	te.world_x = world_x;
+	te.world_y = world_y;
+	te.world_z = world_z;
 
 	/* Make sure we only dirty the new area */
 	te.width_normal = 0;
@@ -129,7 +133,7 @@ void InitTextEffects()
 	_free_text_effect = 0;
 }
 
-void DrawTextEffects(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, bool load_transparent)
+void DrawTextEffects(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, bool load_transparent, const Viewport *vp)
 {
 	/* Don't draw the text effects when zoomed out a lot */
 	if (dpi->zoom > ZoomLevel::TextEffect) return;
@@ -144,7 +148,11 @@ void DrawTextEffects(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, bool load_t
 	for (TextEffect &te : _text_effects) {
 		if (te.string_id == INVALID_STRING_ID) continue;
 		if ((te.mode == TextEffectMode::Rising || show_loading) && te.top > top_threshold && te.top < bottom_threshold) {
-			ViewportAddString(vdd, dpi, &te, flags, te.string_id, te.params_1, te.params_2);
+			/* A label can move while the retained 3D scene image is unchanged. Its classic
+			 * position is only correct while the camera is the classic one. */
+			bool anchored = vp != nullptr && (te.world_x != 0 || te.world_y != 0 || te.world_z != 0);
+			ViewportSign sign = anchored ? ProjectViewportSign(vp, te, te.world_x, te.world_y, te.world_z) : ViewportSign(te);
+			ViewportAddString(vdd, dpi, &sign, flags, te.string_id, te.params_1, te.params_2);
 		}
 	}
 }

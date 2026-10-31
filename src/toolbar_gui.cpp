@@ -76,6 +76,8 @@ AirType _last_built_airtype = AIRTYPE_BEGIN;
 #include "newgrf_station.h"
 #include "zoom_func.h"
 #include "help_gui.h"
+#include "video/proof3d.h"
+#include "settings_internal.h"
 #include "industry_map.h"
 #include "misc_cmd.h"
 #include "core/string_consumer.hpp"
@@ -182,6 +184,180 @@ static void PopupMainToolbarMenu(Window *w, WidgetID widget, const std::initiali
 	}
 	PopupMainToolbarMenu(w, widget, std::move(list), 0);
 }
+
+/** Persistent, local camera help, independent of console access. */
+static constexpr std::initializer_list<NWidgetPart> _nested_3d_help_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_CLOSEBOX, Colours::Grey),
+		NWidget(WWT_CAPTION, Colours::Grey), SetStringTip(STR_3D_HELP_TITLE),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Grey),
+		NWidget(WWT_EMPTY, Colours::End, 0), SetMinimalSize(360, 0), SetPadding(12),
+	EndContainer(),
+};
+
+static WindowDesc _3d_help_desc(__FILE__, __LINE__, WindowPosition::Center, nullptr, 0, 0, WindowClass::Help, WindowClass::None, {}, _nested_3d_help_widgets);
+
+struct Camera3DHelpWindow : Window {
+	Camera3DHelpWindow(WindowDesc &desc, WindowNumber number) : Window(desc) { this->InitNested(number); }
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, const Dimension &, Dimension &, Dimension &) override
+	{
+		if (widget == 0) size.height = GetStringHeight(STR_3D_HELP_TEXT, size.width);
+	}
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget == 0) DrawStringMultiLine(r, STR_3D_HELP_TEXT, TextColour::Black);
+	}
+	void OnPaint() override { this->DrawWidgets(); }
+	EventState OnKeyPress(char32_t, uint16_t keycode) override
+	{
+		if (keycode != WKC_ESC) return EventState::NotHandled;
+		this->Close();
+		return EventState::Handled;
+	}
+};
+
+/** A compact panel that stays open while comparing the world treatment. */
+static constexpr std::initializer_list<NWidgetPart> _nested_3d_retro_widgets = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_CLOSEBOX, Colours::Grey),
+		NWidget(WWT_CAPTION, Colours::Grey), SetStringTip(STR_3D_RETRO_TITLE),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Grey),
+		NWidget(NWID_VERTICAL), SetPadding(10), SetPIP(0, 6, 0),
+			NWidget(WWT_TEXTBTN, Colours::Grey, WID_R3_ENABLE), SetStringTip(STR_3D_RETRO_ENABLE, STR_3D_RETRO_ENABLE_TIP), SetFill(1, 0), SetMinimalSize(280, 22),
+			NWidget(WWT_TEXT, Colours::End), SetStringTip(STR_3D_RETRO_SIZE),
+			NWidget(NWID_HORIZONTAL), SetPIP(0, 4, 0),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_R3_SIZE_1), SetStringTip(STR_3D_RETRO_SIZE_1, STR_3D_RETRO_SIZE_TIP), SetFill(1, 0), SetMinimalSize(64, 22),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_R3_SIZE_2), SetStringTip(STR_3D_RETRO_SIZE_2, STR_3D_RETRO_SIZE_TIP), SetFill(1, 0), SetMinimalSize(64, 22),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_R3_SIZE_3), SetStringTip(STR_3D_RETRO_SIZE_3, STR_3D_RETRO_SIZE_TIP), SetFill(1, 0), SetMinimalSize(64, 22),
+				NWidget(WWT_TEXTBTN, Colours::Grey, WID_R3_SIZE_4), SetStringTip(STR_3D_RETRO_SIZE_4, STR_3D_RETRO_SIZE_TIP), SetFill(1, 0), SetMinimalSize(64, 22),
+			EndContainer(),
+			NWidget(WWT_TEXTBTN, Colours::Grey, WID_R3_COLOURS), SetStringTip(STR_3D_RETRO_COLOURS, STR_3D_RETRO_COLOURS_TIP), SetFill(1, 0), SetMinimalSize(0, 22),
+			NWidget(WWT_TEXTBTN, Colours::Grey, WID_R3_DITHER), SetStringTip(STR_3D_RETRO_DITHER, STR_3D_RETRO_DITHER_TIP), SetFill(1, 0), SetMinimalSize(0, 22),
+			NWidget(WWT_EMPTY, Colours::End, WID_R3_NOTE), SetFill(1, 0), SetMinimalSize(280, 0),
+		EndContainer(),
+	EndContainer(),
+};
+
+static WindowDesc _3d_retro_desc(__FILE__, __LINE__, WindowPosition::Automatic, nullptr, 0, 0, WindowClass::Retro3D, WindowClass::MainToolbar, {}, _nested_3d_retro_widgets);
+
+struct Retro3DWindow : Window {
+	Retro3DWindow(WindowDesc &desc, WindowNumber number) : Window(desc) { this->InitNested(number); }
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, const Dimension &, Dimension &, Dimension &) override
+	{
+		if (widget == WID_R3_NOTE) size.height = GetStringHeight(STR_3D_RETRO_NOTE, size.width);
+	}
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (widget == WID_R3_NOTE) DrawStringMultiLine(r, STR_3D_RETRO_NOTE, TextColour::Black);
+	}
+	void OnPaint() override
+	{
+		const auto &gui = _settings_client.gui;
+		this->SetWidgetLoweredState(WID_R3_ENABLE, gui.renderer_3d_retro);
+		for (WidgetID widget = WID_R3_SIZE_1; widget <= WID_R3_SIZE_4; ++widget) {
+			this->SetWidgetLoweredState(widget, gui.renderer_3d_pixel_size == widget - WID_R3_SIZE_1 + 1);
+			this->SetWidgetDisabledState(widget, !gui.renderer_3d_retro);
+		}
+		this->SetWidgetLoweredState(WID_R3_COLOURS, gui.renderer_3d_retro_colours);
+		this->SetWidgetLoweredState(WID_R3_DITHER, gui.renderer_3d_retro_dither);
+		this->SetWidgetDisabledState(WID_R3_COLOURS, !gui.renderer_3d_retro);
+		this->SetWidgetDisabledState(WID_R3_DITHER, !gui.renderer_3d_retro || !gui.renderer_3d_retro_colours);
+		this->DrawWidgets();
+	}
+	void OnClick(Point, WidgetID widget, int) override
+	{
+		const auto &gui = _settings_client.gui;
+		if (widget == WID_R3_ENABLE) {
+			SetSettingValue(GetSettingFromName("gui.renderer_3d_retro")->AsIntSetting(), !gui.renderer_3d_retro);
+		} else if (gui.renderer_3d_retro && widget >= WID_R3_SIZE_1 && widget <= WID_R3_SIZE_4) {
+			SetSettingValue(GetSettingFromName("gui.renderer_3d_pixel_size")->AsIntSetting(), widget - WID_R3_SIZE_1 + 1);
+		} else if (gui.renderer_3d_retro && widget == WID_R3_COLOURS) {
+			SetSettingValue(GetSettingFromName("gui.renderer_3d_retro_colours")->AsIntSetting(), !gui.renderer_3d_retro_colours);
+		} else if (gui.renderer_3d_retro && gui.renderer_3d_retro_colours && widget == WID_R3_DITHER) {
+			SetSettingValue(GetSettingFromName("gui.renderer_3d_retro_dither")->AsIntSetting(), !gui.renderer_3d_retro_dither);
+		}
+	}
+	EventState OnKeyPress(char32_t, uint16_t keycode) override
+	{
+		if (keycode != WKC_ESC) return EventState::NotHandled;
+		this->Close();
+		return EventState::Handled;
+	}
+};
+
+enum Camera3DMenu {
+	C3M_ENABLE, C3M_GROUND, C3M_HINTS, C3M_CLASSIC, C3M_ORBIT,
+	C3M_LEFT, C3M_RIGHT, C3M_TILT_UP, C3M_TILT_DOWN, C3M_HELP,
+	C3M_SHADOWS_OFF, C3M_SHADOWS_CONTACT, C3M_SHADOWS_SUN, ///< Shadow preference 0, 1 and 2.
+	C3M_AUTO_VISIBILITY,
+	C3M_RETRO,
+};
+
+static void ShowCamera3DMenu(Window *w)
+{
+	DropDownList list;
+	bool supported = IsProof3DSupported();
+	bool enabled = IsProof3DEnabled();
+	list.push_back(std::make_unique<DropDownUnselectable<DropDownListStringItem>>(GetString(supported ? (enabled ? STR_3D_ACTIVE : STR_3D_INACTIVE) : STR_3D_UNSUPPORTED), -1));
+	list.push_back(MakeDropDownListCheckedItem(enabled, STR_3D_ENABLE, C3M_ENABLE, !supported));
+	list.push_back(MakeDropDownListDividerItem());
+	list.push_back(MakeDropDownListCheckedItem(_settings_client.gui.renderer_3d_ground_textures, STR_3D_GROUND, C3M_GROUND));
+	list.push_back(MakeDropDownListCheckedItem(_settings_client.gui.renderer_3d_camera_hints, STR_3D_HINTS, C3M_HINTS));
+	list.push_back(MakeDropDownListCheckedItem(_settings_client.gui.renderer_3d_auto_visibility, STR_3D_AUTO_VISIBILITY, C3M_AUTO_VISIBILITY));
+	list.push_back(MakeDropDownListDividerItem());
+	list.push_back(MakeDropDownListCheckedItem(_settings_client.gui.renderer_3d_shadows == 0, STR_3D_SHADOWS_OFF, C3M_SHADOWS_OFF));
+	list.push_back(MakeDropDownListCheckedItem(_settings_client.gui.renderer_3d_shadows == 1, STR_3D_SHADOWS_CONTACT, C3M_SHADOWS_CONTACT));
+	list.push_back(MakeDropDownListCheckedItem(_settings_client.gui.renderer_3d_shadows == 2, STR_3D_SHADOWS_SUN, C3M_SHADOWS_SUN));
+	list.push_back(MakeDropDownListStringItem(STR_3D_RETRO_TITLE, C3M_RETRO));
+	list.push_back(MakeDropDownListDividerItem());
+	list.push_back(MakeDropDownListStringItem(STR_3D_CLASSIC, C3M_CLASSIC, !enabled));
+	list.push_back(MakeDropDownListStringItem(STR_3D_ORBIT, C3M_ORBIT, !enabled));
+	list.push_back(MakeDropDownListStringItem(STR_3D_LEFT, C3M_LEFT, !enabled));
+	list.push_back(MakeDropDownListStringItem(STR_3D_RIGHT, C3M_RIGHT, !enabled));
+	list.push_back(MakeDropDownListStringItem(STR_3D_TILT_UP, C3M_TILT_UP, !enabled));
+	list.push_back(MakeDropDownListStringItem(STR_3D_TILT_DOWN, C3M_TILT_DOWN, !enabled));
+	list.push_back(MakeDropDownListDividerItem());
+	list.push_back(MakeDropDownListStringItem(STR_3D_HELP_TITLE, C3M_HELP));
+	/* Keyboard menus must remain open when the invoking button is released, while
+	 * the toolbar's auto-select preference still controls mouse behaviour. */
+	ShowDropDownList(w, std::move(list), supported ? C3M_ENABLE : C3M_HELP, WID_TN_3D, 0, GetToolbarDropDownOptions({DropDownOption::KeyboardNavigation}));
+}
+
+static void SelectCamera3DMenu(int index)
+{
+	/* Validate again: a driver or blitter can change while a menu is open. */
+	if (index == C3M_ENABLE && !IsProof3DSupported()) return;
+	if (index >= C3M_CLASSIC && index <= C3M_TILT_DOWN && !IsProof3DEnabled()) return;
+	auto toggle = [](std::string_view name, bool current) {
+		SetSettingValue(GetSettingFromName(name)->AsIntSetting(), !current);
+	};
+	switch (index) {
+		case C3M_ENABLE: {
+			bool enabled = !IsProof3DEnabled();
+			toggle("gui.renderer_3d", !enabled);
+			/* Diagnostics can temporarily override the saved preference. */
+			SetProof3DEnabled(enabled);
+			break;
+		}
+		case C3M_GROUND: toggle("gui.renderer_3d_ground_textures", _settings_client.gui.renderer_3d_ground_textures); break;
+		case C3M_HINTS: toggle("gui.renderer_3d_camera_hints", _settings_client.gui.renderer_3d_camera_hints); break;
+		case C3M_AUTO_VISIBILITY: toggle("gui.renderer_3d_auto_visibility", _settings_client.gui.renderer_3d_auto_visibility); break;
+		case C3M_CLASSIC: ReturnTerrain3DCamera(); break;
+		case C3M_ORBIT: ToggleTerrain3DCamera(); break;
+		case C3M_LEFT: OrbitTerrain3DCamera(-45, 0, true); break;
+		case C3M_RIGHT: OrbitTerrain3DCamera(45, 0, true); break;
+		case C3M_TILT_UP: OrbitTerrain3DCamera(0, 10, true); break;
+		case C3M_TILT_DOWN: OrbitTerrain3DCamera(0, -10, true); break;
+		case C3M_HELP: AllocateWindowDescFront<Camera3DHelpWindow>(_3d_help_desc, 1); break;
+		case C3M_RETRO: AllocateWindowDescFront<Retro3DWindow>(_3d_retro_desc, 0); break;
+		case C3M_SHADOWS_OFF: case C3M_SHADOWS_CONTACT: case C3M_SHADOWS_SUN:
+			SetSettingValue(GetSettingFromName("gui.renderer_3d_shadows")->AsIntSetting(), index - C3M_SHADOWS_OFF);
+			break;
+	}
+}
+
 
 /* Special values used in the dropdowns related to companies.
  * They cannot interfere with valid IDs for companies. */
@@ -1636,7 +1812,7 @@ public:
 	 */
 	bool IsButton(WidgetType type) const
 	{
-		return type == WWT_IMGBTN || type == WWT_IMGBTN_2 || type == WWT_PUSHIMGBTN;
+		return type == WWT_IMGBTN || type == WWT_IMGBTN_2 || type == WWT_PUSHIMGBTN || type == WWT_TEXTBTN;
 	}
 
 	void SetupSmallestSize(Window *w) override
@@ -1769,8 +1945,8 @@ public:
 class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 	const WidgetID *GetButtonArrangement(uint &width, uint &arrangeable_count, uint &button_count, uint &spacer_count) const override
 	{
-		static const uint SMALLEST_ARRANGEMENT = 14;
-		static const uint BIGGEST_ARRANGEMENT  = 20;
+		static const uint SMALLEST_ARRANGEMENT = 15;
+		static const uint BIGGEST_ARRANGEMENT  = 21;
 
 		/* The number of buttons of each row of the toolbar should match the number of items which we want to be visible.
 		 * The total number of buttons should be equal to arrangeable_count * 2.
@@ -1792,6 +1968,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_WATER,
 			WID_TN_AIR,
 			WID_TN_LANDSCAPE,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 			/* lower toolbar */
 			WID_TN_SETTINGS,
@@ -1807,6 +1984,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_MUSIC_SOUND,
 			WID_TN_MESSAGES,
 			WID_TN_HELP,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 		};
 		static const WidgetID arrange15[] = {
@@ -1824,6 +2002,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_LANDSCAPE,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 			/* lower toolbar */
 			WID_TN_PAUSE,
@@ -1840,6 +2019,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_MUSIC_SOUND,
 			WID_TN_MESSAGES,
 			WID_TN_HELP,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 		};
 		static const WidgetID arrange16[] = {
@@ -1858,6 +2038,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_LANDSCAPE,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 			/* lower toolbar */
 			WID_TN_PAUSE,
@@ -1875,6 +2056,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 		};
 		static const WidgetID arrange17[] = {
@@ -1894,6 +2076,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_LANDSCAPE,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 			/* lower toolbar */
 			WID_TN_PAUSE,
@@ -1912,6 +2095,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 		};
 		static const WidgetID arrange18[] = {
@@ -1932,6 +2116,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_LANDSCAPE,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 			/* lower toolbar */
 			WID_TN_PAUSE,
@@ -1951,6 +2136,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 		};
 		static const WidgetID arrange19[] = {
@@ -1972,6 +2158,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_MUSIC_SOUND,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 			/* lower toolbar */
 			WID_TN_PAUSE,
@@ -1992,6 +2179,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 		};
 		static const WidgetID arrange20[] = {
@@ -2014,6 +2202,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_GOAL,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 			/* lower toolbar */
 			WID_TN_PAUSE,
@@ -2035,6 +2224,7 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_HELP,
 			WID_TN_ZOOM_IN,
 			WID_TN_ZOOM_OUT,
+			WID_TN_3D,
 			WID_TN_SWITCH_BAR,
 		};
 		static const WidgetID arrange_all[] = {
@@ -2069,7 +2259,8 @@ class NWidgetMainToolbarContainer : public NWidgetToolbarContainer {
 			WID_TN_BLUEPRINT_UNDO,
 			WID_TN_MUSIC_SOUND,
 			WID_TN_MESSAGES,
-			WID_TN_HELP
+			WID_TN_HELP,
+			WID_TN_3D
 		};
 
 		/* If at least BIGGEST_ARRANGEMENT fit, just spread all the buttons nicely */
@@ -2251,6 +2442,7 @@ static ToolbarButtonProc * const _toolbar_button_procs[] = {
 	ToolbarNewspaperClick,
 	ToolbarHelpClick,
 	ToolbarSwitchClick,
+	nullptr,
 };
 
 /** Main toolbar. */
@@ -2301,11 +2493,13 @@ struct MainToolbarWindow : Window {
 
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
-		if (_game_mode != GameMode::Menu && !this->IsWidgetDisabled(widget)) _toolbar_button_procs[widget](this);
+		if (widget == WID_TN_3D) { ShowCamera3DMenu(this); return; }
+	if (_game_mode != GameMode::Menu && !this->IsWidgetDisabled(widget)) _toolbar_button_procs[widget](this);
 	}
 
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
+		if (widget == WID_TN_3D) { SelectCamera3DMenu(index); return; }
 		CallBackFunction cbf = _menu_clicked_procs[widget](index);
 		if (cbf != CallBackFunction::None) _last_started_action = cbf;
 	}
@@ -2318,6 +2512,7 @@ struct MainToolbarWindow : Window {
 
 		CallBackFunction cbf = CallBackFunction::None;
 		switch (hotkey) {
+			case MTHK_3D_MENU: ShowCamera3DMenu(this); break;
 			case MTHK_PAUSE: ToolbarPauseClick(this); break;
 			case MTHK_FASTFORWARD: ToolbarFastForwardClick(this); break;
 			case MTHK_SETTINGS: ShowGameOptions(); break;
@@ -2426,6 +2621,7 @@ struct MainToolbarWindow : Window {
 
 	static inline HotkeyList hotkeys{"maintoolbar", {
 		Hotkey({WKC_F1, WKC_PAUSE}, "pause", MTHK_PAUSE),
+		Hotkey(WKC_CTRL | WKC_ALT | '3', "3d_menu", MTHK_3D_MENU),
 		Hotkey(0, "fastforward", MTHK_FASTFORWARD),
 		Hotkey(WKC_F2, "settings", MTHK_SETTINGS),
 		Hotkey(WKC_F3, "saveload", MTHK_SAVEGAME),
@@ -2511,6 +2707,7 @@ static constexpr std::tuple<WidgetID, WidgetType, SpriteID> _toolbar_button_spri
 	{WID_TN_MESSAGES,     WWT_IMGBTN,     SPR_IMG_MESSAGES},
 	{WID_TN_HELP,         WWT_IMGBTN,     SPR_IMG_QUERY},
 	{WID_TN_SWITCH_BAR,   WWT_IMGBTN,     SPR_IMG_SWITCH_TOOLBAR},
+	{WID_TN_3D,           WWT_TEXTBTN,    SPR_EMPTY},
 };
 
 /**
@@ -2545,7 +2742,9 @@ static std::unique_ptr<NWidgetBase> MakeMainToolbar()
 				hor->Add(std::make_unique<NWidgetSpacer>(0, 0));
 				break;
 		}
-		auto leaf = std::make_unique<NWidgetLeaf>(tp, Colours::Grey, widget, WidgetData{.sprite = sprite}, STR_TOOLBAR_TOOLTIP_PAUSE_GAME + widget);
+		auto leaf = widget == WID_TN_3D ?
+			std::make_unique<NWidgetLeaf>(WWT_TEXTBTN, Colours::Grey, widget, WidgetData{.string = STR_3D_BUTTON}, STR_3D_TOOLTIP) :
+			std::make_unique<NWidgetLeaf>(tp, Colours::Grey, widget, WidgetData{.sprite = sprite}, STR_TOOLBAR_TOOLTIP_PAUSE_GAME + widget);
 		leaf->SetToolbarMinimalSize(1);
 		hor->Add(std::move(leaf));
 	}

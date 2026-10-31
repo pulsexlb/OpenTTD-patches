@@ -8,6 +8,7 @@
 /** @file genworld.cpp Functions to generate a map. */
 
 #include "stdafx.h"
+#include "video/proof3d.h"
 #include "landscape.h"
 #include "company_func.h"
 #include "command_func.h"
@@ -90,6 +91,10 @@ std::function<void()> _exec_with_generate_world;
 static void CleanupGeneration()
 {
 	_generating_world = false;
+
+	/* Generation writes tiles without the ordinary redraw notifications. Rebuild
+	 * presentation snapshots from the completed world, including same-size maps. */
+	ResetTerrain3D();
 	_town_noise_no_update = false;
 
 	SetMouseCursorBusy(false);

@@ -29,6 +29,8 @@
 #include "tree_func.h"
 #include "tile_cmd.h"
 #include "3rdparty/robin_hood/robin_hood.h"
+#include "video/proof3d.h"
+
 
 #include "table/strings.h"
 #include "table/tree_land.h"
@@ -143,6 +145,9 @@ static void PlantTreesOnTile(TileIndex tile, TreeType treetype, uint count, Tree
 	}
 
 	MakeTree(tile, treetype, count, growth, ground, density);
+
+	/* Random tree spreading does not request a classic sprite redraw yet. */
+	MarkTerrain3DDirty(TileX(tile), TileY(tile));
 }
 
 /**

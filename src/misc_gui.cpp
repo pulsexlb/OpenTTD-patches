@@ -568,7 +568,7 @@ void ShowCostOrIncomeAnimation(int x, int y, int z, Money cost)
 		cost = -cost;
 		msg = STR_INCOME_FLOAT_INCOME;
 	}
-	AddTextEffect(msg, pt.x, pt.y, DAY_TICKS, TextEffectMode::Rising, cost);
+	AddTextEffect(msg, pt.x, pt.y, DAY_TICKS, TextEffectMode::Rising, cost, 0, x, y, z);
 }
 
 /**
@@ -586,14 +586,14 @@ void ShowFeederIncomeAnimation(int x, int y, int z, Money transfer, Money income
 	Point pt = RemapCoords(x, y, z);
 
 	if (income == 0) {
-		AddTextEffect(STR_FEEDER, pt.x, pt.y, DAY_TICKS, TextEffectMode::Rising, transfer);
+		AddTextEffect(STR_FEEDER, pt.x, pt.y, DAY_TICKS, TextEffectMode::Rising, transfer, 0, x, y, z);
 	} else {
 		StringID msg = STR_FEEDER_COST;
 		if (income < 0) {
 			income = -income;
 			msg = STR_FEEDER_INCOME;
 		}
-		AddTextEffect(msg, pt.x, pt.y, DAY_TICKS, TextEffectMode::Rising, transfer, income);
+		AddTextEffect(msg, pt.x, pt.y, DAY_TICKS, TextEffectMode::Rising, transfer, income, x, y, z);
 	}
 }
 
@@ -612,7 +612,7 @@ TextEffectID ShowFillingPercent(int x, int y, int z, uint8_t percent, StringID s
 
 	assert(string != STR_NULL);
 
-	return AddTextEffect(string, pt.x, pt.y, 0, TextEffectMode::Static, percent);
+	return AddTextEffect(string, pt.x, pt.y, 0, TextEffectMode::Static, percent, x, y, z);
 }
 
 /**

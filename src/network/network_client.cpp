@@ -8,6 +8,7 @@
 /** @file network_client.cpp Client part of the network protocol. */
 
 #include "../stdafx.h"
+#include "../video/proof3d.h"
 #include "network_gui.h"
 #include "../sl/saveload_filter.h"
 #include "../sl/saveload_func.h"
@@ -1126,6 +1127,9 @@ NetworkRecvStatus ClientNetworkGameSocketHandler::ReceiveServerMapDone(Packet &)
 	std::string error_detail;
 	bool load_success = SafeLoad({}, SaveLoadOperation::Load, DetailedFileType::GameFile, GameMode::Normal, Subdirectory::None, std::move(this->savegame), &error_detail);
 	this->savegame = nullptr;
+
+	/* Joining a multiplayer game always starts in classic 2D. */
+	if (load_success) SetProof3DEnabled(false);
 
 	/* Long savegame loads shouldn't affect the lag calculation! */
 	this->last_packet = std::chrono::steady_clock::now();

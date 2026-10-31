@@ -13,6 +13,7 @@
 #include "sound/sound_driver.hpp"
 #include "music/music_driver.hpp"
 #include "video/video_driver.hpp"
+#include "video/proof3d.h"
 #include "mixer.h"
 
 #include "fontcache.h"
@@ -483,6 +484,8 @@ static void ShutdownGame()
 static void LoadIntroGame(bool load_newgrfs = true)
 {
 	UnshowCriticalError();
+	/* The 3D view is a per-session preference of a running game; the main menu is always classic 2D. */
+	SetProof3DEnabled(false);
 	for (Window *w : Window::Iterate()) {
 		w->Close();
 	}
@@ -574,6 +577,12 @@ struct AfterNewGRFScan : NewGRFScanCallback {
 		uint last_newgrf_count = _settings_client.gui.last_newgrf_count;
 		LoadFromConfig();
 		_settings_client.gui.last_newgrf_count = last_newgrf_count;
+		/* Apply client presentation after full config loading and driver startup.
+		 * The 3D view itself is deliberately not restored here: it is a per-session
+		 * toggle and every game starts in classic 2D. */
+		SetTerrain3DGroundTextures(_settings_client.gui.renderer_3d_ground_textures);
+		SetTerrain3DShadows(_settings_client.gui.renderer_3d_shadows);
+		SetTerrain3DAutoVisibility(_settings_client.gui.renderer_3d_auto_visibility);
 		/* Since the default for the palette might have changed due to
 		 * reading the configuration file, recalculate that now. */
 		UpdateNewGRFConfigPalette();
@@ -1110,6 +1119,10 @@ static void OnStartScenario()
  */
 static void OnStartGame(bool dedicated_server)
 {
+	/* The 3D view is a per-session preference: every game (new, loaded or joined)
+	 * starts in classic 2D, regardless of what the previous session used. */
+	SetProof3DEnabled(false);
+
 	/* Update the local company for a loaded game. It is either always
 	 * a company or in the case of a dedicated server a spectator */
 	if (_network_server && !dedicated_server) {

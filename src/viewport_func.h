@@ -86,6 +86,10 @@ void AddSortableSpriteToDraw(SpriteID image, PaletteID pal, int x, int y, int z,
 void AddChildSpriteScreen(SpriteID image, PaletteID pal, int x, int y, bool transparent = false, const SubSprite *sub = nullptr, bool scale = true, ChildScreenSpritePositionMode position_mode = ChildScreenSpritePositionMode::Relative);
 void ViewportAddString(ViewportDrawerDynamic *vdd, const DrawPixelInfo *dpi, const ViewportSign *sign, ViewportStringFlags flags, StringID string, uint64_t params_1, uint64_t params_2 = 0, Colours colour = Colours::Invalid);
 
+struct Viewport;
+/** Project an authoritative world anchor into the viewport's virtual label coordinates (3D camera support). */
+ViewportSign ProjectViewportSign(const Viewport *vp, const ViewportSign &sign, int x, int y, int z);
+
 inline void AddSortableSpriteToDraw(SpriteID image, PaletteID pal, const Coord3D<int32_t> &world, const SpriteBounds &bounds, bool transparent = false, const SubSprite *sub = nullptr, ViewportSortableSpriteSpecialFlags special_flags = VSSF_NONE)
 {
 	AddSortableSpriteToDraw(image, pal, world.x, world.y, world.z, bounds, transparent, sub, special_flags);

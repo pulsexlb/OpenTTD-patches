@@ -11,6 +11,7 @@
 #include "core/backup_type.hpp"
 #include "fileio_func.h"
 #include "viewport_func.h"
+#include "video/proof3d.h"
 #include "gfx_func.h"
 #include "screenshot.h"
 #include "blitter/factory.hpp"
@@ -88,6 +89,7 @@ static void CurrentScreenCallback(void *, void *buf, uint y, uint pitch, uint n)
 	Blitter *blitter = BlitterFactory::GetCurrentBlitter();
 	void *src = blitter->MoveTo(_screen.dst_ptr, 0, y);
 	blitter->CopyImageToBuffer(src, buf, _screen.width, n, pitch);
+	ResolveProof3DScreenshot(buf, y, pitch, n);
 }
 
 /**

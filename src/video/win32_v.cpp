@@ -582,7 +582,7 @@ LRESULT CALLBACK WndProcGdi(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			return 0;
 
 		case WM_LBUTTONUP:
-			ReleaseCapture();
+			if (!_right_button_down && !_middle_button_down) ReleaseCapture();
 			_left_button_down = false;
 			_left_button_clicked = false;
 			HandleMouseEvents();
@@ -596,16 +596,38 @@ LRESULT CALLBACK WndProcGdi(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			return 0;
 
 		case WM_RBUTTONUP:
-			ReleaseCapture();
+			if (!_left_button_down && !_middle_button_down) ReleaseCapture();
 			_right_button_down = false;
 			HandleMouseEvents();
+			return 0;
+
+		case WM_MBUTTONDOWN:
+			SetCapture(hwnd);
+			_middle_button_down = true;
+			_middle_button_clicked = true;
+			HandleMouseEvents();
+			return 0;
+
+		case WM_MBUTTONUP:
+			_middle_button_down = false;
+			_middle_button_clicked = false;
+			if (!_left_button_down && !_right_button_down) ReleaseCapture();
+			HandleMouseEvents();
+			return 0;
+
+		case WM_CAPTURECHANGED:
+			if (_middle_button_down) {
+				_middle_button_down = false;
+				_middle_button_clicked = false;
+				HandleMouseEvents();
+			}
 			return 0;
 
 		case WM_MOUSELEAVE:
 			UndrawMouseCursor();
 			_cursor.in_window = false;
 
-			if (!_left_button_down && !_right_button_down) MyShowCursor(true);
+			if (!_left_button_down && !_right_button_down && !_middle_button_down) MyShowCursor(true);
 			return 0;
 
 		case WM_MOUSEMOVE: {

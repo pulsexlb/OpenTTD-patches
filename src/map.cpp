@@ -20,6 +20,7 @@
 #include "3rdparty/cpp-ring-buffer/ring_buffer.hpp"
 #include "3rdparty/cpp-btree/btree_map.h"
 #include "3rdparty/robin_hood/robin_hood.h"
+#include "video/proof3d.h"
 #include <array>
 #include <memory>
 
@@ -149,6 +150,8 @@ void AllocateMap(uint size_x, uint size_y)
 	Tile::extended_tiles = _me.tile_data;
 
 	InitializeWaterRegions();
+
+	ResetTerrain3D();
 }
 
 /** For use in the tests */

@@ -76,6 +76,7 @@
 #include "blueprint_gui.h"
 #include "landscape.h"
 #include "viewport_func.h"
+#include "video/proof3d.h"
 #include "roadveh_transport.h"
 #include "station_base.h"
 #include "waypoint_base.h"
@@ -314,6 +315,8 @@ struct ViewportProcessParentSpritesData {
 
 /** Data structure storing rendering information */
 struct ViewportDrawerDynamic {
+	bool proof_drawn = false; ///< A 3D proof scene was composited into this drawer's buffer instead of the classic world sprites.
+
 	DrawPixelInfo dpi;
 	int offset_x;
 	int offset_y;
@@ -961,6 +964,9 @@ static void SetViewportPosition(Window *w, int x, int y, bool force_update_overl
 
 	if (old_top == 0 && old_left == 0) return;
 
+	/* Rotated terrain cannot reuse the classic isometric pixel-scroll displacement. */
+	if (IsProof3DZoomActive(*w->viewport)) { w->SetDirty(); return; }
+
 	Point move_offset = { old_left, old_top };
 
 	left = vp->left;
@@ -1037,6 +1043,9 @@ Point TranslateXYToTileCoord(const Viewport *vp, int x, int y, bool clamp_to_map
 		return pt;
 	}
 
+#ifdef WITH_3D_PROOF
+	if (IsProof3DZoomActive(*vp)) return PickTerrain3D(*vp, x, y, clamp_to_map);
+#endif
 	return InverseRemapCoords2(
 			ScaleByZoom(x - vp->left, vp->zoom) + vp->virtual_left,
 			ScaleByZoom(y - vp->top, vp->zoom) + vp->virtual_top, clamp_to_map);
@@ -1600,6 +1609,23 @@ static HighLightStyle GetPartOfAutoLine(int px, int py, const Point &selstart, c
 	return HT_DIR_END;
 }
 
+bool IsPartOfAutoLine(int px, int py)
+{
+	return GetPartOfAutoLine(px, py, _thd.selstart, _thd.selend, _thd.drawstyle & HT_DIR_MASK) < HT_DIR_END ||
+		(_thd.dir2 < HT_DIR_END && GetPartOfAutoLine(px, py, _thd.selstart2, _thd.selend2, _thd.dir2) < HT_DIR_END);
+}
+
+bool IsInsideRotatedRectangle(int x, int y)
+{
+	int dist_a = (_thd.size.x + _thd.size.y);      // Rotated coordinate system for selected rectangle.
+	int dist_b = (_thd.size.x - _thd.size.y);      // We don't have to divide by 2. It's all relative!
+	int a = ((x - _thd.pos.x) + (y - _thd.pos.y)); // Rotated coordinate system for the point under scrutiny.
+	int b = ((x - _thd.pos.x) - (y - _thd.pos.y));
+
+	/* Check if a and b are between 0 and dist_a or dist_b respectively. */
+	return IsInRangeInclusive(dist_a, 0, a) && IsInRangeInclusive(dist_b, 0, b);
+}
+
 #include "table/autorail.h"
 
 /**
@@ -2097,6 +2123,26 @@ static Rect ExpandRectWithViewportSignMargins(Rect r, ZoomLevel zoom)
 	return r;
 }
 
+/** Preserve classic label offsets and sizes, replacing only the world anchor's projection.
+ * Copies never enter the authoritative sign tree or dirty the classic sign position. */
+ViewportSign ProjectViewportSign(const Viewport *vp, const ViewportSign &sign, int x, int y, int z)
+{
+	ViewportSign projected = sign;
+	if (vp == nullptr) return projected;
+	Point classic = RemapCoords(x, y, z);
+	Point anchor = ProjectTerrain3DLabel(*vp, x, y, z);
+	projected.center += anchor.x - classic.x;
+	projected.top += anchor.y - classic.y;
+	return projected;
+}
+
+static ViewportSign ProjectViewportSign(const Viewport *vp, const ViewportSign &sign, TileIndex tile)
+{
+	if (vp == nullptr) return sign;
+	int x = TileX(tile) * TILE_SIZE, y = TileY(tile) * TILE_SIZE;
+	return ProjectViewportSign(vp, sign, x, y, GetSlopePixelZ(x, y));
+}
+
 /**
  * Add town strings to a viewport.
  * @param vdd viewport drawer
@@ -2104,14 +2150,15 @@ static Rect ExpandRectWithViewportSignMargins(Rect r, ZoomLevel zoom)
  * @param towns List of towns to add.
  * @param small Add small versions of strings.
  */
-static void ViewportAddTownStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, const std::vector<const Town *> &towns, bool small)
+static void ViewportAddTownStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, const std::vector<const Town *> &towns, bool small, const Viewport *vp)
 {
 	ViewportStringFlags flags{};
 	if (small) flags.Set({ViewportStringFlag::Small, ViewportStringFlag::Shadow});
 
 	StringID stringid = small ? STR_VIEWPORT_TOWN_LABEL_TINY : STR_VIEWPORT_TOWN_LABEL;
 	for (const Town *t : towns) {
-		StringSpriteToDraw *str = ViewportAddString(vdd, dpi, &t->cache.sign, flags);
+		auto sign = ProjectViewportSign(vp, t->cache.sign, t->xy);
+		StringSpriteToDraw *str = ViewportAddString(vdd, dpi, &sign, flags);
 		if (str != nullptr) {
 			str->FillDetails(stringid, t->index.base(), t->LabelParam2(), Colours::Invalid);
 		}
@@ -2125,7 +2172,7 @@ static void ViewportAddTownStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo *dp
  * @param signs List of signs to add.
  * @param small Add small versions of strings.
  */
-static void ViewportAddSignStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, const std::vector<const Sign *> &signs, bool small)
+static void ViewportAddSignStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, const std::vector<const Sign *> &signs, bool small, const Viewport *vp)
 {
 	ViewportStringFlags flags{};
 	if (small) flags.Set(ViewportStringFlag::Small);
@@ -2136,7 +2183,8 @@ static void ViewportAddSignStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo *dp
 	flags.Set(vdd->IsTransparencySet(TransparencyOption::Signs) ? ViewportStringFlag::TransparentRect : ViewportStringFlag::ColourRect);
 
 	for (const Sign *si : signs) {
-		StringSpriteToDraw *str = ViewportAddString(vdd, dpi, &si->sign, (si->owner == OWNER_DEITY) ? deity_flags : flags);
+		auto sign = ProjectViewportSign(vp, si->sign, si->x, si->y, si->z);
+		StringSpriteToDraw *str = ViewportAddString(vdd, dpi, &sign, (si->owner == OWNER_DEITY) ? deity_flags : flags);
 		if (str != nullptr) {
 			Colours colour;
 			if (si->owner == OWNER_NONE) {
@@ -2158,14 +2206,15 @@ static void ViewportAddSignStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo *dp
  * @param stations List of stations to add.
  * @param small Add small versions of strings.
  */
-static void ViewportAddStationStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, const std::vector<const BaseStation *> &stations, bool small)
+static void ViewportAddStationStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, const std::vector<const BaseStation *> &stations, bool small, const Viewport *vp)
 {
 	/* Transparent station signs have colour text instead of a colour panel. */
 	ViewportStringFlags flags{vdd->IsTransparencySet(TransparencyOption::Signs) ? ViewportStringFlag::TextColour : ViewportStringFlag::ColourRect};
 	if (small) flags.Set(ViewportStringFlag::Small);
 
 	for (const BaseStation *st : stations) {
-		StringSpriteToDraw *str = ViewportAddString(vdd, dpi, &st->sign, flags);
+		auto sign = ProjectViewportSign(vp, st->sign, st->xy);
+		StringSpriteToDraw *str = ViewportAddString(vdd, dpi, &sign, flags);
 		if (str == nullptr) continue;
 
 		Colours colour = (st->owner == OWNER_NONE || !st->IsInUse()) ? Colours::Grey : _company_colours[st->owner];
@@ -2177,22 +2226,29 @@ static void ViewportAddStationStrings(ViewportDrawerDynamic *vdd, DrawPixelInfo 
 	}
 }
 
-static void ViewportAddKdtreeSigns(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, bool towns_only)
+struct ViewportSigns {
+	std::vector<const BaseStation *> stations;
+	std::vector<const Town *> towns;
+	std::vector<const Sign *> signs;
+};
+
+static ViewportSigns CollectViewportSigns(const DrawPixelInfo *dpi, const Viewport *vp, bool towns_only)
 {
 	Rect search_rect{ dpi->left, dpi->top, dpi->left + dpi->width, dpi->top + dpi->height };
 	search_rect = ExpandRectWithViewportSignMargins(search_rect, dpi->zoom);
+	/* The tree stores classic coordinates. Rotated views can see labels outside the classic
+	 * rectangle, so visit the tree in the same stable order, then clip projected bounds. */
+	if (vp != nullptr && !IsTerrain3DCameraClassic()) search_rect = {INT_MIN / 2, INT_MIN / 2, INT_MAX / 2, INT_MAX / 2};
 
 	bool show_stations = _display_opt.Test(DisplayOption::ShowStationNames) && _game_mode != GameMode::Menu && !towns_only;
 	bool show_waypoints = _display_opt.Test(DisplayOption::ShowWaypointNames) && _game_mode != GameMode::Menu && !towns_only;
 	bool show_towns = _display_opt.Test(DisplayOption::ShowTownNames) && _game_mode != GameMode::Menu;
-	bool show_signs = _display_opt.Test(DisplayOption::ShowSigns) && !vdd->IsInvisibilitySet(TransparencyOption::Signs) && !towns_only;
+	bool show_signs = _display_opt.Test(DisplayOption::ShowSigns) && !IsInvisibilitySet(TransparencyOption::Signs) && !towns_only;
 	bool show_competitors = _display_opt.Test(DisplayOption::ShowCompetitorSigns) && !towns_only;
 	bool hide_hidden_waypoints = _settings_client.gui.allow_hiding_waypoint_labels && !HasBit(_extra_display_opt, XDO_SHOW_HIDDEN_SIGNS);
 
 	/* Collect all the items first and draw afterwards, to ensure layering */
-	std::vector<const BaseStation *> stations;
-	std::vector<const Town *> towns;
-	std::vector<const Sign *> signs;
+	ViewportSigns result;
 
 	_viewport_sign_kdtree.FindContained(search_rect.left, search_rect.top, search_rect.right, search_rect.bottom, [&](const ViewportSignKdtreeItem & item) {
 		switch (item.type) {
@@ -2209,7 +2265,7 @@ static void ViewportAddKdtreeSigns(ViewportDrawerDynamic *vdd, DrawPixelInfo *dp
 				/* Don't draw if station is owned by another company and competitor station names are hidden. Stations owned by none are never ignored. */
 				if (!show_competitors && _local_company != st->owner && st->owner != OWNER_NONE) break;
 
-				stations.push_back(st);
+				if (!IsInvisibilitySet(TransparencyOption::Signs)) result.stations.push_back(st);
 				break;
 			}
 
@@ -2221,13 +2277,13 @@ static void ViewportAddKdtreeSigns(ViewportDrawerDynamic *vdd, DrawPixelInfo *dp
 				if (!show_competitors && _local_company != st->owner && st->owner != OWNER_NONE) break;
 				if (hide_hidden_waypoints && HasBit(Waypoint::From(st)->waypoint_flags, WPF_HIDE_LABEL)) break;
 
-				stations.push_back(st);
+				if (!IsInvisibilitySet(TransparencyOption::Signs)) result.stations.push_back(st);
 				break;
 			}
 
 			case ViewportSignKdtreeItem::VKI_TOWN:
 				if (!show_towns) break;
-				towns.push_back(Town::Get(item.GetIdAs<TownID>()));
+				result.towns.push_back(Town::Get(item.GetIdAs<TownID>()));
 				break;
 
 			case ViewportSignKdtreeItem::VKI_SIGN: {
@@ -2239,7 +2295,7 @@ static void ViewportAddKdtreeSigns(ViewportDrawerDynamic *vdd, DrawPixelInfo *dp
 				 * companies can leave OWNER_NONE signs after them. */
 				if (!show_competitors && si->IsCompetitorOwned()) break;
 
-				signs.push_back(si);
+				result.signs.push_back(si);
 				break;
 			}
 
@@ -2247,18 +2303,24 @@ static void ViewportAddKdtreeSigns(ViewportDrawerDynamic *vdd, DrawPixelInfo *dp
 				NOT_REACHED();
 		}
 	});
+	return result;
+}
+
+static void ViewportAddKdtreeSigns(ViewportDrawerDynamic *vdd, DrawPixelInfo *dpi, bool towns_only, const Viewport *vp = nullptr)
+{
+	auto labels = CollectViewportSigns(dpi, vp, towns_only);
 
 	/* Small versions of signs are used zoom level 4X and higher. */
 	bool small = dpi->zoom >= ZoomLevel::Out4x;
 
 	/* Layering order (bottom to top): Town names, signs, stations */
-	ViewportAddTownStrings(vdd, dpi, towns, small);
+	ViewportAddTownStrings(vdd, dpi, labels.towns, small, vp);
 
 	/* Do not draw signs nor station names if they are set invisible */
 	if (vdd->IsInvisibilitySet(TransparencyOption::Signs)) return;
 
-	ViewportAddSignStrings(vdd, dpi, signs, small);
-	ViewportAddStationStrings(vdd, dpi, stations, small);
+	ViewportAddSignStrings(vdd, dpi, labels.signs, small, vp);
+	ViewportAddStationStrings(vdd, dpi, labels.stations, small, vp);
 }
 
 
@@ -4273,8 +4335,11 @@ void ViewportDoDraw(Viewport *vp, int left, int top, int right, int bottom, NWid
 		ViewportDoDrawPhase3(vp);
 	} else {
 		/* Classic rendering. */
-		ViewportAddLandscape();
-		ViewportAddVehicles(&_vdd->dpi, vp->update_vehicles);
+		_vdd->proof_drawn = IsProof3DZoomActive(*vp) && DrawProof3D(*vp, _vdd->dpi, x, y);
+		if (!_vdd->proof_drawn) {
+			ViewportAddLandscape();
+			ViewportAddVehicles(&_vdd->dpi, vp->update_vehicles);
+		}
 
 		for (const TileSpriteToDraw &ts : _vdd->tile_sprites_to_draw) {
 			PrepareDrawSpriteViewportSpriteStore(_vdd->sprite_data, &_vdd->dpi, ts.image, ts.pal);
@@ -4322,9 +4387,15 @@ static void ViewportDoDrawRenderSubJob(Viewport *vp, ViewportDrawerDynamic *vdd,
 /* This is run in a worker thread */
 static void ViewportDoDrawRenderJob(Viewport *vp, ViewportDrawerDynamic *vdd)
 {
-	ViewportAddKdtreeSigns(vdd, &vdd->dpi, false);
-
-	DrawTextEffects(vdd, &vdd->dpi, vdd->IsTransparencySet(TransparencyOption::Loading));
+	if (vdd->proof_drawn) {
+		if (vp->camera_3d == ViewportCamera3D::Normal) {
+			ViewportAddKdtreeSigns(vdd, &vdd->dpi, false, vp);
+			DrawTextEffects(vdd, &vdd->dpi, vdd->IsTransparencySet(TransparencyOption::Loading), vp);
+		}
+	} else {
+		ViewportAddKdtreeSigns(vdd, &vdd->dpi, false);
+		DrawTextEffects(vdd, &vdd->dpi, vdd->IsTransparencySet(TransparencyOption::Loading));
+	}
 
 	if (vdd->tile_sprites_to_draw.size() != 0) {
 		ViewportDrawTileSprites(vdd);
@@ -4428,6 +4499,17 @@ static void ViewportDoDrawPhase3(Viewport *vp)
 		dp.left = _vdd->offset_x + vp->left;
 		dp.top = _vdd->offset_y + vp->top;
 		ViewportDrawVehicleRouteSteps(vp);
+	}
+	if (_vdd->proof_drawn && _settings_client.gui.renderer_3d_camera_hints) {
+		dp.left = _vdd->offset_x + vp->left;
+		dp.top = _vdd->offset_y + vp->top;
+		if (vp->camera_3d != ViewportCamera3D::Normal) {
+			/* Views riding with a vehicle keep the middle clear, where the vehicle is: only a small label in the corner. */
+			int bottom = vp->top + vp->height - GetCharacterHeight(FontSize::Small) - 2;
+			DrawString(vp->left + 4, vp->left + vp->width - 4, bottom, vp->camera_3d == ViewportCamera3D::Cab ? "Cab view" : vp->camera_3d == ViewportCamera3D::Chase ? "Chase view" : "Fixed view", TextColour::White, AlignmentH::Start, false, FontSize::Small);
+		} else if (!IsTerrain3DCameraClassic()) {
+			DrawString(vp->left + 8, vp->left + vp->width - 8, vp->top + ScaleGUITrad(8), STR_3D_ORBIT_HINT, TextColour::LightBlue);
+		}
 	}
 	_cur_dpi = nullptr;
 
@@ -4606,7 +4688,10 @@ static void ClampSmoothScroll(uint32_t delta_ms, int64_t delta_hi, int64_t delta
  */
 void UpdateNextViewportPosition(Window *w, uint32_t delta_ms)
 {
-	const Viewport *vp = w->viewport;
+	Viewport *vp = w->viewport;
+
+	/* A chase view eases its own camera towards its vehicle every frame, so it redraws while the camera settles. */
+	if (UpdateViewportCamera3D(*vp, delta_ms) && IsProof3DEnabled()) w->SetDirty();
 
 	if (w->viewport->follow_vehicle != VehicleID::Invalid()) {
 		const Vehicle *veh = RVTransportGetFollowVehicle(Vehicle::Get(w->viewport->follow_vehicle))->GetMovingFront();
@@ -4961,6 +5046,8 @@ void ConstrainAllViewportsZoom()
  */
 void MarkTileDirtyByTile(TileIndex tile, ViewportMarkDirtyFlags flags, int bridge_level_offset, int tile_height_override)
 {
+	MarkTerrain3DDirty(TileX(tile), TileY(tile));
+
 	Point pt = RemapCoords(TileX(tile) * TILE_SIZE, TileY(tile) * TILE_SIZE, tile_height_override * TILE_HEIGHT);
 	MarkAllViewportsDirty(
 			pt.x - 31  * ZOOM_BASE,
@@ -5267,6 +5354,16 @@ void SetSelectionPalette(PaletteID pal)
 static bool CheckClickOnViewportSign(const Viewport *vp, int x, int y, const ViewportSign *sign)
 {
 	bool small = (vp->zoom >= ZoomLevel::Out4x);
+	if (IsProof3DEnabled()) {
+		/* Match the final integer raster bounds, including odd widths and subpixel anchors. */
+		int width = small ? sign->width_small : sign->width_normal;
+		int left = UnScaleByZoom(sign->center - ScaleByZoom(width / 2, vp->zoom), vp->zoom);
+		int top = UnScaleByZoom(sign->top, vp->zoom);
+		int height = WidgetDimensions::scaled.fullbevel.top + GetCharacterHeight(small ? FontSize::Small : FontSize::Normal) + WidgetDimensions::scaled.fullbevel.bottom;
+		x = UnScaleByZoom(x, vp->zoom);
+		y = UnScaleByZoom(y, vp->zoom);
+		return x >= left && x < left + width && y >= top && y < top + height;
+	}
 	int sign_half_width = ScaleByZoom((small ? sign->width_small : sign->width_normal) / 2, vp->zoom);
 	int sign_height = ScaleByZoom(WidgetDimensions::scaled.fullbevel.top + GetCharacterHeight(small ? FontSize::Small : FontSize::Normal) + WidgetDimensions::scaled.fullbevel.bottom, vp->zoom);
 
@@ -5286,65 +5383,38 @@ static bool CheckClickOnViewportSign(const Viewport *vp, int x, int y)
 {
 	if (_game_mode == GameMode::Menu) return false;
 
-	x = ScaleByZoom(x - vp->left, vp->zoom) + vp->virtual_left;
-	y = ScaleByZoom(y - vp->top, vp->zoom) + vp->virtual_top;
+	const Viewport *project = IsProof3DZoomActive(*vp) ? vp : nullptr;
+	int mask = project != nullptr ? ScaleByZoom(-1, vp->zoom) : -1;
+	x = ScaleByZoom(x - vp->left, vp->zoom) + (vp->virtual_left & mask);
+	y = ScaleByZoom(y - vp->top, vp->zoom) + (vp->virtual_top & mask);
 
-	Rect search_rect{ x - 1, y - 1, x + 1, y + 1 };
-	search_rect = ExpandRectWithViewportSignMargins(search_rect, vp->zoom);
+	DrawPixelInfo area{};
+	area.left = x - 1;
+	area.top = y - 1;
+	area.width = area.height = 2;
+	area.zoom = vp->zoom;
+	auto labels = CollectViewportSigns(&area, project, false);
 
-	bool show_stations = _display_opt.Test(DisplayOption::ShowStationNames) && !IsInvisibilitySet(TransparencyOption::Signs);
-	bool show_waypoints = _display_opt.Test(DisplayOption::ShowWaypointNames) && !IsInvisibilitySet(TransparencyOption::Signs);
-	bool show_towns = _display_opt.Test(DisplayOption::ShowTownNames);
-	bool show_signs = _display_opt.Test(DisplayOption::ShowSigns) && !IsInvisibilitySet(TransparencyOption::Signs);
-	bool show_competitors = _display_opt.Test(DisplayOption::ShowCompetitorSigns);
-	bool hide_hidden_waypoints = _settings_client.gui.allow_hiding_waypoint_labels && !HasBit(_extra_display_opt, XDO_SHOW_HIDDEN_SIGNS);
-
-	/* Topmost of each type that was hit */
-	BaseStation *st = nullptr, *last_st = nullptr;
-	Town *t = nullptr, *last_t = nullptr;
-	Sign *si = nullptr, *last_si = nullptr;
-
-	/* See ViewportAddKdtreeSigns() for details on the search logic */
-	_viewport_sign_kdtree.FindContained(search_rect.left, search_rect.top, search_rect.right, search_rect.bottom, [&](const ViewportSignKdtreeItem & item) {
-		switch (item.type) {
-			case ViewportSignKdtreeItem::VKI_STATION: {
-				if (!show_stations) break;
-				st = BaseStation::Get(item.GetIdAs<StationID>());
-				if (!show_competitors && _local_company != st->owner && st->owner != OWNER_NONE) break;
-
-				StationFacilities facilities = st->facilities;
-				if (facilities.None()) facilities = STATION_FACILITY_GHOST;
-				if (!facilities.Any(_facility_display_opt)) break;
-
-				if (CheckClickOnViewportSign(vp, x, y, &st->sign)) last_st = st;
-				break;
-			}
-
-			case ViewportSignKdtreeItem::VKI_WAYPOINT:
-				if (!show_waypoints) break;
-				st = BaseStation::Get(item.GetIdAs<StationID>());
-				if (!show_competitors && _local_company != st->owner && st->owner != OWNER_NONE) break;
-				if (hide_hidden_waypoints && HasBit(Waypoint::From(st)->waypoint_flags, WPF_HIDE_LABEL)) break;
-				if (CheckClickOnViewportSign(vp, x, y, &st->sign)) last_st = st;
-				break;
-
-			case ViewportSignKdtreeItem::VKI_TOWN:
-				if (!show_towns) break;
-				t = Town::Get(item.GetIdAs<TownID>());
-				if (CheckClickOnViewportSign(vp, x, y, &t->cache.sign)) last_t = t;
-				break;
-
-			case ViewportSignKdtreeItem::VKI_SIGN:
-				if (!show_signs) break;
-				si = Sign::Get(item.GetIdAs<SignID>());
-				if (!show_competitors && _local_company != si->owner && si->owner != OWNER_DEITY) break;
-				if (CheckClickOnViewportSign(vp, x, y, &si->sign)) last_si = si;
-				break;
-
-			default:
-				NOT_REACHED();
-		}
-	});
+	BaseStation *last_st = nullptr;
+	const Town *last_t = nullptr;
+	const Sign *last_si = nullptr;
+	for (const auto *st : labels.stations) {
+		auto sign = ProjectViewportSign(project, st->sign, st->xy);
+		if (CheckClickOnViewportSign(vp, x, y, &sign)) last_st = const_cast<BaseStation *>(st);
+	}
+	for (const auto *t : labels.towns) {
+		auto sign = ProjectViewportSign(project, t->cache.sign, t->xy);
+		if (CheckClickOnViewportSign(vp, x, y, &sign)) last_t = t;
+	}
+	for (const auto *si : labels.signs) {
+		auto sign = ProjectViewportSign(project, si->sign, si->x, si->y, si->z);
+		if (CheckClickOnViewportSign(vp, x, y, &sign)) last_si = si;
+	}
+	/* In 3D, match the drawing order: stations above signs above towns. */
+	if (project != nullptr && last_st == nullptr && last_si != nullptr) {
+		HandleClickOnSign(const_cast<Sign *>(last_si));
+		return true;
+	}
 
 	/* Select which hit to handle based on priority */
 	if (last_st != nullptr) {
@@ -5526,6 +5596,9 @@ HandleViewportClickedResult HandleViewportClicked(const Viewport *vp, int x, int
 	/* No click in smallmap mode except for plan making and left-button scrolling. */
 	if (vp->zoom >= ZoomLevel::DrawMap && !(_thd.place_mode & HT_MAP)) return HVCR_SCROLL_ONLY;
 
+	/* Cab and chase views are only for watching. */
+	if (IsProof3DZoomActive(*vp) && vp->camera_3d != ViewportCamera3D::Normal) return HVCR_ALLOW;
+
 	const Vehicle *v = CheckClickOnVehicle(vp, x, y);
 
 	if (_thd.place_mode & HT_VEHICLE) {
@@ -5554,7 +5627,9 @@ HandleViewportClickedResult HandleViewportClicked(const Viewport *vp, int x, int
 	if (vp->zoom >= ZoomLevel::DrawMap) return HVCR_SCROLL_ONLY;
 
 	if (CheckClickOnViewportSign(vp, x, y)) return HVCR_DENY;
-	bool result = CheckClickOnLandscape(vp, x, y);
+	/* A projected vehicle target owns its click; opening the structure beneath
+	 * it as well would dispatch two management actions from one 3D selection. */
+	bool result = v != nullptr && IsProof3DZoomActive(*vp) ? true : CheckClickOnLandscape(vp, x, y);
 
 	if (v != nullptr) {
 		Debug(misc, 2, "Vehicle {} (index {}) at {}", v->unitnumber, v->index, fmt::ptr(v));

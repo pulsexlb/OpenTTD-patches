@@ -47,7 +47,20 @@ enum ToolbarNormalWidgets : WidgetID {
 	WID_TN_MESSAGES,      ///< Messages menu.
 	WID_TN_HELP,          ///< Help menu.
 	WID_TN_SWITCH_BAR,    ///< Only available when toolbar has been split to switch between different subsets.
+	WID_TN_3D,            ///< Client 3D presentation and camera controls.
 	WID_TN_END,           ///< Helper for knowing the amount of widgets.
+};
+
+/** Widgets of the local 3D retro pixel preferences window. */
+enum Retro3DWidgets : WidgetID {
+	WID_R3_ENABLE,        ///< Toggle the retro pixel treatment.
+	WID_R3_SIZE_1,        ///< Pixel block size 1x.
+	WID_R3_SIZE_2,        ///< Pixel block size 2x.
+	WID_R3_SIZE_3,        ///< Pixel block size 3x.
+	WID_R3_SIZE_4,        ///< Pixel block size 4x.
+	WID_R3_COLOURS,       ///< Toggle reduced colours.
+	WID_R3_DITHER,        ///< Toggle dithering.
+	WID_R3_NOTE,          ///< Explanatory note.
 };
 
 /** Widgets of the #ScenarioEditorToolbarWindow class. */

@@ -40,6 +40,15 @@ void DrawRailCatenary(const TileInfo *ti);
 void DrawRailCatenaryOnTunnel(const TileInfo *ti);
 void DrawRailCatenaryOnBridge(const TileInfo *ti);
 
+/** A catenary pylon or wire on one tile, in world pixels, where the classic view draws it. */
+struct RailCatenaryPiece {
+	bool pylon; ///< A pylon at \c a whose cantilever reaches the pylon control point \c b; otherwise a wire from \c a to \c b.
+	uint8_t pylons; ///< Wire only: bit 0 is set when a pylon holds the wire at \c a, bit 1 at \c b.
+	int ax, ay, az, bx, by, bz;
+	bool operator==(const RailCatenaryPiece &) const = default;
+};
+void CollectRailCatenary(TileIndex tile, std::vector<RailCatenaryPiece> &pieces);
+
 void SettingsDisableElrail(int32_t new_value);
 void UpdateDisableElrailSettingState(bool disable, bool update_vehicles);
 

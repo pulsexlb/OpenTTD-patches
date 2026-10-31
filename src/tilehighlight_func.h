@@ -29,6 +29,8 @@ void VpSetPresizeRange(TileIndex from, TileIndex to);
 void VpSetPlaceSizingLimit(int limit);
 
 void UpdateTileSelection();
+bool IsPartOfAutoLine(int px, int py);
+bool IsInsideRotatedRectangle(int x, int y);
 
 void StoreRailPlacementEndpoints(TileIndex start_tile, TileIndex end_tile, Track start_track, bool bidirectional = true);
 void ResetRailPlacementSnapping();

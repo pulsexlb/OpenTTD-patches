@@ -25,6 +25,11 @@
 #include "command_func.h"
 #include "command_log.h"
 #include "settings_func.h"
+#include "settings_internal.h"
+#include "video/proof3d.h"
+#include "video/video_driver.hpp"
+#include "blitter/factory.hpp"
+#include "gui.h"
 #include "fios.h"
 #include "fileio_func.h"
 #include "fontcache.h"
@@ -98,6 +103,69 @@
 
 /* scriptfile handling */
 static uint _script_current_depth; ///< Depth of scripts running (used to abort execution when #ConReturn is encountered).
+
+/** Toggle the client-only 3D renderer and its presentation options; never a game command or saved simulation state. */
+static bool ConRenderer3D(std::span<std::string_view> argv)
+{
+#ifdef WITH_3D_PROOF
+	if (argv.size() == 2 && argv[1] == "status") {
+		auto *drv = VideoDriver::GetInstance();
+		auto *blt = BlitterFactory::GetCurrentBlitter();
+		IConsolePrint(CC_INFO, "supported={} enabled={} pref={} ground={} hints={} shadows={} classic_camera={}",
+			IsProof3DSupported(), IsProof3DEnabled(), _settings_client.gui.renderer_3d, _settings_client.gui.renderer_3d_ground_textures,
+			_settings_client.gui.renderer_3d_camera_hints, _settings_client.gui.renderer_3d_shadows, IsTerrain3DCameraClassic());
+		IConsolePrint(CC_INFO, "video_driver={} blitter={}", drv != nullptr ? drv->GetName() : "(none)", blt != nullptr ? blt->GetName() : "(none)");
+		return true;
+	}
+	if (argv.size() == 2 && argv[1] == "viewport" && IsProof3DEnabled()) {
+		ShowExtraViewportWindow();
+		return true;
+	}
+	if (argv.size() == 4 && argv[1] == "camera") {
+		int yaw = 0, tilt = 100;
+		if (std::from_chars(argv[2].data(), argv[2].data() + argv[2].size(), yaw).ec != std::errc{} || std::from_chars(argv[3].data(), argv[3].data() + argv[3].size(), tilt).ec != std::errc{}) return false;
+		SetTerrain3DCamera(yaw, tilt); return true;
+	}
+	if (argv.size() == 4 && argv[1] == "orbit" && IsProof3DEnabled()) {
+		int yaw = 0, tilt = 0;
+		if (std::from_chars(argv[2].data(), argv[2].data() + argv[2].size(), yaw).ec != std::errc{} || std::from_chars(argv[3].data(), argv[3].data() + argv[3].size(), tilt).ec != std::errc{}) return false;
+		OrbitTerrain3DCamera(static_cast<float>(yaw), static_cast<float>(tilt), true); return true;
+	}
+	if (argv.size() == 2 && argv[1] == "home" && IsProof3DEnabled()) {
+		ToggleTerrain3DCamera(); return true;
+	}
+	if (argv.size() == 3 && argv[1] == "wireframe" && (argv[2] == "on" || argv[2] == "off")) {
+		SetTerrain3DWireframe(argv[2] == "on"); return true;
+	}
+	if (argv.size() == 3 && argv[1] == "ground" && (argv[2] == "on" || argv[2] == "off")) {
+		SetTerrain3DGroundTextures(argv[2] == "on");
+		IConsolePrint(CC_INFO, argv[2] == "on" ? "3D ground textures requested; flat colours remain if the driver cannot create them." : "3D ground uses flat colours.");
+		return true;
+	}
+	if (argv.size() == 3 && argv[1] == "shadows" && (argv[2] == "off" || argv[2] == "contact" || argv[2] == "sun")) {
+		SetSettingValue(GetSettingFromName("gui.renderer_3d_shadows")->AsIntSetting(), argv[2] == "off" ? 0 : argv[2] == "contact" ? 1 : 2);
+		IConsolePrint(CC_INFO, "3D shadows: {} (drawn: {}).", argv[2], GetTerrain3DShadows());
+		return true;
+	}
+	if (argv.size() == 2 && argv[1] == "shadowstats") {
+		Debug(driver, 0, "3D {}", GetTerrain3DShadowStats());
+		return true;
+	}
+	if (argv.size() == 3 && argv[1] == "chunks" && (argv[2] == "16" || argv[2] == "32")) {
+		SetTerrain3DChunkSize(argv[2] == "16" ? 16 : 32); return true;
+	}
+#endif
+	if (argv.size() != 2 || (argv[1] != "on" && argv[1] != "off")) {
+		IConsolePrint(CC_HELP, "Usage: renderer_3d on|off|viewport|status; renderer_3d camera <yaw degrees> <tilt 40..180>; renderer_3d orbit <+yaw> <+tilt>; renderer_3d home; renderer_3d ground on|off; renderer_3d shadows off|contact|sun; renderer_3d wireframe on|off; renderer_3d chunks 16|32.");
+		return true;
+	}
+	if (!SetProof3DEnabled(argv[1] == "on")) {
+		IConsolePrint(CC_ERROR, "3D proof unavailable: requires OPTION_3D_PROOF, an OpenGL driver and a 32bpp blitter.");
+	} else {
+		IConsolePrint(CC_INFO, IsProof3DEnabled() ? "3D terrain enabled; renderer_3d off restores classic view." : "Classic 2D rendering enabled.");
+	}
+	return true;
+}
 
 /* Scheduled execution handling. */
 static std::string _scheduled_monthly_script; ///< Script scheduled to execute by the 'schedule' console command (empty if no script is scheduled).
@@ -5205,6 +5273,7 @@ static bool ConRVTransport(std::span<std::string_view> argv)
 void IConsoleStdLibRegister()
 {
 	IConsole::CmdRegister("debug_level",             ConDebugLevel);
+	IConsole::CmdRegister("renderer_3d",             ConRenderer3D);
 	IConsole::CmdRegister("echo",                    ConEcho);
 	IConsole::CmdRegister("echoc",                   ConEchoC);
 	IConsole::CmdRegister("exec",                    ConExec);

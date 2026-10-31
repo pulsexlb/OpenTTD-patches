@@ -8,6 +8,7 @@
 /** @file window.cpp Windowing system, widgets and events. */
 
 #include "stdafx.h"
+#include "video/proof3d.h"
 #include "company_func.h"
 #include "gfx_func.h"
 #include "console_func.h"
@@ -58,6 +59,7 @@
 static Point _drag_delta; ///< delta between mouse cursor and upper left corner of dragged window
 static Window *_mouseover_last_w = nullptr; ///< Window of the last OnMouseOver event.
 static Window *_last_scroll_window = nullptr; ///< Window of the last scroll event.
+static bool _viewport_middle_drag = false; ///< A held middle button is orbiting the main 3D viewport.
 
 /** List of windows opened at the screen sorted from the front. */
 Window *_z_front_window = nullptr;
@@ -2155,6 +2157,7 @@ void InitWindowSystem()
 	_last_scroll_window = nullptr;
 	_scrolling_viewport = nullptr;
 	_scrolling_viewport_bound = { 0, 0, 0, 0 };
+	_viewport_middle_drag = false;
 	_mouse_hovering = false;
 
 	SetupWidgetDimensions();
@@ -2756,10 +2759,13 @@ static EventState HandleViewportScroll()
 	 * outside of the window and should not left-mouse scroll anymore. */
 	if (_last_scroll_window == nullptr) _last_scroll_window = FindWindowFromPt(_cursor.pos.x, _cursor.pos.y);
 
-	if (_last_scroll_window == nullptr || !((_settings_client.gui.scroll_mode != ViewportScrollMode::MapLMB && _right_button_down) || scrollwheel_scrolling || (_settings_client.gui.scroll_mode == ViewportScrollMode::MapLMB && _left_button_down))) {
+	bool dragging = _viewport_middle_drag ? (_middle_button_down && IsProof3DEnabled()) :
+		((_settings_client.gui.scroll_mode != ViewportScrollMode::MapLMB && _right_button_down) || scrollwheel_scrolling || (_settings_client.gui.scroll_mode == ViewportScrollMode::MapLMB && _left_button_down));
+	if (_last_scroll_window == nullptr || !dragging) {
 		_cursor.fix_at = false;
 		_scrolling_viewport = nullptr;
 		_last_scroll_window = nullptr;
+		_viewport_middle_drag = false;
 		UpdateActiveScrollingViewport(nullptr);
 		return EventState::NotHandled;
 	}
@@ -2772,7 +2778,7 @@ static EventState HandleViewportScroll()
 	}
 
 	Point delta;
-	if (scrollwheel_scrolling) {
+	if (scrollwheel_scrolling && !_viewport_middle_drag) {
 		/* We are using scrollwheels for scrolling */
 		/* Use the integer part for movement */
 		delta.x = static_cast<int>(_cursor.h_wheel);
@@ -2782,7 +2788,7 @@ static EventState HandleViewportScroll()
 		_cursor.v_wheel = std::modf(_cursor.v_wheel, &temp);
 		_cursor.h_wheel = std::modf(_cursor.h_wheel, &temp);
 	} else {
-		if (_settings_client.gui.scroll_mode != ViewportScrollMode::ViewportRMBFixed) {
+		if (!_viewport_middle_drag && _settings_client.gui.scroll_mode != ViewportScrollMode::ViewportRMBFixed) {
 			delta.x = -_cursor.delta.x;
 			delta.y = -_cursor.delta.y;
 		} else {
@@ -3126,20 +3132,22 @@ static void HandleAutoscroll()
 	/* here allows scrolling in both x and y axis */
 	/* If we succeed at scrolling in any direction, stop following a vehicle. */
 	static const int SCROLLSPEED = 3;
+	int dx = 0, dy = 0;
 	if (x - 15 < 0) {
-		w->viewport->CancelFollow(*w);
-		w->viewport->dest_scrollpos_x += ScaleByZoom((x - 15) * SCROLLSPEED, vp->zoom);
+		dx = (x - 15) * SCROLLSPEED;
 	} else if (15 - (vp->width - x) > 0) {
-		w->viewport->CancelFollow(*w);
-		w->viewport->dest_scrollpos_x += ScaleByZoom((15 - (vp->width - x)) * SCROLLSPEED, vp->zoom);
+		dx = (15 - (vp->width - x)) * SCROLLSPEED;
 	}
 	if (y - 15 < 0) {
-		w->viewport->CancelFollow(*w);
-		w->viewport->dest_scrollpos_y += ScaleByZoom((y - 15) * SCROLLSPEED, vp->zoom);
+		dy = (y - 15) * SCROLLSPEED;
 	} else if (15 - (vp->height - y) > 0) {
-		w->viewport->CancelFollow(*w);
-		w->viewport->dest_scrollpos_y += ScaleByZoom((15 - (vp->height - y)) * SCROLLSPEED, vp->zoom);
+		dy = (15 - (vp->height - y)) * SCROLLSPEED;
 	}
+	if (dx == 0 && dy == 0) return;
+	w->viewport->CancelFollow(*w);
+	Point scroll = Terrain3DScrollDelta(ScaleByZoom(dx, vp->zoom), ScaleByZoom(dy, vp->zoom));
+	w->viewport->dest_scrollpos_x += scroll.x;
+	w->viewport->dest_scrollpos_y += scroll.y;
 }
 
 /** Mouse states during the \c MouseLoop. */
@@ -3147,6 +3155,7 @@ enum class MouseClick : uint8_t {
 	None = 0, ///< No action to process.
 	Left, ///< A click with the left mouse button.
 	Right, ///< A click with the right mouse button.
+	Middle, ///< A click with the middle mouse button.
 	DoubleLeft, ///< A double click with the left mouse button.
 	Hover, ///< The mouse started hovering.
 };
@@ -3164,8 +3173,9 @@ static void ScrollMainViewport(int x, int y)
 		Window *w = GetMainWindow();
 		assert(w);
 
-		w->viewport->dest_scrollpos_x += ScaleByZoom(x, w->viewport->zoom);
-		w->viewport->dest_scrollpos_y += ScaleByZoom(y, w->viewport->zoom);
+		Point scroll = Terrain3DScrollDelta(ScaleByZoom(x, w->viewport->zoom), ScaleByZoom(y, w->viewport->zoom));
+		w->viewport->dest_scrollpos_x += scroll.x;
+		w->viewport->dest_scrollpos_y += scroll.y;
 	}
 }
 
@@ -3240,6 +3250,19 @@ static void MouseLoop(MouseClick click, int mousewheel)
 	int y = _cursor.pos.y;
 	Window *w = FindWindowFromPt(x, y);
 	if (w == nullptr) return;
+
+	/* Middle-drag is a main-map 3D gesture, independent of the configured panning button.
+	 * Consume other middle clicks without dispatching a right click or cancelling a build tool. */
+	if (click == MouseClick::Middle) {
+		if (IsProof3DEnabled() && _game_mode != GameMode::Menu && !HasModalProgress() && w == GetMainWindow() &&
+				IsPtInWindowViewport(w, x, y) != nullptr && !w->flags.Test(WindowFlag::DisableVpScroll)) {
+			_viewport_middle_drag = true;
+			_scrolling_viewport = w;
+			_last_scroll_window = w;
+			_cursor.fix_at = true;
+		}
+		return;
+	}
 
 	if (click != MouseClick::Hover && !MaybeBringWindowToFront(w)) return;
 	Viewport *vp = IsPtInWindowViewport(w, x, y);
@@ -3353,6 +3376,9 @@ void HandleMouseEvents()
 	} else if (_right_button_clicked) {
 		_right_button_clicked = false;
 		click = MouseClick::Right;
+	} else if (_middle_button_clicked) {
+		_middle_button_clicked = false;
+		click = MouseClick::Middle;
 	}
 
 	int mousewheel = 0;
@@ -3365,7 +3391,7 @@ void HandleMouseEvents()
 	static Point hover_pos = {0, 0};
 
 	if (_settings_client.gui.hover_delay_ms > 0) {
-		if (!_cursor.in_window || click != MouseClick::None || mousewheel != 0 || _left_button_down || _right_button_down ||
+		if (!_cursor.in_window || click != MouseClick::None || mousewheel != 0 || _left_button_down || _right_button_down || _middle_button_down ||
 				hover_pos.x == 0 || abs(_cursor.pos.x - hover_pos.x) >= MAX_OFFSET_HOVER  ||
 				hover_pos.y == 0 || abs(_cursor.pos.y - hover_pos.y) >= MAX_OFFSET_HOVER) {
 			hover_pos = _cursor.pos;
@@ -3563,17 +3589,27 @@ void UpdateWindows()
 		}
 	}
 
-	for (Window *w : Window::Iterate()) {
-		/* Update viewport only if window is not shaded. */
-		if (w->viewport != nullptr && !w->IsShaded()) UpdateNextViewportPosition(w, delta_ms);
-	}
+	auto update_viewports = [&]() {
+		for (Window *w : Window::Iterate()) {
+			/* Update viewport only if window is not shaded. */
+			if (w->viewport != nullptr && !w->IsShaded()) UpdateNextViewportPosition(w, delta_ms);
+		}
+		for (Window *w : Window::Iterate()) {
+			/* Update viewport only if window is not shaded. */
+			if (w->viewport != nullptr && !w->IsShaded()) ApplyNextViewportPosition(w);
+		}
+	};
+	/* 3D renders current vehicle snapshots even when the 2D UI is clean. Update following cameras
+	 * first, so a vehicle cannot move ahead of last frame's camera and then snap back to the centre. */
+	const bool update_before_drawing = IsProof3DEnabled();
+	if (update_before_drawing) update_viewports();
 
+	BeginProof3DFrame();
 	DrawDirtyBlocks();
+	EndProof3DFrame();
 
-	for (Window *w : Window::Iterate()) {
-		/* Update viewport only if window is not shaded. */
-		if (w->viewport != nullptr && !w->IsShaded()) ApplyNextViewportPosition(w);
-	}
+	/* Classic 2D keeps its pixel-scroll and dirty-block ordering. */
+	if (!update_before_drawing) update_viewports();
 	ViewportDoDrawProcessAllPending();
 	NetworkDrawChatMessage();
 	/* Redraw mouse cursor in case it was hidden */

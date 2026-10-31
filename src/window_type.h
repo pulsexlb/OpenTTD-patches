@@ -861,6 +861,9 @@ enum class WindowClass : uint16_t {
 	 */
 	Help,
 
+	/** Local retro pixel display preferences; window number 0. */
+	Retro3D,
+
 	/**
 	 * Trace restrict programme window; %Window numbers:
 	 *   - #TileIndex << 3 | #Track = #TraceRestrictWindow
