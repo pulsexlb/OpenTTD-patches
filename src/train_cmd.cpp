@@ -1128,7 +1128,7 @@ static void ApplyLookAheadItem(const Train *v, const TrainReservationLookAheadIt
 			if (order->ShouldStopAtStation(last_station_visited, st, Waypoint::GetIfValid(st) != nullptr)) {
 				limit_advisory_speed(item.start + PredictStationStoppingLocation(v, order, item.end - item.start, st), 0, item.z_pos);
 				last_station_visited = st;
-			} else if (order->IsType(OT_GOTO_WAYPOINT) && order->GetDestination() == st && order->GetWaypointFlags().Any({OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop})) {
+			} else if (order->IsType(OT_GOTO_WAYPOINT) && order->GetDestination() == st && order->GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
 				limit_advisory_speed(item.start + v->gcache.cached_total_length, 0, item.z_pos);
 				if (order->IsWaitTimetabled()) last_station_visited = st;
 			}
@@ -5356,7 +5356,7 @@ public:
 						if (this->v->current_order.ShouldStopAtStation(this->v, st, Waypoint::GetIfValid(st) != nullptr)) {
 							SetBit(state.flags, CTTLASF_STOP_FOUND);
 							this->v->last_station_visited = st;
-						} else if (this->v->current_order.IsType(OT_GOTO_WAYPOINT) && this->v->current_order.GetDestination() == st && this->v->current_order.GetWaypointFlags().Any({OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop})) {
+						} else if (this->v->current_order.IsType(OT_GOTO_WAYPOINT) && this->v->current_order.GetDestination() == st && this->v->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
 							if (!HasBit(state.flags, CTTLASF_REVERSE_FOUND)) {
 								SetBit(state.flags, CTTLASF_REVERSE_FOUND);
 								state.reverse_dest = st;
@@ -5963,7 +5963,7 @@ static ChooseTrainTrackResult ChooseTrainTrackImpl(Train *consist, const TileInd
 				HasStationTileRail(tile)) {
 			if (consist->current_order.ShouldStopAtStation(consist, GetStationIndex(tile), IsRailWaypoint(tile))) {
 				SetBit(lookahead_state.flags, CTTLASF_STOP_FOUND);
-			} else if (consist->current_order.IsType(OT_GOTO_WAYPOINT) && consist->current_order.GetDestination() == GetStationIndex(tile) && consist->current_order.GetWaypointFlags().Any({OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop})) {
+			} else if (consist->current_order.IsType(OT_GOTO_WAYPOINT) && consist->current_order.GetDestination() == GetStationIndex(tile) && consist->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
 				if (!HasBit(lookahead_state.flags, CTTLASF_REVERSE_FOUND)) {
 					SetBit(lookahead_state.flags, CTTLASF_REVERSE_FOUND);
 					lookahead_state.reverse_dest = GetStationIndex(tile);
@@ -7756,6 +7756,7 @@ bool TrainShouldWaitForCoupleAtCheckpoint(Train *moving, bool *at_checkpoint, St
 	const Order *current = moving->GetOrder(moving->cur_real_order_index);
 	if (current == nullptr || (!current->IsType(OT_GOTO_STATION) && !current->IsType(OT_GOTO_WAYPOINT))) return false;
 	const Train *front = moving->GetMovingFront();
+	if (current->IsType(OT_GOTO_WAYPOINT) && current->GetWaypointFlags().Test(OrderWaypointFlag::Stop) && moving->cur_speed != 0) return false;
 	const StationID point = current->GetDestination().ToStationID();
 	if (arrived != StationID::Invalid()) {
 		if (arrived != point) return false;
@@ -9793,8 +9794,8 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 	};
 
 	if (reverse && consist->reverse_distance == 1 && (consist->cur_speed <= 15 || !consist->UsingRealisticBraking())) {
-		/* A stop-only waypoint uses the same full-consist clearance distance.
-		 * Preserve the waiting order until the stop is physically completed. */
+		/* Finish a version-1 save already braking beyond a stop waypoint.
+		 * New stop orders use native station arrival and never enter this path. */
 		const Order *waypoint = consist->GetOrder(consist->cur_real_order_index);
 		if (consist->current_order.IsType(OT_WAITING) && waypoint != nullptr && waypoint->IsType(OT_GOTO_WAYPOINT) &&
 				waypoint->GetWaypointFlags().Test(OrderWaypointFlag::Stop) && !waypoint->GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
@@ -11061,6 +11062,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		const bool waypoint_stop = waiting_order != nullptr && waiting_order->IsType(OT_GOTO_WAYPOINT) && waiting_order->GetWaypointFlags().Test(OrderWaypointFlag::Stop);
 		consist->HandleWaiting(false, true);
 		if (consist->current_order.IsType(OT_WAITING)) return true;
+		if (waypoint_stop) consist->flags.Set(VehicleRailFlag::LeavingStation);
 		if ((consist->current_order.IsType(OT_GOTO_COUPLE) || (waypoint_stop && (consist->current_order.IsBaseStationOrder() || consist->current_order.IsType(OT_GOTO_DEPOT)))) && CheckReverseTrain(consist)) {
 			ReverseTrainDirection(consist);
 			return true;

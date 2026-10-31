@@ -4128,11 +4128,11 @@ static VehicleEnterTileStates VehicleEnterTile_Station(Vehicle *v, TileIndex til
 		if (t->IsMovingFront() && consist->current_order.IsType(OT_GOTO_WAYPOINT) && consist->current_order.GetDestination() == station_id) {
 			consist->ApplyStationServiceNumber(consist->current_order);
 		}
-		if (t->IsMovingFront() && consist->current_order.IsType(OT_GOTO_WAYPOINT) && consist->current_order.GetDestination() == station_id && consist->current_order.GetWaypointFlags().Any({OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop})) {
+		if (t->IsMovingFront() && consist->current_order.IsType(OT_GOTO_WAYPOINT) && consist->current_order.GetDestination() == station_id && consist->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
 			/* Reverse at waypoint. */
 			if (consist->reverse_distance == 0) {
 				consist->reverse_distance = consist->gcache.cached_total_length;
-				if (consist->current_order.IsWaitTimetabled() || consist->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Stop)) {
+				if (consist->current_order.IsWaitTimetabled()) {
 					consist->DeleteUnreachedImplicitOrders();
 					UpdateVehicleTimetable(consist, true);
 					consist->last_station_visited = station_id;

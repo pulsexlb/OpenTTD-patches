@@ -3739,6 +3739,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 		case MOF_WAYPOINT_FLAGS:
 			if (data != (data & OrderWaypointFlags{OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop}.base())) return CMD_ERROR;
+			if (data == OrderWaypointFlags{OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop}.base()) return CMD_ERROR;
 			break;
 
 		case MOF_SLOT:
@@ -6375,7 +6376,7 @@ bool ProcessOrders(Vehicle *v)
 
 	/* Check if we've reached a 'via' destination. */
 	if (((v->current_order.IsType(OT_GOTO_STATION) && (v->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)) ||
-			(v->current_order.IsType(OT_GOTO_WAYPOINT) && (!v->current_order.IsWaitTimetabled() || v->type != VehicleType::Train))) &&
+			(v->current_order.IsType(OT_GOTO_WAYPOINT) && ((!v->current_order.IsWaitTimetabled() && !v->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Stop)) || v->type != VehicleType::Train))) &&
 			IsTileType(moving_front->tile, TileType::Station) &&
 			v->current_order.GetDestination() == GetStationIndex(moving_front->tile)) {
 		v->DeleteUnreachedImplicitOrders();
@@ -6461,7 +6462,7 @@ bool Order::UseOccupancyValueForAverage() const
  */
 bool Order::ShouldStopAtStation(StationID last_station_visited, StationID station, bool waypoint) const
 {
-	if (waypoint) return this->IsType(OT_GOTO_WAYPOINT) && this->dest == station && this->IsWaitTimetabled();
+	if (waypoint) return this->IsType(OT_GOTO_WAYPOINT) && this->dest == station && (this->IsWaitTimetabled() || this->GetWaypointFlags().Test(OrderWaypointFlag::Stop));
 	if (this->IsType(OT_WAIT_COUPLE) && this->HasWaitCoupleStation()) return this->GetWaitCoupleStation() == station && last_station_visited != station;
 	if (this->IsType(OT_LOADING_ADVANCE) && this->dest == station) return true;
 	bool is_dest_station = this->IsType(OT_GOTO_STATION) && this->dest == station;

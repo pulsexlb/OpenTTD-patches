@@ -2677,8 +2677,8 @@ STR_ORDER_SERVICE_SUFFIX                                        : [出发车次�
 STR_ORDER_SERVICE_DISPATCH_SUFFIX                               : [车次来自计时调度]
 
 STR_ORDER_WAYPOINT_STOP_BUTTON                                 :{BLACK}停车
-STR_ORDER_WAYPOINT_STOP_TOOLTIP                                :{BLACK}整列通过路点后停车，再根据后续调度选择行驶方向。
-STR_ORDER_WAYPOINT_STOP_SUFFIX                                 :（整列通过后停车）
+STR_ORDER_WAYPOINT_STOP_TOOLTIP                                :{BLACK}按车站停靠方式在此路点停车，停稳并完成等待后再出发。停车和换向只能选择一项。
+STR_ORDER_WAYPOINT_STOP_SUFFIX                                 :（停车）
 STR_ORDER_COUPLE_ANY_STATION                                   :任意车站
 
 STR_SCHDISPATCH_SET_LAST_DISPATCH                              :{BLACK}设置上次发车时间

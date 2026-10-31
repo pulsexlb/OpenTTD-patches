@@ -2756,6 +2756,6 @@ STR_ORDER_SERVICE_SUFFIX                                        : [Departure: {R
 STR_ORDER_SERVICE_DISPATCH_SUFFIX                               : [Number from scheduled dispatch]
 
 STR_ORDER_WAYPOINT_STOP_BUTTON                                 :{BLACK}Stop
-STR_ORDER_WAYPOINT_STOP_TOOLTIP                                :{BLACK}Stop after the entire train passes this waypoint, then continue towards the next order.
-STR_ORDER_WAYPOINT_STOP_SUFFIX                                 : (stop after clearing waypoint)
+STR_ORDER_WAYPOINT_STOP_TOOLTIP                                :{BLACK}Stop here using the normal station stopping process. Stop and Reverse are mutually exclusive.
+STR_ORDER_WAYPOINT_STOP_SUFFIX                                 : (stop)
 STR_ORDER_COUPLE_ANY_STATION                                   :Any station

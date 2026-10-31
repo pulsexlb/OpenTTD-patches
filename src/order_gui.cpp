@@ -6111,7 +6111,12 @@ public:
 			case WID_O_WAYPOINT_STOP: {
 				const auto selected = this->OrderGetSel();
 				const Order *order = OrderAt(selected);
-				if (order != nullptr && order->IsType(OT_GOTO_WAYPOINT)) this->ModifyOrder(selected, MOF_WAYPOINT_FLAGS, order->GetWaypointFlags().Flip(OrderWaypointFlag::Stop).base());
+				if (order != nullptr && order->IsType(OT_GOTO_WAYPOINT)) {
+					auto flags = order->GetWaypointFlags();
+					flags.Flip(OrderWaypointFlag::Stop);
+					if (flags.Test(OrderWaypointFlag::Stop)) flags.Reset(OrderWaypointFlag::Reverse);
+					this->ModifyOrder(selected, MOF_WAYPOINT_FLAGS, flags.base());
+				}
 				break;
 			}
 
@@ -6121,7 +6126,10 @@ public:
 
 				if (order == nullptr) break;
 
-				this->ModifyOrder(sel_ord, MOF_WAYPOINT_FLAGS, order->GetWaypointFlags().Flip(OrderWaypointFlag::Reverse).base());
+				auto flags = order->GetWaypointFlags();
+				flags.Flip(OrderWaypointFlag::Reverse);
+				if (flags.Test(OrderWaypointFlag::Reverse)) flags.Reset(OrderWaypointFlag::Stop);
+				this->ModifyOrder(sel_ord, MOF_WAYPOINT_FLAGS, flags.base());
 				break;
 			}
 

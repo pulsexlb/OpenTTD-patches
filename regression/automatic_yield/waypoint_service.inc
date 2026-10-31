@@ -23,8 +23,10 @@ void WaypointServiceTick()
   DemoRequire(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(demo_slow->index,VehicleOrderID{0},point)),"insert waypoint");
   Order goal;goal.MakeGoToStation(destination);goal.SetNonStopType(ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);
   DemoRequire(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(demo_slow->index,VehicleOrderID{1},goal)),"insert final station");
-  OrderWaypointFlags flags{};if(stopping&&mode!="reverse-only")flags.Set(OrderWaypointFlag::Stop);if(reversing)flags.Set(OrderWaypointFlag::Reverse);
+  OrderWaypointFlags flags{};if(stopping&&!reversing)flags.Set(OrderWaypointFlag::Stop);if(reversing)flags.Set(OrderWaypointFlag::Reverse);
   DemoRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0},MOF_WAYPOINT_FLAGS,flags.base(),INVALID_CARGO,{}),"waypoint stop/reverse flags");
+  assert(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0},MOF_WAYPOINT_FLAGS,OrderWaypointFlags{OrderWaypointFlag::Stop,OrderWaypointFlag::Reverse}.base(),INVALID_CARGO,{}).Failed());
+  assert(demo_slow->GetOrder(0)->GetWaypointFlags()==flags);
   if(stopping&&mode!="stop-zero")DemoRequire(CmdChangeTimetable(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0},MTF_WAIT_TIME,8000,{}),"waypoint dwell");
   DemoRequire(CmdSetOrderServiceNumber(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0},1,"WP123"),"waypoint service number");
   const auto json=OrderListToJSONString(demo_slow->orders);assert(json.find("WP123")!=std::string::npos);if(flags.Test(OrderWaypointFlag::Stop))assert(json.find("waypoint-stop")!=std::string::npos);
@@ -39,6 +41,11 @@ void WaypointServiceTick()
   assert(demo_slow);_current_company=demo_slow->owner;SetLocalCompany(demo_slow->owner);_pause_mode={};
   waypoint=GetStationIndex(TileXY(120,40));destination=GetStationIndex(TileXY(returning?27:235,40));
   assert(demo_slow->GetOrder(0)->GetServiceNumber()=="WP123");assert(demo_slow->GetActiveServiceNumber()=="WP123");
+  if(std::getenv("PXP_WAYPOINT_LEGACY_BOTH")){
+   assert(demo_slow->GetOrder(0)->GetWaypointFlags().Test(OrderWaypointFlag::Stop));
+   assert(!demo_slow->GetOrder(0)->GetWaypointFlags().Test(OrderWaypointFlag::Reverse));
+   fprintf(demo_log,"LEGACY both-selected waypoint migrated to stop-only=1\n");
+  }
   setup=true;reached=true;saved=true;
  }
  if(!setup||_game_mode!=GameMode::Normal)return;
@@ -47,9 +54,11 @@ void WaypointServiceTick()
   reached=true;fprintf(demo_log,"WAYPOINT mode=%s tick=%u number=WP123 head=%u tail=%u speed=%u distance=%u\n",mode.c_str(),ticks,TileX(demo_slow->GetMovingFront()->tile),TileX(demo_slow->GetMovingBack()->tile),demo_slow->cur_speed,demo_slow->reverse_distance);
  }
  if(reached&&demo_slow->cur_speed==0&&demo_slow->reverse_distance==0&&demo_slow->current_order.IsType(OT_WAITING)){
-  stopped=true;held++;assert(TileX(demo_slow->GetMovingBack()->tile)>=120);
+  stopped=true;held++;
+  if(reversing)assert(TileX(demo_slow->GetMovingBack()->tile)>=120);
+  else {assert(IsRailWaypointTile(demo_slow->GetMovingFront()->tile));assert(GetStationIndex(demo_slow->GetMovingFront()->tile)==waypoint);}
   if(held==1){fprintf(demo_log,"DWELL wait=%u timetabled=%u clock=%u late=%d original=%u original_timetabled=%u\n",demo_slow->current_order.GetTimetabledWait(),demo_slow->current_order.IsWaitTimetabled(),demo_slow->current_order_time,demo_slow->lateness_counter,demo_slow->GetOrder(0)->GetWaitTime(),demo_slow->GetOrder(0)->IsWaitTimetabled());fflush(demo_log);}
-  if(!saved){DemoSave("waypoint-stopped");saved=true;fprintf(demo_log,"STOP mode=%s tick=%u tail_cleared=1 heading=%u\n",mode.c_str(),ticks,uint(demo_slow->GetMovingFront()->GetMovingDirection()));}
+  if(!saved){DemoSave("waypoint-stopped");saved=true;fprintf(demo_log,"STOP mode=%s tick=%u native_stop_position=1 heading=%u\n",mode.c_str(),ticks,uint(demo_slow->GetMovingFront()->GetMovingDirection()));}
  }
  if(!stopping&&reached&&!saved){DemoSave("waypoint-stopped");saved=true;}
  if(reached&&demo_slow->last_station_visited==destination&&demo_slow->current_order.IsAnyLoadingType()){
