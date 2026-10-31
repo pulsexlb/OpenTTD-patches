@@ -1431,7 +1431,7 @@ private:
 	void EvaluateSlotIndex(uint slot_index, DepartureTypes types);
 	void EvaluateSlotIndexForType(DepartureType type);
 	void CheckSourceOrderArrival(const Order *order, StateTicks departure_tick);
-	std::string_view GetRouteID() const;
+	std::string_view GetRouteID(uint slot_index = UINT_MAX) const;
 };
 
 DeparturesConditionalJumpResult DepartureListScheduleModeSlotEvaluator::EvaluateConditionalOrder(const Order *order, StateTicks eval_tick) {
@@ -1594,9 +1594,9 @@ void DepartureListScheduleModeSlotEvaluator::CheckSourceOrderArrival(const Order
 	}
 }
 
-std::string_view DepartureListScheduleModeSlotEvaluator::GetRouteID() const
+std::string_view DepartureListScheduleModeSlotEvaluator::GetRouteID(uint slot_index) const
 {
-	const DispatchSlot &slot = this->ds.GetScheduledDispatch()[this->slot_index];
+	const DispatchSlot &slot = this->ds.GetScheduledDispatch()[slot_index == UINT_MAX ? this->slot_index : slot_index];
 	if (slot.route_id != 0) {
 		return this->ds.GetSupplementaryName(DispatchSchedule::SupplementaryNameType::RouteID, slot.route_id);
 	} else {
@@ -1799,7 +1799,7 @@ void DepartureListScheduleModeSlotEvaluator::EvaluateSlots(DepartureTypes types)
 				std::unique_ptr<Departure> d = std::make_unique<Departure>(*this->result[j]); // Clone departure
 				d->ShiftTimes(StateTicksDelta{adjustment});
 				if (d->sequence_id != 0) d->sequence_id += static_cast<uint32_t>(i);
-				if (this->calling_settings.DispatchScheduleRouteIDEnabled()) d->schedule_route_id = this->GetRouteID();
+				if (this->calling_settings.DispatchScheduleRouteIDEnabled()) d->schedule_route_id = this->GetRouteID(static_cast<uint>(i));
 				this->result.push_back(std::move(d));
 			}
 		}
@@ -1811,7 +1811,7 @@ void DepartureListScheduleModeSlotEvaluator::EvaluateSlots(DepartureTypes types)
 				std::unique_ptr<Departure> d = std::make_unique<Departure>(*this->result[j]); // Clone departure
 				d->ShiftTimes(StateTicksDelta{adjustment});
 				if (d->sequence_id != 0) d->sequence_id += seq_adjustment;
-				if (this->calling_settings.DispatchScheduleRouteIDEnabled()) d->schedule_route_id = this->GetRouteID();
+				/* A new repetition has the same slot identity as the row being copied. */
 				this->result.push_back(std::move(d));
 			}
 		}

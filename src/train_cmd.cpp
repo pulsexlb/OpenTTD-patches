@@ -1128,7 +1128,7 @@ static void ApplyLookAheadItem(const Train *v, const TrainReservationLookAheadIt
 			if (order->ShouldStopAtStation(last_station_visited, st, Waypoint::GetIfValid(st) != nullptr)) {
 				limit_advisory_speed(item.start + PredictStationStoppingLocation(v, order, item.end - item.start, st), 0, item.z_pos);
 				last_station_visited = st;
-			} else if (order->IsType(OT_GOTO_WAYPOINT) && order->GetDestination() == st && order->GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
+			} else if (order->IsType(OT_GOTO_WAYPOINT) && order->GetDestination() == st && order->GetWaypointFlags().Any({OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop})) {
 				limit_advisory_speed(item.start + v->gcache.cached_total_length, 0, item.z_pos);
 				if (order->IsWaitTimetabled()) last_station_visited = st;
 			}
@@ -5339,7 +5339,7 @@ public:
 						if (this->v->current_order.ShouldStopAtStation(this->v, st, Waypoint::GetIfValid(st) != nullptr)) {
 							SetBit(state.flags, CTTLASF_STOP_FOUND);
 							this->v->last_station_visited = st;
-						} else if (this->v->current_order.IsType(OT_GOTO_WAYPOINT) && this->v->current_order.GetDestination() == st && this->v->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
+						} else if (this->v->current_order.IsType(OT_GOTO_WAYPOINT) && this->v->current_order.GetDestination() == st && this->v->current_order.GetWaypointFlags().Any({OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop})) {
 							if (!HasBit(state.flags, CTTLASF_REVERSE_FOUND)) {
 								SetBit(state.flags, CTTLASF_REVERSE_FOUND);
 								state.reverse_dest = st;
@@ -5946,7 +5946,7 @@ static ChooseTrainTrackResult ChooseTrainTrackImpl(Train *consist, const TileInd
 				HasStationTileRail(tile)) {
 			if (consist->current_order.ShouldStopAtStation(consist, GetStationIndex(tile), IsRailWaypoint(tile))) {
 				SetBit(lookahead_state.flags, CTTLASF_STOP_FOUND);
-			} else if (consist->current_order.IsType(OT_GOTO_WAYPOINT) && consist->current_order.GetDestination() == GetStationIndex(tile) && consist->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
+			} else if (consist->current_order.IsType(OT_GOTO_WAYPOINT) && consist->current_order.GetDestination() == GetStationIndex(tile) && consist->current_order.GetWaypointFlags().Any({OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop})) {
 				if (!HasBit(lookahead_state.flags, CTTLASF_REVERSE_FOUND)) {
 					SetBit(lookahead_state.flags, CTTLASF_REVERSE_FOUND);
 					lookahead_state.reverse_dest = GetStationIndex(tile);
@@ -8391,6 +8391,8 @@ static void Couple(Train *v, Train *u)
 
 	/* The couple order may instruct the consist to adopt the waiting
 	 * consist's schedule; current_order is still that order here. */
+	const std::string waiting_service_number = u->GetActiveServiceNumber();
+	const bool moving_has_service_number = !v->service_number_suppressed && !v->GetActiveServiceNumber().empty();
 	bool adopt_waiting_schedule = v->current_order.IsType(OT_GOTO_COUPLE) && v->current_order.GetCoupleUseWaitingSchedule();
 
 	/*
@@ -8532,6 +8534,11 @@ static void Couple(Train *v, Train *u)
 
 	/* The train is now one consist again: it is no longer a decoupled part. */
 	v->Primary()->decouple_part = 0;
+	if (!moving_has_service_number && !waiting_service_number.empty()) {
+		v->Primary()->fixed_service_number = waiting_service_number;
+		v->Primary()->service_number_suppressed = false;
+	}
+	InvalidateWindowClassesData(WindowClass::DepartureBoard);
 
 	/* The merge moved vehicles -- and the primary that carries the breakdown
 	 * bookkeeping -- between the two consists, so recompute it for the merged
@@ -8805,6 +8812,10 @@ static void TrainEnterStation(Train *consist, StationID station)
 	bool second_same_dir = decouple_flags_order != nullptr && decouple_flags_order->GetDecoupleSecondSameDirExit();
 	bool both_same_dir = first_same_dir && second_same_dir;
 	Debug(desync, 1, "TrainEnterStation: veh={} st={} tile=({},{}) want_decouple={} ordertype={}", consist->index, station, TileX(consist->tile), TileY(consist->tile), want_decouple, (int)consist->current_order.GetType());
+	if (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetDestination() == station) consist->ApplyStationServiceNumber(consist->current_order);
+	std::string station_service_number = consist->GetActiveServiceNumber();
+	const bool station_service_uses_dispatch = consist->fixed_service_number.empty() && !consist->service_number_suppressed;
+	bool service_number_split = false;
 	std::unique_ptr<OrderList> wait_orders[2];
 	const StringID order_failure = want_decouple ? PrepareDecoupleWaitOrders(consist, wait_orders) : STR_NULL;
 	if (order_failure != STR_NULL && consist->owner == _local_company) {
@@ -8857,6 +8868,8 @@ static void TrainEnterStation(Train *consist, StationID station)
 		}
 		bool consist_in_rear = false;
 		StringID decouple_failure_reason;
+		/* Arrival bookkeeping may just have selected this stop's dispatch slot. */
+		if (station_service_uses_dispatch) station_service_number = consist->GetActiveServiceNumber();
 		u = DecoupleTrain(consist, consist_in_rear, decouple_failure_reason);
 		/* All further handling of the rear part (orders, loading, windows)
 		 * must operate on its primary vehicle, not the physical chain head. */
@@ -8877,6 +8890,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * skip it entirely then: physically flipping a still-moving consist
 		 * mid-station-entry is only valid for an actual trailer part. */
 		bool decoupled = (u != nullptr && u != consist);
+		service_number_split = decoupled;
 		/* Both parts are marked before the reversal: reversing re-reserves the
 		 * part's path, and a part that is still standing in the station it
 		 * decoupled at must not long-reserve (see IsReservationLookAheadLongEnough),
@@ -8973,6 +8987,22 @@ static void TrainEnterStation(Train *consist, StationID station)
 		u->force_proceed = TFP_NONE;
 		InvalidateWindowData(WindowClass::VehicleView, u->index);
 		u->BeginLoading();
+	}
+
+	if (service_number_split) {
+		/* A loading first part may only book its dispatch slot in BeginLoading. */
+		if (station_service_uses_dispatch) {
+			const std::string dispatched_number = consist->GetActiveServiceNumber();
+			if (!dispatched_number.empty()) station_service_number = dispatched_number;
+		}
+		for (Train *part : {consist->Primary(), u->Primary()}) {
+			bool has_wagon = false;
+			for (const Train *w = part->First(); w != nullptr; w = w->Next()) if (w->IsWagon() && !w->IsArticulatedPart()) has_wagon = true;
+			part->fixed_service_number = has_wagon ? std::string_view(station_service_number) : std::string_view{};
+			part->service_number_suppressed = !has_wagon;
+			SetWindowDirty(WindowClass::VehicleView, part->index);
+		}
+		InvalidateWindowClassesData(WindowClass::DepartureBoard);
 	}
 
 	/* The arrival handler stops the whole consist so the split can happen.
@@ -9728,6 +9758,16 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 	};
 
 	if (reverse && consist->reverse_distance == 1 && (consist->cur_speed <= 15 || !consist->UsingRealisticBraking())) {
+		/* A stop-only waypoint uses the same full-consist clearance distance.
+		 * Preserve the waiting order until the stop is physically completed. */
+		const Order *waypoint = consist->GetOrder(consist->cur_real_order_index);
+		if (consist->current_order.IsType(OT_WAITING) && waypoint != nullptr && waypoint->IsType(OT_GOTO_WAYPOINT) &&
+				waypoint->GetWaypointFlags().Test(OrderWaypointFlag::Stop) && !waypoint->GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+			consist->reverse_distance = 0;
+			return false;
+		}
 		/* Train is not moving too fast and reversing distance has been reached */
 		goto reverse_train_direction;
 	}
@@ -10984,6 +11024,10 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		if (mode) return true;
 		consist->HandleWaiting(false, true);
 		if (consist->current_order.IsType(OT_WAITING)) return true;
+		if (consist->current_order.IsType(OT_GOTO_COUPLE) && CheckReverseTrain(consist)) {
+			ReverseTrainDirection(consist);
+			return true;
+		}
 		Train *moving_front = consist->GetMovingFront();
 		if (IsRailWaypointTile(moving_front->tile)) {
 			StationID station_id = GetStationIndex(moving_front->tile);

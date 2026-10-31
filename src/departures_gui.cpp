@@ -135,6 +135,27 @@ static const StringID _departure_source_mode_strings[DSM_END] = {
 	STR_DEPARTURES_SOURCE_MODE_SCHEDULE_24_HOUR,
 };
 
+/** Planned rows belong to a dispatch slot, not the representative vehicle's current run. */
+static std::string GetDepartureBoardServiceNumber(const Departure &d, DeparturesSourceMode source_mode)
+{
+	if (source_mode != DSM_SCHEDULE_24H) return d.vehicle->GetServiceNumberForDeparture(d.type == D_DEPARTURE ? d.order : nullptr, d.schedule_route_id);
+	std::string number = d.schedule_route_id;
+	if (d.type != D_DEPARTURE || d.order == nullptr) return number;
+	/* Apply only explicit stop changes along an unambiguous planned segment.
+	 * Never seed future rows from current vehicle identity, old records or split state. */
+	const Order *order = d.dispatch_order;
+	for (uint i = 0; order != nullptr && i < d.vehicle->GetNumOrders(); ++i, order = d.vehicle->orders->GetNext(order)) {
+		if (order->IsType(OT_CONDITIONAL) || order->IsType(OT_EXECUTE_SCHEDULE)) break;
+		if ((order->IsType(OT_GOTO_WAYPOINT) || (order->IsType(OT_GOTO_STATION) && !(order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)))) {
+			if (order->GetServiceNumberMode() == 1) number = order->GetServiceNumber();
+			if (order->GetServiceNumberMode() == 2) number = d.schedule_route_id;
+		}
+		if (order == d.order) return number;
+	}
+	/* Even an unresolved branch cannot override an explicit setting at this stop. */
+	return d.order->GetServiceNumberMode() == 1 ? std::string(d.order->GetServiceNumber()) : d.schedule_route_id;
+}
+
 struct DeparturesWindow : public Window {
 protected:
 	DepartureSourceType source_type{};          ///< Source type.
@@ -215,6 +236,9 @@ protected:
 					for (const Vehicle *v = veh; v != nullptr; v = v->NextShared()) {
 						if (this->source_mode == DSM_LIVE) this->vehicles.push_back(v);
 
+						if (!v->fixed_service_number.empty()) {
+							this->route_id_width = std::max<int>(this->route_id_width, GetStringBoundingBox(std::string_view(v->fixed_service_number)).width + 4);
+						}
 						if (show_vehicle_name) {
 							if (v->name.empty() && !(v->group_id != DEFAULT_GROUP && _settings_client.gui.vehicle_names != 0)) {
 								if (v->unitnumber > unitnumber_max[v->type]) unitnumber_max[v->type] = v->unitnumber;
@@ -233,7 +257,10 @@ protected:
 							companies.Set(v->owner);
 						}
 					}
-					if (_settings_client.gui.departure_show_schedule_route_id && veh->orders != nullptr) {
+					if (veh->orders != nullptr) {
+						for (const Order *o : veh->Orders()) if (!o->GetServiceNumber().empty()) this->route_id_width = std::max<int>(this->route_id_width, GetStringBoundingBox(o->GetServiceNumber()).width + 4);
+					}
+					if ((_settings_client.gui.departure_show_schedule_route_id || _settings_client.gui.departure_show_vehicle) && veh->orders != nullptr) {
 						for (const DispatchSchedule &ds : veh->orders->GetScheduledDispatchScheduleSet()) {
 							ds.IterateRouteIDNames([&](DispatchSlotRouteID route_id, std::string_view name) {
 								int width = (GetStringBoundingBox(name)).width + 4;
@@ -805,7 +832,7 @@ public:
 			settings.SetSmartTerminusEnabled(_settings_client.gui.departure_smart_terminus && (this->source_type == DST_STATION));
 			settings.SetVehicleCycleTrackingEnabled(this->order_list_filter != nullptr && this->mode != DM_ARRIVALS && this->source_mode == DSM_SCHEDULE_24H);
 			settings.SetDispatchArrivalTicksEnabled(settings.VehicleCycleTrackingEnabled() || (this->mode == DM_COMBINED && this->source_mode == DSM_SCHEDULE_24H));
-			settings.SetDispatchScheduleRouteIDEnabled(_settings_client.gui.departure_show_schedule_route_id);
+			settings.SetDispatchScheduleRouteIDEnabled(_settings_client.gui.departure_show_schedule_route_id || _settings_client.gui.departure_show_vehicle);
 
 			DepartureTypes types{};
 			if (this->mode != DM_ARRIVALS) {
@@ -1187,19 +1214,20 @@ void DeparturesWindow::DrawDeparturesListItems(const Rect &r) const
 			}
 		};
 
-		/* Columns bound to start */
-		columns[DepartureColumn::Time] = consume_from_start(time_width, false);
-		consume_from_start(ScaleGUITrad(3), false); // padding
-		columns[DepartureColumn::VehTypeIcon] = consume_from_start(_settings_client.gui.departure_show_vehicle_type ? cached_veh_type_width : 0, false);
-		consume_from_start(ScaleGUITrad(3), false); // padding
-		columns[DepartureColumn::ArrivalTime] = consume_from_start((this->show_arrival_times && _settings_time.time_in_minutes) ? cached_date_width : 0, true);
-
-		/* Columns bound to end */
+		/* Reserve trailing fields first, so the destination can fill the space
+		 * between the leading service number and the arrival/departure times. */
 		columns[DepartureColumn::Company] = consume_from_end(_settings_client.gui.departure_show_company ? this->toc_width : 0, true);
-		columns[DepartureColumn::RouteID] = consume_from_end(_settings_client.gui.departure_show_schedule_route_id ? this->route_id_width : 0, true);
-		columns[DepartureColumn::Group] = consume_from_end(_settings_client.gui.departure_show_group ? this->group_width : 0, true);
 		columns[DepartureColumn::VehicleName] = consume_from_end(_settings_client.gui.departure_show_vehicle ? this->veh_width : 0, true);
+		columns[DepartureColumn::Group] = consume_from_end(_settings_client.gui.departure_show_group ? this->group_width : 0, true);
 		columns[DepartureColumn::Status] = consume_from_end(cached_status_width, true);
+		columns[DepartureColumn::ArrivalTime] = consume_from_end((this->show_arrival_times && _settings_time.time_in_minutes) ? cached_date_width : 0, true);
+		consume_from_end(ScaleGUITrad(3), false); // padding
+		columns[DepartureColumn::VehTypeIcon] = consume_from_end(_settings_client.gui.departure_show_vehicle_type ? cached_veh_type_width : 0, false);
+		consume_from_end(ScaleGUITrad(3), false); // padding
+		columns[DepartureColumn::Time] = consume_from_end(time_width, true);
+
+		/* The service number is the first column in the reading direction. */
+		columns[DepartureColumn::RouteID] = consume_from_start(this->route_id_width, true);
 
 		/* Remaining space */
 		columns[DepartureColumn::Destination] = { available_left, available_right };
@@ -1416,8 +1444,10 @@ void DeparturesWindow::DrawDeparturesListItems(const Rect &r) const
 			}
 		}
 
+		/* Exactly one number source is active. Never overwrite the actual name. */
+		const std::string service_number = GetDepartureBoardServiceNumber(*d, this->source_mode);
 		/* Vehicle name */
-		if (_settings_client.gui.departure_show_vehicle) {
+		if (_settings_client.gui.departure_show_vehicle && service_number.empty()) {
 			const auto &col = columns[DepartureColumn::VehicleName];
 
 			if (this->order_list_filter != nullptr && this->source_mode == DSM_SCHEDULE_24H) {
@@ -1434,9 +1464,9 @@ void DeparturesWindow::DrawDeparturesListItems(const Rect &r) const
 		}
 
 		/* Scheduled dispatch route ID */
-		if (_settings_client.gui.departure_show_schedule_route_id && !d->schedule_route_id.empty()) {
+		if (!service_number.empty()) {
 			const auto &col = columns[DepartureColumn::RouteID];
-			DrawString(col.left, col.right, y + 1, d->schedule_route_id, TextColour::Orange);
+			DrawString(col.left, col.right, y + 1, service_number, TextColour::Orange);
 		}
 
 		/* Operating company */

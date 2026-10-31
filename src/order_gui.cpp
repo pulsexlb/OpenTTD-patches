@@ -47,6 +47,7 @@
 #include "scope.h"
 #include "zoom_func.h"
 #include "order_cmd.h"
+#include "timetable_cmd.h"
 #include "orderlist_edit.h"
 #include "schedule_group_gui.h"
 #include "company_base.h"
@@ -3114,7 +3115,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			} else {
 				/* The {STRING1} code always consumes one argument; pad so the
 				 * following load-condition parameter keeps its position. */
-				couple_params.emplace_back(STR_ORDER_COUPLE_ANY);
+				couple_params.emplace_back(STR_ORDER_COUPLE_ANY_STATION);
 				couple_params.emplace_back(std::monostate{});
 			}
 			couple_params.emplace_back(STR_ORDER_COUPLE_ANY + to_underlying(order->GetCoupleLoad()));
@@ -3229,6 +3230,11 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 		AppendStringInPlace(line, STR_TIMETABLE_LEAVE_EARLY_ORDER + order->GetLeaveType() - OLT_LEAVE_EARLY);
 	}
 
+	if (!timetable && (order->IsType(OT_GOTO_WAYPOINT) || (order->IsType(OT_GOTO_STATION) && !(order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)))) {
+		if (order->GetServiceNumberMode() == 1) AppendStringInPlace(line, STR_ORDER_SERVICE_SUFFIX, order->GetServiceNumber());
+		if (order->GetServiceNumberMode() == 2) AppendStringInPlace(line, STR_ORDER_SERVICE_DISPATCH_SUFFIX);
+	}
+	if (!timetable && order->IsType(OT_GOTO_WAYPOINT) && order->GetWaypointFlags().Test(OrderWaypointFlag::Stop)) AppendStringInPlace(line, STR_ORDER_WAYPOINT_STOP_SUFFIX);
 	int edge = DrawString(rtl ? left : middle, rtl ? middle : right, y, line, colour);
 	line.clear();
 
@@ -3483,6 +3489,7 @@ private:
 
 		/* WID_O_SEL_TOP_MIDDLE */
 		DP_MIDDLE_UNLOAD   = 0, ///< Display 'unload' in the middle button of the top row of the train/rv order window.
+		DP_MIDDLE_WAYPOINT_STOP = 2, ///< Stop after the whole train passes the waypoint.
 		DP_MIDDLE_SERVICE  = 1, ///< Display 'service' in the middle button of the top row of the train/rv order window.
 
 		/* WID_O_SEL_TOP_RIGHT */
@@ -3570,6 +3577,15 @@ public:
 	}
 
 private:
+	VehicleOrderID service_number_query_index = INVALID_VEH_ORDER_ID;
+	const Order *service_number_query_order = nullptr;
+	OrderListID service_number_query_list = OrderListID::Invalid();
+	bool CanSetStationServiceNumber() const
+	{
+		const Order *o = this->selected_order >= 0 ? OrderAt(this->selected_order) : nullptr;
+		return IsLocalTarget() && this->RefType() == VehicleType::Train && o != nullptr && (o->IsType(OT_GOTO_WAYPOINT) || (o->IsType(OT_GOTO_STATION) && !(o->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)));
+	}
+
 	/* ---- target mode helpers: order-content access goes through these ---- */
 	VehicleOrderID NumOrders() const { return this->HasVehicle() ? this->vehicle->GetNumOrders() : (this->order_list != nullptr ? this->order_list->GetNumOrders() : 0); }
 	const Order *OrderAt(VehicleOrderID i) const { return this->HasVehicle() ? this->vehicle->GetOrder(i) : (this->order_list != nullptr ? this->order_list->GetOrderAt(i) : nullptr); }
@@ -4866,7 +4882,9 @@ public:
 					} else {
 						train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_NORMAL);
 						left_sel->SetDisplayedPlane(DP_LEFT_REVERSE);
-						middle_sel->SetDisplayedPlane(DP_MIDDLE_UNLOAD);
+						middle_sel->SetDisplayedPlane(DP_MIDDLE_WAYPOINT_STOP);
+						this->EnableWidget(WID_O_WAYPOINT_STOP);
+						this->SetWidgetLoweredState(WID_O_WAYPOINT_STOP, order->GetWaypointFlags().Test(OrderWaypointFlag::Stop));
 						right_sel->SetDisplayedPlane(DP_RIGHT_EMPTY);
 						this->EnableWidget(WID_O_NON_STOP);
 						this->SetWidgetLoweredState(WID_O_NON_STOP, order->GetNonStopType() & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);
@@ -5205,6 +5223,7 @@ public:
 
 	void OnPaint() override
 	{
+		if (this->GetWidget<NWidgetCore>(WID_O_SERVICE_NUMBER) != nullptr) this->SetWidgetDisabledState(WID_O_SERVICE_NUMBER, !CanSetStationServiceNumber());
 		if (!IsLocalTarget()) {
 			this->selected_order = -1; // Disable selection any selected row at a competitor order window.
 		} else {
@@ -5384,6 +5403,11 @@ public:
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		switch (widget) {
+			case WID_O_SERVICE_NUMBER: {
+				const Order *o = this->selected_order >= 0 ? OrderAt(this->selected_order) : nullptr;
+				if (o == nullptr || !o->IsType(OT_GOTO_STATION)) return GetString(STR_ORDER_SERVICE_SELECT_STOP);
+				return o->GetServiceNumberMode() == 1 ? GetString(STR_TIMETABLE_FIXED_SERVICE_NUMBER, o->GetServiceNumber()) : GetString(o->GetServiceNumberMode() == 2 ? STR_TIMETABLE_DISPATCH_SERVICE_NUMBER : STR_ORDER_SERVICE_UNCHANGED);
+			}
 			case WID_O_COND_VALUE: {
 				VehicleOrderID sel = this->OrderGetSel();
 				const Order *order = OrderAt(sel);
@@ -5632,6 +5656,16 @@ public:
 	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
 		switch (widget) {
+			case WID_O_SERVICE_NUMBER: {
+				if (!CanSetStationServiceNumber()) break;
+				const Order *o = OrderAt(this->selected_order);
+				DropDownList list;
+				list.push_back(MakeDropDownListCheckedItem(o->GetServiceNumberMode() == 0, STR_ORDER_SERVICE_UNCHANGED, 0));
+				list.push_back(MakeDropDownListCheckedItem(o->GetServiceNumberMode() == 1, STR_TIMETABLE_SET_SERVICE_NUMBER, 1));
+				list.push_back(MakeDropDownListCheckedItem(o->GetServiceNumberMode() == 2, STR_TIMETABLE_DISPATCH_SERVICE_NUMBER, 2));
+				ShowDropDownList(this, std::move(list), o->GetServiceNumberMode(), widget);
+				break;
+			}
 			case WID_O_ORDER_LIST: {
 				if (this->goto_type == OPOS_CONDITIONAL) {
 					VehicleOrderID order_id = this->GetOrderFromPt(_cursor.pos.y - this->top);
@@ -6072,6 +6106,13 @@ public:
 				break;
 			}
 
+			case WID_O_WAYPOINT_STOP: {
+				const auto selected = this->OrderGetSel();
+				const Order *order = OrderAt(selected);
+				if (order != nullptr && order->IsType(OT_GOTO_WAYPOINT)) this->ModifyOrder(selected, MOF_WAYPOINT_FLAGS, order->GetWaypointFlags().Flip(OrderWaypointFlag::Stop).base());
+				break;
+			}
+
 			case WID_O_REVERSE: {
 				VehicleOrderID sel_ord = this->OrderGetSel();
 				const Order *order = OrderAt(sel_ord);
@@ -6492,6 +6533,11 @@ public:
 
 	void OnQueryTextFinished(std::optional<std::string> str, std::optional<std::string> str2) override
 	{
+		if (this->query_text_widget == WID_O_SERVICE_NUMBER) {
+			if (!str.has_value() || !IsLocalTarget() || this->Target() == nullptr || this->Target()->index != this->service_number_query_list || OrderAt(this->service_number_query_index) != this->service_number_query_order) return;
+			Command<Commands::SetOrderServiceNumber>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->TargetKind(), this->TargetId(), this->service_number_query_index, uint8_t(str->empty() ? 0 : 1), *str);
+			return;
+		}
 		if (this->query_text_widget == WID_O_COND_VALUE && str.has_value() && !str->empty()) {
 			VehicleOrderID sel = this->OrderGetSel();
 			auto try_value = ParseInteger<uint>(*str);
@@ -6615,6 +6661,18 @@ public:
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		switch (widget) {
+			case WID_O_SERVICE_NUMBER:
+				if (!CanSetStationServiceNumber()) break;
+				if (index == 0 || index == 2) {
+					Command<Commands::SetOrderServiceNumber>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->TargetKind(), this->TargetId(), VehicleOrderID(this->selected_order), uint8_t(index), std::string{});
+				} else if (index == 1) {
+					this->query_text_widget = WID_O_SERVICE_NUMBER;
+					this->service_number_query_index = this->selected_order;
+					this->service_number_query_order = OrderAt(this->selected_order);
+					this->service_number_query_list = this->Target()->index;
+					ShowQueryString(GetString(STR_JUST_RAW_STRING, this->service_number_query_order->GetServiceNumber()), STR_TIMETABLE_SET_SERVICE_NUMBER, MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+				}
+				break;
 			case WID_O_NON_STOP:
 				this->OrderClick_Nonstop(index);
 				break;
@@ -7521,6 +7579,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_O_SCROLLBAR),
 	EndContainer(),
 
+	NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_SERVICE_NUMBER), SetResize(1, 0), SetFill(1, 0), SetStringTip(STR_ORDER_SERVICE_SELECT_STOP, STR_TIMETABLE_SERVICE_NUMBER_TOOLTIP),
+
 	/* First button row. */
 	NWidget(NWID_HORIZONTAL),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_TOP_ROW_GROUNDVEHICLE),
@@ -7540,6 +7600,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 															SetStringTip(STR_ORDER_TOGGLE_UNLOAD, STR_ORDER_TOOLTIP_UNLOAD), SetResize(1, 0),
 					NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_DEPOT_ACTION), SetMinimalSize(93, 12), SetFill(1, 0),
 															SetResize(1, 0),
+					NWidget(WWT_TEXTBTN, Colours::Grey, WID_O_WAYPOINT_STOP), SetMinimalSize(93, 12), SetFill(1, 0),
+						SetStringTip(STR_ORDER_WAYPOINT_STOP_BUTTON, STR_ORDER_WAYPOINT_STOP_TOOLTIP), SetResize(1, 0),
 				EndContainer(),
 				NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_TOP_RIGHT),
 					NWidget(WWT_PANEL, Colours::Grey), SetMinimalSize(93, 12), SetFill(1, 0), SetResize(1, 0), EndContainer(),

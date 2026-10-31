@@ -252,6 +252,7 @@ using OrderDepotExtraFlags = EnumBitSet<OrderDepotExtraFlag, uint8_t>;
  */
 enum class OrderWaypointFlag : uint8_t {
 	Reverse             = 0, ///< Reverse train at the waypoint
+	Stop                = 1, ///< Stop after the whole train passes the waypoint
 };
 using OrderWaypointFlags = EnumBitSet<OrderWaypointFlag, uint8_t>;
 

@@ -138,6 +138,8 @@ Order UnpackOldOrder(uint16_t packed)
 NamedSaveLoadTable GetOrderExtraInfoDescription()
 {
 	static const NamedSaveLoad _order_extra_info_desc[] = {
+		NSL("station_service_mode", SLE_CONDVAR_X(OrderExtraInfo, station_service_mode, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER, 2))),
+		NSL("station_service_number", SLE_CONDSTR_X(OrderExtraInfo, station_service_number, SLE_STR, 0, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER, 2))),
 		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, 32,        SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 1, 2))),
 		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_GRF_CARGO, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 3, 4))),
 		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_CARGO,     SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 5))),
@@ -574,6 +576,8 @@ NamedSaveLoadTable GetOrderBackupDescription()
 		NSL("group",                           SLE_VAR(OrderBackup, group,                     SLE_UINT16)),
 		NSL("service_interval",            SLE_CONDVAR(OrderBackup, service_interval,          SLE_FILE_U32 | SLE_VAR_U16,  SL_MIN_VERSION, SLV_192)),
 		NSL("service_interval",            SLE_CONDVAR(OrderBackup, service_interval,          SLE_UINT16,                  SLV_192, SL_MAX_VERSION)),
+		NSL("service_number_suppressed", SLE_CONDVAR_X(OrderBackup, service_number_suppressed, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER, 2))),
+		NSL("fixed_service_number", SLE_CONDSTR_X(OrderBackup, fixed_service_number, SLE_STR, 0, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER))),
 		NSL("name",                            SLE_STR(OrderBackup, name,                      SLE_STR, 0)),
 		NSL("",                           SLE_CONDNULL(2,                                                                   SL_MIN_VERSION, SLV_192)), // clone (2 bytes of pointer, i.e. garbage)
 		NSL("clone",                       SLE_CONDREF(OrderBackup, clone,                     REF_VEHICLE,                 SLV_192, SL_MAX_VERSION)),

@@ -14,6 +14,7 @@
 
 /** Widgets of the #OrdersWindow class. */
 enum OrderWidgets : WidgetID {
+	WID_O_SERVICE_NUMBER,            ///< Outbound service number at the selected scheduled stop.
 	WID_O_CAPTION,                   ///< Caption of the window.
 	WID_O_TIMETABLE_VIEW,            ///< Toggle timetable view.
 	WID_O_ORDER_LIST,                ///< Order list panel.
@@ -32,6 +33,7 @@ enum OrderWidgets : WidgetID {
 	WID_O_REFIT,                     ///< Select refit.
 	WID_O_DEPOT_ACTION,              ///< Dropdown to select the depot action (stop, service if needed, unbunch).
 	WID_O_REFIT_DROPDOWN,            ///< Open refit options.
+	WID_O_WAYPOINT_STOP,             ///< Stop after clearing the waypoint
 	WID_O_REVERSE,                   ///< Select waypoint reverse type
 	WID_O_COND_VARIABLE,             ///< Choose condition variable.
 	WID_O_COND_COMPARATOR,           ///< Choose condition type.

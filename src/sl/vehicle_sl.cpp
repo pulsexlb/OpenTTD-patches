@@ -1049,6 +1049,8 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("subtype",                        SLE_VAR(Vehicle, subtype,                   SLE_UINT8)),
 
 		NSL("next",                           SLE_REF(Vehicle, next,                      REF_VEHICLE_OLD)),
+		NSL("service_number_suppressed", SLE_CONDVAR_X(Vehicle, service_number_suppressed, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER, 2))),
+		NSL("fixed_service_number", SLE_CONDSTR_X(Vehicle, fixed_service_number, SLE_STR, 0, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER))),
 		NSL("name",                       SLE_CONDVAR(Vehicle, name,                      SLE_CNAME,                  SL_MIN_VERSION, SLV_84)),
 		NSL("name",                       SLE_CONDSTR(Vehicle, name,                      SLE_STR | SLF_ALLOW_CONTROL, 0, SLV_84, SL_MAX_VERSION)),
 		NSL("unitnumber",                 SLE_CONDVAR(Vehicle, unitnumber,                SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_8)),

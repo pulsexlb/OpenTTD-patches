@@ -4591,7 +4591,9 @@ public:
 		format_buffer buf;
 		AppendStringInPlace(buf, STR_VEHICLE_VIEW_CAPTION, v->index);
 
-		if (_settings_client.gui.show_vehicle_route_id_vehicle_view && v->orders != nullptr && !v->dispatch_records.empty()) {
+		if (_settings_client.gui.show_vehicle_route_id_vehicle_view && !v->service_number_suppressed && !v->fixed_service_number.empty()) {
+			AppendStringInPlace(buf, STR_VEHICLE_VIEW_CAPTION_ROUTE_ID_SUFFIX, std::string_view(v->fixed_service_number));
+		} else if (_settings_client.gui.show_vehicle_route_id_vehicle_view && !v->service_number_suppressed && v->orders != nullptr && !v->dispatch_records.empty()) {
 			const auto schedule_count = v->orders->GetScheduledDispatchScheduleCount();
 			const std::pair<const uint16_t, LastDispatchRecord> *best_record = nullptr;
 			StateTicks best_tick = StateTicks{INT64_MIN};

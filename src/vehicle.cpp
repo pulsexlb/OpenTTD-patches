@@ -3518,6 +3518,55 @@ static void VehicleIncreaseStats(const Vehicle *front)
  * Prepare everything to begin the loading when arriving at a station.
  * @pre IsTileType(this->tile, TileType::Station) || this->type == VehicleType::Ship.
  */
+std::string Vehicle::GetActiveServiceNumber() const
+{
+	if (this->service_number_suppressed) return {};
+	if (!this->fixed_service_number.empty()) return std::string(this->fixed_service_number.c_str());
+	if (this->orders == nullptr) return {};
+	const LastDispatchRecord *best = nullptr;
+	uint schedule = 0;
+	for (const auto &[index, record] : this->dispatch_records) {
+		if (index >= this->orders->GetScheduledDispatchScheduleCount()) continue;
+		if (best == nullptr || record.dispatched > best->dispatched) { best = &record; schedule = index; }
+	}
+	return best != nullptr && best->route_id != 0 ? std::string(this->orders->GetDispatchScheduleByIndex(schedule).GetSupplementaryName(DispatchSchedule::SupplementaryNameType::RouteID, best->route_id)) : std::string{};
+}
+
+std::string Vehicle::GetServiceNumberForDeparture(const Order *target, std::string_view dispatched_number) const
+{
+	if (this->service_number_suppressed && target != nullptr && target->GetDestination() == this->last_station_visited && (this->current_order.IsAnyLoadingType() || this->current_order.IsType(OT_WAIT_COUPLE))) return {};
+	/* An explicit stop setting describes its outbound service, including a future stop. */
+	if (target != nullptr && (target->IsType(OT_GOTO_WAYPOINT) || (target->IsType(OT_GOTO_STATION) && !(target->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)))) {
+		if (target->GetServiceNumberMode() == 1) return std::string(target->GetServiceNumber());
+		if (target->GetServiceNumberMode() == 2) return std::string(dispatched_number);
+	}
+	std::string result = this->service_number_suppressed ? std::string{} : (!this->fixed_service_number.empty() ? std::string(this->fixed_service_number.c_str()) : std::string(dispatched_number));
+	/* Only follow the same, unambiguous order segment; never execute conditions or subplans. */
+	if (this->orders != nullptr && target != nullptr) {
+		const Order *o = this->GetOrder(this->cur_implicit_order_index);
+		for (uint i = 0; o != nullptr && i < this->GetNumOrders(); ++i, o = this->orders->GetNext(o)) {
+			if (o->IsType(OT_CONDITIONAL) || o->IsType(OT_EXECUTE_SCHEDULE)) break;
+			if ((o->IsType(OT_GOTO_WAYPOINT) || (o->IsType(OT_GOTO_STATION) && !(o->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION))) && !(this->service_number_suppressed && o == this->GetOrder(this->cur_implicit_order_index))) {
+				if (o->GetServiceNumberMode() == 1) result = o->GetServiceNumber();
+				if (o->GetServiceNumberMode() == 2) result = dispatched_number;
+			}
+			if (o == target) return result;
+		}
+	}
+	return result;
+}
+
+void Vehicle::ApplyStationServiceNumber(const Order &order)
+{
+	if (this->type != VehicleType::Train || (!order.IsType(OT_GOTO_STATION) && !order.IsType(OT_GOTO_WAYPOINT)) || order.GetServiceNumberMode() == 0) return;
+	const std::string_view number = order.GetServiceNumberMode() == 1 ? order.GetServiceNumber() : std::string_view{};
+	if (!this->service_number_suppressed && std::string_view(this->fixed_service_number) == number) return;
+	this->fixed_service_number = number;
+	this->service_number_suppressed = false;
+	SetWindowDirty(WindowClass::VehicleView, this->index);
+	InvalidateWindowClassesData(WindowClass::DepartureBoard);
+}
+
 void Vehicle::BeginLoading()
 {
 	if (this->type == VehicleType::Train) {
@@ -3533,6 +3582,8 @@ void Vehicle::BeginLoading()
 	if (this->current_order.IsType(OT_GOTO_STATION) &&
 			this->current_order.GetDestination() == this->last_station_visited) {
 		this->DeleteUnreachedImplicitOrders();
+
+		this->ApplyStationServiceNumber(this->current_order);
 
 		/* Now both order indices point to the destination station, and we can start loading */
 		this->current_order.MakeLoading(true);

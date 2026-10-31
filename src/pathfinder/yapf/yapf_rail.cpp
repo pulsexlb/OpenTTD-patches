@@ -580,6 +580,21 @@ public:
 		return ret;
 	}
 
+	static bool stCheckCoupleReverse(const Train *v, TileIndex t1, Trackdir td1, TileIndex t2, Trackdir td2,
+			int reverse_penalty, TraceRestrictProgramInputFlags input_flags)
+	{
+		Tpf pf;
+		pf.DisableCache(true);
+		pf.SetOrigin(t1, td1, t2, td2, reverse_penalty);
+		pf.SetTreatFirstRedTwoWaySignalAsEOL(false);
+		pf.SetTraceRestrictProgramInputFlags(input_flags);
+		pf.SetDestination(v, nullptr, Train::GetIfValid(v->Primary()->couple_target));
+		if (!pf.FindPath(v)) return false;
+		Node *node = pf.GetBestNode();
+		while (node->parent != nullptr) node = node->parent;
+		return node->cost != 0;
+	}
+
 	Train *couple_target_found = nullptr; ///< Contact-end vehicle of the waiting train found at the best node
 	uint32_t couple_cost_found = 0;       ///< Path cost of the best node the couple target was found at
 
@@ -1386,6 +1401,13 @@ static bool YapfTrainCheckReverse(const Train *v, TileIndex tile, Trackdir td, T
 	} else if (reverse_penalty == 0) {
 		/* slightly hackish: If the pathfinders finds a path, the cost of the first node is tested to distinguish between forward- and reverse-path. */
 		reverse_penalty = 1;
+	}
+
+	if (v->current_order.IsType(OT_GOTO_COUPLE)) {
+		const bool reverse = _settings_game.pf.forbid_90_deg
+				? CYapfCoupleRailNo90::stCheckCoupleReverse(v, tile, td, tile_rev, td_rev, reverse_penalty, input_flags)
+				: CYapfCoupleRail::stCheckCoupleReverse(v, tile, td, tile_rev, td_rev, reverse_penalty, input_flags);
+		return reverse != swapped;
 	}
 
 	bool reverse = _settings_game.pf.forbid_90_deg

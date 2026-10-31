@@ -212,7 +212,7 @@ void DemoBuild()
         uint speed=e->GetDisplayMaxSpeed();
         const std::string_view exact_mode=std::getenv("PXP_STRICT");
         const uint exact_slow=exact_mode=="grf-160-250"?160:100;
-        if (exact_grf ? speed==exact_slow && slow==EngineID::Invalid() : speed>=95 && speed<=115) slow=e->index;
+        if (exact_grf ? speed==exact_slow && slow==EngineID::Invalid() : speed>=95 && speed<=115 && (std::getenv("PXP_SERVICE_MODE") == nullptr || RailVehInfo(e->index)->railveh_type == RailVehicleType::Singlehead)) slow=e->index;
         const uint exact_fast = exact_mode=="grf-200"?200:exact_mode=="grf-160-250"?250:160;
         if (exact_grf ? speed==exact_fast && fast==EngineID::Invalid() : speed>=190 && speed<=210) fast=e->index;
     }

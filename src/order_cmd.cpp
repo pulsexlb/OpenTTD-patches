@@ -444,7 +444,7 @@ bool Order::Equals(const Order &other) const
 				(this->GetDepotActionType() & ~ODATFB_NEAREST_DEPOT) == (other.GetDepotActionType() & ~ODATFB_NEAREST_DEPOT);
 	}
 
-	return this->type == other.type && this->flags == other.flags && this->dest == other.dest;
+	return this->type == other.type && this->flags == other.flags && this->dest == other.dest && this->GetServiceNumberMode() == other.GetServiceNumberMode() && this->GetServiceNumber() == other.GetServiceNumber();
 }
 
 /**
@@ -3674,7 +3674,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			break;
 
 		case MOF_WAYPOINT_FLAGS:
-			if (data != (data & OrderWaypointFlags(OrderWaypointFlag::Reverse).base())) return CMD_ERROR;
+			if (data != (data & OrderWaypointFlags{OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop}.base())) return CMD_ERROR;
 			break;
 
 		case MOF_SLOT:
@@ -6011,6 +6011,13 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			v->SetDestTile(v->GetOrderStationLocation(order->GetDestination().ToStationID()));
 			return true;
 
+		case OT_GOTO_COUPLE:
+			/* No station destination exists until a waiting partner is selected.
+			 * Still allow a stopped train to compare both ends using the coupling
+			 * destination evaluator instead of silently skipping direction choice. */
+			v->SetDestTile(INVALID_TILE);
+			return !pbs_look_ahead && v->type == VehicleType::Train && v->cur_speed == 0;
+
 		case OT_WAIT_COUPLE:
 			if (order->HasWaitCoupleStation() && Station::IsValidID(order->GetWaitCoupleStation())) {
 				if (v->last_station_visited == order->GetWaitCoupleStation() && v->type == VehicleType::Train &&
@@ -6657,6 +6664,15 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					if (modify_pos != INVALID_VEH_ORDER_ID) {
 						last_result = CmdModifyOrder(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), modify_pos, mof, data, cargo_id, text);
 					}
+					break;
+				}
+
+				case BulkOrderOp::SetServiceNumber: {
+					uint8_t mode;
+					std::string number;
+					buf.Recv_generic_seq({}, mode, number);
+					if (buf.error) return CMD_ERROR;
+					if (modify_pos != INVALID_VEH_ORDER_ID) last_result = CmdSetOrderServiceNumber(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), modify_pos, mode, number);
 					break;
 				}
 
