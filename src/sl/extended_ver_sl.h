@@ -228,6 +228,8 @@ enum SlXvFeatureIndex {
 	XSLFI_AUTO_YIELD_ROUTE_PLAN,                  ///< Native multi-outlet route decisions on trains.
 	XSLFI_FIXED_SERVICE_NUMBER,                   ///< Per-consist service number, independent of dispatch slots.
 	XSLFI_WAYPOINT_STOP,                         ///< Full-consist stop at a waypoint.
+	XSLFI_TRAIN_DECOUPLE_PART,                    ///< Which part of a decoupled train a consist is, survives network snapshots
+
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
 

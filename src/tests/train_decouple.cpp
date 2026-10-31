@@ -45,6 +45,7 @@
 #include "../sl/saveload.h"
 #include "../sl/saveload_func.h"
 #include "../sl/saveload_filter.h"
+#include "../sl/saveload_func.h"
 #include "../strings_func.h"
 
 extern std::string _savegame_format;

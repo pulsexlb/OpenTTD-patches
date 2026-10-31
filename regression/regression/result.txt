@@ -1619,25 +1619,25 @@ ERROR: IsEnd() is invalid as Begin() is never called
   IsValidAirportType(0):            true
   GetAirportWidth(0):               4
   GetAirportHeight(0):              3
-  GetAirportCoverageRadius(0):      4
+  GetAirportCoverageRadius(0):      3
   GetAirportNumHelipads(0):         0
   IsAirportInformationAvailable(1): true
   IsValidAirportType(1):            false
   GetAirportWidth(1):               6
   GetAirportHeight(1):              6
-  GetAirportCoverageRadius(1):      5
+  GetAirportCoverageRadius(1):      8
   GetAirportNumHelipads(1):         0
   IsAirportInformationAvailable(2): true
   IsValidAirportType(2):            false
   GetAirportWidth(2):               1
   GetAirportHeight(2):              1
-  GetAirportCoverageRadius(2):      4
-  GetAirportNumHelipads(2):         1
+  GetAirportCoverageRadius(2):      8
+  GetAirportNumHelipads(2):         0
   IsAirportInformationAvailable(3): true
   IsValidAirportType(3):            false
   GetAirportWidth(3):               6
   GetAirportHeight(3):              6
-  GetAirportCoverageRadius(3):      6
+  GetAirportCoverageRadius(3):      8
   GetAirportNumHelipads(3):         0
   IsAirportInformationAvailable(4): true
   IsValidAirportType(4):            false
@@ -1649,25 +1649,25 @@ ERROR: IsEnd() is invalid as Begin() is never called
   IsValidAirportType(5):            false
   GetAirportWidth(5):               5
   GetAirportHeight(5):              4
-  GetAirportCoverageRadius(5):      4
+  GetAirportCoverageRadius(5):      8
   GetAirportNumHelipads(5):         2
   IsAirportInformationAvailable(6): true
   IsValidAirportType(6):            false
   GetAirportWidth(6):               2
   GetAirportHeight(6):              2
-  GetAirportCoverageRadius(6):      4
+  GetAirportCoverageRadius(6):      8
   GetAirportNumHelipads(6):         1
   IsAirportInformationAvailable(7): true
   IsValidAirportType(7):            false
   GetAirportWidth(7):               9
   GetAirportHeight(7):              11
-  GetAirportCoverageRadius(7):      10
+  GetAirportCoverageRadius(7):      8
   GetAirportNumHelipads(7):         2
   IsAirportInformationAvailable(8): true
   IsValidAirportType(8):            false
   GetAirportWidth(8):               4
   GetAirportHeight(8):              2
-  GetAirportCoverageRadius(8):      4
+  GetAirportCoverageRadius(8):      8
   GetAirportNumHelipads(8):         3
   IsAirportInformationAvailable(9): false
   IsValidAirportType(9):            false
@@ -1679,11 +1679,11 @@ ERROR: IsEnd() is invalid as Begin() is never called
   BuildAirport():       true
   IsHangarTile():       false
   IsAirportTile():      true
-  GetAirportType():     0
+  GetAirportType():     253
   GetHangarOfAirport(): 32119
   IsHangarTile():       true
   IsAirportTile():      true
-  GetAirportType():     0
+  GetAirportType():     253
   GetCosts():           9900
   RemoveAirport():      true
   IsHangarTile():       false
@@ -2143,8 +2143,10 @@ ERROR: IsEnd() is invalid as Begin() is never called
     GetRoadVehicleTypeForCargo(): 1
 
 --CargoList--
-  Count():            11
+  Count():            13
   IsFreight ListDump:
+    127 => 1
+    126 => 1
     10 => 1
     9 => 1
     8 => 1
@@ -2161,6 +2163,8 @@ ERROR: IsEnd() is invalid as Begin() is never called
     5 => 62
     1 => 62
     9 => 60
+    127 => 55
+    126 => 55
     8 => 54
     7 => 54
     3 => 50
@@ -8761,11 +8765,11 @@ ERROR: IsEnd() is invalid as Begin() is never called
   GetName(0):               Beningville Airport
   SetName(0):               true
   GetName(0):               Look, a station
-  GetLocation(1):           29253
+  GetLocation(1):           32116
   GetLocation(1000):        -1
-  GetStationID(33411):      6
+  GetStationID(33411):      7
   GetStationID(34411):      65535
-  GetStationID(33411):      6
+  GetStationID(33411):      7
   HasRoadType(3, TRAM):     false
   HasRoadType(3, ROAD):     false
   HasRoadType(33411, TRAM): false
@@ -8777,7 +8781,7 @@ ERROR: IsEnd() is invalid as Begin() is never called
   GetCoverageRadius(TRAIN): 4
   GetNearestTown():         15
   GetNearestTown():         65535
-  GetNearestTown():         10
+  GetNearestTown():         65535
 
 --CargoWaiting--
   GetCargoWaiting(0, 0): 0
@@ -10107,12 +10111,8 @@ ERROR: IsEnd() is invalid as Begin() is never called
     44351 => 1
 
 --TileList_StationType--
-  Count():             4
+  Count():             0
   Location ListDump:
-    33667 => 0
-    33415 => 0
-    33413 => 0
-    33411 => 0
 
 --Town--
   GetTownCount():    28
@@ -10819,19 +10819,15 @@ ERROR: IsEnd() is invalid as Begin() is never called
   GetStopLocation():     1
 
 --VehicleList_Station--
-  Count():             1
-  Location ListDump:
-    22 => 23596
-  foreach():
-    22 => 23596
   Count():             0
   Location ListDump:
   foreach():
-  Count():             1
+  Count():             0
   Location ListDump:
-    22 => 23596
   foreach():
-    22 => 23596
+  Count():             0
+  Location ListDump:
+  foreach():
 
 --Company Gender--
   GetPresidentGender():              1

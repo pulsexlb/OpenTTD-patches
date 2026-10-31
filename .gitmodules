@@ -1,3 +1,6 @@
 [submodule "grfcodec"]
 	path = grfcodec
 	url = https://github.com/pulsexlb/grfcodec.git
+[submodule "nml"]
+	path = nml
+	url = https://github.com/pulsexlb/nml.git

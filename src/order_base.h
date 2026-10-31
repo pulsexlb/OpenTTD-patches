@@ -28,7 +28,9 @@
 #include "sl/saveload_common_type.h"
 
 #include "core/tinystring_type.hpp"
+#include <functional>
 #include <memory>
+#include <string_view>
 #include <vector>
 #include "3rdparty/cpp-btree/btree_map.h"
 
@@ -1843,6 +1845,13 @@ public:
 	void UpdateTotalDuration(Ticks delta) { this->total_duration += delta; }
 
 	void FreeChain(bool keep_orderlist = false);
+
+	/**
+	 * Check the internal consistency of the order list and report every
+	 * inconsistency through the given callback instead of aborting.
+	 * @param log Callback receiving a description of each inconsistency.
+	 */
+	void CheckSanity(const std::function<void(std::string_view)> &log) const;
 
 #ifdef WITH_ASSERT
 	void DebugCheckSanity() const;

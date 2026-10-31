@@ -761,7 +761,9 @@ struct TimetableWindow : GeneralVehicleWindow {
 			this->DisableWidget(WID_VT_ASSIGN_SCHEDULE);
 		}
 
-		this->SetWidgetDisabledState(WID_VT_SHARED_ORDER_LIST, true);
+		/* Standalone order lists have no vehicle whose shared orders could be shown. */
+		this->SetWidgetDisabledState(WID_VT_SHARED_ORDER_LIST,
+				!this->HasVehicle() || !(this->vehicle->IsOrderListShared() || _settings_client.gui.enable_single_veh_shared_order_gui));
 
 		this->SetWidgetLoweredState(WID_VT_AUTOFILL, this->HasVehicle() && v->vehicle_flags.Test(VehicleFlag::AutofillTimetable));
 		this->SetWidgetLoweredState(WID_VT_AUTOMATE, this->HasVehicle() && v->vehicle_flags.Test(VehicleFlag::AutomateTimetable));
@@ -1365,6 +1367,8 @@ struct TimetableWindow : GeneralVehicleWindow {
 			}
 
 			case WID_VT_ADD_VEH_GROUP: {
+				/* A standalone order list has no vehicle to put in a group. */
+				if (!this->HasVehicle()) break;
 				Command<Commands::CreateGroupFromList>::Post(STR_ERROR_GROUP_CAN_T_CREATE, VehicleListIdentifier(VehicleListType::SingleVehicle, v->type, v->owner, v->index), CargoFilterCriteria::CF_ANY, *str);
 				break;
 			}
@@ -1387,7 +1391,13 @@ struct TimetableWindow : GeneralVehicleWindow {
 		 * (the DrawWidget code handles the null-vehicle case). */
 		this->GetWidget<NWidgetStacked>(WID_VT_ARRIVAL_DEPARTURE_SELECTION)->SetDisplayedPlane(_settings_client.gui.timetable_arrival_departure ? 0 : SZSP_NONE);
 		this->GetWidget<NWidgetStacked>(WID_VT_EXPECTED_SELECTION)->SetDisplayedPlane(_settings_client.gui.timetable_arrival_departure ? 0 : 1);
-		this->GetWidget<NWidgetStacked>(WID_VT_SEL_SHARED)->SetDisplayedPlane(SZSP_NONE);
+		/* The shared vehicle list / add-to-group buttons need a vehicle; for standalone
+		 * lists the selection stays hidden instead of showing inert widgets. */
+		if (!this->HasVehicle()) {
+			this->GetWidget<NWidgetStacked>(WID_VT_SEL_SHARED)->SetDisplayedPlane(SZSP_NONE);
+		} else {
+			this->GetWidget<NWidgetStacked>(WID_VT_SEL_SHARED)->SetDisplayedPlane(this->vehicle->owner == _local_company && _ctrl_pressed ? 1 : 0);
+		}
 	}
 
 	const Vehicle *GetVehicle()
