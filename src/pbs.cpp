@@ -1019,16 +1019,8 @@ Train *FindForeignTrainOnReservation(const Train *v)
 					 * and must continue to block the reservation. */
 					if (u->track == TRACK_BIT_DEPOT) continue;
 					if (IsDecoupledPartBehindDeparture(v, u)) continue;
-					/* A just-decoupled partner necessarily shares the tile
-					 * around the cut with us (see IsPlatformAheadOccupied); it
-					 * does not stand in our way on that first tile, and the
-					 * partner may wait there for a couple indefinitely. Both
-					 * decouple flags count: the same-direction part carries
-					 * SameDirDecouplePending, and the two parts wait for each
-					 * other, so exempting only one of them deadlocks both. */
-					const bool cut_tile = tile == front->tile &&
-							u->Primary()->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending});
-					if (cut_tile) continue;
+					/* The geometric split-part check above is authoritative: even on
+					 * the cut tile, a real vehicle ahead must block the reservation. */
 					result = u;
 					return true;
 				}

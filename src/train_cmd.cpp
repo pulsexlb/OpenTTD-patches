@@ -5002,9 +5002,9 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 					 * Only exempt when nothing but such a partner is there. */
 					bool only_decouple_partner = true;
 					for (const Train *w : VehiclesOnTile<VehicleType::Train>(t)) {
-						const Train *wp = w->Primary();
-						if (wp == v->Primary()) continue;
-						if (!wp->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending})) {
+						if (w->Primary() == v->Primary()) continue;
+						/* A split flag alone does not exempt a real body ahead. */
+						if (!IsDecoupledPartBehindDeparture(v, w)) {
 							only_decouple_partner = false;
 							break;
 						}
@@ -6082,8 +6082,8 @@ static bool IsCouplePartnerOf(const Train *consist, const Train *other)
 bool IsDecoupledPartBehindDeparture(const Train *consist, const Train *part)
 {
 	const Train *front = consist->GetMovingFront();
-	if (!consist->flags.Test(VehicleRailFlag::JustDecoupled) ||
-			!part->Primary()->flags.Test(VehicleRailFlag::SameDirDecouplePending) ||
+	if (!consist->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending}) ||
+			!part->Primary()->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending}) ||
 			front->tile != part->tile || !IsRailStationTile(front->tile) ||
 			front->track != part->track || front->z_pos != part->z_pos ||
 			!IsDiagonalDirection(front->GetMovingDirection())) return false;
@@ -6109,8 +6109,7 @@ bool IsDecoupledPartBehindDeparture(const Train *consist, const Train *part)
  */
 static bool IsDecouplePartnerOnCutTile(const Train *consist, const Train *other, TileIndex tile)
 {
-	if (tile != consist->GetMovingFront()->tile) return false;
-	return other->Primary()->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending});
+	return tile == consist->GetMovingFront()->tile && IsDecoupledPartBehindDeparture(consist, other);
 }
 
 /**
