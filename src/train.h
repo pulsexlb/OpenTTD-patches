@@ -143,6 +143,9 @@ enum class CoupleCandidateResult : uint8_t {
 	Arrangement,
 };
 
+/** Read-only necessary-condition check before an otherwise unbounded couple route query. */
+bool HasPotentialCoupleTarget(const Train *moving);
+
 CoupleCandidateResult GetCoupleCandidateResult(const Train *moving, const Order &order,
 		Train *waiting_first, TileIndex contact_tile, bool respect_claim = true, uint32_t claim_cost = 0);
 uint GetCoupleSpeedPreferencePenalty(const Train *moving, const Train *waiting);

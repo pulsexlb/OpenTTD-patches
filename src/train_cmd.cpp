@@ -7563,6 +7563,25 @@ static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *movin
 	return CoupleCandidateResult::Valid;
 }
 
+/** Necessary conditions only; a negative result proves that no route can couple. */
+bool HasPotentialCoupleTarget(const Train *moving)
+{
+	moving = moving->Primary();
+	if (!moving->current_order.IsType(OT_GOTO_COUPLE)) return false;
+	/* Do not cache a negative result: a target can start waiting, change cargo,
+	 * regain a slot, or lose another claimant during this same game tick. This
+	 * only rejects impossible destinations; YAPF still verifies reachability,
+	 * arrangement and the best direction for every surviving candidate. */
+	const Train *claimed = GetClaimedCoupleTarget(moving);
+	if (claimed != nullptr) return true;
+	for (const Train *candidate : Train::Iterate()) {
+		if (!candidate->IsPrimaryVehicle() || candidate == moving || !IsHoldingForCouple(candidate)) continue;
+		if (CoupleClaimBlocks(candidate, moving, UINT32_MAX)) continue;
+		if (GetCoupleVolatileConditionResult(moving, moving->current_order, candidate->First(), candidate->First()->tile) == CoupleCandidateResult::Valid) return true;
+	}
+	return false;
+}
+
 /**
  * Validate a waiting train as a coupling partner for the moving consist and
  * return the end of its chain expected to make contact first.

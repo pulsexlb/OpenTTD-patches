@@ -5704,3 +5704,39 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - reserved approach recog
 	CHECK(GetCoupleClaimant(waiting) == moving);
 	CHECK(random_checker.Check());
 }
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - direction preflight observes live target conditions without caching")
+{
+	GameRandomSeedChecker random_checker;
+	REQUIRE(HasPotentialCoupleTarget(moving));
+	SECTION("manually stopped partner resumes in the same tick") {
+		waiting->vehstatus.Set(VehState::Stopped);
+		CHECK_FALSE(HasPotentialCoupleTarget(moving));
+		waiting->vehstatus.Reset(VehState::Stopped);
+	}
+	SECTION("new waiting order is visible in the same tick") {
+		waiting->current_order.Free();
+		CHECK_FALSE(HasPotentialCoupleTarget(moving));
+		waiting->current_order.MakeWaitCouple();
+		waiting->current_order.SetCoupleSlot(TraceRestrictSlotID::Invalid());
+	}
+	SECTION("station restriction must match") {
+		moving->current_order.SetCoupleStation(StationID{62});
+		CHECK_FALSE(HasPotentialCoupleTarget(moving));
+		moving->current_order.SetCoupleStation(station->index);
+	}
+	SECTION("another valid exclusive claim blocks the candidate") {
+		Train *other = MakeTrain();
+		other->SetFrontEngine();
+		other->owner = moving->owner;
+		other->current_order = moving->current_order;
+		other->couple_target = waiting->index;
+		waiting->couple_claimant = other->index;
+		CHECK_FALSE(HasPotentialCoupleTarget(moving));
+		waiting->couple_claimant = VehicleID::Invalid();
+	}
+	CHECK(HasPotentialCoupleTarget(moving));
+	CHECK(random_checker.Check());
+	CHECK(GetCoupleClaimant(waiting) == nullptr);
+	CHECK(moving->couple_target == VehicleID::Invalid());
+}

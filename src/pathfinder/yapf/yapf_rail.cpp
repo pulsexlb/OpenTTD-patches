@@ -1421,6 +1421,10 @@ constexpr int DRIVING_BACKWARDS_PENALTY = 100 * YAPF_TILE_LENGTH;
 
 bool YapfTrainCheckReverse(const Train *v)
 {
+	/* A couple order without a destination is re-evaluated by ProcessOrders
+	 * every tick. Prove that a potential partner exists before walking both
+	 * ends of the entire rail network just to find none again. */
+	if (v->current_order.IsType(OT_GOTO_COUPLE) && !HasPotentialCoupleTarget(v)) return false;
 	const Train *moving_front = v->GetMovingFront();
 	const Train *moving_back = v->GetMovingBack();
 
