@@ -16,6 +16,7 @@
 #include "../tracerestrict_cmd.h"
 #include "../date_func.h"
 #include "../train_cmd.h"
+#include "../order_func.h"
 #include "../company_base.h"
 #include "../company_func.h"
 #include "../core/pool_func.hpp"
@@ -5739,4 +5740,27 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - direction preflight obs
 	CHECK(random_checker.Check());
 	CHECK(GetCoupleClaimant(waiting) == nullptr);
 	CHECK(moving->couple_target == VehicleID::Invalid());
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - unchanged blocked orders use native reservation retry cadence")
+{
+	AutoRestoreBackup<uint8_t> backoff(_settings_game.pf.path_backoff_interval, 20);
+	moving->orders = OrderList::Create(Order(moving->current_order), moving);
+	moving->primary_order = moving->orders->index;
+	moving->SetDestTile(INVALID_TILE);
+	moving->flags.Set(VehicleRailFlag::Stuck);
+	moving->wait_counter = GENERATE(0, 1, 19, 20, 21);
+	bool expected = moving->wait_counter % 20 == 0;
+	SECTION("unchanged blocked command") {}
+	SECTION("new command still checks immediately") { moving->current_order.Free(); expected = true; }
+	SECTION("edited command still checks immediately") { moving->current_order.SetCoupleStation(StationID{62}); expected = true; }
+	SECTION("unblocked train still checks immediately") { moving->flags.Reset(VehicleRailFlag::Stuck); expected = true; }
+	SECTION("force proceed still checks immediately") { moving->force_proceed = TFP_STUCK; expected = true; }
+	const auto counter = moving->wait_counter;
+	GameRandomSeedChecker random_checker;
+	INFO("counter=" << counter << " force=" << uint(moving->force_proceed) << " type=" << uint(moving->current_order.GetType()) << " stuck=" << moving->flags.Test(VehicleRailFlag::Stuck) << " equal=" << moving->orders->GetOrderAt(0)->Equals(moving->current_order));
+	CHECK(ProcessOrders(moving) == expected);
+	CHECK(moving->wait_counter == counter);
+	CHECK(moving->couple_target == VehicleID::Invalid());
+	CHECK(random_checker.Check());
 }

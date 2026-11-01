@@ -6418,6 +6418,24 @@ bool ProcessOrders(Vehicle *v)
 		return false;
 	}
 
+	/* A destination-less couple order stays current while its train is stuck.
+	 * Reconsider both directions on the native PBS retry cadence, rather than
+	 * running the full search every tick between reservation attempts. A new
+	 * order (including a waypoint's departure) still gets its immediate check. */
+	if (v->type == VehicleType::Train && order->IsType(OT_GOTO_COUPLE) && order->Equals(v->current_order)) {
+		const Train *train = Train::From(v);
+		/* Equals deliberately ignores extended fields. Do not postpone a real
+		 * criteria change while copying the active coupling order. */
+		const auto criteria = [](const Order &o) {
+			return std::tuple(o.GetCoupleRejectSlower(), o.GetCoupleRejectFaster(), o.HasCoupleCheckPoint(),
+					o.GetXData(), o.GetXData2(), o.GetCoupleCargoType(), o.GetNumCouple(),
+					o.GetCoupleSpeedComparator(0), o.GetCoupleSpeedValue(0), o.GetCoupleSpeedUnit(0),
+					o.GetCoupleSpeedComparator(1), o.GetCoupleSpeedValue(1), o.GetCoupleSpeedUnit(1));
+		};
+		if (criteria(*order) == criteria(v->current_order) && train->flags.Test(VehicleRailFlag::Stuck) && train->force_proceed == TFP_NONE &&
+				train->wait_counter % std::max<uint>(1, _settings_game.pf.path_backoff_interval) != 0) return false;
+	}
+
 	/* Otherwise set it, and determine the destination tile. */
 	v->current_order = *order;
 

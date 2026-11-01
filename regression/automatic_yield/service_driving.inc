@@ -8,8 +8,13 @@ void StationServiceDrivingTick()
  const std::string mode = std::getenv("PXP_SERVICE_MODE");
  const bool split = mode != "station";
  const bool reload = std::getenv("PXP_SERVICE_RELOAD") != nullptr;
- const bool recoupling = mode == "recouple" || mode == "recouple-waypoint";
+ const bool waypoint_coupling = mode.starts_with("recouple-waypoint");
+ const bool late_partner = mode == "recouple-waypoint-late";
+ const bool recoupling = mode == "recouple" || waypoint_coupling;
  static bool waypoint_waited = false;
+ static VehicleID late_target = VehicleID::Invalid();
+ static uint late_stuck_ticks = 0;
+ static bool late_released = false;
  const std::string first_number = mode == "split-dispatch" ? "D123" : "G123";
  static bool setup = false, first = false, saved = false, recouple_posted = false, return_posted = false;
  static uint ticks = 0;
@@ -56,7 +61,14 @@ void StationServiceDrivingTick()
  }
  if (!setup || _game_mode != GameMode::Normal) return;
  ticks++;
- if (mode == "recouple-waypoint" && demo_slow->current_order.IsType(OT_WAITING) && demo_slow->cur_speed == 0 && IsRailWaypointTile(demo_slow->GetMovingFront()->tile)) {
+ if (late_partner && late_target != VehicleID::Invalid() && !late_released && demo_slow->current_order.IsType(OT_GOTO_COUPLE) && demo_slow->flags.Test(VehicleRailFlag::Stuck) && ++late_stuck_ticks == 60) {
+  Train *target = Train::Get(late_target);
+  assert(target->vehstatus.Test(VehState::Stopped));
+  DemoRequire(CmdStartStopVehicle(DoCommandFlag::Execute,target->index,true),"enable newly available partner behind waypoint");
+  late_released = true;
+  fprintf(demo_log,"LATE partner available tick=%u blocked_ticks=%u\n",ticks,late_stuck_ticks);
+ }
+ if (waypoint_coupling && demo_slow->current_order.IsType(OT_WAITING) && demo_slow->cur_speed == 0 && IsRailWaypointTile(demo_slow->GetMovingFront()->tile)) {
   if (!waypoint_waited) { fprintf(demo_log,"WAYPOINT held tick=%u returning_to_carriages_behind=1\n",ticks); DemoSave("couple-waypoint-stopped"); }
   waypoint_waited = true;
  }
@@ -88,11 +100,15 @@ void StationServiceDrivingTick()
     Order couple;couple.MakeGoToCouple();
     DemoRequire(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(demo_slow->index,VehicleOrderID{0},couple)),"insert recouple");
     DemoRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0},MOF_COUPLE_STATION,first_station.base()+1,INVALID_CARGO,{}),"recouple station");
-    if (mode == "recouple-waypoint") {
+    if (waypoint_coupling) {
      DemoRequire(CmdBuildRailWaypoint(DoCommandFlag::Execute,TileXY(150,40),Axis::X,1,1,StationClassID{STAT_CLASS_WAYP},0,StationID::Invalid(),true),"build stop before reverse coupling");
      Order point;point.MakeGoToWaypoint(GetStationIndex(TileXY(150,40)));point.SetNonStopType(ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);point.SetWaypointFlags({OrderWaypointFlag::Stop});
      DemoRequire(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(demo_slow->index,VehicleOrderID{0},point)),"stop waypoint before coupling");
      DemoRequire(CmdChangeTimetable(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0},MTF_WAIT_TIME,64,{}),"waypoint coupling dwell");
+     if (late_partner) {
+      DemoRequire(CmdStartStopVehicle(DoCommandFlag::Execute,carriages->index,true),"hold partner until collector waits behind waypoint");
+      late_target = carriages->index;
+     }
     }
     DemoRequire(CmdSkipToOrder(DoCommandFlag::Execute,demo_slow->index,VehicleOrderID{0}),"activate recouple");
     recouple_posted=true;
@@ -101,7 +117,7 @@ void StationServiceDrivingTick()
   }
   if(recoupling&&recouple_posted&&demo_slow->GetActiveServiceNumber()=="G123") {
    uint wagons=0;for(const Train*t=demo_slow->First();t;t=t->Next())if(t->IsWagon()&&!t->IsArticulatedPart())wagons++;
-   if(wagons==3){if(mode=="recouple-waypoint")assert(waypoint_waited);fprintf(demo_log,"STRICT PASS %s actual_wagons=3 restored=G123 waypoint_waited=%u reload=%u ticks=%u\n",mode.c_str(),waypoint_waited,reload,ticks);fflush(demo_log);_exit_game=true;}
+   if(wagons==3){if(waypoint_coupling)assert(waypoint_waited);if(late_partner)assert(late_released&&late_stuck_ticks>=60);fprintf(demo_log,"STRICT PASS %s actual_wagons=3 restored=G123 waypoint_waited=%u reload=%u ticks=%u\n",mode.c_str(),waypoint_waited,reload,ticks);fflush(demo_log);_exit_game=true;}
   }
   if(mode=="recouple"&&recouple_posted&&!return_posted&&TileX(demo_slow->GetMovingFront()->tile)>=130) {
    DemoRequire(CmdReverseTrainDirection(DoCommandFlag::Execute,demo_slow->index,false),"native reverse to waiting carriages");return_posted=true;
