@@ -1595,6 +1595,17 @@ void ShowMissingContentWindow(const GRFConfigList &list)
 		ci->name = c->GetName();
 		ci->unique_id = std::byteswap(FlattenNewGRFLabel(c->ident.grfid));
 		ci->md5sum = c->flags.Test(GRFConfigFlag::Compatible) ? c->original_md5sum : c->ident.md5sum;
+
+		if (c->status == GRFStatus::NotFound) {
+			/* The GRF was not found locally, so its GRFID may have arrived with
+			 * the opposite byte order from the server. The MD5 decides, so also
+			 * query the content service with the byte-reversed GRFID to cover
+			 * both wire conventions. */
+			auto twin = std::make_unique<ContentInfo>(*ci);
+			twin->unique_id = std::byteswap(ci->unique_id);
+			cv.push_back(std::move(twin));
+		}
+
 		cv.push_back(std::move(ci));
 	}
 	ShowNetworkContentListWindow(cv.empty() ? nullptr : &cv, ContentType::NewGRF);
