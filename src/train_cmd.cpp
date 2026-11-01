@@ -6067,6 +6067,10 @@ static ChooseTrainTrackResult ChooseTrainTrackImpl(Train *consist, const TileInd
 
 static bool IsCouplePartnerOf(const Train *consist, const Train *other)
 {
+	/* Reservation walkers can return any physical vehicle, including an
+	 * articulated child or the rear contact end. Claims belong to consists. */
+	consist = consist->Primary();
+	other = other->Primary();
 	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
 		if (const Train *tgt = GetClaimedCoupleTarget(consist); tgt != nullptr && tgt->Primary() == other) return true;
 	}

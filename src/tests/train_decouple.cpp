@@ -5667,3 +5667,40 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - goto couple claims a wa
 	CHECK(random_checker.Check());
 	for (Train *train : {moving, waiting}) CHECK(ValidateVehicleTileHash(train));
 }
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - reserved approach recognises a claimed rear vehicle")
+{
+	Train *rear = MakeTrain();
+	rear->owner = waiting->owner;
+	rear->track = TRACK_BIT_X;
+	rear->direction = waiting->direction;
+	waiting->SetNext(rear);
+	Place(rear, 11);
+	station->train_station = TileArea(TileXY(11, 10), 2, 1);
+	station->rect.BeforeAddTile(rear->tile, StationRect::ADD_FORCE);
+	MakeRailStation(rear->tile, _current_company, station->index, Axis::X, 0, RAILTYPE_RAIL);
+	waiting->gcache.cached_total_length += VEHICLE_LENGTH;
+	REQUIRE(rear->Primary() == waiting);
+	REQUIRE(TryReserveRailTrack(rear->tile, TRACK_X));
+	moving->couple_target = rear->index;
+	ClaimCoupleTarget(moving, waiting, 0);
+	REQUIRE(GetCoupleClaimant(waiting) == moving);
+	REQUIRE(FindForeignTrainOnReservation(moving) == rear);
+	GameRandomSeedChecker random_checker;
+	SECTION("valid partner rear permits the reserved approach") {
+		CHECK(TryPathReserve(moving, true));
+		CHECK_FALSE(moving->flags.Test(VehicleRailFlag::Stuck));
+	}
+	SECTION("unrelated consist on the same approach still blocks") {
+		Train *obstruction = MakeTrain();
+		obstruction->SetFrontEngine();
+		obstruction->owner = waiting->owner;
+		obstruction->track = TRACK_BIT_X;
+		Place(obstruction, 10);
+		obstruction->x_pos += 6;
+		CHECK_FALSE(TryPathReserve(moving, true));
+		CHECK(moving->flags.Test(VehicleRailFlag::Stuck));
+	}
+	CHECK(GetCoupleClaimant(waiting) == moving);
+	CHECK(random_checker.Check());
+}

@@ -1,11 +1,15 @@
 /* Real native arrivals and PXP split/couple lifecycle; no forced speed or position. */
 #include "timetable_cmd.h"
+#include "waypoint_cmd.h"
+#include "newgrf_station.h"
 void StationServiceDrivingTick()
 {
  if (HasModalProgress() || _generating_world) return;
  const std::string mode = std::getenv("PXP_SERVICE_MODE");
  const bool split = mode != "station";
  const bool reload = std::getenv("PXP_SERVICE_RELOAD") != nullptr;
+ const bool recoupling = mode == "recouple" || mode == "recouple-waypoint";
+ static bool waypoint_waited = false;
  const std::string first_number = mode == "split-dispatch" ? "D123" : "G123";
  static bool setup = false, first = false, saved = false, recouple_posted = false, return_posted = false;
  static uint ticks = 0;
@@ -52,6 +56,10 @@ void StationServiceDrivingTick()
  }
  if (!setup || _game_mode != GameMode::Normal) return;
  ticks++;
+ if (mode == "recouple-waypoint" && demo_slow->current_order.IsType(OT_WAITING) && demo_slow->cur_speed == 0 && IsRailWaypointTile(demo_slow->GetMovingFront()->tile)) {
+  if (!waypoint_waited) { fprintf(demo_log,"WAYPOINT held tick=%u returning_to_carriages_behind=1\n",ticks); DemoSave("couple-waypoint-stopped"); }
+  waypoint_waited = true;
+ }
  if (!reload && ticks==350) DemoRequire(CmdStartStopVehicle(DoCommandFlag::Execute,demo_fast->index,true), "start express");
  if (!split) {
   if (!first && demo_slow->last_station_visited==first_station && demo_slow->current_order.IsAnyLoadingType()) {
@@ -74,20 +82,26 @@ void StationServiceDrivingTick()
     fprintf(demo_log,"SPLIT tick=%u locomotive=%u number=%s suppressed=%u carriages=%u number=%s\n",ticks,demo_slow->index.base(),demo_slow->GetActiveServiceNumber().c_str(),demo_slow->service_number_suppressed,carriages->index.base(),carriages->GetActiveServiceNumber().c_str());
     if(!reload)DemoSave("service-split");saved=true;
    }
-   if(mode=="recouple"&&!recouple_posted){
+   if(recoupling&&!recouple_posted){
     /* The completed split stop must not execute a second split immediately after recoupling. */
     DemoRequire(CmdDeleteOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0}),"remove completed split stop from engine schedule");
     Order couple;couple.MakeGoToCouple();
     DemoRequire(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(demo_slow->index,VehicleOrderID{0},couple)),"insert recouple");
     DemoRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0},MOF_COUPLE_STATION,first_station.base()+1,INVALID_CARGO,{}),"recouple station");
+    if (mode == "recouple-waypoint") {
+     DemoRequire(CmdBuildRailWaypoint(DoCommandFlag::Execute,TileXY(150,40),Axis::X,1,1,StationClassID{STAT_CLASS_WAYP},0,StationID::Invalid(),true),"build stop before reverse coupling");
+     Order point;point.MakeGoToWaypoint(GetStationIndex(TileXY(150,40)));point.SetNonStopType(ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);point.SetWaypointFlags({OrderWaypointFlag::Stop});
+     DemoRequire(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(demo_slow->index,VehicleOrderID{0},point)),"stop waypoint before coupling");
+     DemoRequire(CmdChangeTimetable(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0},MTF_WAIT_TIME,64,{}),"waypoint coupling dwell");
+    }
     DemoRequire(CmdSkipToOrder(DoCommandFlag::Execute,demo_slow->index,VehicleOrderID{0}),"activate recouple");
     recouple_posted=true;
    }
-   if(mode!="recouple") {fprintf(demo_log,"STRICT PASS %s engine_only_cleared=1 carriage_number_retained=1 reload=%u\n",mode.c_str(),reload);fflush(demo_log);_exit_game=true;}
+   if(!recoupling) {fprintf(demo_log,"STRICT PASS %s engine_only_cleared=1 carriage_number_retained=1 reload=%u\n",mode.c_str(),reload);fflush(demo_log);_exit_game=true;}
   }
-  if(mode=="recouple"&&recouple_posted&&demo_slow->GetActiveServiceNumber()=="G123") {
+  if(recoupling&&recouple_posted&&demo_slow->GetActiveServiceNumber()=="G123") {
    uint wagons=0;for(const Train*t=demo_slow->First();t;t=t->Next())if(t->IsWagon()&&!t->IsArticulatedPart())wagons++;
-   if(wagons==3){fprintf(demo_log,"STRICT PASS recouple actual_wagons=3 restored=G123 reload=%u ticks=%u\n",reload,ticks);fflush(demo_log);_exit_game=true;}
+   if(wagons==3){if(mode=="recouple-waypoint")assert(waypoint_waited);fprintf(demo_log,"STRICT PASS %s actual_wagons=3 restored=G123 waypoint_waited=%u reload=%u ticks=%u\n",mode.c_str(),waypoint_waited,reload,ticks);fflush(demo_log);_exit_game=true;}
   }
   if(mode=="recouple"&&recouple_posted&&!return_posted&&TileX(demo_slow->GetMovingFront()->tile)>=130) {
    DemoRequire(CmdReverseTrainDirection(DoCommandFlag::Execute,demo_slow->index,false),"native reverse to waiting carriages");return_posted=true;
