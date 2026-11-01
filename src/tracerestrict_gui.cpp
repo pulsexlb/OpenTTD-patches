@@ -1567,14 +1567,6 @@ StringID GetSlotGroupWarning(TraceRestrictSlotGroupID slot_group, Owner owner)
 
 	if (sg->contained_slots.empty()) return STR_TRACE_RESTRICT_SLOT_GROUP_EMPTY_WARNING;
 
-	if (sg->owner != owner) {
-		for (TraceRestrictSlotID slot_id : sg->contained_slots) {
-			if (!TraceRestrictSlot::Get(slot_id)->flags.Test(TraceRestrictSlot::Flag::Public)) {
-				return STR_TRACE_RESTRICT_SLOT_GROUP_NON_PUBLIC_WARNING;
-			}
-		}
-	}
-
 	return STR_NULL;
 }
 
