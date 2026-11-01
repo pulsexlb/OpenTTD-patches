@@ -169,12 +169,16 @@ struct GroundVehicle : public SpecializedVehicle<T, Type, BaseGroundVehicle> {
 	 */
 	inline int64_t GetSlopeResistance()
 	{
-		if (likely(HasBit(this->vcache.cached_veh_flags, VCF_GV_ZERO_SLOPE_RESIST))) return 0;
+		/* The slope cache belongs to the physical chain, not to the primary
+		 * vehicle: a primary may sit in the middle of the chain after coupling
+		 * or decoupling. Always read and update it on the chain head. */
+		T *head = T::From(this)->First();
+		if (likely(HasBit(head->vcache.cached_veh_flags, VCF_GV_ZERO_SLOPE_RESIST))) return 0;
 
 		int64_t incl = 0;
 		bool zero_slope_resist = true;
 
-		for (const T *u = T::From(this); u != nullptr; u = u->Next()) {
+		for (const T *u = head; u != nullptr; u = u->Next()) {
 			if (u->gv_flags.Test(GroundVehicleFlag::GoingUp)) {
 				incl += u->gcache.cached_slope_resistance;
 			} else if (u->gv_flags.Test(GroundVehicleFlag::GoingDown)) {
@@ -182,6 +186,7 @@ struct GroundVehicle : public SpecializedVehicle<T, Type, BaseGroundVehicle> {
 			}
 			if (incl != 0) zero_slope_resist = false;
 		}
+		AssignBit(head->vcache.cached_veh_flags, VCF_GV_ZERO_SLOPE_RESIST, zero_slope_resist);
 		AssignBit(this->vcache.cached_veh_flags, VCF_GV_ZERO_SLOPE_RESIST, zero_slope_resist);
 
 		return incl;
