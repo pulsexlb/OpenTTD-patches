@@ -188,6 +188,16 @@ static void HandleIncomingNetworkGameInfoGRFConfig(GRFConfig &config, std::strin
 	/* Find the matching GRF file */
 	const GRFConfig *f = FindGRFConfig(config.ident.grfid, FindGRFConfigMode::Exact, &config.ident.md5sum);
 	if (f == nullptr) {
+		/* Some builds serialise the GRFID with the opposite byte order on the
+		 * wire. The MD5 is authoritative and byte-order independent, so retry
+		 * with the byte-reversed GRFID and adopt the canonical (local) GRFID
+		 * when that matches. */
+		GrfID swapped = config.ident.grfid;
+		std::ranges::reverse(swapped);
+		f = FindGRFConfig(swapped, FindGRFConfigMode::Exact, &config.ident.md5sum);
+		if (f != nullptr) config.ident.grfid = f->ident.grfid;
+	}
+	if (f == nullptr) {
 		AddGRFTextToList(config.name, name.empty() ? GetString(STR_CONFIG_ERROR_INVALID_GRF_UNKNOWN) : name);
 		config.status = GRFStatus::NotFound;
 	} else {
