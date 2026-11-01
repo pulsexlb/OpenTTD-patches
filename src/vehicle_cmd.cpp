@@ -1406,14 +1406,18 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 	Vehicle *v = Vehicle::GetIfValid(veh_id);
 	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
 	Vehicle *v_front = v;
+	Vehicle *v_head = v->First();
 	Vehicle *w = nullptr;
 	Vehicle *w_front = nullptr;
+	Vehicle *w_head = nullptr;
 	Vehicle *w_rear = nullptr;
 
 	/*
-	 * v_front is the front engine in the original vehicle
+	 * v_front is the primary vehicle in the original chain (it may sit mid-chain)
+	 * v_head is the physical head of the original chain; it may differ from v_front
 	 * v is the car/vehicle of the original vehicle that is currently being copied
-	 * w_front is the front engine of the cloned vehicle
+	 * w_front is the clone of the primary vehicle
+	 * w_head is the physical head of the cloned chain
 	 * w is the car/vehicle currently being cloned
 	 * w_rear is the rear end of the cloned train. It's used to add more cars and is only used by trains
 	 */
@@ -1429,6 +1433,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 	/* check that we can allocate enough vehicles */
 	if (!flags.Test(DoCommandFlag::Execute)) {
 		int veh_counter = 0;
+		v = v_head;
 		do {
 			veh_counter++;
 		} while ((v = v->Next()) != nullptr);
@@ -1438,7 +1443,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 		}
 	}
 
-	v = v_front;
+	v = v_head;
 
 	do {
 		if (v->type == VehicleType::Train && Train::From(v)->IsRearDualheaded()) {
@@ -1453,13 +1458,13 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 		 * engine. This caused the vehicle to be not build as 'the limit' had been
 		 * reached, resulting in partially build vehicles and such. */
 		DoCommandFlags build_flags = flags;
-		if (flags.Test(DoCommandFlag::Execute) && !v->IsPrimaryVehicle()) build_flags.Set(DoCommandFlag::AutoReplace);
+		if (flags.Test(DoCommandFlag::Execute) && v != v_front) build_flags.Set(DoCommandFlag::AutoReplace);
 
 		CommandCost cost = Command<Commands::BuildVehicle>::Do(build_flags, tile, v->engine_type, false, INVALID_CARGO, ClientID::Invalid);
 
 		if (cost.Failed()) {
 			/* Can't build a part, then sell the stuff we already made; clear up the mess */
-			if (w_front != nullptr) Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, ClientID::Invalid);
+			if (w_head != nullptr) Command<Commands::SellVehicle>::Do(flags, w_head->tile, w_head->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 			return cost;
 		}
 
@@ -1469,6 +1474,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 			auto veh_id = cost.GetResultData<VehicleID>();
 			if (!veh_id.has_value()) return CMD_ERROR;
 			w = Vehicle::Get(*veh_id);
+			if (w_head == nullptr) w_head = w;
 
 			if (v->type == VehicleType::Train && Train::From(v)->flags.Test(VehicleRailFlag::Flipped)) {
 				/* Only copy the reverse state if neither old or new vehicle implements reverse-on-build probability callback. */
@@ -1478,19 +1484,41 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 				}
 			}
 
-			if (v->type == VehicleType::Train && !v->IsFrontEngine()) {
-				/* this s a train car
-				 * add this unit to the end of the train */
-				CommandCost result = Command<Commands::MoveRailVehicle>::Do(flags, w->index, w_rear->index, MoveRailVehicleFlags::MoveChain);
-				if (result.Failed()) {
-					/* The train can't be joined to make the same consist as the original.
-					 * Sell what we already made (clean up) and return an error.           */
-					Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, ClientID::Invalid);
-					Command<Commands::SellVehicle>::Do(flags, w->tile,       w->index,       SellVehicleFlags::SellChain, ClientID::Invalid);
-					return result; // return error and the message returned from Commands::MoveRailVehicle
+			if (v->type == VehicleType::Train) {
+				if (v != v_front) {
+					if (w_rear != nullptr) {
+						/* a unit behind the primary (or between the chain head and the
+						 * primary); add this unit to the end of the train */
+						CommandCost result = Command<Commands::MoveRailVehicle>::Do(flags, w->index, w_rear->index, MoveRailVehicleFlags::MoveChain);
+						if (result.Failed()) {
+							/* The train can't be joined to make the same consist as the original.
+							 * Sell what we already made (clean up) and return an error.           */
+							Command<Commands::SellVehicle>::Do(flags, w_head->tile, w_head->index, SellVehicleFlags::SellChain, ClientID::Invalid);
+							Command<Commands::SellVehicle>::Do(flags, w->tile,       w->index,       SellVehicleFlags::SellChain, ClientID::Invalid);
+							return result; // return error and the message returned from Commands::MoveRailVehicle
+						}
+					}
+					/* else: the very first unit of the head section; it stays a separate
+					 * train until the primary's clone couples it to the rest below. */
+				} else {
+					/* this is the clone of the primary; when vehicles ahead of it were
+					 * cloned already, couple it after them so the physical head of the
+					 * clone stays ahead of the clone's primary, like the original. */
+					if (w_rear != nullptr) {
+						CommandCost result = Command<Commands::MoveRailVehicle>::Do(flags, w->index, w_rear->index, MoveRailVehicleFlags::MoveChain);
+						if (result.Failed()) {
+							Command<Commands::SellVehicle>::Do(flags, w_head->tile, w_head->index, SellVehicleFlags::SellChain, ClientID::Invalid);
+							Command<Commands::SellVehicle>::Do(flags, w->tile,       w->index,       SellVehicleFlags::SellChain, ClientID::Invalid);
+							return result;
+						}
+					}
+					w_front = w;
+					w->service_interval = v->service_interval;
+					w->SetServiceIntervalIsCustom(v->ServiceIntervalIsCustom());
+					w->SetServiceIntervalIsPercent(v->ServiceIntervalIsPercent());
 				}
 			} else {
-				/* this is a front engine or not a train. */
+				/* not a train. */
 				w_front = w;
 				w->service_interval = v->service_interval;
 				w->SetServiceIntervalIsCustom(v->ServiceIntervalIsCustom());
@@ -1499,6 +1527,19 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 			w_rear = w; // trains needs to know the last car in the train, so they can add more in next loop
 		}
 	} while (v->type == VehicleType::Train && (v = v->GetNextVehicle()) != nullptr);
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		/* for trains this needs to be the front engine due to the callback function */
+		total_cost.SetResultData(w_front->index);
+
+		/* Coupling above re-materialises the clone's primary onto the first engine
+		 * of the chain. Pin it back to the clone of the original primary so the
+		 * clone carries its consist info on the same vehicle as the original. */
+		if (v_head != v_front) {
+			for (Vehicle *u = w_head; u != nullptr; u = u->Next()) u->SetPrimary(w_front);
+			if (Train::From(v_front)->IsFrontEngine()) Train::From(w_front)->SetFrontEngine();
+		}
+	}
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		/* for trains this needs to be the front engine due to the callback function */
@@ -1513,8 +1554,8 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 
 
 	/* Take care of refitting. */
-	w = w_front;
-	v = v_front;
+	w = w_head;
+	v = v_head;
 
 	/* Both building and refitting are influenced by newgrf callbacks, which
 	 * makes it impossible to accurately estimate the cloning costs. In
@@ -1568,7 +1609,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 		CommandCost result = Command<Commands::CloneOrder>::Do(flags, (share_orders ? CO_SHARE : CO_COPY), w_front->index, v_front->index);
 		if (result.Failed()) {
 			/* The vehicle has already been bought, so now it must be sold again. */
-			Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, ClientID::Invalid);
+			Command<Commands::SellVehicle>::Do(flags, w_head->tile, w_head->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 			return result;
 		}
 
@@ -1579,7 +1620,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 		 * check whether the company has enough money manually. */
 		if (!CheckCompanyHasMoney(total_cost)) {
 			/* The vehicle has already been bought, so now it must be sold again. */
-			Command<Commands::SellVehicle>::Do(flags, w_front->tile, w_front->index, SellVehicleFlags::SellChain, ClientID::Invalid);
+			Command<Commands::SellVehicle>::Do(flags, w_head->tile, w_head->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 			return total_cost;
 		}
 	}
