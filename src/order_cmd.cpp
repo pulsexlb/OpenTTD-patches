@@ -6076,12 +6076,25 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			v->SetDestTile(v->GetOrderStationLocation(order->GetDestination().ToStationID()));
 			return true;
 
-		case OT_GOTO_COUPLE:
+		case OT_GOTO_COUPLE: {
 			/* No station destination exists until a waiting partner is selected.
 			 * Still allow a stopped train to compare both ends using the coupling
 			 * destination evaluator instead of silently skipping direction choice. */
 			v->SetDestTile(INVALID_TILE);
-			return !pbs_look_ahead && v->type == VehicleType::Train && v->cur_speed == 0;
+			if (pbs_look_ahead || v->type != VehicleType::Train) return false;
+			if (v->cur_speed == 0) return true;
+			const Train *train = Train::From(v);
+			if (train->flags.Any({VehicleRailFlag::Reversing, VehicleRailFlag::CoupleDirectionChecked, VehicleRailFlag::JustDecoupled})) return false;
+			if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::EndOfLineOnly || train->GetMovingFront()->track == TRACK_BIT_DEPOT) return false;
+			const uint interval = std::max<uint>(1, _settings_game.pf.path_backoff_interval);
+			if (_scaled_tick_counter % interval != train->index.base() % interval) return false;
+			/* A partner may be selected after departure. Recheck the direction of
+			 * a new claim once, on the native retry cadence, rather than driving
+			 * away until a line end happens to turn the train around. Spread queries
+			 * by vehicle ID; no partner means no extra network search. */
+			const Train *target = Train::GetIfValid(train->couple_target);
+			return target != nullptr && GetCoupleClaimant(target) == train;
+		}
 
 		case OT_WAIT_COUPLE:
 			if (order->HasWaitCoupleStation() && Station::IsValidID(order->GetWaitCoupleStation())) {

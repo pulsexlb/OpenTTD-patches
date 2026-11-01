@@ -7390,7 +7390,7 @@ void CancelTrainCoupleCheckpoint(Train *train)
 	train->couple_target = VehicleID::Invalid();
 	/* Cancel only the reversal belonging to the overridden checkpoint. */
 	if (train->flags.Test(VehicleRailFlag::CoupleCheckReversePending)) train->reverse_distance = 0;
-	train->flags.Reset({VehicleRailFlag::CoupleCheckReversePending, VehicleRailFlag::CoupleCheckReservationReleased});
+	train->flags.Reset({VehicleRailFlag::CoupleCheckReversePending, VehicleRailFlag::CoupleCheckReservationReleased, VehicleRailFlag::CoupleDirectionChecked});
 }
 
 /**
@@ -7511,6 +7511,7 @@ void ClaimCoupleTarget(Train *moving, Train *carrier, uint32_t claim_cost)
 	}
 	carrier->couple_claimant = prim->index;
 	carrier->couple_claim_cost = claim_cost;
+	prim->flags.Reset(VehicleRailFlag::CoupleDirectionChecked);
 }
 
 /**
@@ -10995,13 +10996,28 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		return true;
 	}
 	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL) && !consist->current_order.IsExecuteScheduleOrder();
-	if (ProcessOrders(consist) && CheckReverseTrain(consist)) {
-		consist->wait_counter = 0;
-		consist->cur_speed = 0;
-		consist->subspeed = 0;
-		consist->flags.Reset(VehicleRailFlag::LeavingStation);
-		ReverseTrainDirection(consist);
-		return true;
+	const bool check_direction = ProcessOrders(consist);
+	const bool reverse_for_order = check_direction && CheckReverseTrain(consist);
+	if (check_direction && consist->cur_speed != 0 && consist->current_order.IsType(OT_GOTO_COUPLE) && GetClaimedCoupleTarget(consist) != nullptr) {
+		/* Persist the completed check with the claim. Repeated moving searches
+		 * can change their answer while braking across a turnout. A new claim
+		 * clears this bit; stopped PBS retries remain unaffected. */
+		consist->flags.Set(VehicleRailFlag::CoupleDirectionChecked);
+	}
+	if (reverse_for_order) {
+		if (consist->current_order.IsType(OT_GOTO_COUPLE) && consist->cur_speed != 0) {
+			/* A newly available partner can be behind an already moving train.
+			 * Use native reverse braking, retaining its reservation until the normal
+			 * stopped turnaround; do not teleport a moving train to speed zero. */
+			consist->flags.Set(VehicleRailFlag::Reversing);
+		} else {
+			consist->wait_counter = 0;
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+			consist->flags.Reset(VehicleRailFlag::LeavingStation);
+			ReverseTrainDirection(consist);
+			return true;
+		}
 	} else if (consist->flags.Test(VehicleRailFlag::LeavingStation)) {
 		/* Try to reserve a path when leaving the station as we
 		 * might not be marked as wanting a reservation, e.g.

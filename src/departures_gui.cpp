@@ -281,8 +281,13 @@ protected:
 				if (this->show_types[vt]) SetBit(vt_mask, to_underlying(vt));
 			}
 
-			for (const Vehicle *veh : Vehicle::IterateTypeMaskFrontOnly(vt_mask)) {
-				if (veh->IsPrimaryVehicle() && veh == veh->FirstShared()) process_vehicle(veh);
+			for (const Vehicle *front : Vehicle::IterateTypeMaskFrontOnly(vt_mask)) {
+				/* PXP can retain independently scheduled wagon heads inside one
+				 * physical train chain. Visit every logical primary, not only the
+				 * physical chain head, while processing each shared list once. */
+				for (const Vehicle *veh = front; veh != nullptr; veh = front->type == VehicleType::Train ? veh->Next() : nullptr) {
+					if (veh->IsPrimaryVehicle() && veh == veh->FirstShared()) process_vehicle(veh);
+				}
 			}
 		}
 

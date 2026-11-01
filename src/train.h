@@ -51,6 +51,7 @@ enum class VehicleRailFlag : uint8_t {
 	SameDirDecouplePending    = 23, ///< Trailing split part waits for the leading part to clear its platform before following.
 	CoupleCheckReversePending = 24, ///< Wait for a selected early couple target only after a waypoint reversal completes.
 	CoupleCheckReservationReleased = 25, ///< Forward reservation has already been released for an early couple checkpoint.
+	CoupleDirectionChecked    = 26, ///< The current partner's direction has been checked after it was claimed.
 };
 using VehicleRailFlags = EnumBitSet<VehicleRailFlag, uint32_t>;
 

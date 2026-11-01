@@ -5764,3 +5764,48 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - unchanged blocked order
 	CHECK(moving->couple_target == VehicleID::Invalid());
 	CHECK(random_checker.Check());
 }
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - moving claimed trains recheck direction on distributed native retries")
+{
+	AutoRestoreBackup<uint8_t> backoff(_settings_game.pf.path_backoff_interval, 20);
+	AutoRestoreBackup ticks(_scaled_tick_counter, uint64_t(GENERATE(0, 1, 19, 20, 21)));
+	moving->orders = OrderList::Create(Order(moving->current_order), moving);
+	moving->primary_order = moving->orders->index;
+	moving->cur_speed = 80;
+	moving->SetDestTile(INVALID_TILE);
+	moving->couple_target = waiting->index;
+	ClaimCoupleTarget(moving, waiting, 0);
+	REQUIRE(GetCoupleClaimant(waiting) == moving);
+	bool expected = _scaled_tick_counter % 20 == moving->index.base() % 20;
+	SECTION("valid claim while moving") {}
+	SECTION("no selected partner") { moving->couple_target = VehicleID::Invalid(); expected = false; }
+	SECTION("partner no longer waiting") { waiting->current_order.Free(); expected = false; }
+	SECTION("native reverse already braking") { moving->flags.Set(VehicleRailFlag::Reversing); expected = false; }
+	SECTION("this claim was already checked") { moving->flags.Set(VehicleRailFlag::CoupleDirectionChecked); expected = false; }
+	SECTION("just decoupled still prohibits reversing") { moving->flags.Set(VehicleRailFlag::JustDecoupled); expected = false; }
+	SECTION("depot exit retains native direction handling") { moving->track = TRACK_BIT_DEPOT; expected = false; }
+	SECTION("line-end-only setting retains its restriction") {
+		AutoRestoreBackup allowed(_settings_game.difficulty.train_flip_reverse_allowed, TrainFlipReversingAllowed::EndOfLineOnly);
+		CHECK_FALSE(ProcessOrders(moving));
+		return;
+	}
+	SECTION("zero retry setting is safe") { _settings_game.pf.path_backoff_interval = 0; expected = true; }
+	GameRandomSeedChecker random_checker;
+	CHECK(ProcessOrders(moving) == expected);
+	CHECK(moving->cur_speed == 80);
+	CHECK(random_checker.Check());
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - only a new claim resets its completed direction check")
+{
+	moving->couple_target = waiting->index;
+	moving->flags.Set(VehicleRailFlag::CoupleDirectionChecked);
+	ClaimCoupleTarget(moving, waiting, 10);
+	CHECK_FALSE(moving->flags.Test(VehicleRailFlag::CoupleDirectionChecked));
+	moving->flags.Set(VehicleRailFlag::CoupleDirectionChecked);
+	ClaimCoupleTarget(moving, waiting, 20);
+	CHECK(moving->flags.Test(VehicleRailFlag::CoupleDirectionChecked));
+	CHECK(GetCoupleClaimant(waiting) == moving);
+	CancelTrainCoupleCheckpoint(moving);
+	CHECK_FALSE(moving->flags.Test(VehicleRailFlag::CoupleDirectionChecked));
+}
