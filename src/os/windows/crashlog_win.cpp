@@ -925,8 +925,8 @@ static bool _expanded;
 static const TCHAR _crash_desc[] =
 	L"A serious fault condition occurred in the game. The game will shut down.\n"
 	L"Please send the crash information (log files and crash saves, if any) to the patchpack developer.\n"
-	L"This will greatly help debugging. The correct place to do this is https://www.tt-forums.net/viewtopic.php?f=33&t=73469"
-	L" or https://github.com/JGRennison/OpenTTD-patches\n"
+	L"This will greatly help debugging. The correct place to do this is https://www.tt-forums.net/viewtopic.php?t=92910"
+	L" or https://github.com/pulsexlb/OpenTTD-patches\n"
 	L"The information contained in the report is displayed below.\n";
 
 static const wchar_t * const _expand_texts[] = {L"S&how report >>", L"&Hide report <<" };

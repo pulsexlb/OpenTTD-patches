@@ -452,8 +452,8 @@ public:
 		format_buffer_sized<1024> message;
 		message.format(
 				"Please send the generated crash information and the last (auto)save to the patchpack developer. "
-				"This will greatly help debugging. The correct place to do this is https://www.tt-forums.net/viewtopic.php?f=33&t=73469"
-				" or https://github.com/JGRennison/OpenTTD-patches\n\n"
+				"This will greatly help debugging. The correct place to do this is https://www.tt-forums.net/viewtopic.php?t=92910"
+				" or https://github.com/pulsexlb/OpenTTD-patches\n\n"
 				"Generated file(s):\n{}\n{}\n{}",
 				this->crashlog_filename, this->savegame_filename, this->screenshot_filename);
 

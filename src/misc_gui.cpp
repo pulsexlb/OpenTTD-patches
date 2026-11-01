@@ -447,8 +447,11 @@ static const std::initializer_list<const std::string_view> _credits = {
 	"  All Translators - Who made OpenTTD a truly international game",
 	"  Bug Reporters - Without whom OpenTTD would still be full of bugs!",
 	"",
-	"Developer of this patchpack:",
+	"Original developer of JGR's Patch Pack:",
 	"  Jonathan G. Rennison (JGR)",
+	"",
+	"Developer of px-patch:",
+	"  pulsexlb",
 	"",
 	"And last but not least:",
 	"  Chris Sawyer - For an amazing game!"
@@ -472,8 +475,8 @@ struct AboutWindow : public Window {
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		if (widget == WID_A_WEBSITE) return "Website: https://www.openttd.org";
-		if (widget == WID_A_WEBSITE1) return "Patchpack thread: https://www.tt-forums.net/viewtopic.php?f=33&t=73469";
-		if (widget == WID_A_WEBSITE2) return "Patchpack Github: https://github.com/JGRennison/OpenTTD-patches";
+		if (widget == WID_A_WEBSITE1) return "Patchpack thread: https://www.tt-forums.net/viewtopic.php?t=92910";
+		if (widget == WID_A_WEBSITE2) return "Patchpack Github: https://github.com/pulsexlb/OpenTTD-patches";
 		if (widget == WID_A_COPYRIGHT) return GetString(STR_ABOUT_COPYRIGHT_OPENTTD, _openttd_revision_year);
 		return this->Window::GetWidgetString(widget, stringid);
 	}
