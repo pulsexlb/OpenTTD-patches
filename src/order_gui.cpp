@@ -5225,7 +5225,6 @@ public:
 
 	void OnPaint() override
 	{
-		if (this->GetWidget<NWidgetCore>(WID_O_SERVICE_NUMBER) != nullptr) this->SetWidgetDisabledState(WID_O_SERVICE_NUMBER, !CanSetStationServiceNumber());
 		if (!IsLocalTarget()) {
 			this->selected_order = -1; // Disable selection any selected row at a competitor order window.
 		} else {
@@ -5405,11 +5404,6 @@ public:
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		switch (widget) {
-			case WID_O_SERVICE_NUMBER: {
-				const Order *o = this->selected_order >= 0 ? OrderAt(this->selected_order) : nullptr;
-				if (o == nullptr || !o->IsType(OT_GOTO_STATION)) return GetString(STR_ORDER_SERVICE_SELECT_STOP);
-				return o->GetServiceNumberMode() == 1 ? GetString(STR_TIMETABLE_FIXED_SERVICE_NUMBER, o->GetServiceNumber()) : GetString(o->GetServiceNumberMode() == 2 ? STR_TIMETABLE_DISPATCH_SERVICE_NUMBER : STR_ORDER_SERVICE_UNCHANGED);
-			}
 			case WID_O_COND_VALUE: {
 				VehicleOrderID sel = this->OrderGetSel();
 				const Order *order = OrderAt(sel);
@@ -5658,16 +5652,6 @@ public:
 	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
 		switch (widget) {
-			case WID_O_SERVICE_NUMBER: {
-				if (!CanSetStationServiceNumber()) break;
-				const Order *o = OrderAt(this->selected_order);
-				DropDownList list;
-				list.push_back(MakeDropDownListCheckedItem(o->GetServiceNumberMode() == 0, STR_ORDER_SERVICE_UNCHANGED, 0));
-				list.push_back(MakeDropDownListCheckedItem(o->GetServiceNumberMode() == 1, STR_TIMETABLE_SET_SERVICE_NUMBER, 1));
-				list.push_back(MakeDropDownListCheckedItem(o->GetServiceNumberMode() == 2, STR_TIMETABLE_DISPATCH_SERVICE_NUMBER, 2));
-				ShowDropDownList(this, std::move(list), o->GetServiceNumberMode(), widget);
-				break;
-			}
 			case WID_O_ORDER_LIST: {
 				if (this->goto_type == OPOS_CONDITIONAL) {
 					VehicleOrderID order_id = this->GetOrderFromPt(_cursor.pos.y - this->top);
@@ -5814,6 +5798,15 @@ public:
 						list.push_back(MakeDropDownListCheckedItem(osl == OrderStopLocation::Through, STR_ORDER_STOP_LOCATION_THROUGH, 0x200 + to_underlying(OrderStopLocation::Through), !allowed));
 					}
 					list.push_back(MakeDropDownListCheckedItem(order->GetDecouple() == ODF_DECOUPLE, STR_ORDERS_DECOUPLE_DROP, 0x500, false));
+				}
+
+				/* Service number selection for scheduled stops, previously an external dropdown. */
+				if (CanSetStationServiceNumber()) {
+					const uint8_t mode = order->GetServiceNumberMode();
+					list.push_back(MakeDropDownListDividerItem());
+					list.push_back(MakeDropDownListCheckedItem(mode == 0, STR_ORDER_SERVICE_UNCHANGED, 0x600, false));
+					list.push_back(MakeDropDownListCheckedItem(mode == 1, STR_TIMETABLE_SET_SERVICE_NUMBER, 0x601, false));
+					list.push_back(MakeDropDownListCheckedItem(mode == 2, STR_TIMETABLE_DISPATCH_SERVICE_NUMBER, 0x602, false));
 				}
 
 				if (this->HasVehicle() && this->vehicle->type == VehicleType::Road && (order->IsType(OT_GOTO_STATION) || order->IsType(OT_GOTO_WAYPOINT))) {
@@ -6543,7 +6536,7 @@ public:
 
 	void OnQueryTextFinished(std::optional<std::string> str, std::optional<std::string> str2) override
 	{
-		if (this->query_text_widget == WID_O_SERVICE_NUMBER) {
+		if (this->query_text_widget == WID_O_MGMT_BTN) {
 			if (!str.has_value() || !IsLocalTarget() || this->Target() == nullptr || this->Target()->index != this->service_number_query_list || OrderAt(this->service_number_query_index) != this->service_number_query_order) return;
 			Command<Commands::SetOrderServiceNumber>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->TargetKind(), this->TargetId(), this->service_number_query_index, uint8_t(str->empty() ? 0 : 1), *str);
 			return;
@@ -6671,18 +6664,6 @@ public:
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		switch (widget) {
-			case WID_O_SERVICE_NUMBER:
-				if (!CanSetStationServiceNumber()) break;
-				if (index == 0 || index == 2) {
-					Command<Commands::SetOrderServiceNumber>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->TargetKind(), this->TargetId(), VehicleOrderID(this->selected_order), uint8_t(index), std::string{});
-				} else if (index == 1) {
-					this->query_text_widget = WID_O_SERVICE_NUMBER;
-					this->service_number_query_index = this->selected_order;
-					this->service_number_query_order = OrderAt(this->selected_order);
-					this->service_number_query_list = this->Target()->index;
-					ShowQueryString(GetString(STR_JUST_RAW_STRING, this->service_number_query_order->GetServiceNumber()), STR_TIMETABLE_SET_SERVICE_NUMBER, MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
-				}
-				break;
 			case WID_O_NON_STOP:
 				this->OrderClick_Nonstop(index);
 				break;
@@ -6985,6 +6966,20 @@ public:
 				}
 				if (index >= 0x300 && index <= 0x300 + to_underlying(DiagDirection::Invalid)) {
 					this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRAVEL_DIR, index & 0xFF);
+					break;
+				}
+				if (index >= 0x600 && index <= 0x602) {
+					/* Service number selection moved from the former external dropdown. */
+					if (!CanSetStationServiceNumber()) break;
+					if (index != 0x601) {
+						Command<Commands::SetOrderServiceNumber>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->TargetKind(), this->TargetId(), VehicleOrderID(this->selected_order), uint8_t(index - 0x600), std::string{});
+					} else {
+						this->query_text_widget = WID_O_MGMT_BTN;
+						this->service_number_query_index = this->selected_order;
+						this->service_number_query_order = OrderAt(this->selected_order);
+						this->service_number_query_list = this->Target()->index;
+						ShowQueryString(GetString(STR_JUST_RAW_STRING, this->service_number_query_order->GetServiceNumber()), STR_TIMETABLE_SET_SERVICE_NUMBER, MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+					}
 					break;
 				}
 				if (index == RVDD_RV_WAIT || index == RVDD_RV_UNLOAD) {
@@ -7588,8 +7583,6 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 		EndContainer(),
 		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_O_SCROLLBAR),
 	EndContainer(),
-
-	NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_SERVICE_NUMBER), SetResize(1, 0), SetFill(1, 0), SetStringTip(STR_ORDER_SERVICE_SELECT_STOP, STR_TIMETABLE_SERVICE_NUMBER_TOOLTIP),
 
 	/* First button row. */
 	NWidget(NWID_HORIZONTAL),
