@@ -6513,32 +6513,32 @@ STR_ERROR_BRIDGE_TOO_LOW_FOR_SHIP_DEPOT                         :桥梁对船坞
 STR_ERROR_BRIDGE_TOO_LOW_FOR_OBJECT                             :桥梁对物体而言低了 {HEIGHT}
 
 
-STR_TRACE_RESTRICT_AUTO_APPROACH                                : 自动待避：接近检测
-STR_TRACE_RESTRICT_AUTO_MAIN                                    : 自动待避：正线控制
-STR_TRACE_RESTRICT_AUTO_SIDING                                  : 自动待避：旧版股道入口
-STR_TRACE_RESTRICT_AUTO_EXIT                                    : 自动待避：待避股道出口
-STR_TRACE_RESTRICT_AUTO_CLEAR                                   : 自动待避：车尾清除点
-STR_TRACE_RESTRICT_AUTO_FASTER                                  : 后方快车需要本车让行
-STR_TRACE_RESTRICT_AUTO_NEEDS_SIDING                            : 本车需要进入待避股道
-STR_TRACE_RESTRICT_AUTO_FREE                                    : 有适合本车的空闲待避股道
-STR_TRACE_RESTRICT_AUTO_WAIT                                    : 本车仍需等待快车通过
-STR_TRACE_RESTRICT_AUTO_FULL                                    : 没有适合本车的可用待避股道
-STR_TRACE_RESTRICT_AUTO_EVACUATE                                : 本车需要腾出待避股道
-STR_TRACE_RESTRICT_AUTO_LEAVE                                   : 本车可以结束待避
-STR_TRACE_RESTRICT_AUTO_INSTRUCTION                             : {STRING}：路签 {STRING}（速度差 {NUM}%）
-STR_TRACE_RESTRICT_AUTO_CLEAR_INSTRUCTION                       :车尾通过后，退出路签：{STRING}
-STR_TRACE_RESTRICT_AUTO_CONDITION                               : {STRING}{STRING}（路签 {STRING}）
-STR_TRACE_RESTRICT_AUTO_CONDITION_NOT                           : {STRING}不满足：{STRING}（路签 {STRING}）
+STR_TRACE_RESTRICT_AUTO_APPROACH                                :自动待避：接近检测
+STR_TRACE_RESTRICT_AUTO_MAIN                                    :自动待避：正线控制
+STR_TRACE_RESTRICT_AUTO_SIDING                                  :自动待避：旧版股道入口
+STR_TRACE_RESTRICT_AUTO_EXIT                                    :自动待避：待避股道出口
+STR_TRACE_RESTRICT_AUTO_CLEAR                                   :自动待避：车尾清除点
+STR_TRACE_RESTRICT_AUTO_FASTER                                  :后方快车需要本车让行
+STR_TRACE_RESTRICT_AUTO_NEEDS_SIDING                            :本车需要进入待避股道
+STR_TRACE_RESTRICT_AUTO_FREE                                    :有适合本车的空闲待避股道
+STR_TRACE_RESTRICT_AUTO_WAIT                                    :本车仍需等待快车通过
+STR_TRACE_RESTRICT_AUTO_FULL                                    :没有适合本车的可用待避股道
+STR_TRACE_RESTRICT_AUTO_EVACUATE                                :本车需要腾出待避股道
+STR_TRACE_RESTRICT_AUTO_LEAVE                                   :本车可以结束待避
+STR_TRACE_RESTRICT_AUTO_INSTRUCTION                             :{STRING}：路签 {STRING}（速度差 {NUM}%）
+STR_TRACE_RESTRICT_AUTO_CLEAR_INSTRUCTION                       :自动待避：车尾通过后，退出路签：{STRING}
+STR_TRACE_RESTRICT_AUTO_CONDITION                               :{STRING}{STRING}（路签 {STRING}）
+STR_TRACE_RESTRICT_AUTO_CONDITION_NOT                           :{STRING}不满足：{STRING}（路签 {STRING}）
 STR_CONFIG_SETTING_AUTOMATIC_YIELD                              :寻路限制自动待避：{STRING}
 STR_CONFIG_SETTING_AUTOMATIC_YIELD_HELPTEXT                     :使用同一路签关联自动待避信号。成功预留经过接近检测点的路径时领取路签；共享线路上的其他公司列车也可自动领取，无需公开。预留失败会回滚；未驶入时取消预留会释放登记，驶入后由车尾清除点退出。手动取消路签可解除待避。普通路签的私有编辑权限及铁路通行权限不变。请设置足够容量。默认关闭，仍遵守原有寻路和信号规则
 
 STR_TRACE_RESTRICT_AUTO_PERCENT                                :速度差：{NUM}%
 STR_TRACE_RESTRICT_AUTO_PERCENT_CAPTION                        :最小速度差（百分比）
 
-STR_TRACE_RESTRICT_AUTO_ROLE_INSTRUCTION                       : {STRING}：路签 {STRING}
+STR_TRACE_RESTRICT_AUTO_ROLE_INSTRUCTION                       :{STRING}：路签 {STRING}
 STR_TRACE_RESTRICT_AUTO_LANE_ORDINARY                           :普通待避线
 STR_TRACE_RESTRICT_AUTO_LANE_PLATFORM                           :站台股道
-STR_TRACE_RESTRICT_AUTO_PLATFORM_ROLE_INSTRUCTION              : {STRING}：路签 {STRING}（站台股道）
+STR_TRACE_RESTRICT_AUTO_PLATFORM_ROLE_INSTRUCTION              :{STRING}：路签 {STRING}（站台股道）
 STR_TRACE_RESTRICT_AUTO_LANE_TOOLTIP                           :{BLACK}待避股道类型；设置在股道出口。不停本站的列车优先使用可用普通待避线；没有合适普通线时，可使用能安全进出的空站台股道。保留正常停站和连接任务。
 
 STR_TRACE_RESTRICT_AUTO_SPEED_INSTRUCTION                      :{STRING}：路签 {STRING}（速度差 {NUM}%，{STRING}，{STRING}）

@@ -6512,32 +6512,32 @@ STR_BADGE_FILTER_ANY_LABEL                                      :Any {STRING}
 STR_DECOUPLE_PREVIEW_COUNT                                    :Retain {COMMA} units (click to enter; 0 = automatic).
 
 
-STR_TRACE_RESTRICT_AUTO_APPROACH                                : Automatic yielding: approach detector
-STR_TRACE_RESTRICT_AUTO_MAIN                                    : Automatic yielding: main-line guard
-STR_TRACE_RESTRICT_AUTO_SIDING                                  : Automatic yielding: legacy siding entrance
-STR_TRACE_RESTRICT_AUTO_EXIT                                    : Automatic yielding: siding exit
-STR_TRACE_RESTRICT_AUTO_CLEAR                                   : Automatic yielding: tail clearance point
-STR_TRACE_RESTRICT_AUTO_FASTER                                  : A faster following train needs priority
-STR_TRACE_RESTRICT_AUTO_NEEDS_SIDING                            : This train needs to enter a siding
-STR_TRACE_RESTRICT_AUTO_FREE                                    : A suitable siding is available
-STR_TRACE_RESTRICT_AUTO_WAIT                                    : This train still needs to wait for faster trains
-STR_TRACE_RESTRICT_AUTO_FULL                                    : No suitable siding is available
-STR_TRACE_RESTRICT_AUTO_EVACUATE                                : This train is selected to vacate its siding
-STR_TRACE_RESTRICT_AUTO_LEAVE                                   : This train may stop yielding
-STR_TRACE_RESTRICT_AUTO_INSTRUCTION                             : {STRING}: slot {STRING1} ({NUM}%)
-STR_TRACE_RESTRICT_AUTO_CLEAR_INSTRUCTION                       : Automatic yielding: tail clearance point, release slot {STRING1}
-STR_TRACE_RESTRICT_AUTO_CONDITION                               : {STRING} {STRING} (slot {STRING1})
-STR_TRACE_RESTRICT_AUTO_CONDITION_NOT                           : {STRING} not: {STRING} (slot {STRING1})
-STR_CONFIG_SETTING_AUTOMATIC_YIELD                              :Automatic yielding through trace restrictions: {STRING}
+STR_TRACE_RESTRICT_AUTO_APPROACH                                :Automatic yielding: approach detector
+STR_TRACE_RESTRICT_AUTO_MAIN                                    :Automatic yielding: main-line guard
+STR_TRACE_RESTRICT_AUTO_SIDING                                  :Automatic yielding: legacy siding entrance
+STR_TRACE_RESTRICT_AUTO_EXIT                                    :Automatic yielding: siding exit
+STR_TRACE_RESTRICT_AUTO_CLEAR                                   :Automatic yielding: tail clearance point
+STR_TRACE_RESTRICT_AUTO_FASTER                                  :A faster following train needs priority
+STR_TRACE_RESTRICT_AUTO_NEEDS_SIDING                            :This train needs to enter a siding
+STR_TRACE_RESTRICT_AUTO_FREE                                    :A suitable siding is available
+STR_TRACE_RESTRICT_AUTO_WAIT                                    :This train still needs to wait for faster trains
+STR_TRACE_RESTRICT_AUTO_FULL                                    :No suitable siding is available
+STR_TRACE_RESTRICT_AUTO_EVACUATE                                :This train is selected to vacate its siding
+STR_TRACE_RESTRICT_AUTO_LEAVE                                   :This train may stop yielding
+STR_TRACE_RESTRICT_AUTO_INSTRUCTION                             :{STRING}: slot {STRING1} ({NUM}%)
+STR_TRACE_RESTRICT_AUTO_CLEAR_INSTRUCTION                       :Automatic yielding: tail clearance point, release slot {STRING1}
+STR_TRACE_RESTRICT_AUTO_CONDITION                               :{STRING} {STRING} (slot {STRING1})
+STR_TRACE_RESTRICT_AUTO_CONDITION_NOT                           :{STRING} not: {STRING} (slot {STRING1})
+STR_CONFIG_SETTING_AUTOMATIC_YIELD                              :Automatic yielding through trace restrictions: {STRING2}
 STR_CONFIG_SETTING_AUTOMATIC_YIELD_HELPTEXT                     :Link automatic yielding signals using the same train slot. Successful path reservation through a detector registers the train, including other companies on shared infrastructure even if the slot is private. Failed reservations roll back. Cancelling a reserved path before entry releases pending membership; after entry, the tail clearance point releases it. Removing the slot manually cancels yielding. Ordinary private-slot editing permissions and railway access rules still apply. Set sufficient slot capacity. Disabled by default; normal pathfinding and signals remain authoritative
 
 STR_TRACE_RESTRICT_AUTO_PERCENT                                :Speed difference: {NUM}%
 STR_TRACE_RESTRICT_AUTO_PERCENT_CAPTION                        :Minimum speed difference (%)
 
-STR_TRACE_RESTRICT_AUTO_ROLE_INSTRUCTION                       : {STRING}: slot {STRING1}
+STR_TRACE_RESTRICT_AUTO_ROLE_INSTRUCTION                       :{STRING}: slot {STRING1}
 STR_TRACE_RESTRICT_AUTO_LANE_ORDINARY                           :Ordinary siding
 STR_TRACE_RESTRICT_AUTO_LANE_PLATFORM                           :Platform siding
-STR_TRACE_RESTRICT_AUTO_PLATFORM_ROLE_INSTRUCTION              : {STRING}: slot {STRING1} (platform)
+STR_TRACE_RESTRICT_AUTO_PLATFORM_ROLE_INSTRUCTION              :{STRING}: slot {STRING1} (platform)
 STR_TRACE_RESTRICT_AUTO_LANE_TOOLTIP                           :{BLACK}Non-stopping trains prefer an available ordinary siding, with platform fallback. Station work and coupling destinations are preserved.
 
 STR_TRACE_RESTRICT_AUTO_SPEED_INSTRUCTION                      :{STRING}: slot {STRING1} (speed gap {NUM}%, {STRING1}, {STRING})

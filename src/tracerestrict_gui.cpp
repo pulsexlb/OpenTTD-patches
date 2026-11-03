@@ -178,7 +178,6 @@ enum TraceRestrictWindowWidgets : WidgetID {
 	TR_WIDGET_AUTO_REGISTER,
 
 	TR_WIDGET_BLANK_L2,
-	TR_WIDGET_BLANK_L,
 	TR_WIDGET_BLANK_M,
 	TR_WIDGET_BLANK_R,
 
@@ -216,7 +215,6 @@ enum PanelWidgets : WidgetID {
 	/* Left */
 	DPL_TYPE = 0,
 	DPL_COUNTER_OP,
-	DPL_BLANK,
 
 	/* Left aux */
 	DPLA_DROPDOWN = 0,
@@ -634,6 +632,7 @@ enum TraceRestrictDropDownListItemFlags : uint8_t {
 	TRDDLIF_SPEED_ADAPTATION          = 1 << 2,  ///< requires speed adaptation
 	TRDDLIF_NORMAL_SHUNT_SIGNAL_STYLE = 1 << 3,  ///< requires normal/shunt signal styles
 	TRDDLIF_HIDDEN                    = 1 << 4,  ///< always hidden
+	TRDDLIF_AUTO_YIELD                = 1 << 5,  ///< requires _settings_game.vehicle.automatic_yield
 };
 DECLARE_ENUM_AS_BIT_SET(TraceRestrictDropDownListItemFlags)
 
@@ -646,11 +645,11 @@ struct TraceRestrictDropDownListItem {
 static std::span<const TraceRestrictDropDownListItem> GetActionDropDownListItems()
 {
 	static const TraceRestrictDropDownListItem actions[] = {
-		{ TRIT_AUTO_YIELD_AREA,          STR_TRACE_RESTRICT_AUTO_APPROACH,            TRDDLIF_NONE },
-		{ TRIT_AUTO_YIELD_AREA | (1 << 16), STR_TRACE_RESTRICT_AUTO_MAIN,             TRDDLIF_NONE },
+		{ TRIT_AUTO_YIELD_AREA,          STR_TRACE_RESTRICT_AUTO_APPROACH,            TRDDLIF_AUTO_YIELD },
+		{ TRIT_AUTO_YIELD_AREA | (1 << 16), STR_TRACE_RESTRICT_AUTO_MAIN,             TRDDLIF_AUTO_YIELD },
 		{ TRIT_AUTO_YIELD_AREA | (2 << 16), STR_TRACE_RESTRICT_AUTO_SIDING,           TRDDLIF_HIDDEN },
-		{ TRIT_AUTO_YIELD_AREA | (3 << 16), STR_TRACE_RESTRICT_AUTO_EXIT,             TRDDLIF_NONE },
-		{ TRIT_AUTO_YIELD_CLEAR,         STR_TRACE_RESTRICT_AUTO_CLEAR,               TRDDLIF_NONE },
+		{ TRIT_AUTO_YIELD_AREA | (3 << 16), STR_TRACE_RESTRICT_AUTO_EXIT,             TRDDLIF_AUTO_YIELD },
+		{ TRIT_AUTO_YIELD_CLEAR,         STR_TRACE_RESTRICT_AUTO_CLEAR,               TRDDLIF_AUTO_YIELD },
 		{ TRIT_PF_DENY,                  STR_TRACE_RESTRICT_PF_DENY,                  TRDDLIF_NONE },
 		{ TRIT_PF_PENALTY,               STR_TRACE_RESTRICT_PF_PENALTY,               TRDDLIF_NONE },
 		{ TRIT_RESERVE_THROUGH,          STR_TRACE_RESTRICT_RESERVE_THROUGH,          TRDDLIF_NONE },
@@ -738,6 +737,7 @@ static bool ShouldHideTypeDropDownListItem(TraceRestrictDropDownListItemFlags fl
 	if ((flags & TRDDLIF_REALISTIC_BRAKING) && _settings_game.vehicle.train_braking_model != TBM_REALISTIC) return true;
 	if ((flags & TRDDLIF_SPEED_ADAPTATION) && !_settings_game.vehicle.train_speed_adaptation) return true;
 	if ((flags & TRDDLIF_NORMAL_SHUNT_SIGNAL_STYLE) && (_settings_game.vehicle.train_braking_model != TBM_REALISTIC || _signal_style_masks.combined_normal_shunt == 0)) return true;
+	if ((flags & TRDDLIF_AUTO_YIELD) && !_settings_game.vehicle.automatic_yield) return true;
 	if (flags & TRDDLIF_HIDDEN) return true;
 	return false;
 }
@@ -3965,7 +3965,6 @@ private:
 		this->DisableWidget(TR_WIDGET_SHARE_ONTO);
 
 		this->DisableWidget(TR_WIDGET_BLANK_L2);
-		this->DisableWidget(TR_WIDGET_BLANK_L);
 		this->DisableWidget(TR_WIDGET_BLANK_M);
 		this->DisableWidget(TR_WIDGET_BLANK_R);
 
@@ -3974,7 +3973,7 @@ private:
 		this->DisableWidget(TR_WIDGET_DUPLICATE);
 
 		left_2_sel->SetDisplayedPlane(DPL2_BLANK);
-		left_sel->SetDisplayedPlane(DPL_BLANK);
+		left_sel->SetDisplayedPlane(SZSP_NONE);
 		left_aux_sel->SetDisplayedPlane(SZSP_NONE);
 		middle_sel->SetDisplayedPlane(DPM_BLANK);
 		right_sel->SetDisplayedPlane(DPR_BLANK);
@@ -4579,8 +4578,6 @@ static constexpr NWidgetPart _nested_program_widgets[] = {
 														SetToolTip(STR_TRACE_RESTRICT_TYPE_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_DROPDOWN, Colours::Grey, TR_WIDGET_COUNTER_OP), SetMinimalSize(124, 12), SetFill(1, 0),
 														SetToolTip(STR_TRACE_RESTRICT_COUNTER_OP_TOOLTIP), SetResize(1, 0),
-				NWidget(WWT_TEXTBTN, Colours::Grey, TR_WIDGET_BLANK_L), SetMinimalSize(124, 12), SetFill(1, 0),
-														SetStringTip(STR_EMPTY, STR_NULL), SetResize(1, 0),
 			EndContainer(),
 			NWidget(NWID_SELECTION, Colours::Invalid, TR_WIDGET_SEL_TOP_LEFT_AUX),
 				NWidget(WWT_DROPDOWN, Colours::Grey, TR_WIDGET_LEFT_AUX_DROPDOWN), SetMinimalSize(124, 12), SetFill(1, 0),
@@ -4611,6 +4608,11 @@ static constexpr NWidgetPart _nested_program_widgets[] = {
 														SetStringTip(STR_ORDER_LABEL_TEXT_BUTTON, STR_ORDER_LABEL_TEXT_BUTTON_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_TEXTBTN, Colours::Grey, TR_WIDGET_BLANK_R), SetMinimalSize(124, 12), SetFill(1, 0),
 														SetStringTip(STR_EMPTY, STR_NULL), SetResize(1, 0),
+			EndContainer(),
+			/* Detector-only registration timing, shown after the slot selection. */
+			NWidget(NWID_SELECTION, Colours::Invalid, TR_WIDGET_AUTO_REGISTER_SEL),
+				NWidget(WWT_DROPDOWN, Colours::Grey, TR_WIDGET_AUTO_REGISTER), SetMinimalSize(124, 12), SetFill(1, 0), SetResize(1, 0),
+														SetStringTip(STR_TRACE_RESTRICT_AUTO_REGISTER_RESERVATION, STR_TRACE_RESTRICT_AUTO_REGISTER_TOOLTIP),
 			EndContainer(),
 		EndContainer(),
 		NWidget(WWT_PUSHIMGBTN, Colours::Grey, TR_WIDGET_GOTO_SIGNAL), SetAspect(WidgetDimensions::ASPECT_LOCATION), SetSpriteTip(SPR_GOTO_LOCATION, STR_TRACE_RESTRICT_GOTO_SIGNAL_TOOLTIP),
@@ -4647,11 +4649,6 @@ static constexpr NWidgetPart _nested_program_widgets[] = {
 			NWidget(WWT_RESIZEBOX, Colours::Grey),
 			NWidget(WWT_PANEL, Colours::Grey), EndContainer(),
 		EndContainer(),
-	EndContainer(),
-
-	/* Detector-only registration timing; other instruction controls keep their layout. */
-	NWidget(NWID_SELECTION, Colours::Invalid, TR_WIDGET_AUTO_REGISTER_SEL),
-		NWidget(WWT_DROPDOWN, Colours::Grey, TR_WIDGET_AUTO_REGISTER), SetMinimalSize(124, 12), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_TRACE_RESTRICT_AUTO_REGISTER_RESERVATION, STR_TRACE_RESTRICT_AUTO_REGISTER_TOOLTIP),
 	EndContainer(),
 
 	/* Optional extra panel. */
