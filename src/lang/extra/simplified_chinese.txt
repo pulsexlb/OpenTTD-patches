@@ -2667,7 +2667,7 @@ STR_ORDER_COUPLE_SPEED_OWN_PLAIN                                 :本车最大�
 STR_ORDER_COUPLE_SPEED_MANUAL                                    :{BLACK}手动输入
 
 STR_TIMETABLE_DISPATCH_SERVICE_NUMBER                           :车次：使用计时调度车次
-STR_TIMETABLE_SET_SERVICE_NUMBER                                :设置此处起用车次……
+STR_TIMETABLE_SET_SERVICE_NUMBER                                :车次：设置此处起用车次……
 STR_TIMETABLE_FIXED_SERVICE_NUMBER                              :车次：{STRING}
 STR_TIMETABLE_SERVICE_NUMBER_TOOLTIP                           :{BLACK}设置选中车站或路点之后使用的车次，或使用计时调度车次。每处仅用一种来源；不更换则沿用原车次。经过路点时生效。解挂时车次只随车厢保留；共享调度计划共用设置。
 

@@ -2746,7 +2746,7 @@ STR_ORDER_COUPLE_SPEED_OWN_PLAIN                                 :My train's top
 STR_ORDER_COUPLE_SPEED_MANUAL                                    :{BLACK}Manual
 
 STR_TIMETABLE_DISPATCH_SERVICE_NUMBER                           :Service number: use scheduled dispatch
-STR_TIMETABLE_SET_SERVICE_NUMBER                                :Set service number from here…
+STR_TIMETABLE_SET_SERVICE_NUMBER                                :Service number: Set service number from here…
 STR_TIMETABLE_FIXED_SERVICE_NUMBER                              :Service number: {RAW_STRING}
 STR_TIMETABLE_SERVICE_NUMBER_TOOLTIP                            :{BLACK}Set the departure number for the selected station stop, use scheduled dispatch, or keep the current number. Only one source is active. Boards show the outbound number. Decoupled engines do not inherit the carriages' number. Shared orders share these settings.
 
