@@ -142,10 +142,22 @@ protected:
 public:
 	typedef typename Types::TrackFollower TrackFollower; ///< track follower, needed for node tile iteration
 
-	/** Set the destination to a specific rail station (used by the vehicle-transport platform probe). */
-	void SetDestinationStation(const Train *v, StationID station, TileIndex near_tile)
+	/** Explicit endpoint for a read-only route query; never changes the train. */
+	void SetDestinationTile(const Train *v, TileIndex tile, Trackdir td)
 	{
-		this->dest_tile = CalcClosestStationTile(station, near_tile, StationType::Rail);
+		this->dest_tile = tile;
+		this->dest_station_id = StationID::Invalid();
+		this->dest_trackdirs = td == INVALID_TRACKDIR ? GetTileTrackdirBits(tile, TransportType::Rail, 0) : TrackdirToTrackdirBits(td);
+		this->any_depot = false;
+		this->couple_dest = false;
+		this->couple_station_dest = false;
+		this->CYapfDestinationRailBase::SetDestination(v);
+	}
+
+	/** Set the destination to a specific rail station (used by the vehicle-transport platform probe). */
+	void SetDestinationStation(const Train *v, StationID station, TileIndex near_tile, StationType station_type = StationType::Rail)
+	{
+		this->dest_tile = CalcClosestStationTile(station, near_tile, station_type);
 		this->dest_station_id = station;
 		this->dest_trackdirs = INVALID_TRACKDIR_BIT;
 		this->any_depot = false;
@@ -220,6 +232,7 @@ public:
 	/** @copydoc CYapfBaseT::PfDetectDestinationFunc */
 	inline bool PfDetectDestination(Node &n)
 	{
+		if (!Yapf().RailRouteRequiredPointSatisfied(n)) return false;
 		if (this->couple_dest) {
 			/* Plain-track couple partner: it stands mid-block, so the
 			 * destination must be detected on any tile of the segment. */

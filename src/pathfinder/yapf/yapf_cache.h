@@ -12,6 +12,7 @@
 
 #include "../../tile_type.h"
 #include "../../track_type.h"
+#include "../../tracerestrict_early_route.h"
 
 /**
  * Base class for segment cost cache providers. Contains global counter
@@ -36,11 +37,13 @@ struct CSegmentCostCacheBase {
  */
 inline void YapfNotifyTrackLayoutChange(TileIndex tile, Track track)
 {
+	AutoYieldInvalidateNativeRoutes(tile);
 	CSegmentCostCacheBase::NotifyTrackLayoutChange();
 }
 
 inline void YapfNotifyTrackLayoutChange(TileIndex tile, TrackBits tracks)
 {
+	if (tracks != TRACK_BIT_NONE) AutoYieldInvalidateNativeRoutes(tile);
 	if (tracks != TRACK_BIT_NONE) CSegmentCostCacheBase::NotifyTrackLayoutChange();
 }
 

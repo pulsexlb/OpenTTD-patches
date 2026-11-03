@@ -859,6 +859,7 @@ struct VehicleSettings {
 	uint8_t                roadveh_slope_steepness;               ///< Steepness of hills for road vehicles when using realistic acceleration
 	bool                   wagon_speed_limits;                    ///< enable wagon speed limits
 	bool                   train_speed_adaptation;                ///< Faster trains slow down when behind slower trains
+	bool                   automatic_yield;                       ///< Enable slot-associated automatic yielding in trace restriction programs
 	uint8_t                rv_transport_carrier_parts;            ///< Carrying road vehicles (RoRo): which carrier parts may take them (RVTransportCarrierParts)
 	uint16_t               rv_transport_unload_warn_days;         ///< Carrying road vehicles (RoRo): warn when a carried road vehicle was not unloaded for this many days (0 = no warning)
 	bool                   rv_transport_enabled;                  ///< Carrying road vehicles (RoRo): may road vehicles be loaded onto carriers at all (unloading always works)

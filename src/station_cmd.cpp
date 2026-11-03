@@ -4125,6 +4125,9 @@ static VehicleEnterTileStates VehicleEnterTile_Station(Vehicle *v, TileIndex til
 		Train *t = Train::From(v);
 		Train *consist = t->Primary();
 		StationID station_id = GetStationIndex(tile);
+		if (t->IsMovingFront() && consist->current_order.IsType(OT_GOTO_WAYPOINT) && consist->current_order.GetDestination() == station_id) {
+			consist->ApplyStationServiceNumber(consist->current_order);
+		}
 		if (t->IsMovingFront() && consist->current_order.IsType(OT_GOTO_WAYPOINT) && consist->current_order.GetDestination() == station_id && consist->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
 			/* Reverse at waypoint. */
 			if (consist->reverse_distance == 0) {

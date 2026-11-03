@@ -2698,7 +2698,7 @@ void AgeVehicle(Vehicle *v)
  */
 uint8_t CalcPercentVehicleFilled(const Vehicle *front, StringID *colour)
 {
-	int count = 0;
+	int count = RVTransportGetConsistCargoAmount(front);
 	int max = 0;
 	int cars = 0;
 	int unloading = 0;
@@ -2717,7 +2717,6 @@ uint8_t CalcPercentVehicleFilled(const Vehicle *front, StringID *colour)
 	 * (e.g. a primary vehicle sitting at the chain tail after a decouple),
 	 * so always walk from the physical chain head. */
 	for (const Vehicle *v = front->First(); v != nullptr; v = v->Next()) {
-		count += RVTransportGetPartCargoAmount(v);
 		max += v->cargo_cap;
 		if (v->cargo_cap != 0 && colour != nullptr) {
 			unloading += v->vehicle_flags.Test(VehicleFlag::CargoUnloading) ? 1 : 0;
@@ -2755,13 +2754,12 @@ uint8_t CalcPercentVehicleFilled(const Vehicle *front, StringID *colour)
 
 uint8_t CalcPercentVehicleFilledOfCargo(const Vehicle *front, CargoType cargo)
 {
-	int count = 0;
+	int count = RVTransportGetConsistCargoAmount(front, cargo);
 	int max = 0;
 
 	/* Count up max and used */
 	for (const Vehicle *v = front->First(); v != nullptr; v = v->Next()) {
 		if (v->cargo_type != cargo) continue;
-		count += RVTransportGetPartCargoAmount(v);
 		max += v->cargo_cap;
 	}
 
@@ -3520,6 +3518,90 @@ static void VehicleIncreaseStats(const Vehicle *front)
  * Prepare everything to begin the loading when arriving at a station.
  * @pre IsTileType(this->tile, TileType::Station) || this->type == VehicleType::Ship.
  */
+std::string Vehicle::GetActiveServiceNumber() const
+{
+	if (this->service_number_suppressed) return {};
+	if (!this->fixed_service_number.empty()) return std::string(this->fixed_service_number.c_str());
+	if (this->orders == nullptr) return {};
+	const LastDispatchRecord *best = nullptr;
+	uint schedule = 0;
+	for (const auto &[index, record] : this->dispatch_records) {
+		if (index >= this->orders->GetScheduledDispatchScheduleCount()) continue;
+		if (best == nullptr || record.dispatched > best->dispatched) { best = &record; schedule = index; }
+	}
+	return best != nullptr && best->route_id != 0 ? std::string(this->orders->GetDispatchScheduleByIndex(schedule).GetSupplementaryName(DispatchSchedule::SupplementaryNameType::RouteID, best->route_id)) : std::string{};
+}
+
+std::string Vehicle::GetServiceNumberForDeparture(const Order *target, std::string_view dispatched_number) const
+{
+	if (this->service_number_suppressed && target != nullptr && target->GetDestination() == this->last_station_visited && (this->current_order.IsAnyLoadingType() || this->current_order.IsType(OT_WAIT_COUPLE))) return {};
+	/* An explicit stop setting describes its outbound service, including a future stop. */
+	if (target != nullptr && (target->IsType(OT_GOTO_WAYPOINT) || (target->IsType(OT_GOTO_STATION) && !(target->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)))) {
+		if (target->GetServiceNumberMode() == 1) return std::string(target->GetServiceNumber());
+		if (target->GetServiceNumberMode() == 2) return std::string(dispatched_number);
+	}
+	std::string result = this->service_number_suppressed ? std::string{} : (!this->fixed_service_number.empty() ? std::string(this->fixed_service_number.c_str()) : std::string(dispatched_number));
+	/* Follow the order segment leading to the target stop, collecting service
+	 * numbers on the way. The segment may cross executed schedules: descend on
+	 * an execute-schedule order, and when an executed list wraps, return to
+	 * the main list at the runtime's resume position (see
+	 * ReturnFromExecuteSchedule). Conditional orders stay a hard stop: which
+	 * branch the vehicle takes is not predictable here. */
+	if (this->orders != nullptr && target != nullptr) {
+		const OrderList *home = this->IsExecutingSchedule() ? OrderList::GetIfValid(this->primary_order) : this->orders;
+		const OrderList *walk_list = this->orders;
+		const Order *o = this->GetOrder(this->cur_implicit_order_index);
+		const Order *skip = o;
+		const Order *home_resume = nullptr; ///< The execute order in the main list that started the detour.
+		bool started_at_target = (o == target);
+		int walk_steps = 0;
+		for (uint i = 0; o != nullptr && i < 64; ++i) {
+			++walk_steps;
+			if (o == target && !started_at_target) return result;
+			if (o == target && started_at_target && walk_steps > 1) {
+				/* The walk started at the target itself: the number in effect
+				 * there is the last one collected over a full leading cycle,
+				 * not the vehicle's current fallback. */
+				return result;
+			}
+			if (o->IsType(OT_CONDITIONAL)) break;
+			if (o->IsExecuteScheduleOrder()) {
+				const OrderList *next_list = OrderList::GetIfValid(o->GetDestination().ToOrderListID());
+				if (next_list == nullptr || next_list == walk_list || next_list->GetNumOrders() == 0 || !next_list->IsPlayerCreated() || !next_list->IsVisibleToCompany(this->owner)) break;
+				if (walk_list == home) home_resume = o;
+				walk_list = next_list;
+				o = walk_list->GetFirstOrder();
+				continue;
+			}
+			if ((o->IsType(OT_GOTO_WAYPOINT) || (o->IsType(OT_GOTO_STATION) && !(o->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION))) && !(this->service_number_suppressed && o == skip)) {
+				if (o->GetServiceNumberMode() == 1) result = o->GetServiceNumber();
+				if (o->GetServiceNumberMode() == 2) result = dispatched_number;
+			}
+			const Order *next = walk_list->GetNext(o);
+			if (home != nullptr && walk_list != home && next == walk_list->GetFirstOrder()) {
+				/* Wrapped the executed list: return to the main list at the
+				 * remembered resume position, whatever the nesting depth. */
+				walk_list = home;
+				next = home_resume != nullptr ? home->GetNext(home_resume) : home->GetOrderAt(this->primary_order_index);
+				if (next == nullptr) break;
+			}
+			o = next;
+		}
+	}
+	return result;
+}
+
+void Vehicle::ApplyStationServiceNumber(const Order &order)
+{
+	if (this->type != VehicleType::Train || (!order.IsType(OT_GOTO_STATION) && !order.IsType(OT_GOTO_WAYPOINT)) || order.GetServiceNumberMode() == 0) return;
+	const std::string_view number = order.GetServiceNumberMode() == 1 ? order.GetServiceNumber() : std::string_view{};
+	if (!this->service_number_suppressed && std::string_view(this->fixed_service_number) == number) return;
+	this->fixed_service_number = number;
+	this->service_number_suppressed = false;
+	SetWindowDirty(WindowClass::VehicleView, this->index);
+	InvalidateWindowClassesData(WindowClass::DepartureBoard);
+}
+
 void Vehicle::BeginLoading()
 {
 	if (this->type == VehicleType::Train) {
@@ -3535,6 +3617,8 @@ void Vehicle::BeginLoading()
 	if (this->current_order.IsType(OT_GOTO_STATION) &&
 			this->current_order.GetDestination() == this->last_station_visited) {
 		this->DeleteUnreachedImplicitOrders();
+
+		this->ApplyStationServiceNumber(this->current_order);
 
 		/* Now both order indices point to the destination station, and we can start loading */
 		this->current_order.MakeLoading(true);

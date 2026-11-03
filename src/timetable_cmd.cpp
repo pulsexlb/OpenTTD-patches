@@ -20,6 +20,7 @@
 #include "company_base.h"
 #include "settings_type.h"
 #include "scope.h"
+#include "string_func.h"
 #include "timetable_cmd.h"
 #include "schdispatch.h"
 #include "order_cmd.h"
@@ -39,6 +40,46 @@
  * @param timetabled   If the new value is explicitly timetabled.
  * @param ignore_lock  If the change should be applied even if the value is locked.
  */
+CommandCost CmdSetOrderServiceNumber(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, VehicleOrderID index, uint8_t mode, const std::string &number)
+{
+	if (mode > 2 || (mode == 1 ? number.empty() : !number.empty()) || Utf8StringLength(number) >= MAX_LENGTH_VEHICLE_NAME_CHARS) return CMD_ERROR;
+	OrderList *ol = nullptr;
+	Owner owner = INVALID_OWNER;
+	if (target_type == OrderTargetType::OrderList) {
+		if (id >= OrderListID::End().base()) return CMD_ERROR;
+		ol = OrderList::GetIfValid(OrderListID(static_cast<uint16_t>(id)));
+		if (ol == nullptr || !ol->IsPlayerCreated() || ol->IsScheduleGroup()) return CMD_ERROR;
+		owner = ol->GetCompany();
+	} else if (target_type == OrderTargetType::Vehicle) {
+		Vehicle *v = Vehicle::GetIfValid(VehicleID(id));
+		if (v == nullptr || v->type != VehicleType::Train || !v->IsPrimaryVehicle()) return CMD_ERROR;
+		ol = v->orders;
+		owner = v->owner;
+	} else return CMD_ERROR;
+	CommandCost ret = CheckOwnership(owner);
+	if (ret.Failed()) return ret;
+	Order *order = ol != nullptr ? ol->GetOrderAt(index) : nullptr;
+	if (order == nullptr || (!order->IsType(OT_GOTO_WAYPOINT) && (!order->IsType(OT_GOTO_STATION) || (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)))) return CMD_ERROR;
+	if (flags.Test(DoCommandFlag::Execute)) {
+		order->SetServiceNumber(mode, number);
+		/* Editing the instruction is not executing it: inbound trains keep their number. */
+		for (Vehicle *v = ol->GetFirstSharedVehicle(); v != nullptr; v = v->NextShared()) {
+			if (v->cur_real_order_index == index && v->current_order.IsDerivedFrom(*order)) {
+				v->current_order.SetServiceNumber(mode, number);
+				if (v->current_order.IsAnyLoadingType() && v->last_station_visited == order->GetDestination()) v->ApplyStationServiceNumber(*order);
+			}
+		}
+		InvalidateWindowClassesData(WindowClass::VehicleOrders);
+		InvalidateWindowClassesData(WindowClass::OrderList);
+		InvalidateWindowClassesData(WindowClass::OrderListEditor);
+		InvalidateWindowClassesData(WindowClass::OrderListSchedule);
+		InvalidateWindowClassesData(WindowClass::VehicleTimetable);
+		InvalidateWindowClassesData(WindowClass::OrderListTimetable);
+		InvalidateWindowClassesData(WindowClass::DepartureBoard);
+	}
+	return CommandCost();
+}
+
 static void ChangeTimetable(Vehicle *v, VehicleOrderID order_number, uint32_t val, ModifyTimetableFlags mtf, bool timetabled, bool ignore_lock = false)
 {
 	Order *order = v->GetOrder(order_number);
@@ -1261,7 +1302,7 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 	}
 
 	/* This vehicle is arriving at the first destination in the timetable. */
-	if (v->cur_real_order_index == first_manual_order && travelling) {
+	if (!v->IsExecutingSchedule() && v->cur_real_order_index == first_manual_order && travelling) {
 		/* If the start date hasn't been set, or it was set automatically when
 		 * the vehicle last arrived at the first destination, update it to the
 		 * current time. Otherwise set the late counter appropriately to when

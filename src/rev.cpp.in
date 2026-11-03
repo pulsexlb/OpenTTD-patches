@@ -48,6 +48,9 @@ const char _openttd_build_configure_defines[] = "${CONFIGURE_DEFINES}";
  */
 const char _openttd_revision_hash[] = "${REV_HASH}";
 
+/** Content identity of local runtime source changes; empty in a clean tree. */
+extern const char _openttd_revision_simulation_hash[] = "${REV_SIMULATION_HASH}";
+
 /**
  * The year of this version.
  */

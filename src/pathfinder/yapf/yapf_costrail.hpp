@@ -11,9 +11,11 @@
 #define YAPF_COSTRAIL_HPP
 
 #include <vector>
+#include <functional>
 
 #include "../../pbs.h"
 #include "../../tracerestrict.h"
+#include "../../tracerestrict_early_route.h"
 #include "../follow_track.hpp"
 #include "../pathfinder_type.h"
 #include "yapf_type.hpp"
@@ -52,9 +54,48 @@ protected:
 	std::vector<int> sig_look_ahead_costs = {};
 	bool treat_first_red_two_way_signal_as_eol = false;
 	TraceRestrictProgramInputFlags tracerestrict_flags = {};
+	std::function<bool(TileIndex, Trackdir)> rail_route_filter;
+	TileIndex rail_route_target = INVALID_TILE;
+	Trackdir rail_route_target_td = INVALID_TRACKDIR;
+	TileIndex rail_route_required_point = INVALID_TILE;
+	Trackdir rail_route_required_point_td = INVALID_TRACKDIR;
 
 public:
 	bool stopped_on_first_two_way_signal = false;
+
+	/** Directed route constraints are instance-local and never cached globally. */
+	void SetRailRouteFilter(const std::function<bool(TileIndex, Trackdir)> &filter)
+	{
+		this->rail_route_filter = filter;
+	}
+
+	/** Close a segment at an explicit query endpoint, including plain signals. */
+	void SetRailRouteTarget(TileIndex tile, Trackdir td)
+	{
+		this->rail_route_target = tile;
+		this->rail_route_target_td = td;
+	}
+
+	/** Only the isolated required-point node type may carry this constraint. */
+	void SetRailRouteRequiredPoint(TileIndex tile, Trackdir td)
+	{
+		if constexpr (requires(Node &n) { n.key.required_point_seen; }) {
+			this->rail_route_required_point = tile;
+			this->rail_route_required_point_td = td;
+			this->disable_cache = true;
+		} else {
+			dbg_assert(tile == INVALID_TILE);
+		}
+	}
+
+	bool RailRouteRequiredPointSatisfied(const Node &n) const
+	{
+		if constexpr (requires { n.key.required_point_seen; }) {
+			return this->rail_route_required_point == INVALID_TILE || n.key.required_point_seen ||
+					(n.GetTile() == this->rail_route_required_point && n.GetTrackdir() == this->rail_route_required_point_td);
+		}
+		return true;
+	}
 
 protected:
 	static constexpr int MAX_SEGMENT_COST = 10000;
@@ -341,6 +382,9 @@ private:
 			if (root->cost != 0 && Yapf().HasReverseOrigin()) input.input_flags.Flip(TraceRestrictProgramInputFlag::InvertDrivingDirection);
 		}
 		prog->Execute(Yapf().GetVehicle(), input, out);
+		if (input.input_flags.Test(TraceRestrictProgramInputFlag::NativeRouteChoice) && (out.flags & TRPRF_DENY)) {
+			AutoYieldNativeRouteDenied(Yapf().GetVehicle(), tile, trackdir);
+		}
 	}
 
 public:
@@ -673,6 +717,35 @@ public:
 			}
 
 no_entry_cost: // jump here at the beginning if the node has no parent (it is the first node)
+			if constexpr (requires { n.key.required_point_seen; }) {
+				/* Startup nodes have not passed through the cost calculator yet.
+				 * Count an origin on the point, and carry the phase in the node key
+				 * before AddNewNode performs its open/closed lookups. */
+				if (this->rail_route_required_point != INVALID_TILE) {
+					if ((n.parent != nullptr && n.parent->GetTile() == this->rail_route_required_point &&
+							n.parent->GetTrackdir() == this->rail_route_required_point_td) ||
+							(cur.tile == this->rail_route_required_point && cur.td == this->rail_route_required_point_td)) n.key.required_point_seen = true;
+					if (follower->is_station && follower->tiles_skipped > 0 && cur.td == this->rail_route_required_point_td) {
+						const TileIndexDiff step = TileOffsByDiagDir(follower->exitdir);
+						for (int skipped = follower->tiles_skipped; skipped > 0; --skipped) {
+							if (cur.tile - step * skipped == this->rail_route_required_point) n.key.required_point_seen = true;
+						}
+					}
+				}
+			}
+			if (this->rail_route_filter) {
+				/* The native follower compresses a platform into its far-end tile.
+				 * Reject all actual platform tiles as well, so a rejected target
+				 * cannot be traversed as an intermediate stop on another route.
+				 * A bridge/tunnel's skipped coordinates are ground, not its deck. */
+				if (follower->is_station && follower->tiles_skipped > 0) {
+					const TileIndexDiff step = TileOffsByDiagDir(follower->exitdir);
+					for (int skipped = follower->tiles_skipped; skipped > 0; --skipped) {
+						if (!this->rail_route_filter(cur.tile - step * skipped, cur.td)) return false;
+					}
+				}
+				if (!this->rail_route_filter(cur.tile, cur.td)) return false;
+			}
 
 			/* All other tile costs will be calculated here. */
 			segment_cost += Yapf().OneTileCost(cur.tile, cur.td);
@@ -690,6 +763,11 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 			segment_cost += Yapf().ReservationCost(n, cur.tile, cur.td, follower->tiles_skipped);
 
 			end_segment_reason = segment.end_segment_reason;
+			if (cur.tile == this->rail_route_target && (this->rail_route_target_td == INVALID_TRACKDIR || cur.td == this->rail_route_target_td)) {
+				/* Reuse a non-station endpoint reason; no additional penalty is
+				 * applied, and normal destination station costs remain intact. */
+				end_segment_reason.Set(EndSegmentReason::Waypoint);
+			}
 
 			/* Tests for 'potential target' reasons to close the segment. */
 			if (cur.tile == prev.tile) {
@@ -911,6 +989,10 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 
 		/* Special costs for the case we have reached our target. */
 		if (target_seen) {
+			/* This is the first active target reached on the candidate. Reject
+			 * the branch here, rather than expanding past a real stop/waypoint
+			 * and accepting a loop which visits the required point afterwards. */
+			if (!this->RailRouteRequiredPointSatisfied(n)) return false;
 			n.flags_u.flags_s.target_seen = true;
 			/* Last-red and last-red-exit penalties. */
 			if (n.flags_u.flags_s.last_signal_was_red) {
@@ -947,7 +1029,7 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 
 	inline bool CanUseGlobalCache(Node &n) const
 	{
-		return !this->disable_cache
+		return !this->disable_cache && !this->rail_route_filter && this->rail_route_target == INVALID_TILE && this->rail_route_required_point == INVALID_TILE
 			&& (n.parent != nullptr)
 			&& (n.parent->num_signals_passed >= this->sig_look_ahead_costs.size())
 			&& !n.flags_u.flags_s.reverse_pending;

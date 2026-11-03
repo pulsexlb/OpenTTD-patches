@@ -47,6 +47,7 @@
 #include "vehicle_base.h"
 
 #include <cstdarg>
+#include <map>
 #include <set>
 
 #include "safeguards.h"
@@ -205,22 +206,42 @@ uint32_t RVTransportGetPartUsedTonnes(const Vehicle *part)
 	return used;
 }
 
-/** Cargo units to display for this carrier part (see RVTransportGetPartCargoAmount()). */
-uint16_t RVTransportGetPartCargoAmount(const Vehicle *part)
+/** Keep per-part rounding and capacity limits identical for single and batch queries. */
+static uint16_t RVTransportCargoAmountFromTonnes(const Vehicle *part, uint32_t carried)
 {
-	if (part == nullptr) return 0;
-
 	const uint32_t stored = part->cargo.StoredCount();
-	const uint32_t carried = RVTransportGetPartCarriedTonnes(part);
 	if (carried == 0 || !IsValidCargoType(part->cargo_type)) return static_cast<uint16_t>(stored);
-
 	const CargoSpec *cs = CargoSpec::Get(part->cargo_type);
 	if (cs->weight == 0) return static_cast<uint16_t>(stored);
-
-	/* One unit weighs CargoSpec::weight / 16 tonnes, the inverse of RVTransportGetPartCapacityTonnes():
-	 * a part's road vehicle capacity and the amount it reports are expressed in the same tonnes. */
 	const uint32_t amount = stored + carried * 16 / cs->weight;
 	return static_cast<uint16_t>(std::min<uint32_t>(amount, part->cargo_cap));
+}
+
+/** Cargo units to display for this carrier part. */
+uint16_t RVTransportGetPartCargoAmount(const Vehicle *part)
+{
+	return part == nullptr ? 0 : RVTransportCargoAmountFromTonnes(part, RVTransportGetPartCarriedTonnes(part));
+}
+
+/** One read-only global scan for the whole physical chain, with no persistent cache. */
+uint32_t RVTransportGetConsistCargoAmount(const Vehicle *front, std::optional<CargoType> cargo)
+{
+	if (front == nullptr) return 0;
+	const Vehicle *head = front->First();
+	std::map<uint32_t, uint32_t> carried;
+	for (const Vehicle *v : Vehicle::Iterate()) {
+		if ((v->rv_transport_flags & RVTF_TRANSPORTED) == 0 || v->transported_weight == 0) continue;
+		const Vehicle *host = Vehicle::GetIfValid(v->transported_host_part);
+		if (host == nullptr || host->First() != head) continue;
+		carried[host->index.base()] += v->transported_weight;
+	}
+	uint32_t total = 0;
+	for (const Vehicle *part = head; part != nullptr; part = part->Next()) {
+		if (cargo && part->cargo_type != *cargo) continue;
+		const auto found = carried.find(part->index.base());
+		total += RVTransportCargoAmountFromTonnes(part, found == carried.end() ? 0 : found->second);
+	}
+	return total;
 }
 
 /** Collect the road vehicles this carrier part holds (front vehicles only, in vehicle id order). */

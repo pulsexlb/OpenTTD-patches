@@ -59,6 +59,8 @@ using VehicleFlags = EnumBitSet<VehicleFlag, uint32_t>;
 
 /** Various front vehicle properties that are preserved when autoreplacing, using order-backup or switching front engines within a consist. */
 struct BaseConsist {
+	bool service_number_suppressed = false;      ///< No inherited identity on an engine-only decoupled part.
+	TinyString fixed_service_number{};           ///< Fixed service number; empty selects scheduled-dispatch numbering.
 	TinyString name{};                            ///< Name of vehicle
 
 	btree::btree_map<uint16_t, LastDispatchRecord> dispatch_records{}; ///< Records of last scheduled dispatches

@@ -35,6 +35,7 @@
 #include "company_gui.h"
 #include "object_map.h"
 #include "tracerestrict.h"
+#include "tracerestrict_overtaking.h"
 #include "programmable_signals.h"
 #include "spritecache.h"
 #include "core/container_func.hpp"
@@ -1895,6 +1896,8 @@ CommandCost CmdBuildSingleSignal(DoCommandFlags flags, TileIndex tile, Track tra
 			update_signal_side(tile_exit);
 			YapfNotifyTrackLayoutChange(tile, track);
 			YapfNotifyTrackLayoutChange(tile_exit, track);
+			AutoYieldSignalChanged(tile, track);
+			AutoYieldSignalChanged(tile_exit, track);
 			if (IsTunnelBridgeWithSignalSimulation(tile)) {
 				c->infrastructure.signal += GetTunnelBridgeSignalSimulationSignalCount(tile, tile_exit);
 				if (IsTunnelBridgeRestrictedSignal(tile) || IsTunnelBridgeRestrictedSignal(tile_exit)) {
@@ -2082,6 +2085,7 @@ CommandCost CmdBuildSingleSignal(DoCommandFlags flags, TileIndex tile, Track tra
 		AddTrackToSignalBuffer(tile, track, _current_company);
 		YapfNotifyTrackLayoutChange(tile, track);
 		if (undoable_signal && HasSignalOnTrack(tile, track)) RecordBlueprintUndoSignal(tile, track);
+		AutoYieldSignalChanged(tile, track);
 		if (v != nullptr && v->track != TRACK_BIT_DEPOT) {
 			ReReserveTrainPath(v);
 		}
@@ -2465,6 +2469,8 @@ CommandCost CmdRemoveSingleSignal(DoCommandFlags flags, TileIndex tile, Track tr
 			AddSideToSignalBuffer(end, DiagDirection::Invalid, GetTileOwner(tile));
 			YapfNotifyTrackLayoutChange(tile, track);
 			YapfNotifyTrackLayoutChange(end, end_track);
+			AutoYieldSignalChanged(tile, track);
+			AutoYieldSignalChanged(end, end_track);
 			DirtyCompanyInfrastructureWindows(GetTileOwner(tile));
 			for (Train *v : re_reserve_trains) {
 				ReReserveTrainPath(v);
@@ -2500,6 +2506,7 @@ CommandCost CmdRemoveSingleSignal(DoCommandFlags flags, TileIndex tile, Track tr
 
 		AddTrackToSignalBuffer(tile, track, GetTileOwner(tile));
 		YapfNotifyTrackLayoutChange(tile, track);
+		AutoYieldSignalChanged(tile, track);
 		if (v != nullptr && !(v->track & TRACK_BIT_WORMHOLE && IsTunnelBridgeWithSignalSimulation(v->tile))) {
 			TryPathReserve(v, false);
 		}

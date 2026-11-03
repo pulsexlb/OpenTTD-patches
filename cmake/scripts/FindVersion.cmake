@@ -12,6 +12,7 @@ endif()
 #
 
 find_package(Git QUIET)
+set(REV_SIMULATION_HASH "")
 # ${CMAKE_SOURCE_DIR}/.git may be a directory or a regular file
 if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
     # Make sure LC_ALL is set to something desirable
@@ -45,6 +46,31 @@ if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
                     ERROR_QUIET
     )
     set(REV_HASH "${FULLHASH}")
+
+    # Different dirty builds at the same commit must not share a network ID.
+    # Keep the real commit hash for diagnostics; hash only runtime/build source
+    # changes, normalising tracked diffs and excluding tests and documentation.
+    execute_process(COMMAND ${GIT_EXECUTABLE} -C "${CMAKE_SOURCE_DIR}" diff --no-ext-diff --no-textconv --binary HEAD -- src ":(exclude)src/tests" cmake CMakeLists.txt
+                    OUTPUT_VARIABLE SIMULATION_DIFF RESULT_VARIABLE SIMULATION_DIFF_RESULT)
+    execute_process(COMMAND ${GIT_EXECUTABLE} -C "${CMAKE_SOURCE_DIR}" ls-files --others --exclude-standard -- src ":(exclude)src/tests" cmake CMakeLists.txt
+                    OUTPUT_VARIABLE SIMULATION_UNTRACKED_LIST OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE SIMULATION_UNTRACKED_RESULT)
+    if(NOT SIMULATION_DIFF_RESULT EQUAL 0 OR NOT SIMULATION_UNTRACKED_RESULT EQUAL 0)
+        message(FATAL_ERROR "Cannot determine the simulation source identity for network compatibility")
+    endif()
+    string(REPLACE "\r\n" "\n" SIMULATION_DIFF "${SIMULATION_DIFF}")
+    set(SIMULATION_UNTRACKED "")
+    if(NOT SIMULATION_UNTRACKED_LIST STREQUAL "")
+        string(REPLACE "\n" ";" SIMULATION_UNTRACKED_FILES "${SIMULATION_UNTRACKED_LIST}")
+        list(SORT SIMULATION_UNTRACKED_FILES)
+        foreach(SIMULATION_FILE IN LISTS SIMULATION_UNTRACKED_FILES)
+            file(READ "${CMAKE_SOURCE_DIR}/${SIMULATION_FILE}" SIMULATION_CONTENT HEX)
+            string(APPEND SIMULATION_UNTRACKED "${SIMULATION_FILE}:${SIMULATION_CONTENT}\n")
+        endforeach()
+    endif()
+    if(NOT SIMULATION_DIFF STREQUAL "" OR NOT SIMULATION_UNTRACKED STREQUAL "")
+        string(SHA256 REV_SIMULATION_HASH "${FULLHASH}\n${SIMULATION_DIFF}\n${SIMULATION_UNTRACKED}")
+        set(REV_MODIFIED 2)
+    endif()
 
     string(SUBSTRING "${FULLHASH}" 0 10 SHORTHASH)
 
@@ -126,6 +152,10 @@ elseif(EXISTS "${CMAKE_SOURCE_DIR}/.ottdrev-vc")
     list(GET OTTDREV 3 REV_HASH)
     list(GET OTTDREV 4 REV_ISTAG)
     list(GET OTTDREV 5 REV_ISSTABLETAG)
+    list(LENGTH OTTDREV OTTDREV_FIELDS)
+    if(OTTDREV_FIELDS GREATER 6)
+        list(GET OTTDREV 6 REV_SIMULATION_HASH)
+    endif()
     if(REV_MODIFIED EQUAL 2)
         string(REGEX REPLACE "M$" "" REV_VERSION "${REV_VERSION}")
     endif()
@@ -158,6 +188,10 @@ elseif(EXISTS "${CMAKE_SOURCE_DIR}/.ottdrev")
     list(GET OTTDREV 3 REV_HASH)
     list(GET OTTDREV 4 REV_ISTAG)
     list(GET OTTDREV 5 REV_ISSTABLETAG)
+    list(LENGTH OTTDREV OTTDREV_FIELDS)
+    if(OTTDREV_FIELDS GREATER 6)
+        list(GET OTTDREV 6 REV_SIMULATION_HASH)
+    endif()
     set(REV_RELEASE "pxp-0.0")
 else()
     message(WARNING "No version detected; this build will NOT be network compatible")
@@ -183,7 +217,7 @@ message(STATUS "Version string: ${REV_VERSION}, Release: ${REV_RELEASE}")
 
 if(GENERATE_OTTDREV)
     message(STATUS "Generating ${GENERATE_OTTDREV}")
-    file(WRITE ${CMAKE_SOURCE_DIR}/${GENERATE_OTTDREV} "${REV_VERSION}\t${REV_ISODATE}\t${REV_MODIFIED}\t${REV_HASH}\t${REV_ISTAG}\t${REV_ISSTABLETAG}\n")
+    file(WRITE ${CMAKE_SOURCE_DIR}/${GENERATE_OTTDREV} "${REV_VERSION}\t${REV_ISODATE}\t${REV_MODIFIED}\t${REV_HASH}\t${REV_ISTAG}\t${REV_ISSTABLETAG}\t${REV_SIMULATION_HASH}\n")
 elseif(NOT "${FIND_VERSION_BINARY_DIR}" STREQUAL "")
     message(STATUS "Generating rev.cpp")
     configure_file("${CMAKE_SOURCE_DIR}/src/rev.cpp.in"

@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include "tracerestrict.h"
+#include "tracerestrict_overtaking.h"
 #include "tracerestrict_backup.h"
 #include "tracerestrict_cmd.h"
 #include "debug.h"
@@ -116,6 +117,7 @@ static_assert(lengthof(_tracerestrict_pathfinder_penalty_preset_values) == TRPPP
  * Calling this at other times will leave dangling refcounts
  */
 void ClearTraceRestrictMapping() {
+	ResetAutoYieldAreas();
 	_tracerestrictprogram_mapping.clear();
 
 	for (TraceRestrictCompanyBackups &backups : _tracerestrict_backups) {
@@ -514,6 +516,7 @@ static const Order *TraceRestrictGetNextGotoOrder(const Train *v)
 void TraceRestrictProgram::Execute(const Train *v, const TraceRestrictProgramInput &input, TraceRestrictProgramResult &out) const
 {
 	TraceRestrictCondStack condstack;
+	bool ignore_pathfinder_penalty = false;
 
 	/* Only for use with TRPISP_PBS_RES_END_ACQ_DRY and TRPAUF_PBS_RES_END_SIMULATE */
 	static TraceRestrictSlotTemporaryState pbs_res_end_acq_dry_slot_temporary_state;
@@ -550,6 +553,17 @@ void TraceRestrictProgram::Execute(const Train *v, const TraceRestrictProgramInp
 
 					case TRIT_COND_TRAIN_LENGTH:
 						result = TestCondition(CeilDiv(v->gcache.cached_total_length, TILE_SIZE), condop, condvalue);
+						break;
+
+					case TRIT_COND_AUTO_YIELD_FASTER:
+					case TRIT_COND_AUTO_YIELD_SIDING:
+					case TRIT_COND_AUTO_YIELD_FREE:
+					case TRIT_COND_AUTO_YIELD_WAIT:
+					case TRIT_COND_AUTO_YIELD_FULL:
+					case TRIT_COND_AUTO_YIELD_EVACUATE:
+					case TRIT_COND_AUTO_YIELD_LEAVE:
+						/* An absent membership disables both positive and negated yield conditions. */
+						result = EvaluateAutoYield(v, item.GetValue(), static_cast<AutoYieldCondition>(type - TRIT_COND_AUTO_YIELD_FASTER), condop == TRCO_ISNOT);
 						break;
 
 					case TRIT_COND_MAX_SPEED:
@@ -934,6 +948,11 @@ void TraceRestrictProgram::Execute(const Train *v, const TraceRestrictProgramInp
 		} else {
 			if (condstack.empty() || condstack.back() & TRCSF_ACTIVE) {
 				switch(type) {
+					case TRIT_AUTO_YIELD_AREA:
+					case TRIT_AUTO_YIELD_CLEAR:
+						ExecuteAutoYield(v, input, out, item.GetValue(), type == TRIT_AUTO_YIELD_CLEAR ? AutoYieldRole::Clear : static_cast<AutoYieldRole>(item.GetAuxField()), ignore_pathfinder_penalty);
+						break;
+
 					case TRIT_PF_DENY:
 						if (item.GetValue()) {
 							out.flags &= ~TRPRF_DENY;
@@ -1254,6 +1273,9 @@ void TraceRestrictProgram::Execute(const Train *v, const TraceRestrictProgramInp
 	if ((input.permitted_slot_operations & TRPISP_PBS_RES_END_ACQ_DRY) && (this->actions_used_flags & TRPAUF_PBS_RES_END_SIMULATE)) {
 		pbs_res_end_acq_dry_slot_temporary_state.RevertTemporaryChanges(v->index);
 	}
+	/* A proven platform fallback cancels numeric signal penalties regardless
+	 * of instruction order. Explicit deny/wait flags remain authoritative. */
+	if (ignore_pathfinder_penalty) out.penalty = 0;
 	assert(condstack.empty());
 }
 
@@ -1416,6 +1438,13 @@ CommandCost TraceRestrictProgram::Validate(const std::span<const TraceRestrictPr
 					if (invalid_condition()) return unknown_instruction();
 					break;
 
+				case TRIT_COND_AUTO_YIELD_FASTER:
+				case TRIT_COND_AUTO_YIELD_SIDING:
+				case TRIT_COND_AUTO_YIELD_FREE:
+				case TRIT_COND_AUTO_YIELD_WAIT:
+				case TRIT_COND_AUTO_YIELD_FULL:
+				case TRIT_COND_AUTO_YIELD_EVACUATE:
+				case TRIT_COND_AUTO_YIELD_LEAVE:
 				case TRIT_COND_CARGO:
 				case TRIT_COND_TRAIN_GROUP:
 				case TRIT_COND_TRAIN_IN_SLOT:
@@ -1650,6 +1679,13 @@ CommandCost TraceRestrictProgram::Validate(const std::span<const TraceRestrictPr
 					}
 					break;
 
+				case TRIT_COND_AUTO_YIELD_FASTER:
+				case TRIT_COND_AUTO_YIELD_SIDING:
+				case TRIT_COND_AUTO_YIELD_FREE:
+				case TRIT_COND_AUTO_YIELD_WAIT:
+				case TRIT_COND_AUTO_YIELD_FULL:
+				case TRIT_COND_AUTO_YIELD_EVACUATE:
+				case TRIT_COND_AUTO_YIELD_LEAVE:
 				case TRIT_COND_TRAIN_IN_SLOT:
 				case TRIT_COND_SLOT_OCCUPANCY:
 					actions_used_flags |= TRPAUF_SLOT_CONDITIONALS;
@@ -1803,6 +1839,26 @@ CommandCost TraceRestrictProgram::Validate(const std::span<const TraceRestrictPr
 						default:
 							return unknown_instruction();
 					}
+					break;
+
+				case TRIT_AUTO_YIELD_AREA: {
+					const uint32_t config = items[i].base();
+					if (item.GetAuxField() > to_underlying(AutoYieldRole::Exit) ||
+							GetAutoYieldPercent(config) > 1000 || (config & ~(0xFFFFu | AUTO_YIELD_PERCENT_MASK | AUTO_YIELD_REGISTRATION_MASK | AUTO_YIELD_PLATFORM)) != 0 ||
+							GetAutoYieldRegistration(config) > AutoYieldRegistration::Tail ||
+							((config & AUTO_YIELD_REGISTRATION_MASK) && item.GetAuxField() != to_underlying(AutoYieldRole::Approach)) ||
+							((config & AUTO_YIELD_PLATFORM) && !IsAutoYieldLaneRole(static_cast<AutoYieldRole>(item.GetAuxField())))) return unknown_instruction();
+					actions_used_flags |= TRPAUF_PF | TRPAUF_WAIT_AT_PBS | TRPAUF_SLOT_ACQUIRE | TRPAUF_SLOT_CONDITIONALS | TRPAUF_PBS_RES_END_SLOT;
+					if (item.GetAuxField() == to_underlying(AutoYieldRole::Approach)) {
+						actions_used_flags |= TRPAUF_SLOT_RELEASE_FRONT;
+						if (GetAutoYieldRegistration(config) == AutoYieldRegistration::Tail) actions_used_flags |= TRPAUF_SLOT_RELEASE_BACK;
+					}
+					if (item.GetAuxField() == to_underlying(AutoYieldRole::Main)) actions_used_flags |= TRPAUF_PBS_RES_END_WAIT;
+					if (item.GetAuxField() == to_underlying(AutoYieldRole::Exit)) actions_used_flags |= TRPAUF_PBS_RES_END_WAIT | TRPAUF_PBS_RES_END_SIMULATE;
+					break;
+				}
+				case TRIT_AUTO_YIELD_CLEAR:
+					actions_used_flags |= TRPAUF_SLOT_RELEASE_BACK;
 					break;
 
 				case TRIT_GUI_LABEL:
@@ -2092,7 +2148,7 @@ void SetTraceRestrictValueDefault(TraceRestrictInstructionItemRef item, TraceRes
 			item.SetValue(INVALID_TRACE_RESTRICT_SLOT_ID);
 			if (item.GetType() == TRIT_SLOT) {
 				item.SetCombinedAuxCondOpField(TRSCOF_ACQUIRE_WAIT);
-			} else {
+			} else if (!IsTraceRestrictTypeAuxSubtype(item.GetType())) {
 				item.SetAuxField(0);
 			}
 			break;
@@ -2206,6 +2262,7 @@ void TraceRestrictSetIsSignalRestrictedBit(TileIndex t)
  */
 void TraceRestrictCreateProgramMapping(TraceRestrictRefId ref, TraceRestrictProgram *prog)
 {
+	InvalidateAutoYieldAreas();
 	std::pair<TraceRestrictMapping::iterator, bool> insert_result =
 			_tracerestrictprogram_mapping.insert(std::make_pair(ref, TraceRestrictMappingItem(prog->index)));
 
@@ -2230,6 +2287,7 @@ void TraceRestrictCreateProgramMapping(TraceRestrictRefId ref, TraceRestrictProg
  */
 bool TraceRestrictRemoveProgramMapping(TraceRestrictRefId ref)
 {
+	InvalidateAutoYieldAreas();
 	TraceRestrictMapping::iterator iter = _tracerestrictprogram_mapping.find(ref);
 	if (iter != _tracerestrictprogram_mapping.end()) {
 		/* Found */
@@ -2269,6 +2327,8 @@ bool TraceRestrictRemoveProgramMapping(TraceRestrictRefId ref)
 
 void TraceRestrictCheckRefreshSignals(const TraceRestrictProgram *prog, size_t old_size, TraceRestrictProgramActionsUsedFlags old_actions_used_flags)
 {
+	InvalidateAutoYieldAreas();
+	UpdateAutoYieldAreas();
 	if (((old_actions_used_flags ^ prog->actions_used_flags) & TRPAUF_RESERVE_THROUGH_ALWAYS)) {
 		for (TraceRestrictRefId ref : prog->GetReferences()) {
 			TileIndex tile = GetTraceRestrictRefIdTileIndex(ref);
@@ -2417,6 +2477,8 @@ static CommandCost TraceRestrictCheckTileIsUsable(TileIndex tile, Track track, b
 static uint32_t GetDualInstructionInitialValue(TraceRestrictInstructionItem item)
 {
 	switch (item.GetType()) {
+		case TRIT_AUTO_YIELD_AREA:
+			return AUTO_YIELD_DEFAULT_CONFIG;
 		case TRIT_COND_PBS_ENTRY_SIGNAL:
 		case TRIT_COND_RESERVATION_THROUGH:
 			return INVALID_TILE.base();
@@ -2727,6 +2789,19 @@ CommandCost CmdProgramSignalTraceRestrict(DoCommandFlags flags, TileIndex tile, 
 				items.insert(old_iter.ItemIter() + 1, TraceRestrictProgramItem{GetDualInstructionInitialValue(item)});
 			} else if (old_is_dual && new_is_dual && old_item_value.GetType() != item.GetType()) {
 				old_iter.SecondaryRef() = GetDualInstructionInitialValue(item);
+			}
+			/* insert/erase above can invalidate the vector iterator. Reacquire it
+			 * before normalising an automatic-yield secondary word. */
+			old_iter = TraceRestrictInstructionIteratorAt(items, offset);
+			if (item.GetType() == TRIT_AUTO_YIELD_AREA && item.GetAuxField() == to_underlying(AutoYieldRole::Approach) &&
+					(old_item_value.GetType() != TRIT_AUTO_YIELD_AREA || old_item_value.GetAuxField() != to_underlying(AutoYieldRole::Approach))) {
+				old_iter.SecondaryRef() = AUTO_YIELD_DEFAULT_CONFIG; // A newly selected detector starts at 5% and rail speed.
+			}
+			if (item.GetType() == TRIT_AUTO_YIELD_AREA && !IsAutoYieldLaneRole(static_cast<AutoYieldRole>(item.GetAuxField()))) {
+				old_iter.SecondaryRef() &= ~AUTO_YIELD_PLATFORM;
+			}
+			if (item.GetType() == TRIT_AUTO_YIELD_AREA && item.GetAuxField() != to_underlying(AutoYieldRole::Approach)) {
+				old_iter.SecondaryRef() &= ~AUTO_YIELD_REGISTRATION_MASK;
 			}
 			break;
 		}
@@ -3188,6 +3263,7 @@ void TraceRestrictRemoveGroupID(GroupID index)
  */
 void TraceRestrictUpdateCompanyID(CompanyID old_company, CompanyID new_company)
 {
+	InvalidateAutoYieldAreas();
 	if (old_company.base() < _tracerestrict_backups.size()) {
 		TraceRestrictCompanyBackups &backups = _tracerestrict_backups[old_company];
 
@@ -3297,10 +3373,20 @@ bool TraceRestrictSlot::OccupyUsingTemporaryState(VehicleID id, TraceRestrictSlo
  * Remove vehicle from occupants
  * @param v Vehicle
  */
+void TraceRestrictSlot::VacateByID(VehicleID id)
+{
+	if (container_unordered_remove(this->occupants, id)) {
+		this->DeIndex(id, Vehicle::GetIfValid(id));
+		AutoYieldSlotVacated(this->index, id);
+		this->UpdateSignals();
+	}
+}
+
 void TraceRestrictSlot::Vacate(const Vehicle *v)
 {
 	if (container_unordered_remove(this->occupants, v->index)) {
 		this->DeIndex(v->index, v);
+		AutoYieldSlotVacated(this->index, v->index);
 		this->UpdateSignals();
 	}
 }
@@ -3322,13 +3408,16 @@ void TraceRestrictSlot::VacateUsingTemporaryState(VehicleID id, TraceRestrictSlo
 /** Remove all occupants */
 void TraceRestrictSlot::Clear()
 {
-	for (VehicleID id : this->occupants) {
-		this->DeIndex(id, nullptr);
-	}
+	auto occupants = std::move(this->occupants);
 	this->occupants.clear();
+	for (VehicleID id : occupants) {
+		this->DeIndex(id, nullptr);
+		AutoYieldSlotVacated(this->index, id);
+	}
 }
 
 void TraceRestrictSlot::UpdateSignals() {
+	UpdateAutoYieldSlotSignals(this);
 	for (SignalReference sr : this->progsig_dependants) {
 		AddTrackToSignalBuffer(sr.tile, sr.track, GetTileOwner(sr.tile));
 		UpdateSignalsInBuffer();
@@ -3389,8 +3478,8 @@ void TraceRestrictSlot::DeIndex(VehicleID id, const Vehicle *v)
 
 			if (is_first_in_range && (next == _slot_vehicle_index.end() || next->first != id)) {
 				/* Only one item, which we've just erased, clear the vehicle flag */
-				if (v == nullptr) v = Vehicle::Get(id);
-				const_cast<Vehicle *>(v)->vehicle_flags.Reset(VehicleFlag::HaveSlot);
+				if (v == nullptr) v = Vehicle::GetIfValid(id);
+				if (v != nullptr) const_cast<Vehicle *>(v)->vehicle_flags.Reset(VehicleFlag::HaveSlot);
 			}
 			break;
 		}
@@ -3513,6 +3602,7 @@ void TraceRestrictSlotTemporaryState::ApplyTemporaryChanges(const Vehicle *v)
 		TraceRestrictSlot *slot = TraceRestrictSlot::Get(id);
 		if (!slot->IsOccupant(veh)) {
 			slot->DeIndex(v->index, v);
+			AutoYieldSlotVacated(id, veh);
 			slot->UpdateSignals();
 		}
 	}
@@ -3728,7 +3818,7 @@ void ClearInstructionRangeTraceRestrictSlotIf(std::span<TraceRestrictProgramItem
 {
 	for (auto iter : TraceRestrictInstructionIterateWrapper(instructions)) {
 		TraceRestrictInstructionItemRef item = iter.InstructionRef(); // note this is a reference wrapper
-		if ((item.GetType() == TRIT_SLOT || item.GetType() == TRIT_COND_TRAIN_IN_SLOT) && cond(static_cast<TraceRestrictSlotID>(item.GetValue()))) {
+		if ((item.GetType() == TRIT_SLOT || item.GetType() == TRIT_COND_TRAIN_IN_SLOT || IsAutoYieldInstruction(item.GetType())) && cond(static_cast<TraceRestrictSlotID>(item.GetValue()))) {
 			item.SetValue(INVALID_TRACE_RESTRICT_SLOT_ID); // this updates the instruction in-place
 		}
 		if ((item.GetType() == TRIT_COND_SLOT_OCCUPANCY) && cond(static_cast<TraceRestrictSlotID>(item.GetValue()))) {
@@ -3761,6 +3851,7 @@ bool ClearOrderTraceRestrictSlotIf(Order *o, F cond)
  */
 void TraceRestrictRemoveSlotID(TraceRestrictSlotID index)
 {
+	InvalidateAutoYieldAreas();
 	for (TraceRestrictProgram *prog : TraceRestrictProgram::Iterate()) {
 		if ((prog->actions_used_flags & TRPAUF_HAS_SLOT_FLAG_MASK) == 0) continue; // No slot or slot group references in this program
 		ClearInstructionRangeTraceRestrictSlotIf(prog->items, [&](TraceRestrictSlotID idx) {
@@ -3913,6 +4004,7 @@ CommandCost CmdAlterTraceRestrictSlot(DoCommandFlags flags, TraceRestrictSlotID 
 		case TRASO_SET_PUBLIC:
 			if (flags.Test(DoCommandFlag::Execute)) {
 				slot->flags.Set(TraceRestrictSlot::Flag::Public, data != 0);
+				InvalidateAutoYieldAreas();
 			}
 			break;
 

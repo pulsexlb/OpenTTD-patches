@@ -176,7 +176,10 @@ void ApplyAvailableFreeTunnelBridgeTiles(TrainReservationLookAhead *lookahead, i
 int AdvanceTrainReservationLookaheadEnd(const Train *v, int lookahead_end_position);
 void SetTrainReservationLookaheadEnd(Train *v);
 void FillTrainReservationLookAhead(Train *v);
-bool TrainReservationPassesThroughTile(const Train *v, TileIndex search_tile);
+bool TrainReservationPassesThroughTile(const Train *v, TileIndex search_tile, Track search_track = INVALID_TRACK);
+bool TrainReservationPassesThroughTrackdir(const Train *v, TileIndex search_tile, Trackdir search_trackdir);
+/** Read a bounded continuous owned prefix; failure never returns a partial path. */
+bool GetTrainReservationPathTo(const Train *v, TileIndex tile, Trackdir td, size_t max_steps, std::vector<std::pair<TileIndex, Trackdir>> &path);
 bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bool include_line_end, bool forbid_90deg = false);
 
 struct TraceRestrictProgram;

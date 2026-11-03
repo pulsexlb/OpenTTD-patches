@@ -8,6 +8,7 @@
 /** @file settings_table.cpp The tables of all the settings as well as the implementation of most of their callbacks. */
 
 #include "stdafx.h"
+#include "tracerestrict_overtaking.h"
 #include "aircraft.h"
 #include "airport_cmd.h"
 #include "base_media_base.h"

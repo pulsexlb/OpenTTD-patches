@@ -37,6 +37,7 @@
 #include "newgrf_debug.h"
 #include "framerate_type.h"
 #include "tracerestrict.h"
+#include "tracerestrict_early_route.h"
 #include "tbtr_template_vehicle_func.h"
 #include "autoreplace_func.h"
 #include "engine_func.h"
@@ -362,6 +363,9 @@ uint16_t GetTrainVehicleMaxSpeed(const Train *u, const RailVehicleInfo &rvi_u, c
 
 void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 {
+	/* Formation changes invalidate only the plan, never the owned PBS path.
+	 * Save/load length reconstruction must preserve a joining client's plan. */
+	if (allowed_changes.Test(ConsistChangeFlag::Length) && allowed_changes.Test(ConsistChangeFlag::Capacity)) this->early_route.clear();
 	uint16_t max_speed = UINT16_MAX;
 
 	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon() || this->IsFrontWagon());
@@ -3282,9 +3286,11 @@ static void ReverseTrainChainOrder(Train *v)
  * ReverseTrainSwapVehicles does, keeping the internal chain order intact, so
  * the "rear follows front" / "articulated parts follow base" invariants are
  * preserved and the new chain front of such a block is always a legal chain
- * head (front dual-headed part / articulated base). The per-vehicle
- * VehicleRailFlag::Flipped sprite-orientation flag is toggled for every
- * vehicle so each renders with its pre-flip facing.
+ * head (front dual-headed part / articulated base). Only single-vehicle
+ * blocks toggle VehicleRailFlag::Flipped to retain their previous facing.
+ * Articulated blocks keep their NewGRF-defined per-part sprite orientation:
+ * their positions have been mirrored, so retaining each old drawing direction
+ * would put asymmetric ends and cabs on the wrong end of the block.
  * @param v First vehicle of the chain to reverse.
  */
 static void ReverseTrainNoSwapVehicles(Train *v)
@@ -3372,14 +3378,10 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 			r--;
 		}
 
-		/* Every vehicle of the flipped chain renders with its original facing
-		 * again by toggling the per-vehicle sprite orientation flag: in-place
-		 * reversed vehicles (single-vehicle blocks, odd-block middles) as well
-		 * as pairwise-swapped block members, whose UpdateStatusAfterSwap below
-		 * also ends up reversing their direction. Train::GetImage then picks
-		 * the sprite for the pre-flip direction, keeping the visual appearance
-		 * (same mechanism as the depot "turn vehicle around" command). */
-		for (Train *u : block) u->flags.Flip(VehicleRailFlag::Flipped);
+		/* The depot's single-vehicle sprite flip is not legal for articulated
+		 * units. Their native physical reversal must retain the original
+		 * per-part flags, including any set by NewGRF build callbacks. */
+		if (block.size() == 1) block[0]->flags.Flip(VehicleRailFlag::Flipped);
 
 		if (block.size() > 1) {
 			/* The vehicles changed place, fully update them. */
@@ -5000,9 +5002,9 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 					 * Only exempt when nothing but such a partner is there. */
 					bool only_decouple_partner = true;
 					for (const Train *w : VehiclesOnTile<VehicleType::Train>(t)) {
-						const Train *wp = w->Primary();
-						if (wp == v->Primary()) continue;
-						if (!wp->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending})) {
+						if (w->Primary() == v->Primary()) continue;
+						/* A split flag alone does not exempt a real body ahead. */
+						if (!IsDecoupledPartBehindDeparture(v, w)) {
 							only_decouple_partner = false;
 							break;
 						}
@@ -5644,7 +5646,34 @@ static void TryLongReserveChooseTrainTrackFromReservationEnd(Train *v, bool no_r
  * @param flags ChooseTrainTrackFlags flags
  * @return The track the train should take and the result flags
  */
+static ChooseTrainTrackResult ChooseTrainTrackImpl(Train *consist, TileIndex tile, DiagDirection enterdir, TrackBits tracks, ChooseTrainTrackFlags flags, ChooseTrainTrackLookAheadState lookahead_state);
+
 static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex tile, const DiagDirection enterdir, TrackBits tracks, ChooseTrainTrackFlags flags, ChooseTrainTrackLookAheadState lookahead_state)
+{
+	const Train *front = consist->GetMovingFront();
+	AutoYieldNativeRouteScope route_scope(consist, front->tile, front->GetVehicleTrackdir());
+	/* A layout edit can invalidate a selected corridor while its continuous
+	 * PBS approach remains valid. Restricted-signal checks may run before
+	 * YAPF, so restore the existing multi-outlet context at that same owned
+	 * endpoint before those checks. No new slot or reservation is acquired. */
+	if (consist->early_route.empty() && consist->early_route_area != UINT16_MAX &&
+			(consist->current_order.IsType(OT_GOTO_STATION) || consist->current_order.IsType(OT_GOTO_WAYPOINT) || consist->current_order.IsType(OT_GOTO_DEPOT))) {
+		const auto origin = FollowTrainReservation(consist, nullptr, FollowTrainReservationFlag::OkayUnused);
+		route_scope.PrepareFromContext(origin.tile, origin.trackdir);
+	}
+	auto result = ChooseTrainTrackImpl(consist, tile, enterdir, tracks, flags, lookahead_state);
+	/* A restricted exit can reject the request before YAPF is entered at all.
+	 * A confirmed split alternative therefore needs the same one-shot fresh
+	 * decision at this outer boundary. Keep the native owned prefix and never
+	 * bypass explicit reversal or a successfully committed reservation. */
+	if (!(result.ctt_flags & (CTTRF_RESERVATION_MADE | CTTRF_REVERSE_AT_SIGNAL)) && route_scope.ReplanForSplit()) {
+		result = ChooseTrainTrackImpl(consist, tile, enterdir, tracks, flags, lookahead_state);
+	}
+	route_scope.Finish(result.ctt_flags & CTTRF_RESERVATION_MADE);
+	return result;
+}
+
+static ChooseTrainTrackResult ChooseTrainTrackImpl(Train *consist, const TileIndex tile, const DiagDirection enterdir, TrackBits tracks, ChooseTrainTrackFlags flags, ChooseTrainTrackLookAheadState lookahead_state)
 {
 	Track best_track = INVALID_TRACK;
 	bool do_track_reservation = _settings_game.pf.reserve_paths || (flags & CTTF_FORCE_RES);
@@ -6038,11 +6067,36 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 
 static bool IsCouplePartnerOf(const Train *consist, const Train *other)
 {
+	/* Reservation walkers can return any physical vehicle, including an
+	 * articulated child or the rear contact end. Claims belong to consists. */
+	consist = consist->Primary();
+	other = other->Primary();
 	if (consist->current_order.IsType(OT_GOTO_COUPLE)) {
 		if (const Train *tgt = GetClaimedCoupleTarget(consist); tgt != nullptr && tgt->Primary() == other) return true;
 	}
 	if (const Train *claimant = GetValidCoupleClaimant(consist); claimant != nullptr && claimant->current_order.IsType(OT_GOTO_COUPLE) && claimant->Primary() == other) return true;
 	return false;
+}
+
+/** A cut can leave the departing head and the waiting split part on one tile.
+ * The waiting part can already have cleared JustDecoupled while retaining its
+ * same-direction departure obligation. Only exclude a whole vehicle strictly
+ * behind the departing end, on the same straight platform track and level.
+ * Tile sharing alone is never proof that a vehicle ahead can be passed. */
+bool IsDecoupledPartBehindDeparture(const Train *consist, const Train *part)
+{
+	const Train *front = consist->GetMovingFront();
+	if (!consist->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending}) ||
+			!part->Primary()->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending}) ||
+			front->tile != part->tile || !IsRailStationTile(front->tile) ||
+			front->track != part->track || front->z_pos != part->z_pos ||
+			!IsDiagonalDirection(front->GetMovingDirection())) return false;
+	const TileIndexDiffC delta = TileIndexDiffCByDir(front->GetMovingDirection());
+	const int dx = part->x_pos - front->x_pos, dy = part->y_pos - front->y_pos;
+	const int along = dx * delta.x + dy * delta.y;
+	const int across = dx * delta.y - dy * delta.x;
+	const int separation = CeilDiv(front->gcache.cached_veh_length + part->gcache.cached_veh_length, 2);
+	return across == 0 && along <= -separation;
 }
 
 /**
@@ -6059,8 +6113,7 @@ static bool IsCouplePartnerOf(const Train *consist, const Train *other)
  */
 static bool IsDecouplePartnerOnCutTile(const Train *consist, const Train *other, TileIndex tile)
 {
-	if (tile != consist->GetMovingFront()->tile) return false;
-	return other->Primary()->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending});
+	return tile == consist->GetMovingFront()->tile && IsDecoupledPartBehindDeparture(consist, other);
 }
 
 /**
@@ -6096,6 +6149,7 @@ static bool IsPlatformAheadOccupied(const Train *consist)
 		for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
 			if (u->Primary() == consist->Primary()) continue;
 			if (IsCouplePartnerOf(consist, u)) continue;
+			if (IsDecoupledPartBehindDeparture(consist, u)) continue;
 			/* The partner of a just-performed decouple necessarily shares the tile
 			 * around the cut with us; it does not stand in our way. Restrict the
 			 * exemption to that cut tile: once we have turned around to follow the
@@ -7336,7 +7390,7 @@ void CancelTrainCoupleCheckpoint(Train *train)
 	train->couple_target = VehicleID::Invalid();
 	/* Cancel only the reversal belonging to the overridden checkpoint. */
 	if (train->flags.Test(VehicleRailFlag::CoupleCheckReversePending)) train->reverse_distance = 0;
-	train->flags.Reset({VehicleRailFlag::CoupleCheckReversePending, VehicleRailFlag::CoupleCheckReservationReleased});
+	train->flags.Reset({VehicleRailFlag::CoupleCheckReversePending, VehicleRailFlag::CoupleCheckReservationReleased, VehicleRailFlag::CoupleDirectionChecked});
 }
 
 /**
@@ -7457,6 +7511,7 @@ void ClaimCoupleTarget(Train *moving, Train *carrier, uint32_t claim_cost)
 	}
 	carrier->couple_claimant = prim->index;
 	carrier->couple_claim_cost = claim_cost;
+	prim->flags.Reset(VehicleRailFlag::CoupleDirectionChecked);
 }
 
 /**
@@ -7507,6 +7562,25 @@ static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *movin
 			(!order.HasCoupleStation() || GetTrainCouplingStation(rep) != order.GetCoupleStation())) return CoupleCandidateResult::Station;
 	if (GetTrainCouplingStation(rep) == StationID::Invalid()) return CoupleCandidateResult::Platform;
 	return CoupleCandidateResult::Valid;
+}
+
+/** Necessary conditions only; a negative result proves that no route can couple. */
+bool HasPotentialCoupleTarget(const Train *moving)
+{
+	moving = moving->Primary();
+	if (!moving->current_order.IsType(OT_GOTO_COUPLE)) return false;
+	/* Do not cache a negative result: a target can start waiting, change cargo,
+	 * regain a slot, or lose another claimant during this same game tick. This
+	 * only rejects impossible destinations; YAPF still verifies reachability,
+	 * arrangement and the best direction for every surviving candidate. */
+	const Train *claimed = GetClaimedCoupleTarget(moving);
+	if (claimed != nullptr) return true;
+	for (const Train *candidate : Train::Iterate()) {
+		if (!candidate->IsPrimaryVehicle() || candidate == moving || !IsHoldingForCouple(candidate)) continue;
+		if (CoupleClaimBlocks(candidate, moving, UINT32_MAX)) continue;
+		if (GetCoupleVolatileConditionResult(moving, moving->current_order, candidate->First(), candidate->First()->tile) == CoupleCandidateResult::Valid) return true;
+	}
+	return false;
 }
 
 /**
@@ -7706,6 +7780,7 @@ bool TrainShouldWaitForCoupleAtCheckpoint(Train *moving, bool *at_checkpoint, St
 	const Order *current = moving->GetOrder(moving->cur_real_order_index);
 	if (current == nullptr || (!current->IsType(OT_GOTO_STATION) && !current->IsType(OT_GOTO_WAYPOINT))) return false;
 	const Train *front = moving->GetMovingFront();
+	if (current->IsType(OT_GOTO_WAYPOINT) && current->GetWaypointFlags().Test(OrderWaypointFlag::Stop) && moving->cur_speed != 0) return false;
 	const StationID point = current->GetDestination().ToStationID();
 	if (arrived != StationID::Invalid()) {
 		if (arrived != point) return false;
@@ -7841,12 +7916,12 @@ static Direction FlippedDirection(const Train *v)
 			if (t == v) index = static_cast<uint>(chain.size());
 			chain.push_back(t);
 		}
-		return chain[chain.size() - 1 - index]->direction;
+		return ReverseDir(chain[chain.size() - 1 - index]->direction);
 	}
 	for (const auto &block : BuildReversalBlocks(const_cast<Train *>(head))) {
 		for (uint i = 0; i < block.size(); i++) {
 			if (block[i] != v) continue;
-			return block.size() == 1 ? ReverseDir(v->direction) : block[block.size() - 1 - i]->direction;
+			return ReverseDir(block[block.size() - 1 - i]->direction);
 		}
 	}
 	return v->direction;
@@ -7864,13 +7939,11 @@ static void TrialReverseChainOrder(Train *head)
 	if (ChainFlipsBySwap(head)) return;
 
 	std::vector<std::vector<Train *>> blocks = BuildReversalBlocks(head);
-	/* Mirror the sprite-orientation toggles the real
-	 * ReverseTrainNoSwapVehicles() applies (every vehicle of the flipped
-	 * chain), so a NewGRF reading the reversed state (variable 0x48) sees the
-	 * same values as after the real flip. The guard's destructor restores the
-	 * flags. */
+	/* Mirror the real singleton sprite flips. Articulated blocks preserve
+	 * their per-part NewGRF orientation, just as in the physical reversal.
+	 * The guard's destructor restores the trial flags. */
 	for (const auto &block : blocks) {
-		for (Train *t : block) t->flags.Flip(VehicleRailFlag::Flipped);
+		if (block.size() == 1) block[0]->flags.Flip(VehicleRailFlag::Flipped);
 	}
 	std::vector<Train *> order;
 	for (auto it = blocks.rbegin(); it != blocks.rend(); ++it) {
@@ -8085,9 +8158,11 @@ static bool TryTrainCouple(Train *v, Train *u)
 /** Direction of travel (facing of a forward-driving vehicle) from a pixel delta. */
 static Direction DirectionFromDelta(int dx, int dy)
 {
-	if (dx > 0) return dy > 0 ? Direction::SE : (dy < 0 ? Direction::NE : Direction::E);
-	if (dx < 0) return dy > 0 ? Direction::SW : (dy < 0 ? Direction::NW : Direction::W);
-	return dy > 0 ? Direction::S : Direction::N;
+	/* World x/y are rotated relative to the viewport direction names; match
+	 * TileIndexDiffCByDir rather than treating them as screen coordinates. */
+	if (dx > 0) return dy > 0 ? Direction::S : (dy < 0 ? Direction::W : Direction::SW);
+	if (dx < 0) return dy > 0 ? Direction::E : (dy < 0 ? Direction::N : Direction::NE);
+	return dy > 0 ? Direction::SE : Direction::NW;
 }
 
 static void MoveTrainToPosition(Train *v, int x, int y)
@@ -8108,6 +8183,11 @@ static void MoveTrainToPosition(Train *v, int x, int y)
 		 * Adopt the track bit and direction that match how we just moved. */
 		if (abs(x - v->x_pos) <= (int)TILE_SIZE && abs(y - v->y_pos) <= (int)TILE_SIZE) {
 			Direction motion_dir = DirectionFromDelta(x - v->x_pos, y - v->y_pos);
+			/* Spacing can move a vehicle back along its track. That correction
+			 * is not a reversal: keep the consist's original running orientation
+			 * while adapting its track axis to the destination tile. */
+			const TileIndexDiffC forward = TileIndexDiffCByDir(v->GetMovingDirection());
+			if ((x - v->x_pos) * forward.x + (y - v->y_pos) * forward.y < 0) motion_dir = ReverseDir(motion_dir);
 			TrackBits desired = TrackToTrackBits(TrackdirToTrack(DiagDirToDiagTrackdir(DirToDiagDir(motion_dir))));
 			TrackBits available = TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0));
 			TrackBits match = available & desired;
@@ -8371,6 +8451,8 @@ static void Couple(Train *v, Train *u)
 
 	/* The couple order may instruct the consist to adopt the waiting
 	 * consist's schedule; current_order is still that order here. */
+	const std::string waiting_service_number = u->GetActiveServiceNumber();
+	const bool moving_has_service_number = !v->service_number_suppressed && !v->GetActiveServiceNumber().empty();
 	bool adopt_waiting_schedule = v->current_order.IsType(OT_GOTO_COUPLE) && v->current_order.GetCoupleUseWaitingSchedule();
 
 	/*
@@ -8512,6 +8594,11 @@ static void Couple(Train *v, Train *u)
 
 	/* The train is now one consist again: it is no longer a decoupled part. */
 	v->Primary()->decouple_part = 0;
+	if (!moving_has_service_number && !waiting_service_number.empty()) {
+		v->Primary()->fixed_service_number = waiting_service_number;
+		v->Primary()->service_number_suppressed = false;
+	}
+	InvalidateWindowClassesData(WindowClass::DepartureBoard);
 
 	/* The merge moved vehicles -- and the primary that carries the breakdown
 	 * bookkeeping -- between the two consists, so recompute it for the merged
@@ -8785,6 +8872,10 @@ static void TrainEnterStation(Train *consist, StationID station)
 	bool second_same_dir = decouple_flags_order != nullptr && decouple_flags_order->GetDecoupleSecondSameDirExit();
 	bool both_same_dir = first_same_dir && second_same_dir;
 	Debug(desync, 1, "TrainEnterStation: veh={} st={} tile=({},{}) want_decouple={} ordertype={}", consist->index, station, TileX(consist->tile), TileY(consist->tile), want_decouple, (int)consist->current_order.GetType());
+	if (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetDestination() == station) consist->ApplyStationServiceNumber(consist->current_order);
+	std::string station_service_number = consist->GetActiveServiceNumber();
+	const bool station_service_uses_dispatch = consist->fixed_service_number.empty() && !consist->service_number_suppressed;
+	bool service_number_split = false;
 	std::unique_ptr<OrderList> wait_orders[2];
 	const StringID order_failure = want_decouple ? PrepareDecoupleWaitOrders(consist, wait_orders) : STR_NULL;
 	if (order_failure != STR_NULL && consist->owner == _local_company) {
@@ -8837,6 +8928,8 @@ static void TrainEnterStation(Train *consist, StationID station)
 		}
 		bool consist_in_rear = false;
 		StringID decouple_failure_reason;
+		/* Arrival bookkeeping may just have selected this stop's dispatch slot. */
+		if (station_service_uses_dispatch) station_service_number = consist->GetActiveServiceNumber();
 		u = DecoupleTrain(consist, consist_in_rear, decouple_failure_reason);
 		/* All further handling of the rear part (orders, loading, windows)
 		 * must operate on its primary vehicle, not the physical chain head. */
@@ -8857,6 +8950,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * skip it entirely then: physically flipping a still-moving consist
 		 * mid-station-entry is only valid for an actual trailer part. */
 		bool decoupled = (u != nullptr && u != consist);
+		service_number_split = decoupled;
 		/* Both parts are marked before the reversal: reversing re-reserves the
 		 * part's path, and a part that is still standing in the station it
 		 * decoupled at must not long-reserve (see IsReservationLookAheadLongEnough),
@@ -8953,6 +9047,22 @@ static void TrainEnterStation(Train *consist, StationID station)
 		u->force_proceed = TFP_NONE;
 		InvalidateWindowData(WindowClass::VehicleView, u->index);
 		u->BeginLoading();
+	}
+
+	if (service_number_split) {
+		/* A loading first part may only book its dispatch slot in BeginLoading. */
+		if (station_service_uses_dispatch) {
+			const std::string dispatched_number = consist->GetActiveServiceNumber();
+			if (!dispatched_number.empty()) station_service_number = dispatched_number;
+		}
+		for (Train *part : {consist->Primary(), u->Primary()}) {
+			bool has_wagon = false;
+			for (const Train *w = part->First(); w != nullptr; w = w->Next()) if (w->IsWagon() && !w->IsArticulatedPart()) has_wagon = true;
+			part->fixed_service_number = has_wagon ? std::string_view(station_service_number) : std::string_view{};
+			part->service_number_suppressed = !has_wagon;
+			SetWindowDirty(WindowClass::VehicleView, part->index);
+		}
+		InvalidateWindowClassesData(WindowClass::DepartureBoard);
 	}
 
 	/* The arrival handler stops the whole consist so the split can happen.
@@ -9708,6 +9818,16 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 	};
 
 	if (reverse && consist->reverse_distance == 1 && (consist->cur_speed <= 15 || !consist->UsingRealisticBraking())) {
+		/* Finish a version-1 save already braking beyond a stop waypoint.
+		 * New stop orders use native station arrival and never enter this path. */
+		const Order *waypoint = consist->GetOrder(consist->cur_real_order_index);
+		if (consist->current_order.IsType(OT_WAITING) && waypoint != nullptr && waypoint->IsType(OT_GOTO_WAYPOINT) &&
+				waypoint->GetWaypointFlags().Test(OrderWaypointFlag::Stop) && !waypoint->GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+			consist->reverse_distance = 0;
+			return false;
+		}
 		/* Train is not moving too fast and reversing distance has been reached */
 		goto reverse_train_direction;
 	}
@@ -10876,13 +10996,28 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		return true;
 	}
 	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL) && !consist->current_order.IsExecuteScheduleOrder();
-	if (ProcessOrders(consist) && CheckReverseTrain(consist)) {
-		consist->wait_counter = 0;
-		consist->cur_speed = 0;
-		consist->subspeed = 0;
-		consist->flags.Reset(VehicleRailFlag::LeavingStation);
-		ReverseTrainDirection(consist);
-		return true;
+	const bool check_direction = ProcessOrders(consist);
+	const bool reverse_for_order = check_direction && CheckReverseTrain(consist);
+	if (check_direction && consist->cur_speed != 0 && consist->current_order.IsType(OT_GOTO_COUPLE) && GetClaimedCoupleTarget(consist) != nullptr) {
+		/* Persist the completed check with the claim. Repeated moving searches
+		 * can change their answer while braking across a turnout. A new claim
+		 * clears this bit; stopped PBS retries remain unaffected. */
+		consist->flags.Set(VehicleRailFlag::CoupleDirectionChecked);
+	}
+	if (reverse_for_order) {
+		if (consist->current_order.IsType(OT_GOTO_COUPLE) && consist->cur_speed != 0) {
+			/* A newly available partner can be behind an already moving train.
+			 * Use native reverse braking, retaining its reservation until the normal
+			 * stopped turnaround; do not teleport a moving train to speed zero. */
+			consist->flags.Set(VehicleRailFlag::Reversing);
+		} else {
+			consist->wait_counter = 0;
+			consist->cur_speed = 0;
+			consist->subspeed = 0;
+			consist->flags.Reset(VehicleRailFlag::LeavingStation);
+			ReverseTrainDirection(consist);
+			return true;
+		}
 	} else if (consist->flags.Test(VehicleRailFlag::LeavingStation)) {
 		/* Try to reserve a path when leaving the station as we
 		 * might not be marked as wanting a reservation, e.g.
@@ -10962,8 +11097,15 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 
 	if (consist->current_order.IsType(OT_WAITING) && consist->reverse_distance == 0) {
 		if (mode) return true;
+		const Order *waiting_order = consist->GetOrder(consist->cur_real_order_index);
+		const bool waypoint_stop = waiting_order != nullptr && waiting_order->IsType(OT_GOTO_WAYPOINT) && waiting_order->GetWaypointFlags().Test(OrderWaypointFlag::Stop);
 		consist->HandleWaiting(false, true);
 		if (consist->current_order.IsType(OT_WAITING)) return true;
+		if (waypoint_stop) consist->flags.Set(VehicleRailFlag::LeavingStation);
+		if ((consist->current_order.IsType(OT_GOTO_COUPLE) || (waypoint_stop && (consist->current_order.IsBaseStationOrder() || consist->current_order.IsType(OT_GOTO_DEPOT)))) && CheckReverseTrain(consist)) {
+			ReverseTrainDirection(consist);
+			return true;
+		}
 		Train *moving_front = consist->GetMovingFront();
 		if (IsRailWaypointTile(moving_front->tile)) {
 			StationID station_id = GetStationIndex(moving_front->tile);

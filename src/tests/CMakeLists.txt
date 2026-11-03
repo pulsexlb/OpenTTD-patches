@@ -24,6 +24,7 @@ add_test_files(
     test_map.cpp
     test_network_crypto.cpp
     test_network_debug.cpp
+    test_network_revision.cpp
     test_script_admin.cpp
     test_window_desc.cpp
     tilearea.cpp

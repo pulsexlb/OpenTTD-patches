@@ -11,6 +11,7 @@
 #define ROADVEH_TRANSPORT_H
 
 #include "core/enum_type.hpp"
+#include <optional>
 #include "cargo_type.h"
 #include "station_type.h"
 #include "vehicle_type.h"
@@ -120,6 +121,9 @@ uint32_t RVTransportGetPartUsedTonnes(const Vehicle *part);
  * @return The number of units to display, never more than the part's capacity.
  */
 uint16_t RVTransportGetPartCargoAmount(const Vehicle *part);
+
+/** Sum the physical chain's displayed cargo, optionally of one cargo type, scanning carried vehicles once. */
+uint32_t RVTransportGetConsistCargoAmount(const Vehicle *front, std::optional<CargoType> cargo = std::nullopt);
 
 /**
  * Collect the road vehicles this carrier part holds (front vehicles only, in vehicle id order).

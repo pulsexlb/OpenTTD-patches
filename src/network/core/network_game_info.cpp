@@ -30,6 +30,7 @@
 #include "../../safeguards.h"
 
 extern const uint8_t _out_of_band_grf_md5[16];
+extern const char _openttd_revision_simulation_hash[];
 
 /**
  * How many hex digits of the git hash to include in network revision string.
@@ -58,13 +59,14 @@ std::string_view GetNetworkRevisionString()
 		/* Build for debugging that sends the first part of the seed every frame, practically syncing every frame. */
 		network_revision = fmt::format("dbg_sync-{}", _openttd_revision);
 #endif
-		if (_openttd_revision_tagged) {
+		const bool local_source_changes = _openttd_revision_simulation_hash[0] != '\0';
+		if (_openttd_revision_tagged && !local_source_changes) {
 			/* Tagged; do not mangle further, though ensure it's not too long. */
 			if (network_revision.size() >= NETWORK_REVISION_LENGTH) network_revision.resize(NETWORK_REVISION_LENGTH - 1);
 		} else {
 			/* Not tagged; add the githash suffix while ensuring the string does not become too long. */
 			assert(_openttd_revision_modified < 3);
-			std::string githash_suffix = fmt::format("-{}{}", "gum"[_openttd_revision_modified], _openttd_revision_hash);
+			std::string githash_suffix = fmt::format("-{}{}", "gum"[_openttd_revision_modified], local_source_changes ? _openttd_revision_simulation_hash : _openttd_revision_hash);
 			if (githash_suffix.size() > GITHASH_SUFFIX_LEN) githash_suffix.resize(GITHASH_SUFFIX_LEN);
 
 			/* Where did the hash start in the original string? Overwrite from that position, unless that would create a too long string. */

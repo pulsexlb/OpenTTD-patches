@@ -31,6 +31,7 @@ DEF_CMD_TUPLE_LT (Commands::RefitVehicle,             CmdRefitVehicle,          
 DEF_CMD_TUPLE_NT (Commands::SendVehicleToDepot,       CmdSendVehicleToDepot,                   {}, CommandType::VehicleManagement,   CmdDataT<VehicleID, DepotCommandFlags, TileIndex>)
 DEF_CMD_TUPLE_NT (Commands::MassSendVehicleToDepot,   CmdMassSendVehicleToDepot,               {}, CommandType::VehicleManagement,   CmdDataT<DepotCommandFlags, VehicleListIdentifier, CargoType>)
 DEF_CMD_TUPLE_NT (Commands::ChangeServiceInterval,    CmdChangeServiceInt,                     {}, CommandType::VehicleManagement,   CmdDataT<VehicleID, uint16_t, bool, bool>)
+DEF_CMD_TUPLE_NT (Commands::SetVehicleServiceNumber, CmdSetVehicleServiceNumber, {}, CommandType::OtherManagement, CmdDataT<VehicleID, std::string>)
 DEF_CMD_TUPLE_NT (Commands::RenameVehicle,            CmdRenameVehicle,                        {}, CommandType::OtherManagement,     CmdDataT<VehicleID, std::string>)
 DEF_CMD_TUPLE    (Commands::CloneVehicle,             CmdCloneVehicle,                CMD_NO_TEST, CommandType::VehicleConstruction, CmdDataT<VehicleID, bool>) // NewGRF callbacks influence building and refitting making it impossible to correctly estimate the cost
 DEF_CMD_TUPLE_LT (Commands::StartStopVehicle,         CmdStartStopVehicle,                     {}, CommandType::VehicleManagement,   CmdDataT<VehicleID, bool>)

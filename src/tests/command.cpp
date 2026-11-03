@@ -24,6 +24,7 @@
 #include "../tracerestrict_cmd.h"
 #include "../vehicle_cmd.h"
 #include "../order_cmd.h"
+#include "../timetable_cmd.h"
 
 #include "../3rdparty/fmt/ranges.h"
 #include "../3rdparty/fmt/std.h"
@@ -109,11 +110,34 @@ TEST_CASE("CmdDataT simple tests")
 	CHECK(TestCommandPayload<Commands::RenamePlan>({ PlanID{6}, "abc" }, { 6, 0, 0x61, 0x62, 0x63, 0 }));
 	CHECK(TestCommandPayload<Commands::RenamePlan>({ PlanID{6}, "abcdefabcdefabcdefabcdefabcdef" }, { 6, 0, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0 }));
 	CHECK(TestCommandPayload<Commands::ChangePlanVisibility>({ PlanID{7}, true }, { 7, 0, 1 }));
+	CHECK(TestCommandPayload<Commands::SetVehicleServiceNumber>({ VehicleID{8}, "G123" }, { 8, 0x47, 0x31, 0x32, 0x33, 0 }));
+	CHECK(TestCommandPayload<Commands::SetVehicleServiceNumber>({ VehicleID{8}, "" }, { 8, 0 }));
+	CHECK(TestCommandPayload<Commands::SetOrderServiceNumber>({ OrderTargetType::Vehicle, 8, VehicleOrderID{3}, uint8_t{1}, "G123" }, { 0, 8, 3, 0, 1, 0x47, 0x31, 0x32, 0x33, 0 }));
+	CHECK(TestCommandPayload<Commands::SetOrderServiceNumber>({ OrderTargetType::Vehicle, 8, VehicleOrderID{3}, uint8_t{2}, "" }, { 0, 8, 3, 0, 2, 0 }));
 	CHECK(TestCommandPayload<Commands::StartStopVehicle>({ VehicleID{8}, true }, { 8, 1 }));
 	CHECK(TestCommandPayload<Commands::MoneyCheat>({ 0 }, { 0 }));
 	CHECK(TestCommandPayload<Commands::MoneyCheat>({ -1 }, { 1 }));
 	CHECK(TestCommandPayload<Commands::MoneyCheat>({ 1 }, { 2 }));
 	CHECK(TestCommandPayload<Commands::MoneyCheat>({ 1000000 }, { 0xDE, 0x84, 0x80 }));
+}
+
+TEST_CASE("Station service numbers survive order copies and remain distinct")
+{
+	Order original;
+	original.MakeGoToStation(StationID{1});
+	original.SetServiceNumber(1, "G123");
+	Order copied = original;
+	CHECK(copied.GetServiceNumberMode() == 1);
+	CHECK(copied.GetServiceNumber() == "G123");
+	CHECK(copied.Equals(original));
+	original.SetServiceNumber(1, "G456");
+	CHECK(copied.GetServiceNumber() == "G123");
+	CHECK_FALSE(copied.Equals(original));
+	copied.SetServiceNumber(2, {});
+	CHECK(copied.GetServiceNumberMode() == 2);
+	CHECK(copied.GetServiceNumber().empty());
+	copied.SetServiceNumber(0, {});
+	CHECK(copied.GetServiceNumberMode() == 0);
 }
 
 TEST_CASE("TupleRefCmdData tests")

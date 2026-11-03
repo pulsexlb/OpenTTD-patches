@@ -789,6 +789,9 @@ enum class Commands : uint8_t {
 	PasteBlueprint,                         ///< paste a blueprint onto the map
 	UndoBlueprintPaste,                     ///< remove again what a blueprint paste built
 
+	SetVehicleServiceNumber,                 ///< Select fixed or scheduled-dispatch service numbering.
+	SetOrderServiceNumber,                   ///< Service number on departure from a scheduled stop.
+
 	End,                                    ///< Must ALWAYS be on the end of this list!! (period)
 };
 

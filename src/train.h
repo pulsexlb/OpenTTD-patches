@@ -51,6 +51,7 @@ enum class VehicleRailFlag : uint8_t {
 	SameDirDecouplePending    = 23, ///< Trailing split part waits for the leading part to clear its platform before following.
 	CoupleCheckReversePending = 24, ///< Wait for a selected early couple target only after a waypoint reversal completes.
 	CoupleCheckReservationReleased = 25, ///< Forward reservation has already been released for an early couple checkpoint.
+	CoupleDirectionChecked    = 26, ///< The current partner's direction has been checked after it was claimed.
 };
 using VehicleRailFlags = EnumBitSet<VehicleRailFlag, uint32_t>;
 
@@ -118,6 +119,7 @@ bool TrainFitStation(const Train *v);
 StationID GetTrainCouplingStation(const Train *v);
 void TrainMoveToPosition(Train *v, int x, int y);
 bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys);
+bool IsDecoupledPartBehindDeparture(const Train *consist, const Train *part);
 
 /** First rule which rejects a train as a coupling candidate. */
 enum class CoupleCandidateResult : uint8_t {
@@ -141,6 +143,9 @@ enum class CoupleCandidateResult : uint8_t {
 	SpeedRange,
 	Arrangement,
 };
+
+/** Read-only necessary-condition check before an otherwise unbounded couple route query. */
+bool HasPotentialCoupleTarget(const Train *moving);
 
 CoupleCandidateResult GetCoupleCandidateResult(const Train *moving, const Order &order,
 		Train *waiting_first, TileIndex contact_tile, bool respect_claim = true, uint32_t claim_cost = 0);
@@ -214,6 +219,8 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	Train *other_multiheaded_part = nullptr;
 
 	std::unique_ptr<TrainReservationLookAhead> lookahead{};
+	std::vector<uint32_t> early_route; ///< Saved native multi-outlet route decision; never a PBS reservation.
+	uint16_t early_route_area = UINT16_MAX; ///< Active detector context survives plan invalidation until actual tail-clear/cancellation.
 
 	/* Coupling-approach state (persisted via XSLFI_COUPLE_CLAIM_STATE): the
 	 * physical end vehicle of the consist we are approaching, resolved by the

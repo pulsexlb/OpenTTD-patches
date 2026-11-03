@@ -3952,6 +3952,26 @@ bool AfterLoadGame()
 		}
 	}
 
+	if (SlXvIsFeaturePresent(XSLFI_WAYPOINT_STOP, 1, 1)) {
+		for (OrderList *list : OrderList::Iterate()) {
+			for (Order *order : list->Orders()) {
+				if (!order->IsType(OT_GOTO_WAYPOINT) || !order->GetWaypointFlags().Test(OrderWaypointFlag::Stop)) continue;
+				auto flags = order->GetWaypointFlags();
+				flags.Reset(OrderWaypointFlag::Reverse);
+				order->SetWaypointFlags(flags);
+			}
+		}
+		for (Train *t : Train::Iterate()) {
+			const Order *order = t->GetOrder(t->cur_real_order_index);
+			if (order == nullptr || !order->IsType(OT_GOTO_WAYPOINT) || !order->GetWaypointFlags().Test(OrderWaypointFlag::Stop)) continue;
+			if (t->current_order.IsType(OT_GOTO_WAYPOINT) || t->current_order.IsType(OT_WAITING)) {
+				auto flags = t->current_order.GetWaypointFlags();
+				flags.Reset(OrderWaypointFlag::Reverse);
+				t->current_order.SetWaypointFlags(flags);
+			}
+		}
+	}
+
 	if (SlXvIsFeatureMissing(XSLFI_REVERSE_AT_WAYPOINT)) {
 		for (Train *t : Train::Iterate()) {
 			t->reverse_distance = 0;

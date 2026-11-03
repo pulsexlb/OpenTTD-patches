@@ -60,6 +60,7 @@ struct ScheduledDispatchAdjustSlotResult : public CommandLargeResultBase {
 	std::vector<Change> changes;
 };
 
+DEF_CMD_TUPLE_NT(Commands::SetOrderServiceNumber, CmdSetOrderServiceNumber, {}, CommandType::RouteManagement, CmdDataT<OrderTargetType, uint32_t, VehicleOrderID, uint8_t, std::string>)
 DEF_CMD_TUPLE_NT(Commands::ChangeTimetable,                  CmdChangeTimetable,               {}, CommandType::RouteManagement, CmdDataT<OrderTargetType, uint32_t, VehicleOrderID, ModifyTimetableFlags, uint32_t, ModifyTimetableCtrlFlags>)
 DEF_CMD_TUPLE_NT(Commands::BulkChangeTimetable,              CmdBulkChangeTimetable,           {}, CommandType::RouteManagement, CmdDataT<OrderTargetType, uint32_t, ModifyTimetableFlags, uint32_t, ModifyTimetableCtrlFlags>)
 DEF_CMD_TUPLE_NT(Commands::SetVehicleOnTime,                 CmdSetVehicleOnTime,              {}, CommandType::RouteManagement, CmdDataT<VehicleID, bool>)

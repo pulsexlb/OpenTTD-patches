@@ -9,7 +9,9 @@
 
 #include "../stdafx.h"
 #include "../tracerestrict.h"
+#include "../tracerestrict_overtaking.h"
 #include "../tracerestrict_backup.h"
+#include "../settings_type.h"
 #include "../strings_func.h"
 #include "../string_func.h"
 #include "saveload.h"
@@ -129,6 +131,7 @@ static void Load_TRRP()
 				}
 			}
 		}
+		if (SlXvIsFeatureMissing(XSLFI_AUTOMATIC_YIELD, 8)) MigrateLegacyAutoYieldSpeedCaps(*prog);
 		CommandCost validation_result = prog->Validate();
 		if (validation_result.Failed()) {
 			format_buffer buffer;
@@ -163,6 +166,8 @@ static void Save_TRRP()
 }
 
 static const NamedSaveLoad _trace_restrict_slot_desc[] = {
+	NSLT("automatic_yield_area", SLE_CONDVAR_X(TraceRestrictSlot, automatic_yield_area, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AUTOMATIC_YIELD))),
+	NSLT("automatic_yield_signal", SLE_CONDVAR_X(TraceRestrictSlot, automatic_yield_signal, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AUTOMATIC_YIELD))),
 	NSL("max_occupancy", SLE_VAR(TraceRestrictSlot, max_occupancy, SLE_UINT32)),
 	NSL("name",          SLE_SSTR(TraceRestrictSlot, name, SLE_STR | SLF_ALLOW_CONTROL)),
 	NSL("owner",         SLE_VAR(TraceRestrictSlot, owner, SLE_UINT8)),
@@ -356,6 +361,12 @@ void AfterLoadTraceRestrict()
 			parent = sg->parent;
 		}
 	}
+	if (SlXvIsFeaturePresent(XSLFI_AUTOMATIC_YIELD, 1, 1)) {
+		if (!MigrateAutoYieldAreasToSlots()) SlErrorCorrupt("Cannot convert automatic yielding areas to slots");
+		_settings_game.vehicle.automatic_yield = true;
+	}
+	InvalidateAutoYieldAreas();
+	UpdateAutoYieldAreas();
 }
 
 extern const ChunkHandler trace_restrict_chunk_handlers[] = {

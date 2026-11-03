@@ -27,6 +27,7 @@
 #include "gfx_type.h"
 #include "sl/saveload_common_type.h"
 
+#include "core/tinystring_type.hpp"
 #include <functional>
 #include <memory>
 #include <string_view>
@@ -100,6 +101,9 @@ void ClearOrderDestinationRefcountMap();
  */
 
 struct OrderExtraInfo {
+	TinyString station_service_number{};
+	uint8_t station_service_mode = 0; ///< 0: unchanged, 1: manual, 2: dispatch.
+
 	uint8_t cargo_type_flags[NUM_CARGO] = {}; ///< Load/unload types for each cargo type.
 	uint32_t xdata = 0;                       ///< Extra arbitrary data
 	uint32_t xdata2 = 0;                      ///< Extra arbitrary data
@@ -166,6 +170,17 @@ private:
 	uint8_t couple_speed_comparator2{}; ///< Second threshold comparator (0 = disabled).
 	uint16_t max_speed{};          ///< How fast the vehicle may go on the way to the destination.
 
+public:
+	uint8_t GetServiceNumberMode() const { return this->extra ? this->extra->station_service_mode : 0; }
+	std::string_view GetServiceNumber() const { return this->extra ? std::string_view(this->extra->station_service_number) : std::string_view{}; }
+	void SetServiceNumber(uint8_t mode, std::string_view number)
+	{
+		if (mode == 0 && !this->extra) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->station_service_mode = mode;
+		this->extra->station_service_number = number;
+	}
+private:
 	void AllocExtraInfo();
 	void DeAllocExtraInfo();
 

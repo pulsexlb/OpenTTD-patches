@@ -193,6 +193,14 @@ enum TraceRestrictItemType : uint8_t {
 	TRIT_COND_ORDER_STOP_LOCATION = 34,   ///< Test train stop location (near/middle/far/through load)
 	TRIT_COND_TIMETABLE_STATE     = 35,   ///< Test train lateness/earliness
 
+	TRIT_COND_AUTO_YIELD_FASTER    = 36,   ///< Faster following member of an automatic area.
+	TRIT_COND_AUTO_YIELD_SIDING    = 37,
+	TRIT_COND_AUTO_YIELD_FREE      = 38,
+	TRIT_COND_AUTO_YIELD_WAIT      = 39,
+	TRIT_COND_AUTO_YIELD_FULL      = 40,
+	TRIT_COND_AUTO_YIELD_EVACUATE  = 41,
+	TRIT_COND_AUTO_YIELD_LEAVE     = 42,
+
 	TRIT_COND_END                 = 48,   ///< End (exclusive) of conditional item types, note that this has the same value as TRIT_REVERSE
 	TRIT_REVERSE                  = 48,   ///< Reverse behind/at signal
 	TRIT_SPEED_RESTRICTION        = 49,   ///< Speed restriction
@@ -202,6 +210,9 @@ enum TraceRestrictItemType : uint8_t {
 	TRIT_SPEED_ADAPTATION_CONTROL = 53,   ///< Control speed adaptation
 	TRIT_SIGNAL_MODE_CONTROL      = 54,   ///< Control signal modes
 	TRIT_SLOT_GROUP               = 55,   ///< Slot group operation
+
+	TRIT_AUTO_YIELD_AREA          = 56,   ///< Approach/main/siding/exit marker; ordinary slot ID and percentage (low word reserved for legacy distance).
+	TRIT_AUTO_YIELD_CLEAR         = 57,   ///< Tail-clearance boundary.
 
 	/* space up to 63 */
 };
@@ -473,7 +484,7 @@ inline bool IsTraceRestrictTypeConditional(TraceRestrictItemType type)
 /** Is TraceRestrictItem a double-item type? */
 inline bool IsTraceRestrictDoubleItemType(TraceRestrictItemType type)
 {
-	return type == TRIT_COND_PBS_ENTRY_SIGNAL || type == TRIT_COND_SLOT_OCCUPANCY || type == TRIT_COUNTER ||
+	return type == TRIT_AUTO_YIELD_AREA || type == TRIT_COND_PBS_ENTRY_SIGNAL || type == TRIT_COND_SLOT_OCCUPANCY || type == TRIT_COUNTER ||
 			type == TRIT_COND_COUNTER_VALUE || type == TRIT_COND_TIME_DATE_VALUE || type == TRIT_COND_RESERVATION_THROUGH;
 }
 
@@ -865,6 +876,7 @@ DECLARE_ENUM_AS_BIT_SET(TraceRestrictProgramInputSlotPermissions)
 enum class TraceRestrictProgramInputFlag : uint8_t {
 	PassedStop,             ///< Train has passed stop
 	InvertDrivingDirection, ///< Invert whether train is considered to be driving backwards
+	NativeRouteChoice,      ///< Authoritative native rail route selection; not a reachability query.
 };
 using TraceRestrictProgramInputFlags = EnumBitSet<TraceRestrictProgramInputFlag, uint8_t>;
 
@@ -1109,7 +1121,13 @@ inline TraceRestrictTypePropertySet GetTraceRestrictTypeProperties(TraceRestrict
 {
 	TraceRestrictTypePropertySet out;
 
-	if (item.GetType() == TRIT_NULL) {
+	if (item.GetType() >= TRIT_COND_AUTO_YIELD_FASTER && item.GetType() <= TRIT_COND_AUTO_YIELD_LEAVE) {
+		out.cond_type = TRCOT_BINARY;
+		out.value_type = TRVT_SLOT_INDEX;
+	} else if (item.GetType() == TRIT_AUTO_YIELD_AREA || item.GetType() == TRIT_AUTO_YIELD_CLEAR) {
+		out.cond_type = TRCOT_NONE;
+		out.value_type = TRVT_SLOT_INDEX;
+	} else if (item.GetType() == TRIT_NULL) {
 		out.cond_type = TRCOT_NONE;
 		out.value_type = TRVT_SPECIAL;
 	} else if (item.GetType() == TRIT_COND_ENDIF ||
@@ -1350,6 +1368,7 @@ inline bool IsTraceRestrictTypeAuxSubtype(TraceRestrictItemType type)
 		case TRIT_COND_PBS_ENTRY_SIGNAL:
 		case TRIT_COND_CATEGORY:
 		case TRIT_COND_TIMETABLE_STATE:
+		case TRIT_AUTO_YIELD_AREA:
 			return true;
 
 		default:
@@ -1461,6 +1480,7 @@ struct TraceRestrictSlot : TraceRestrictSlotPool::PoolItem<&_tracerestrictslot_p
 
 	enum class Flag : uint8_t {
 		Public, ///< Public slot.
+		AutoYieldTargets, ///< Internal saved wait obligations; occupants are the trains being yielded to, not lane occupants.
 	};
 	using Flags = EnumBitSet<Flag, uint8_t>;
 
@@ -1468,6 +1488,8 @@ struct TraceRestrictSlot : TraceRestrictSlotPool::PoolItem<&_tracerestrictslot_p
 	Flags flags{};
 	VehicleType vehicle_type;
 	TraceRestrictSlotGroupID parent_group = INVALID_TRACE_RESTRICT_SLOT_GROUP;
+	uint16_t automatic_yield_area = 0; ///< Internal lane only: associated slot ID + 1; zero for ordinary user slots (v1: numeric area).
+	uint32_t automatic_yield_signal = UINT32_MAX; ///< Signal ref, or UINT32_MAX for detection.
 	uint32_t max_occupancy = 1;
 	std::string name;
 	ankerl::svector<VehicleID, 3> occupants;
@@ -1508,6 +1530,7 @@ struct TraceRestrictSlot : TraceRestrictSlotPool::PoolItem<&_tracerestrictslot_p
 	bool OccupyDryRun(VehicleID ids);
 	bool OccupyUsingTemporaryState(VehicleID id, TraceRestrictSlotTemporaryState *state);
 	void Vacate(const Vehicle *v);
+	void VacateByID(VehicleID id);
 	void VacateUsingTemporaryState(VehicleID id, TraceRestrictSlotTemporaryState *state);
 	void Clear();
 	void UpdateSignals();

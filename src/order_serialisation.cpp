@@ -255,6 +255,7 @@ static nlohmann::ordered_json OrderToJSON(const Order &o, VehicleType vt)
 
 	if (o.IsType(OT_GOTO_WAYPOINT)) {
 		if (o.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) json[OFName::WAYPOINT_REVERSE] = true;
+		if (o.GetWaypointFlags().Test(OrderWaypointFlag::Stop)) json["waypoint-stop"] = true;
 	}
 
 	if (o.IsSlotCounterOrder() || o.IsExecuteScheduleOrder()) {
@@ -265,6 +266,11 @@ static nlohmann::ordered_json OrderToJSON(const Order &o, VehicleType vt)
 			case OT_SLOT_GROUP: json[OFName::SLOT_GROUP_ID] = id; break;
 			default: break;
 		}
+	}
+
+	if ((o.IsType(OT_GOTO_STATION) || o.IsType(OT_GOTO_WAYPOINT)) && o.GetServiceNumberMode() != 0) {
+		json["service-number-mode"] = o.GetServiceNumberMode();
+		if (o.GetServiceNumberMode() == 1) json["service-number"] = o.GetServiceNumber();
 	}
 
 	if (o.IsType(OT_LABEL)) {
@@ -1108,6 +1114,13 @@ static void ImportJsonOrder(JSONToVehicleCommandParser<JSONToVehicleMode::Order>
 	json_importer.cmd_buffer.op_serialiser.Insert(new_order);
 	json_importer.cmd_buffer.op_serialiser.ReplaceOnFail();
 
+	if (type == OT_GOTO_STATION || type == OT_GOTO_WAYPOINT) {
+		uint8_t mode = 0;
+		std::string number;
+		if (json_importer.TryGetField("service-number-mode", mode, JOIET_OK)) {
+			if (mode != 1 || json_importer.TryGetField("service-number", number, JOIET_MAJOR)) json_importer.cmd_buffer.op_serialiser.SetServiceNumber(mode, number);
+		}
+	}
 	json_importer.TryApplyModifyOrder<Colours>(OFName::COLOUR, MOF_COLOUR, JOIET_MINOR);
 
 	json_importer.TryApplyTimetableCommand<uint16_t>(OFName::MAX_SPEED, MTF_TRAVEL_SPEED, JOIET_MINOR);
@@ -1124,6 +1137,7 @@ static void ImportJsonOrder(JSONToVehicleCommandParser<JSONToVehicleMode::Order>
 
 	OrderWaypointFlags waypoint_flags{};
 	if (json_importer.TryGetField<bool>(OFName::WAYPOINT_REVERSE, JOIET_MAJOR).value_or(false)) waypoint_flags.Set(OrderWaypointFlag::Reverse);
+	if (json_importer.TryGetField<bool>("waypoint-stop", JOIET_MINOR).value_or(false)) waypoint_flags.Set(OrderWaypointFlag::Stop);
 	if (waypoint_flags.Any()) json_importer.ModifyOrder(MOF_WAYPOINT_FLAGS, waypoint_flags.base());
 
 	if (type == OT_GOTO_DEPOT) {

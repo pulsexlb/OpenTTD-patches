@@ -298,6 +298,60 @@ void ClientNetworkGameSocketHandler::ClientError(NetworkRecvStatus res)
  */
 /* static */ bool ClientNetworkGameSocketHandler::GameLoop()
 {
+	/* A sync packet may arrive after its frame was already simulated. Check
+	 * the completed frame before advancing, otherwise the first sync/ACK can
+	 * be missed forever while the client remains perfectly in sync. Keep the
+	 * same seed/checksum validation after executing each new frame as well. */
+	const auto check_sync = []() -> bool {
+		/* Check if we are in sync! */
+		if (_sync_frame != 0) {
+			if (_sync_frame == _frame_counter) {
+				if (_sync_seed_1 != _random.state[0] || (_sync_state_checksum != _state_checksum.state && !HasChickenBit(DCBF_MP_NO_STATE_CSUM_CHECK))) {
+					DesyncExtraInfo info;
+					if (_sync_seed_1 != _random.state[0]) info.flags |= DesyncExtraInfo::DEIF_RAND;
+					if (_sync_state_checksum != _state_checksum.state) info.flags |= DesyncExtraInfo::DEIF_STATE;
+
+					ShowNetworkError(STR_NETWORK_ERROR_DESYNC);
+					Debug(desync, 1, "sync_err: {} {{{:X}, {:X}}} != {{{:X}, {:X}}}",
+							debug_date_dumper().HexDate(), _sync_seed_1, _sync_state_checksum, _random.state[0], _state_checksum.state);
+					Debug(net, 0, "Sync error detected!");
+
+					std::string desync_log;
+					DesyncDeferredSaveInfo deferred_save;
+					info.log_file = &(my_client->desync_log_file);
+					info.defer_savegame_write = &deferred_save;
+					CrashLog::DesyncCrashLog(nullptr, &desync_log, info);
+					my_client->SendDesyncLog(desync_log);
+					my_client->SendDesyncSyncData();
+					my_client->ClientError(NetworkRecvStatus::Desync);
+					CrashLog::WriteDesyncSavegame(desync_log.c_str(), deferred_save.name_buffer.c_str());
+					return false;
+				}
+				_last_sync_date = EconTime::CurDate();
+				_last_sync_date_fract = EconTime::CurDateFract();
+				_last_sync_tick_skip_counter = TickSkipCounter();
+				_last_sync_frame_counter = _sync_frame;
+				_network_sync_records.clear();
+				_network_sync_record_counts.clear();
+
+				/* If this is the first time we have a sync-frame, we
+				 *   need to let the server know that we are ready and at the same
+				 *   frame as it is.. so we can start playing! */
+				if (_network_first_time) {
+					_network_first_time = false;
+					SendAck();
+				}
+
+				_sync_frame = 0;
+			} else if (_sync_frame < _frame_counter) {
+				Debug(net, 1, "Missed frame for sync-test: {} / {}", _sync_frame, _frame_counter);
+				_sync_frame = 0;
+			}
+		}
+		return true;
+	};
+	if (!check_sync()) return false;
+
 	_frame_counter++;
 
 	const size_t total_sync_records = _network_sync_records.size();
@@ -312,51 +366,7 @@ void ClientNetworkGameSocketHandler::ClientError(NetworkRecvStatus res)
 	_network_sync_record_counts.push_back((uint)(_network_sync_records.size() - total_sync_records));
 	_record_sync_records = false;
 
-	/* Check if we are in sync! */
-	if (_sync_frame != 0) {
-		if (_sync_frame == _frame_counter) {
-			if (_sync_seed_1 != _random.state[0] || (_sync_state_checksum != _state_checksum.state && !HasChickenBit(DCBF_MP_NO_STATE_CSUM_CHECK))) {
-				DesyncExtraInfo info;
-				if (_sync_seed_1 != _random.state[0]) info.flags |= DesyncExtraInfo::DEIF_RAND;
-				if (_sync_state_checksum != _state_checksum.state) info.flags |= DesyncExtraInfo::DEIF_STATE;
-
-				ShowNetworkError(STR_NETWORK_ERROR_DESYNC);
-				Debug(desync, 1, "sync_err: {} {{{:X}, {:X}}} != {{{:X}, {:X}}}",
-						debug_date_dumper().HexDate(), _sync_seed_1, _sync_state_checksum, _random.state[0], _state_checksum.state);
-				Debug(net, 0, "Sync error detected!");
-
-				std::string desync_log;
-				DesyncDeferredSaveInfo deferred_save;
-				info.log_file = &(my_client->desync_log_file);
-				info.defer_savegame_write = &deferred_save;
-				CrashLog::DesyncCrashLog(nullptr, &desync_log, info);
-				my_client->SendDesyncLog(desync_log);
-				my_client->SendDesyncSyncData();
-				my_client->ClientError(NetworkRecvStatus::Desync);
-				CrashLog::WriteDesyncSavegame(desync_log.c_str(), deferred_save.name_buffer.c_str());
-				return false;
-			}
-			_last_sync_date = EconTime::CurDate();
-			_last_sync_date_fract = EconTime::CurDateFract();
-			_last_sync_tick_skip_counter = TickSkipCounter();
-			_last_sync_frame_counter = _sync_frame;
-			_network_sync_records.clear();
-			_network_sync_record_counts.clear();
-
-			/* If this is the first time we have a sync-frame, we
-			 *   need to let the server know that we are ready and at the same
-			 *   frame as it is.. so we can start playing! */
-			if (_network_first_time) {
-				_network_first_time = false;
-				SendAck();
-			}
-
-			_sync_frame = 0;
-		} else if (_sync_frame < _frame_counter) {
-			Debug(net, 1, "Missed frame for sync-test: {} / {}", _sync_frame, _frame_counter);
-			_sync_frame = 0;
-		}
-	}
+	if (!check_sync()) return false;
 
 	if (_network_sync_record_counts.size() >= 128) {
 		/* Remove records from start of queue */

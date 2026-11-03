@@ -99,9 +99,38 @@ struct CYapfRailSegment {
 	}
 };
 
-/** Yapf Node for rail YAPF */
-struct CYapfRailNode : CYapfNodeT<CYapfNodeKeyTrackDir, CYapfRailNode> {
-	typedef CYapfNodeT<CYapfNodeKeyTrackDir, CYapfRailNode> base;
+/** A separate key for a route with a mandatory directed point. The ordinary
+ * native key, node size and 32-bit hash remain unchanged. */
+struct CYapfRailRequiredPointKey : CYapfNodeKeyTrackDir {
+	using HashKey = uint64_t;
+	bool required_point_seen = false;
+
+	void Set(TileIndex tile, Trackdir td)
+	{
+		CYapfNodeKeyTrackDir::Set(tile, td);
+		this->required_point_seen = false;
+	}
+	HashKey GetHashKey() const
+	{
+		/* HashTable indexes the hash value itself, so the phase must have an
+		 * independent bit, not an XOR that could alias another physical tile. */
+		return HashKey(CYapfNodeKeyTrackDir::GetHashKey()) | (HashKey(this->required_point_seen) << 32);
+	}
+	bool operator==(const CYapfRailRequiredPointKey &other) const
+	{
+		return CYapfNodeKeyTrackDir::operator==(other) && this->required_point_seen == other.required_point_seen;
+	}
+	template <class D> void Dump(D &dmp) const
+	{
+		CYapfNodeKeyTrackDir::Dump(dmp);
+		dmp.WriteValue("required_point_seen", this->required_point_seen ? "Yes" : "No");
+	}
+};
+
+/** Yapf Node for rail YAPF; the default instantiation retains native layout. */
+template <class NodeKey = CYapfNodeKeyTrackDir>
+struct CYapfRailNodeT : CYapfNodeT<NodeKey, CYapfRailNodeT<NodeKey>> {
+	typedef CYapfNodeT<NodeKey, CYapfRailNodeT<NodeKey>> base;
 	typedef CYapfRailSegment CachedData;
 
 	CYapfRailSegment  *segment;
@@ -121,9 +150,12 @@ struct CYapfRailNode : CYapfNodeT<CYapfNodeKeyTrackDir, CYapfRailNode> {
 	Trackdir          last_non_reserve_through_signal_td;
 	TileIndex         last_non_reserve_through_signal_tile;
 
-	inline void Set(CYapfRailNode *parent, TileIndex tile, Trackdir td, bool is_choice)
+	inline void Set(CYapfRailNodeT *parent, TileIndex tile, Trackdir td, bool is_choice)
 	{
 		this->base::Set(parent, tile, td, is_choice);
+		if constexpr (requires { this->key.required_point_seen; }) {
+			this->key.required_point_seen = parent != nullptr && parent->key.required_point_seen;
+		}
 		this->segment = nullptr;
 		if (parent == nullptr) {
 			this->num_signals_passed                   = 0;
@@ -243,6 +275,8 @@ struct CYapfRailNode : CYapfNodeT<CYapfNodeKeyTrackDir, CYapfRailNode> {
 	}
 };
 
-typedef NodeList<CYapfRailNode> CRailNodeList;
+using CYapfRailNode = CYapfRailNodeT<>;
+using CRailNodeList = NodeList<CYapfRailNode>;
+using CRailRequiredPointNodeList = NodeList<CYapfRailNodeT<CYapfRailRequiredPointKey>>;
 
 #endif /* YAPF_NODE_RAIL_HPP */

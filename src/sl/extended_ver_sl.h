@@ -224,6 +224,10 @@ enum SlXvFeatureIndex {
 	XSLFI_WAIT_COUPLE_TARGET,                     ///< Wait-for-couple orders may travel to a selected station first
 	XSLFI_COUPLE_CHECK_POINT,                      ///< Go-to-couple orders may check for a partner at an earlier schedule stop
 	XSLFI_COUPLE_SPEED_FILTER,                    ///< Coupling selection can compare consist maximum speeds
+	XSLFI_AUTOMATIC_YIELD,                        ///< Automatic trace-restriction areas and internal claims.
+	XSLFI_AUTO_YIELD_ROUTE_PLAN,                  ///< Native multi-outlet route decisions on trains.
+	XSLFI_FIXED_SERVICE_NUMBER,                   ///< Per-consist service number, independent of dispatch slots.
+	XSLFI_WAYPOINT_STOP,                         ///< Waypoint stopping behavior and mutually exclusive stop/reverse actions.
 	XSLFI_TRAIN_DECOUPLE_PART,                    ///< Which part of a decoupled train a consist is, survives network snapshots
 
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature

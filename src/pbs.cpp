@@ -1014,16 +1014,13 @@ Train *FindForeignTrainOnReservation(const Train *v)
 			[&](TileIndex tile, Trackdir td) -> bool {
 				for (Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
 					if (u->Primary() == v->Primary()) continue;
-					/* A just-decoupled partner necessarily shares the tile
-					 * around the cut with us (see IsPlatformAheadOccupied); it
-					 * does not stand in our way on that first tile, and the
-					 * partner may wait there for a couple indefinitely. Both
-					 * decouple flags count: the same-direction part carries
-					 * SameDirDecouplePending, and the two parts wait for each
-					 * other, so exempting only one of them deadlocks both. */
-					const bool cut_tile = tile == front->tile &&
-							u->Primary()->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending});
-					if (cut_tile) continue;
+					/* Sheltered depot parts do not occupy the entrance track.
+					 * Parts still entering or leaving keep ordinary track bits
+					 * and must continue to block the reservation. */
+					if (u->track == TRACK_BIT_DEPOT) continue;
+					if (IsDecoupledPartBehindDeparture(v, u)) continue;
+					/* The geometric split-part check above is authoritative: even on
+					 * the cut tile, a real vehicle ahead must block the reservation. */
 					result = u;
 					return true;
 				}
@@ -1555,19 +1552,49 @@ TileIndex VehiclePosTraceRestrictPreviousSignalCallback(const Train *v, const vo
 }
 
 /**
- * Test whether a train's reservation passes through a given tile.
+ * Test whether a train's reservation passes through a given tile and, optionally, track.
  */
-bool TrainReservationPassesThroughTile(const Train *v, TileIndex search_tile)
+bool TrainReservationPassesThroughTile(const Train *v, TileIndex search_tile, Track search_track)
 {
 	bool found = false;
 	const Train *moving_front = v->GetMovingFront();
 	FollowReservationEnumerate(v->owner, v->GetIndirectCompatibleRailTypes(), moving_front->tile, moving_front->GetVehicleTrackdir(), FRF_NONE, [&](TileIndex tile, Trackdir trackdir) -> bool {
-		if (tile == search_tile) {
+		if (tile == search_tile && (search_track == INVALID_TRACK || TrackdirToTrack(trackdir) == search_track)) {
 			found = true;
 			return true;
 		}
 		return false;
 	});
+	return found;
+}
+
+/** Test an exact directed point on the continuous reservation ahead of the train. */
+bool TrainReservationPassesThroughTrackdir(const Train *v, TileIndex search_tile, Trackdir search_trackdir)
+{
+	if (v == nullptr || !IsValidTile(search_tile) || !IsValidTrackdir(search_trackdir)) return false;
+	bool found = false;
+	const Train *moving_front = v->GetMovingFront();
+	FollowReservationEnumerate(v->owner, v->GetIndirectCompatibleRailTypes(), moving_front->tile, moving_front->GetVehicleTrackdir(), FRF_NONE, [&](TileIndex tile, Trackdir trackdir) -> bool {
+		if (tile != search_tile || trackdir != search_trackdir) return false;
+		found = true;
+		return true;
+	});
+	return found;
+}
+
+bool GetTrainReservationPathTo(const Train *v, TileIndex tile, Trackdir td, size_t max_steps, std::vector<std::pair<TileIndex, Trackdir>> &path)
+{
+	path.clear();
+	if (v == nullptr || !IsValidTile(tile) || !IsValidTrackdir(td) || max_steps == 0) return false;
+	bool found = false;
+	const Train *front = v->GetMovingFront();
+	FollowReservationEnumerate(v->owner, v->GetIndirectCompatibleRailTypes(), front->tile, front->GetVehicleTrackdir(), FRF_NONE, [&](TileIndex here, Trackdir direction) {
+		if (path.size() == max_steps) return true;
+		path.emplace_back(here, direction);
+		found = here == tile && direction == td;
+		return found;
+	});
+	if (!found) path.clear();
 	return found;
 }
 

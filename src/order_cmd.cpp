@@ -444,7 +444,7 @@ bool Order::Equals(const Order &other) const
 				(this->GetDepotActionType() & ~ODATFB_NEAREST_DEPOT) == (other.GetDepotActionType() & ~ODATFB_NEAREST_DEPOT);
 	}
 
-	return this->type == other.type && this->flags == other.flags && this->dest == other.dest;
+	return this->type == other.type && this->flags == other.flags && this->dest == other.dest && this->GetServiceNumberMode() == other.GetServiceNumberMode() && this->GetServiceNumber() == other.GetServiceNumber();
 }
 
 /**
@@ -3738,7 +3738,8 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			break;
 
 		case MOF_WAYPOINT_FLAGS:
-			if (data != (data & OrderWaypointFlags(OrderWaypointFlag::Reverse).base())) return CMD_ERROR;
+			if (data != (data & OrderWaypointFlags{OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop}.base())) return CMD_ERROR;
+			if (data == OrderWaypointFlags{OrderWaypointFlag::Reverse, OrderWaypointFlag::Stop}.base()) return CMD_ERROR;
 			break;
 
 		case MOF_SLOT:
@@ -6075,6 +6076,26 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			v->SetDestTile(v->GetOrderStationLocation(order->GetDestination().ToStationID()));
 			return true;
 
+		case OT_GOTO_COUPLE: {
+			/* No station destination exists until a waiting partner is selected.
+			 * Still allow a stopped train to compare both ends using the coupling
+			 * destination evaluator instead of silently skipping direction choice. */
+			v->SetDestTile(INVALID_TILE);
+			if (pbs_look_ahead || v->type != VehicleType::Train) return false;
+			if (v->cur_speed == 0) return true;
+			const Train *train = Train::From(v);
+			if (train->flags.Any({VehicleRailFlag::Reversing, VehicleRailFlag::CoupleDirectionChecked, VehicleRailFlag::JustDecoupled})) return false;
+			if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::EndOfLineOnly || train->GetMovingFront()->track == TRACK_BIT_DEPOT) return false;
+			const uint interval = std::max<uint>(1, _settings_game.pf.path_backoff_interval);
+			if (_scaled_tick_counter % interval != train->index.base() % interval) return false;
+			/* A partner may be selected after departure. Recheck the direction of
+			 * a new claim once, on the native retry cadence, rather than driving
+			 * away until a line end happens to turn the train around. Spread queries
+			 * by vehicle ID; no partner means no extra network search. */
+			const Train *target = Train::GetIfValid(train->couple_target);
+			return target != nullptr && GetCoupleClaimant(target) == train;
+		}
+
 		case OT_WAIT_COUPLE:
 			if (order->HasWaitCoupleStation() && Station::IsValidID(order->GetWaitCoupleStation())) {
 				if (v->last_station_visited == order->GetWaitCoupleStation() && v->type == VehicleType::Train &&
@@ -6368,7 +6389,7 @@ bool ProcessOrders(Vehicle *v)
 
 	/* Check if we've reached a 'via' destination. */
 	if (((v->current_order.IsType(OT_GOTO_STATION) && (v->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)) ||
-			(v->current_order.IsType(OT_GOTO_WAYPOINT) && (!v->current_order.IsWaitTimetabled() || v->type != VehicleType::Train))) &&
+			(v->current_order.IsType(OT_GOTO_WAYPOINT) && ((!v->current_order.IsWaitTimetabled() && !v->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Stop)) || v->type != VehicleType::Train))) &&
 			IsTileType(moving_front->tile, TileType::Station) &&
 			v->current_order.GetDestination() == GetStationIndex(moving_front->tile)) {
 		v->DeleteUnreachedImplicitOrders();
@@ -6408,6 +6429,24 @@ bool ProcessOrders(Vehicle *v)
 	if (order->Equals(v->current_order) && (v->type == VehicleType::Aircraft || v->dest_tile != INVALID_TILE) &&
 			(v->type != VehicleType::Ship || !order->IsType(OT_GOTO_STATION) || Station::Get(order->GetDestination().ToStationID())->facilities.Test(StationFacility::Dock))) {
 		return false;
+	}
+
+	/* A destination-less couple order stays current while its train is stuck.
+	 * Reconsider both directions on the native PBS retry cadence, rather than
+	 * running the full search every tick between reservation attempts. A new
+	 * order (including a waypoint's departure) still gets its immediate check. */
+	if (v->type == VehicleType::Train && order->IsType(OT_GOTO_COUPLE) && order->Equals(v->current_order)) {
+		const Train *train = Train::From(v);
+		/* Equals deliberately ignores extended fields. Do not postpone a real
+		 * criteria change while copying the active coupling order. */
+		const auto criteria = [](const Order &o) {
+			return std::tuple(o.GetCoupleRejectSlower(), o.GetCoupleRejectFaster(), o.HasCoupleCheckPoint(),
+					o.GetXData(), o.GetXData2(), o.GetCoupleCargoType(), o.GetNumCouple(),
+					o.GetCoupleSpeedComparator(0), o.GetCoupleSpeedValue(0), o.GetCoupleSpeedUnit(0),
+					o.GetCoupleSpeedComparator(1), o.GetCoupleSpeedValue(1), o.GetCoupleSpeedUnit(1));
+		};
+		if (criteria(*order) == criteria(v->current_order) && train->flags.Test(VehicleRailFlag::Stuck) && train->force_proceed == TFP_NONE &&
+				train->wait_counter % std::max<uint>(1, _settings_game.pf.path_backoff_interval) != 0) return false;
 	}
 
 	/* Otherwise set it, and determine the destination tile. */
@@ -6454,7 +6493,7 @@ bool Order::UseOccupancyValueForAverage() const
  */
 bool Order::ShouldStopAtStation(StationID last_station_visited, StationID station, bool waypoint) const
 {
-	if (waypoint) return this->IsType(OT_GOTO_WAYPOINT) && this->dest == station && this->IsWaitTimetabled();
+	if (waypoint) return this->IsType(OT_GOTO_WAYPOINT) && this->dest == station && (this->IsWaitTimetabled() || this->GetWaypointFlags().Test(OrderWaypointFlag::Stop));
 	if (this->IsType(OT_WAIT_COUPLE) && this->HasWaitCoupleStation()) return this->GetWaitCoupleStation() == station && last_station_visited != station;
 	if (this->IsType(OT_LOADING_ADVANCE) && this->dest == station) return true;
 	bool is_dest_station = this->IsType(OT_GOTO_STATION) && this->dest == station;
@@ -6721,6 +6760,15 @@ CommandCost CmdBulkOrder(DoCommandFlags flags, const BulkOrderCmdData &cmd_data)
 					if (modify_pos != INVALID_VEH_ORDER_ID) {
 						last_result = CmdModifyOrder(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), modify_pos, mof, data, cargo_id, text);
 					}
+					break;
+				}
+
+				case BulkOrderOp::SetServiceNumber: {
+					uint8_t mode;
+					std::string number;
+					buf.Recv_generic_seq({}, mode, number);
+					if (buf.error) return CMD_ERROR;
+					if (modify_pos != INVALID_VEH_ORDER_ID) last_result = CmdSetOrderServiceNumber(flags, OrderTargetType::Vehicle, cmd_data.veh.base(), modify_pos, mode, number);
 					break;
 				}
 

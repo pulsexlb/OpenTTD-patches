@@ -928,6 +928,9 @@ public:
 		return this->order_occupancy_average;
 	}
 
+	std::string GetServiceNumberForDeparture(const Order *order, std::string_view dispatched_number) const;
+	std::string GetActiveServiceNumber() const;
+	void ApplyStationServiceNumber(const Order &order);
 	void ResetRefitCaps();
 
 	void ReleaseUnitNumber();

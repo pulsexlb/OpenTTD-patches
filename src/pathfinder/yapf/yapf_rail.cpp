@@ -26,6 +26,12 @@
 #include <unistd.h>
 #endif
 
+template <class Tpf>
+static YapfRailRoute YapfBuildRailRoute(const Train *v, Tpf &pf, bool found, uint max_path_steps, const YapfRailRouteFilter &export_end = {});
+
+static Trackdir YapfChooseNativeRailRoute(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks,
+		bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest);
+
 template <typename Tpf> void DumpState(Tpf &pf1, Tpf &pf2)
 {
 	DumpTarget dmp1, dmp2;
@@ -574,6 +580,21 @@ public:
 		return ret;
 	}
 
+	static bool stCheckCoupleReverse(const Train *v, TileIndex t1, Trackdir td1, TileIndex t2, Trackdir td2,
+			int reverse_penalty, TraceRestrictProgramInputFlags input_flags)
+	{
+		Tpf pf;
+		pf.DisableCache(true);
+		pf.SetOrigin(t1, td1, t2, td2, reverse_penalty);
+		pf.SetTreatFirstRedTwoWaySignalAsEOL(false);
+		pf.SetTraceRestrictProgramInputFlags(input_flags);
+		pf.SetDestination(v, nullptr, Train::GetIfValid(v->Primary()->couple_target));
+		if (!pf.FindPath(v)) return false;
+		Node *node = pf.GetBestNode();
+		while (node->parent != nullptr) node = node->parent;
+		return node->cost != 0;
+	}
+
 	Train *couple_target_found = nullptr; ///< Contact-end vehicle of the waiting train found at the best node
 	uint32_t couple_cost_found = 0;       ///< Path cost of the best node the couple target was found at
 
@@ -827,6 +848,7 @@ public:
 	typedef typename Types::TrackFollower TrackFollower;
 	typedef typename Types::NodeList::Item Node; ///< this will be our node type
 	typedef typename Node::Key Key; ///< key to hash tables
+	bool native_route_search_delegated = false; ///< A fresh typed search owns the final route, not this obsolete tree.
 
 protected:
 	/** @copydoc CYapfBaseT::Yapf */
@@ -840,6 +862,9 @@ public:
 	inline void PfFollowNode(Node &old_node)
 	{
 		const Train *v = Yapf().GetVehicle();
+		/* Startup nodes bypass PfCalcCost: reject an already reached target
+		 * before its required point, rather than continuing past the stop. */
+		if (!Yapf().RailRouteRequiredPointSatisfied(old_node) && Yapf().PfDetectDestination(old_node.GetLastTile(), old_node.GetLastTrackdir())) return;
 		TrackFollower follower(v);
 		if (old_node.flags_u.flags_s.reverse_pending && old_node.segment->end_segment_reason.Any({EndSegmentReason::SafeTile, EndSegmentReason::Depot, EndSegmentReason::DeadEnd})) {
 			Node *rev_node = &old_node;
@@ -871,23 +896,31 @@ public:
 		return 't';
 	}
 
-	static Trackdir stChooseRailTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
+	static Trackdir stChooseRailTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest,
+			std::optional<std::pair<TileIndex, Trackdir>> required_point = std::nullopt)
 	{
 		/* create pathfinder instance */
 		Tpf pf1;
+		if (required_point) pf1.SetRailRouteRequiredPoint(required_point->first, required_point->second);
 		Trackdir result1;
 
 		if (GetDebugLevel(DebugLevelID::yapfdesync) < 1 && GetDebugLevel(DebugLevelID::desync) < 2) {
 			result1 = pf1.ChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
 		} else {
 			result1 = pf1.ChooseRailTrack(v, tile, enterdir, tracks, path_found, false, nullptr, nullptr);
+			if (pf1.native_route_search_delegated) {
+				/* Discovery may have selected a required-point node type. The
+				 * comparison and actual reservation must use that final type too. */
+				return YapfChooseNativeRailRoute(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
+			}
 			Tpf pf2;
 			pf2.DisableCache(true);
+			if (required_point) pf2.SetRailRouteRequiredPoint(required_point->first, required_point->second);
 			Trackdir result2 = pf2.ChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
 			if (result1 != result2) {
 				Debug(desync, 0, "CACHE ERROR: ChooseRailTrack() = [{}, {}]", result1, result2);
 				DumpState(pf1, pf2);
-			} else if (result1 != INVALID_TRACKDIR) {
+			} else if (result1 != INVALID_TRACKDIR && !pf1.native_route_search_delegated && !pf2.native_route_search_delegated) {
 				CYapfFollowRailT::stDesyncCheck(pf1, pf2, "CACHE ERROR: ChooseRailTrack()", true);
 			}
 		}
@@ -895,19 +928,35 @@ public:
 		return result1;
 	}
 
-	inline Trackdir ChooseRailTrack(const Train *v, TileIndex, DiagDirection, TrackBits, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
+	inline Trackdir ChooseRailTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
 	{
 		if (target != nullptr) target->tile = INVALID_TILE;
 		if (dest != nullptr) *dest = INVALID_TILE;
 
 		/* set origin and destination nodes */
 		PBSTileInfo origin = FollowTrainReservation(v, nullptr, FollowTrainReservationFlag::OkayUnused);
+		AutoYieldNativeRouteScope route_scope(v, origin.tile, origin.trackdir);
+		route_scope.PrepareFromContext(origin.tile, origin.trackdir);
+		Yapf().SetTraceRestrictProgramInputFlags({TraceRestrictProgramInputFlag::NativeRouteChoice});
+		if (AutoYieldHasNativeRoute(v)) Yapf().SetRailRouteFilter([v](TileIndex here, Trackdir td) { return AutoYieldNativeRouteAllows(v, here, td); });
 		Yapf().SetOrigin(origin.tile, origin.trackdir, INVALID_TILE, INVALID_TRACKDIR, 1);
 		Yapf().SetTreatFirstRedTwoWaySignalAsEOL(true);
 		Yapf().SetDestination(v);
 
 		/* find the best path */
 		path_found = Yapf().FindPath(v);
+		/* A route filter cannot change halfway through A*. A detector on the
+		 * completed winning corridor establishes the decision, which a fresh
+		 * native search applies from the unchanged PBS origin. */
+		const YapfRailRouteFilter export_end = [&](TileIndex here, Trackdir direction) { return route_scope.ExportEnd(here, direction); };
+		if ((path_found && route_scope.NeedsSelection() && route_scope.Select(YapfBuildRailRoute(v, Yapf(), true, 2048, export_end))) ||
+				(!path_found && route_scope.RelaxForReplan())) {
+			/* The fresh dispatch performs its own cached/uncached comparison.
+			 * Comparing this superseded discovery tree with its final constrained
+			 * counterpart would report a false cache error after a platform change. */
+			this->native_route_search_delegated = true;
+			return YapfChooseNativeRailRoute(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
+		}
 
 		/* if path not found - return INVALID_TRACKDIR */
 		Trackdir next_trackdir = INVALID_TRACKDIR;
@@ -939,7 +988,15 @@ public:
 
 			if (reserve_track && path_found) {
 				if (dest != nullptr) *dest = Yapf().GetBestNode()->GetLastTile();
-				this->TryReservePath(target, node->GetLastTile());
+				const bool reserved = this->TryReservePath(target, node->GetLastTile());
+				if (reserved && route_scope.NeedsInspection()) route_scope.Commit(YapfBuildRailRoute(v, Yapf(), path_found, 2048, export_end));
+				if (!reserved && route_scope.ReplanForSplit()) {
+					/* Native failure has rolled back this attempted extension. Keep
+					 * the existing owned prefix and apply split evidence only in a
+					 * new search, with one retry shared by this scoped transaction. */
+					this->native_route_search_delegated = true;
+					return YapfChooseNativeRailRoute(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
+				}
 			}
 		}
 
@@ -993,13 +1050,13 @@ public:
 	}
 };
 
-template <class Tpf_, class Ttrack_follower, template <class Types> class TdestinationT, template <class Types> class TfollowT>
+template <class Tpf_, class Ttrack_follower, template <class Types> class TdestinationT, template <class Types> class TfollowT, class TNodeList = CRailNodeList>
 struct CYapfRail_TypesT {
-	typedef CYapfRail_TypesT<Tpf_, Ttrack_follower, TdestinationT, TfollowT>  Types;
+	typedef CYapfRail_TypesT<Tpf_, Ttrack_follower, TdestinationT, TfollowT, TNodeList>  Types;
 
 	typedef Tpf_                                Tpf;
 	typedef Ttrack_follower                     TrackFollower;
-	typedef CRailNodeList                       NodeList;
+	typedef TNodeList                           NodeList;
 	typedef Train                               VehicleType;
 	typedef CYapfBaseT<Types>                   PfBase;
 	typedef TfollowT<Types>                     PfFollow;
@@ -1036,6 +1093,28 @@ struct CYapfRailBase : CYapfT<Types> {
 struct CYapfRail         : CYapfRailBase<CYapfRail_TypesT<CYapfRail        , CFollowTrackRail    , CYapfDestinationTileOrStationRailT, CYapfFollowRailT>> {};
 struct CYapfRailNo90     : CYapfRailBase<CYapfRail_TypesT<CYapfRailNo90    , CFollowTrackRailNo90, CYapfDestinationTileOrStationRailT, CYapfFollowRailT>> {};
 
+/* Only a multi-outlet plan with a still-future mandatory Clear uses these
+ * separate nodes. All unplanned and single-outlet searches retain CRailNodeList. */
+struct CYapfRailRequiredPoint : CYapfRailBase<CYapfRail_TypesT<CYapfRailRequiredPoint, CFollowTrackRail, CYapfDestinationTileOrStationRailT, CYapfFollowRailT, CRailRequiredPointNodeList>> {};
+struct CYapfRailRequiredPointNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfRailRequiredPointNo90, CFollowTrackRailNo90, CYapfDestinationTileOrStationRailT, CYapfFollowRailT, CRailRequiredPointNodeList>> {};
+
+static Trackdir YapfChooseNativeRailRoute(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks,
+		bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
+{
+	const PBSTileInfo origin = FollowTrainReservation(v, nullptr, FollowTrainReservationFlag::OkayUnused);
+	AutoYieldNativeRouteScope route_scope(v, origin.tile, origin.trackdir);
+	route_scope.PrepareFromContext(origin.tile, origin.trackdir);
+	const auto required = AutoYieldNativeRouteRequiredPoint(v, origin.tile, origin.trackdir);
+	if (required) {
+		return _settings_game.pf.forbid_90_deg
+				? CYapfRailRequiredPointNo90::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest, required)
+				: CYapfRailRequiredPoint::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest, required);
+	}
+	return _settings_game.pf.forbid_90_deg
+			? CYapfRailNo90::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest)
+			: CYapfRail::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
+}
+
 struct CYapfAnyDepotRail     : CYapfRailBase<CYapfRail_TypesT<CYapfAnyDepotRail,     CFollowTrackRail    , CYapfDestinationAnyDepotRailT     , CYapfFollowAnyDepotRailT>> {};
 struct CYapfAnyDepotRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfAnyDepotRailNo90, CFollowTrackRailNo90, CYapfDestinationAnyDepotRailT     , CYapfFollowAnyDepotRailT>> {};
 
@@ -1052,14 +1131,20 @@ struct CYapfReachStationRail     : CYapfRailBase<CYapfRail_TypesT<CYapfReachStat
 struct CYapfReachStationRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfReachStationRailNo90, CFollowTrackRailNo90, CYapfDestinationTileOrStationRailT, CYapfFollowRailT>> {};
 
 template <class Tpf_>
-static bool YapfCanReachStation(const Train *v, TileIndex tile, Trackdir td, StationID station)
+static bool YapfCanReachStation(const Train *v, TileIndex tile, Trackdir td, StationID station,
+		uint max_nodes = RVTRANSPORT_YAPF_PROBE_MAX_NODES, bool admission_probe = false, uint *nodes_used = nullptr)
 {
 	Tpf_ pf;
 	pf.SetOrigin(tile, td, INVALID_TILE, INVALID_TRACKDIR, 1);
-	pf.SetTreatFirstRedTwoWaySignalAsEOL(true);
+	/* A temporary red block cannot disprove a parking lane's continuation.
+	 * Actual departure still requires the normal PBS reservation checks. */
+	pf.SetTreatFirstRedTwoWaySignalAsEOL(!admission_probe);
 	pf.SetDestinationStation(v, station, tile);
-	pf.SetMaxSearchNodes(RVTRANSPORT_YAPF_PROBE_MAX_NODES);
-	return pf.FindPath(v);
+	pf.SetMaxSearchNodes(max_nodes);
+	pf.DisableCache(admission_probe);
+	const bool found = pf.FindPath(v);
+	if (nodes_used != nullptr) *nodes_used = std::min(max_nodes, std::max(1u, uint(pf.num_steps)));
+	return found;
 }
 
 bool YapfTrainCanReachStation(const Train *v, TileIndex tile, Trackdir td, StationID station)
@@ -1069,12 +1154,209 @@ bool YapfTrainCanReachStation(const Train *v, TileIndex tile, Trackdir td, Stati
 		: YapfCanReachStation<CYapfReachStationRail>(v, tile, td, station);
 }
 
+bool YapfTrainCanReachStationBounded(const Train *v, TileIndex tile, Trackdir td, StationID station, uint max_nodes, uint &nodes_used)
+{
+	nodes_used = 0;
+	if (max_nodes == 0 || !IsValidTile(tile) || !IsValidTrackdir(td) || !Station::IsValidID(station)) return false;
+	/* The success of a capped search cannot depend on a client's local cache
+	 * history. Use the ordinary destination/follower/cost rules, without a
+	 * reservation transaction or speculative modification of the vehicle. */
+	return _settings_game.pf.forbid_90_deg
+		? YapfCanReachStation<CYapfReachStationRailNo90>(v, tile, td, station, max_nodes, true, &nodes_used)
+		: YapfCanReachStation<CYapfReachStationRail>(v, tile, td, station, max_nodes, true, &nodes_used);
+}
+
+/** Export a completed native node chain without confusing skipped platforms
+ * with bridge/tunnel arcs or silently dropping a turnaround. */
+template <class Tpf>
+static YapfRailRouteReason YapfExportRailRoute(const Train *v, Tpf &pf, uint max_path_steps, std::vector<YapfRailRouteStep> &path, const YapfRailRouteFilter &export_end)
+{
+	using Node = typename Tpf::Node;
+	using TrackFollower = typename Tpf::TrackFollower;
+	std::vector<const Node *> nodes;
+	for (const Node *node = pf.GetBestNode(); node != nullptr; node = node->parent) {
+		if (nodes.size() >= max_path_steps) return YapfRailRouteReason::RouteLimit;
+		if (node->flags_u.flags_s.teleport || node->flags_u.flags_s.reverse_pending) return YapfRailRouteReason::UnsupportedReverse;
+		nodes.push_back(node);
+	}
+	if (nodes.empty()) return YapfRailRouteReason::InvalidTrace;
+	std::reverse(nodes.begin(), nodes.end());
+	if (export_end) for (const Node *node : nodes) {
+		if (node->parent == nullptr) continue;
+		/* A local prefix must not hide a later depot/platform turnaround.
+		 * Check every selected native node boundary even beyond export_end;
+		 * this is O(native nodes), not a replay of the distant tile corridor. */
+		const Node *parent = node->parent;
+		TrackFollower follower{v, pf.GetCompatibleRailTypes()};
+		if (!follower.Follow(parent->GetLastTile(), parent->GetLastTrackdir())) return YapfRailRouteReason::InvalidTrace;
+		if (follower.new_tile == parent->GetLastTile()) return YapfRailRouteReason::UnsupportedReverse;
+		if (follower.new_tile != node->GetTile() || !HasTrackdir(follower.new_td_bits, node->GetTrackdir())) return YapfRailRouteReason::InvalidTrace;
+	}
+
+	bool exported = false;
+	auto append = [&](YapfRailRouteStep step) {
+		if (path.size() >= max_path_steps) return false;
+		path.push_back(step);
+		exported = export_end && export_end(step.tile, step.trackdir);
+		return true;
+	};
+	if (!append({nodes.front()->GetTile(), nodes.front()->GetTrackdir()})) return YapfRailRouteReason::RouteLimit;
+	if (exported) return YapfRailRouteReason::Complete;
+
+	/* Each node starts after one follower transition from its parent and then
+	 * contains a non-branching native segment. Replay exactly those transitions;
+	 * no new path choice is made while exporting the selected chain. */
+	auto follow = [&](TileIndex target, Trackdir target_td, bool branch) {
+		const YapfRailRouteStep previous = path.back();
+		TrackFollower follower{v, pf.GetCompatibleRailTypes()};
+		if (!follower.Follow(previous.tile, previous.trackdir)) return YapfRailRouteReason::InvalidTrace;
+		if (follower.new_tile == previous.tile) return YapfRailRouteReason::UnsupportedReverse;
+		if (branch) {
+			if (follower.new_tile != target || !HasTrackdir(follower.new_td_bits, target_td)) return YapfRailRouteReason::InvalidTrace;
+		} else {
+			if (KillFirstBit(follower.new_td_bits) != TRACKDIR_BIT_NONE) return YapfRailRouteReason::InvalidTrace;
+			target = follower.new_tile;
+			target_td = FindFirstTrackdir(follower.new_td_bits);
+		}
+		if (follower.is_station && follower.tiles_skipped > 0) {
+			const TileIndexDiff offset = TileOffsByDiagDir(follower.exitdir);
+			for (int skipped = follower.tiles_skipped; skipped > 0; --skipped) {
+				if (!append({target - offset * skipped, target_td})) return YapfRailRouteReason::RouteLimit;
+				if (exported) return YapfRailRouteReason::Complete;
+			}
+		}
+		YapfRailRouteStep next{target, target_td};
+		if (follower.is_bridge || follower.is_tunnel) {
+			next.wormhole_from = previous.tile;
+			next.wormhole_from_trackdir = previous.trackdir;
+			next.wormhole_tiles = follower.tiles_skipped;
+		}
+		return append(next) ? YapfRailRouteReason::Complete : YapfRailRouteReason::RouteLimit;
+	};
+
+	for (const Node *node : nodes) {
+		if (node->parent != nullptr) {
+			const auto reason = follow(node->GetTile(), node->GetTrackdir(), true);
+			if (reason != YapfRailRouteReason::Complete) return reason;
+			if (exported) return YapfRailRouteReason::Complete;
+		}
+		while (path.back().tile != node->GetLastTile() || path.back().trackdir != node->GetLastTrackdir()) {
+			const auto reason = follow(INVALID_TILE, INVALID_TRACKDIR, false);
+			if (reason != YapfRailRouteReason::Complete) return reason;
+			if (exported) return YapfRailRouteReason::Complete;
+		}
+	}
+	return YapfRailRouteReason::Complete;
+}
+
+/** Export an already executed native search; never invokes a second search. */
+template <class Tpf>
+static YapfRailRoute YapfBuildRailRoute(const Train *v, Tpf &pf, bool found, uint max_path_steps, const YapfRailRouteFilter &export_end)
+{
+	YapfRailRoute result;
+	result.nodes = uint(pf.num_steps);
+	if (!found) {
+		result.reason = pf.nodes.OpenCount() != 0 ? YapfRailRouteReason::NodeBudget : YapfRailRouteReason::NoPath;
+		return result;
+	}
+	result.reason = YapfExportRailRoute(v, pf, max_path_steps, result.path, export_end);
+	result.complete = result.reason == YapfRailRouteReason::Complete;
+	if (result.complete) {
+		result.cost = pf.GetBestNode()->cost;
+	} else {
+		/* A partial trace is never presented as a usable selected corridor. */
+		result.path.clear();
+	}
+	return result;
+}
+
+template <class Tpf>
+static YapfRailRoute YapfPlanRailRoute(const Train *v, TileIndex origin, Trackdir td, uint max_nodes,
+		const YapfRailRouteFilter &filter, TileIndex exact_target, Trackdir exact_td, uint max_path_steps,
+		std::optional<std::pair<TileIndex, Trackdir>> required_point, const YapfRailRouteFilter &export_end)
+{
+	YapfRailRoute result;
+	Tpf pf;
+	if (required_point) pf.SetRailRouteRequiredPoint(required_point->first, required_point->second);
+	pf.SetOrigin(origin, td, INVALID_TILE, INVALID_TRACKDIR, 1);
+	pf.SetTreatFirstRedTwoWaySignalAsEOL(true);
+	if (exact_target != INVALID_TILE) {
+		pf.SetDestinationTile(v, exact_target, exact_td);
+		pf.SetRailRouteTarget(exact_target, exact_td);
+	} else {
+		/* A future departure query has a different origin from the live train.
+		 * Use that origin for the native nearest-station heuristic as well. */
+		if (v->current_order.IsType(OT_GOTO_STATION) || v->current_order.IsType(OT_GOTO_WAYPOINT)) {
+			pf.SetDestinationStation(v, v->current_order.GetDestination().ToStationID(), origin,
+					v->current_order.IsType(OT_GOTO_STATION) ? StationType::Rail : StationType::RailWaypoint);
+		} else {
+			pf.SetDestination(v);
+		}
+	}
+	pf.SetRailRouteFilter(filter);
+	/* A bounded result must never depend on a client's segment cache history.
+	 * This also keeps query-specific filters and endpoints out of that cache. */
+	pf.DisableCache(true);
+	pf.SetMaxSearchNodes(max_nodes);
+	if (filter && !filter(origin, td)) {
+		result.reason = YapfRailRouteReason::NoPath;
+		return result;
+	}
+	const bool found = pf.FindPath(v);
+	result = YapfBuildRailRoute(v, pf, found, max_path_steps, export_end);
+	result.nodes = std::min(max_nodes, std::max(1u, result.nodes));
+	return result;
+}
+
+YapfRailRoute YapfTrainPlanRoute(const Train *v, TileIndex origin, Trackdir td, uint max_nodes,
+		const YapfRailRouteFilter &filter, TileIndex exact_target, Trackdir exact_td, uint max_path_steps,
+		std::optional<std::pair<TileIndex, Trackdir>> required_point, const YapfRailRouteFilter &export_end)
+{
+	YapfRailRoute result;
+	if (v == nullptr || max_nodes == 0 || max_nodes > uint(std::numeric_limits<int>::max()) || max_path_steps == 0 ||
+			!IsValidTile(origin) || !IsValidTrackdir(td) || !HasTrackdir(GetTileTrackdirBits(origin, TransportType::Rail, 0), td)) return result;
+	if (required_point && (!IsValidTile(required_point->first) || !IsValidTrackdir(required_point->second) ||
+			!HasTrackdir(GetTileTrackdirBits(required_point->first, TransportType::Rail, 0), required_point->second))) return result;
+	if (exact_target != INVALID_TILE) {
+		if (!IsValidTile(exact_target) || (exact_td != INVALID_TRACKDIR &&
+				(!IsValidTrackdir(exact_td) || !HasTrackdir(GetTileTrackdirBits(exact_target, TransportType::Rail, 0), exact_td)))) return result;
+		if (HasStationTileRail(exact_target)) {
+			/* The native follower compresses a platform to its directed far end.
+			 * Do not fabricate a complete path to a tile that it skipped over. */
+			if (exact_td == INVALID_TRACKDIR || BaseStation::GetByTile(exact_target)->GetPlatformLength(exact_target, TrackdirToExitdir(exact_td)) != 1) {
+				result.reason = YapfRailRouteReason::UnsupportedTarget;
+				return result;
+			}
+		}
+	} else {
+		switch (v->current_order.GetType()) {
+			case OT_GOTO_STATION:
+				if (!Station::IsValidID(v->current_order.GetDestination().ToStationID())) return result;
+				break;
+			case OT_GOTO_WAYPOINT:
+				if (!Waypoint::IsValidID(v->current_order.GetDestination().ToStationID())) return result;
+				break;
+			case OT_GOTO_DEPOT:
+				if (!IsValidTile(v->dest_tile)) return result;
+				break;
+			default:
+				return result;
+		}
+	}
+	if (required_point) {
+		return _settings_game.pf.forbid_90_deg
+				? YapfPlanRailRoute<CYapfRailRequiredPointNo90>(v, origin, td, max_nodes, filter, exact_target, exact_td, max_path_steps, required_point, export_end)
+				: YapfPlanRailRoute<CYapfRailRequiredPoint>(v, origin, td, max_nodes, filter, exact_target, exact_td, max_path_steps, required_point, export_end);
+	}
+	return _settings_game.pf.forbid_90_deg
+		? YapfPlanRailRoute<CYapfRailNo90>(v, origin, td, max_nodes, filter, exact_target, exact_td, max_path_steps, std::nullopt, export_end)
+		: YapfPlanRailRoute<CYapfRail>(v, origin, td, max_nodes, filter, exact_target, exact_td, max_path_steps, std::nullopt, export_end);
+}
+
 
 Track YapfTrainChooseTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
 {
-	Trackdir td_ret = _settings_game.pf.forbid_90_deg
-		? CYapfRailNo90::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest)
-		: CYapfRail::stChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
+	Trackdir td_ret = YapfChooseNativeRailRoute(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
 
 
 	return (td_ret != INVALID_TRACKDIR) ? TrackdirToTrack(td_ret) : FindFirstTrack(tracks);
@@ -1121,6 +1403,13 @@ static bool YapfTrainCheckReverse(const Train *v, TileIndex tile, Trackdir td, T
 		reverse_penalty = 1;
 	}
 
+	if (v->current_order.IsType(OT_GOTO_COUPLE)) {
+		const bool reverse = _settings_game.pf.forbid_90_deg
+				? CYapfCoupleRailNo90::stCheckCoupleReverse(v, tile, td, tile_rev, td_rev, reverse_penalty, input_flags)
+				: CYapfCoupleRail::stCheckCoupleReverse(v, tile, td, tile_rev, td_rev, reverse_penalty, input_flags);
+		return reverse != swapped;
+	}
+
 	bool reverse = _settings_game.pf.forbid_90_deg
 		? CYapfRailNo90::stCheckReverseTrain(v, tile, td, tile_rev, td_rev, reverse_penalty, input_flags)
 		: CYapfRail::stCheckReverseTrain(v, tile, td, tile_rev, td_rev, reverse_penalty, input_flags);
@@ -1132,6 +1421,10 @@ constexpr int DRIVING_BACKWARDS_PENALTY = 100 * YAPF_TILE_LENGTH;
 
 bool YapfTrainCheckReverse(const Train *v)
 {
+	/* A couple order without a destination is re-evaluated by ProcessOrders
+	 * every tick. Prove that a potential partner exists before walking both
+	 * ends of the entire rail network just to find none again. */
+	if (v->current_order.IsType(OT_GOTO_COUPLE) && !HasPotentialCoupleTarget(v)) return false;
 	const Train *moving_front = v->GetMovingFront();
 	const Train *moving_back = v->GetMovingBack();
 

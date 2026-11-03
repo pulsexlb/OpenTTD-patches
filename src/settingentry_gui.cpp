@@ -996,6 +996,7 @@ SettingsContainer &GetSettingsTree()
 				routing->Add(new SettingEntry("vehicle.road_side"));
 				routing->Add(new SettingEntry("difficulty.train_flip_reverse_allowed"));
 				routing->Add(new SettingEntry("pf.reverse_at_signals"));
+				routing->Add(new SettingEntry("vehicle.automatic_yield"));
 				routing->Add(new SettingEntry("pf.back_of_one_way_pbs_waiting_point"));
 				routing->Add(new SettingEntry("pf.forbid_90_deg"));
 				routing->Add(new SettingEntry("pf.reroute_rv_on_layout_change"));

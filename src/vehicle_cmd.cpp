@@ -1736,6 +1736,24 @@ CommandCost CmdMassSendVehicleToDepot(DoCommandFlags flags, DepotCommandFlags de
 	return SendAllVehiclesToDepot(flags, depot_cmd, vli, cargo_filter);
 }
 
+/** Select a fixed train service number; empty restores dispatch-slot numbering. */
+CommandCost CmdSetVehicleServiceNumber(DoCommandFlags flags, VehicleID veh_id, const std::string &text)
+{
+	Vehicle *v = Vehicle::GetIfValid(veh_id);
+	if (v == nullptr || v->type != VehicleType::Train || !v->IsPrimaryVehicle()) return CMD_ERROR;
+	CommandCost ret = CheckOwnership(v->owner);
+	if (ret.Failed()) return ret;
+	if (Utf8StringLength(text) >= MAX_LENGTH_VEHICLE_NAME_CHARS) return CMD_ERROR;
+	if (flags.Test(DoCommandFlag::Execute)) {
+		v->fixed_service_number = text;
+		v->service_number_suppressed = false;
+		InvalidateWindowData(WindowClass::VehicleTimetable, v->index);
+		InvalidateWindowClassesData(WindowClass::DepartureBoard);
+		SetWindowDirty(WindowClass::VehicleView, v->index);
+	}
+	return CommandCost();
+}
+
 /**
  * Give a custom name to your vehicle
  * @param flags type of operation

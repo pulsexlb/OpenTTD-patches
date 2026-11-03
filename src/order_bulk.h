@@ -38,6 +38,7 @@ enum class BulkOrderOp {
 	SetScheduleReuseSlots,
 	AddScheduleSlot,
 	AddScheduleSlotWithFlags,
+	SetServiceNumber,
 };
 
 static constexpr size_t BULK_ORDER_MAX_CMD_SIZE = 2048;
@@ -68,6 +69,12 @@ public:
 	{
 		this->OpCode(BulkOrderOp::Modify);
 		this->serialiser.Send_generic_seq(mof, data, cargo_id, text);
+	}
+
+	void SetServiceNumber(uint8_t mode, std::string_view text)
+	{
+		this->OpCode(BulkOrderOp::SetServiceNumber);
+		this->serialiser.Send_generic_seq(mode, text);
 	}
 
 	void Refit(CargoType cargo)
