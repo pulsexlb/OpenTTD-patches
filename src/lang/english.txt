@@ -988,7 +988,7 @@ STR_ORDER_COUPLE_SLOT_TOOLTIP                                 :{BLACK}The trace 
 STR_ORDER_COUPLE_STATION_BUTTON                                :{BLACK}Station
 STR_ORDER_COUPLE_STATION_TOOLTIP                               :{BLACK}Select a station on the map to restrict coupling to. Click again to clear
 STR_ORDER_COUPLE_MORE_BUTTON                                   :{BLACK}More options
-STR_ORDER_COUPLE_MORE_TOOLTIP                                  :{BLACK}Further coupling criteria: trace restrict slot group, vehicle group, load state, cargo type and unit count
+STR_ORDER_COUPLE_MORE_TOOLTIP                                  :{BLACK}Further coupling criteria: trace restrict slot group, vehicle group, load state, cargo type, unit count and service number
 STR_ORDER_COUPLE_OPTIONS_CAPTION                               :{WHITE}Coupling criteria
 STR_ORDER_COUPLE_SLOT_GROUP_LABEL                              :{BLACK}Trace restrict slot group
 STR_ORDER_COUPLE_GROUP_LABEL                                   :{BLACK}Vehicle group

@@ -5037,7 +5037,7 @@ STR_ORDER_COUPLE_USE_WAITING_TOOLTIP                           :{BLACK}对接后
 STR_ORDER_COUPLE_ANY_SLOT                                     :任意路签
 STR_ORDER_COUPLE_SLOT_GROUP_TOOLTIP                            :{BLACK}连接的列车必须所在的路签组
 STR_ORDER_COUPLE_MORE_BUTTON                                   :{BLACK}更多选项
-STR_ORDER_COUPLE_MORE_TOOLTIP                                  :{BLACK}更多连接限制条件：路签组、载具组、空满状态、货物类型与车厢数量
+STR_ORDER_COUPLE_MORE_TOOLTIP                                  :{BLACK}更多连接限制条件：路签组、载具组、空满状态、货物类型、车厢数量与车次
 STR_ORDER_COUPLE_OPTIONS_CAPTION                               :{WHITE}连接条件
 STR_ORDER_COUPLE_SLOT_GROUP_LABEL                              :{BLACK}路签组
 STR_ORDER_COUPLE_GROUP_LABEL                                   :{BLACK}载具组

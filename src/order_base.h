@@ -103,6 +103,7 @@ void ClearOrderDestinationRefcountMap();
 struct OrderExtraInfo {
 	TinyString station_service_number{};
 	uint8_t station_service_mode = 0; ///< 0: unchanged, 1: manual, 2: dispatch.
+	TinyString couple_service_number{}; ///< Service number the waiting train must have (empty = any).
 
 	uint8_t cargo_type_flags[NUM_CARGO] = {}; ///< Load/unload types for each cargo type.
 	uint32_t xdata = 0;                       ///< Extra arbitrary data
@@ -179,6 +180,20 @@ public:
 		this->CheckExtraInfoAlloced();
 		this->extra->station_service_mode = mode;
 		this->extra->station_service_number = number;
+	}
+
+	/** Get the service number a coupling partner must have; empty means no restriction. */
+	std::string_view GetCoupleServiceNumber() const { return this->extra ? std::string_view(this->extra->couple_service_number) : std::string_view{}; }
+
+	/** Does this couple order restrict coupling to a specific service number? */
+	bool HasCoupleServiceNumber() const { return !this->GetCoupleServiceNumber().empty(); }
+
+	/** Set the required service number of the coupling partner; an empty string clears it. */
+	void SetCoupleServiceNumber(std::string_view number)
+	{
+		if (number.empty() && !this->extra) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->couple_service_number = number;
 	}
 private:
 	void AllocExtraInfo();

@@ -7359,6 +7359,15 @@ static bool CoupleGroupOk(const Order &order, const Train *t)
 	return GroupIsInGroup(t->group_id, group);
 }
 
+/** Check the waiting train's active service number against the couple order's restriction. */
+static bool CoupleServiceNumberOk(const Order &order, const Train *t)
+{
+	const std::string_view required = order.GetCoupleServiceNumber();
+	if (required.empty()) return true;
+	const std::string active = t->GetActiveServiceNumber();
+	return std::string_view(active) == required;
+}
+
 static bool CoupleStationOk(const Order &order, TileIndex contact_tile)
 {
 	if (!order.HasCoupleStation()) return true;
@@ -7580,6 +7589,7 @@ static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *movin
 	if (!CoupleSlotOk(order, carrier)) return CoupleCandidateResult::Slot;
 	if (!CoupleSlotGroupOk(order, carrier)) return CoupleCandidateResult::SlotGroup;
 	if (!CoupleGroupOk(order, carrier)) return CoupleCandidateResult::Group;
+	if (!CoupleServiceNumberOk(order, carrier)) return CoupleCandidateResult::ServiceNumber;
 	if (!CoupleStationOk(order, contact_tile) &&
 			(!order.HasCoupleStation() || GetTrainCouplingStation(rep) != order.GetCoupleStation())) return CoupleCandidateResult::Station;
 	if (GetTrainCouplingStation(rep) == StationID::Invalid()) return CoupleCandidateResult::Platform;

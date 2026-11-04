@@ -802,11 +802,11 @@ private:
 	}
 
 	/** Apply an order change through the real order modification command. */
-	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO)
+	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO, std::string text = {})
 	{
 		if (!this->CheckOrderStillValid()) return;
 		Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->target.CmdTile(), this->target.TargetKind(), this->target.TargetId(),
-				this->order_id, mof, data, cargo, {});
+				this->order_id, mof, data, cargo, text);
 	}
 
 	/** Currently selected cargo of the cargo criterion, or INVALID_CARGO when the criterion is off. */
@@ -1279,6 +1279,7 @@ static StringID GetCoupleCandidateResultString(CoupleCandidateResult result)
 		case CoupleCandidateResult::Slot:        return STR_COUPLE_DIAGNOSTIC_SLOT;
 		case CoupleCandidateResult::SlotGroup:   return STR_COUPLE_DIAGNOSTIC_SLOT_GROUP;
 		case CoupleCandidateResult::Group:       return STR_COUPLE_DIAGNOSTIC_GROUP;
+		case CoupleCandidateResult::ServiceNumber: return STR_COUPLE_DIAGNOSTIC_SERVICE_NUMBER;
 		case CoupleCandidateResult::Station:     return STR_COUPLE_DIAGNOSTIC_STATION;
 		case CoupleCandidateResult::Platform:    return STR_COUPLE_DIAGNOSTIC_PLATFORM;
 		case CoupleCandidateResult::Slower:      return STR_COUPLE_DIAGNOSTIC_SLOWER;
@@ -1362,6 +1363,8 @@ enum CoupleCriteriaWidgets : WidgetID {
 	WID_CPO_CARGO,            ///< Cargo criterion.
 	WID_CPO_VALUE_LABEL,      ///< Label of the unit count criterion.
 	WID_CPO_VALUE,            ///< Unit count criterion (opens a query).
+	WID_CPO_SERVICE_NUMBER_LABEL, ///< Label of the service number criterion.
+	WID_CPO_SERVICE_NUMBER,   ///< Service number criterion (opens a text query).
 	WID_CPO_SPEED_LABEL,
 	WID_CPO_SPEED_LABEL1,
 	WID_CPO_SPEED_MIN_MODE,
@@ -1414,11 +1417,12 @@ private:
 		std::array<uint8_t, 2> speed_units{};
 		uint16_t slot_group = 0;
 		uint16_t group = 0;
+		std::string service_number{};
 
 		bool operator==(const SettingsSnapshot &other) const
 		{
 			return this->check_point == other.check_point && this->load == other.load && this->cargo == other.cargo && this->units == other.units &&
-					this->slot_group == other.slot_group && this->group == other.group &&
+					this->slot_group == other.slot_group && this->group == other.group && this->service_number == other.service_number &&
 					this->reject_slower == other.reject_slower && this->reject_faster == other.reject_faster &&
 					this->speed_comparators == other.speed_comparators && this->speed_values == other.speed_values && this->speed_units == other.speed_units;
 		}
@@ -1445,6 +1449,7 @@ private:
 		}
 		s.slot_group = this->order->GetCoupleSlotGroup().base();
 		s.group = this->order->GetCoupleGroup().base();
+		s.service_number = std::string(this->order->GetCoupleServiceNumber());
 		return s;
 	}
 
@@ -1458,6 +1463,8 @@ private:
 		this->GetWidget<NWidgetCore>(WID_CPO_GROUP)->SetString(STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
 		this->GetWidget<NWidgetCore>(WID_CPO_LOAD)->SetString(STR_ORDER_COUPLE_ANY + to_underlying(this->order->GetCoupleLoad()));
 		this->GetWidget<NWidgetCore>(WID_CPO_CARGO)->SetString(STR_ORDER_COUPLE_ANY_CARGO);
+		/* Static fallback; the parameterised value is resolved by GetWidgetString. */
+		this->GetWidget<NWidgetCore>(WID_CPO_SERVICE_NUMBER)->SetString(STR_ORDER_COUPLE_SERVICE_NUMBER_ANY);
 		for (uint row = 0; row < 2; row++) {
 			const auto mode = this->order->GetCoupleSpeedBoundMode(row);
 			/* Manual mode text ("value unit") is resolved per render by #GetWidgetString. */
@@ -1482,11 +1489,11 @@ private:
 	}
 
 	/** Apply an order change through the real order modification command. */
-	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO)
+	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO, std::string text = {})
 	{
 		if (!this->CheckOrderStillValid()) return;
 		Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->target.CmdTile(), this->target.TargetKind(), this->target.TargetId(),
-				this->order_id, mof, data, cargo, {});
+				this->order_id, mof, data, cargo, text);
 	}
 
 	/** Currently selected cargo of the cargo criterion, or INVALID_CARGO when the criterion is off. */
@@ -1673,6 +1680,12 @@ public:
 			case WID_CPO_VALUE:
 				return GetString(STR_JUST_INT, this->order->GetNumCouple());
 
+			case WID_CPO_SERVICE_NUMBER: {
+				const std::string_view number = this->order->GetCoupleServiceNumber();
+				if (number.empty()) return GetString(STR_ORDER_COUPLE_SERVICE_NUMBER_ANY);
+				return GetString(STR_ORDER_COUPLE_SERVICE_NUMBER_VALUE, std::string(number));
+			}
+
 			case WID_CPO_SPEED_LABEL1:
 			case WID_CPO_SPEED_LABEL2:
 				return GetString(widget == WID_CPO_SPEED_LABEL1 ? STR_ORDER_COUPLE_SPEED_LABEL1 : STR_ORDER_COUPLE_SPEED_LABEL2);
@@ -1725,6 +1738,12 @@ public:
 			case WID_CPO_VALUE:
 				this->query_text_widget = WID_CPO_VALUE;
 				ShowQueryString(GetString(STR_JUST_INT, this->order->GetNumCouple()), STR_ORDER_COUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
+				return;
+			case WID_CPO_SERVICE_NUMBER:
+				this->query_text_widget = WID_CPO_SERVICE_NUMBER;
+				ShowQueryString(GetString(STR_JUST_RAW_STRING, this->order->GetCoupleServiceNumber()),
+						STR_ORDER_COUPLE_SERVICE_NUMBER_QUERY, MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL,
+						{QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
 				return;
 			case WID_CPO_SPEED_MIN_MODE:
 			case WID_CPO_SPEED_MAX_MODE: {
@@ -1825,7 +1844,13 @@ public:
 
 	void OnQueryTextFinished(std::optional<std::string> str) override
 	{
-		if (!str.has_value() || str->empty()) return;
+		if (!str.has_value()) return;
+		if (this->query_text_widget == WID_CPO_SERVICE_NUMBER) {
+			this->query_text_widget = INVALID_WIDGET;
+			this->ModifyOrder(MOF_COUPLE_SERVICE_NUMBER, 0, INVALID_CARGO, *str);
+			return;
+		}
+		if (str->empty()) return;
 		auto try_value = ParseInteger<uint>(*str);
 		if (!try_value.has_value()) return;
 		if (this->query_text_widget == WID_CPO_VALUE) {
@@ -1898,6 +1923,11 @@ static constexpr NWidgetPart _nested_couple_options_widgets[] = {
 			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_VALUE_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_COUPLE_VALUE_LABEL, STR_NULL),
 			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_CPO_VALUE), SetFill(0, 0), SetResize(0, 0),
 		EndContainer(),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_SERVICE_NUMBER_LABEL), SetFill(1, 0), SetResize(1, 0),
+					SetStringTip(STR_ORDER_COUPLE_SERVICE_NUMBER_LABEL, STR_ORDER_COUPLE_SERVICE_NUMBER_TOOLTIP),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_CPO_SERVICE_NUMBER), SetMinimalSize(96, 12), SetFill(0, 0), SetResize(0, 0),
+		EndContainer(),
 		NWidget(NWID_HORIZONTAL), SetPIP(2, 4, 2),
 			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_SPEED_LABEL), SetStringTip(STR_ORDER_COUPLE_SPEED_LABEL, STR_ORDER_COUPLE_SPEED_RANGE_TOOLTIP),
 			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_SPEED_LABEL1), SetStringTip(STR_ORDER_COUPLE_SPEED_LABEL1, STR_ORDER_COUPLE_SPEED_RANGE_TOOLTIP),
@@ -1918,7 +1948,7 @@ static constexpr NWidgetPart _nested_couple_options_widgets[] = {
 
 /** Window description of the coupling criteria window. */
 static WindowDesc _couple_options_desc(__FILE__, __LINE__,
-	WindowPosition::Automatic, "couple_criteria", 240, 159,
+	WindowPosition::Automatic, "couple_criteria", 240, 173,
 	WindowClass::VehicleCoupleCriteria, WindowClass::VehicleOrders,
 	WindowDefaultFlag::Construction,
 	_nested_couple_options_widgets
@@ -3180,6 +3210,9 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				AppendStringInPlace(line, STR_ORDER_COUPLE_SPEED_SUFFIX_LEGACY);
 			}
 
+			if (order->HasCoupleServiceNumber()) {
+				AppendStringInPlace(line, STR_ORDER_COUPLE_SERVICE_NUMBER_SUFFIX, std::string(order->GetCoupleServiceNumber()));
+			}
 			if (order->HasCoupleCheckPoint()) AppendStringInPlace(line, STR_ORDER_COUPLE_CHECK_AT, GetCoupleCheckPointLabel(orders, order_index, *order));
 			break;
 		}

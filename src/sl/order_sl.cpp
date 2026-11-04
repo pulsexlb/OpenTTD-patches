@@ -140,6 +140,7 @@ NamedSaveLoadTable GetOrderExtraInfoDescription()
 	static const NamedSaveLoad _order_extra_info_desc[] = {
 		NSL("station_service_mode", SLE_CONDVAR_X(OrderExtraInfo, station_service_mode, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER, 2))),
 		NSL("station_service_number", SLE_CONDSTR_X(OrderExtraInfo, station_service_number, SLE_STR, 0, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER, 2))),
+		NSL("couple_service_number", SLE_CONDSTR_X(OrderExtraInfo, couple_service_number, SLE_STR, 0, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_COUPLE_SERVICE_NUMBER))),
 		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, 32,        SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 1, 2))),
 		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_GRF_CARGO, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 3, 4))),
 		NSL("cargo_type_flags", SLE_CONDARR_X(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_CARGO,     SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_CARGO_TYPE_ORDERS, 5))),

@@ -2049,6 +2049,13 @@ STR_ORDER_COUPLE_CHECK_NONE                                     :{BLACK}仅在�
 STR_ORDER_COUPLE_CHECK_MENU                                     :{BLACK}在以下位置检查连接对象：{STRING}
 STR_ORDER_COUPLE_CHECK_AT                                       :；先在 {STRING} 检查
 STR_ORDER_COUPLE_CHECK_MISSING                                  :；检查点已失效
+STR_ORDER_COUPLE_SERVICE_NUMBER_LABEL                           :{BLACK}车次限制
+STR_ORDER_COUPLE_SERVICE_NUMBER_ANY                             :不限
+STR_ORDER_COUPLE_SERVICE_NUMBER_VALUE                           :{STRING}
+STR_ORDER_COUPLE_SERVICE_NUMBER_QUERY                           :{WHITE}输入要连接的列车应具有的车次
+STR_ORDER_COUPLE_SERVICE_NUMBER_TOOLTIP                        :{BLACK}只与当前车次匹配的等待列车连接。点击「默认」清除限制
+STR_ORDER_COUPLE_SERVICE_NUMBER_SUFFIX                         :；车次 {STRING}
+STR_COUPLE_DIAGNOSTIC_SERVICE_NUMBER                           :车次不匹配
 STR_ORDER_LIST_EDIT                                             :{BLACK}编辑
 STR_ORDER_LIST_DELETE                                           :{BLACK}删除
 STR_ORDER_LIST_DELETE_TOOLTIP                                   :{BLACK}删除选中的调度表

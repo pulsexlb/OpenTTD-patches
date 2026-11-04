@@ -2122,6 +2122,13 @@ STR_ORDER_COUPLE_CHECK_NONE                                     :{BLACK}Check on
 STR_ORDER_COUPLE_CHECK_MENU                                     :{BLACK}Check for partner at: {RAW_STRING}
 STR_ORDER_COUPLE_CHECK_AT                                       :; check at {RAW_STRING} first
 STR_ORDER_COUPLE_CHECK_MISSING                                  :; the check point is gone
+STR_ORDER_COUPLE_SERVICE_NUMBER_LABEL                           :{BLACK}Service number
+STR_ORDER_COUPLE_SERVICE_NUMBER_ANY                             :Any
+STR_ORDER_COUPLE_SERVICE_NUMBER_VALUE                           :{RAW_STRING}
+STR_ORDER_COUPLE_SERVICE_NUMBER_QUERY                           :{WHITE}Enter the service number the train to couple with must have
+STR_ORDER_COUPLE_SERVICE_NUMBER_TOOLTIP                        :{BLACK}Only couple with a waiting train whose active service number matches. Use the Default button to clear
+STR_ORDER_COUPLE_SERVICE_NUMBER_SUFFIX                         :; service number {RAW_STRING}
+STR_COUPLE_DIAGNOSTIC_SERVICE_NUMBER                           :Service number does not match
 STR_ORDER_LIST_EDIT                                             :{BLACK}Edit
 STR_ORDER_LIST_DELETE                                           :{BLACK}Delete
 STR_ORDER_LIST_DELETE_TOOLTIP                                   :{BLACK}Delete the selected order list
