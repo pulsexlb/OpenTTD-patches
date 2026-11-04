@@ -7866,6 +7866,7 @@ Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir 
 	Train *best = nullptr;
 	std::vector<VehicleID> seen;
 	std::tuple<uint64_t, uint, uint32_t> best_key{};
+	bool best_clear = false;
 	TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
 	for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
 		for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
@@ -7878,13 +7879,23 @@ Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir 
 			seen.push_back(id);
 			Train *target = ValidateCoupleCandidate(moving, t->First(), st_tile, respect_claim, claim_cost, criteria);
 			if (target != nullptr) {
-				/* A candidate whose approach is blocked by another consist is not
-				 * reachable; keep looking for a waiting train we can reach. */
 				const uint penalty = GetCoupleSpeedPreferencePenalty(moving, target);
 				const auto key = std::make_tuple(uint64_t(DistanceManhattan(tile, target->tile)) + penalty, penalty, target->index.base());
-				if ((best == nullptr || key < best_key) && IsCoupleApproachPathClearTo(moving, target)) {
+				/* The approach walk only ranks candidates, it must never veto them.
+				 * It follows the cheapest tile path, which is not necessarily the
+				 * route the train will take: the pathfinder applies turn, signal
+				 * and reservation costs the walk does not model. A train queued on
+				 * some platform track the walk happens to cross therefore used to
+				 * reject every candidate, leaving the consist without a target and
+				 * permanently stuck even though a clear route existed. A clear
+				 * approach is preferred, but a reported obstruction is only a
+				 * fallback: the regular PBS reservation makes the train wait
+				 * instead of driving through another consist. */
+				const bool path_clear = IsCoupleApproachPathClearTo(moving, target);
+				if (best == nullptr || (path_clear && !best_clear) || (path_clear == best_clear && key < best_key)) {
 					best = target;
 					best_key = key;
+					best_clear = path_clear;
 				}
 			}
 		}
