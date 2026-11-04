@@ -229,6 +229,7 @@ enum SlXvFeatureIndex {
 	XSLFI_FIXED_SERVICE_NUMBER,                   ///< Per-consist service number, independent of dispatch slots.
 	XSLFI_WAYPOINT_STOP,                         ///< Waypoint stopping behavior and mutually exclusive stop/reverse actions.
 	XSLFI_TRAIN_DECOUPLE_PART,                    ///< Which part of a decoupled train a consist is, survives network snapshots
+	XSLFI_TRAIN_UNIT_MAIN,                        ///< Multi-part train units remember which member is their main part
 
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };

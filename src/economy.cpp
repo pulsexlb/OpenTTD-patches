@@ -1622,6 +1622,18 @@ static uint GetLoadAmount(Vehicle *v)
 template <class Taction>
 bool IterateVehicleParts(Vehicle *v, Taction action, bool ignore_multihead_rear = false)
 {
+	/* Train units may be stored in either orientation. Walk the complete unit
+	 * through its explicit main part instead of relying on articulation order. */
+	if (v->type == VehicleType::Train && v->HasUnitMain() && !Train::From(v)->IsMultiheaded()) {
+		Vehicle *main = v->GetUnitMain();
+		for (Vehicle *w = main->First(); w != nullptr; w = w->Next()) {
+			if (w->GetUnitMain() != main) continue;
+			if (ignore_multihead_rear && w->type == VehicleType::Train && Train::From(w)->IsRearDualheaded()) continue;
+			if (!action(w)) return false;
+		}
+		return true;
+	}
+
 	for (Vehicle *w = v; w != nullptr;
 			w = w->HasArticulatedPart() ? w->GetNextArticulatedPart() : nullptr) {
 		if (!action(w)) return false;
@@ -1915,7 +1927,8 @@ static void ReserveConsist(Station *st, Vehicle *u, CargoArray *consist_capleft,
 		/* Exclude various ways in which the vehicle might not be the head of an equivalent of
 		 * "articulated chain". Also don't do the reservation if the vehicle is going to refit
 		 * to a different cargo and hasn't tried to do so, yet. */
-		if (!v->IsArticulatedPart() &&
+		const bool is_unit_start = (v->type == VehicleType::Train) ? Train::From(v)->IsMovingUnitStart() : !v->IsArticulatedPart();
+		if (is_unit_start &&
 				(v->type != VehicleType::Train || !Train::From(v)->IsRearDualheaded()) &&
 				(v->type != VehicleType::Aircraft || Aircraft::From(v)->IsNormalAircraft()) &&
 				(must_reserve || u->current_order.GetRefitCargo() == v->cargo_type)) {

@@ -46,6 +46,7 @@ void ResetViewportAfterLoadGame();
 
 void ConvertOldMultiheadToNew();
 void ConnectMultiheadedTrains();
+void RebuildTrainUnitMains();
 
 void ResetTempEngineData();
 Engine *GetTempDataEngine(EngineID index, VehicleType type = VehicleType::Invalid, uint16_t local_id = 0);

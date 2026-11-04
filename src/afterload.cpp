@@ -1221,6 +1221,8 @@ bool AfterLoadGame()
 
 	/* Update all vehicles: Phase 1 */
 	AfterLoadVehiclesPhase1(true);
+	/* Chain pointers are now valid; rebuild the main part of multi-part units. */
+	RebuildTrainUnitMains();
 
 	CargoPacket::PostVehiclesAfterLoad();
 

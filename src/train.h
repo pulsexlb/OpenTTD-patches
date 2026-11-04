@@ -364,6 +364,46 @@ public:
 	 */
 	inline Train *GetNextUnit() const
 	{
+		if (this->HasUnitMain() && !this->IsMultiheaded()) {
+			Vehicle *v = this->GetNextVehicle();
+			return v != nullptr ? Train::From(v) : nullptr;
+		}
+
+		if (this->IsArticulatedPart()) {
+			/* Defensive fallback for an unresolved articulated group: never
+			 * return a vehicle from the same unit. */
+			const Train *run_start = this;
+			const Train *run_end = this;
+			while (run_start->Previous() != nullptr && run_start->Previous()->IsArticulatedPart()) {
+				run_start = Train::From(run_start->Previous());
+			}
+			while (run_end->Next() != nullptr && run_end->Next()->IsArticulatedPart()) {
+				run_end = Train::From(run_end->Next());
+			}
+			uint32_t run_size = 0;
+			for (const Train *p = run_start; ; p = p->Next()) {
+				run_size++;
+				if (p == run_end) break;
+			}
+			Train *after = run_end->Next() != nullptr ? Train::From(run_end->Next()) : nullptr;
+			if (after != nullptr && !after->IsArticulatedPart()) {
+				const uint32_t cid = after->index.base();
+				bool id_matches = true;
+				for (const Train *p = run_start; ; p = p->Next()) {
+					const uint32_t pid = p->index.base();
+					if (pid <= cid || pid - cid > run_size) {
+						id_matches = false;
+						break;
+					}
+					if (p == run_end) break;
+				}
+				/* A part-first unit stores its base after the parts. */
+				if (id_matches) after = after->Next() != nullptr ? Train::From(after->Next()) : nullptr;
+			}
+			if (after != nullptr && after->IsRearDualheaded()) after = after->GetNextVehicle();
+			return after;
+		}
+
 		Train *v = this->GetNextVehicle();
 		if (v != nullptr && v->IsRearDualheaded()) v = v->GetNextVehicle();
 
@@ -376,6 +416,11 @@ public:
 	 */
 	inline Train *GetPrevUnit()
 	{
+		if (this->HasUnitMain() && !this->IsMultiheaded()) {
+			Vehicle *v = this->GetPrevVehicle();
+			return v != nullptr ? Train::From(v) : nullptr;
+		}
+
 		Train *v = this->GetPrevVehicle();
 		if (v != nullptr && v->IsRearDualheaded()) v = v->GetPrevVehicle();
 

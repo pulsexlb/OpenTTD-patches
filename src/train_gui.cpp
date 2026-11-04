@@ -252,16 +252,20 @@ static void TrainDetailsInfoTab(const Train *v, int left, int right, int y, uint
 	/* Weight of the whole articulated vehicle: the weight of every part of the group. */
 	auto get_group_weight = [&]() -> uint32_t {
 		uint32_t weight = 0;
-		for (const Train *u = v; u != nullptr; u = u->Next()) {
-			if (u != v && !u->IsArticulatedPart()) break; // the next vehicle group starts here
+		const Train *main = Train::From(v->GetUnitMain());
+		for (const Train *u = main->First(); u != nullptr; u = u->Next()) {
+			if (u->GetUnitMain() != main) continue;
+		if (main->IsMultiheaded() && u != main) continue;
 			weight += u->GetSelfWeight();
 		}
 		return weight;
 	};
 	auto get_group_max_weight = [&]() -> uint32_t {
 		uint32_t weight = 0;
-		for (const Train *u = v; u != nullptr; u = u->Next()) {
-			if (u != v && !u->IsArticulatedPart()) break;
+		const Train *main = Train::From(v->GetUnitMain());
+		for (const Train *u = main->First(); u != nullptr; u = u->Next()) {
+			if (u->GetUnitMain() != main) continue;
+		if (main->IsMultiheaded() && u != main) continue;
 			weight += u->GetSelfMaxWeight();
 		}
 		return weight;
@@ -368,12 +372,15 @@ static void TrainDetailsCapacityTab(const CargoSummaryItem *item, int left, int 
 static void GetCargoSummaryOfArticulatedVehicle(const Train *v, CargoSummary &summary)
 {
 	summary.clear();
-	do {
-		if (!v->GetEngine()->CanCarryCargo()) continue;
+	const Train *main = Train::From(v->GetUnitMain());
+	for (const Train *u = main->First(); u != nullptr; u = u->Next()) {
+		if (u->GetUnitMain() != main) continue;
+		if (main->IsMultiheaded() && u != main) continue;
+		if (!u->GetEngine()->CanCarryCargo()) continue;
 
 		CargoSummaryItem new_item;
-		new_item.cargo = v->cargo_cap > 0 ? v->cargo_type : INVALID_CARGO;
-		new_item.subtype = GetCargoSubtypeText(v);
+		new_item.cargo = u->cargo_cap > 0 ? u->cargo_type : INVALID_CARGO;
+		new_item.subtype = GetCargoSubtypeText(u);
 		if (new_item.cargo == INVALID_CARGO && new_item.subtype == STR_EMPTY) continue;
 
 		auto item = std::ranges::find(summary, new_item);
@@ -386,10 +393,10 @@ static void GetCargoSummaryOfArticulatedVehicle(const Train *v, CargoSummary &su
 			item->source = StationID::Invalid();
 		}
 
-		item->capacity += v->cargo_cap;
-		item->amount += RVTransportGetPartCargoAmount(v);
-		if (item->source == StationID::Invalid()) item->source = v->cargo.GetFirstStation();
-	} while ((v = v->Next()) != nullptr && v->IsArticulatedPart());
+		item->capacity += u->cargo_cap;
+		item->amount += RVTransportGetPartCargoAmount(u);
+		if (item->source == StationID::Invalid()) item->source = u->cargo.GetFirstStation();
+	}
 }
 
 /**
@@ -400,11 +407,12 @@ static void GetCargoSummaryOfArticulatedVehicle(const Train *v, CargoSummary &su
 static uint GetLengthOfArticulatedVehicle(const Train *v)
 {
 	uint length = 0;
-
-	do {
-		length += v->GetDisplayImageWidth();
-	} while ((v = v->Next()) != nullptr && v->IsArticulatedPart());
-
+	const Train *main = Train::From(v->GetUnitMain());
+	for (const Train *u = main->First(); u != nullptr; u = u->Next()) {
+		if (u->GetUnitMain() != main) continue;
+		if (main->IsMultiheaded() && u != main) continue;
+		length += u->GetDisplayImageWidth();
+	}
 	return length;
 }
 
@@ -414,6 +422,14 @@ static uint GetLengthOfArticulatedVehicle(const Train *v)
  * @param det_tab Selected details tab
  * @return Number of line
  */
+static const Train *GetTrainDetailsNext(const Train *v)
+{
+	/* Details are shown per physical vehicle: dual-headed halves are separate
+	 * rows, and wrapped wagons between them must not be skipped. */
+	if (v->IsMultiheaded()) return v->Next() != nullptr ? Train::From(v->Next()) : nullptr;
+	return v->GetNextVehicle() != nullptr ? Train::From(v->GetNextVehicle()) : nullptr;
+}
+
 int GetTrainDetailsWndVScroll(VehicleID veh_id, TrainDetailsWindowTabs det_tab)
 {
 	int num = 0;
@@ -438,7 +454,7 @@ int GetTrainDetailsWndVScroll(VehicleID veh_id, TrainDetailsWindowTabs det_tab)
 		RVTransportGetCarriedVehicles(Vehicle::Get(veh_id), carried);
 		num = std::max<int>(1, carried.size());
 	} else {
-		for (const Train *v = Train::Get(veh_id)->First(); v != nullptr; v = v->GetNextVehicle()) {
+		for (const Train *v = Train::Get(veh_id)->First(); v != nullptr; v = GetTrainDetailsNext(v)) {
 			GetCargoSummaryOfArticulatedVehicle(v, _cargo_summary);
 			num += std::max(1u, (unsigned)_cargo_summary.size());
 
@@ -570,7 +586,7 @@ void DrawTrainDetails(const Train *v, const Rect &r, int vscroll_pos, uint16_t v
 		uint8_t line_number = 0;
 		/* The loop below advances 'v' itself, so keep the front vehicle for the code after it. */
 		const Train *front = v->First();
-		for (v = front; v != nullptr && vscroll_pos > -vscroll_cap; v = v->GetNextVehicle()) {
+		for (v = front; v != nullptr && vscroll_pos > -vscroll_cap; v = GetTrainDetailsNext(v)) {
 			GetCargoSummaryOfArticulatedVehicle(v, _cargo_summary);
 
 			/* Draw company colour bar on the left edge of this unit's row */
@@ -587,25 +603,26 @@ void DrawTrainDetails(const Train *v, const Rect &r, int vscroll_pos, uint16_t v
 			/* Draw sprites */
 			uint dx = 0;
 			int px = x;
-			const Train *u = v;
-			do {
+			const Train *unit_main = Train::From(v->GetUnitMain());
+			for (const Train *u = unit_main->First(); u != nullptr; u = u->Next()) {
+				if (u->GetUnitMain() != unit_main) continue;
+				if (unit_main->IsMultiheaded() && u != unit_main) continue;
 				Point offset;
 				int width = u->GetDisplayImageWidth(&offset);
 				if (vscroll_pos <= 0 && vscroll_pos > -vscroll_cap && line_number == 0) {
 					int pitch = 0;
-					const Engine *e = Engine::Get(v->engine_type);
+					const Engine *e = Engine::Get(u->engine_type);
 					if (e->GetGRF() != nullptr) {
 						pitch = ScaleSpriteTrad(e->GetGRF()->traininfo_vehicle_pitch);
 					}
-					PaletteID pal = v->vehstatus.Test(VehState::Crashed) ? PALETTE_CRASH : GetVehiclePalette(u);
+					PaletteID pal = u->vehstatus.Test(VehState::Crashed) ? PALETTE_CRASH : GetVehiclePalette(u);
 					VehicleSpriteSeq seq;
 					u->GetImage(dir, EngineImageType::InDetails, &seq);
-					seq.Draw(px + (rtl ? -offset.x : offset.x), r.top - line_height * vscroll_pos + sprite_y_offset + pitch, pal, v->vehstatus.Test(VehState::Crashed));
+					seq.Draw(px + (rtl ? -offset.x : offset.x), r.top - line_height * vscroll_pos + sprite_y_offset + pitch, pal, u->vehstatus.Test(VehState::Crashed));
 				}
 				px += rtl ? -width : width;
 				dx += width;
-				u = u->Next();
-			} while (u != nullptr && u->IsArticulatedPart());
+			}
 
 			bool separate_sprite_row = (dx > (uint)ScaleSpriteTrad(TRAIN_DETAILS_MAX_INDENT));
 			if (separate_sprite_row) {

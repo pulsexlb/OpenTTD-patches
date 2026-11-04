@@ -55,69 +55,203 @@ void ConnectMultiheadedTrains()
 	}
 
 	for (Train *v : Train::Iterate()) {
-		if (v->IsFrontEngine() || v->IsFreeWagon()) {
-			/* Two ways to associate multiheaded parts to each other:
-			 * sequential-matching: Trains shall be arranged to look like <..>..<..>..<..>..
-			 * bracket-matching:    Free vehicle chains shall be arranged to look like ..<..<..>..<..>..>..
-			 *
-			 * Note: Old savegames might contain chains which do not comply with these rules, e.g.
-			 *   - the front and read parts have invalid orders
-			 *   - different engine types might be combined
-			 *   - there might be different amounts of front and rear parts.
-			 *
-			 * Note: The multiheaded parts need to be matched exactly like they are matched on the server, else desyncs will occur.
-			 *   This is why two matching strategies are needed.
-			 */
+		if (!v->IsFrontEngine() && !v->IsFreeWagon() && !v->IsFrontWagon()) continue;
 
-			bool sequential_matching = v->IsFrontEngine();
+		bool has_unit_main_flags = false;
+		for (Train *u = v; u != nullptr; u = u->Next()) {
+			if (u->IsSavedUnitMain()) { has_unit_main_flags = true; break; }
+		}
 
-			for (Train *u = v; u != nullptr; u = u->GetNextVehicle()) {
-				if (u->other_multiheaded_part != nullptr) continue; // we already linked this one
-
-				if (u->IsMultiheaded()) {
-					if (!u->IsEngine()) {
-						/* we got a rear car without a front car. We will convert it to a front one */
-						u->SetEngine();
-						u->spritenum--;
-					}
-
-					/* Find a matching back part */
-					EngineID eid = u->engine_type;
-					Train *w;
-					if (sequential_matching) {
-						for (w = u->GetNextVehicle(); w != nullptr; w = w->GetNextVehicle()) {
-							if (w->engine_type != eid || w->other_multiheaded_part != nullptr || !w->IsMultiheaded()) continue;
-
-							/* we found a car to partner with this engine. Now we will make sure it face the right way */
-							if (w->IsEngine()) {
-								w->ClearEngine();
-								w->spritenum++;
-							}
-							break;
-						}
-					} else {
-						uint stack_pos = 0;
-						for (w = u->GetNextVehicle(); w != nullptr; w = w->GetNextVehicle()) {
-							if (w->engine_type != eid || w->other_multiheaded_part != nullptr || !w->IsMultiheaded()) continue;
-
-							if (w->IsEngine()) {
-								stack_pos++;
-							} else {
-								if (stack_pos == 0) break;
-								stack_pos--;
-							}
-						}
-					}
-
-					if (w != nullptr) {
-						w->other_multiheaded_part = u;
-						u->other_multiheaded_part = w;
-					} else {
-						/* we got a front car and no rear cars. We will fake this one for forget that it should have been multiheaded */
-						u->ClearMultiheaded();
-					}
+		if (has_unit_main_flags) {
+			/* New save format: the front and rear halves may appear in either
+			 * order. Pair complementary halves without changing their roles or
+			 * sprites. */
+			for (Train *u = v; u != nullptr; u = u->Next()) {
+				if (!u->IsMultiheaded() || u->other_multiheaded_part != nullptr) continue;
+				Train *w = nullptr;
+				for (Train *cand = v; cand != nullptr; cand = cand->Next()) {
+					if (cand == u || !cand->IsMultiheaded() || cand->other_multiheaded_part != nullptr) continue;
+					if (cand->engine_type != u->engine_type) continue;
+					if (cand->IsEngine() == u->IsEngine()) continue;
+					w = cand;
+					break;
+				}
+				if (w != nullptr) {
+					u->other_multiheaded_part = w;
+					w->other_multiheaded_part = u;
+				} else if (u->IsEngine()) {
+					u->ClearMultiheaded();
+				} else {
+					/* Orphan rear half: make it a standalone front engine
+					 * instead of leaving a non-engine vehicle behind. */
+					u->SetEngine();
+					u->spritenum--;
+					u->ClearMultiheaded();
 				}
 			}
+			continue;
+		}
+
+		if (!v->IsFrontEngine() && !v->IsFreeWagon() && !v->IsFrontWagon()) continue;
+
+		/* Two ways to associate multiheaded parts to each other:
+		 * sequential-matching: Trains shall be arranged to look like <..>..<..>..<..>..
+		 * bracket-matching:    Free vehicle chains shall be arranged to look like ..<..<..>..<..>..>..
+		 *
+		 * Note: Old savegames might contain chains which do not comply with these rules, e.g.
+		 *   - the front and read parts have invalid orders
+		 *   - different engine types might be combined
+		 *   - there might be different amounts of front and rear parts.
+		 *
+		 * Note: The multiheaded parts need to be matched exactly like they are matched on the server, else desyncs will occur.
+		 *   This is why two matching strategies are needed.
+		 */
+
+		bool sequential_matching = v->IsFrontEngine();
+
+		for (Train *u = v; u != nullptr; u = u->GetNextVehicle()) {
+			if (u->other_multiheaded_part != nullptr) continue; // we already linked this one
+
+			if (u->IsMultiheaded()) {
+				if (!u->IsEngine()) {
+					/* we got a rear car without a front car. We will convert it to a front one */
+					u->SetEngine();
+					u->spritenum--;
+				}
+
+				/* Find a matching back part */
+				EngineID eid = u->engine_type;
+				Train *w;
+				if (sequential_matching) {
+					for (w = u->GetNextVehicle(); w != nullptr; w = w->GetNextVehicle()) {
+						if (w->engine_type != eid || w->other_multiheaded_part != nullptr || !w->IsMultiheaded()) continue;
+
+						/* we found a car to partner with this engine. Now we will make sure it face the right way */
+						if (w->IsEngine()) {
+							w->ClearEngine();
+							w->spritenum++;
+						}
+						break;
+					}
+				} else {
+					uint stack_pos = 0;
+					for (w = u->GetNextVehicle(); w != nullptr; w = w->GetNextVehicle()) {
+						if (w->engine_type != eid || w->other_multiheaded_part != nullptr || !w->IsMultiheaded()) continue;
+
+						if (w->IsEngine()) {
+							stack_pos++;
+						} else {
+							if (stack_pos == 0) break;
+							stack_pos--;
+						}
+					}
+				}
+
+				if (w != nullptr) {
+					w->other_multiheaded_part = u;
+					u->other_multiheaded_part = w;
+				} else {
+					/* we got a front car and no rear cars. We will fake this one for forget that it should have been multiheaded */
+					u->ClearMultiheaded();
+				}
+			}
+		}
+	}
+}
+
+/**
+ * Rebuild the unit-main pointers after loading. Multi-part units may be stored
+ * in either orientation (base-first or part-first), so the main part cannot be
+ * inferred from chain position alone. The saved consist_unit_main flag marks
+ * the main part of each unit.
+ */
+void RebuildTrainUnitMains()
+{
+	for (Train *v : Train::Iterate()) {
+		if (v->Previous() != nullptr) continue;
+
+		for (Train *u = v; u != nullptr; u = u->Next()) u->SetUnitMain(nullptr);
+
+		/* Dual-headed pairs: both halves point at the engine half. */
+		for (Train *u = v; u != nullptr; u = u->Next()) {
+			if (!u->IsMultiheaded() || u->other_multiheaded_part == nullptr) continue;
+			Train *main = u->IsEngine() ? u : u->other_multiheaded_part;
+			if (main != nullptr && main->IsEngine()) {
+				u->SetUnitMain(main);
+				u->other_multiheaded_part->SetUnitMain(main);
+			}
+		}
+
+		/* Articulated runs: a contiguous run of articulated parts belongs to
+		 * the adjacent base, which may be before or after the run. The base is
+		 * not necessarily an engine: NewGRF articulated wagons have a wagon
+		 * base too. */
+		for (Train *u = v; u != nullptr;) {
+			if (!u->IsArticulatedPart()) {
+				u = u->Next();
+				continue;
+			}
+
+			Train *run_start = u;
+			Train *run_end = u;
+			while (run_end->Next() != nullptr && run_end->Next()->IsArticulatedPart()) run_end = run_end->Next();
+
+			Train *left = run_start->Previous();
+			Train *right = run_end->Next();
+
+			uint32_t run_size = 0;
+			for (Train *p = run_start; ; p = p->Next()) {
+				run_size++;
+				if (p == run_end) break;
+			}
+
+			/* Articulated parts are allocated directly after their base, so
+			 * their VehicleIDs are contiguous with it. This also identifies the
+			 * real base when the unit was stored part-first and no saved flag is
+			 * available (old saves from intermediate builds). */
+			auto is_base_for_run = [&](const Train *cand) {
+				if (cand == nullptr || cand->IsArticulatedPart()) return false;
+				const uint32_t cid = cand->index.base();
+				for (const Train *p = run_start; ; p = p->Next()) {
+					const uint32_t pid = p->index.base();
+					if (pid <= cid || pid - cid > run_size) return false;
+					if (p == run_end) break;
+				}
+				return true;
+			};
+
+			const bool left_matches = is_base_for_run(left);
+			const bool right_matches = is_base_for_run(right);
+
+			Train *main = nullptr;
+			/* Saved flags disambiguate a reversed unit whose base is on the
+			 * right, or a base-first unit that was already stored with flags. */
+			if (left != nullptr && left->IsSavedUnitMain()) {
+				main = left;
+			} else if (right != nullptr && right->IsSavedUnitMain()) {
+				main = right;
+			} else if (left_matches != right_matches) {
+				main = left_matches ? left : right;
+			} else if (left != nullptr && left->IsEngine()) {
+				main = left;
+			} else if (right != nullptr && right->IsEngine()) {
+				main = right;
+			} else if (left != nullptr && !left->IsArticulatedPart() && left->HasArticulatedPart()) {
+				/* Old/base-first save: the base precedes its parts. */
+				main = left;
+			} else if (right != nullptr && !right->IsArticulatedPart()) {
+				/* Reversed unit: the base follows the parts. */
+				main = right;
+			}
+
+			if (main != nullptr) {
+				main->SetUnitMain(main);
+				for (Train *p = run_start; ; p = p->Next()) {
+					p->SetUnitMain(main);
+					if (p == run_end) break;
+				}
+			}
+			u = run_end->Next();
 		}
 	}
 }
@@ -253,6 +387,7 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 		if (part_of_load) v->fill_percent_te_id = INVALID_TE_ID;
 		v->first = nullptr;
 		v->primary = nullptr;
+		v->unit_main = nullptr;
 		v->last = nullptr;
 		if (v->IsGroundVehicle()) v->GetGroundVehicleCache()->first_engine = EngineID::Invalid();
 	}
@@ -791,6 +926,7 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 	void Save(Vehicle *v) const override
 	{
 		v->consist_primary = (v->Primary() == v) ? 1 : 0;
+		v->consist_unit_main = (v->GetUnitMain() == v) ? 1 : 0;
 		if (v->type == VehicleType::Train && v->index.base() <= 40 && v->Primary()->index.base() <= 40) {
 		}
 		SlObjectSaveFiltered(v, this->GetLoadDescription());
@@ -1089,6 +1225,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 
 		NSL("vehstatus",                      SLE_VAR(Vehicle, vehstatus,                 SLE_UINT8)),
 		NSL("consist_primary",          SLE_CONDVAR_X(Vehicle, consist_primary,           SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_PRIMARY))),
+		NSL("consist_unit_main",        SLE_CONDVAR_X(Vehicle, consist_unit_main,         SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_UNIT_MAIN))),
 		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),

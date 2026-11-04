@@ -733,9 +733,23 @@ static uint32_t VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *objec
 		case 0x4D: // Position within articulated vehicle
 			if (!HasBit(v->grf_cache.cache_valid, NCVV_POSITION_IN_VEHICLE)) {
 				uint8_t artic_before = 0;
-				for (const Vehicle *u = v; u != nullptr && u->IsArticulatedPart(); u = u->Previous()) artic_before++;
 				uint8_t artic_after = 0;
-				for (const Vehicle *u = v; u != nullptr && u->HasArticulatedPart(); u = u->Next()) artic_after++;
+				if (v->type == VehicleType::Train && v->HasUnitMain()) {
+					const Vehicle *main = v->GetUnitMain();
+					uint index = 0;
+					const Vehicle *u = main;
+					while (u != nullptr && u != v) { u = u->Next(); index++; }
+					if (u == nullptr) {
+						index = 0;
+						for (u = main; u != nullptr && u != v; u = u->Previous()) index++;
+					}
+					const uint count = main->GetEnginePartsCount();
+					artic_before = static_cast<uint8_t>(std::min<uint>(index, count - 1));
+					artic_after = static_cast<uint8_t>(count - 1 - artic_before);
+				} else {
+					for (const Vehicle *u = v; u != nullptr && u->IsArticulatedPart(); u = u->Previous()) artic_before++;
+					for (const Vehicle *u = v; u != nullptr && u->HasArticulatedPart(); u = u->Next()) artic_after++;
+				}
 				v->grf_cache.position_in_vehicle = artic_before | artic_after << 8;
 				SetBit(v->grf_cache.cache_valid, NCVV_POSITION_IN_VEHICLE);
 			}
