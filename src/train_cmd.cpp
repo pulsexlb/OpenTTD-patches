@@ -8960,6 +8960,20 @@ static void TrainEnterStation(Train *consist, StationID station)
 			}
 		}
 		SplitOrders(consist, u, load_trains, wait_orders, decouple_inbound_time);
+		/* The split can leave either part's carrier pointer on a vehicle that is
+		 * no longer that part's primary, and both the FreeTrainTrackReservation()
+		 * calls below and every use of current_order assume the primary. Re-anchor
+		 * both parts on their primary so the split-off part is not driven from a
+		 * stale member (that mismatch also tripped the assert inside
+		 * FreeTrainTrackReservation in a real crash). */
+		consist = consist->Primary();
+		if (!consist->IsPrimaryVehicle()) consist = consist->First();
+		if (u != nullptr && u != consist) {
+			u = u->Primary();
+			/* A primary pointer can survive with its front flag gone; the
+			 * assert in FreeTrainTrackReservation only looks at the flag. */
+			if (!u->IsPrimaryVehicle()) u = u->First();
+		}
 		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);
 		if (u != nullptr && u->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(u);
 		/* The split moved vehicles -- and the primary that carries the breakdown
@@ -11055,6 +11069,18 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			u->vehicle_flags.Flip(VehicleFlag::DrivingBackwards);
 		}
 		AdvanceWagonsAfterSwap(consist->GetMovingFront());
+		/* AdvanceWagonsBeforeSwap()/AfterSwap() derive their differentials from
+		 * CalcNextVehicleOffset(), whose rounding depends on DrivingBackwards.
+		 * The flip above happens between the two passes, so the second pass
+		 * uses a different rounding basis than the first: joints between an
+		 * even and an odd length vehicle end up one unit off (even/even joints
+		 * stay exact) and the error accumulates from both ends of the chain.
+		 * Re-space from the moving back towards the moving front so every
+		 * joint closes against its own CalcNextVehicleOffset(). */
+		for (Train *b = consist->GetMovingBack(); b->GetMovingPrev() != nullptr; b = b->GetMovingPrev()) {
+			Train *a = b->GetMovingPrev();
+			RespaceVehicleTo(a, b, a->CalcNextVehicleOffset());
+		}
 		consist->First()->ConsistChanged(CCF_TRACK);
 		consist->subspeed = 0;
 		consist->progress = 0;
