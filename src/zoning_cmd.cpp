@@ -28,6 +28,7 @@
 #include "road_map.h"
 #include "animated_tile.h"
 #include "tile_cmd.h"
+#include "debug.h"
 #include "3rdparty/cpp-btree/btree_set.h"
 
 Zoning _zoning;
@@ -314,7 +315,7 @@ inline SpriteID TileZoneCheckOneWayRoadEvaluation(TileIndex tile)
 
 	RoadCachedOneWayState rcows = GetRoadCachedOneWayState(tile);
 	switch (rcows) {
-		default:
+		case RCOWS_NORMAL:
 			return ZONING_INVALID_SPRITE_ID;
 		case RCOWS_NO_ACCESS:
 			return SPR_ZONING_INNER_HIGHLIGHT_RED;
@@ -333,6 +334,8 @@ inline SpriteID TileZoneCheckOneWayRoadEvaluation(TileIndex tile)
 			return SPR_ZONING_INNER_HIGHLIGHT_ORANGE;
 		case RCOWS_SIDE_JUNCTION_NO_EXIT:
 			return SPR_ZONING_INNER_HIGHLIGHT_YELLOW;
+		default:
+			NOT_REACHED_MSG("{}, {}", tile, rcows);
 	}
 }
 
@@ -475,12 +478,12 @@ void DrawTileZoning(const TileInfo *ti)
 
 			if (IsHalftileSlope(ti->tileh)) {
 				const int INF = 1000;
-				static const SubSprite sub_sprites[4] = {
-					{ -INF    , -INF   , 32 - 33, INF     }, // CORNER_W, clip 33 pixels from right
-					{ -INF    ,  0 + 22, INF    , INF     }, // CORNER_S, clip 22 pixels from top
-					{ -31 + 34, -INF   , INF    , INF     }, // CORNER_E, clip 34 pixels from left
-					{ -INF    , -INF   , INF    , 30 - 8  }  // CORNER_N, clip  8 pixels from bottom
-				};
+				static constexpr CornerIndexArray<SubSprite> sub_sprites = {{{
+					{ -INF    , -INF   , 32 - 33, INF     }, // Corner::W, clip 33 pixels from right
+					{ -INF    ,  0 + 22, INF    , INF     }, // Corner::S, clip 22 pixels from top
+					{ -31 + 34, -INF   , INF    , INF     }, // Corner::E, clip 34 pixels from left
+					{ -INF    , -INF   , INF    , 30 - 8  }  // Corner::N, clip  8 pixels from bottom
+				}}};
 
 				DrawSelectionSprite(sprite, colour, ti, 7 + TILE_HEIGHT, FoundationPart::Halftile, 0, 0, &(sub_sprites[GetHalftileSlopeCorner(ti->tileh)]));
 			} else {

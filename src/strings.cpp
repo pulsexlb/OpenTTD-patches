@@ -2941,7 +2941,9 @@ void BaseStringMissingGlyphSearcher::DetermineRequiredGlyphs(FontSizes fontsizes
 {
 	this->missing_fontsizes.Reset();
 	this->missing_glyphs.clear();
+	this->required_glyphs.clear();
 	robin_hood::unordered_flat_set<char32_t> missing_glyphs_map;
+	robin_hood::unordered_flat_set<char32_t> required_glyphs_map;
 
 	this->Reset();
 	for (auto text = this->NextString(); text.has_value(); text = this->NextString()) {
@@ -2958,6 +2960,9 @@ void BaseStringMissingGlyphSearcher::DetermineRequiredGlyphs(FontSizes fontsizes
 			if (!IsPrintable(c) || IsTextDirectionChar(c)) continue;
 			if (c != ' ' && (IsWhitespace(c) || IsNonbreakingWhitespace(c))) continue;
 			if (IsInsideMM(c, SCC_SPRITE_START, SCC_SPRITE_END)) continue;
+
+			required_glyphs_map.insert(c);
+
 			if (fc->MapCharToGlyph(c, false) != 0) continue;
 
 			this->missing_fontsizes.Set(fs);
@@ -2969,16 +2974,14 @@ void BaseStringMissingGlyphSearcher::DetermineRequiredGlyphs(FontSizes fontsizes
 	for (char32_t c : missing_glyphs_map) {
 		this->missing_glyphs.push_back(c);
 	}
+	this->required_glyphs.reserve(required_glyphs_map.size());
+	for (char32_t c : required_glyphs_map) {
+		this->required_glyphs.push_back(c);
+	}
 }
 
 /** Helper for searching through the language pack. */
 class LanguagePackGlyphSearcher : public BaseStringMissingGlyphSearcher {
-public:
-	/**
-	 * Create this language pack glyph searcher.
-	 */
-	LanguagePackGlyphSearcher() : BaseStringMissingGlyphSearcher(FONTSIZES_REQUIRED) {}
-
 private:
 	uint i; ///< Iterator for the primary language tables.
 	uint j; ///< Iterator for the secondary language tables.
@@ -3019,17 +3022,18 @@ private:
  * mean it might use characters that are not in the
  * font, which is the whole reason this check has
  * been added.
+ * @param fontsizes Font sizes to consider.
  * @param searcher  The methods to use to search for strings to check.
  *                  If nullptr the loaded language pack searcher is used.
  */
-void CheckForMissingGlyphs(MissingGlyphSearcher *searcher)
+void CheckForMissingGlyphs(FontSizes fontsizes, MissingGlyphSearcher *searcher)
 {
 	static LanguagePackGlyphSearcher pack_searcher;
 	if (searcher == nullptr) searcher = &pack_searcher;
 
-	FontCache::LoadFontCaches(searcher->fontsizes);
+	FontCache::LoadFontCaches(fontsizes);
 
-	searcher->DetermineRequiredGlyphs(searcher->fontsizes);
+	searcher->DetermineRequiredGlyphs(fontsizes);
 	bool bad_font = searcher->missing_fontsizes.Any();
 
 #if defined(WITH_FREETYPE) || defined(_WIN32) || defined(WITH_COCOA)
@@ -3039,7 +3043,11 @@ void CheckForMissingGlyphs(MissingGlyphSearcher *searcher)
 		bool any_font_configured = !_fcsettings.medium.font.empty();
 		FontCacheSettings backup = _fcsettings;
 
-		bad_font = !FontProviderManager::FindFallbackFont(_langpack.langpack->isocode, searcher);
+		/* All systems expect a hyphen not an underscore in the isocode. */
+		std::string isocode = _langpack.langpack->isocode;
+		std::ranges::replace(isocode, '_', '-');
+
+		bad_font = !FontProviderManager::FindFallbackFont(isocode, searcher);
 		if (!bad_font) {
 			FontCache::LoadFontCaches(searcher->missing_fontsizes);
 		}
@@ -3059,7 +3067,7 @@ void CheckForMissingGlyphs(MissingGlyphSearcher *searcher)
 #endif
 
 	/* Update the font width cache */
-	LoadStringWidthTable(searcher->fontsizes);
+	LoadStringWidthTable(fontsizes);
 	ReInitAllWindows(false);
 
 	if (bad_font) {

@@ -248,7 +248,7 @@ void CheckBreakdownFlags(Train *v)
 	v->flags.Reset(VehicleRailFlagsIsBroken);
 
 	for (const Train *w = v; w != nullptr; w = w->Next()) {
-		if (v->IsEngine() || w->IsMultiheaded()) {
+		if (w->IsEngine() || w->IsMultiheaded()) {
 			if (w->breakdown_ctr == 2) {
 				v->flags.Set(VehicleRailFlag::BreakdownBraking);
 			} else if (w->breakdown_ctr == 1) {
@@ -8710,12 +8710,11 @@ void Train::MarkDirty()
 	} while ((v = v->Next()) != nullptr);
 
 	/* need to update acceleration and cached values since the goods on the train changed. */
-	this->First()->CargoChanged();
-	this->First()->UpdateAcceleration();
-	/* CargoChanged()/UpdateAcceleration() only write the consist-level caches
-	 * of the chain head; re-broadcast them or every other vehicle keeps its
-	 * stale copy and network peers diverge. */
-	this->First()->BroadcastConsistCaches();
+	/* MarkDirty() may be called on a primary vehicle that is not the chain head.
+	 * ConsistChanged() recomputes the consist-level caches on the head and
+	 * BroadcastConsistCaches() propagates them to the whole chain, so every
+	 * vehicle (and network peers) sees the same values. */
+	this->First()->ConsistChanged({});
 }
 
 /**
@@ -11221,9 +11220,10 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	if (j < adv_spd) {
 		/* if the vehicle has speed 0, update the last_speed field. */
 		if (consist->cur_speed == 0) consist->SetLastSpeed();
+	} else if (!TrainCheckIfLineEnds(moving_front)) {
+		/* Train reversed, discard any further motion, to prevent uncommanded movement in the reverse direction. */
+		j = 0;
 	} else {
-		TrainCheckIfLineEnds(moving_front);
-		moving_front = moving_front->GetMovingFront();
 		/* Loop until the train has finished moving. */
 		for (;;) {
 			j -= adv_spd;

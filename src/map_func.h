@@ -380,7 +380,7 @@ void CountLandTiles();
  * @param y The y coordinate of the tile
  * @return The TileIndex calculated by the coordinate
  */
-[[debug_inline]] inline static TileIndex TileXY(uint x, uint y)
+[[debug_inline]] static inline TileIndex TileXY(uint x, uint y)
 {
 	return TileIndex{(y << Map::LogX()) + x};
 }
@@ -411,7 +411,7 @@ inline TileIndexDiff TileDiffXY(int x, int y)
  * @param y The virtual y coordinate of the tile.
  * @return The TileIndex calculated by the coordinate.
  */
-[[debug_inline]] inline static TileIndex TileVirtXY(uint x, uint y)
+[[debug_inline]] static inline TileIndex TileVirtXY(uint x, uint y)
 {
 	return TileIndex{(y >> 4 << Map::LogX()) + (x >> 4)};
 }
@@ -435,7 +435,7 @@ inline TileIndex TileVirtXYClampedToMap(int x, int y)
  * @param tile the tile to get the X component of
  * @return the X component
  */
-[[debug_inline]] inline static uint TileX(TileIndex tile)
+[[debug_inline]] static inline uint TileX(TileIndex tile)
 {
 	return tile.base() & Map::MaxX();
 }
@@ -445,7 +445,7 @@ inline TileIndex TileVirtXYClampedToMap(int x, int y)
  * @param tile the tile to get the Y component of
  * @return the Y component
  */
-[[debug_inline]] inline static uint TileY(TileIndex tile)
+[[debug_inline]] static inline uint TileY(TileIndex tile)
 {
 	return tile.base() >> Map::LogX();
 }

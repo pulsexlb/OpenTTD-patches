@@ -232,6 +232,11 @@ enum SlXvFeatureIndex {
 	XSLFI_TRAIN_UNIT_MAIN,                        ///< Multi-part train units remember which member is their main part
 	XSLFI_COUPLE_SERVICE_NUMBER,                  ///< Couple orders may require a specific service number of the waiting train
 
+	/* Upstream features added after this point must be appended at the end of the
+	 * PXP block: SlXvFeatureIndex values are savegame feature bitmap indices, so
+	 * inserting into the middle would shift every existing PXP feature. */
+	XSLFI_SCRIPT_RANDOMIZER,                      ///< See: SLV_SCRIPT_RANDOMIZER (PR#12063)
+
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
 

@@ -300,7 +300,7 @@ bool Station::RemoveLoadingVehicle(const Vehicle *v)
  */
 void Station::MarkTilesDirty(bool cargo_change) const
 {
-	if (this->train_station.tile == INVALID_TILE) return;
+	if (this->train_station.IsEmpty()) return;
 
 	/* cargo_change is set if we're refreshing the tiles due to cargo moving
 	 * around. */
@@ -413,7 +413,7 @@ uint Station::GetCatchmentRadius() const
 		if (this->ship_station.tile  != INVALID_TILE) ret = std::max<uint>(ret, CA_DOCK);
 		if (this->airport.tile       != INVALID_TILE) ret = std::max<uint>(ret, this->airport.AirportCatchmentRadius());
 	} else {
-		if (this->bus_stops != nullptr || this->truck_stops != nullptr || this->train_station.tile != INVALID_TILE || this->ship_station.tile != INVALID_TILE || this->airport.tile != INVALID_TILE) {
+		if (this->bus_stops != nullptr || this->truck_stops != nullptr || !this->train_station.IsEmpty() || !this->ship_station.IsEmpty() || !this->airport.IsEmpty()) {
 			ret = CA_UNMODIFIED;
 		}
 	}

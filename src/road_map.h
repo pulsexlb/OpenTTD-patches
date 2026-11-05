@@ -71,7 +71,7 @@ inline bool MayTileTypeHaveRoad(TileType type)
  * @pre IsTileType(t, TileType::Road)
  * @return The road tile type.
  */
-[[debug_inline]] inline static RoadTileType GetRoadTileType(TileIndex t)
+[[debug_inline]] static inline RoadTileType GetRoadTileType(TileIndex t)
 {
 	dbg_assert_tile(IsTileType(t, TileType::Road), t);
 	return static_cast<RoadTileType>(GB(_m[t].m5, 6, 2));
@@ -83,7 +83,7 @@ inline bool MayTileTypeHaveRoad(TileType type)
  * @pre IsTileType(t, TileType::Road)
  * @return True if normal road.
  */
-[[debug_inline]] inline static bool IsNormalRoad(TileIndex t)
+[[debug_inline]] static inline bool IsNormalRoad(TileIndex t)
 {
 	return GetRoadTileType(t) == RoadTileType::Normal;
 }
@@ -93,7 +93,7 @@ inline bool MayTileTypeHaveRoad(TileType type)
  * @param t Tile to query.
  * @return True if normal road tile.
  */
-[[debug_inline]] inline static bool IsNormalRoadTile(TileIndex t)
+[[debug_inline]] static inline bool IsNormalRoadTile(TileIndex t)
 {
 	return IsTileType(t, TileType::Road) && IsNormalRoad(t);
 }
@@ -125,7 +125,7 @@ inline bool IsLevelCrossingTile(TileIndex t)
  * @pre IsTileType(t, TileType::Road)
  * @return True if road depot.
  */
-[[debug_inline]] inline static bool IsRoadDepot(TileIndex t)
+[[debug_inline]] static inline bool IsRoadDepot(TileIndex t)
 {
 	return GetRoadTileType(t) == RoadTileType::Depot;
 }
@@ -135,7 +135,7 @@ inline bool IsLevelCrossingTile(TileIndex t)
  * @param t Tile to query.
  * @return True if road depot tile.
  */
-[[debug_inline]] inline static bool IsRoadDepotTile(TileIndex t)
+[[debug_inline]] static inline bool IsRoadDepotTile(TileIndex t)
 {
 	return IsTileType(t, TileType::Road) && IsRoadDepot(t);
 }
@@ -151,7 +151,7 @@ inline RoadBits GetRoadBits(TileIndex t, RoadTramType rtt)
 {
 	dbg_assert_tile(IsNormalRoad(t), t);
 	if (rtt == RoadTramType::Tram) return (RoadBits)GB(_m[t].m3, 0, 4);
-	return (RoadBits)GB(_m[t].m5, 0, 4);
+	return static_cast<RoadBits>(GB(_m[t].m5, 0, 4));
 }
 
 /**
@@ -190,7 +190,7 @@ inline void SetRoadBits(TileIndex t, RoadBits r, RoadTramType rtt)
 inline RoadType GetRoadTypeRoad(TileIndex t)
 {
 	dbg_assert(MayHaveRoad(t));
-	return (RoadType)GB(_m[t].m4, 0, 6);
+	return static_cast<RoadType>(GB(_m[t].m4, 0, 6));
 }
 
 /**
@@ -201,7 +201,7 @@ inline RoadType GetRoadTypeRoad(TileIndex t)
 inline RoadType GetRoadTypeTram(TileIndex t)
 {
 	dbg_assert(MayHaveRoad(t));
-	return (RoadType)GB(_me[t].m8, 6, 6);
+	return static_cast<RoadType>(GB(_me[t].m8, 6, 6));
 }
 
 /**
@@ -301,7 +301,7 @@ inline Owner GetRoadOwner(TileIndex t, RoadTramType rtt)
 
 	/* Trams don't need OWNER_TOWN, and remapping OWNER_NONE
 	 * to OWNER_TOWN makes it use one bit less */
-	Owner o = (Owner)GB(_m[t].m3, 4, 4);
+	Owner o = static_cast<Owner>(GB(_m[t].m3, 4, 4));
 	return o == OWNER_TOWN ? OWNER_NONE : o;
 }
 

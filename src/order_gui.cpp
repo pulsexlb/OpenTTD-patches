@@ -3675,6 +3675,7 @@ private:
 		return Command<Commands::DeleteOrder>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, this->CmdTile(), OrderTargetType::OrderList, this->list_id.base(), sel);
 	}
 
+	bool drag_selected = false;    ///< Order being dragged was the selected order.
 	Point drag_start_pt{};         ///< Start point for order drags.
 	uint64_t drag_start_time_us{}; ///< Start time for order drags, from MicrosecondsRealtimeTicks().
 
@@ -5719,6 +5720,8 @@ public:
 				this->CloseChildWindows();
 				HideDropDownMenu(this);
 
+				const bool was_selected = (sel == this->selected_order);
+
 				if (sel == INVALID_VEH_ORDER_ID || !IsLocalTarget()) {
 					/* Deselect clicked order */
 					this->selected_order = -1;
@@ -5770,6 +5773,7 @@ public:
 
 				if (IsLocalTarget()) {
 					/* Activate drag and drop */
+					this->drag_selected = was_selected;
 					this->drag_start_pt = pt;
 					this->drag_start_time_us = MicrosecondsRealtimeTicks();
 					SetObjectToPlaceWnd(SPR_CURSOR_MOUSE, PAL_NONE, HT_DRAG, this);
@@ -7079,7 +7083,8 @@ public:
 					this->selected_order = -1;
 					this->UpdateButtonState();
 				}
-				if (from_order == to_order && from_order < this->NumOrders() && EuclideanDistanceSquared(pt, this->drag_start_pt) <= 40 && (MicrosecondsRealtimeTicks() - this->drag_start_time_us) < 250000) {
+				if (this->drag_selected && from_order == to_order && from_order < this->NumOrders() &&
+						EuclideanDistanceSquared(pt, this->drag_start_pt) <= 40 && (MicrosecondsRealtimeTicks() - this->drag_start_time_us) < 250000) {
 					const Order *order = this->OrderAt(from_order);
 					if (order != nullptr && order->IsType(OT_LABEL) && order->GetLabelSubType() == OLST_TEXT) {
 						if (this->IsWidgetActiveInLayout(WID_O_TEXT_LABEL)) this->OnClick({}, WID_O_TEXT_LABEL, 1);
