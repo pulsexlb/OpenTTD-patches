@@ -11040,7 +11040,18 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		if (IsOtherConsistOnPlatform(consist)) {
 			consist->cur_speed = 0;
 			consist->subspeed = 0;
-			FreeTrainTrackReservation(consist);
+			/* Do not free the path reservation here. After a same-direction
+			 * decouple both parts still share the reservation chain the original
+			 * consist left behind. Clearing it from the trailing part walks
+			 * straight into the leading part's freshly reserved path: doing this
+			 * every tick broke the chain at the first shared tile and left the
+			 * leading part's reservation beyond the break orphaned. No owner
+			 * could ever clear those bits, and IsWaitingPositionFree() then
+			 * rejected the safe waiting position in front of the leading part
+			 * forever, deadlocking both consists. Only drop our own look-ahead;
+			 * RecheckSignalsAndTryReserve() rebuilds the reservation once the
+			 * platform is clear and this flag is reset. */
+			consist->lookahead.reset();
 			/* The former partner still holds the shared platform: wait for it
 			 * to clear in the ordinary stuck state, so the regular retry logic
 			 * re-attempts the reservation as soon as the path is free. */
