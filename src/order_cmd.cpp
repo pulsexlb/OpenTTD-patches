@@ -1647,9 +1647,9 @@ static CommandCost ValidateStandaloneNewOrder(const Order &new_order)
 			break;
 
 		case OT_GOTO_DEPOT:
-			if (new_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) {
-				if (Station::GetIfValid(new_order.GetDestination().ToStationID()) == nullptr) return CMD_ERROR;
-			} else {
+			/* A "go to nearest depot" order carries no destination at all: its destination is
+			 * DepotID::Invalid() by construction, so there is nothing to validate. */
+			if ((new_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) == 0) {
 				if (Depot::GetIfValid(new_order.GetDestination().ToDepotID()) == nullptr) return CMD_ERROR;
 			}
 			break;
