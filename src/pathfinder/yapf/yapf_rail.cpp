@@ -193,6 +193,15 @@ private:
 		 * decided once instead of per tile (IsCouplePartnerTile walks the whole
 		 * strip each call). */
 		const bool partner_strip = couple && IsCouplePartnerTile(v, start);
+		/* The partner's own tiles are the contact point, not a safe waiting
+		 * area. A foreign consist there is only in the way when the approach
+		 * walk says the route is blocked, i.e. it sits between us and the
+		 * contact end. When the approach is clear such a consist is behind the
+		 * contact end -- a train queued on the far side of a long platform --
+		 * and blocking on it strands a perfectly reachable partner. The walk is
+		 * the same one used to rank candidates; here it only tightens the
+		 * reservation, it never drops the claimed target. */
+		const bool approach_clear = couple && IsCoupleApproachPathClear(v);
 
 		/* Tiles of the claimed couple partner's own platform are shared: the
 		 * partner's arrival reservation covers the whole strip, also the empty
@@ -209,9 +218,13 @@ private:
 			if (on_partner) seen_partner = true;
 			/* A foreign consist standing on a tile we reserve is in the way. On the
 			 * partner's own strip only the part between the partner and the origin is
-			 * travelled, and the partner's own tiles are the contact point; every
-			 * other strip is traversed in full. */
-			if (couple && !on_partner && (seen_partner || !partner_strip) && HasForeignConsistOnTile(v, tile)) {
+			 * travelled (including the partner's own tiles, which are the contact
+			 * point); every other strip is traversed in full. On those contact tiles
+			 * the approach walk has the final say: it reports a third train only when
+			 * that train really sits between us and the contact end, so skipping the
+			 * check there keeps a partner reachable when the queue is on its far side. */
+			const bool check_foreign = couple && (seen_partner || !partner_strip) && (!on_partner || !approach_clear);
+			if (check_foreign && HasForeignConsistOnTile(v, tile)) {
 				return false;
 			}
 			if (HasStationReservation(tile) && !partner_strip) {
