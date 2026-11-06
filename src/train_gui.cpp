@@ -154,13 +154,16 @@ void DrawTrainImage(const Train *v, const Rect &r, VehicleID selection, EngineIm
 				highlight_l = rtl ? px - width : px;
 				highlight_r = rtl ? px - 1 : px + width - 1;
 				sel_started = true;
-				sel_unit_main = v->GetUnitMain();
+				/* A dual-headed half is a single vehicle for depot drags, even
+				 * though both halves share unit_main. */
+				sel_unit_main = v->IsMultiheaded() ? nullptr : v->GetUnitMain();
 			} else if (sel_started && (_cursor.vehchain ||
-					(v->HasUnitMain() && sel_unit_main != nullptr && v->GetUnitMain() == sel_unit_main))) {
+					(!v->IsMultiheaded() && v->HasUnitMain() && sel_unit_main != nullptr && v->GetUnitMain() == sel_unit_main))) {
 				/* Extend over the selected unit. Unit membership comes from unit_main,
 				 * not from the articulated flag: a reversed unit stores its base behind
 				 * its articulated parts, so the flag reports a unit boundary in the
-				 * middle of the unit and the frame stops short of the base. */
+				 * middle of the unit and the frame stops short of the base. Dual-headed
+				 * halves are the exception: vanilla selects only the clicked half. */
 				if (rtl) {
 					highlight_l -= width;
 				} else {

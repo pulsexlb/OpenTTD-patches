@@ -738,6 +738,15 @@ public:
 		 * would stop at such a base and leave part of the unit outside the
 		 * range; the IsArticulatedPart() fallback would swallow the trailing
 		 * parts of a base-first unit in front of a plain wagon. */
+		/* Dual-headed halves are not articulated parts of one unit; both halves
+		 * carry the same unit_main, but vanilla treats each as a single vehicle.
+		 * Folding them together would move both when only one half is dragged
+		 * and would close every insertion point between the halves. */
+		if (this->IsMultiheaded()) {
+			Train *first = this;
+			while (first->Previous() != nullptr && first->Previous()->IsArticulatedPart()) first = Train::From(first->Previous());
+			return first;
+		}
 		const Vehicle *main = this->GetUnitMain();
 		Train *first = this;
 		while (first->Previous() != nullptr && first->Previous()->GetUnitMain() == main) {
@@ -758,6 +767,12 @@ public:
 	 */
 	inline Train *GetUnitChainLast()
 	{
+		/* Dual-headed halves keep vanilla one-part semantics here too. */
+		if (this->IsMultiheaded()) {
+			Train *last = this;
+			while (last->Next() != nullptr && last->Next()->IsArticulatedPart()) last = Train::From(last->Next());
+			return last;
+		}
 		const Vehicle *main = this->GetUnitMain();
 		Train *last = this;
 		while (last->Next() != nullptr && last->Next()->GetUnitMain() == main) {

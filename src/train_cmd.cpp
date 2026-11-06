@@ -2221,6 +2221,17 @@ static void GetChainUnitRun(Train *v, Train *&first, Train *&last)
 	first = v;
 	last = v;
 
+	/* Dual-headed halves keep vanilla one-part semantics, exactly like
+	 * GetFirstEnginePart()/GetLastEnginePart(): the rear half is not an
+	 * articulated part. Folding both halves into one unit would resolve every
+	 * insertion point to the rear half and keep free wagons outside the
+	 * dual-head block, whereas vanilla places them between the two halves. */
+	if (v->IsMultiheaded()) {
+		while (first->Previous() != nullptr && first->Previous()->IsArticulatedPart()) first = Train::From(first->Previous());
+		while (last->Next() != nullptr && last->Next()->IsArticulatedPart()) last = Train::From(last->Next());
+		return;
+	}
+
 	if (v->HasUnitMain()) {
 		const Vehicle *main = v->GetUnitMain();
 		while (first->Previous() != nullptr && first->Previous()->HasUnitMain() &&
@@ -2326,11 +2337,22 @@ static void NormaliseDualHeads(Train *t, bool pull_in_free_cars)
 		if (!t->IsMultiheaded() || !t->IsEngine()) continue;
 		Train *other = t->other_multiheaded_part;
 		if (other == nullptr) continue;
-		/* Same chain: keep the current relative order, including a reversed
-		 * rear-first pair and any wagons wrapped between the halves. Moving
-		 * the rear here would undo the reversed orientation and pull wagons
-		 * out of the block. */
-		if (other->First() == t->First()) continue;
+		/* Coupling/decoupling keeps a same-chain dual-head pair exactly as it
+		 * is, including a reversed rear-first pair and wagons wrapped between
+		 * the halves; moving the rear there would undo the orientation.
+		 * Depot moves (pull_in_free_cars) must NOT skip: vanilla re-inserts the
+		 * rear half after the free cars so they end up inside the dual-head
+		 * block. That also repairs chains which were built with the wagons
+		 * behind the rear half. A reversed rear-first pair is still left alone
+		 * even in a depot, so its orientation is not flipped back. */
+		if (other->First() == t->First()) {
+			if (!pull_in_free_cars) continue;
+			bool rear_before_front = false;
+			for (Train *w = other; w != nullptr; w = w->Next()) {
+				if (w == t) { rear_before_front = true; break; }
+			}
+			if (rear_before_front) continue;
+		}
 
 		/* Make sure that there are no free cars before next engine.
 		 * With pull_in_free_cars the walk overshoots the other dual-head half

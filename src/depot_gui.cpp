@@ -148,6 +148,14 @@ void CcCloneVehicle(const CommandCost &result)
 static const Vehicle *GetUnitChainFront(const Vehicle *v)
 {
 	if (v == nullptr) return nullptr;
+	/* Both halves of a dual-headed engine carry the same unit_main, but vanilla
+	 * treats them as two single vehicles. Resolving the rear half to the front
+	 * would move the drop in front of the whole engine instead of allowing a
+	 * wagon to be inserted between the halves. */
+	if (v->IsMultiheadedVehicle()) {
+		while (v->Previous() != nullptr && v->Previous()->IsArticulatedPart()) v = v->Previous();
+		return v;
+	}
 	const Vehicle *main = v->GetUnitMain();
 	while (v->Previous() != nullptr && v->Previous()->GetUnitMain() == main) v = v->Previous();
 	return v;
