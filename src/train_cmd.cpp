@@ -2199,30 +2199,69 @@ static void RestoreChainFromList(const TrainList &list)
 }
 
 /**
+ * Resolve a vehicle of a train chain to the complete chain-order run of its
+ * multi-part unit.
+ *
+ * Membership comes from unit_main, which is the only thing that distinguishes
+ * two adjacent units. Chain order alone cannot: an articulated base and the base
+ * of the next unit are both art == 0, so a walk over the articulated flag merges
+ * them. unit_main identifies the unit exactly, and members of one unit are
+ * always contiguous, so the run is the maximal neighbourhood of v agreeing on
+ * unit_main.
+ *
+ * The base itself also carries unit_main (self-referencing), so a base-first and
+ * a part-first layout both resolve to the same run.
+ *
+ * @param v The vehicle to resolve.
+ * @param[out] first Set to the first chain member of the run.
+ * @param[out] last  Set to the last chain member of the run.
+ */
+static void GetChainUnitRun(Train *v, Train *&first, Train *&last)
+{
+	first = v;
+	last = v;
+
+	if (v->HasUnitMain()) {
+		const Vehicle *main = v->GetUnitMain();
+		while (first->Previous() != nullptr && first->Previous()->HasUnitMain() &&
+				first->Previous()->GetUnitMain() == main) {
+			first = Train::From(first->Previous());
+		}
+		while (last->Next() != nullptr && last->Next()->HasUnitMain() &&
+				last->Next()->GetUnitMain() == main) {
+			last = Train::From(last->Next());
+		}
+		return;
+	}
+
+	/* Unresolved unit (old save, or a freshly split block): fall back to the
+	 * articulated run around v, which is what vanilla uses. */
+	while (first->Previous() != nullptr && first->Previous()->IsArticulatedPart()) first = Train::From(first->Previous());
+	while (last->Next() != nullptr && last->Next()->IsArticulatedPart()) last = Train::From(last->Next());
+}
+
+/**
  * Remove the given wagon from its consist.
  * @param part the part of the train to remove.
  * @param chain whether to remove the whole chain.
  */
 static void RemoveFromConsist(Train *part, bool chain = false)
 {
-	/* Removing (or moving) any member of an explicitly tracked multi-part
-	 * unit removes the complete unit. In a reversed unit the main part may be
-	 * at the chain tail, so walking only towards the tail from the selected
-	 * vehicle would leave the other half behind. */
+	/* Removing (or moving) any member of a multi-part unit removes the complete
+	 * unit. A reversed unit stores its base at the tail, so the run has to be
+	 * resolved in chain order; walking only towards the tail from the selected
+	 * vehicle would leave the other members behind. */
 	if (!chain && part->HasUnitMain()) {
-		Vehicle *main = part->GetUnitMain();
-		Train *first = nullptr;
-		Train *last = nullptr;
-		for (Train *u = part->First(); u != nullptr; u = u->Next()) {
-			if (u->GetUnitMain() != main) continue;
-			if (first == nullptr) first = u;
-			last = u;
-		}
-		if (first != nullptr && last != nullptr) {
-			if (first->Previous() != nullptr) first->Previous()->SetNext(last->Next());
-			last->SetNext(nullptr);
-			return;
-		}
+		Train *first;
+		Train *last;
+		GetChainUnitRun(part, first, last);
+		/* Detach the whole block: the part in front of it must point past it and
+		 * the block must be a chain of its own, or the insert would keep the old
+		 * predecessor and orphan the vehicles ahead of the block. */
+		if (first->Previous() != nullptr) first->Previous()->SetNext(last->Next());
+		first->SetPreviousRaw(nullptr);
+		last->SetNext(nullptr);
+		return;
 	}
 
 	Train *tail;
@@ -2248,14 +2287,26 @@ static void RemoveFromConsist(Train *part, bool chain = false)
  * Inserts a chain into the train at dst.
  * @param dst   the place where to append after.
  * @param chain the chain to actually add.
+ * @note Neither side has to be free of articulated parts. A part-first chain is
+ *       a legal layout (ReverseTrainNoSwapVehicles() produces it), so the chain
+ *       may start with an articulated part and dst may be followed by one.
  */
 static void InsertInConsist(Train *dst, Train *chain)
 {
-	/* We do not want to add something in the middle of an articulated part. */
-	assert(dst != nullptr && (dst->Next() == nullptr || !dst->Next()->IsArticulatedPart()));
+	assert(dst != nullptr && chain != nullptr);
+
+	if (chain->Previous() == dst) return;
 
 	chain->Last()->SetNext(dst->Next());
 	dst->SetNext(chain);
+
+	/* The splice can leave a member naming a unit that no longer shares this
+	 * chain. Drop those pointers now that both sides have their final chain: an
+	 * orphan member is its own unit, which keeps every walk inside the chain. */
+	Train *head = chain->First();
+	for (Train *t = head; t != nullptr; t = t->Next()) {
+		if (t->HasUnitMain() && t->GetUnitMain()->First() != head) t->SetUnitMain(nullptr);
+	}
 }
 
 /**
@@ -2308,8 +2359,23 @@ static void NormaliseSubtypes(Train *chain)
 	/* Nothing to do */
 	if (chain == nullptr) return;
 
-	/* We must be the first in the chain. */
-	assert(chain->Previous() == nullptr);
+	/* We must be the first in the chain. Chain surgery can hand us any member
+	 * of the resulting chain -- a reversed unit stores its base behind its
+	 * articulated parts, so the vehicle that was selected (and possibly
+	 * re-inserted) is not necessarily the chain head. Walk to the head instead
+	 * of asserting: an assertion here only fires on layouts that are legal. */
+	chain = chain->First();
+
+	/* A unit main must always be a vehicle of the same chain. Coupling, reversing
+	 * and depot drags relink chains with raw SetNext() calls, which can leave a
+	 * member pointing at a base that stayed behind in the other chain. Such a
+	 * pointer makes GetFirstEnginePart()/GetLastEnginePart() answer with a
+	 * vehicle of a foreign chain, which then corrupts the next chain surgery.
+	 * Treat the orphan as its own unit; it is the layout that keeps every walk
+	 * inside this chain. */
+	for (Train *t = chain; t != nullptr; t = t->Next()) {
+		if (t->HasUnitMain() && t->GetUnitMain()->First() != chain) t->SetUnitMain(nullptr);
+	}
 
 	/* Set the appropriate bits for the first in the chain.
 	 *
@@ -2524,17 +2590,28 @@ static CommandCost ValidateTrains(Train *original_dst, Train *dst, Train *origin
  */
 static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train *src, bool move_chain, bool pull_in_free_cars = true)
 {
-	/* A multi-part unit must be moved/sold as one block. If the selected
-	 * vehicle is a member whose unit main sits elsewhere in the chain, anchor
-	 * src at the unit's first chain member so src_head/GetNextUnit() compute
-	 * the correct surviving head. */
-	if (src != nullptr && src->HasUnitMain()) {
-		Vehicle *main = src->GetUnitMain();
-		for (Train *u = src->First(); u != nullptr; u = u->Next()) {
-			if (u->GetUnitMain() == main) {
-				src = u;
-				break;
-			}
+	/* A multi-part unit moves as one block. Everything below has to reason about
+	 * the block's chain head, not about the vehicle the caller selected: a
+	 * reversed unit stores its base behind its articulated parts, so the selected
+	 * vehicle can sit in the middle of the block. Splitting or re-inserting it
+	 * alone would orphan the rest of the unit. */
+	Train *block_first = src;
+	Train *block_last = src;
+	if (!move_chain && src != nullptr) GetChainUnitRun(src, block_first, block_last);
+	if (!move_chain) src = block_first;
+
+	/* A unit cannot be inserted behind one of its own members: the detach would
+	 * leave the destination inside the block and InsertInConsist() would then
+	 * splice the block behind its own tail, building a cyclic chain that hangs
+	 * every walk over Next(). The command rejects this case before it gets here
+	 * (see CmdMoveRailVehicle); this is the safety net for the other callers.
+	 * Walk the block only -- walking on past block_last would compare against the
+	 * rest of the chain, which is a perfectly legal insert position and dropping
+	 * the move there silently breaks every drag towards the rear of a train. */
+	if (dst != nullptr && !move_chain) {
+		for (Train *t = block_first; ; t = t->Next()) {
+			if (t == dst) return;
+			if (t == block_last || t->Next() == nullptr) break;
 		}
 	}
 
@@ -2564,7 +2641,13 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
 	 * source train and *if* the destination is a not a new train add the chain
 	 * at the destination location. */
 	RemoveFromConsist(src, move_chain);
-	if (*dst_head != src) InsertInConsist(dst, src);
+	if (*dst_head != src) {
+		/* The spliced chain is the block's chain head, not src: a reversed unit
+		 * stores its base behind its articulated parts, so src can sit in the
+		 * middle of the block. Inserting src directly would orphan everything in
+		 * front of it inside the block. */
+		InsertInConsist(dst, block_first);
+	}
 
 	/* Now normalise the dual heads, that is move the dual heads around in such
 	 * a way that the head and rear of a dual head are in the same train */
@@ -2777,12 +2860,35 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		if (dst->IsVirtual() != HasFlag(move_flags, MoveRailVehicleFlags::Virtual)) return CMD_ERROR;
 	}
 
-	/* if an articulated part is being handled, deal with its parent vehicle */
-	src = src->GetFirstEnginePart();
+	/* Resolve the selected vehicles to the member of their unit that the
+	 * caller's conditions apply to. GetFirstEnginePart() cannot be used here: it
+	 * answers through unit_main, and a reversed unit stores its base behind its
+	 * articulated parts, so it would substitute a different part of the unit for
+	 * the one that was actually clicked. Insert behind the unit's chain-order last
+	 * member instead, and keep src exactly as selected. */
+	Train *src_unit_first;
+	Train *src_unit_last;
+	GetChainUnitRun(src, src_unit_first, src_unit_last);
 	if (dst != nullptr) {
-		dst = dst->GetFirstEnginePart();
+		Train *dst_unit_first;
+		Train *dst_unit_last;
+		GetChainUnitRun(dst, dst_unit_first, dst_unit_last);
+		dst = dst_unit_last;
 	}
 
+	/* Moving a unit to a position inside itself is not a move. This cannot rely
+	 * on src == dst alone: with a reversed unit the caller's destination is the
+	 * vehicle it was dropped behind, which may be a different member of the very
+	 * same unit (the base sits behind its articulated parts). Rejecting it here
+	 * keeps ArrangeTrains() from detaching the block and then splicing it behind
+	 * its own tail, which builds a cyclic chain that hangs every Next() walk.
+	 * Walk up to src_unit_last only; the rest of the chain is a legal target. */
+	if (!move_chain && dst != nullptr) {
+		for (Train *t = src_unit_first; ; t = t->Next()) {
+			if (t == dst) return CommandCost();
+			if (t == src_unit_last || t->Next() == nullptr) break;
+		}
+	}
 	/* don't move the same vehicle.. */
 	if (src == dst) return CommandCost();
 
@@ -2794,8 +2900,6 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		dst_head = dst->First();
 		assert(HasBit(dst_head->subtype, GVSF_VIRTUAL) == HasBit(dst->subtype, GVSF_VIRTUAL));
 		if (dst_head->tile != src_head->tile) return CMD_ERROR;
-		/* Now deal with articulated part of destination wagon */
-		dst = dst->GetLastEnginePart();
 	} else {
 		dst_head = nullptr;
 	}
@@ -2842,6 +2946,16 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 
 	/* (Re)arrange the trains in the wanted arrangement. */
 	ArrangeTrains(&dst_head, dst, &src_head, src, move_chain);
+
+	/* ArrangeTrains() can hand a head that was resolved before the splice. When
+	 * the moved block is a reversed unit its base sits behind its articulated
+	 * parts, so the recorded head may now be in the middle of the merged chain or
+	 * in the other chain entirely. The two live chains are the ones the surviving
+	 * vehicles belong to; re-derive both heads from them so the normalisation and
+	 * statistics below operate on real chain fronts. */
+	if (src_head != nullptr) src_head = src_head->First();
+	if (dst_head != nullptr) dst_head = dst_head->First();
+	if (src_head != nullptr && dst_head != nullptr && src_head == dst_head) dst_head = nullptr;
 
 	if (!flags.Test(DoCommandFlag::AutoReplace)) {
 		/* If the autoreplace flag is set we do not need to test for the validity
@@ -10585,6 +10699,12 @@ static void DeleteLastWagon(Train *v)
 	if (deleting_primary) {
 		for (Train *u = first; u != nullptr; u = u->Next()) u->SetPrimary(first);
 	}
+
+	/* The same applies to the unit-main pointers: this function frees one
+	 * vehicle per call, so the base of a multi-part unit can be freed while
+	 * other members are still alive. A dangling unit_main makes every
+	 * GetUnitMain() user abort once the pool reuses the freed slot. */
+	if (first != v) Vehicle::ClearUnitMainOfChain(first, v);
 
 	if (first != v) {
 		/* Recalculate cached train properties while a valid logical carrier is

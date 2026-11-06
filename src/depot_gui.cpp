@@ -138,6 +138,21 @@ void CcCloneVehicle(const CommandCost &result)
 	ShowVehicleViewWindow(v);
 }
 
+/**
+ * Resolve a train vehicle to its unit's chain-order front.
+ *
+ * Membership comes from unit_main, which is the only thing that distinguishes
+ * adjacent units of the same engine type. Chain order alone cannot: an
+ * articulated base and the base of the next unit are both art == 0.
+ */
+static const Vehicle *GetUnitChainFront(const Vehicle *v)
+{
+	if (v == nullptr) return nullptr;
+	const Vehicle *main = v->GetUnitMain();
+	while (v->Previous() != nullptr && v->Previous()->GetUnitMain() == main) v = v->Previous();
+	return v;
+}
+
 static void TrainDepotMoveVehicle(const Vehicle *wagon, VehicleID sel, const Vehicle *head)
 {
 	const Vehicle *v = Vehicle::Get(sel);
@@ -147,6 +162,12 @@ static void TrainDepotMoveVehicle(const Vehicle *wagon, VehicleID sel, const Veh
 	if (wagon == nullptr) {
 		if (head != nullptr) wagon = head->Last();
 	} else {
+		/* Drop in front of the complete unit that was dropped on, not merely in
+		 * front of the clicked part. A reversed unit stores its base behind its
+		 * articulated parts, so the clicked part is not necessarily the unit's
+		 * chain front; inserting in front of the wrong member would split the
+		 * unit. */
+		wagon = GetUnitChainFront(wagon);
 		wagon = wagon->Previous();
 		if (wagon == nullptr) return;
 	}
@@ -344,10 +365,16 @@ struct DepotWindow : Window {
 
 		if (!add_dragged) return 0;
 
-		/* Sum the length of the dragged selection. */
+		/* Sum the length of the dragged selection. Walk the chain and bound the run
+		 * by unit_main: a reversed unit keeps its base behind its articulated parts,
+		 * so following the articulated flag would stop in the middle of the unit and
+		 * under-count the dragged length. */
 		uint length = 0;
-		for (Train *u = Train::Get(this->sel); u != nullptr; u = _cursor.vehchain ? u->Next() : (u->HasArticulatedPart() ? u->GetNextArticulatedPart() : nullptr)) {
+		Train *first = Train::Get(this->sel);
+		Train *last = _cursor.vehchain ? first->Last() : first->GetUnitChainLast();
+		for (Train *u = first; u != nullptr; u = u->Next()) {
 			length += u->gcache.cached_veh_length;
+			if (u == last) break;
 		}
 
 		return length;
@@ -588,7 +615,12 @@ struct DepotWindow : Window {
 			if (x < 0) break;
 		}
 
-		return {.action = DepotGUIAction::DragVehicle, .vehicle = vehicle, .wagon = wagon != nullptr ? wagon->GetFirstEnginePart() : nullptr};
+		/* Return the exact vehicle that was clicked. Do not normalise it to the
+		 * unit base: a reversed unit stores its base behind its articulated
+		 * parts, so GetFirstEnginePart() would answer with the part in front of
+		 * the clicked one and the drag would move the wrong wagon. The move
+		 * command resolves the complete unit block itself. */
+		return {.action = DepotGUIAction::DragVehicle, .vehicle = vehicle, .wagon = wagon};
 	}
 
 	/**
@@ -618,7 +650,12 @@ struct DepotWindow : Window {
 					SetMouseCursorVehicle(v, EngineImageType::InDepot);
 					_cursor.vehchain = _ctrl_pressed;
 
-					this->sel = v->index;
+					/* Remember the selected unit by its chain-order first member. The
+					 * drawing and the insert marker both walk the chain forward from
+					 * the selection, so remembering any other member would leave the
+					 * parts in front of it outside the highlight frame and shorten the
+					 * dragged length, which shifts the insert marker by those parts. */
+					this->sel = (this->type == VehicleType::Train) ? GetUnitChainFront(v)->index : v->index;
 					this->SetDirty();
 				}
 				break;
@@ -1099,14 +1136,20 @@ struct DepotWindow : Window {
 				 * The list entries are keyed by the primary, but the drawn image is laid out from the chain
 				 * head, so the destination is marked with the head's index regardless of where the primary sits. */
 				new_vehicle_over = (first != nullptr) ? first->index : result.vehicle->index;
-			} else if (result.wagon != nullptr && result.wagon->index != first->index &&
-					result.wagon->index != this->sel &&
-					/* A chain can start with a wagon now that the primary may sit mid-chain, so
-					 * there is no previous vehicle to compare against. That wagon heads another
-					 * train, which makes this a valid insertion point rather than a no-op move.
-					 * Over the chain head itself means 'insert in front', which is not possible. */
-					(result.wagon->Previous() == nullptr || result.wagon->Previous()->index != this->sel)) { // ..over an existing wagon.
-				new_vehicle_over = result.wagon->index;
+			} else if (result.wagon != nullptr) {
+				/* DrawTrainImage() draws the insert marker immediately *before* the
+				 * vehicle named by vehicle_over. Normalise the clicked part to the
+				 * chain-order front of its whole unit, so the marker lands in front
+				 * of the complete unit (never inside an articulated run), which is
+				 * exactly where TrainDepotMoveVehicle() inserts. Do NOT step one
+				 * vehicle further back: that draws the marker a whole wagon to the
+				 * left of the real drop position. */
+				const Vehicle *front = GetUnitChainFront(result.wagon);
+				if (front->index != first->index &&
+						front->index != this->sel &&
+						(front->Previous() == nullptr || front->Previous()->index != this->sel)) {
+					new_vehicle_over = front->index;
+				}
 			}
 		}
 
@@ -1128,13 +1171,22 @@ struct DepotWindow : Window {
 
 				if (this->type == VehicleType::Train) {
 					if (result.action == DepotGUIAction::DragVehicle && sel != VehicleID::Invalid()) {
-						if (result.wagon != nullptr && result.wagon->index == sel && _ctrl_pressed) {
+						/* sel holds the chain-order first member of the dragged unit, so a
+						 * drop on any member of that same unit is a drop on the selection:
+						 * nothing to move. Comparing the exact clicked part instead would
+						 * let a drop on a sibling part issue a command the command layer
+						 * has to reject, which surfaced as an error message. */
+						bool same_unit = result.wagon != nullptr &&
+								GetUnitChainFront(result.wagon)->index == sel;
+
+						if (same_unit && _ctrl_pressed) {
 							Command<Commands::ReverseTrainDirection>::Post(STR_ERROR_CAN_T_REVERSE_DIRECTION_RAIL_VEHICLE, Vehicle::Get(sel)->tile, Vehicle::Get(sel)->index, true);
-						} else if (result.wagon == nullptr || result.wagon->index != sel) {
+						} else if (same_unit) {
+							/* Dropped on itself: just show the consist, do not move it. */
+							if (result.vehicle != nullptr && result.vehicle->Primary()->IsPrimaryVehicle()) ShowVehicleViewWindow(result.vehicle->Primary());
+						} else {
 							this->vehicle_over = VehicleID::Invalid();
 							TrainDepotMoveVehicle(result.wagon, sel, result.vehicle);
-						} else if (result.vehicle != nullptr && result.vehicle->Primary()->IsPrimaryVehicle()) {
-							ShowVehicleViewWindow(result.vehicle->Primary());
 						}
 					}
 				} else if (result.action == DepotGUIAction::DragVehicle && result.vehicle != nullptr && sel == result.vehicle->index) {

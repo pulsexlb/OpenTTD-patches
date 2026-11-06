@@ -5173,20 +5173,30 @@ void GetVehicleSet(VehicleSet &set, Vehicle *v, uint8_t num_vehicles)
 		if (num_vehicles == UINT8_MAX) v = v->First();
 
 		Train *u = Train::From(v);
-		/* Only include whole vehicles, so start with the first articulated part */
-		u = u->GetFirstEnginePart();
+		/* Only include whole vehicles, so start at the first chain member of the
+		 * unit. GetFirstEnginePart() cannot be used here: it answers through
+		 * unit_main, and a reversed unit stores its base behind its articulated
+		 * parts, so it would return a vehicle that sits after the clicked one.
+		 * The walk below would then stop immediately, leaving the unit split. */
+		u = u->GetUnitChainFront();
 
 		/* Include num_vehicles vehicles, not counting articulated parts */
 		for (; u != nullptr && num_vehicles > 0; num_vehicles--) {
-			do {
+			/* Stop at the end of this unit rather than at the first vehicle which
+			 * is not an articulated part: the base of a reversed unit sits at the
+			 * tail, so the flag marks a boundary in the middle of the unit. */
+			Train *unit_last = u->GetUnitChainLast();
+			for (;;) {
 				/* Include current vehicle in the selection. */
 				include(set, u->index);
 
 				/* If the vehicle is multiheaded, add the other part too. */
 				if (u->IsMultiheaded()) include(set, u->other_multiheaded_part->index);
 
+				const bool at_unit_end = (u == unit_last);
 				u = u->Next();
-			} while (u != nullptr && u->IsArticulatedPart());
+				if (at_unit_end || u == nullptr) break;
+			}
 		}
 	}
 }

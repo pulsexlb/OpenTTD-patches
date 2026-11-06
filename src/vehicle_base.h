@@ -767,6 +767,23 @@ public:
 	inline bool IsSavedUnitMain() const { return this->consist_unit_main != 0; }
 	/** @return The main part (base/front engine) of this multi-part unit, or this vehicle for a singleton. */
 	inline Vehicle *GetUnitMain() const { return this->unit_main != nullptr ? this->unit_main : const_cast<Vehicle *>(this); }
+
+	/**
+	 * Drop every unit_main pointer of this chain that names the given vehicle,
+	 * so no survivor keeps a pointer to a part which is about to be freed. Only
+	 * pointers naming that exact vehicle are cleared; nothing is re-inferred,
+	 * because chain position says nothing about the unit layout once consists
+	 * have been coupled, reversed or dragged around in a depot.
+	 * @param chain_head First vehicle of the chain that stays alive.
+	 * @param removed The vehicle which is going to be deleted.
+	 */
+	static void ClearUnitMainOfChain(Vehicle *chain_head, const Vehicle *removed)
+	{
+		if (chain_head == nullptr || removed == nullptr) return;
+		for (Vehicle *v = chain_head; v != nullptr; v = v->Next()) {
+			if (v->unit_main == removed) v->unit_main = nullptr;
+		}
+	}
 	/* Raw pointer assignment without the chain-consistency walks of SetNext();
 	 * only for code that relinks an entire chain in one pass. */
 	inline void SetNextRaw(Vehicle *n) { this->next = n; }

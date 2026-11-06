@@ -720,6 +720,59 @@ public:
 	bool NeedsCabFlip() const;
 
 	/**
+	 * Resolve this vehicle to the first chain member of its multi-part unit.
+	 *
+	 * Membership comes from unit_main, not from the articulated flag. A reversed
+	 * unit stores its base behind its articulated parts, so the run of art == 1
+	 * vehicles does not line up with the unit any more: the base sits after the
+	 * parts and IsArticulatedPart() therefore reports a unit boundary in the middle
+	 * of the unit. unit_main identifies the unit exactly, and its members are always
+	 * contiguous in the chain.
+	 * @return First chain member of this unit.
+	 */
+	inline Train *GetUnitChainFront()
+	{
+		/* Compare GetUnitMain() rather than HasUnitMain(): the base of a unit
+		 * may have a null unit_main (GetUnitMain() then returns itself), and
+		 * ordinary single wagons have none at all. Requiring HasUnitMain()
+		 * would stop at such a base and leave part of the unit outside the
+		 * range; the IsArticulatedPart() fallback would swallow the trailing
+		 * parts of a base-first unit in front of a plain wagon. */
+		const Vehicle *main = this->GetUnitMain();
+		Train *first = this;
+		while (first->Previous() != nullptr && first->Previous()->GetUnitMain() == main) {
+			first = Train::From(first->Previous());
+		}
+		return first;
+	}
+
+	/** Const overload of GetUnitChainFront(). */
+	inline const Train *GetUnitChainFront() const
+	{
+		return const_cast<Train *>(this)->GetUnitChainFront();
+	}
+
+	/**
+	 * Resolve this vehicle to the last chain member of its multi-part unit.
+	 * @return Last chain member of this unit.
+	 */
+	inline Train *GetUnitChainLast()
+	{
+		const Vehicle *main = this->GetUnitMain();
+		Train *last = this;
+		while (last->Next() != nullptr && last->Next()->GetUnitMain() == main) {
+			last = Train::From(last->Next());
+		}
+		return last;
+	}
+
+	/** Const overload of GetUnitChainLast(). */
+	inline const Train *GetUnitChainLast() const
+	{
+		return const_cast<Train *>(this)->GetUnitChainLast();
+	}
+
+	/**
 	 * Set the movement direction of this vehicle chain.
 	 * @param d The direction to move.
 	 */

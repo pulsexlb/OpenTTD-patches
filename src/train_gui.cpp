@@ -69,9 +69,17 @@ static int HighlightDragPosition(int px, int max_width, int y, VehicleID selecti
 	bool rtl = _current_text_dir == TD_RTL;
 
 	assert(selection != VehicleID::Invalid());
+	Train *first = Train::Get(selection);
+	/* Walk the chain rather than following the articulated flag. A reversed unit
+	 * keeps its base behind its articulated parts, so HasArticulatedPart() stops at
+	 * the base in the middle of the unit: the marker would be short by that part
+	 * and land in the wrong place. Select the unit range by unit_main instead. */
+	Train *last = chain ? first->Last() : first->GetUnitChainLast();
+
 	int dragged_width = 0;
-	for (Train *t = Train::Get(selection); t != nullptr; t = chain ? t->Next() : (t->HasArticulatedPart() ? t->GetNextArticulatedPart() : nullptr)) {
+	for (Train *t = first; t != nullptr; t = t->Next()) {
 		dragged_width += t->GetDisplayImageWidth(nullptr);
+		if (t == last) break;
 	}
 
 	int drag_hlight_left = rtl ? std::max(px - dragged_width + 1, 0) : px;
@@ -120,7 +128,8 @@ void DrawTrainImage(const Train *v, const Rect &r, VehicleID selection, EngineIm
 
 		int px = rtl ? max_width + skip : -skip;
 		int y = r.Height() / 2;
-		bool sel_articulated = false;
+		bool sel_started = false;
+		const Vehicle *sel_unit_main = nullptr;
 		bool dragging = (drag_dest != VehicleID::Invalid());
 		bool drag_at_end_of_train = (drag_dest == v->index); // Head index is used to mark dragging at end of train.
 		for (; v != nullptr && (rtl ? px > 0 : px < max_width); v = v->Next()) {
@@ -140,19 +149,25 @@ void DrawTrainImage(const Train *v, const Rect &r, VehicleID selection, EngineIm
 				seq.Draw(px + (rtl ? -offset.x : offset.x), y + offset.y, pal, v->vehstatus.Test(VehState::Crashed));
 			}
 
-			if (!v->IsArticulatedPart()) sel_articulated = false;
-
 			if (v->index == selection) {
 				/* Set the highlight position */
 				highlight_l = rtl ? px - width : px;
 				highlight_r = rtl ? px - 1 : px + width - 1;
-				sel_articulated = true;
-			} else if ((_cursor.vehchain && highlight_r != 0) || sel_articulated) {
+				sel_started = true;
+				sel_unit_main = v->GetUnitMain();
+			} else if (sel_started && (_cursor.vehchain ||
+					(v->HasUnitMain() && sel_unit_main != nullptr && v->GetUnitMain() == sel_unit_main))) {
+				/* Extend over the selected unit. Unit membership comes from unit_main,
+				 * not from the articulated flag: a reversed unit stores its base behind
+				 * its articulated parts, so the flag reports a unit boundary in the
+				 * middle of the unit and the frame stops short of the base. */
 				if (rtl) {
 					highlight_l -= width;
 				} else {
 					highlight_r += width;
 				}
+			} else {
+				sel_started = false;
 			}
 
 			if (do_overlays) AddCargoIconOverlay(overlays, px, width, v);

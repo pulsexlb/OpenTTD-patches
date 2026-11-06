@@ -41,7 +41,7 @@ extern void ChangeVehicleNews(VehicleID from_index, VehicleID to_index);
 /** Resolve a multi-part unit member to its base/main part for autoreplace. */
 static Train *GetAutoreplaceUnitStart(Vehicle *v)
 {
-	if (v == nullptr) return nullptr;
+	if (v == nullptr || v->type != VehicleType::Train) return nullptr;
 	Train *t = Train::From(v);
 	/* Keep dual-headed halves separate here: the rear half is handled/skipped
 	 * by GetNewEngineType(), and resolving it back to the front would loop. */
@@ -978,7 +978,12 @@ CommandCost CmdAutoreplaceVehicle(DoCommandFlags flags, VehicleID veh_id, bool s
 	Vehicle *w = v;
 	bool any_replacements = false;
 	while (w != nullptr) {
-		w = GetAutoreplaceUnitStart(Train::From(w));
+		/* This loop also runs for road vehicles, aircraft and ships; resolving
+		 * the multi-part unit only applies to trains and yields nullptr for the
+		 * rest. GetNextUnit() then ends the loop. */
+		Vehicle *start = GetAutoreplaceUnitStart(w);
+		if (start == nullptr) break;
+		w = start;
 		EngineID e;
 		CommandCost cost = GetNewEngineType(w, c, false, same_type_only, e);
 		if (cost.Failed()) return cost;
