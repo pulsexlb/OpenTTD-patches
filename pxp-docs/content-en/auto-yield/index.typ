@@ -1,3 +1,5 @@
+#import "../../shared/auto-yield-diagrams.typ": flow, layout
+
 #title[Automatic Yielding Path Restriction]
 
 px-patch provides a simpler automatic yielding path restriction feature, allowing you to easily create sidings so that faster trains can pass sooner.
@@ -17,6 +19,20 @@ Before using automatic yielding, you need to prepare a `slot` for the siding.
 = How automatic yielding works
 
 The basic principle of the automatic yielding option is: before passing the siding (at a greater distance), an `approach detector` (registering) signal is set up; this signal claims a slot for all passing trains, and sets information such as the speed difference at which trains on this siding should yield. After passing this approach detector, the train keeps checking whether there are trains that simultaneously hold the configured slot and are faster than it and meet the speed difference conditions; if there are, the `main-line guard` signal is set to disallow passage for this train, forcing it into the siding (or platform), and the `siding exit` signal of the siding (or platform) also checks in real time whether there are still trains that need to yield; if so, the train will be held there. After the end of the siding, a `slot release` signal is set up; it returns the slot and cleans up the data, completing the yielding.
+
+The diagram below shows the railway layout and the positions and roles of the four signals (①—④):
+
+#figure(
+  layout("en"),
+  caption: [Automatic yielding layout and signal positions],
+)
+
+The decision flow of a yielding train is as follows:
+
+#figure(
+  flow("en"),
+  caption: [Automatic yielding decision flow],
+)
 
 #figure(
   image("../../static/images/auto-yield.png", width: 100%),

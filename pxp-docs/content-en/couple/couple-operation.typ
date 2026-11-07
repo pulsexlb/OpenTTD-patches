@@ -18,6 +18,7 @@ In `More options`, the other available restriction options are:
 - *Cargo type:* restrict coupling to trains that can load the specified cargo
 - *Units couple:* restrict coupling to trains with a certain number of units
 - *Speed:* restrict coupling to trains with a speed within the specified range (skip if my train has a lower/higher top speed)
+- *Service number:* restrict coupling to the service number the train to couple with is currently executing
 
 == Coupling options
 

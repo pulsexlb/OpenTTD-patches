@@ -96,6 +96,10 @@
               content: include "content-en/options/enable-depot.typ",
             ),
             chapter(
+              "en/other-options/service-number",
+              content: include "content-en/options/service-number.typ",
+            ),
+            chapter(
               "en/other-options/invite-code-alive",
               content: include "content-en/options/invite-code-alive.typ",
             ),
@@ -195,6 +199,10 @@
             chapter(
               "zh/other-options/enable-depot",
               content: include "content-zh/options/enable-depot.typ",
+            ),
+            chapter(
+              "zh/other-options/service-number",
+              content: include "content-zh/options/service-number.typ",
             ),
             chapter(
               "zh/other-options/invite-code-alive",
