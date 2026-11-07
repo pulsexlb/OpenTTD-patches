@@ -6694,7 +6694,14 @@ static TileIndexDiffC TrackAxisToward(const Train *v, const Train *target)
  */
 static int CouplePairOffset(const Train *a)
 {
-	return CoupleJointOffset(a->gcache.cached_veh_length, a->Next()->gcache.cached_veh_length, a->IsDrivingBackwards());
+	/* [FIX-couple-misalign] The movement pipeline maintains chain-order
+	 * FORWARD rounding (la/2 + (lb+1)/2) regardless of the driving direction
+	 * (verified by the pxp-spacing probe: backwards-driven pairs sit at the
+	 * forward value). The previous IsDrivingBackwards rounding here disagreed
+	 * for asymmetric odd/even pairs (1px), so AdvanceWagonsAfterCouple planted
+	 * the seam 1px off and the first movement tick snapped it back -- the
+	 * visible wagon interpenetration after a couple. */
+	return CoupleJointOffset(a->gcache.cached_veh_length, a->Next()->gcache.cached_veh_length, false);
 }
 
 /**
