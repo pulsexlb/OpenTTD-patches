@@ -2252,12 +2252,68 @@ static void GetChainUnitRun(Train *v, Train *&first, Train *&last)
 }
 
 /**
+ * Resolve the block that has to move together when a vehicle is dragged.
+ *
+ * A dual-headed locomotive is one vehicle: dragging either half must take both
+ * halves, plus the wagons that vanilla keeps between them. Detaching only the
+ * clicked half leaves the other half in the source chain; NormaliseDualHeads()
+ * then steals it across chains, which produces a split pair and a headless
+ * remainder chain in the depot.
+ *
+ * This is deliberately separate from GetChainUnitRun(). That one keeps vanilla
+ * single-part semantics for dual-headed halves on the DESTINATION side, so
+ * wagons can still be dropped between the two halves.
+ */
+static void GetMoveUnitRun(Train *v, Train *&first, Train *&last)
+{
+	GetChainUnitRun(v, first, last);
+	if (!v->IsMultiheaded() || v->other_multiheaded_part == nullptr) return;
+	Train *other = v->other_multiheaded_part;
+	if (other->First() != v->First()) return; // Already split; leave it to NormaliseDualHeads().
+
+	/* Take the chain-order extremes of the two halves -- a reversed locomotive
+	 * stores its rear half in front of the front half, and the wagons between
+	 * them belong to the block too. */
+	Train *lo = nullptr;
+	Train *hi = nullptr;
+	for (Train *w = v->First(); w != nullptr; w = w->Next()) {
+		if (w == v || w == other) {
+			if (lo == nullptr) lo = w;
+			hi = w;
+		}
+	}
+	if (lo != nullptr && hi != nullptr) {
+		first = lo;
+		last = hi;
+	}
+}
+
+/**
  * Remove the given wagon from its consist.
  * @param part the part of the train to remove.
  * @param chain whether to remove the whole chain.
+ * @param block_last if set, detach the inclusive range [part .. block_last]
+ *                   as one chain (a whole dual-headed locomotive).
  */
-static void RemoveFromConsist(Train *part, bool chain = false)
+static void RemoveFromConsist(Train *part, bool chain = false, Train *block_last = nullptr)
 {
+	if (block_last != nullptr) {
+		/* Detach the whole pre-resolved block. The vehicles in front of it must
+		 * point past it, and the block must become a chain of its own. */
+		if (part->Previous() != nullptr) part->Previous()->SetNext(block_last->Next());
+		part->SetPreviousRaw(nullptr);
+		block_last->SetNext(nullptr);
+		/* SetNext() only rewrites the caches of the vehicles that stayed
+		 * behind. Rebase the detached block too: a drop into an empty depot
+		 * slot never calls InsertInConsist(), so nothing else would fix its
+		 * First()/Last() and they would still name the old chain. */
+		for (Train *w = part; ; w = w->Next()) {
+			w->SetFirst(part);
+			w->SetLast(block_last);
+			if (w == block_last) break;
+		}
+		return;
+	}
 	/* Removing (or moving) any member of a multi-part unit removes the complete
 	 * unit. A reversed unit stores its base at the tail, so the run has to be
 	 * resolved in chain order; walking only towards the tail from the selected
@@ -2360,8 +2416,16 @@ static void NormaliseDualHeads(Train *t, bool pull_in_free_cars)
 		 * re-inserted right before the next engine and any free cars in
 		 * between end up inside the dual-head block. Without it the walk
 		 * stops at the rear half and the surrounding cars keep their place. */
+		/* A dual-headed half of a DIFFERENT locomotive is a hard boundary: rear
+		 * halves are not engines, so without this check the walk crosses into
+		 * the next locomotive and separates two dual-headed engines sharing a
+		 * consist. Only our own rear half may be crossed. */
 		Train *u;
-		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine() && (pull_in_free_cars || u->Next() != t->other_multiheaded_part); u = u->Next()) {}
+		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine() &&
+				(pull_in_free_cars
+					? (u->Next() == t->other_multiheaded_part || !u->Next()->IsMultiheaded())
+					: u->Next() != t->other_multiheaded_part);
+				u = u->Next()) {}
 
 		if (u == t->other_multiheaded_part) continue;
 
@@ -2617,10 +2681,20 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
 	 * reversed unit stores its base behind its articulated parts, so the selected
 	 * vehicle can sit in the middle of the block. Splitting or re-inserting it
 	 * alone would orphan the rest of the unit. */
+	Train *selected = src;
 	Train *block_first = src;
 	Train *block_last = src;
-	if (!move_chain && src != nullptr) GetChainUnitRun(src, block_first, block_last);
+	if (!move_chain && src != nullptr) GetMoveUnitRun(src, block_first, block_last);
 	if (!move_chain) src = block_first;
+	/* A dual-headed locomotive was widened into one block. Remember its tail:
+	 * RemoveFromConsist() needs it to detach the whole locomotive, and the
+	 * source chain's new head is the vehicle right behind that tail. */
+	Train *dual_block_last = nullptr;
+	if (!move_chain && selected != nullptr && selected->IsMultiheaded() &&
+			selected->other_multiheaded_part != nullptr &&
+			selected->other_multiheaded_part->First() == selected->First()) {
+		dual_block_last = block_last;
+	}
 
 	/* A unit cannot be inserted behind one of its own members: the detach would
 	 * leave the destination inside the block and InsertInConsist() would then
@@ -2656,13 +2730,14 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
 		 * with us, so src->GetNextUnit(), however... when we are e.g. a wagon
 		 * that is followed by a rear multihead we do not want to include that. */
 		*src_head = move_chain ? nullptr :
-				(src->IsMultiheaded() ? src->GetNextUnit() : src->GetNextVehicle());
+				(dual_block_last != nullptr ? dual_block_last->Next() :
+					(src->IsMultiheaded() ? src->GetNextUnit() : src->GetNextVehicle()));
 	}
 
 	/* Now it's just simply removing the part that we are going to move from the
 	 * source train and *if* the destination is a not a new train add the chain
 	 * at the destination location. */
-	RemoveFromConsist(src, move_chain);
+	RemoveFromConsist(src, move_chain, dual_block_last);
 	if (*dst_head != src) {
 		/* The spliced chain is the block's chain head, not src: a reversed unit
 		 * stores its base behind its articulated parts, so src can sit in the
@@ -2890,7 +2965,9 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 	 * member instead, and keep src exactly as selected. */
 	Train *src_unit_first;
 	Train *src_unit_last;
-	GetChainUnitRun(src, src_unit_first, src_unit_last);
+	/* A dual-headed locomotive moves as one block: rejecting a drop inside the
+	 * block has to consider both halves, not only the clicked one. */
+	GetMoveUnitRun(src, src_unit_first, src_unit_last);
 	if (dst != nullptr) {
 		Train *dst_unit_first;
 		Train *dst_unit_last;
@@ -2926,7 +3003,13 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		dst_head = nullptr;
 	}
 
-	if (src->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
+	/* The rear half is draggable too, but only together with its front half.
+	 * A pair that is already split across chains cannot be repaired by a depot
+	 * drag, so keep the vanilla rejection for that broken state. */
+	if (src->IsRearDualheaded() && (src->other_multiheaded_part == nullptr ||
+			src->other_multiheaded_part->First() != src->First())) {
+		return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
+	}
 
 	/* When moving all wagons, we can't have the same src_head and dst_head */
 	if (move_chain && src_head == dst_head) return CommandCost();
