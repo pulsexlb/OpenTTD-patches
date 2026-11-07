@@ -6857,11 +6857,22 @@ Train *GetDecoupleVehicleForCount(Train *v, uint num_decouple)
 	/* The editor can query single-unit consists, unlike the execution caller. */
 	if (ret == nullptr) return nullptr;
 
-	/* GetNextVehicle() skips whole multi-part units, so the cut can never land
-	 * inside a dual-headed or articulated unit. */
+	/* GetNextVehicle() skips an articulated unit but counts each dual head
+	 * separately, as in existing orders. Check the actual partners below. */
 	for (uint i = 1; i < num_decouple && ret->GetNextVehicle() != nullptr; i++) {
 		ret = ret->GetNextVehicle();
 	}
+	std::vector<const Train *> open_dual_heads;
+	for (const Train *part = head; part != ret; part = part->Next()) {
+		if (!part->IsMultiheaded() || part->other_multiheaded_part == nullptr) continue;
+		auto other = std::find(open_dual_heads.begin(), open_dual_heads.end(), part->other_multiheaded_part);
+		if (other == open_dual_heads.end()) {
+			open_dual_heads.push_back(part);
+		} else {
+			open_dual_heads.erase(other);
+		}
+	}
+	if (!open_dual_heads.empty()) return nullptr;
 	return ret;
 }
 

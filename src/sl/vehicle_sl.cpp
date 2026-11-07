@@ -1984,7 +1984,9 @@ static void LogVehicleVENCMessage(const Vehicle *v, const char *var)
 
 	extern void WriteVehicleInfo(format_target &buffer, const Vehicle *u, const Vehicle *v, uint length);
 	uint length = 0;
-	for (const Vehicle *u = v->Primary(); u != v; u = u->Next()) {
+	/* Primary can be behind this vehicle in a coupled consist. Count from
+	 * the physical head, but report the primary's train number. */
+	for (const Vehicle *u = v->First(); u != nullptr && u != v; u = u->Next()) {
 		length++;
 	}
 	WriteVehicleInfo(buffer, v, v->Primary(), length);
