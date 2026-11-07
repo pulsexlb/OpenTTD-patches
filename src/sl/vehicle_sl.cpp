@@ -50,6 +50,9 @@ extern SaveLoadStructHandlerFactory MakeOrderExtraDataStructHandler();
  */
 void ConnectMultiheadedTrains()
 {
+	/* The exact pairing is restored once the chain head pointers are ready. */
+	if (SlXvIsFeaturePresent(XSLFI_TRAIN_UNIT_MAIN, 2)) return;
+
 	for (Train *v : Train::Iterate()) {
 		v->other_multiheaded_part = nullptr;
 	}
@@ -162,8 +165,8 @@ void ConnectMultiheadedTrains()
 /**
  * Rebuild the unit-main pointers after loading. Multi-part units may be stored
  * in either orientation (base-first or part-first), so the main part cannot be
- * inferred from chain position alone. The saved consist_unit_main flag marks
- * the main part of each unit.
+ * inferred from chain position alone. Current saves carry the exact main
+ * vehicle ID; legacy saves only mark candidate main vehicles.
  */
 void RebuildTrainUnitMains()
 {
@@ -171,6 +174,27 @@ void RebuildTrainUnitMains()
 		if (v->Previous() != nullptr) continue;
 
 		for (Train *u = v; u != nullptr; u = u->Next()) u->SetUnitMain(nullptr);
+
+		/* A boolean marker cannot describe two adjacent articulated runs or
+		 * distinguish an adjacent singleton from the true base. A network
+		 * client must rebuild the same unit membership as the live server. */
+		if (SlXvIsFeaturePresent(XSLFI_TRAIN_UNIT_MAIN, 2)) {
+			for (Train *u = v; u != nullptr; u = u->Next()) u->other_multiheaded_part = nullptr;
+			for (Train *u = v; u != nullptr; u = u->Next()) {
+				Vehicle *base = Vehicle::GetIfValid(u->saved_train_unit_main);
+				if (base == nullptr || base->type != VehicleType::Train || base->First() != v) continue;
+				Train *main = Train::From(base);
+				if (main->IsArticulatedPart()) continue;
+				if (main != u && !u->IsArticulatedPart()) {
+					if (!u->IsMultiheaded() || u->IsEngine() || !main->IsMultiheaded() || !main->IsEngine() ||
+							u->engine_type != main->engine_type || main->other_multiheaded_part != nullptr) continue;
+					u->other_multiheaded_part = main;
+					main->other_multiheaded_part = u;
+				}
+				u->SetUnitMain(main);
+			}
+			continue;
+		}
 
 		/* Dual-headed pairs: both halves point at the engine half. */
 		for (Train *u = v; u != nullptr; u = u->Next()) {
@@ -391,7 +415,9 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 		if (!part_of_load) v->consist_primary = v->Primary() == v;
 		v->first = nullptr;
 		v->primary = nullptr;
-		v->unit_main = nullptr;
+		/* A live NewGRF refresh may rebuild caches, but it does not load a
+		 * new vehicle chain. Keep its authoritative multipart membership. */
+		if (part_of_load) v->unit_main = nullptr;
 		v->last = nullptr;
 		if (v->IsGroundVehicle()) v->GetGroundVehicleCache()->first_engine = EngineID::Invalid();
 	}
@@ -939,8 +965,12 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 	void Save(Vehicle *v) const override
 	{
 		v->consist_primary = (v->Primary() == v) ? 1 : 0;
-		v->consist_unit_main = (v->GetUnitMain() == v) ? 1 : 0;
-		if (v->type == VehicleType::Train && v->index.base() <= 40 && v->Primary()->index.base() <= 40) {
+		v->saved_train_unit_main = v->type == VehicleType::Train && v->HasUnitMain() ? v->GetUnitMain()->index : VehicleID::Invalid();
+		if (v->type == VehicleType::Train) {
+			const Train *train = Train::From(v);
+			if (train->IsMultiheaded() && train->other_multiheaded_part != nullptr) {
+				v->saved_train_unit_main = (train->IsEngine() ? train : train->other_multiheaded_part)->index;
+			}
 		}
 		SlObjectSaveFiltered(v, this->GetLoadDescription());
 	}
@@ -1238,7 +1268,8 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 
 		NSL("vehstatus",                      SLE_VAR(Vehicle, vehstatus,                 SLE_UINT8)),
 		NSL("consist_primary",          SLE_CONDVAR_X(Vehicle, consist_primary,           SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_PRIMARY))),
-		NSL("consist_unit_main",        SLE_CONDVAR_X(Vehicle, consist_unit_main,         SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_UNIT_MAIN))),
+		NSL("consist_unit_main",        SLE_CONDVAR_X(Vehicle, consist_unit_main,         SLE_UINT8,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_UNIT_MAIN, 1, 1))),
+		NSL("train_unit_main",         SLE_CONDVAR_X(Vehicle, saved_train_unit_main,     SLE_UINT32,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_UNIT_MAIN, 2))),
 		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),

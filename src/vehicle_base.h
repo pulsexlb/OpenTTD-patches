@@ -267,6 +267,7 @@ private:
 	uint8_t consist_primary = 0;                 ///< SAVE(XSLFI_TRAIN_PRIMARY): temporary flag used to persist which vehicle of the chain is the primary
 	Vehicle *unit_main = nullptr;                ///< NOSAVE: pointer to the main part (base/front engine) of this multi-part unit; nullptr means same as this
 	uint8_t consist_unit_main = 0;               ///< SAVE(XSLFI_TRAIN_UNIT_MAIN): temporary flag used to persist which vehicle is the unit main
+	VehicleID saved_train_unit_main = VehicleID::Invalid(); ///< SAVE(XSLFI_TRAIN_UNIT_MAIN v2): exact main part of a multipart unit.
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order
@@ -277,6 +278,7 @@ public:
 	friend struct ::VehicleCommonStructHandler;                      ///< Saves the common vehicle description (needs #consist_primary)
 	friend void FixOldVehicles(LoadgameState &ls);
 	friend void AfterLoadVehiclesPhase1(bool part_of_load);     ///< So we can set the #previous and #first pointers while loading
+	friend void RebuildTrainUnitMains();                        ///< Restores multipart train ownership from the saved IDs.
 	friend bool LoadOldVehicle(LoadgameState &ls, int num);     ///< So we can set the proper next pointer while loading
 
 	friend upstream_sl::SlVehicleCommon;

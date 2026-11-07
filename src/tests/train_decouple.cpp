@@ -398,6 +398,59 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Decouple - single unit has no cut")
 	CHECK(GetDecoupleCuts(v).empty());
 }
 
+TEST_CASE_METHOD(TrainDecoupleFixture, "Train snapshot keeps ownership of adjacent articulated units facing opposite directions")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { DeallocateMap(); });
+	AutoRestoreBackup format(_savegame_format, std::string{"none"});
+	AutoRestoreBackup cursor(_cursor.sprites, std::vector<CursorSprite>{{0, 0, 0, 0}});
+	AutoRestoreBackup feature(_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN], uint16_t{2});
+	Train *a = MakeTrain(), *a_part = MakeTrain(), *b_part = MakeTrain(), *b = MakeTrain();
+	a->SetNext(a_part);
+	a_part->SetNext(b_part);
+	b_part->SetNext(b);
+	a_part->SetArticulatedPart();
+	b_part->SetArticulatedPart();
+	a->SetUnitMain(a);
+	a_part->SetUnitMain(a);
+	b_part->SetUnitMain(b);
+	b->SetUnitMain(b);
+	auto snapshot = std::make_shared<CoupleSnapshotCapture>();
+	REQUIRE(SaveWithFilter(snapshot, false, SMF_NET_SERVER) == SaveLoadResult::Ok);
+	const std::string field = "train_unit_main";
+	REQUIRE(std::search(snapshot->bytes.begin(), snapshot->bytes.end(), field.begin(), field.end()) != snapshot->bytes.end());
+	RebuildTrainUnitMains();
+	CHECK(a_part->GetUnitMain() == a);
+	CHECK(b_part->GetUnitMain() == b);
+}
+
+TEST_CASE_METHOD(TrainDecoupleFixture, "Train snapshot restores exact partners of identical dual-headed engines")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { DeallocateMap(); });
+	AutoRestoreBackup format(_savegame_format, std::string{"none"});
+	AutoRestoreBackup cursor(_cursor.sprites, std::vector<CursorSprite>{{0, 0, 0, 0}});
+	AutoRestoreBackup feature(_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN], uint16_t{2});
+	Train *a = MakeTrain(), *b = MakeTrain(), *a_rear = MakeTrain(), *b_rear = MakeTrain();
+	a->SetNext(b);
+	b->SetNext(b_rear);
+	b_rear->SetNext(a_rear);
+	for (Train *part : {a, b, a_rear, b_rear}) part->SetMultiheaded();
+	a_rear->ClearEngine();
+	b_rear->ClearEngine();
+	a->other_multiheaded_part = a_rear;
+	a_rear->other_multiheaded_part = a;
+	b->other_multiheaded_part = b_rear;
+	b_rear->other_multiheaded_part = b;
+	auto snapshot = std::make_shared<CoupleSnapshotCapture>();
+	REQUIRE(SaveWithFilter(snapshot, false, SMF_NET_SERVER) == SaveLoadResult::Ok);
+	RebuildTrainUnitMains();
+	CHECK(a->other_multiheaded_part == a_rear);
+	CHECK(b->other_multiheaded_part == b_rear);
+	CHECK(a_rear->GetUnitMain() == a);
+	CHECK(b_rear->GetUnitMain() == b);
+}
+
 TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - network snapshot preserves wide IDs and invalid targets")
 {
 	AllocateMap(64, 64);
