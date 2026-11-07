@@ -167,6 +167,11 @@ void ConnectMultiheadedTrains()
  */
 void RebuildTrainUnitMains()
 {
+	/* v3 saves carry each articulated part's main VehicleID, which restores
+	 * membership exactly, including merged runs (a forward unit coupled
+	 * directly behind a reversed one share one contiguous part run). */
+	const bool v3_unit_main = _sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN] >= 3;
+
 	for (Train *v : Train::Iterate()) {
 		if (v->Previous() != nullptr) continue;
 
@@ -180,6 +185,21 @@ void RebuildTrainUnitMains()
 				u->SetUnitMain(main);
 				u->other_multiheaded_part->SetUnitMain(main);
 			}
+		}
+
+		if (v3_unit_main) {
+			for (Train *u = v; u != nullptr; u = u->Next()) {
+				if (!u->IsArticulatedPart() || u->GetSavedUnitMainID() == 0) continue;
+				Train *main = Train::GetIfValid(static_cast<VehicleID>(u->GetSavedUnitMainID()));
+				/* The main must be a non-part member of this same chain. */
+				if (main == nullptr || main->IsArticulatedPart() || main->First() != v) {
+					u->SetSavedUnitMainID(0);
+					continue;
+				}
+				main->SetUnitMain(main);
+				u->SetUnitMain(main);
+			}
+			continue;
 		}
 
 		/* Articulated runs: a contiguous run of articulated parts belongs to
@@ -944,12 +964,14 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 	void Save(Vehicle *v) const override
 	{
 		v->consist_primary = (v->Primary() == v) ? 1 : 0;
+		v->consist_unit_main_id = 0;
 		if (v->type == VehicleType::Train) {
-			/* XSLFI_TRAIN_UNIT_MAIN v2: encode membership explicitly. 1 = unit
-			 * main with its articulated run following it, 2 = run preceding it.
-			 * Parts and single vehicles are 0, so a run's base can be restored
-			 * without heuristics no matter how the chain was reversed or
-			 * cloned. */
+			/* XSLFI_TRAIN_UNIT_MAIN: encode membership explicitly so the client
+			 * rebuilds unit structure without heuristics. v2 byte: 1 = unit main
+			 * with its articulated run following it, 2 = run preceding it.
+			 * v3 extra: every articulated part saves its main's VehicleID, which
+			 * also splits merged runs (a forward unit coupled directly behind a
+			 * reversed one share one contiguous part run). */
 			if (v->HasUnitMain() && v->unit_main == v) {
 				const Vehicle *n = v->Next();
 				if (n != nullptr && n->IsArticulatedPart() && n->GetUnitMain() == v) {
@@ -958,6 +980,9 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 					const Vehicle *p = v->Previous();
 					v->consist_unit_main = (p != nullptr && p->IsArticulatedPart() && p->GetUnitMain() == v) ? 2 : 1;
 				}
+			} else if (v->IsArticulatedPart()) {
+				v->consist_unit_main = 0;
+				if (v->HasUnitMain()) v->consist_unit_main_id = v->unit_main->index.base();
 			} else {
 				v->consist_unit_main = 0;
 			}
@@ -1261,6 +1286,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("vehstatus",                      SLE_VAR(Vehicle, vehstatus,                 SLE_UINT8)),
 		NSL("consist_primary",          SLE_CONDVAR_X(Vehicle, consist_primary,           SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_PRIMARY))),
 		NSL("consist_unit_main",        SLE_CONDVAR_X(Vehicle, consist_unit_main,         SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_UNIT_MAIN))),
+		NSL("consist_unit_main_id",     SLE_CONDVAR_X(Vehicle, consist_unit_main_id,      SLE_UINT16,                 SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_UNIT_MAIN, 3, 3))),
 		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),
