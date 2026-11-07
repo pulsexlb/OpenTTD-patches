@@ -77,7 +77,7 @@ static int CALLBACK EnumFontCallback(const ENUMLOGFONTEX *logfont, const NEWTEXT
 	char font_name[MAX_PATH];
 	convert_from_fs(logfont->elfFullName, font_name);
 
-	if (!FontCache::TryFallback(info->callback->missing_fontsizes, info->callback->missing_glyphs, font_name, logfont->elfLogFont)) return 1;
+	if (!FontCache::TryFallback(info->callback->missing_fontsizes, info->callback->required_glyphs, font_name, logfont->elfLogFont)) return 1;
 
 	FontCache::AddFallback(info->callback->missing_fontsizes, font_name, logfont->elfLogFont);
 	Debug(fontcache, 1, "Fallback font: {}", font_name);
@@ -306,7 +306,7 @@ public:
 	{
 		Debug(fontcache, 1, "Trying fallback fonts");
 		EFCParam langInfo;
-		std::wstring lang = OTTD2FS(language_isocode.substr(0, language_isocode.find('_')));
+		std::wstring lang = OTTD2FS(language_isocode);
 		if (GetLocaleInfoEx(lang.c_str(), LOCALE_FONTSIGNATURE, reinterpret_cast<LPWSTR>(&langInfo.locale), sizeof(langInfo.locale) / sizeof(wchar_t)) == 0) {
 			/* Invalid isocode or some other mysterious error, can't determine fallback font. */
 			Debug(fontcache, 1, "Can't get locale info for fallback font (isocode={})", language_isocode);

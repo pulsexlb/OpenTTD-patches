@@ -383,6 +383,7 @@ void AddArticulatedParts(Vehicle *first)
 	VehicleType type = first->type;
 	if (!EngInfo(first->engine_type)->callback_mask.Test(VehicleCallbackMask::ArticEngine)) return;
 
+	first->SetUnitMain(first);
 	Vehicle *v = first;
 	for (uint i = 1; i < MAX_ARTICULATED_PARTS; i++) {
 		bool flip_image;
@@ -427,6 +428,7 @@ void AddArticulatedParts(Vehicle *first)
 				if (front->IsVirtual()) t->SetVirtual();
 
 				t->SetArticulatedPart();
+				t->SetUnitMain(first);
 				break;
 			}
 

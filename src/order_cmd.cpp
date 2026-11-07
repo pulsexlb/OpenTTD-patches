@@ -26,6 +26,7 @@
 #include "map_func.h"
 #include "cargotype.h"
 #include "vehicle_func.h"
+#include "vehicle_type.h"
 #include "depot_base.h"
 #include "core/bitmath_func.hpp"
 #include "core/container_func.hpp"
@@ -1646,9 +1647,9 @@ static CommandCost ValidateStandaloneNewOrder(const Order &new_order)
 			break;
 
 		case OT_GOTO_DEPOT:
-			if (new_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) {
-				if (Station::GetIfValid(new_order.GetDestination().ToStationID()) == nullptr) return CMD_ERROR;
-			} else {
+			/* A "go to nearest depot" order carries no destination at all: its destination is
+			 * DepotID::Invalid() by construction, so there is nothing to validate. */
+			if ((new_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) == 0) {
 				if (Depot::GetIfValid(new_order.GetDestination().ToDepotID()) == nullptr) return CMD_ERROR;
 			}
 			break;
@@ -3145,7 +3146,7 @@ CommandCost CmdReverseOrderList(DoCommandFlags flags, VehicleID veh, ReverseOrde
  * @param mof what data to modify (@see ModifyOrderFlags)
  * @param data the data to modify
  * @param cargo_id Cargo type, or the captured velocity unit code (0..5) for MOF_COUPLE_SPEED_VALUE1/2
- * @param text for MOF_LABEL_TEXT
+ * @param text for MOF_LABEL_TEXT and MOF_COUPLE_SERVICE_NUMBER
  * @return the cost of this operation or an error
  */
 CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, uint32_t id, VehicleOrderID sel_ord, ModifyOrderFlags mof, uint16_t data, CargoType cargo_id, const std::string &text)
@@ -3154,7 +3155,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 	if (mof >= MOF_END) return CMD_ERROR;
 
-	if (mof != MOF_LABEL_TEXT && !text.empty()) return CMD_ERROR;
+	if (mof != MOF_LABEL_TEXT && mof != MOF_COUPLE_SERVICE_NUMBER && !text.empty()) return CMD_ERROR;
 
 	OrderList *ol = nullptr;
 	Vehicle *v = nullptr;
@@ -3215,7 +3216,8 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			case OT_GOTO_COUPLE:
 				if (mof != MOF_COUPLE_LOAD && mof != MOF_COUPLE_CARGO && mof != MOF_COUPLE_VALUE && mof != MOF_COUPLE_SLOT && mof != MOF_COUPLE_SLOT_GROUP && mof != MOF_COUPLE_GROUP && mof != MOF_COUPLE_STATION && mof != MOF_COUPLE_USE_WAITING_SCHEDULE && mof != MOF_COUPLE_CHECK_POINT && mof != MOF_COUPLE_REJECT_SLOWER && mof != MOF_COUPLE_REJECT_FASTER
 						&& mof != MOF_COUPLE_SPEED_COMPARATOR1 && mof != MOF_COUPLE_SPEED_COMPARATOR2 && mof != MOF_COUPLE_SPEED_VALUE1 && mof != MOF_COUPLE_SPEED_VALUE2
-						&& mof != MOF_COUPLE_SPEED_MIN_MODE && mof != MOF_COUPLE_SPEED_MAX_MODE) return CMD_ERROR;
+						&& mof != MOF_COUPLE_SPEED_MIN_MODE && mof != MOF_COUPLE_SPEED_MAX_MODE
+						&& mof != MOF_COUPLE_SERVICE_NUMBER) return CMD_ERROR;
 				break;
 
 			case OT_WAIT_COUPLE:
@@ -3647,6 +3649,12 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 		case MOF_COUPLE_VALUE:
 			if (data > 127) return CMD_ERROR;
+			break;
+
+		case MOF_COUPLE_SERVICE_NUMBER:
+			if (order->GetType() != OT_GOTO_COUPLE) return CMD_ERROR;
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
+			if (Utf8StringLength(text) >= MAX_LENGTH_VEHICLE_NAME_CHARS) return CMD_ERROR;
 			break;
 
 		case MOF_COUPLE_SLOT:
@@ -4231,6 +4239,10 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				order->SetCoupleCheckPoint(data == 0 ? StationID::Invalid() : StationID{(uint16_t)(data - 1)});
 				break;
 
+			case MOF_COUPLE_SERVICE_NUMBER:
+				order->SetCoupleServiceNumber(text);
+				break;
+
 			case MOF_FIRST_ORDERS:
 				order->SetDecoupleFirstOrdersType((OrderDecoupleOrdersFlags)data);
 				break;
@@ -4422,6 +4434,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				u->current_order.SetCoupleGroup(order->GetCoupleGroup());
 				u->current_order.SetXData2Low(order->GetXData2Low());
 				u->current_order.SetCoupleCheckPoint(order->GetCoupleCheckPoint());
+				u->current_order.SetCoupleServiceNumber(order->GetCoupleServiceNumber());
 			}
 			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_STATION) {
 				u->current_order.SetWaitCoupleStation(order->GetWaitCoupleStation());

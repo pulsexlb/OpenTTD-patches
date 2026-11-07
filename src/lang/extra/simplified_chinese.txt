@@ -2049,6 +2049,13 @@ STR_ORDER_COUPLE_CHECK_NONE                                     :{BLACK}仅在�
 STR_ORDER_COUPLE_CHECK_MENU                                     :{BLACK}在以下位置检查连接对象：{STRING}
 STR_ORDER_COUPLE_CHECK_AT                                       :；先在 {STRING} 检查
 STR_ORDER_COUPLE_CHECK_MISSING                                  :；检查点已失效
+STR_ORDER_COUPLE_SERVICE_NUMBER_LABEL                           :{BLACK}车次限制
+STR_ORDER_COUPLE_SERVICE_NUMBER_ANY                             :不限
+STR_ORDER_COUPLE_SERVICE_NUMBER_VALUE                           :{STRING}
+STR_ORDER_COUPLE_SERVICE_NUMBER_QUERY                           :{WHITE}输入要连接的列车应具有的车次
+STR_ORDER_COUPLE_SERVICE_NUMBER_TOOLTIP                        :{BLACK}只与当前车次匹配的等待列车连接。点击「默认」清除限制
+STR_ORDER_COUPLE_SERVICE_NUMBER_SUFFIX                         :；车次 {STRING}
+STR_COUPLE_DIAGNOSTIC_SERVICE_NUMBER                           :车次不匹配
 STR_ORDER_LIST_EDIT                                             :{BLACK}编辑
 STR_ORDER_LIST_DELETE                                           :{BLACK}删除
 STR_ORDER_LIST_DELETE_TOOLTIP                                   :{BLACK}删除选中的调度表
@@ -2667,7 +2674,7 @@ STR_ORDER_COUPLE_SPEED_OWN_PLAIN                                 :本车最大�
 STR_ORDER_COUPLE_SPEED_MANUAL                                    :{BLACK}手动输入
 
 STR_TIMETABLE_DISPATCH_SERVICE_NUMBER                           :车次：使用计时调度车次
-STR_TIMETABLE_SET_SERVICE_NUMBER                                :设置此处起用车次……
+STR_TIMETABLE_SET_SERVICE_NUMBER                                :车次：设置此处起用车次……
 STR_TIMETABLE_FIXED_SERVICE_NUMBER                              :车次：{STRING}
 STR_TIMETABLE_SERVICE_NUMBER_TOOLTIP                           :{BLACK}设置选中车站或路点之后使用的车次，或使用计时调度车次。每处仅用一种来源；不更换则沿用原车次。经过路点时生效。解挂时车次只随车厢保留；共享调度计划共用设置。
 

@@ -1733,6 +1733,14 @@ static CoupleApproachOutcome CoupleApproachSearch(const Train *v, const Train *t
 		return false;
 	};
 	auto foreign_on = [&](TileIndex t, TrackBits mover_track) {
+		/* Trains standing in the same depot tile hold the very same
+		 * TRACK_BIT_DEPOT bit: they are parked side by side inside the shed,
+		 * not on a track we have to drive along. Treating them as blocking
+		 * made a consist leaving a depot that also holds another train unable
+		 * to find any couple partner at all -- the approach was reported as
+		 * blocked before the search ever left the depot. They only compete for
+		 * the depot exit, which the ordinary departure logic handles. */
+		if (IsRailDepotTile(t)) return false;
 		for (const Train *u : VehiclesOnTile<VehicleType::Train>(t)) {
 			const Train *up = u->Primary();
 			if (up == partner || up == mover) continue;

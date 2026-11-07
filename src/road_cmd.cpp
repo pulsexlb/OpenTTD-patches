@@ -50,6 +50,7 @@
 #include "maintenance_func.h"
 #include "tile_cmd.h"
 #include "road_layout_func.h"
+#include "debug.h"
 
 #include "table/strings.h"
 #include "table/roadtypes.h"
@@ -2085,9 +2086,9 @@ void DrawRoadTypeCatenary(const TileInfo *ti, RoadType rt, RoadBits rb)
 		static const SubSprite west  = { -INF, -INF, -12, INF };
 		static const SubSprite north = {  -12, -INF,  12, INF };
 		static const SubSprite east  = {   12, -INF, INF, INF };
-		int8_t west_z = GetSlopePixelZInCorner(ti->tileh, CORNER_W);
-		int8_t north_z = GetSlopePixelZInCorner(ti->tileh, CORNER_N);
-		int8_t east_z = GetSlopePixelZInCorner(ti->tileh, CORNER_E);
+		int8_t west_z = GetSlopePixelZInCorner(ti->tileh, Corner::W);
+		int8_t north_z = GetSlopePixelZInCorner(ti->tileh, Corner::N);
+		int8_t east_z = GetSlopePixelZInCorner(ti->tileh, Corner::E);
 		AddSortableSpriteToDraw(back, pal, *ti, {{15, 0, west_z}, {1, 1, z_wires}, {-15, 0, static_cast<int8_t>(-west_z)}}, IsTransparencySet(TransparencyOption::Catenary), &west);
 		AddSortableSpriteToDraw(back, pal, *ti, {{0, 0, north_z}, {1, 1, z_wires}, {0, 0, static_cast<int8_t>(-north_z)}}, IsTransparencySet(TransparencyOption::Catenary), &north);
 		AddSortableSpriteToDraw(back, pal, *ti, {{0, 15, east_z}, {1, 1, z_wires}, {0, -15, static_cast<int8_t>(-east_z)}}, IsTransparencySet(TransparencyOption::Catenary), &east);
@@ -2866,7 +2867,7 @@ static TrackStatus GetTileTrackStatus_Road(TileIndex tile, TransportType mode, u
 								break;
 
 							default:
-								NOT_REACHED();
+								NOT_REACHED_MSG("{}, {}", tile, rcows);
 						}
 					}
 					break;

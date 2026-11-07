@@ -138,7 +138,15 @@ static const StringID _departure_source_mode_strings[DSM_END] = {
 /** Planned rows belong to a dispatch slot, not the representative vehicle's current run. */
 static std::string GetDepartureBoardServiceNumber(const Departure &d, DeparturesSourceMode source_mode)
 {
-	if (source_mode != DSM_SCHEDULE_24H) return d.vehicle->GetServiceNumberForDeparture(d.type == D_DEPARTURE ? d.order : nullptr, d.schedule_route_id);
+	if (source_mode != DSM_SCHEDULE_24H) {
+		/* Arrival rows must not fall back to the vehicle's current number,
+		 * which depends on where the train happens to be when the board
+		 * redraws: compute the number in effect on arrival from the arrival
+		 * order's own segment, unless the stop sets one itself. */
+		const Order *number_target = d.order;
+		if (number_target != nullptr && number_target->GetServiceNumberMode() != 0) number_target = d.type == D_DEPARTURE ? d.order : nullptr;
+		return d.vehicle->GetServiceNumberForDeparture(number_target, d.schedule_route_id);
+	}
 	std::string number = d.schedule_route_id;
 	if (d.type != D_DEPARTURE || d.order == nullptr) return number;
 	/* Apply only explicit stop changes along an unambiguous planned segment.
@@ -224,52 +232,82 @@ protected:
 		}
 
 		auto process_vehicle = [&](const Vehicle *veh) {
-			if (this->source_mode != DSM_LIVE && !veh->vehicle_flags.Test(VehicleFlag::ScheduledDispatch)) return;
-			for (const Order *order : veh->Orders()) {
-				if (this->source.OrderMatches(order)) {
-					/* Found a vehicle with an order for this source. */
-
-					/* Coarse filter against filter_target. */
-					if (!this->VehicleTargetCoarseFilter(veh)) return;
-
-					if (this->source_mode != DSM_LIVE) this->vehicles.push_back(veh);
-					for (const Vehicle *v = veh; v != nullptr; v = v->NextShared()) {
-						if (this->source_mode == DSM_LIVE) this->vehicles.push_back(v);
-
-						if (!v->fixed_service_number.empty()) {
-							this->route_id_width = std::max<int>(this->route_id_width, GetStringBoundingBox(std::string_view(v->fixed_service_number)).width + 4);
-						}
-						if (show_vehicle_name) {
-							if (v->name.empty() && !(v->group_id != DEFAULT_GROUP && _settings_client.gui.vehicle_names != 0)) {
-								if (v->unitnumber > unitnumber_max[v->type]) unitnumber_max[v->type] = v->unitnumber;
-							} else {
-								std::string str = GetString(STR_DEPARTURES_VEH, v->index.base() | (_settings_client.gui.departure_show_group ? VEHICLE_NAME_NO_GROUP : 0));
-								int width = GetStringBoundingBox(str).width + 4;
-								if (width > this->veh_width) this->veh_width = width;
-							}
-						}
-
-						if (v->group_id != GroupID::Invalid() && v->group_id != DEFAULT_GROUP && _settings_client.gui.departure_show_group) {
-							groups.insert(v->group_id);
-						}
-
-						if (_settings_client.gui.departure_show_company) {
-							companies.Set(v->owner);
+			if (veh == nullptr || veh->orders == nullptr) return;
+			if (this->source_mode != DSM_LIVE && !veh->vehicle_flags.Test(VehicleFlag::ScheduledDispatch)) {
+				return;
+			}
+			/* Match against every order reachable from the vehicle's own list,
+			 * descending into execute-schedule targets: a vehicle running an
+			 * adopted schedule calls at stations that are not on its own list
+			 * surface. */
+			bool order_matches = false;
+			std::vector<const OrderList *> match_lists{veh->orders};
+			if (veh->IsExecutingSchedule()) {
+				/* While away on an execute-schedule detour the vehicle's orders
+				 * point at the target list; its main list must be matched too,
+				 * or stations only called from the main list lose the vehicle
+				 * whenever the detour is active. */
+				const OrderList *primary = OrderList::GetIfValid(veh->primary_order);
+				if (primary != nullptr) match_lists.push_back(primary);
+			}
+			for (size_t li = 0; li < match_lists.size() && li < 8 && !order_matches; ++li) {
+				for (const Order &order_ref : match_lists[li]->GetOrderVector()) {
+					const Order *order = &order_ref;
+					if (this->source.OrderMatches(order)) {
+						order_matches = true;
+						break;
+					}
+					if (order->IsExecuteScheduleOrder()) {
+						const OrderList *target = OrderList::GetIfValid(order->GetDestination().ToOrderListID());
+						if (target != nullptr && target->IsPlayerCreated() && target->IsVisibleToCompany(veh->owner) && std::find(match_lists.begin(), match_lists.end(), target) == match_lists.end()) {
+							match_lists.push_back(target);
 						}
 					}
-					if (veh->orders != nullptr) {
-						for (const Order *o : veh->Orders()) if (!o->GetServiceNumber().empty()) this->route_id_width = std::max<int>(this->route_id_width, GetStringBoundingBox(o->GetServiceNumber()).width + 4);
-					}
-					if ((_settings_client.gui.departure_show_schedule_route_id || _settings_client.gui.departure_show_vehicle) && veh->orders != nullptr) {
-						for (const DispatchSchedule &ds : veh->orders->GetScheduledDispatchScheduleSet()) {
-							ds.IterateRouteIDNames([&](DispatchSlotRouteID route_id, std::string_view name) {
-								int width = (GetStringBoundingBox(name)).width + 4;
-								if (width > this->route_id_width) this->route_id_width = width;
-							});
-						}
-					}
-					return;
 				}
+			}
+			if (order_matches) {
+				/* Found a vehicle with an order for this source. */
+
+				/* Coarse filter against filter_target. */
+				if (!this->VehicleTargetCoarseFilter(veh)) return;
+
+				if (this->source_mode != DSM_LIVE) this->vehicles.push_back(veh);
+				for (const Vehicle *v = veh; v != nullptr; v = v->NextShared()) {
+					if (this->source_mode == DSM_LIVE) this->vehicles.push_back(v);
+
+					if (!v->fixed_service_number.empty()) {
+						this->route_id_width = std::max<int>(this->route_id_width, GetStringBoundingBox(std::string_view(v->fixed_service_number)).width + 4);
+					}
+					if (show_vehicle_name) {
+						if (v->name.empty() && !(v->group_id != DEFAULT_GROUP && _settings_client.gui.vehicle_names != 0)) {
+							if (v->unitnumber > unitnumber_max[v->type]) unitnumber_max[v->type] = v->unitnumber;
+						} else {
+							std::string str = GetString(STR_DEPARTURES_VEH, v->index.base() | (_settings_client.gui.departure_show_group ? VEHICLE_NAME_NO_GROUP : 0));
+							int width = GetStringBoundingBox(str).width + 4;
+							if (width > this->veh_width) this->veh_width = width;
+						}
+					}
+
+					if (v->group_id != GroupID::Invalid() && v->group_id != DEFAULT_GROUP && _settings_client.gui.departure_show_group) {
+						groups.insert(v->group_id);
+					}
+
+					if (_settings_client.gui.departure_show_company) {
+						companies.Set(v->owner);
+					}
+				}
+				if (veh->orders != nullptr) {
+					for (const Order *o : veh->Orders()) if (!o->GetServiceNumber().empty()) this->route_id_width = std::max<int>(this->route_id_width, GetStringBoundingBox(o->GetServiceNumber()).width + 4);
+				}
+				if ((_settings_client.gui.departure_show_schedule_route_id || _settings_client.gui.departure_show_vehicle) && veh->orders != nullptr) {
+					for (const DispatchSchedule &ds : veh->orders->GetScheduledDispatchScheduleSet()) {
+						ds.IterateRouteIDNames([&](DispatchSlotRouteID route_id, std::string_view name) {
+							int width = (GetStringBoundingBox(name)).width + 4;
+							if (width > this->route_id_width) this->route_id_width = width;
+						});
+					}
+				}
+				return;
 			}
 		};
 
@@ -823,6 +861,13 @@ public:
 		/* Recompute the list of departures if we're due to. */
 		if (this->calc_tick_countdown <= 0) {
 			this->calc_tick_countdown = _settings_client.gui.departure_calc_frequency;
+			if (this->source_mode == DSM_LIVE) {
+				/* Live mode matching depends on the vehicle's current order state
+				 * (decouple/couple/schedule adoption transitions change it), so
+				 * re-evaluate the vehicle list on every recompute instead of
+				 * using a stale snapshot. */
+				this->RefreshVehicleList();
+			}
 			bool show_pax = this->cargo_mode != DCF_FREIGHT_ONLY;
 			bool show_freight = this->cargo_mode != DCF_PAX_ONLY;
 

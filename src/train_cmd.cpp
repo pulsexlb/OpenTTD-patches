@@ -248,7 +248,7 @@ void CheckBreakdownFlags(Train *v)
 	v->flags.Reset(VehicleRailFlagsIsBroken);
 
 	for (const Train *w = v; w != nullptr; w = w->Next()) {
-		if (v->IsEngine() || w->IsMultiheaded()) {
+		if (w->IsEngine() || w->IsMultiheaded()) {
 			if (w->breakdown_ctr == 2) {
 				v->flags.Set(VehicleRailFlag::BreakdownBraking);
 			} else if (w->breakdown_ctr == 1) {
@@ -372,6 +372,14 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 
 	const RailVehicleInfo *rvi_v = RailVehInfo(this->engine_type);
 	EngineID first_engine = this->IsFrontEngine() ? this->engine_type : EngineID::Invalid();
+	if (first_engine == EngineID::Invalid()) {
+		/* In a reversed/part-first chain the consist's front engine (the
+		 * primary) may sit at the tail. Wagons before it still need the front
+		 * engine for wagon-override/livery resolution, otherwise NewGRF
+		 * intermediate vehicles lose their custom sprites. */
+		const Train *prim = Train::From(this->Primary());
+		if (prim != nullptr && prim->IsEngine()) first_engine = prim->engine_type;
+	}
 	this->gcache.cached_total_length = 0;
 	this->compatible_railtypes = {};
 	this->tcache.cached_num_engines = 0;
@@ -388,17 +396,61 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 		if (driving_backwards) normalised_direction = ReverseDir(normalised_direction);
 	}
 
+	/* Movement-unit starts are the first (or, when driving backwards, the last)
+	 * chain member of each multi-part unit. A reversed unit may start with an
+	 * articulated part, so IsArticulatedPart() alone cannot identify the start. */
+	auto is_moving_unit_start = [&](const Train *u) {
+		if (!u->HasUnitMain() || u->IsMultiheaded()) return !u->IsArticulatedPart();
+		const Vehicle *main = u->GetUnitMain();
+		const Vehicle *first = nullptr;
+		const Vehicle *last = nullptr;
+		for (const Train *w = this; w != nullptr; w = w->Next()) {
+			if (w->GetUnitMain() != main) continue;
+			if (first == nullptr) first = w;
+			last = w;
+		}
+		return driving_backwards ? u == last : u == first;
+	};
+
+	/* Find the front engine of the dual-headed block that contains a vehicle,
+	 * including ordinary wagons wrapped between its two halves. */
+	auto dualhead_block_engine = [&](const Train *target) -> EngineID {
+		for (Train *f = this; f != nullptr; f = f->Next()) {
+			if (!f->IsMultiheaded() || !f->IsEngine() || f->other_multiheaded_part == nullptr) continue;
+			Train *r = f->other_multiheaded_part;
+			if (r->First() != this) continue;
+
+			/* The rear half may be before or after the front half. Only scan
+			 * the actual span between them; otherwise a part-first block would
+			 * incorrectly swallow all later units as well. */
+			bool rear_after_front = false;
+			for (Train *w = f; w != nullptr; w = w->Next()) {
+				if (w == r) { rear_after_front = true; break; }
+			}
+			bool found = false;
+			if (rear_after_front) {
+				for (Train *w = f; w != nullptr; w = w->Next()) {
+					if (w == target) { found = true; break; }
+					if (w == r) break;
+				}
+			} else {
+				for (Train *w = r; w != nullptr; w = w->Next()) {
+					if (w == target) { found = true; break; }
+					if (w == f) break;
+				}
+			}
+			if (found) return f->engine_type;
+		}
+		return EngineID::Invalid();
+	};
+
 	for (Train *u = this; u != nullptr; u = u->Next()) {
 		const RailVehicleInfo *rvi_u = RailVehInfo(u->engine_type);
 
 		u->vehicle_flags.Set(VehicleFlag::DrivingBackwards, driving_backwards);
 
 		/* Set TCF_MOVING_UNIT_START flags according to movement direction. */
-		if (driving_backwards) {
-			u->tcache.cached_tflags = (u->Next() == nullptr || !u->Next()->IsArticulatedPart()) ? TCF_MOVING_UNIT_START : TCF_NONE;
-		} else {
-			u->tcache.cached_tflags = !u->IsArticulatedPart() ? TCF_MOVING_UNIT_START : TCF_NONE;
-		}
+		u->tcache.cached_tflags = is_moving_unit_start(u) ? TCF_MOVING_UNIT_START : TCF_NONE;
 
 		/* Normalise direction of all train parts. */
 		if (allowed_changes.Test(ConsistChangeFlag::DepotDirection)) {
@@ -410,7 +462,15 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 				VehicleInfoDumper(u), VehicleInfoDumper(this));
 
 		/* update the 'first engine' */
-		u->gcache.first_engine = this == u ? EngineID::Invalid() : first_engine;
+		EngineID veh_first_engine = first_engine;
+		const EngineID block_engine = dualhead_block_engine(u);
+		if (block_engine != EngineID::Invalid()) veh_first_engine = block_engine;
+		if (u->IsArticulatedPart()) {
+			const Train *main = Train::From(u->GetUnitMain());
+			if (main != nullptr && main != u && main->IsEngine()) veh_first_engine = main->engine_type;
+		}
+		u->gcache.first_engine = (this == u && u->IsEngine()) ? EngineID::Invalid() : veh_first_engine;
+
 		u->railtypes = rvi_u->railtypes;
 
 		if (u->IsEngine()) first_engine = u->engine_type;
@@ -1653,6 +1713,16 @@ void Train::GetImage(Direction direction, EngineImageType image_type, VehicleSpr
 		GetCustomVehicleSprite(this, direction, image_type, result);
 		if (result->IsValid()) return;
 
+		/* Some NewGRFs only define one facing for intermediate vehicles. Try
+		 * the opposite direction before falling back to the default sprite,
+		 * otherwise those vehicles lose their custom style entirely. */
+		VehicleSpriteSeq retry;
+		GetCustomVehicleSprite(this, ReverseDir(direction), image_type, &retry);
+		if (retry.IsValid()) {
+			*result = retry;
+			return;
+		}
+
 		spritenum = this->GetEngine()->original_image_index;
 	}
 
@@ -1936,6 +2006,8 @@ static void AddRearEngineToMultiheadedTrain(Train *v)
 	/* Now we need to link the front and rear engines together */
 	v->other_multiheaded_part = u;
 	u->other_multiheaded_part = v;
+	v->SetUnitMain(v);
+	u->SetUnitMain(v);
 }
 
 /**
@@ -2127,12 +2199,138 @@ static void RestoreChainFromList(const TrainList &list)
 }
 
 /**
+ * Resolve a vehicle of a train chain to the complete chain-order run of its
+ * multi-part unit.
+ *
+ * Membership comes from unit_main, which is the only thing that distinguishes
+ * two adjacent units. Chain order alone cannot: an articulated base and the base
+ * of the next unit are both art == 0, so a walk over the articulated flag merges
+ * them. unit_main identifies the unit exactly, and members of one unit are
+ * always contiguous, so the run is the maximal neighbourhood of v agreeing on
+ * unit_main.
+ *
+ * The base itself also carries unit_main (self-referencing), so a base-first and
+ * a part-first layout both resolve to the same run.
+ *
+ * @param v The vehicle to resolve.
+ * @param[out] first Set to the first chain member of the run.
+ * @param[out] last  Set to the last chain member of the run.
+ */
+static void GetChainUnitRun(Train *v, Train *&first, Train *&last)
+{
+	first = v;
+	last = v;
+
+	/* Dual-headed halves keep vanilla one-part semantics, exactly like
+	 * GetFirstEnginePart()/GetLastEnginePart(): the rear half is not an
+	 * articulated part. Folding both halves into one unit would resolve every
+	 * insertion point to the rear half and keep free wagons outside the
+	 * dual-head block, whereas vanilla places them between the two halves. */
+	if (v->IsMultiheaded()) {
+		while (first->Previous() != nullptr && first->Previous()->IsArticulatedPart()) first = Train::From(first->Previous());
+		while (last->Next() != nullptr && last->Next()->IsArticulatedPart()) last = Train::From(last->Next());
+		return;
+	}
+
+	if (v->HasUnitMain()) {
+		const Vehicle *main = v->GetUnitMain();
+		while (first->Previous() != nullptr && first->Previous()->HasUnitMain() &&
+				first->Previous()->GetUnitMain() == main) {
+			first = Train::From(first->Previous());
+		}
+		while (last->Next() != nullptr && last->Next()->HasUnitMain() &&
+				last->Next()->GetUnitMain() == main) {
+			last = Train::From(last->Next());
+		}
+		return;
+	}
+
+	/* Unresolved unit (old save, or a freshly split block): fall back to the
+	 * articulated run around v, which is what vanilla uses. */
+	while (first->Previous() != nullptr && first->Previous()->IsArticulatedPart()) first = Train::From(first->Previous());
+	while (last->Next() != nullptr && last->Next()->IsArticulatedPart()) last = Train::From(last->Next());
+}
+
+/**
+ * Resolve the block that has to move together when a vehicle is dragged.
+ *
+ * A dual-headed locomotive is one vehicle: dragging either half must take both
+ * halves, plus the wagons that vanilla keeps between them. Detaching only the
+ * clicked half leaves the other half in the source chain; NormaliseDualHeads()
+ * then steals it across chains, which produces a split pair and a headless
+ * remainder chain in the depot.
+ *
+ * This is deliberately separate from GetChainUnitRun(). That one keeps vanilla
+ * single-part semantics for dual-headed halves on the DESTINATION side, so
+ * wagons can still be dropped between the two halves.
+ */
+static void GetMoveUnitRun(Train *v, Train *&first, Train *&last)
+{
+	GetChainUnitRun(v, first, last);
+	if (!v->IsMultiheaded() || v->other_multiheaded_part == nullptr) return;
+	Train *other = v->other_multiheaded_part;
+	if (other->First() != v->First()) return; // Already split; leave it to NormaliseDualHeads().
+
+	/* Take the chain-order extremes of the two halves -- a reversed locomotive
+	 * stores its rear half in front of the front half, and the wagons between
+	 * them belong to the block too. */
+	Train *lo = nullptr;
+	Train *hi = nullptr;
+	for (Train *w = v->First(); w != nullptr; w = w->Next()) {
+		if (w == v || w == other) {
+			if (lo == nullptr) lo = w;
+			hi = w;
+		}
+	}
+	if (lo != nullptr && hi != nullptr) {
+		first = lo;
+		last = hi;
+	}
+}
+
+/**
  * Remove the given wagon from its consist.
  * @param part the part of the train to remove.
  * @param chain whether to remove the whole chain.
+ * @param block_last if set, detach the inclusive range [part .. block_last]
+ *                   as one chain (a whole dual-headed locomotive).
  */
-static void RemoveFromConsist(Train *part, bool chain = false)
+static void RemoveFromConsist(Train *part, bool chain = false, Train *block_last = nullptr)
 {
+	if (block_last != nullptr) {
+		/* Detach the whole pre-resolved block. The vehicles in front of it must
+		 * point past it, and the block must become a chain of its own. */
+		if (part->Previous() != nullptr) part->Previous()->SetNext(block_last->Next());
+		part->SetPreviousRaw(nullptr);
+		block_last->SetNext(nullptr);
+		/* SetNext() only rewrites the caches of the vehicles that stayed
+		 * behind. Rebase the detached block too: a drop into an empty depot
+		 * slot never calls InsertInConsist(), so nothing else would fix its
+		 * First()/Last() and they would still name the old chain. */
+		for (Train *w = part; ; w = w->Next()) {
+			w->SetFirst(part);
+			w->SetLast(block_last);
+			if (w == block_last) break;
+		}
+		return;
+	}
+	/* Removing (or moving) any member of a multi-part unit removes the complete
+	 * unit. A reversed unit stores its base at the tail, so the run has to be
+	 * resolved in chain order; walking only towards the tail from the selected
+	 * vehicle would leave the other members behind. */
+	if (!chain && part->HasUnitMain()) {
+		Train *first;
+		Train *last;
+		GetChainUnitRun(part, first, last);
+		/* Detach the whole block: the part in front of it must point past it and
+		 * the block must be a chain of its own, or the insert would keep the old
+		 * predecessor and orphan the vehicles ahead of the block. */
+		if (first->Previous() != nullptr) first->Previous()->SetNext(last->Next());
+		first->SetPreviousRaw(nullptr);
+		last->SetNext(nullptr);
+		return;
+	}
+
 	Train *tail;
 
 	if (chain) {
@@ -2156,14 +2354,26 @@ static void RemoveFromConsist(Train *part, bool chain = false)
  * Inserts a chain into the train at dst.
  * @param dst   the place where to append after.
  * @param chain the chain to actually add.
+ * @note Neither side has to be free of articulated parts. A part-first chain is
+ *       a legal layout (ReverseTrainNoSwapVehicles() produces it), so the chain
+ *       may start with an articulated part and dst may be followed by one.
  */
 static void InsertInConsist(Train *dst, Train *chain)
 {
-	/* We do not want to add something in the middle of an articulated part. */
-	assert(dst != nullptr && (dst->Next() == nullptr || !dst->Next()->IsArticulatedPart()));
+	assert(dst != nullptr && chain != nullptr);
+
+	if (chain->Previous() == dst) return;
 
 	chain->Last()->SetNext(dst->Next());
 	dst->SetNext(chain);
+
+	/* The splice can leave a member naming a unit that no longer shares this
+	 * chain. Drop those pointers now that both sides have their final chain: an
+	 * orphan member is its own unit, which keeps every walk inside the chain. */
+	Train *head = chain->First();
+	for (Train *t = head; t != nullptr; t = t->Next()) {
+		if (t->HasUnitMain() && t->GetUnitMain()->First() != head) t->SetUnitMain(nullptr);
+	}
 }
 
 /**
@@ -2181,6 +2391,24 @@ static void NormaliseDualHeads(Train *t, bool pull_in_free_cars)
 {
 	for (; t != nullptr; t = t->GetNextVehicle()) {
 		if (!t->IsMultiheaded() || !t->IsEngine()) continue;
+		Train *other = t->other_multiheaded_part;
+		if (other == nullptr) continue;
+		/* Coupling/decoupling keeps a same-chain dual-head pair exactly as it
+		 * is, including a reversed rear-first pair and wagons wrapped between
+		 * the halves; moving the rear there would undo the orientation.
+		 * Depot moves (pull_in_free_cars) must NOT skip: vanilla re-inserts the
+		 * rear half after the free cars so they end up inside the dual-head
+		 * block. That also repairs chains which were built with the wagons
+		 * behind the rear half. A reversed rear-first pair is still left alone
+		 * even in a depot, so its orientation is not flipped back. */
+		if (other->First() == t->First()) {
+			if (!pull_in_free_cars) continue;
+			bool rear_before_front = false;
+			for (Train *w = other; w != nullptr; w = w->Next()) {
+				if (w == t) { rear_before_front = true; break; }
+			}
+			if (rear_before_front) continue;
+		}
 
 		/* Make sure that there are no free cars before next engine.
 		 * With pull_in_free_cars the walk overshoots the other dual-head half
@@ -2188,8 +2416,16 @@ static void NormaliseDualHeads(Train *t, bool pull_in_free_cars)
 		 * re-inserted right before the next engine and any free cars in
 		 * between end up inside the dual-head block. Without it the walk
 		 * stops at the rear half and the surrounding cars keep their place. */
+		/* A dual-headed half of a DIFFERENT locomotive is a hard boundary: rear
+		 * halves are not engines, so without this check the walk crosses into
+		 * the next locomotive and separates two dual-headed engines sharing a
+		 * consist. Only our own rear half may be crossed. */
 		Train *u;
-		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine() && (pull_in_free_cars || u->Next() != t->other_multiheaded_part); u = u->Next()) {}
+		for (u = t; u->Next() != nullptr && !u->Next()->IsEngine() &&
+				(pull_in_free_cars
+					? (u->Next() == t->other_multiheaded_part || !u->Next()->IsMultiheaded())
+					: u->Next() != t->other_multiheaded_part);
+				u = u->Next()) {}
 
 		if (u == t->other_multiheaded_part) continue;
 
@@ -2209,8 +2445,23 @@ static void NormaliseSubtypes(Train *chain)
 	/* Nothing to do */
 	if (chain == nullptr) return;
 
-	/* We must be the first in the chain. */
-	assert(chain->Previous() == nullptr);
+	/* We must be the first in the chain. Chain surgery can hand us any member
+	 * of the resulting chain -- a reversed unit stores its base behind its
+	 * articulated parts, so the vehicle that was selected (and possibly
+	 * re-inserted) is not necessarily the chain head. Walk to the head instead
+	 * of asserting: an assertion here only fires on layouts that are legal. */
+	chain = chain->First();
+
+	/* A unit main must always be a vehicle of the same chain. Coupling, reversing
+	 * and depot drags relink chains with raw SetNext() calls, which can leave a
+	 * member pointing at a base that stayed behind in the other chain. Such a
+	 * pointer makes GetFirstEnginePart()/GetLastEnginePart() answer with a
+	 * vehicle of a foreign chain, which then corrupts the next chain surgery.
+	 * Treat the orphan as its own unit; it is the layout that keeps every walk
+	 * inside this chain. */
+	for (Train *t = chain; t != nullptr; t = t->Next()) {
+		if (t->HasUnitMain() && t->GetUnitMain()->First() != chain) t->SetUnitMain(nullptr);
+	}
 
 	/* Set the appropriate bits for the first in the chain.
 	 *
@@ -2425,6 +2676,41 @@ static CommandCost ValidateTrains(Train *original_dst, Train *dst, Train *origin
  */
 static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train *src, bool move_chain, bool pull_in_free_cars = true)
 {
+	/* A multi-part unit moves as one block. Everything below has to reason about
+	 * the block's chain head, not about the vehicle the caller selected: a
+	 * reversed unit stores its base behind its articulated parts, so the selected
+	 * vehicle can sit in the middle of the block. Splitting or re-inserting it
+	 * alone would orphan the rest of the unit. */
+	Train *selected = src;
+	Train *block_first = src;
+	Train *block_last = src;
+	if (!move_chain && src != nullptr) GetMoveUnitRun(src, block_first, block_last);
+	if (!move_chain) src = block_first;
+	/* A dual-headed locomotive was widened into one block. Remember its tail:
+	 * RemoveFromConsist() needs it to detach the whole locomotive, and the
+	 * source chain's new head is the vehicle right behind that tail. */
+	Train *dual_block_last = nullptr;
+	if (!move_chain && selected != nullptr && selected->IsMultiheaded() &&
+			selected->other_multiheaded_part != nullptr &&
+			selected->other_multiheaded_part->First() == selected->First()) {
+		dual_block_last = block_last;
+	}
+
+	/* A unit cannot be inserted behind one of its own members: the detach would
+	 * leave the destination inside the block and InsertInConsist() would then
+	 * splice the block behind its own tail, building a cyclic chain that hangs
+	 * every walk over Next(). The command rejects this case before it gets here
+	 * (see CmdMoveRailVehicle); this is the safety net for the other callers.
+	 * Walk the block only -- walking on past block_last would compare against the
+	 * rest of the chain, which is a perfectly legal insert position and dropping
+	 * the move there silently breaks every drag towards the rear of a train. */
+	if (dst != nullptr && !move_chain) {
+		for (Train *t = block_first; ; t = t->Next()) {
+			if (t == dst) return;
+			if (t == block_last || t->Next() == nullptr) break;
+		}
+	}
+
 	/* First determine the front of the two resulting trains */
 	if (*src_head == *dst_head) {
 		/* If we aren't moving part(s) to a new train, we are just moving the
@@ -2444,14 +2730,21 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
 		 * with us, so src->GetNextUnit(), however... when we are e.g. a wagon
 		 * that is followed by a rear multihead we do not want to include that. */
 		*src_head = move_chain ? nullptr :
-				(src->IsMultiheaded() ? src->GetNextUnit() : src->GetNextVehicle());
+				(dual_block_last != nullptr ? dual_block_last->Next() :
+					(src->IsMultiheaded() ? src->GetNextUnit() : src->GetNextVehicle()));
 	}
 
 	/* Now it's just simply removing the part that we are going to move from the
 	 * source train and *if* the destination is a not a new train add the chain
 	 * at the destination location. */
-	RemoveFromConsist(src, move_chain);
-	if (*dst_head != src) InsertInConsist(dst, src);
+	RemoveFromConsist(src, move_chain, dual_block_last);
+	if (*dst_head != src) {
+		/* The spliced chain is the block's chain head, not src: a reversed unit
+		 * stores its base behind its articulated parts, so src can sit in the
+		 * middle of the block. Inserting src directly would orphan everything in
+		 * front of it inside the block. */
+		InsertInConsist(dst, block_first);
+	}
 
 	/* Now normalise the dual heads, that is move the dual heads around in such
 	 * a way that the head and rear of a dual head are in the same train */
@@ -2556,13 +2849,16 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 		for (Train *u = head; u != nullptr; u = u->Next()) members.push_back(u);
 
 		bool valid = false;
-		int drivers = 0;
 		for (Train *u : members) {
-			if (u == head->Primary()) valid = u->IsPrimaryVehicle() || u->IsFreeWagon();
-			if (u->IsPrimaryVehicle()) drivers++;
+			/* An explicit, in-chain primary is authoritative. Do not replace
+			 * it merely because NormaliseSubtypes() temporarily cleared its
+			 * front-engine marker: that would move the whole consist identity
+			 * (orders, name, unit number, group, profits, timetables, ...)
+			 * to another vehicle. */
+			if (u == head->Primary()) valid = true;
 		}
 
-		if (!valid || drivers > 1) {
+		if (!valid) {
 			MaterialiseTrainPrimary(head);
 		}
 
@@ -2661,12 +2957,37 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		if (dst->IsVirtual() != HasFlag(move_flags, MoveRailVehicleFlags::Virtual)) return CMD_ERROR;
 	}
 
-	/* if an articulated part is being handled, deal with its parent vehicle */
-	src = src->GetFirstEnginePart();
+	/* Resolve the selected vehicles to the member of their unit that the
+	 * caller's conditions apply to. GetFirstEnginePart() cannot be used here: it
+	 * answers through unit_main, and a reversed unit stores its base behind its
+	 * articulated parts, so it would substitute a different part of the unit for
+	 * the one that was actually clicked. Insert behind the unit's chain-order last
+	 * member instead, and keep src exactly as selected. */
+	Train *src_unit_first;
+	Train *src_unit_last;
+	/* A dual-headed locomotive moves as one block: rejecting a drop inside the
+	 * block has to consider both halves, not only the clicked one. */
+	GetMoveUnitRun(src, src_unit_first, src_unit_last);
 	if (dst != nullptr) {
-		dst = dst->GetFirstEnginePart();
+		Train *dst_unit_first;
+		Train *dst_unit_last;
+		GetChainUnitRun(dst, dst_unit_first, dst_unit_last);
+		dst = dst_unit_last;
 	}
 
+	/* Moving a unit to a position inside itself is not a move. This cannot rely
+	 * on src == dst alone: with a reversed unit the caller's destination is the
+	 * vehicle it was dropped behind, which may be a different member of the very
+	 * same unit (the base sits behind its articulated parts). Rejecting it here
+	 * keeps ArrangeTrains() from detaching the block and then splicing it behind
+	 * its own tail, which builds a cyclic chain that hangs every Next() walk.
+	 * Walk up to src_unit_last only; the rest of the chain is a legal target. */
+	if (!move_chain && dst != nullptr) {
+		for (Train *t = src_unit_first; ; t = t->Next()) {
+			if (t == dst) return CommandCost();
+			if (t == src_unit_last || t->Next() == nullptr) break;
+		}
+	}
 	/* don't move the same vehicle.. */
 	if (src == dst) return CommandCost();
 
@@ -2678,13 +2999,17 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 		dst_head = dst->First();
 		assert(HasBit(dst_head->subtype, GVSF_VIRTUAL) == HasBit(dst->subtype, GVSF_VIRTUAL));
 		if (dst_head->tile != src_head->tile) return CMD_ERROR;
-		/* Now deal with articulated part of destination wagon */
-		dst = dst->GetLastEnginePart();
 	} else {
 		dst_head = nullptr;
 	}
 
-	if (src->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
+	/* The rear half is draggable too, but only together with its front half.
+	 * A pair that is already split across chains cannot be repaired by a depot
+	 * drag, so keep the vanilla rejection for that broken state. */
+	if (src->IsRearDualheaded() && (src->other_multiheaded_part == nullptr ||
+			src->other_multiheaded_part->First() != src->First())) {
+		return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
+	}
 
 	/* When moving all wagons, we can't have the same src_head and dst_head */
 	if (move_chain && src_head == dst_head) return CommandCost();
@@ -2726,6 +3051,16 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 
 	/* (Re)arrange the trains in the wanted arrangement. */
 	ArrangeTrains(&dst_head, dst, &src_head, src, move_chain);
+
+	/* ArrangeTrains() can hand a head that was resolved before the splice. When
+	 * the moved block is a reversed unit its base sits behind its articulated
+	 * parts, so the recorded head may now be in the middle of the merged chain or
+	 * in the other chain entirely. The two live chains are the ones the surviving
+	 * vehicles belong to; re-derive both heads from them so the normalisation and
+	 * statistics below operate on real chain fronts. */
+	if (src_head != nullptr) src_head = src_head->First();
+	if (dst_head != nullptr) dst_head = dst_head->First();
+	if (src_head != nullptr && dst_head != nullptr && src_head == dst_head) dst_head = nullptr;
 
 	if (!flags.Test(DoCommandFlag::AutoReplace)) {
 		/* If the autoreplace flag is set we do not need to test for the validity
@@ -2908,6 +3243,8 @@ static CommandCost CheckSaleChainOwnership(const Train *sold)
  */
 CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, bool backup_order, ClientID user)
 {
+	/* Reject selling a rear dual-headed half before resolving the unit main. */
+	if (Train::From(t)->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
 	Train *v = Train::From(t)->GetFirstEnginePart();
 	/* The primary (consist info carrier) may sit anywhere in the chain; all
 	 * chain surgery below must be anchored at the physical chain head. */
@@ -3275,155 +3612,71 @@ static void ReverseTrainChainOrder(Train *v)
 }
 
 /**
- * Reverse a train in place without changing the physical positions of single
- * vehicles: every vehicle keeps its position and only turns around, while the
- * chain order is reversed so the former last vehicle becomes the chain front.
- * The primary vehicle (consist info carrier) is not moved, so the train keeps
- * its identity, orders and group.
- *
- * Multi-part units (dual-headed engines and articulated engines) are reversed
- * as a whole block: inside such a block the vehicles exchange positions like
- * ReverseTrainSwapVehicles does, keeping the internal chain order intact, so
- * the "rear follows front" / "articulated parts follow base" invariants are
- * preserved and the new chain front of such a block is always a legal chain
- * head (front dual-headed part / articulated base). Only single-vehicle
- * blocks toggle VehicleRailFlag::Flipped to retain their previous facing.
- * Articulated blocks keep their NewGRF-defined per-part sprite orientation:
- * their positions have been mirrored, so retaining each old drawing direction
- * would put asymmetric ends and cabs on the wrong end of the block.
+ * Reverse a train in place without moving any vehicle: every vehicle keeps its
+ * world position, its direction is reversed and VehicleRailFlag::Flipped is
+ * toggled, so its rendered sprite stays exactly the same. The chain order is
+ * reversed so it still follows the new travelling direction. Multi-part units
+ * therefore end up with their parts in reverse chain order (part-first /
+ * rear-first); the unit-main pointer, not chain position, identifies the
+ * base/front engine.
  * @param v First vehicle of the chain to reverse.
  */
 static void ReverseTrainNoSwapVehicles(Train *v)
 {
 	assert(v == v->First());
+	Train *primary = v->Primary();
 
-	/* Dual-headed engines require the vanilla full physical swap: swapping
-	 * their halves' positions across tiles breaks tile/track/direction
-	 * consistency in ways that NoSwap cannot handle. */
-	for (Train *u = v; u != nullptr; u = u->Next()) {
-		if (u->IsMultiheaded() && u->IsEngine()) {
-			ReverseTrainSwapVehicles(v);
-			InvalidateVehicleTickCaches();
-			return;
-		}
-	}
-
-	/* Split the chain into blocks of vehicles that must be reversed as a unit.
-	 * A dual-headed unit spans from its front half to its rear half,
-	 * including any vehicles between them (wrapped/wrapped-around wagons),
-	 * so the pair may be non-adjacent. */
-	std::vector<std::vector<Train *>> blocks;
-	for (Train *u = v; u != nullptr;) {
-		if (u->IsMultiheaded() && u->IsEngine() && !u->IsRearDualheaded() && u->other_multiheaded_part != nullptr) {
-			/* Dual-headed engine: everything from the front half up to and
-			 * including the rear half forms one block. */
-			blocks.emplace_back();
-			bool found_rear = false;
-			for (Train *w = u; w != nullptr; w = w->Next()) {
-				blocks.back().push_back(w);
-				if (w == u->other_multiheaded_part) {
-					found_rear = true;
-					break;
-				}
-			}
-			if (!found_rear) {
-				/* Rear half not ahead of us: malformed state, fall back to the
-				 * vanilla swap reversal which is always safe. */
-				ReverseTrainSwapVehicles(v);
-				InvalidateVehicleTickCaches();
-				return;
-			}
-			u = blocks.back().back()->Next();
-		} else if (u->HasArticulatedPart()) {
-			/* Articulated engine: base and all consecutive articulated parts form one block. */
-			blocks.emplace_back();
-			blocks.back().push_back(u);
-			u = u->Next();
-			while (u != nullptr && u->IsArticulatedPart()) {
-				blocks.back().push_back(u);
-				u = u->Next();
-			}
-		} else {
-			blocks.push_back({u});
-			u = u->Next();
-		}
-	}
-
-	/* Reverse every block internally, like ReverseTrainSwapVehicles does. */
-	for (auto &block : blocks) {
-		int r = static_cast<int>(block.size()) - 1;
-		int l = 0;
-		while (l <= r) {
-			Train *a = block[l];
-			Train *b = block[r];
-			if (a != b) {
-				bool a_hidden = a->vehstatus.Test(VehState::Hidden);
-				bool b_hidden = b->vehstatus.Test(VehState::Hidden);
-				b->vehstatus.Set(VehState::Hidden, a_hidden);
-				a->vehstatus.Set(VehState::Hidden, b_hidden);
-
-				std::swap(a->track, b->track);
-				std::swap(a->direction, b->direction);
-				std::swap(a->x_pos, b->x_pos);
-				std::swap(a->y_pos, b->y_pos);
-				std::swap(a->tile, b->tile);
-				std::swap(a->z_pos, b->z_pos);
-
-				SwapTrainFlags(&a->gv_flags, &b->gv_flags);
-			} else {
-				/* Swap GroundVehicleFlag::GoingUp/GroundVehicleFlag::GoingDown. */
-				SwapTrainFlags(&a->gv_flags, &a->gv_flags);
-			}
-			l++;
-			r--;
-		}
-
-		/* The depot's single-vehicle sprite flip is not legal for articulated
-		 * units. Their native physical reversal must retain the original
-		 * per-part flags, including any set by NewGRF build callbacks. */
-		if (block.size() == 1) block[0]->flags.Flip(VehicleRailFlag::Flipped);
-
-		if (block.size() > 1) {
-			/* The vehicles changed place, fully update them. */
-			for (Train *u : block) UpdateStatusAfterSwap(u);
-		} else {
-			/* Single vehicle turning around in place: reverse the direction and
-			 * update sprites, but do not re-enter the (unchanged) tile. */
-			Train *u = block[0];
-			u->direction = ReverseDir(u->direction);
-			u->InvalidateImageCache();
-			u->UpdateIsDrawn();
-			u->UpdatePosition();
-			u->UpdateViewport(true, true);
-		}
-	}
-
-	/* Relink the blocks in reverse order. SetNext() cannot be used here: it
-	 * walks and repairs first/previous pointers of the surrounding chains,
-	 * which are in a stale intermediate state while the chain is being
-	 * reordered, leading to broken links and endless loops. Assign all
-	 * next/previous pointers directly instead. */
-	Train *new_first = blocks.back()[0];
-
-	/* Flatten the block order into a single vehicle sequence. */
+	/* Reverse the chain order, but keep every vehicle at its world position.
+	 * Every vehicle's facing is reversed and the per-vehicle Flipped flag is
+	 * toggled, so the rendered sprite stays exactly the same. Multi-part units
+	 * therefore end up with their parts in reverse chain order (part-first /
+	 * rear-first), which is the only order that keeps chain order aligned with
+	 * the new travelling direction without moving the parts. */
 	std::vector<Train *> order;
-	for (auto it = blocks.rbegin(); it != blocks.rend(); ++it) {
-		for (Train *u : *it) order.push_back(u);
+	for (Train *u = v; u != nullptr; u = u->Next()) {
+		order.push_back(u);
+		u->direction = ReverseDir(u->direction);
+		/* A NewGRF custom sprite set selects its own orientation from the
+		 * vehicle direction. Toggling Flipped also changes the spritenum passed
+		 * to the callback (0xFD -> 0xFE), which some GRFs do not define for
+		 * intermediate/articulated vehicles, making their style disappear.
+		 * Default sprites keep the old visual-compatible toggle. */
+		const bool custom_sprite = IsCustomVehicleSpriteNum(u->spritenum);
+		/* Dual-headed halves and articulated parts are asymmetric unit members;
+		 * they must keep their original rendered facing when the chain order is
+		 * reversed. Plain intermediate custom-sprite wagons must not switch to
+		 * the reversed spritenum variant (0xFD -> 0xFE), as some GRFs only
+		 * define that variant for articulation. */
+		if (!custom_sprite || u->IsMultiheaded() || u->IsArticulatedPart()) u->flags.Flip(VehicleRailFlag::Flipped);
+		SwapTrainFlags(&u->gv_flags, &u->gv_flags);
+		u->InvalidateImageCache();
+		u->UpdateIsDrawn();
+		u->UpdatePosition();
+		u->UpdateViewport(true, true);
 	}
+	std::reverse(order.begin(), order.end());
 
+	Train *new_first = order.front();
+	Train *new_last = order.back();
 	for (size_t i = 0; i < order.size(); i++) {
 		order[i]->SetNextRaw((i + 1 < order.size()) ? order[i + 1] : nullptr);
 		order[i]->SetPreviousRaw((i > 0) ? order[i - 1] : nullptr);
 	}
-	Train *new_last = order.back();
-	/* Normalise the chain pointers. The primary pointers are intentionally left
-	 * untouched: the primary vehicle stays part of this chain, so the train
-	 * keeps its identity, orders and group. */
+
 	for (Train *u = new_first; u != nullptr; u = u->Next()) {
 		u->SetFirst(new_first);
 		u->SetLast(new_last);
 		u->vehicle_flags.Reset(VehicleFlag::DrivingBackwards);
 	}
+
+	/* The chain head can now be an articulated part or a rear dual-headed
+	 * half. Normalise the subtype flags so ConsistChanged() sees a legal head.
+	 * Keep the original primary: it carries orders, name, unit number, group,
+	 * profits, timetable/dispatch state and all other consist identity. */
+	NormaliseSubtypes(new_first);
+	for (Train *u = new_first; u != nullptr; u = u->Next()) u->SetPrimary(primary);
+	if (primary->IsEngine()) primary->SetFrontEngine();
+
 	/* Direct pointer assignment bypasses SetNext()'s marker maintenance;
 	 * recompute the pool's front/non-front markers for the new chain,
 	 * otherwise tick-cache rebuilds pick wrong chain fronts. */
@@ -6524,11 +6777,9 @@ StationID GetTrainCouplingStation(const Train *v)
 	/* Coupling can leave the first engine just beyond the platform. Require
 	 * every remaining part on one station, with the engine on the adjacent
 	 * rail tile. Do not accept an unrelated train standing outside a station. */
-	const Train *next = v->Next();
-	/* An engine may have several articulated parts on the same overhang tile.
-	 * Treat those as one unit, without allowing an outside wagon or second tile. */
-	while (next != nullptr && next->IsArticulatedPart() && next->tile == v->tile) next = next->Next();
-	if (!v->IsEngine() || next == nullptr || !IsPlainRailTile(v->tile) ||
+	const Train *unit_main = Train::From(v->GetUnitMain());
+	const Train *next = v->GetNextVehicle();
+	if (!unit_main->IsEngine() || next == nullptr || !IsPlainRailTile(v->tile) ||
 			!IsRailStationTile(next->tile) || DistanceManhattan(v->tile, next->tile) != 1) return StationID::Invalid();
 	const StationID station = GetStationIndex(next->tile);
 	if (v->Primary()->last_station_visited != station) return StationID::Invalid();
@@ -6575,17 +6826,12 @@ static uint GetDecoupleVehicleAuto(Train *v)
 	v = v->First();
 	uint engines_front = 0;
 	uint engines_back = 0;
-	uint pos = 1;
+	uint units = 0;
 	bool has_wagons = false;
-	bool multihead_front = false;
-	for (Train *t = v; t != nullptr; t = t->GetNextVehicle(), pos++) {
-		if (t->IsEngine()) {
-			if (t->IsMultiheaded()) {
-				if (multihead_front) {
-					return pos;
-				}
-				multihead_front = true;
-			}
+	for (Train *t = v; t != nullptr; t = t->GetNextVehicle()) {
+		units++;
+		const Train *main = Train::From(t->GetUnitMain());
+		if (main->IsEngine()) {
 			if (has_wagons) {
 				engines_back++;
 			} else {
@@ -6596,7 +6842,7 @@ static uint GetDecoupleVehicleAuto(Train *v)
 		}
 	}
 	if (engines_front > 0 && has_wagons) return engines_front;
-	if (engines_back > 0 && has_wagons) return CountVehiclesInChain(v) - engines_back;
+	if (engines_back > 0 && has_wagons) return units - engines_back;
 	return 1;
 }
 
@@ -6610,17 +6856,12 @@ Train *GetDecoupleVehicleForCount(Train *v, uint num_decouple)
 	Train *ret = head->GetNextVehicle();
 	/* The editor can query single-unit consists, unlike the execution caller. */
 	if (ret == nullptr) return nullptr;
-	bool multihead_front = head->IsMultiheaded();
 
+	/* GetNextVehicle() skips whole multi-part units, so the cut can never land
+	 * inside a dual-headed or articulated unit. */
 	for (uint i = 1; i < num_decouple && ret->GetNextVehicle() != nullptr; i++) {
-		if (multihead_front) {
-			if (ret->IsRearDualheaded()) multihead_front = false;
-		} else {
-			if (ret->IsMultiheaded()) multihead_front = true;
-		}
 		ret = ret->GetNextVehicle();
 	}
-	if (multihead_front) return nullptr;
 	return ret;
 }
 
@@ -7339,6 +7580,15 @@ static bool CoupleGroupOk(const Order &order, const Train *t)
 	return GroupIsInGroup(t->group_id, group);
 }
 
+/** Check the waiting train's active service number against the couple order's restriction. */
+static bool CoupleServiceNumberOk(const Order &order, const Train *t)
+{
+	const std::string_view required = order.GetCoupleServiceNumber();
+	if (required.empty()) return true;
+	const std::string active = t->GetActiveServiceNumber();
+	return std::string_view(active) == required;
+}
+
 static bool CoupleStationOk(const Order &order, TileIndex contact_tile)
 {
 	if (!order.HasCoupleStation()) return true;
@@ -7560,6 +7810,7 @@ static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *movin
 	if (!CoupleSlotOk(order, carrier)) return CoupleCandidateResult::Slot;
 	if (!CoupleSlotGroupOk(order, carrier)) return CoupleCandidateResult::SlotGroup;
 	if (!CoupleGroupOk(order, carrier)) return CoupleCandidateResult::Group;
+	if (!CoupleServiceNumberOk(order, carrier)) return CoupleCandidateResult::ServiceNumber;
 	if (!CoupleStationOk(order, contact_tile) &&
 			(!order.HasCoupleStation() || GetTrainCouplingStation(rep) != order.GetCoupleStation())) return CoupleCandidateResult::Station;
 	if (GetTrainCouplingStation(rep) == StationID::Invalid()) return CoupleCandidateResult::Platform;
@@ -7836,6 +8087,7 @@ Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir 
 	Train *best = nullptr;
 	std::vector<VehicleID> seen;
 	std::tuple<uint64_t, uint, uint32_t> best_key{};
+	bool best_clear = false;
 	TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
 	for (TileIndex st_tile = tile; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
 		for (Train *t : VehiclesOnTile<VehicleType::Train>(st_tile)) {
@@ -7848,13 +8100,23 @@ Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir 
 			seen.push_back(id);
 			Train *target = ValidateCoupleCandidate(moving, t->First(), st_tile, respect_claim, claim_cost, criteria);
 			if (target != nullptr) {
-				/* A candidate whose approach is blocked by another consist is not
-				 * reachable; keep looking for a waiting train we can reach. */
 				const uint penalty = GetCoupleSpeedPreferencePenalty(moving, target);
 				const auto key = std::make_tuple(uint64_t(DistanceManhattan(tile, target->tile)) + penalty, penalty, target->index.base());
-				if ((best == nullptr || key < best_key) && IsCoupleApproachPathClearTo(moving, target)) {
+				/* The approach walk only ranks candidates, it must never veto them.
+				 * It follows the cheapest tile path, which is not necessarily the
+				 * route the train will take: the pathfinder applies turn, signal
+				 * and reservation costs the walk does not model. A train queued on
+				 * some platform track the walk happens to cross therefore used to
+				 * reject every candidate, leaving the consist without a target and
+				 * permanently stuck even though a clear route existed. A clear
+				 * approach is preferred, but a reported obstruction is only a
+				 * fallback: the regular PBS reservation makes the train wait
+				 * instead of driving through another consist. */
+				const bool path_clear = IsCoupleApproachPathClearTo(moving, target);
+				if (best == nullptr || (path_clear && !best_clear) || (path_clear == best_clear && key < best_key)) {
 					best = target;
 					best_key = key;
+					best_clear = path_clear;
 				}
 			}
 		}
@@ -7863,94 +8125,34 @@ Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir 
 }
 
 /**
- * Whether a chain takes the vanilla swap path when flipped: any multiheaded
- * engine forces ReverseTrainSwapVehicles, which keeps the chain order intact
- * and only mirrors the vehicles' physical state pairwise across the chain.
- */
-static bool ChainFlipsBySwap(const Train *head)
-{
-	for (const Train *t = head; t != nullptr; t = t->Next()) {
-		if (t->IsMultiheaded() && t->IsEngine()) return true;
-	}
-	return false;
-}
-
-/**
- * Split a chain into the blocks a no-swap reversal flips as units: an
- * articulated engine and its parts form one block, everything else is a
- * single-vehicle block. Mirrors the block rules of
- * ReverseTrainNoSwapVehicles() (whose multiheaded branch is unreachable:
- * such chains take the swap path).
- */
-static std::vector<std::vector<Train *>> BuildReversalBlocks(Train *head)
-{
-	std::vector<std::vector<Train *>> blocks;
-	for (Train *u = head; u != nullptr;) {
-		if (u->HasArticulatedPart()) {
-			blocks.emplace_back();
-			blocks.back().push_back(u);
-			u = u->Next();
-			while (u != nullptr && u->IsArticulatedPart()) {
-				blocks.back().push_back(u);
-				u = u->Next();
-			}
-		} else {
-			blocks.push_back({u});
-			u = u->Next();
-		}
-	}
-	return blocks;
-}
-
-/**
- * The direction a vehicle carries after a full physical flip
- * (ReverseTrainForCouple): the swap path mirrors the physical state pairwise
- * across the whole chain, the no-swap path mirrors it within each reversal
- * block (single vehicles turn in place).
+ * The direction a vehicle carries after a full in-place flip
+ * (ReverseTrainForCouple). Every vehicle keeps its position, its direction is
+ * reversed and Flipped is toggled, so the stored direction is simply reversed.
  */
 static Direction FlippedDirection(const Train *v)
 {
-	const Train *head = v->First();
-	if (ChainFlipsBySwap(head)) {
-		std::vector<const Train *> chain;
-		uint index = 0;
-		for (const Train *t = head; t != nullptr; t = t->Next()) {
-			if (t == v) index = static_cast<uint>(chain.size());
-			chain.push_back(t);
-		}
-		return ReverseDir(chain[chain.size() - 1 - index]->direction);
-	}
-	for (const auto &block : BuildReversalBlocks(const_cast<Train *>(head))) {
-		for (uint i = 0; i < block.size(); i++) {
-			if (block[i] != v) continue;
-			return ReverseDir(block[block.size() - 1 - i]->direction);
-		}
-	}
-	return v->direction;
+	return ReverseDir(v->direction);
 }
 
 /**
- * Reverse the trial chain order the way ReverseTrainForCouple would: blocks in
- * reverse order with the within-block order kept (articulated parts stay
- * behind their base); swap-path chains keep their order. Physical positions
- * and directions are untouched -- only the order the NewGRF start/stop check
+ * Reverse the trial chain order the way ReverseTrainForCouple would. Every
+ * vehicle is a singleton reversal block now, so the whole chain order is
+ * reversed and every vehicle toggles Flipped. Physical positions and
+ * directions are untouched -- only the order the NewGRF start/stop check
  * enumerates is modelled. RestoreTrainBackup() fully undoes the relink.
  */
 static void TrialReverseChainOrder(Train *head)
 {
-	if (ChainFlipsBySwap(head)) return;
-
-	std::vector<std::vector<Train *>> blocks = BuildReversalBlocks(head);
-	/* Mirror the real singleton sprite flips. Articulated blocks preserve
-	 * their per-part NewGRF orientation, just as in the physical reversal.
-	 * The guard's destructor restores the trial flags. */
-	for (const auto &block : blocks) {
-		if (block.size() == 1) block[0]->flags.Flip(VehicleRailFlag::Flipped);
-	}
 	std::vector<Train *> order;
-	for (auto it = blocks.rbegin(); it != blocks.rend(); ++it) {
-		for (Train *t : *it) order.push_back(t);
+	for (Train *t = head; t != nullptr; t = t->Next()) {
+		order.push_back(t);
+		/* Mirror the real reversal: dual-headed halves and articulated parts
+		 * keep their facing via Flipped, while plain intermediate custom-sprite
+		 * wagons do not switch to the reversed spritenum variant. The guard's
+		 * destructor restores flags. */
+		if (!IsCustomVehicleSpriteNum(t->spritenum) || t->IsMultiheaded() || t->IsArticulatedPart()) t->flags.Flip(VehicleRailFlag::Flipped);
 	}
+	std::reverse(order.begin(), order.end());
 	for (size_t i = 0; i < order.size(); i++) {
 		order[i]->SetNextRaw(i + 1 < order.size() ? order[i + 1] : nullptr);
 		order[i]->SetPreviousRaw(i > 0 ? order[i - 1] : nullptr);
@@ -8430,6 +8632,7 @@ static void Couple(Train *v, Train *u)
 	u = u->Primary();
 	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return;
 
+
 	/* Stop the order/speed carrier before processing successor orders. The
 	 * moving endpoint can be a wagon, especially after a previous coupling.
 	 * A wait-at-station successor must see a stopped train; otherwise it
@@ -8485,6 +8688,7 @@ static void Couple(Train *v, Train *u)
 	} else {
 		u = u->Primary();
 	}
+
 
 	/* The couple happened at the station of the GOTO_COUPLE order; record it
 	 * as the last visited station (the movement-loop coupling path never goes
@@ -8549,6 +8753,7 @@ static void Couple(Train *v, Train *u)
 		}
 		return;
 	}
+
 
 	/* The absorbed consist's primary pointers must follow the surviving
 	 * primary, otherwise vehicles of the absorbed part resolve their consist
@@ -8726,12 +8931,11 @@ void Train::MarkDirty()
 	} while ((v = v->Next()) != nullptr);
 
 	/* need to update acceleration and cached values since the goods on the train changed. */
-	this->First()->CargoChanged();
-	this->First()->UpdateAcceleration();
-	/* CargoChanged()/UpdateAcceleration() only write the consist-level caches
-	 * of the chain head; re-broadcast them or every other vehicle keeps its
-	 * stale copy and network peers diverge. */
-	this->First()->BroadcastConsistCaches();
+	/* MarkDirty() may be called on a primary vehicle that is not the chain head.
+	 * ConsistChanged() recomputes the consist-level caches on the head and
+	 * BroadcastConsistCaches() propagates them to the whole chain, so every
+	 * vehicle (and network peers) sees the same values. */
+	this->First()->ConsistChanged({});
 }
 
 /**
@@ -8984,6 +9188,20 @@ static void TrainEnterStation(Train *consist, StationID station)
 			}
 		}
 		reset_lateness = SplitOrders(consist, u, load_trains, wait_orders, decouple_inbound_time);
+		/* The split can leave either part's carrier pointer on a vehicle that is
+		 * no longer that part's primary, and both the FreeTrainTrackReservation()
+		 * calls below and every use of current_order assume the primary. Re-anchor
+		 * both parts on their primary so the split-off part is not driven from a
+		 * stale member (that mismatch also tripped the assert inside
+		 * FreeTrainTrackReservation in a real crash). */
+		consist = consist->Primary();
+		if (!consist->IsPrimaryVehicle()) consist = consist->First();
+		if (u != nullptr && u != consist) {
+			u = u->Primary();
+			/* A primary pointer can survive with its front flag gone; the
+			 * assert in FreeTrainTrackReservation only looks at the flag. */
+			if (!u->IsPrimaryVehicle()) u = u->First();
+		}
 		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);
 		if (u != nullptr && u->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(u);
 		/* The split moved vehicles -- and the primary that carries the breakdown
@@ -10625,6 +10843,12 @@ static void DeleteLastWagon(Train *v)
 		for (Train *u = first; u != nullptr; u = u->Next()) u->SetPrimary(first);
 	}
 
+	/* The same applies to the unit-main pointers: this function frees one
+	 * vehicle per call, so the base of a multi-part unit can be freed while
+	 * other members are still alive. A dangling unit_main makes every
+	 * GetUnitMain() user abort once the pool reuses the freed slot. */
+	if (first != v) Vehicle::ClearUnitMainOfChain(first, v);
+
 	if (first != v) {
 		/* Recalculate cached train properties while a valid logical carrier is
 		 * still part of the remaining wreckage. */
@@ -11079,7 +11303,18 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		if (IsOtherConsistOnPlatform(consist)) {
 			consist->cur_speed = 0;
 			consist->subspeed = 0;
-			FreeTrainTrackReservation(consist);
+			/* Do not free the path reservation here. After a same-direction
+			 * decouple both parts still share the reservation chain the original
+			 * consist left behind. Clearing it from the trailing part walks
+			 * straight into the leading part's freshly reserved path: doing this
+			 * every tick broke the chain at the first shared tile and left the
+			 * leading part's reservation beyond the break orphaned. No owner
+			 * could ever clear those bits, and IsWaitingPositionFree() then
+			 * rejected the safe waiting position in front of the leading part
+			 * forever, deadlocking both consists. Only drop our own look-ahead;
+			 * RecheckSignalsAndTryReserve() rebuilds the reservation once the
+			 * platform is clear and this flag is reset. */
+			consist->lookahead.reset();
 			/* The former partner still holds the shared platform: wait for it
 			 * to clear in the ordinary stuck state, so the regular retry logic
 			 * re-attempts the reservation as soon as the path is free. */
@@ -11107,6 +11342,18 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			u->vehicle_flags.Flip(VehicleFlag::DrivingBackwards);
 		}
 		AdvanceWagonsAfterSwap(consist->GetMovingFront());
+		/* AdvanceWagonsBeforeSwap()/AfterSwap() derive their differentials from
+		 * CalcNextVehicleOffset(), whose rounding depends on DrivingBackwards.
+		 * The flip above happens between the two passes, so the second pass
+		 * uses a different rounding basis than the first: joints between an
+		 * even and an odd length vehicle end up one unit off (even/even joints
+		 * stay exact) and the error accumulates from both ends of the chain.
+		 * Re-space from the moving back towards the moving front so every
+		 * joint closes against its own CalcNextVehicleOffset(). */
+		for (Train *b = consist->GetMovingBack(); b->GetMovingPrev() != nullptr; b = b->GetMovingPrev()) {
+			Train *a = b->GetMovingPrev();
+			RespaceVehicleTo(a, b, a->CalcNextVehicleOffset());
+		}
 		consist->First()->ConsistChanged(CCF_TRACK);
 		consist->subspeed = 0;
 		consist->progress = 0;
@@ -11247,9 +11494,10 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	if (j < adv_spd) {
 		/* if the vehicle has speed 0, update the last_speed field. */
 		if (consist->cur_speed == 0) consist->SetLastSpeed();
+	} else if (!TrainCheckIfLineEnds(moving_front)) {
+		/* Train reversed, discard any further motion, to prevent uncommanded movement in the reverse direction. */
+		j = 0;
 	} else {
-		TrainCheckIfLineEnds(moving_front);
-		moving_front = moving_front->GetMovingFront();
 		/* Loop until the train has finished moving. */
 		for (;;) {
 			j -= adv_spd;
@@ -11426,6 +11674,11 @@ void Train::OnNewDay()
 
 void Train::OnPeriodic()
 {
+	/* The pool walk visits every vehicle. Only the consist's primary may run
+	 * the per-consist periodic work; the physical chain head can be a front
+	 * wagon after an in-place reversal and has unitnumber 0. */
+	if (this != this->Primary()) return;
+
 	if (this->IsPrimaryVehicle()) {
 		CheckIfTrainNeedsService(this);
 

@@ -3541,16 +3541,51 @@ std::string Vehicle::GetServiceNumberForDeparture(const Order *target, std::stri
 		if (target->GetServiceNumberMode() == 2) return std::string(dispatched_number);
 	}
 	std::string result = this->service_number_suppressed ? std::string{} : (!this->fixed_service_number.empty() ? std::string(this->fixed_service_number.c_str()) : std::string(dispatched_number));
-	/* Only follow the same, unambiguous order segment; never execute conditions or subplans. */
+	/* Follow the order segment leading to the target stop, collecting service
+	 * numbers on the way. The segment may cross executed schedules: descend on
+	 * an execute-schedule order, and when an executed list wraps, return to
+	 * the main list at the runtime's resume position (see
+	 * ReturnFromExecuteSchedule). Conditional orders stay a hard stop: which
+	 * branch the vehicle takes is not predictable here. */
 	if (this->orders != nullptr && target != nullptr) {
+		const OrderList *home = this->IsExecutingSchedule() ? OrderList::GetIfValid(this->primary_order) : this->orders;
+		const OrderList *walk_list = this->orders;
 		const Order *o = this->GetOrder(this->cur_implicit_order_index);
-		for (uint i = 0; o != nullptr && i < this->GetNumOrders(); ++i, o = this->orders->GetNext(o)) {
-			if (o->IsType(OT_CONDITIONAL) || o->IsType(OT_EXECUTE_SCHEDULE)) break;
-			if ((o->IsType(OT_GOTO_WAYPOINT) || (o->IsType(OT_GOTO_STATION) && !(o->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION))) && !(this->service_number_suppressed && o == this->GetOrder(this->cur_implicit_order_index))) {
+		const Order *skip = o;
+		const Order *home_resume = nullptr; ///< The execute order in the main list that started the detour.
+		bool started_at_target = (o == target);
+		int walk_steps = 0;
+		for (uint i = 0; o != nullptr && i < 64; ++i) {
+			++walk_steps;
+			if (o == target && !started_at_target) return result;
+			if (o == target && started_at_target && walk_steps > 1) {
+				/* The walk started at the target itself: the number in effect
+				 * there is the last one collected over a full leading cycle,
+				 * not the vehicle's current fallback. */
+				return result;
+			}
+			if (o->IsType(OT_CONDITIONAL)) break;
+			if (o->IsExecuteScheduleOrder()) {
+				const OrderList *next_list = OrderList::GetIfValid(o->GetDestination().ToOrderListID());
+				if (next_list == nullptr || next_list == walk_list || next_list->GetNumOrders() == 0 || !next_list->IsPlayerCreated() || !next_list->IsVisibleToCompany(this->owner)) break;
+				if (walk_list == home) home_resume = o;
+				walk_list = next_list;
+				o = walk_list->GetFirstOrder();
+				continue;
+			}
+			if ((o->IsType(OT_GOTO_WAYPOINT) || (o->IsType(OT_GOTO_STATION) && !(o->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION))) && !(this->service_number_suppressed && o == skip)) {
 				if (o->GetServiceNumberMode() == 1) result = o->GetServiceNumber();
 				if (o->GetServiceNumberMode() == 2) result = dispatched_number;
 			}
-			if (o == target) return result;
+			const Order *next = walk_list->GetNext(o);
+			if (home != nullptr && walk_list != home && next == walk_list->GetFirstOrder()) {
+				/* Wrapped the executed list: return to the main list at the
+				 * remembered resume position, whatever the nesting depth. */
+				walk_list = home;
+				next = home_resume != nullptr ? home->GetNext(home_resume) : home->GetOrderAt(this->primary_order_index);
+				if (next == nullptr) break;
+			}
+			o = next;
 		}
 	}
 	return result;
@@ -5145,20 +5180,30 @@ void GetVehicleSet(VehicleSet &set, Vehicle *v, uint8_t num_vehicles)
 		if (num_vehicles == UINT8_MAX) v = v->First();
 
 		Train *u = Train::From(v);
-		/* Only include whole vehicles, so start with the first articulated part */
-		u = u->GetFirstEnginePart();
+		/* Only include whole vehicles, so start at the first chain member of the
+		 * unit. GetFirstEnginePart() cannot be used here: it answers through
+		 * unit_main, and a reversed unit stores its base behind its articulated
+		 * parts, so it would return a vehicle that sits after the clicked one.
+		 * The walk below would then stop immediately, leaving the unit split. */
+		u = u->GetUnitChainFront();
 
 		/* Include num_vehicles vehicles, not counting articulated parts */
 		for (; u != nullptr && num_vehicles > 0; num_vehicles--) {
-			do {
+			/* Stop at the end of this unit rather than at the first vehicle which
+			 * is not an articulated part: the base of a reversed unit sits at the
+			 * tail, so the flag marks a boundary in the middle of the unit. */
+			Train *unit_last = u->GetUnitChainLast();
+			for (;;) {
 				/* Include current vehicle in the selection. */
 				include(set, u->index);
 
 				/* If the vehicle is multiheaded, add the other part too. */
 				if (u->IsMultiheaded()) include(set, u->other_multiheaded_part->index);
 
+				const bool at_unit_end = (u == unit_last);
 				u = u->Next();
-			} while (u != nullptr && u->IsArticulatedPart());
+				if (at_unit_end || u == nullptr) break;
+			}
 		}
 	}
 }

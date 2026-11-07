@@ -802,11 +802,11 @@ private:
 	}
 
 	/** Apply an order change through the real order modification command. */
-	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO)
+	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO, std::string text = {})
 	{
 		if (!this->CheckOrderStillValid()) return;
 		Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->target.CmdTile(), this->target.TargetKind(), this->target.TargetId(),
-				this->order_id, mof, data, cargo, {});
+				this->order_id, mof, data, cargo, text);
 	}
 
 	/** Currently selected cargo of the cargo criterion, or INVALID_CARGO when the criterion is off. */
@@ -1279,6 +1279,7 @@ static StringID GetCoupleCandidateResultString(CoupleCandidateResult result)
 		case CoupleCandidateResult::Slot:        return STR_COUPLE_DIAGNOSTIC_SLOT;
 		case CoupleCandidateResult::SlotGroup:   return STR_COUPLE_DIAGNOSTIC_SLOT_GROUP;
 		case CoupleCandidateResult::Group:       return STR_COUPLE_DIAGNOSTIC_GROUP;
+		case CoupleCandidateResult::ServiceNumber: return STR_COUPLE_DIAGNOSTIC_SERVICE_NUMBER;
 		case CoupleCandidateResult::Station:     return STR_COUPLE_DIAGNOSTIC_STATION;
 		case CoupleCandidateResult::Platform:    return STR_COUPLE_DIAGNOSTIC_PLATFORM;
 		case CoupleCandidateResult::Slower:      return STR_COUPLE_DIAGNOSTIC_SLOWER;
@@ -1362,6 +1363,8 @@ enum CoupleCriteriaWidgets : WidgetID {
 	WID_CPO_CARGO,            ///< Cargo criterion.
 	WID_CPO_VALUE_LABEL,      ///< Label of the unit count criterion.
 	WID_CPO_VALUE,            ///< Unit count criterion (opens a query).
+	WID_CPO_SERVICE_NUMBER_LABEL, ///< Label of the service number criterion.
+	WID_CPO_SERVICE_NUMBER,   ///< Service number criterion (opens a text query).
 	WID_CPO_SPEED_LABEL,
 	WID_CPO_SPEED_LABEL1,
 	WID_CPO_SPEED_MIN_MODE,
@@ -1414,11 +1417,12 @@ private:
 		std::array<uint8_t, 2> speed_units{};
 		uint16_t slot_group = 0;
 		uint16_t group = 0;
+		std::string service_number{};
 
 		bool operator==(const SettingsSnapshot &other) const
 		{
 			return this->check_point == other.check_point && this->load == other.load && this->cargo == other.cargo && this->units == other.units &&
-					this->slot_group == other.slot_group && this->group == other.group &&
+					this->slot_group == other.slot_group && this->group == other.group && this->service_number == other.service_number &&
 					this->reject_slower == other.reject_slower && this->reject_faster == other.reject_faster &&
 					this->speed_comparators == other.speed_comparators && this->speed_values == other.speed_values && this->speed_units == other.speed_units;
 		}
@@ -1445,6 +1449,7 @@ private:
 		}
 		s.slot_group = this->order->GetCoupleSlotGroup().base();
 		s.group = this->order->GetCoupleGroup().base();
+		s.service_number = std::string(this->order->GetCoupleServiceNumber());
 		return s;
 	}
 
@@ -1458,6 +1463,8 @@ private:
 		this->GetWidget<NWidgetCore>(WID_CPO_GROUP)->SetString(STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
 		this->GetWidget<NWidgetCore>(WID_CPO_LOAD)->SetString(STR_ORDER_COUPLE_ANY + to_underlying(this->order->GetCoupleLoad()));
 		this->GetWidget<NWidgetCore>(WID_CPO_CARGO)->SetString(STR_ORDER_COUPLE_ANY_CARGO);
+		/* Static fallback; the parameterised value is resolved by GetWidgetString. */
+		this->GetWidget<NWidgetCore>(WID_CPO_SERVICE_NUMBER)->SetString(STR_ORDER_COUPLE_SERVICE_NUMBER_ANY);
 		for (uint row = 0; row < 2; row++) {
 			const auto mode = this->order->GetCoupleSpeedBoundMode(row);
 			/* Manual mode text ("value unit") is resolved per render by #GetWidgetString. */
@@ -1482,11 +1489,11 @@ private:
 	}
 
 	/** Apply an order change through the real order modification command. */
-	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO)
+	void ModifyOrder(ModifyOrderFlags mof, uint16_t data, CargoType cargo = INVALID_CARGO, std::string text = {})
 	{
 		if (!this->CheckOrderStillValid()) return;
 		Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->target.CmdTile(), this->target.TargetKind(), this->target.TargetId(),
-				this->order_id, mof, data, cargo, {});
+				this->order_id, mof, data, cargo, text);
 	}
 
 	/** Currently selected cargo of the cargo criterion, or INVALID_CARGO when the criterion is off. */
@@ -1673,6 +1680,12 @@ public:
 			case WID_CPO_VALUE:
 				return GetString(STR_JUST_INT, this->order->GetNumCouple());
 
+			case WID_CPO_SERVICE_NUMBER: {
+				const std::string_view number = this->order->GetCoupleServiceNumber();
+				if (number.empty()) return GetString(STR_ORDER_COUPLE_SERVICE_NUMBER_ANY);
+				return GetString(STR_ORDER_COUPLE_SERVICE_NUMBER_VALUE, std::string(number));
+			}
+
 			case WID_CPO_SPEED_LABEL1:
 			case WID_CPO_SPEED_LABEL2:
 				return GetString(widget == WID_CPO_SPEED_LABEL1 ? STR_ORDER_COUPLE_SPEED_LABEL1 : STR_ORDER_COUPLE_SPEED_LABEL2);
@@ -1725,6 +1738,12 @@ public:
 			case WID_CPO_VALUE:
 				this->query_text_widget = WID_CPO_VALUE;
 				ShowQueryString(GetString(STR_JUST_INT, this->order->GetNumCouple()), STR_ORDER_COUPLE_VALUE_CAPT, 4, this, CS_NUMERAL, {});
+				return;
+			case WID_CPO_SERVICE_NUMBER:
+				this->query_text_widget = WID_CPO_SERVICE_NUMBER;
+				ShowQueryString(GetString(STR_JUST_RAW_STRING, this->order->GetCoupleServiceNumber()),
+						STR_ORDER_COUPLE_SERVICE_NUMBER_QUERY, MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL,
+						{QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
 				return;
 			case WID_CPO_SPEED_MIN_MODE:
 			case WID_CPO_SPEED_MAX_MODE: {
@@ -1825,7 +1844,13 @@ public:
 
 	void OnQueryTextFinished(std::optional<std::string> str) override
 	{
-		if (!str.has_value() || str->empty()) return;
+		if (!str.has_value()) return;
+		if (this->query_text_widget == WID_CPO_SERVICE_NUMBER) {
+			this->query_text_widget = INVALID_WIDGET;
+			this->ModifyOrder(MOF_COUPLE_SERVICE_NUMBER, 0, INVALID_CARGO, *str);
+			return;
+		}
+		if (str->empty()) return;
 		auto try_value = ParseInteger<uint>(*str);
 		if (!try_value.has_value()) return;
 		if (this->query_text_widget == WID_CPO_VALUE) {
@@ -1898,6 +1923,11 @@ static constexpr NWidgetPart _nested_couple_options_widgets[] = {
 			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_VALUE_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_COUPLE_VALUE_LABEL, STR_NULL),
 			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_CPO_VALUE), SetFill(0, 0), SetResize(0, 0),
 		EndContainer(),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_SERVICE_NUMBER_LABEL), SetFill(1, 0), SetResize(1, 0),
+					SetStringTip(STR_ORDER_COUPLE_SERVICE_NUMBER_LABEL, STR_ORDER_COUPLE_SERVICE_NUMBER_TOOLTIP),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_CPO_SERVICE_NUMBER), SetMinimalSize(96, 12), SetFill(0, 0), SetResize(0, 0),
+		EndContainer(),
 		NWidget(NWID_HORIZONTAL), SetPIP(2, 4, 2),
 			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_SPEED_LABEL), SetStringTip(STR_ORDER_COUPLE_SPEED_LABEL, STR_ORDER_COUPLE_SPEED_RANGE_TOOLTIP),
 			NWidget(WWT_TEXT, Colours::Invalid, WID_CPO_SPEED_LABEL1), SetStringTip(STR_ORDER_COUPLE_SPEED_LABEL1, STR_ORDER_COUPLE_SPEED_RANGE_TOOLTIP),
@@ -1918,7 +1948,7 @@ static constexpr NWidgetPart _nested_couple_options_widgets[] = {
 
 /** Window description of the coupling criteria window. */
 static WindowDesc _couple_options_desc(__FILE__, __LINE__,
-	WindowPosition::Automatic, "couple_criteria", 240, 159,
+	WindowPosition::Automatic, "couple_criteria", 240, 173,
 	WindowClass::VehicleCoupleCriteria, WindowClass::VehicleOrders,
 	WindowDefaultFlag::Construction,
 	_nested_couple_options_widgets
@@ -3181,6 +3211,9 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 				AppendStringInPlace(line, STR_ORDER_COUPLE_SPEED_SUFFIX_LEGACY);
 			}
 
+			if (order->HasCoupleServiceNumber()) {
+				AppendStringInPlace(line, STR_ORDER_COUPLE_SERVICE_NUMBER_SUFFIX, std::string(order->GetCoupleServiceNumber()));
+			}
 			if (order->HasCoupleCheckPoint()) AppendStringInPlace(line, STR_ORDER_COUPLE_CHECK_AT, GetCoupleCheckPointLabel(orders, order_index, *order));
 			break;
 		}
@@ -3645,6 +3678,7 @@ private:
 		return Command<Commands::DeleteOrder>::Post(STR_ERROR_CAN_T_DELETE_THIS_ORDER, this->CmdTile(), OrderTargetType::OrderList, this->list_id.base(), sel);
 	}
 
+	bool drag_selected = false;    ///< Order being dragged was the selected order.
 	Point drag_start_pt{};         ///< Start point for order drags.
 	uint64_t drag_start_time_us{}; ///< Start time for order drags, from MicrosecondsRealtimeTicks().
 
@@ -5228,7 +5262,6 @@ public:
 
 	void OnPaint() override
 	{
-		if (this->GetWidget<NWidgetCore>(WID_O_SERVICE_NUMBER) != nullptr) this->SetWidgetDisabledState(WID_O_SERVICE_NUMBER, !CanSetStationServiceNumber());
 		if (!IsLocalTarget()) {
 			this->selected_order = -1; // Disable selection any selected row at a competitor order window.
 		} else {
@@ -5408,11 +5441,6 @@ public:
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		switch (widget) {
-			case WID_O_SERVICE_NUMBER: {
-				const Order *o = this->selected_order >= 0 ? OrderAt(this->selected_order) : nullptr;
-				if (o == nullptr || !o->IsType(OT_GOTO_STATION)) return GetString(STR_ORDER_SERVICE_SELECT_STOP);
-				return o->GetServiceNumberMode() == 1 ? GetString(STR_TIMETABLE_FIXED_SERVICE_NUMBER, o->GetServiceNumber()) : GetString(o->GetServiceNumberMode() == 2 ? STR_TIMETABLE_DISPATCH_SERVICE_NUMBER : STR_ORDER_SERVICE_UNCHANGED);
-			}
 			case WID_O_COND_VALUE: {
 				VehicleOrderID sel = this->OrderGetSel();
 				const Order *order = OrderAt(sel);
@@ -5661,16 +5689,6 @@ public:
 	void OnClick(Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
 		switch (widget) {
-			case WID_O_SERVICE_NUMBER: {
-				if (!CanSetStationServiceNumber()) break;
-				const Order *o = OrderAt(this->selected_order);
-				DropDownList list;
-				list.push_back(MakeDropDownListCheckedItem(o->GetServiceNumberMode() == 0, STR_ORDER_SERVICE_UNCHANGED, 0));
-				list.push_back(MakeDropDownListCheckedItem(o->GetServiceNumberMode() == 1, STR_TIMETABLE_SET_SERVICE_NUMBER, 1));
-				list.push_back(MakeDropDownListCheckedItem(o->GetServiceNumberMode() == 2, STR_TIMETABLE_DISPATCH_SERVICE_NUMBER, 2));
-				ShowDropDownList(this, std::move(list), o->GetServiceNumberMode(), widget);
-				break;
-			}
 			case WID_O_ORDER_LIST: {
 				if (this->goto_type == OPOS_CONDITIONAL) {
 					VehicleOrderID order_id = this->GetOrderFromPt(_cursor.pos.y - this->top);
@@ -5704,6 +5722,8 @@ public:
 				/* This order won't be selected any more, close all child windows and dropdowns */
 				this->CloseChildWindows();
 				HideDropDownMenu(this);
+
+				const bool was_selected = (sel == this->selected_order);
 
 				if (sel == INVALID_VEH_ORDER_ID || !IsLocalTarget()) {
 					/* Deselect clicked order */
@@ -5756,6 +5776,7 @@ public:
 
 				if (IsLocalTarget()) {
 					/* Activate drag and drop */
+					this->drag_selected = was_selected;
 					this->drag_start_pt = pt;
 					this->drag_start_time_us = MicrosecondsRealtimeTicks();
 					SetObjectToPlaceWnd(SPR_CURSOR_MOUSE, PAL_NONE, HT_DRAG, this);
@@ -5817,6 +5838,15 @@ public:
 						list.push_back(MakeDropDownListCheckedItem(osl == OrderStopLocation::Through, STR_ORDER_STOP_LOCATION_THROUGH, 0x200 + to_underlying(OrderStopLocation::Through), !allowed));
 					}
 					list.push_back(MakeDropDownListCheckedItem(order->GetDecouple() == ODF_DECOUPLE, STR_ORDERS_DECOUPLE_DROP, 0x500, false));
+				}
+
+				/* Service number selection for scheduled stops, previously an external dropdown. */
+				if (CanSetStationServiceNumber()) {
+					const uint8_t mode = order->GetServiceNumberMode();
+					list.push_back(MakeDropDownListDividerItem());
+					list.push_back(MakeDropDownListCheckedItem(mode == 0, STR_ORDER_SERVICE_UNCHANGED, 0x600, false));
+					list.push_back(MakeDropDownListCheckedItem(mode == 1, STR_TIMETABLE_SET_SERVICE_NUMBER, 0x601, false));
+					list.push_back(MakeDropDownListCheckedItem(mode == 2, STR_TIMETABLE_DISPATCH_SERVICE_NUMBER, 0x602, false));
 				}
 
 				if (this->HasVehicle() && this->vehicle->type == VehicleType::Road && (order->IsType(OT_GOTO_STATION) || order->IsType(OT_GOTO_WAYPOINT))) {
@@ -6547,7 +6577,7 @@ public:
 
 	void OnQueryTextFinished(std::optional<std::string> str, std::optional<std::string> str2) override
 	{
-		if (this->query_text_widget == WID_O_SERVICE_NUMBER) {
+		if (this->query_text_widget == WID_O_MGMT_BTN) {
 			if (!str.has_value() || !IsLocalTarget() || this->Target() == nullptr || this->Target()->index != this->service_number_query_list || OrderAt(this->service_number_query_index) != this->service_number_query_order) return;
 			Command<Commands::SetOrderServiceNumber>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->TargetKind(), this->TargetId(), this->service_number_query_index, uint8_t(str->empty() ? 0 : 1), *str);
 			return;
@@ -6675,18 +6705,6 @@ public:
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		switch (widget) {
-			case WID_O_SERVICE_NUMBER:
-				if (!CanSetStationServiceNumber()) break;
-				if (index == 0 || index == 2) {
-					Command<Commands::SetOrderServiceNumber>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->TargetKind(), this->TargetId(), VehicleOrderID(this->selected_order), uint8_t(index), std::string{});
-				} else if (index == 1) {
-					this->query_text_widget = WID_O_SERVICE_NUMBER;
-					this->service_number_query_index = this->selected_order;
-					this->service_number_query_order = OrderAt(this->selected_order);
-					this->service_number_query_list = this->Target()->index;
-					ShowQueryString(GetString(STR_JUST_RAW_STRING, this->service_number_query_order->GetServiceNumber()), STR_TIMETABLE_SET_SERVICE_NUMBER, MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
-				}
-				break;
 			case WID_O_NON_STOP:
 				this->OrderClick_Nonstop(index);
 				break;
@@ -7001,6 +7019,20 @@ public:
 					this->ModifyOrder(this->OrderGetSel(), MOF_RV_TRAVEL_DIR, index & 0xFF);
 					break;
 				}
+				if (index >= 0x600 && index <= 0x602) {
+					/* Service number selection moved from the former external dropdown. */
+					if (!CanSetStationServiceNumber()) break;
+					if (index != 0x601) {
+						Command<Commands::SetOrderServiceNumber>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->TargetKind(), this->TargetId(), VehicleOrderID(this->selected_order), uint8_t(index - 0x600), std::string{});
+					} else {
+						this->query_text_widget = WID_O_MGMT_BTN;
+						this->service_number_query_index = this->selected_order;
+						this->service_number_query_order = OrderAt(this->selected_order);
+						this->service_number_query_list = this->Target()->index;
+						ShowQueryString(GetString(STR_JUST_RAW_STRING, this->service_number_query_order->GetServiceNumber()), STR_TIMETABLE_SET_SERVICE_NUMBER, MAX_LENGTH_VEHICLE_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
+					}
+					break;
+				}
 				if (index == RVDD_RV_WAIT || index == RVDD_RV_UNLOAD) {
 					/* RoRo: toggle a road vehicle's own "wait to be transported" / "be unloaded here". The
 					 * two are mutually exclusive - a vehicle cannot wait to be taken and be put down at the
@@ -7065,7 +7097,8 @@ public:
 					this->selected_order = -1;
 					this->UpdateButtonState();
 				}
-				if (from_order == to_order && from_order < this->NumOrders() && EuclideanDistanceSquared(pt, this->drag_start_pt) <= 40 && (MicrosecondsRealtimeTicks() - this->drag_start_time_us) < 250000) {
+				if (this->drag_selected && from_order == to_order && from_order < this->NumOrders() &&
+						EuclideanDistanceSquared(pt, this->drag_start_pt) <= 40 && (MicrosecondsRealtimeTicks() - this->drag_start_time_us) < 250000) {
 					const Order *order = this->OrderAt(from_order);
 					if (order != nullptr && order->IsType(OT_LABEL) && order->GetLabelSubType() == OLST_TEXT) {
 						if (this->IsWidgetActiveInLayout(WID_O_TEXT_LABEL)) this->OnClick({}, WID_O_TEXT_LABEL, 1);
@@ -7602,8 +7635,6 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 		EndContainer(),
 		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_O_SCROLLBAR),
 	EndContainer(),
-
-	NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_SERVICE_NUMBER), SetResize(1, 0), SetFill(1, 0), SetStringTip(STR_ORDER_SERVICE_SELECT_STOP, STR_TIMETABLE_SERVICE_NUMBER_TOOLTIP),
 
 	/* First button row. */
 	NWidget(NWID_HORIZONTAL),

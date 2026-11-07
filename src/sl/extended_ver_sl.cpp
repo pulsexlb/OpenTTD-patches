@@ -234,7 +234,8 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_ENGINE_MULTI_RAILTYPE,            XSCF_NULL,                1,   1, "slv_engine_multi_railtype",        nullptr, nullptr, nullptr          },
 	{ XSLFI_TOWN_SUPPLY_HISTORY,              XSCF_NULL,                1,   1, "slv_town_supply_history",          nullptr, nullptr, nullptr          },
 	{ XSLFI_DRIVE_BACKWARDS,                  XSCF_NULL,                1,   1, "slv_drive_backwards",              nullptr, nullptr, nullptr          },
-	{ XSLFI_DOUBLE_ENDED_SHIPS,               XSCF_NULL,                1,   1, "slv_double_ended_ships",              nullptr, nullptr, nullptr          },
+	{ XSLFI_DOUBLE_ENDED_SHIPS,               XSCF_NULL,                1,   1, "slv_double_ended_ships",           nullptr, nullptr, nullptr          },
+	{ XSLFI_SCRIPT_RANDOMIZER,                XSCF_IGNORABLE_ALL,       1,   1, "slv_script_randomizer",            nullptr, nullptr, "SRND"           },
 
 	{ XSLFI_PR_13745_APPLIED,                 XSCF_IGNORABLE_ALL,       1,   1, "pr_13745",                         nullptr, nullptr, nullptr          },
 	{ XSLFI_SIGNAL_STATE_FIX,                 XSCF_IGNORABLE_ALL,       1,   1, "signal_state_fix",                 nullptr, nullptr, nullptr          },
@@ -264,6 +265,8 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_FIXED_SERVICE_NUMBER, XSCF_NULL, 2, 2, "pxp_fixed_service_number", nullptr, nullptr, nullptr },
 	{ XSLFI_AUTO_YIELD_ROUTE_PLAN,           XSCF_NULL,                1,   1, "pxp_auto_yield_route_plan",         nullptr, nullptr, nullptr          },
 	{ XSLFI_TRAIN_DECOUPLE_PART,              XSCF_NULL,                1,   1, "train_decouple_part",              nullptr, nullptr, nullptr          },
+	{ XSLFI_TRAIN_UNIT_MAIN,                  XSCF_NULL,                1,   1, "train_unit_main",                  nullptr, nullptr, nullptr          },
+	{ XSLFI_COUPLE_SERVICE_NUMBER,           XSCF_NULL,                1,   1, "couple_service_number",           nullptr, nullptr, nullptr          },
 };
 
 /**

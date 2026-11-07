@@ -38,6 +38,17 @@
 extern void ChangeVehicleViewports(VehicleID from_index, VehicleID to_index);
 extern void ChangeVehicleNews(VehicleID from_index, VehicleID to_index);
 
+/** Resolve a multi-part unit member to its base/main part for autoreplace. */
+static Train *GetAutoreplaceUnitStart(Vehicle *v)
+{
+	if (v == nullptr || v->type != VehicleType::Train) return nullptr;
+	Train *t = Train::From(v);
+	/* Keep dual-headed halves separate here: the rear half is handled/skipped
+	 * by GetNewEngineType(), and resolving it back to the front would loop. */
+	if (t->IsMultiheaded()) return t;
+	return Train::From(t->GetUnitMain());
+}
+
 /**
  * Figure out if two engines got at least one type of cargo in common (refitting if needed)
  * @param engine_a one of the EngineIDs
@@ -282,7 +293,11 @@ static CargoType GetNewCargoTypeForReplace(const Vehicle *v, EngineID engine_typ
  */
 static CommandCost GetNewEngineType(const Vehicle *v, const Company *c, bool always_replace, bool same_type_only, EngineID &e)
 {
-	assert(v->type != VehicleType::Train || !v->IsArticulatedPart());
+	if (v->type == VehicleType::Train && v->IsArticulatedPart()) {
+		/* Callers must resolve to the unit main. Do not abort the game if a
+		 * malformed/older save still reaches this point. */
+		return CMD_ERROR;
+	}
 
 	e = EngineID::Invalid();
 
@@ -726,6 +741,8 @@ static CommandCost ReplaceChain(Vehicle **chain, DoCommandFlags flags, bool wago
 		/* Collect vehicles and build replacements
 		 * Note: The replacement vehicles can only successfully build as long as the old vehicles are still in their chain */
 		for (Train *w = Train::From(old_head); w != nullptr; w = w->GetNextUnit()) {
+			w = GetAutoreplaceUnitStart(w);
+			if (w->IsRearDualheaded()) continue;
 			ReplaceChainItem &replacement = replacements.emplace_back(w, nullptr, 0);
 
 			CommandCost ret = BuildReplacementVehicle(replacement.old_veh, &replacement.new_veh, true, flags, same_type_only);
@@ -740,10 +757,10 @@ static CommandCost ReplaceChain(Vehicle **chain, DoCommandFlags flags, bool wago
 		/* Note: When autoreplace has already failed here, old_vehs[] is not completely initialized. But it is also not needed. */
 		if (cost.Succeeded()) {
 			/* Separate the head, so we can start constructing the new chain */
-			Train *second = Train::From(old_head)->GetNextUnit();
+			Train *second = GetAutoreplaceUnitStart(Train::From(old_head)->GetNextUnit());
 			if (second != nullptr) cost.AddCost(CmdMoveVehicle(second, nullptr, {DoCommandFlag::Execute, DoCommandFlag::AutoReplace}, true));
 
-			assert(Train::From(new_head)->GetNextUnit() == nullptr);
+			assert(Train::From(GetAutoreplaceUnitStart(new_head))->GetNextUnit() == nullptr);
 
 			/* Append engines to the new chain
 			 * We do this from back to front, so that the head of the temporary vehicle chain does not change all the time.
@@ -866,10 +883,10 @@ static CommandCost ReplaceChain(Vehicle **chain, DoCommandFlags flags, bool wago
 			 * Note: The vehicle attach callback is disabled here :) */
 			if (!flags.Test(DoCommandFlag::Execute)) {
 				/* Separate the head, so we can reattach the old vehicles */
-				second = Train::From(old_head)->GetNextUnit();
+				second = GetAutoreplaceUnitStart(Train::From(old_head)->GetNextUnit());
 				if (second != nullptr) CmdMoveVehicle(second, nullptr, {DoCommandFlag::Execute, DoCommandFlag::AutoReplace}, true);
 
-				assert(Train::From(old_head)->GetNextUnit() == nullptr);
+				assert(Train::From(GetAutoreplaceUnitStart(old_head))->GetNextUnit() == nullptr);
 
 				for (auto it = std::rbegin(replacements); it != std::rend(replacements); ++it) {
 					[[maybe_unused]] CommandCost ret = CmdMoveVehicle(it->old_veh, old_head, {DoCommandFlag::Execute, DoCommandFlag::AutoReplace}, false);
@@ -961,6 +978,12 @@ CommandCost CmdAutoreplaceVehicle(DoCommandFlags flags, VehicleID veh_id, bool s
 	Vehicle *w = v;
 	bool any_replacements = false;
 	while (w != nullptr) {
+		/* This loop also runs for road vehicles, aircraft and ships; resolving
+		 * the multi-part unit only applies to trains and yields nullptr for the
+		 * rest. GetNextUnit() then ends the loop. */
+		Vehicle *start = GetAutoreplaceUnitStart(w);
+		if (start == nullptr) break;
+		w = start;
 		EngineID e;
 		CommandCost cost = GetNewEngineType(w, c, false, same_type_only, e);
 		if (cost.Failed()) return cost;

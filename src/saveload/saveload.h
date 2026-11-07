@@ -636,11 +636,13 @@ enum class VarFileType : uint8_t {
 	 * NOTE: the SLE_FILE_NNN values are stored in the savegame! */
 	/* Value 0 is used to mark end-of-header in tables. Do not use here! */
 	I8 = 1, ///< A 8 bit signed int.
+	Bool = I8, ///< A bool is stored in an 8 bit signed integer field.
 	U8 = 2, ///< A 8 bit unsigned int.
 	I16 = 3, ///< A 16 bit signed int.
 	U16 = 4, ///< A 16 bit unsigned int.
 	I32 = 5, ///< A 32 bit signed int.
 	U32 = 6, ///< A 32 bit unsigned int.
+	Label = U32, ///< A label is stored in an 32 bit unsigned integer field.
 	I64 = 7, ///< A 64 bit signed int.
 	U64 = 8, ///< A 64 bit unsigned int.
 	StringID = 9, ///< StringID offset into strings-array.
@@ -664,7 +666,6 @@ enum class VarMemType : uint8_t {
 	Null = 9, ///< useful to write zeros in savegame.
 	U128 = 10, ///< A 128 bit unsigned int.
 	Str = 12, ///< string pointer
-	StrQ = 13, ///< string pointer enclosed in quotes
 	Name = 14, ///< old custom name to be converted to a string pointer
 	Label = 15, ///< A 4 character \c Label, stored as-is.
 };
@@ -725,7 +726,7 @@ constexpr VarType operator|(VarFileType file, VarMemType mem)
 
 /** Container for holding some default \c VarType instances. */
 struct VarTypes {
-	static constexpr VarType BOOL{ VarFileType::I8, VarMemType::Bool }; ///< Store a boolean (as int8).
+	static constexpr VarType BOOL{ VarFileType::Bool, VarMemType::Bool }; ///< Store a boolean (as int8).
 	static constexpr VarType I8{ VarFileType::I8, VarMemType::I8 }; ///< Store a 8 bits signed int.
 	static constexpr VarType U8{ VarFileType::U8, VarMemType::U8 }; ///< Store a 8 bits unsigned int.
 	static constexpr VarType I16{ VarFileType::I16, VarMemType::I16 }; ///< Store a 16 bits signed int.
@@ -737,9 +738,8 @@ struct VarTypes {
 	static constexpr VarType U128{ VarFileType::U128, VarMemType::U128 }; ///< Store a 128 bits unsigned int.
 	static constexpr VarType STRINGID{ VarFileType::StringID, VarMemType::U32 }; ///< Store a StringID.
 	static constexpr VarType STR{ VarFileType::String, VarMemType::Str }; ///< Store string.
-	static constexpr VarType STRQ{ VarFileType::String, VarMemType::StrQ }; ///< Store a string with quotes.
 	static constexpr VarType NAME{ VarFileType::StringID, VarMemType::Name }; ///< A string stored in the custom string array.
-	static constexpr VarType LABEL{ VarFileType::U32, VarMemType::Label }; ///< Store a \c Label as-is.
+	static constexpr VarType LABEL{ VarFileType::Label, VarMemType::Label }; ///< Store a \c Label as-is.
 };
 
 /** Type of data saved. */
@@ -790,6 +790,75 @@ struct SaveLoad {
 		size_t offset; ///< offset of variable in the struct (SaveLoadFlag::Global clear)
 	};
 	std::shared_ptr<SaveLoadHandler> handler; ///< Custom handler for Save/Load procs.
+
+	/**
+	 * Check whether the given file type is stored as a simple number.
+	 * @param file_type The file type to check.
+	 * @return \c true iff signed or unsigned 8, 16, 32 or 64 bit integer.
+	 */
+	static constexpr bool IsIntegralFileType(VarFileType file_type)
+	{
+		switch (file_type) {
+			case VarFileType::I8:
+			case VarFileType::U8:
+			case VarFileType::I16:
+			case VarFileType::U16:
+			case VarFileType::I32:
+			case VarFileType::U32:
+			case VarFileType::I64:
+			case VarFileType::U64:
+				return true;
+
+			default:
+				return false;
+		}
+	}
+
+	/**
+	 * Determine the \c VarMemType type given the variable's \c decltype and occasionally the file type to distinguish options.
+	 * If feasible a sanity check is do to check the file type against the variable's \c decltype, for example to prevent a bool to be saved as string.
+	 * @tparam T The variable's \c decltype.
+	 * @tparam file_type The way this variable will be/is stored in the save file.
+	 * @return The \c VarMemType.
+	 * @note file_type is a template parameter to be able to perform all type checks at compile time.
+	 */
+	template <typename T, VarFileType file_type>
+	static constexpr VarMemType DetermineMemType()
+	{
+		if constexpr (std::is_same_v<StringID, T>) {
+			static_assert(file_type == VarFileType::StringID);
+			static_assert(sizeof(T) == sizeof(uint32_t));
+			return VarMemType::U32;
+		} else if constexpr (std::is_same_v<int8_t, T>) {
+			static_assert(IsIntegralFileType(file_type));
+			return VarMemType::I8;
+		} else if constexpr (std::is_same_v<uint8_t, T> || std::is_same_v<char, T>) {
+			static_assert(IsIntegralFileType(file_type));
+			return VarMemType::U8;
+		} else if constexpr (std::is_same_v<int16_t, T>) {
+			static_assert(IsIntegralFileType(file_type));
+			return VarMemType::I16;
+		} else if constexpr (std::is_same_v<uint16_t, T>) {
+			static_assert(IsIntegralFileType(file_type));
+			return VarMemType::U16;
+		} else if constexpr (std::is_same_v<int32_t, T>) {
+			static_assert(IsIntegralFileType(file_type));
+			return VarMemType::I32;
+		} else if constexpr (std::is_same_v<uint32_t, T>) {
+			static_assert(IsIntegralFileType(file_type));
+			return VarMemType::U32;
+		} else if constexpr (std::is_same_v<int64_t, T>) {
+			static_assert(IsIntegralFileType(file_type));
+			return VarMemType::I64;
+		} else if constexpr (std::is_same_v<uint64_t, T>) {
+			static_assert(IsIntegralFileType(file_type));
+			return VarMemType::U64;
+		} else {
+			/* If in the following assert bare false is used the compilation fails on gcc 12.2.0. */
+			static_assert(SlIsPrimitiveType<T>, "The given type is not supported");
+			return DetermineMemType<typename T::BaseType, file_type>();
+		}
+	}
 };
 
 /**
@@ -812,7 +881,7 @@ struct SaveLoadCompat {
  * @param type VarType to get size of.
  * @return size of type in bytes.
  */
-inline constexpr size_t SlVarSize(VarMemType type)
+constexpr size_t SlVarSize(VarMemType type)
 {
 	switch (type) {
 		case VarMemType::Bool: return sizeof(bool);
@@ -827,7 +896,6 @@ inline constexpr size_t SlVarSize(VarMemType type)
 		case VarMemType::U128: return sizeof(Uint128);
 		case VarMemType::Null: return sizeof(void *);
 		case VarMemType::Str: return sizeof(std::string);
-		case VarMemType::StrQ: return sizeof(std::string);
 		case VarMemType::Name: return sizeof(std::string);
 		case VarMemType::Label: return sizeof(BaseLabel);
 		default: NOT_REACHED();
@@ -848,7 +916,6 @@ inline constexpr bool SlCheckPrimitiveTypeVar(VarMemType type)
 
 	switch (type) {
 		case VarMemType::Str:
-		case VarMemType::StrQ:
 		case VarMemType::Name:
 			return std::is_same_v<T, std::string> || std::is_same_v<T, EncodedString>;
 
@@ -1508,6 +1575,19 @@ void SlCopy(void *object, size_t length, VarType conv);
 std::vector<SaveLoad> SlTableHeader(const SaveLoadTable &slt);
 std::vector<SaveLoad> SlCompatTableHeader(const SaveLoadTable &slt, const SaveLoadCompatTable &slct);
 void SlObject(void *object, const SaveLoadTable &slt);
+
+/**
+ * Copy the data from the collection to the save, or from the save into the collection depending on the save-load state.
+ * @tparam file_type The way the data is stored in the save file.
+ * @tparam T The type of the collection, to get the \c value_type from.
+ * @param collection The 'ContiguousContainer' with data to save, or to load the data into.
+ */
+template <VarFileType file_type, typename T>
+static inline void SlCopy(T &collection)
+{
+	std::span span{collection}; // Let std::span worry about what is passed being a contiguous container.
+	SlCopy(span.data(), span.size(), file_type | SaveLoad::DetermineMemType<std::remove_const_t<typename T::value_type>, file_type>());
+}
 
 /**
  * Default handler for saving/loading a vector to/from disk.

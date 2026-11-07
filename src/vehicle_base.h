@@ -265,6 +265,8 @@ private:
 	Vehicle *first = nullptr;                    ///< NOSAVE: pointer to the first vehicle in the chain
 	Vehicle *primary = nullptr;                  ///< NOSAVE: pointer to the vehicle carrying the consist info; nullptr means same as #first
 	uint8_t consist_primary = 0;                 ///< SAVE(XSLFI_TRAIN_PRIMARY): temporary flag used to persist which vehicle of the chain is the primary
+	Vehicle *unit_main = nullptr;                ///< NOSAVE: pointer to the main part (base/front engine) of this multi-part unit; nullptr means same as this
+	uint8_t consist_unit_main = 0;               ///< SAVE(XSLFI_TRAIN_UNIT_MAIN): temporary flag used to persist which vehicle is the unit main
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order
@@ -760,6 +762,28 @@ public:
 	inline void SetFirst(Vehicle *f) { this->first = f; }
 	inline void SetLast(Vehicle *l) { this->last = l; }
 	inline void SetPrimary(Vehicle *p) { this->primary = p; }
+	inline void SetUnitMain(Vehicle *p) { this->unit_main = p; }
+	inline bool HasUnitMain() const { return this->unit_main != nullptr; }
+	inline bool IsSavedUnitMain() const { return this->consist_unit_main != 0; }
+	/** @return The main part (base/front engine) of this multi-part unit, or this vehicle for a singleton. */
+	inline Vehicle *GetUnitMain() const { return this->unit_main != nullptr ? this->unit_main : const_cast<Vehicle *>(this); }
+
+	/**
+	 * Drop every unit_main pointer of this chain that names the given vehicle,
+	 * so no survivor keeps a pointer to a part which is about to be freed. Only
+	 * pointers naming that exact vehicle are cleared; nothing is re-inferred,
+	 * because chain position says nothing about the unit layout once consists
+	 * have been coupled, reversed or dragged around in a depot.
+	 * @param chain_head First vehicle of the chain that stays alive.
+	 * @param removed The vehicle which is going to be deleted.
+	 */
+	static void ClearUnitMainOfChain(Vehicle *chain_head, const Vehicle *removed)
+	{
+		if (chain_head == nullptr || removed == nullptr) return;
+		for (Vehicle *v = chain_head; v != nullptr; v = v->Next()) {
+			if (v->unit_main == removed) v->unit_main = nullptr;
+		}
+	}
 	/* Raw pointer assignment without the chain-consistency walks of SetNext();
 	 * only for code that relinks an entire chain in one pass. */
 	inline void SetNextRaw(Vehicle *n) { this->next = n; }
@@ -1219,6 +1243,12 @@ public:
 		return this->IsGroundVehicle() && HasBit(this->subtype, GVSF_ARTICULATED_PART);
 	}
 
+	/** Multi-headed flag, available from the generic Vehicle helpers. */
+	inline bool IsMultiheadedVehicle() const
+	{
+		return this->IsGroundVehicle() && HasBit(this->subtype, GVSF_MULTIHEADED);
+	}
+
 	/**
 	 * Check if an engine has an articulated part.
 	 * @return True if the engine has an articulated part.
@@ -1241,6 +1271,17 @@ public:
 
 	inline uint GetEnginePartsCount() const
 	{
+		/* Dual-headed halves are not articulated parts; keep their vanilla
+		 * one-part semantics. */
+		if (this->type == VehicleType::Train && this->unit_main != nullptr && !this->IsMultiheadedVehicle()) {
+			const Vehicle *main = this->unit_main;
+			uint count = 0;
+			for (const Vehicle *v = main->First(); v != nullptr; v = v->Next()) {
+				if (v->GetUnitMain() == main) count++;
+			}
+			return count;
+		}
+
 		uint count = 1;
 		const Vehicle *v = this->Next();
 		while (v != nullptr && v->IsArticulatedPart()) {
@@ -1254,10 +1295,12 @@ public:
 	 * Get the first part of an articulated engine.
 	 * @return First part of the engine.
 	 * @note An in-place reversed consist can have an articulated part as the
-	 * chain front; the front itself is returned then.
+	 * chain front; the unit-main pointer resolves the base in either order.
+	 * Dual-headed halves keep their vanilla behaviour and return themselves.
 	 */
 	inline Vehicle *GetFirstEnginePart()
 	{
+		if (this->type == VehicleType::Train && this->unit_main != nullptr && !this->IsMultiheadedVehicle()) return this->unit_main;
 		Vehicle *v = this;
 		while (v != nullptr && v->IsArticulatedPart()) v = v->Previous();
 		return v != nullptr ? v : this;
@@ -1272,6 +1315,7 @@ public:
 	 */
 	inline const Vehicle *GetFirstEnginePart() const
 	{
+		if (this->type == VehicleType::Train && this->unit_main != nullptr && !this->IsMultiheadedVehicle()) return this->unit_main;
 		const Vehicle *v = this;
 		while (v != nullptr && v->IsArticulatedPart()) v = v->Previous();
 		return v != nullptr ? v : this;
@@ -1283,7 +1327,32 @@ public:
 	 */
 	inline Vehicle *GetLastEnginePart()
 	{
+		if (this->type == VehicleType::Train && this->unit_main != nullptr && !this->IsMultiheadedVehicle()) {
+			const Vehicle *main = this->unit_main;
+			Vehicle *last = this;
+			for (Vehicle *v = this; v != nullptr && v->GetUnitMain() == main; v = v->Next()) last = v;
+			return last;
+		}
+
 		Vehicle *v = this;
+		while (v->HasArticulatedPart()) v = v->GetNextArticulatedPart();
+		return v;
+	}
+
+	/**
+	 * Get the last part of an articulated engine.
+	 * @return Last part of the engine.
+	 */
+	inline const Vehicle *GetLastEnginePart() const
+	{
+		if (this->type == VehicleType::Train && this->unit_main != nullptr && !this->IsMultiheadedVehicle()) {
+			const Vehicle *main = this->unit_main;
+			const Vehicle *last = this;
+			for (const Vehicle *v = this; v != nullptr && v->GetUnitMain() == main; v = v->Next()) last = v;
+			return last;
+		}
+
+		const Vehicle *v = this;
 		while (v->HasArticulatedPart()) v = v->GetNextArticulatedPart();
 		return v;
 	}
@@ -1294,6 +1363,13 @@ public:
 	 */
 	inline Vehicle *GetNextVehicle() const
 	{
+		if (this->type == VehicleType::Train && this->unit_main != nullptr && !this->IsMultiheadedVehicle()) {
+			const Vehicle *main = this->unit_main;
+			const Vehicle *last = this;
+			for (const Vehicle *v = this; v != nullptr && v->GetUnitMain() == main; v = v->Next()) last = v;
+			return last->Next();
+		}
+
 		const Vehicle *v = this;
 		while (v->HasArticulatedPart()) v = v->GetNextArticulatedPart();
 
@@ -1307,6 +1383,13 @@ public:
 	 */
 	inline Vehicle *GetPrevVehicle() const
 	{
+		if (this->type == VehicleType::Train && this->unit_main != nullptr && !this->IsMultiheadedVehicle()) {
+			const Vehicle *main = this->unit_main;
+			const Vehicle *first = this;
+			for (const Vehicle *v = this; v != nullptr && v->GetUnitMain() == main; v = v->Previous()) first = v;
+			return first->Previous();
+		}
+
 		Vehicle *v = this->Previous();
 		while (v != nullptr && v->IsArticulatedPart()) v = v->Previous();
 

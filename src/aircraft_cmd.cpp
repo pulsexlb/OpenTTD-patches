@@ -90,6 +90,9 @@ void Aircraft::MarkDirty()
 		GetRotorImage(this, EngineImageType::OnMap, &rotor->sprite_seq);
 		rotor->UpdateSpriteSeqBound();
 	}
+	/* Upstream jgrpp-0.73.5: the vehicle caches must be refreshed as well when
+	 * a vehicle is marked dirty, otherwise the aircraft keeps stale state. */
+	UpdateAircraftCache(this);
 }
 
 /**

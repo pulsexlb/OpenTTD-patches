@@ -69,6 +69,10 @@ CommandCost CmdSetOrderServiceNumber(DoCommandFlags flags, OrderTargetType targe
 				if (v->current_order.IsAnyLoadingType() && v->last_station_visited == order->GetDestination()) v->ApplyStationServiceNumber(*order);
 			}
 		}
+		InvalidateWindowClassesData(WindowClass::VehicleOrders);
+		InvalidateWindowClassesData(WindowClass::OrderList);
+		InvalidateWindowClassesData(WindowClass::OrderListEditor);
+		InvalidateWindowClassesData(WindowClass::OrderListSchedule);
 		InvalidateWindowClassesData(WindowClass::VehicleTimetable);
 		InvalidateWindowClassesData(WindowClass::OrderListTimetable);
 		InvalidateWindowClassesData(WindowClass::DepartureBoard);
@@ -1298,7 +1302,7 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 	}
 
 	/* This vehicle is arriving at the first destination in the timetable. */
-	if (v->cur_real_order_index == first_manual_order && travelling) {
+	if (!v->IsExecutingSchedule() && v->cur_real_order_index == first_manual_order && travelling) {
 		/* If the start date hasn't been set, or it was set automatically when
 		 * the vehicle last arrived at the first destination, update it to the
 		 * current time. Otherwise set the late counter appropriately to when

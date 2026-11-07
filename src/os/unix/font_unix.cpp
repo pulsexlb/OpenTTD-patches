@@ -154,10 +154,7 @@ bool FontConfigFindFallbackFont(const std::string &language_isocode, MissingGlyp
 	auto fc_instance = AutoRelease<FcConfig, FcConfigDestroy>(FcConfigReference(nullptr));
 	assert(fc_instance != nullptr);
 
-	/* Fontconfig doesn't handle full language isocodes, only the part
-	 * before the _ of e.g. en_GB is used, so "remove" everything after
-	 * the _. */
-	std::string lang = ":lang=" + language_isocode.substr(0, language_isocode.find('_'));
+	std::string lang = ":lang=" + language_isocode;
 
 	/* First create a pattern to match the wanted language. */
 	auto pat = AutoRelease<FcPattern, FcPatternDestroy>(FcNameParse(ToFcString(lang)));
@@ -196,12 +193,12 @@ bool FontConfigFindFallbackFont(const std::string &language_isocode, MissingGlyp
 		size_t matching_chars = 0;
 		FcCharSet *charset;
 		FcPatternGetCharSet(font, FC_CHARSET, 0, &charset);
-		for (const char32_t &c : callback->missing_glyphs) {
+		for (const char32_t &c : callback->required_glyphs) {
 			if (FcCharSetHasChar(charset, c)) ++matching_chars;
 		}
 
-		if (matching_chars < callback->missing_glyphs.size()) {
-			Debug(fontcache, 1, "Font \"{}\" misses {} glyphs", FromFcString(file), callback->missing_glyphs.size() - matching_chars);
+		if (matching_chars < callback->required_glyphs.size()) {
+			Debug(fontcache, 1, "Font \"{}\" misses {} glyphs", FromFcString(file), callback->required_glyphs.size() - matching_chars);
 			continue;
 		}
 

@@ -141,6 +141,7 @@ enum class CoupleCandidateResult : uint8_t {
 	Slower,
 	Faster,
 	SpeedRange,
+	ServiceNumber,
 	Arrangement,
 };
 
@@ -364,6 +365,46 @@ public:
 	 */
 	inline Train *GetNextUnit() const
 	{
+		if (this->HasUnitMain() && !this->IsMultiheaded()) {
+			Vehicle *v = this->GetNextVehicle();
+			return v != nullptr ? Train::From(v) : nullptr;
+		}
+
+		if (this->IsArticulatedPart()) {
+			/* Defensive fallback for an unresolved articulated group: never
+			 * return a vehicle from the same unit. */
+			const Train *run_start = this;
+			const Train *run_end = this;
+			while (run_start->Previous() != nullptr && run_start->Previous()->IsArticulatedPart()) {
+				run_start = Train::From(run_start->Previous());
+			}
+			while (run_end->Next() != nullptr && run_end->Next()->IsArticulatedPart()) {
+				run_end = Train::From(run_end->Next());
+			}
+			uint32_t run_size = 0;
+			for (const Train *p = run_start; ; p = p->Next()) {
+				run_size++;
+				if (p == run_end) break;
+			}
+			Train *after = run_end->Next() != nullptr ? Train::From(run_end->Next()) : nullptr;
+			if (after != nullptr && !after->IsArticulatedPart()) {
+				const uint32_t cid = after->index.base();
+				bool id_matches = true;
+				for (const Train *p = run_start; ; p = p->Next()) {
+					const uint32_t pid = p->index.base();
+					if (pid <= cid || pid - cid > run_size) {
+						id_matches = false;
+						break;
+					}
+					if (p == run_end) break;
+				}
+				/* A part-first unit stores its base after the parts. */
+				if (id_matches) after = after->Next() != nullptr ? Train::From(after->Next()) : nullptr;
+			}
+			if (after != nullptr && after->IsRearDualheaded()) after = after->GetNextVehicle();
+			return after;
+		}
+
 		Train *v = this->GetNextVehicle();
 		if (v != nullptr && v->IsRearDualheaded()) v = v->GetNextVehicle();
 
@@ -376,6 +417,11 @@ public:
 	 */
 	inline Train *GetPrevUnit()
 	{
+		if (this->HasUnitMain() && !this->IsMultiheaded()) {
+			Vehicle *v = this->GetPrevVehicle();
+			return v != nullptr ? Train::From(v) : nullptr;
+		}
+
 		Train *v = this->GetPrevVehicle();
 		if (v != nullptr && v->IsRearDualheaded()) v = v->GetPrevVehicle();
 
@@ -672,6 +718,74 @@ public:
 
 	bool CanLeadTrain() const;
 	bool NeedsCabFlip() const;
+
+	/**
+	 * Resolve this vehicle to the first chain member of its multi-part unit.
+	 *
+	 * Membership comes from unit_main, not from the articulated flag. A reversed
+	 * unit stores its base behind its articulated parts, so the run of art == 1
+	 * vehicles does not line up with the unit any more: the base sits after the
+	 * parts and IsArticulatedPart() therefore reports a unit boundary in the middle
+	 * of the unit. unit_main identifies the unit exactly, and its members are always
+	 * contiguous in the chain.
+	 * @return First chain member of this unit.
+	 */
+	inline Train *GetUnitChainFront()
+	{
+		/* Compare GetUnitMain() rather than HasUnitMain(): the base of a unit
+		 * may have a null unit_main (GetUnitMain() then returns itself), and
+		 * ordinary single wagons have none at all. Requiring HasUnitMain()
+		 * would stop at such a base and leave part of the unit outside the
+		 * range; the IsArticulatedPart() fallback would swallow the trailing
+		 * parts of a base-first unit in front of a plain wagon. */
+		/* Dual-headed halves are not articulated parts of one unit; both halves
+		 * carry the same unit_main, but vanilla treats each as a single vehicle.
+		 * Folding them together would move both when only one half is dragged
+		 * and would close every insertion point between the halves. */
+		if (this->IsMultiheaded()) {
+			Train *first = this;
+			while (first->Previous() != nullptr && first->Previous()->IsArticulatedPart()) first = Train::From(first->Previous());
+			return first;
+		}
+		const Vehicle *main = this->GetUnitMain();
+		Train *first = this;
+		while (first->Previous() != nullptr && first->Previous()->GetUnitMain() == main) {
+			first = Train::From(first->Previous());
+		}
+		return first;
+	}
+
+	/** Const overload of GetUnitChainFront(). */
+	inline const Train *GetUnitChainFront() const
+	{
+		return const_cast<Train *>(this)->GetUnitChainFront();
+	}
+
+	/**
+	 * Resolve this vehicle to the last chain member of its multi-part unit.
+	 * @return Last chain member of this unit.
+	 */
+	inline Train *GetUnitChainLast()
+	{
+		/* Dual-headed halves keep vanilla one-part semantics here too. */
+		if (this->IsMultiheaded()) {
+			Train *last = this;
+			while (last->Next() != nullptr && last->Next()->IsArticulatedPart()) last = Train::From(last->Next());
+			return last;
+		}
+		const Vehicle *main = this->GetUnitMain();
+		Train *last = this;
+		while (last->Next() != nullptr && last->Next()->GetUnitMain() == main) {
+			last = Train::From(last->Next());
+		}
+		return last;
+	}
+
+	/** Const overload of GetUnitChainLast(). */
+	inline const Train *GetUnitChainLast() const
+	{
+		return const_cast<Train *>(this)->GetUnitChainLast();
+	}
 
 	/**
 	 * Set the movement direction of this vehicle chain.

@@ -426,7 +426,6 @@ static inline uint SlCalcConvMemLen(VarMemType conv)
 		case VarMemType::Label: return sizeof(BaseLabel);
 
 		case VarMemType::Str:
-		case VarMemType::StrQ:
 			return SlReadArrayLength();
 
 		case VarMemType::Name:
@@ -885,7 +884,6 @@ static inline size_t SlCalcStringLen(const void *ptr, size_t length, VarType con
 	switch (conv.mem) {
 		default: NOT_REACHED();
 		case VarMemType::Str:
-		case VarMemType::StrQ:
 			str = *(const char * const *)ptr;
 			len = SIZE_MAX;
 			break;
@@ -1066,7 +1064,6 @@ static void SlString(void *ptr, size_t length, VarType conv)
 			switch (conv.mem) {
 				default: NOT_REACHED();
 				case VarMemType::Str:
-				case VarMemType::StrQ:
 					ptr = *(char **)ptr;
 					len = SlCalcNetStringLen((char *)ptr, SIZE_MAX);
 					break;
@@ -1099,8 +1096,7 @@ static void SlString(void *ptr, size_t length, VarType conv)
 				case VarMemType::Null:
 					SlSkipBytes(len);
 					return;
-				case VarMemType::Str:
-				case VarMemType::StrQ: // Malloc'd string, free previous incarnation, and allocate
+				case VarMemType::Str: // Malloc'd string, free previous incarnation, and allocate
 					free(*(char **)ptr);
 					if (len == 0) {
 						*(char **)ptr = nullptr;
