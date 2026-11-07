@@ -267,7 +267,7 @@ private:
 	uint8_t consist_primary = 0;                 ///< SAVE(XSLFI_TRAIN_PRIMARY): temporary flag used to persist which vehicle of the chain is the primary
 	Vehicle *unit_main = nullptr;                ///< NOSAVE: pointer to the main part (base/front engine) of this multi-part unit; nullptr means same as this
 	uint8_t consist_unit_main = 0;               ///< SAVE(XSLFI_TRAIN_UNIT_MAIN): temporary flag used to persist which vehicle is the unit main
-	uint16_t consist_unit_main_id = 0;           ///< SAVE(XSLFI_TRAIN_UNIT_MAIN v3): for articulated parts, the VehicleID of their unit main
+	uint16_t consist_unit_main_id = 0;           ///< SAVE(XSLFI_TRAIN_UNIT_MAIN v3): for articulated parts, their unit main's VehicleID + 1 (0 = none)
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order

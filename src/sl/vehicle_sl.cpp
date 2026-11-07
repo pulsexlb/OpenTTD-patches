@@ -190,7 +190,8 @@ void RebuildTrainUnitMains()
 		if (v3_unit_main) {
 			for (Train *u = v; u != nullptr; u = u->Next()) {
 				if (!u->IsArticulatedPart() || u->GetSavedUnitMainID() == 0) continue;
-				Train *main = Train::GetIfValid(static_cast<VehicleID>(u->GetSavedUnitMainID()));
+				/* The saved ID is the main's VehicleID + 1; 0 means "no main". */
+				Train *main = Train::GetIfValid(static_cast<VehicleID>(u->GetSavedUnitMainID() - 1));
 				/* The main must be a non-part member of this same chain. */
 				if (main == nullptr || main->IsArticulatedPart() || main->First() != v) {
 					u->SetSavedUnitMainID(0);
@@ -982,7 +983,9 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 				}
 			} else if (v->IsArticulatedPart()) {
 				v->consist_unit_main = 0;
-				if (v->HasUnitMain()) v->consist_unit_main_id = v->unit_main->index.base();
+				/* Store the main's ID + 1: vehicle #0 is a valid main, 0 must
+				 * stay reserved for "no main". */
+				if (v->HasUnitMain()) v->consist_unit_main_id = v->unit_main->index.base() + 1;
 			} else {
 				v->consist_unit_main = 0;
 			}
