@@ -224,24 +224,42 @@ void RebuildTrainUnitMains()
 			const bool right_matches = is_base_for_run(right);
 
 			Train *main = nullptr;
-			/* Saved flags disambiguate a reversed unit whose base is on the
-			 * right, or a base-first unit that was already stored with flags. */
-			if (left != nullptr && left->IsSavedUnitMain()) {
-				main = left;
-			} else if (right != nullptr && right->IsSavedUnitMain()) {
-				main = right;
-			} else if (left_matches != right_matches) {
-				main = left_matches ? left : right;
-			} else if (left != nullptr && left->IsEngine()) {
-				main = left;
-			} else if (right != nullptr && right->IsEngine()) {
-				main = right;
-			} else if (left != nullptr && !left->IsArticulatedPart() && left->HasArticulatedPart()) {
-				/* Old/base-first save: the base precedes its parts. */
-				main = left;
-			} else if (right != nullptr && !right->IsArticulatedPart()) {
-				/* Reversed unit: the base follows the parts. */
-				main = right;
+			/* XSLFI_TRAIN_UNIT_MAIN v2 saves each unit main's position explicitly
+			 * (1 = parts follow, 2 = parts precede), which is authoritative and
+			 * orientation-independent. Falls through to the heuristics below only
+			 * for saves without the encoding. */
+			if (_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN] >= 2) {
+				if (left != nullptr && left->IsSavedUnitMain() && left->SavedUnitMainPartsFollow()) {
+					main = left;
+				} else if (right != nullptr && right->IsSavedUnitMain() && right->SavedUnitMainPartsPrecede()) {
+					main = right;
+				}
+			}
+			if (main == nullptr) {
+				/* ID contiguity is orientation-independent: a unit's parts are
+				 * allocated directly after its base at creation, no matter how the
+				 * chain was later reversed. Check it first. The saved flag alone
+				 * cannot decide: every plain vehicle also reports it (its
+				 * unit_main is null), so a run's unrelated left neighbour would
+				 * masquerade as the base of a part-first (reversed) unit. */
+				if (left_matches != right_matches) {
+					main = left_matches ? left : right;
+				} else if (left != nullptr && left->IsSavedUnitMain()) {
+					/* Saved flags disambiguate broken contiguity (pool ID reuse). */
+					main = left;
+				} else if (right != nullptr && right->IsSavedUnitMain()) {
+					main = right;
+				} else if (left != nullptr && left->IsEngine()) {
+					main = left;
+				} else if (right != nullptr && right->IsEngine()) {
+					main = right;
+				} else if (left != nullptr && !left->IsArticulatedPart() && left->HasArticulatedPart()) {
+					/* Old/base-first save: the base precedes its parts. */
+					main = left;
+				} else if (right != nullptr && !right->IsArticulatedPart()) {
+					/* Reversed unit: the base follows the parts. */
+					main = right;
+				}
 			}
 
 			if (main != nullptr) {
@@ -926,8 +944,25 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 	void Save(Vehicle *v) const override
 	{
 		v->consist_primary = (v->Primary() == v) ? 1 : 0;
-		v->consist_unit_main = (v->GetUnitMain() == v) ? 1 : 0;
-		if (v->type == VehicleType::Train && v->index.base() <= 40 && v->Primary()->index.base() <= 40) {
+		if (v->type == VehicleType::Train) {
+			/* XSLFI_TRAIN_UNIT_MAIN v2: encode membership explicitly. 1 = unit
+			 * main with its articulated run following it, 2 = run preceding it.
+			 * Parts and single vehicles are 0, so a run's base can be restored
+			 * without heuristics no matter how the chain was reversed or
+			 * cloned. */
+			if (v->HasUnitMain() && v->unit_main == v) {
+				const Vehicle *n = v->Next();
+				if (n != nullptr && n->IsArticulatedPart() && n->GetUnitMain() == v) {
+					v->consist_unit_main = 1;
+				} else {
+					const Vehicle *p = v->Previous();
+					v->consist_unit_main = (p != nullptr && p->IsArticulatedPart() && p->GetUnitMain() == v) ? 2 : 1;
+				}
+			} else {
+				v->consist_unit_main = 0;
+			}
+		} else {
+			v->consist_unit_main = (v->GetUnitMain() == v) ? 1 : 0;
 		}
 		SlObjectSaveFiltered(v, this->GetLoadDescription());
 	}
@@ -1970,11 +2005,17 @@ static void LogVehicleVENCMessage(const Vehicle *v, const char *var)
 	buffer.format("[load]: vehicle cache mismatch: {}", var);
 
 	extern void WriteVehicleInfo(format_target &buffer, const Vehicle *u, const Vehicle *v, uint length);
+	/* Walk the physical chain, not from Primary(): with p4's mid-chain
+	 * primaries (dual-head dragging, reversed units) v may sit before its
+	 * primary, so the forward walk from Primary() would fall off the chain
+	 * end without ever reaching v. First() always covers v. */
+	const Vehicle *first = v->First();
 	uint length = 0;
-	for (const Vehicle *u = v->Primary(); u != v; u = u->Next()) {
+	for (const Vehicle *u = first; u != nullptr && u != v; u = u->Next()) {
 		length++;
 	}
-	WriteVehicleInfo(buffer, v, v->Primary(), length);
+	if (first == nullptr) first = v;
+	WriteVehicleInfo(buffer, v, first, length);
 	debug_print(DebugLevelID::desync, 0, buffer);
 	LogDesyncMsg(buffer.to_string());
 }

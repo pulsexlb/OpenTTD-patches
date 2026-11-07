@@ -765,6 +765,9 @@ public:
 	inline void SetUnitMain(Vehicle *p) { this->unit_main = p; }
 	inline bool HasUnitMain() const { return this->unit_main != nullptr; }
 	inline bool IsSavedUnitMain() const { return this->consist_unit_main != 0; }
+	/** Saved main encoding (XSLFI_TRAIN_UNIT_MAIN v2): 1 = main whose articulated parts follow it, 2 = parts precede it. */
+	inline bool SavedUnitMainPartsFollow() const { return this->consist_unit_main == 1; }
+	inline bool SavedUnitMainPartsPrecede() const { return this->consist_unit_main == 2; }
 	/** @return The main part (base/front engine) of this multi-part unit, or this vehicle for a singleton. */
 	inline Vehicle *GetUnitMain() const { return this->unit_main != nullptr ? this->unit_main : const_cast<Vehicle *>(this); }
 
