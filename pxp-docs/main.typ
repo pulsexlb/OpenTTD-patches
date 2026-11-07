@@ -84,6 +84,10 @@
           content: include "content-en/bluepoint/index.typ",
         ),
         chapter(
+          "en/auto-yield",
+          content: include "content-en/auto-yield/index.typ",
+        ),
+        chapter(
           "en/other-options",
           content: include "content-en/options/index.typ",
           children: (
@@ -179,6 +183,10 @@
         chapter(
           "zh/bluepoint",
           content: include "content-zh/bluepoint/index.typ",
+        ),
+        chapter(
+          "zh/auto-yield",
+          content: include "content-zh/auto-yield/index.typ",
         ),
         chapter(
           "zh/other-options",

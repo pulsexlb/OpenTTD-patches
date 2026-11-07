@@ -30,7 +30,7 @@ By default, the coupled train will use the orders of the train that was heading 
 
 == Early check point
 
-By default, a train with the Go to couple order only checks for trains available for coupling when it executes the Go to couple order. However, in many cases we want the train to wait somewhere for the waiting train to get into position and then go straight to couple, for example in the scenario shown:
+By default, a train with the Go to couple order only checks for trains available for coupling when it executes the Go to couple order. However, in many cases we want the train to wait somewhere until the waiting train is in position, without heading straight to couple, for example in the scenario shown:
 
 #figure(
   image("../../static/images/couple-early-check.png", width: 100%),
