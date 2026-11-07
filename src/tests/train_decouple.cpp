@@ -44,6 +44,7 @@
 #include "../scope.h"
 #include "../gfx_type.h"
 #include "../sl/saveload.h"
+#include "../sl/saveload_internal.h"
 #include "../sl/saveload_func.h"
 #include "../sl/saveload_filter.h"
 #include "../sl/saveload_func.h"
@@ -592,6 +593,33 @@ TEST_CASE("Decouple - same-direction exit bits")
 	order.SetDecoupleFirstSameDirExit(true);
 	CHECK(order.GetDecoupleFirstScheduleID() == OrderListID{1234});
 	CHECK(order.GetDecoupleSecondScheduleID() == OrderListID{5678});
+}
+
+TEST_CASE("Decouple - independent timing options preserve schedule IDs and exit flags")
+{
+	Order order;
+	order.MakeDecouple();
+	CHECK_FALSE(order.GetDecoupleResetLateness(true));
+	CHECK_FALSE(order.GetDecoupleResetLateness(false));
+	order.SetDecoupleFirstScheduleID(OrderListID{1234});
+	order.SetDecoupleSecondScheduleID(OrderListID{5678});
+	order.SetDecoupleFirstSameDirExit(true);
+	order.SetDecoupleSecondSameDirExit(true);
+	order.SetDecoupleResetLateness(true, true);
+	CHECK(order.GetDecoupleResetLateness(true));
+	CHECK_FALSE(order.GetDecoupleResetLateness(false));
+	order.SetDecoupleResetLateness(false, true);
+	order.SetDecoupleResetLateness(true, false);
+	Order copy(order);
+	CHECK_FALSE(copy.GetDecoupleResetLateness(true));
+	CHECK(copy.GetDecoupleResetLateness(false));
+	CHECK(copy.GetDecoupleFirstSameDirExit());
+	CHECK(copy.GetDecoupleSecondSameDirExit());
+	CHECK(copy.GetDecoupleFirstScheduleID() == OrderListID{1234});
+	CHECK(copy.GetDecoupleSecondScheduleID() == OrderListID{5678});
+	copy.SetDecoupleFirstScheduleID(OrderListID{4321});
+	CHECK(copy.GetDecoupleResetLateness(false));
+	CHECK_FALSE(order.GetDecoupleResetLateness(true));
 }
 
 TEST_CASE("Decouple - procedural orders do not keep timetable incomplete")
@@ -4965,6 +4993,22 @@ TEST_CASE_METHOD(AutomaticYieldWideFixture, "Automatic yield conflict - a remote
 	CHECK(EvaluateAutoYield(slow,membership->index.base(),AutoYieldCondition::MustWait));
 }
 
+TEST_CASE_METHOD(AutomaticYieldFixture, "Automatic yield departure - clearing the area marker is not releasing the express native block")
+{
+	DistantExpress(fast);
+	Place(fast, 40, 4); fast->direction = Direction::NE;
+	Place(slow, 18, 12); slow->cur_speed = 0;
+	Register(slow); Register(fast);
+	REQUIRE(Resource(MakeTraceRestrictRefId(TileXY(10, 12), TRACK_X))->Occupy(slow));
+	/* No saved wait edge: this is an ordinary station departure considering
+	 * its first arriving express. The block continues beyond Clear at 27. */
+	GameRandomSeedChecker random;
+	CHECK(EvaluateAutoYield(slow, membership->index.base(), AutoYieldCondition::MustWait));
+	CHECK((Execute(slow, 18, 12).flags & TRPRF_WAIT_AT_PBS) != 0);
+	CHECK(random.Check());
+	CHECK(TraceRestrictSlot::ValidateVehicleIndex());
+}
+
 class AutomaticYieldTransformFixture : public AutomaticYieldFixture {
 protected:
 	uint transform = 0;
@@ -5808,4 +5852,46 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - only a new claim resets
 	CHECK(GetCoupleClaimant(waiting) == moving);
 	CancelTrainCoupleCheckpoint(moving);
 	CHECK_FALSE(moving->flags.Test(VehicleRailFlag::CoupleDirectionChecked));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - NewGRF cache reload preserves a live mid-chain carrier and its claim")
+{
+	Train *head = MakeTrain();
+	head->ClearEngine(); head->SetWagon(); head->owner = waiting->owner;
+	head->track = TRACK_BIT_X; head->direction = waiting->direction;
+	Place(head, 12);
+	Train *rear = MakeTrain();
+	rear->ClearEngine(); rear->SetWagon(); rear->owner = waiting->owner;
+	rear->track = TRACK_BIT_X; rear->direction = waiting->direction;
+	Place(rear, 12);
+	head->SetNext(waiting); waiting->SetNext(rear);
+	if (GENERATE(false, true)) {
+		waiting->ClearFrontEngine(); waiting->ClearEngine();
+		waiting->SetWagon(); waiting->SetFrontWagon();
+	}
+	for (Train *part : {head, waiting, rear}) part->SetPrimary(waiting);
+	moving->SetPrimary(moving);
+	moving->couple_target = rear->index;
+	ClaimCoupleTarget(moving, waiting, 100);
+	REQUIRE(GetCoupleClaimant(waiting) == moving);
+	GameRandomSeedChecker random_checker;
+	const auto reserved = GetReservedTrackbits(station->xy);
+	for (uint repeat = 0; repeat < 2; repeat++) {
+		AfterLoadVehiclesPhase1(false);
+		for (const Train *part : {head, waiting, rear}) {
+			CHECK(part->Primary() == waiting);
+			CHECK(part->First() == head);
+			CHECK(part->Last() == rear);
+		}
+		CHECK(GetCoupleClaimant(waiting) == moving);
+		CHECK(moving->couple_target == rear->index);
+		CHECK(waiting->current_order.IsType(OT_WAIT_COUPLE));
+		CHECK(GetReservedTrackbits(station->xy) == reserved);
+	}
+	/* A later formation change must replace the preceding reload's temporary
+	 * marker too, rather than pinning the old carrier forever. */
+	for (Train *part : {head, waiting, rear}) part->SetPrimary(head);
+	AfterLoadVehiclesPhase1(false);
+	for (const Train *part : {head, waiting, rear}) CHECK(part->Primary() == head);
+	CHECK(random_checker.Check());
 }

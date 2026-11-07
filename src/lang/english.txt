@@ -1035,6 +1035,9 @@ STR_ORDER_DECOUPLE_LOAD_AND_WAIT                                :(Load and wait 
 STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :(Wait for couple without loading)
 STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE                            :(Load and use schedule {RAW_STRING})
 STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :(Use schedule {RAW_STRING})
+STR_ORDER_DECOUPLE_RESET_LATENESS                             :Reset early/late time when switching schedules
+STR_ORDER_DECOUPLE_RESET_LATENESS_FIRST                       :(First part resets early/late time on schedule change)
+STR_ORDER_DECOUPLE_RESET_LATENESS_SECOND                      :(Second part resets early/late time on schedule change)
 STR_ORDER_DECOUPLE_SAME_DIR_EXIT                                :Allow leaving in the same direction once the other part has left
 STR_ORDER_DECOUPLE_SAME_DIR_FIRST                               :(First part may follow the other part's exit)
 STR_ORDER_DECOUPLE_SAME_DIR_SECOND                              :(Second part may follow the other part's exit)

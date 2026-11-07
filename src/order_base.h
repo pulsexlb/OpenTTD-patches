@@ -982,6 +982,9 @@ public:
 	inline bool GetDecoupleSecondSameDirExit() const { return HasBit(this->GetXData(), 17); }
 	/** Set whether the second part may leave the decouple station in the same direction as the other part. */
 	inline void SetDecoupleSecondSameDirExit(bool on) { SB(this->GetXDataRef(), 17, 1, on ? 1 : 0); }
+	/** Independent schedule timing options (OT_DECOUPLE only); absent in old saves. */
+	inline bool GetDecoupleResetLateness(bool first) const { return HasBit(this->GetXData(), first ? 18 : 19); }
+	inline void SetDecoupleResetLateness(bool first, bool on) { SB(this->GetXDataRef(), first ? 18 : 19, 1, on ? 1 : 0); }
 	/** Get the schedule the first part adopts after decoupling (ODOF_EXECUTE_SCHEDULE and ODOF_LOAD_AND_SCHEDULE only). */
 	inline OrderListID GetDecoupleFirstScheduleID() const { return OrderListID{(uint16_t)this->GetXData()}; }
 	/** Set the schedule the first part adopts after decoupling. */

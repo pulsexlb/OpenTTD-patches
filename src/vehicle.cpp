@@ -3567,7 +3567,7 @@ void Vehicle::ApplyStationServiceNumber(const Order &order)
 	InvalidateWindowClassesData(WindowClass::DepartureBoard);
 }
 
-void Vehicle::BeginLoading()
+void Vehicle::BeginLoading(bool timetable_arrival_booked)
 {
 	if (this->type == VehicleType::Train) {
 #ifdef WITH_ASSERT
@@ -3587,7 +3587,14 @@ void Vehicle::BeginLoading()
 
 		/* Now both order indices point to the destination station, and we can start loading */
 		this->current_order.MakeLoading(true);
-		UpdateVehicleTimetable(this, true);
+		/* A split part keeping the same arrival has already booked its inbound
+		 * leg and dispatch slot. Starting its loading is not another arrival. */
+		if (!timetable_arrival_booked) {
+			UpdateVehicleTimetable(this, true);
+		} else {
+			this->current_order_time = 0;
+			this->current_loading_time = 0;
+		}
 
 		/* Furthermore add the Non Stop flag to mark that this station
 		 * is the actual destination of the vehicle, which is (for example)

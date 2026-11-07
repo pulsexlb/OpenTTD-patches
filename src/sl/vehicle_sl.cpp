@@ -251,6 +251,10 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 		if (v->NextShared() != nullptr) v->NextShared()->previous_shared = v;
 
 		if (part_of_load) v->fill_percent_te_id = INVALID_TE_ID;
+		/* A NewGRF reload rebuilds caches in the running game. Persist its live
+		 * carrier before clearing pointers: consist_primary otherwise still
+		 * describes the last save, before any intervening couple or decouple. */
+		if (!part_of_load) v->consist_primary = v->Primary() == v;
 		v->first = nullptr;
 		v->primary = nullptr;
 		v->last = nullptr;
@@ -498,7 +502,16 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 				 * is always anchored on the physical chain head. */
 				if (t->Primary()->IsPrimaryVehicle() || t->IsFreeWagon()) {
 					t->gcache.last_speed = t->cur_speed; // update displayed train speed
-					t->First()->ConsistChanged(CCF_SAVELOAD);
+					Train *head = t->First();
+					const auto saved_acceleration = head->acceleration;
+					head->ConsistChanged(CCF_SAVELOAD);
+					/* VENC restores the server's weight and power caches after this
+					 * rebuild. Acceleration is serialized on the vehicle itself;
+					 * keep that value too, rather than mixing the server's caches
+					 * with acceleration calculated from the client's rebuilt caches. */
+					if (part_of_load && _networking && !_network_server && SlXvIsFeaturePresent(XSLFI_VENC_CHUNK)) {
+						head->acceleration = saved_acceleration;
+					}
 				}
 				break;
 			}

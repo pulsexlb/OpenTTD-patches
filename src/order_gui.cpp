@@ -2117,6 +2117,7 @@ enum OrderDropDownID {
 	ODDI_WAIT_FOR_COUPLE,
 	ODDI_GO_TO_COUPLE,
 	ODDI_DECOUPLE_SAME_DIR,
+	ODDI_DECOUPLE_RESET_LATENESS,
 };
 
 static const StringID _order_decouple_orders_drowdown[] = {
@@ -3212,6 +3213,8 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			/* Each split part can independently keep the original direction. */
 			if (order->GetDecoupleFirstSameDirExit()) AppendStringInPlace(line, STR_ORDER_DECOUPLE_SAME_DIR_FIRST);
 			if (order->GetDecoupleSecondSameDirExit()) AppendStringInPlace(line, STR_ORDER_DECOUPLE_SAME_DIR_SECOND);
+			if (order->GetDecoupleResetLateness(true)) AppendStringInPlace(line, STR_ORDER_DECOUPLE_RESET_LATENESS_FIRST);
+			if (order->GetDecoupleResetLateness(false)) AppendStringInPlace(line, STR_ORDER_DECOUPLE_RESET_LATENESS_SECOND);
 			break;
 		}
 
@@ -6529,6 +6532,7 @@ public:
 					bool checked = first ? order->GetDecoupleFirstSameDirExit() : order->GetDecoupleSecondSameDirExit();
 					list.push_back(MakeDropDownListDividerItem());
 					list.push_back(MakeDropDownListCheckedItem(checked, STR_ORDER_DECOUPLE_SAME_DIR_EXIT, ODDI_DECOUPLE_SAME_DIR, false));
+					list.push_back(MakeDropDownListCheckedItem(order->GetDecoupleResetLateness(first), STR_ORDER_DECOUPLE_RESET_LATENESS, ODDI_DECOUPLE_RESET_LATENESS, false));
 				}
 				ShowDropDownList(this, std::move(list), selected, widget);
 				break;
@@ -6748,6 +6752,11 @@ public:
 				break;
 
 			case WID_O_ORDERS_FIRST:
+				if (index == ODDI_DECOUPLE_RESET_LATENESS) {
+					const Order *o = OrderAt(this->OrderGetSel());
+					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_FIRST_RESET_LATENESS, o->GetDecoupleResetLateness(true) ? 0 : 1);
+					break;
+				}
 				if (index == ODDI_DECOUPLE_SAME_DIR) {
 					const Order *o = OrderAt(this->OrderGetSel());
 					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_FIRST_SAME_DIR, o->GetDecoupleFirstSameDirExit() ? 0 : 1);
@@ -6757,6 +6766,11 @@ public:
 				break;
 
 			case WID_O_ORDERS_SECOND:
+				if (index == ODDI_DECOUPLE_RESET_LATENESS) {
+					const Order *o = OrderAt(this->OrderGetSel());
+					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_SECOND_RESET_LATENESS, o->GetDecoupleResetLateness(false) ? 0 : 1);
+					break;
+				}
 				if (index == ODDI_DECOUPLE_SAME_DIR) {
 					const Order *o = OrderAt(this->OrderGetSel());
 					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_SECOND_SAME_DIR, o->GetDecoupleSecondSameDirExit() ? 0 : 1);

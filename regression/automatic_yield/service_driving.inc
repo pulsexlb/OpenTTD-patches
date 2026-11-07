@@ -15,8 +15,14 @@ void StationServiceDrivingTick()
  static VehicleID late_target = VehicleID::Invalid();
  static uint late_stuck_ticks = 0;
  static bool late_released = false;
- const std::string first_number = mode == "split-dispatch" ? "D123" : "G123";
+ const bool dispatch = mode.starts_with("split-dispatch");
+ const bool shared_dispatch = mode.starts_with("split-dispatch-shared");
+ const bool shared_both = mode == "split-dispatch-shared-both";
+ const std::string first_number = dispatch ? "D123" : "G123";
  static bool setup = false, first = false, saved = false, recouple_posted = false, return_posted = false;
+ static bool before_arrival_saved = false;
+ static uint shared_wait_ticks = 0;
+ static bool shared_departed = false;
  static uint ticks = 0;
  static StationID first_station = StationID::Invalid(), second_station = StationID::Invalid();
  if (!setup && _game_mode == GameMode::Editor) {
@@ -35,7 +41,14 @@ void StationServiceDrivingTick()
    DemoRequire(CmdModifyOrder(DoCommandFlag::Execute, OrderTargetType::Vehicle, demo_slow->index.base(), VehicleOrderID{1}, MOF_DECOUPLE_VALUE, mode == "split-both" ? 2 : 1, INVALID_CARGO, {}), "split count");
    if (mode == "split-load") DemoRequire(CmdModifyOrder(DoCommandFlag::Execute, OrderTargetType::Vehicle, demo_slow->index.base(), VehicleOrderID{1}, MOF_FIRST_ORDERS, ODOF_KEEP_ORDERS, INVALID_CARGO, {}), "engine also loads");
   }
-  if (mode == "split-dispatch") {
+  if (dispatch) {
+   if (shared_dispatch) DemoRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{1},MOF_SECOND_ORDERS,ODOF_KEEP_ORDERS,INVALID_CARGO,{}),"wagons retain shared dispatch list");
+   if (shared_both) DemoRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{1},MOF_FIRST_ORDERS,ODOF_KEEP_ORDERS,INVALID_CARGO,{}),"both parts retain shared dispatch list");
+   if (mode == "split-dispatch-shared-schedule") {
+    OrderList *independent=OrderList::Create();independent->SetCompany(demo_slow->owner);independent->InitializePlayerCreated();
+    Order exit;exit.MakeGoToStation(second_station);exit.SetNonStopType(ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);independent->InsertOrderAt(std::move(exit),0);
+    DemoRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{1},MOF_DECOUPLE_FIRST_SCHEDULE,independent->index.base(),INVALID_CARGO,{}),"engine adopts independent schedule");
+   }
    auto &schedules = demo_slow->orders->GetScheduledDispatchScheduleSet(); schedules.emplace_back();
    schedules[0].SetScheduledDispatchDuration(10000); schedules[0].SetScheduledDispatchStartTick(_state_ticks);
    schedules[0].SetSupplementaryName(DispatchSchedule::SupplementaryNameType::RouteID, 1, "D123"); schedules[0].AddScheduledDispatch(0, 0, 1);
@@ -61,6 +74,9 @@ void StationServiceDrivingTick()
  }
  if (!setup || _game_mode != GameMode::Normal) return;
  ticks++;
+ if (shared_dispatch && !reload && !before_arrival_saved && !saved && TileX(demo_slow->GetMovingFront()->tile)>=118) {
+  DemoSave("dispatch-before-arrival");before_arrival_saved=true;
+ }
  if (late_partner && late_target != VehicleID::Invalid() && !late_released && demo_slow->current_order.IsType(OT_GOTO_COUPLE) && demo_slow->flags.Test(VehicleRailFlag::Stuck) && ++late_stuck_ticks == 60) {
   Train *target = Train::Get(late_target);
   assert(target->vehstatus.Test(VehState::Stopped));
@@ -88,9 +104,20 @@ void StationServiceDrivingTick()
   for(auto *t:Train::Iterate())if(t->IsPrimaryVehicle()&&t!=demo_slow&&t!=demo_fast&&t->last_station_visited==first_station)carriages=t;
   if(carriages!=nullptr && demo_slow->last_station_visited==first_station) {
    assert(carriages->GetActiveServiceNumber()==first_number);
-   if(mode=="split-both")assert(demo_slow->GetActiveServiceNumber()=="G123");
+   if(mode=="split-both")assert(demo_slow->GetActiveServiceNumber()==first_number);
    else {assert(demo_slow->GetActiveServiceNumber().empty());assert(demo_slow->service_number_suppressed);}
    if(!saved){
+    if(shared_dispatch){
+     const auto &schedule=carriages->orders->GetDispatchScheduleByIndex(0);
+     const auto record=carriages->dispatch_records.find(0);assert(record!=carriages->dispatch_records.end());
+     if(_state_ticks<record->second.dispatched){assert(carriages->current_order.IsAnyLoadingType());assert(carriages->cur_speed==0);}
+     /* This fixture arrives during the first period: a single arrival must
+      * consume only its first future slot, even when two parts load. */
+     assert(schedule.GetScheduledDispatchLastDispatch()==10000);
+     assert(record->second.dispatched==schedule.GetScheduledDispatchStartTick()+10000);
+     if(shared_both){const auto engine_record=demo_slow->dispatch_records.find(0);assert(engine_record!=demo_slow->dispatch_records.end());assert(engine_record->second.dispatched==record->second.dispatched);}
+     fprintf(demo_log,"DISPATCH_ONCE shared=1 both=%u last=%d departure=%lld state=%lld wagon_lateness=%d reload=%u\n",shared_both,schedule.GetScheduledDispatchLastDispatch(),(long long)record->second.dispatched.base(),(long long)_state_ticks.base(),carriages->lateness_counter,reload);
+    }
     fprintf(demo_log,"SPLIT tick=%u locomotive=%u number=%s suppressed=%u carriages=%u number=%s\n",ticks,demo_slow->index.base(),demo_slow->GetActiveServiceNumber().c_str(),demo_slow->service_number_suppressed,carriages->index.base(),carriages->GetActiveServiceNumber().c_str());
     if(!reload)DemoSave("service-split");saved=true;
    }
@@ -113,7 +140,22 @@ void StationServiceDrivingTick()
     DemoRequire(CmdSkipToOrder(DoCommandFlag::Execute,demo_slow->index,VehicleOrderID{0}),"activate recouple");
     recouple_posted=true;
    }
-   if(!recoupling) {fprintf(demo_log,"STRICT PASS %s engine_only_cleared=1 carriage_number_retained=1 reload=%u\n",mode.c_str(),reload);fflush(demo_log);_exit_game=true;}
+   if(!recoupling) {
+    if(shared_both){
+     const auto record=carriages->dispatch_records.find(0);assert(record!=carriages->dispatch_records.end());
+     if(demo_slow->current_order.IsAnyLoadingType()){
+      assert(demo_slow->cur_speed==0);shared_wait_ticks++;
+     }else if(!shared_departed){
+      assert(_state_ticks>=record->second.dispatched);assert(shared_wait_ticks>1000);
+      shared_departed=true;fprintf(demo_log,"DISPATCH_DEPARTURE tick=%lld selected=%lld waited=%u reload=%u\n",(long long)_state_ticks.base(),(long long)record->second.dispatched.base(),shared_wait_ticks,reload);
+     }
+     if(!shared_departed || TileX(demo_slow->GetMovingFront()->tile)<=130)return;
+     /* An unpowered part may legally advance past loading at the booked
+      * time; it still cannot move until a locomotive couples to it. */
+     assert(carriages->cur_speed==0);
+    }
+    fprintf(demo_log,"STRICT PASS %s engine_only_cleared=1 carriage_number_retained=1 actual_dispatch_departure=%u reload=%u\n",mode.c_str(),shared_departed,reload);fflush(demo_log);_exit_game=true;
+   }
   }
   if(recoupling&&recouple_posted&&demo_slow->GetActiveServiceNumber()=="G123") {
    uint wagons=0;for(const Train*t=demo_slow->First();t;t=t->Next())if(t->IsWagon()&&!t->IsArticulatedPart())wagons++;

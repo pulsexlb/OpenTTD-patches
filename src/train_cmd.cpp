@@ -6969,7 +6969,8 @@ static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id, StationI
 
 
 
-static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_ptr<OrderList> (&wait_orders)[2], uint32_t inbound_time)
+/** Assign each part's orders; return the parts requesting a post-arrival lateness reset. */
+static uint8_t SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_ptr<OrderList> (&wait_orders)[2], uint32_t inbound_time)
 {
 	/* The decouple marker has to sit behind the implicit index, which every
 	 * caller guarantees (see #TrainEnterStation). Re-check it instead of
@@ -6978,8 +6979,9 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_pt
 	const Order *decouple_marker = (v->orders != nullptr) ? v->orders->GetOrderAt(v->cur_implicit_order_index + 1) : nullptr;
 	if (decouple_marker == nullptr || !decouple_marker->IsType(OT_DECOUPLE)) {
 		Debug(desync, 1, "SplitOrders: veh={} has no decouple marker behind order {}", v->index, v->cur_implicit_order_index);
-		return;
+		return 0;
 	}
+	uint8_t reset_lateness = 0;
 	const Order after_decouple_flags = *decouple_marker;
 	const VehicleOrderID wait_index = v->cur_implicit_order_index + 2;
 	const BaseConsist order_state = *v;
@@ -7036,13 +7038,13 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_pt
 				if (!(load_trains & DECOUPLE_LOAD_SECOND)) u->IncrementImplicitOrderIndex();
 				break;
 			case ODOF_EXECUTE_SCHEDULE:
-				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID());
+				if (AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID()) && v != u && after_decouple_flags.GetDecoupleResetLateness(false)) reset_lateness |= DECOUPLE_LOAD_SECOND;
 				break;
 			case ODOF_LOAD_AND_SCHEDULE:
 				/* Load/unload at this station once, then run the schedule, skipping
 				 * the station order on all later passes. */
 				load_trains |= DECOUPLE_LOAD_SECOND;
-				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID(), v->last_station_visited, &v->current_order);
+				if (AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID(), v->last_station_visited, &v->current_order) && v != u && after_decouple_flags.GetDecoupleResetLateness(false)) reset_lateness |= DECOUPLE_LOAD_SECOND;
 				break;
 			default: NOT_REACHED();
 		}
@@ -7065,18 +7067,18 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_pt
 			v->IncrementImplicitOrderIndex();
 			break;
 		case ODOF_EXECUTE_SCHEDULE:
-			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID());
+			if (AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID()) && v != u && after_decouple_flags.GetDecoupleResetLateness(true)) reset_lateness |= DECOUPLE_LOAD_FIRST;
 			break;
 		case ODOF_LOAD_AND_SCHEDULE:
 			/* Load/unload at this station once, then run the schedule, skipping
 			 * the station order on all later passes. */
 			load_trains |= DECOUPLE_LOAD_FIRST;
-			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID(), v->last_station_visited, &v->current_order);
+			if (AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID(), v->last_station_visited, &v->current_order) && v != u && after_decouple_flags.GetDecoupleResetLateness(true)) reset_lateness |= DECOUPLE_LOAD_FIRST;
 			break;
 		default: NOT_REACHED();
 	}
 	ProcessOrders(v);
-
+	return reset_lateness;
 }
 
 /**
@@ -8824,6 +8826,11 @@ static void TrainEnterStation(Train *consist, StationID station)
 
 	Train *u = nullptr;
 	uint8_t load_trains = DECOUPLE_NO_LOAD;
+	uint8_t reset_lateness = 0;
+	const OrderListID arrival_order_list = consist->orders != nullptr ? consist->orders->index : OrderListID::Invalid();
+	bool arrival_booked = false;
+	bool first_keeps_arrival = false;
+	bool second_keeps_arrival = false;
 	/* The decouple handling below unconditionally reads the order after the current one and
 	 * expects it to be the OT_DECOUPLE marker (see #PrepareDecoupleWaitOrders and #SplitOrders).
 	 * A schedule edited around a depot detour can leave the implicit index on the last order,
@@ -8896,12 +8903,15 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * and books the same leg through the regular arrival path, and a
 		 * pre-booking would let it re-book a near-zero value instead. */
 		const OrderDecoupleOrdersFlags first_orders_type = decouple_flags_order->GetDecoupleFirstOrdersType();
+		first_keeps_arrival = first_orders_type == ODOF_KEEP_ORDERS;
+		second_keeps_arrival = decouple_flags_order->GetDecoupleSecondOrdersType() == ODOF_KEEP_ORDERS;
 		const bool first_part_loads = first_orders_type == ODOF_LOAD_AND_WAIT || first_orders_type == ODOF_KEEP_ORDERS || first_orders_type == ODOF_LOAD_AND_SCHEDULE;
 		if (!first_part_loads) {
 			/* A via-station stop leaves the timetable index invalid after the
 			 * realignment above; the leg belongs to the real current order. */
 			if (consist->cur_timetable_order_index == INVALID_VEH_ORDER_ID) consist->cur_timetable_order_index = consist->cur_real_order_index;
 			UpdateVehicleTimetable(consist, true);
+			arrival_booked = true;
 		}
 		/* When the front part does not load here, nobody runs the loading flow
 		 * on this (original) order list: rear parts that load get their own
@@ -8973,7 +8983,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 				u = u->Primary();
 			}
 		}
-		SplitOrders(consist, u, load_trains, wait_orders, decouple_inbound_time);
+		reset_lateness = SplitOrders(consist, u, load_trains, wait_orders, decouple_inbound_time);
 		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);
 		if (u != nullptr && u->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(u);
 		/* The split moved vehicles -- and the primary that carries the breakdown
@@ -9041,12 +9051,40 @@ static void TrainEnterStation(Train *consist, StationID station)
 	if (load_trains & DECOUPLE_LOAD_FIRST) {
 		consist->force_proceed = TFP_NONE;
 		InvalidateWindowData(WindowClass::VehicleView, consist->index);
-		consist->BeginLoading();
+		consist->BeginLoading(first_keeps_arrival && arrival_booked && consist->orders != nullptr && consist->orders->index == arrival_order_list);
+		if (first_keeps_arrival && consist->orders != nullptr && consist->orders->index == arrival_order_list) {
+			arrival_booked = true;
+			/* Both parts may keep this shared list. The rear part was copied
+			 * before the front began loading, so carry over the one booked
+			 * arrival rather than consuming the next dispatch slot for it. */
+			if (second_keeps_arrival && u != nullptr && u != consist && u->orders == consist->orders && (load_trains & DECOUPLE_LOAD_SECOND)) {
+				u->lateness_counter = consist->lateness_counter;
+				u->timetable_start = consist->timetable_start;
+				u->dispatch_records = consist->dispatch_records;
+				u->cur_timetable_order_index = consist->cur_timetable_order_index;
+				u->vehicle_flags.Set(VehicleFlag::TimetableStarted, consist->vehicle_flags.Test(VehicleFlag::TimetableStarted));
+			}
+		}
 	}
 	if (u != nullptr && u != consist && (load_trains & DECOUPLE_LOAD_SECOND)) {
 		u->force_proceed = TFP_NONE;
 		InvalidateWindowData(WindowClass::VehicleView, u->index);
-		u->BeginLoading();
+		u->BeginLoading(second_keeps_arrival && arrival_booked && u->orders != nullptr && u->orders->index == arrival_order_list);
+	}
+
+	/* BeginLoading has now booked the inbound leg (including the one-off load
+	 * wrapper). Reset only the opted-in part that actually adopted a new list;
+	 * keep dwell timers, dispatch slots and the continuing part's timing intact. */
+	for (auto [part, bit] : {std::pair{consist, DECOUPLE_LOAD_FIRST}, std::pair{u, DECOUPLE_LOAD_SECOND}}) {
+		if ((reset_lateness & bit) == 0) continue;
+		/* A dispatch-controlled stop uses the offset to enforce its selected
+		 * departure slot, not merely historical early running. Keep that clock. */
+		const Order *stop = part->GetOrder(part->cur_implicit_order_index);
+		if (part->current_order.IsAnyLoadingType() && part->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) &&
+				stop != nullptr && stop->IsScheduledDispatchOrder(true)) continue;
+		part->lateness_counter = 0;
+		part->ResetDepotUnbunching();
+		SetWindowDirty(WindowClass::VehicleTimetable, part->index);
 	}
 
 	if (service_number_split) {

@@ -3224,7 +3224,8 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 			case OT_DECOUPLE:
 				if (mof != MOF_FIRST_ORDERS && mof != MOF_SECOND_ORDERS && mof != MOF_DECOUPLE_VALUE && mof != MOF_DECOUPLE_FIRST_SCHEDULE && mof != MOF_DECOUPLE_SECOND_SCHEDULE && mof != MOF_DECOUPLE_FIRST_LOAD_SCHEDULE && mof != MOF_DECOUPLE_SECOND_LOAD_SCHEDULE
-						&& mof != MOF_DECOUPLE_FIRST_SAME_DIR && mof != MOF_DECOUPLE_SECOND_SAME_DIR) return CMD_ERROR;
+						&& mof != MOF_DECOUPLE_FIRST_SAME_DIR && mof != MOF_DECOUPLE_SECOND_SAME_DIR
+						&& mof != MOF_DECOUPLE_FIRST_RESET_LATENESS && mof != MOF_DECOUPLE_SECOND_RESET_LATENESS) return CMD_ERROR;
 				break;
 
 			case OT_SLOT:
@@ -3611,6 +3612,8 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			break;
 		}
 
+		case MOF_DECOUPLE_FIRST_RESET_LATENESS:
+		case MOF_DECOUPLE_SECOND_RESET_LATENESS:
 		case MOF_DECOUPLE_FIRST_SAME_DIR:
 		case MOF_DECOUPLE_SECOND_SAME_DIR:
 			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
@@ -4234,6 +4237,11 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 			case MOF_SECOND_ORDERS:
 				order->SetDecoupleSecondOrdersType((OrderDecoupleOrdersFlags)data);
+				break;
+
+			case MOF_DECOUPLE_FIRST_RESET_LATENESS:
+			case MOF_DECOUPLE_SECOND_RESET_LATENESS:
+				order->SetDecoupleResetLateness(mof == MOF_DECOUPLE_FIRST_RESET_LATENESS, data != 0);
 				break;
 
 			case MOF_DECOUPLE_FIRST_SAME_DIR:

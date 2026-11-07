@@ -5059,6 +5059,9 @@ STR_ORDER_DECOUPLE_LOAD_AND_WAIT                                :（装卸并等
 STR_ORDER_DECOUPLE_WAIT_FOR_COUPLE                              :（等待连接不装卸）
 STR_ORDER_DECOUPLE_LOAD_AND_SCHEDULE                            :（装卸并使用调度计划 {STRING}）
 STR_ORDER_DECOUPLE_USE_SCHEDULE                                 :（使用调度计划 {STRING}）
+STR_ORDER_DECOUPLE_RESET_LATENESS                             :切换计划时归零早晚点
+STR_ORDER_DECOUPLE_RESET_LATENESS_FIRST                       :（第一部分切换计划时归零早晚点）
+STR_ORDER_DECOUPLE_RESET_LATENESS_SECOND                      :（第二部分切换计划时归零早晚点）
 STR_ORDER_DECOUPLE_SAME_DIR_EXIT                                :允许等待另一部分离开后同向离开
 STR_ORDER_DECOUPLE_SAME_DIR_FIRST                               :（第一部分可同向离开）
 STR_ORDER_DECOUPLE_SAME_DIR_SECOND                              :（第二部分可同向离开）

@@ -420,7 +420,7 @@ public:
 
 	CargoTypes GetLastLoadingStationValidCargoMask() const;
 
-	void BeginLoading();
+	void BeginLoading(bool timetable_arrival_booked = false);
 	void CancelReservation(StationID next, Station *st);
 	void LeaveStation();
 	void RemoveFromLoadingQueues();
