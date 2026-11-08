@@ -25,7 +25,6 @@
 #include "../error.h"
 #include "../strings_func.h"
 #include "../economy_base.h"
-#include "../news_func.h"
 #include "../event_logs.h"
 #include "../date_func.h"
 #include "../3rdparty/cpp-btree/btree_map.h"
@@ -38,7 +37,6 @@
 #include "table/strings.h"
 
 #include <map>
-#include <set>
 
 #include "../safeguards.h"
 
@@ -46,61 +44,12 @@ extern btree::btree_multimap<VehicleID, PendingSpeedRestrictionChange> _pending_
 
 extern SaveLoadStructHandlerFactory MakeOrderExtraDataStructHandler();
 
-/** Physical chain IDs with lossy legacy reconstruction; never simulation state. */
-static std::set<VehicleID> _legacy_train_unit_recovery_warnings;
-static std::vector<std::pair<VehicleID, std::string>> _legacy_train_unit_recovery_identities;
-
-/** Snapshot before phase 2 can delete temporary/invalid vehicles. */
-static void CaptureTrainUnitRecoveryWarnings()
-{
-	std::set<VehicleID> captured;
-	for (VehicleID id : _legacy_train_unit_recovery_warnings) {
-		const Train *vehicle = Train::GetIfValid(id);
-		if (vehicle == nullptr) continue;
-		const Train *head = vehicle->First();
-		if (!captured.insert(head->index).second) continue;
-		const Vehicle *primary = head->Primary();
-		const std::string name = StrMakeValid(GetString(STR_VEHICLE_NAME, primary->index), {});
-		_legacy_train_unit_recovery_identities.emplace_back(primary->index,
-				GetString(STR_TRAIN_UNIT_RECOVERY_ENTRY, name));
-	}
-}
-
-/** Publish after load has completed, including a full list if advice history is capped. */
-void ShowTrainUnitRecoveryWarnings()
-{
-	if (_legacy_train_unit_recovery_identities.empty()) {
-		_legacy_train_unit_recovery_warnings.clear();
-		return;
-	}
-	std::string affected;
-	for (const auto &[id, entry] : _legacy_train_unit_recovery_identities) {
-		if (!affected.empty()) affected += "\n";
-		affected += entry;
-		/* Snapshot the identity instead of a VEHICLE parameter that can be rewritten
-		 * by autoreplace. No owner filter: other companies must not be omitted. */
-		const NewsReference reference = Train::GetIfValid(id) == nullptr ? NewsReference{} : NewsReference{id};
-		AddNewsItem(GetEncodedString(STR_NEWS_TRAIN_UNIT_RECOVERY, entry), NewsType::Advice,
-				NewsStyle::Small, {NewsFlag::InColour}, reference);
-	}
-	if (!affected.empty()) {
-		/* This list also covers spectators, other companies and advice evicted by
-		 * MAX_NEWS_AMOUNT. Recovery warnings are never grounds for rejecting a save. */
-		ShowErrorMessage(GetEncodedString(STR_TRAIN_UNIT_RECOVERY_WARNING),
-				GetEncodedString(STR_JUST_RAW_STRING, affected), WarningLevel::Critical);
-	}
-	_legacy_train_unit_recovery_warnings.clear();
-	_legacy_train_unit_recovery_identities.clear();
-}
-
 /**
  * Link front and rear multiheaded engines to each other
  * This is done when loading a savegame
  */
 void ConnectMultiheadedTrains()
 {
-	_legacy_train_unit_recovery_warnings.clear();
-	_legacy_train_unit_recovery_identities.clear();
 	for (Train *v : Train::Iterate()) {
 		v->other_multiheaded_part = nullptr;
 	}
@@ -123,16 +72,13 @@ void ConnectMultiheadedTrains()
 			 * sprites. */
 			for (Train *u = v; u != nullptr; u = u->Next()) {
 				if (!u->IsMultiheaded() || u->other_multiheaded_part != nullptr) continue;
-					Train *w = nullptr;
-					uint matches = 0;
-					for (Train *cand = v; cand != nullptr; cand = cand->Next()) {
-						if (cand == u || !cand->IsMultiheaded() || cand->other_multiheaded_part != nullptr) continue;
-						if (cand->engine_type != u->engine_type) continue;
-						if (cand->IsEngine() == u->IsEngine()) continue;
-						if (w == nullptr) w = cand;
-						matches++;
-					}
-					if (matches != 1) _legacy_train_unit_recovery_warnings.insert(v->index);
+				Train *w = nullptr;
+				for (Train *cand = v; cand != nullptr; cand = cand->Next()) {
+					if (cand == u || !cand->IsMultiheaded() || cand->other_multiheaded_part != nullptr) continue;
+					if (cand->engine_type != u->engine_type) continue;
+					if (cand->IsEngine() == u->IsEngine()) continue;
+					if (w == nullptr) w = cand;
+				}
 				if (w != nullptr) {
 					u->other_multiheaded_part = w;
 					w->other_multiheaded_part = u;
@@ -221,12 +167,10 @@ void RebuildTrainUnitMains()
 {
 	const uint16_t version = _sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN];
 	SlTrainUnitMainLegacyEncoding encoding = SlGetTrainUnitMainLegacyEncoding();
-	bool ambiguous_encoding = false;
 	if (version == 3 && encoding == SlTrainUnitMainLegacyEncoding::Unknown) {
 		/* The writer chose one encoding for the whole save, not per consist. */
 		bool consistent[2] = {true, true};
 		uint exact[2] = {};
-		bool different = false;
 		std::map<const Train *, std::array<Train *, 2>> decoded;
 		for (Train *p : Train::Iterate()) {
 			if (!p->IsArticulatedPart()) continue;
@@ -249,7 +193,6 @@ void RebuildTrainUnitMains()
 				if (mains[offset] != nullptr) exact[offset]++;
 				if (matches == 0 && p->GetSavedUnitMainID() != 0) consistent[offset] = false;
 			}
-			different |= mains[0] != mains[1];
 			decoded.emplace(p, std::array<Train *, 2>{mains[0], mains[1]});
 		}
 		for (Train *head : Train::Iterate()) {
@@ -271,7 +214,6 @@ void RebuildTrainUnitMains()
 			encoding = consistent[0] ? SlTrainUnitMainLegacyEncoding::Raw : SlTrainUnitMainLegacyEncoding::Offset;
 		} else {
 			encoding = exact[0] > exact[1] ? SlTrainUnitMainLegacyEncoding::Raw : SlTrainUnitMainLegacyEncoding::Offset;
-			ambiguous_encoding = different;
 		}
 	}
 	for (Train *head : Train::Iterate()) {
@@ -349,10 +291,7 @@ void RebuildTrainUnitMains()
 					main = part;
 					continue;
 				}
-				if (main == nullptr || main->IsRearDualheaded()) {
-					_legacy_train_unit_recovery_warnings.insert(head->index);
-					continue;
-				}
+				if (main == nullptr || main->IsRearDualheaded()) continue;
 				main->SetUnitMain(main);
 				part->SetUnitMain(main);
 			}
@@ -406,9 +345,8 @@ void RebuildTrainUnitMains()
 					if (main == right) reached_right = true;
 					else if (main != left || reached_right) {
 						/* Reused allocation IDs must not create an L,R,L interleave.
-						 * Preserve one deterministic boundary, and warn about loss. */
+						 * Preserve one deterministic boundary. */
 						p->SetUnitMain(reached_right ? right : nullptr);
-						_legacy_train_unit_recovery_warnings.insert(head->index);
 					}
 				}
 			}
@@ -430,7 +368,6 @@ void RebuildTrainUnitMains()
 					if (matches.size() > 1 && e.allocation_main != nullptr &&
 							std::find(matches.begin(), matches.end(), e.allocation_main) != matches.end()) {
 						main = e.allocation_main;
-						_legacy_train_unit_recovery_warnings.insert(head->index);
 					}
 					/* Zero was also the missing-main sentinel. Only allocation/topology
 					 * evidence can distinguish that from raw #0 or offset overflow. */
@@ -440,22 +377,13 @@ void RebuildTrainUnitMains()
 				return result;
 			};
 			const Interpretation chosen = interpret(encoding != SlTrainUnitMainLegacyEncoding::Raw);
-			if (ambiguous_encoding && !parts.empty()) _legacy_train_unit_recovery_warnings.insert(head->index);
 			for (size_t i = 0; i < parts.size(); i++) {
 				Train *main = chosen.mains[i];
-				const uint32_t saved = parts[i].part->GetSavedUnitMainID();
-				const bool active_part = !parts[i].part->vehstatus.Test(VehState::Crashed) &&
-						!head->Primary()->vehstatus.Test(VehState::Crashed);
-				/* v3 zero can mean missing membership, raw main #0, or a
-				 * truncated offset. A topology guess must not silently clear this
-				 * ambiguity just because it found an adjacent candidate. */
-				if (saved == 0 && active_part) _legacy_train_unit_recovery_warnings.insert(head->index);
 				if (main == nullptr) {
 					/* Historical data can be irrecoverable. Attempt only a bounded,
 					 * deterministic same-run mapping, never an arbitrary pool pointer. */
 					main = parts[i].allocation_main;
 					if (main == nullptr && !parts[i].candidates.empty()) main = parts[i].candidates.front();
-					if (active_part || main != nullptr || saved != 0) _legacy_train_unit_recovery_warnings.insert(head->index);
 				}
 				if (main != nullptr) { main->SetUnitMain(main); parts[i].part->SetUnitMain(main); }
 			}
@@ -464,17 +392,12 @@ void RebuildTrainUnitMains()
 		}
 
 		for (const PartEvidence &e : parts) {
-			if (e.candidates.size() > 1) _legacy_train_unit_recovery_warnings.insert(head->index);
 			Train *main = version >= 2 && e.candidates.size() == 1 ? e.candidates.front() : e.allocation_main;
-			if (main == nullptr) {
-				if (!e.candidates.empty()) main = e.candidates.front();
-				_legacy_train_unit_recovery_warnings.insert(head->index);
-			}
+			if (main == nullptr && !e.candidates.empty()) main = e.candidates.front();
 			if (main != nullptr) { main->SetUnitMain(main); e.part->SetUnitMain(main); }
 		}
 		limit_to_valid_partitions();
 	}
-	CaptureTrainUnitRecoveryWarnings();
 }
 
 /**
