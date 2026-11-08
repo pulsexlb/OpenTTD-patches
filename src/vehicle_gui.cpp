@@ -673,13 +673,25 @@ static const uint MAX_REFIT_CYCLE = 256;
  */
 uint8_t GetBestFittingSubType(const Vehicle *v_from, Vehicle *v_for, CargoType dest_cargo_type)
 {
-	v_from = v_from->GetFirstEnginePart();
-	v_for = v_for->GetFirstEnginePart();
+	const Vehicle *from_last = nullptr;
+	Vehicle *for_last = nullptr;
+	if (v_from->type == VehicleType::Train) {
+		from_last = Train::From(v_from)->GetUnitChainLast();
+		v_from = Train::From(v_from)->GetUnitChainFront();
+	} else {
+		v_from = v_from->GetFirstEnginePart();
+	}
+	if (v_for->type == VehicleType::Train) {
+		for_last = Train::From(v_for)->GetUnitChainLast();
+		v_for = Train::From(v_for)->GetUnitChainFront();
+	} else {
+		v_for = v_for->GetFirstEnginePart();
+	}
 
-	/* Create a list of subtypes used by the various parts of v_for */
+	/* Create a list of subtypes used by the various parts of v_from */
 	static std::vector<StringID> subtypes;
 	subtypes.clear();
-	for (; v_from != nullptr; v_from = v_from->HasArticulatedPart() ? v_from->GetNextArticulatedPart() : nullptr) {
+	for (; v_from != nullptr; v_from = from_last != nullptr ? (v_from == from_last ? nullptr : v_from->Next()) : (v_from->HasArticulatedPart() ? v_from->GetNextArticulatedPart() : nullptr)) {
 		const Engine *e_from = v_from->GetEngine();
 		if (!e_from->CanCarryCargo() || !e_from->info.callback_mask.Test(VehicleCallbackMask::CargoSuffix)) continue;
 		include(subtypes, GetCargoSubtypeText(v_from));
@@ -689,7 +701,7 @@ uint8_t GetBestFittingSubType(const Vehicle *v_from, Vehicle *v_for, CargoType d
 	bool success = false;
 	if (!subtypes.empty()) {
 		/* Check whether any articulated part is refittable to 'dest_cargo_type' with a subtype listed in 'subtypes' */
-		for (Vehicle *v = v_for; v != nullptr; v = v->HasArticulatedPart() ? v->GetNextArticulatedPart() : nullptr) {
+		for (Vehicle *v = v_for; v != nullptr; v = for_last != nullptr ? (v == for_last ? nullptr : v->Next()) : (v->HasArticulatedPart() ? v->GetNextArticulatedPart() : nullptr)) {
 			const Engine *e = v->GetEngine();
 			if (!e->CanCarryCargo() || !e->info.callback_mask.Test(VehicleCallbackMask::CargoSuffix)) continue;
 			if (!e->info.refit_mask.Test(dest_cargo_type) && v->cargo_type != dest_cargo_type) continue;
@@ -1366,6 +1378,7 @@ struct RefitWindow : public Window {
 					/* Ctrl keeps counting until the end of the consist, giving an explicit
 					 * length instead of the UINT8_MAX 'whole consist' sentinel. */
 					bool count_to_end = _ctrl_pressed;
+					const Train *selected_unit_last = nullptr;
 					for (; u != nullptr; u = u->Next()) {
 						int current_width = u->GetDisplayImageWidth();
 						left_x  -= current_width;
@@ -1375,10 +1388,12 @@ struct RefitWindow : public Window {
 							this->selected_vehicle = u->index;
 							start_counting = true;
 
-							/* Count the first vehicle, even if articulated part */
+							/* Count the clicked unit, including a parts-first unit. */
+							selected_unit_last = u->GetUnitChainLast();
 							this->num_vehicles++;
-						} else if (start_counting && !u->IsArticulatedPart()) {
-							/* Do not count articulated parts */
+						} else if (start_counting && u->Previous() == selected_unit_last) {
+							/* Count unit-boundary transitions, not articulated flags. */
+							selected_unit_last = u->GetUnitChainLast();
 							this->num_vehicles++;
 						}
 

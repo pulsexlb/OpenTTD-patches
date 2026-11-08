@@ -30,6 +30,7 @@
 #include "tbtr_template_vehicle_func.h"
 #include "tbtr_template_vehicle.h"
 #include "train.h"
+#include "train_cmd.h"
 #include "vehicle_func.h"
 #include "vehicle_gui.h"
 #include "window_func.h"
@@ -44,7 +45,7 @@ void BuildTemplateGuiList(GUITemplateList *list, Scrollbar *vscroll, Owner oid, 
 {
 	list->clear();
 	for (const TemplateVehicle *tv : TemplateVehicle::Iterate()) {
-		if (tv->owner == oid && (tv->IsPrimaryVehicle() || tv->IsFreeWagonChain()) && TemplateVehicleContainsEngineOfRailtype(tv, railtype)) {
+		if (tv->owner == oid && tv->Prev() == nullptr && TemplateVehicleContainsEngineOfRailtype(tv, railtype)) {
 			list->push_back(tv);
 		}
 	}
@@ -57,7 +58,7 @@ Money CalculateOverallTemplateCost(const TemplateVehicle *tv)
 {
 	Money val = 0;
 
-	for (; tv != nullptr; tv = tv->GetNextUnit()) {
+	for (tv = tv != nullptr ? tv->First()->GetUnitMain() : nullptr; tv != nullptr; tv = tv->GetNextUnit()) {
 		val += (Engine::Get(tv->engine_type))->GetCost();
 	}
 	return val;
@@ -67,7 +68,7 @@ Money CalculateOverallTemplateDisplayRunningCost(const TemplateVehicle *tv)
 {
 	Money val = 0;
 
-	for (; tv != nullptr; tv = tv->GetNextUnit()) {
+	for (tv = tv != nullptr ? tv->First()->GetUnitMain() : nullptr; tv != nullptr; tv = tv->GetNextUnit()) {
 		val += (Engine::Get(tv->engine_type))->GetDisplayRunningCost();
 	}
 	return val;
@@ -144,32 +145,58 @@ TemplateVehicle *TemplateVehicleFromVirtualTrain(Train *virt)
 {
 	assert(virt != nullptr);
 
+	virt = virt->First();
 	Train *init_virt = virt;
+	const Train *primary = virt->Primary()->IsPrimaryVehicle() ? virt->Primary() : nullptr;
+	std::vector<std::pair<const Train *, TemplateVehicle *>> mapping;
 
 	TemplateVehicle *tmp = nullptr;
 	TemplateVehicle *prev = nullptr;
 	for (; virt != nullptr; virt = virt->Next()) {
 		tmp = TemplateVehicle::Create(virt->engine_type);
 		SetupTemplateVehicleFromVirtual(tmp, prev, virt);
+		mapping.emplace_back(virt, tmp);
 		prev = tmp;
 	}
-
-	tmp->First()->SetRealLength(CeilDiv(init_virt->gcache.cached_total_length * 10, TILE_SIZE));
-	return tmp->First();
+	TemplateVehicle *head = tmp->First();
+	auto mapped = [&mapping](const Train *v) -> TemplateVehicle * {
+		for (const auto &[source, target] : mapping) if (source == v) return target;
+		return nullptr;
+	};
+	TemplateVehicle *template_primary = mapped(primary);
+	for (const auto &[source, target] : mapping) {
+		const Train *main = source->IsRearDualheaded() && source->other_multiheaded_part != nullptr ? source->other_multiheaded_part : Train::From(source->GetUnitMain());
+		target->SetUnitMain(mapped(main));
+		target->SetPrimary(template_primary);
+		ClrBit(target->subtype, GVSF_FRONT);
+		ClrBit(target->subtype, GVSF_FRONT_WAGON);
+		ClrBit(target->subtype, GVSF_FREE_WAGON);
+	}
+	if (template_primary != nullptr) {
+		if (template_primary->IsEngine()) template_primary->SetFrontEngine();
+		else SetBit(template_primary->subtype, GVSF_FRONT_WAGON);
+	} else {
+		head->SetFreeWagon();
+	}
+	head->SetRealLength(CeilDiv(init_virt->gcache.cached_total_length * 10, TILE_SIZE));
+	return head;
 }
 
 CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, bool backup_order, ClientID user);
 
+static const Train *TemplateTrainUnitMain(const Train *part);
+
 Train *DeleteVirtualTrain(Train *chain, Train *to_del)
 {
-	if (chain != to_del) {
-		CmdSellRailWagon(DoCommandFlag::Execute, to_del, false, false, ClientID::Invalid);
-		return chain;
-	} else {
-		chain = chain->GetNextUnit();
-		CmdSellRailWagon(DoCommandFlag::Execute, to_del, false, false, ClientID::Invalid);
-		return chain;
+	Train *head = chain->First();
+	VehicleID survivor = VehicleID::Invalid();
+	for (Train *part = head; part != nullptr; part = part->Next()) {
+		if (TemplateTrainUnitMain(part) != TemplateTrainUnitMain(to_del)) { survivor = part->index; break; }
 	}
+	CommandCost result = CmdSellRailWagon(DoCommandFlag::Execute, to_del, false, false, ClientID::Invalid);
+	if (result.Failed()) return head;
+	Train *remaining = Train::GetIfValid(survivor);
+	return remaining != nullptr ? remaining->First() : nullptr;
 }
 
 /* Retrieve template vehicle from template replacement that belongs to the given group */
@@ -192,6 +219,7 @@ TemplateVehicle *GetTemplateVehicleByGroupIDRecursive(GroupID gid)
  */
 bool TemplateVehicleContainsEngineOfRailtype(const TemplateVehicle *tv, RailType type)
 {
+	if (tv != nullptr) tv = tv->First()->GetUnitMain();
 	if (type == INVALID_RAILTYPE) return true;
 
 	/* For standard rail engines, allow only those */
@@ -216,8 +244,8 @@ bool TemplateVehicleContainsEngineOfRailtype(const TemplateVehicle *tv, RailType
 
 Train *ChainContainsEngine(EngineID eid, Train *chain)
 {
-	for (; chain != nullptr; chain = chain->GetNextUnit()) {
-		if (chain->engine_type == eid) return chain;
+	for (Train *main : CollectTrainPurchasedUnits(chain)) {
+		if (main->engine_type == eid) return main;
 	}
 	return nullptr;
 }
@@ -226,7 +254,7 @@ static bool IsTrainUsableAsTemplateReplacementSource(const Train *t)
 {
 	if (t->First()->IsFreeWagon()) return true;
 
-	if (t->IsPrimaryVehicle() && t->IsStoppedInDepot() && t->GetNextUnit() == nullptr) {
+	if (t->Primary() == t && t->IsStoppedInDepot() && CollectTrainPurchasedUnits(const_cast<Train *>(t)).size() == 1) {
 		if (t->GetNumOrders() != 0) return false;
 		if (t->IsOrderListShared()) return false;
 		if (t->group_id != DEFAULT_GROUP) return false;
@@ -239,6 +267,7 @@ static bool IsTrainUsableAsTemplateReplacementSource(const Train *t)
 void TemplateDepotVehicles::Init(TileIndex tile)
 {
 	for (const Train *v : VehiclesOnTile<VehicleType::Train>(tile)) {
+		if (v->IsArticulatedPart() || v->IsRearDualheaded() || v->GetUnitMain() != v) continue;
 		this->vehicles.insert(v->index);
 	}
 }
@@ -274,40 +303,83 @@ void NeutralizeStatus(Train *t)
 	Command<Commands::RenameVehicle>::Do(DoCommandFlag::Execute, t->index, {});
 }
 
+static const Train *TemplateTrainUnitMain(const Train *part)
+{
+	return part->IsRearDualheaded() && part->other_multiheaded_part != nullptr ? part->other_multiheaded_part : Train::From(part->GetUnitMain());
+}
+
+/** Per-purchase canonical member mapping; no zip across physical chains. */
+static TemplateTrainMapping MapTemplateTrainMembers(Train *train, const TemplateVehicle *tv)
+{
+	TemplateTrainMapping result;
+	if (train == nullptr || tv == nullptr) return result;
+	const TemplateVehicle *unit = tv->First()->GetUnitMain();
+	for (Train *main : CollectTrainPurchasedUnits(train)) {
+		if (unit == nullptr) break;
+		std::vector<const TemplateVehicle *> old_members;
+		std::vector<Train *> new_members;
+		const TemplateVehicle *old_rear = nullptr;
+		for (const TemplateVehicle *p = tv->First(); p != nullptr; p = p->Next()) {
+			if (p->GetUnitMain() != unit) continue;
+			if (p->IsRearDualheaded()) old_rear = p;
+			else old_members.push_back(p);
+		}
+		for (Train *p = train->First(); p != nullptr; p = p->Next()) {
+			if (TemplateTrainUnitMain(p) == main && !p->IsRearDualheaded()) new_members.push_back(p);
+		}
+		if (!old_members.empty() && old_members.front() != unit) std::reverse(old_members.begin(), old_members.end());
+		if (!new_members.empty() && new_members.front() != main) std::reverse(new_members.begin(), new_members.end());
+		if (!old_members.empty()) {
+			for (size_t ordinal = 0; ordinal < new_members.size(); ordinal++) result.emplace_back(old_members[std::min(ordinal, old_members.size() - 1)], new_members[ordinal]);
+		}
+		if (old_rear != nullptr && main->other_multiheaded_part != nullptr) result.emplace_back(old_rear, main->other_multiheaded_part);
+		unit = unit->GetNextUnit();
+	}
+	return result;
+}
+
 TBTRDiffFlags TrainTemplateDifference(const Train *t, const TemplateVehicle *tv)
 {
+	if (t == nullptr || tv == nullptr) return t == nullptr && tv == nullptr ? TBTRDF_NONE : TBTRDF_ALL;
+	t = t->First();
+	tv = tv->First();
 	TBTRDiffFlags diff = TBTRDF_NONE;
-	const bool check_refit_as_template = tv->refit_as_template;
-	while (t != nullptr && tv != nullptr) {
-		if (t->engine_type != tv->engine_type) {
-			return TBTRDF_ALL;
-		}
-		if (check_refit_as_template && (t->cargo_type != tv->cargo_type || t->cargo_subtype != tv->cargo_subtype)) {
-			diff |= TBTRDF_REFIT;
-		}
-		if (t->flags.Test(VehicleRailFlag::Flipped) != HasBit(tv->ctrl_flags, TVCF_REVERSED)) {
-			diff |= TBTRDF_DIR;
-		}
-		t = t->GetNextUnit();
-		tv = tv->GetNextUnit();
+	const bool check_refit = tv->refit_as_template;
+	auto units = CollectTrainPurchasedUnits(const_cast<Train *>(t));
+	const TemplateVehicle *unit = tv->GetUnitMain();
+	for (Train *main : units) {
+		if (unit == nullptr || main->engine_type != unit->engine_type) return TBTRDF_ALL;
+		if ((main == t->Primary()) != (unit == tv->Primary())) diff |= TBTRDF_CONSIST;
+		unit = unit->GetNextUnit();
 	}
-	if ((t != nullptr) != (tv != nullptr)) {
-		return TBTRDF_ALL;
+	if (unit != nullptr) return TBTRDF_ALL;
+	const auto mapping = MapTemplateTrainMembers(const_cast<Train *>(t), tv);
+	/* Physical token ordering detects separated dual halves, reversed parts,
+	 * and callback topology changes without charging repeated part engines. */
+	const TemplateVehicle *physical = tv;
+	for (const Train *p = t; p != nullptr; p = p->Next()) {
+		auto mapped = std::find_if(mapping.begin(), mapping.end(), [p](const auto &m) { return m.second == p; });
+		if (mapped == mapping.end()) { diff |= TBTRDF_CONSIST; continue; }
+		const TemplateVehicle *old = mapped->first;
+		if (physical != old) diff |= TBTRDF_CONSIST;
+		if (physical != nullptr) physical = physical->Next();
+		if (check_refit && (p->cargo_type != old->cargo_type || p->cargo_subtype != old->cargo_subtype)) diff |= TBTRDF_REFIT;
+		if (p->flags.Test(VehicleRailFlag::Flipped) != HasBit(old->ctrl_flags, TVCF_REVERSED)) diff |= TBTRDF_DIR;
 	}
+	if (physical != nullptr) diff |= TBTRDF_CONSIST;
 	return diff;
 }
 
 void BreakUpRemainders(Train *t)
 {
 	while (t != nullptr) {
-		if (HasBit(t->subtype, GVSF_ENGINE)) {
-			Train *move = t;
-			t = t->Next();
-			Command<Commands::MoveRailVehicle>::Do(DoCommandFlag::Execute, move->index, VehicleID::Invalid(), MoveRailVehicleFlags::NewHead);
-			NeutralizeStatus(move);
-		} else {
-			t = t->Next();
+		Train *next = t->GetNextVehicle();
+		Train *main = Train::From(t->GetUnitMain());
+		if (main->IsEngine() && !t->IsRearDualheaded()) {
+			Command<Commands::MoveRailVehicle>::Do(DoCommandFlag::Execute, main->index, VehicleID::Invalid(), MoveRailVehicleFlags::NewHead);
+			NeutralizeStatus(main->Primary());
 		}
+		t = next;
 	}
 }
 
@@ -329,12 +401,8 @@ CommandCost CmdRefitTrainFromTemplate(Train *t, const TemplateVehicle *tv, DoCom
 {
 	CommandCost cost(t->GetExpenseType(false));
 
-	while (t != nullptr && tv != nullptr) {
-		/* Refit t as tv */
-		cost.AddCost(Command<Commands::RefitVehicle>::Do(flags, t->index, tv->cargo_type, tv->cargo_subtype, false, false, 1));
-
-		t = t->GetNextUnit();
-		tv = tv->GetNextUnit();
+	for (const auto &[source, member] : MapTemplateTrainMembers(t, tv)) {
+		cost.AddCost(Command<Commands::RefitVehicle>::Do(flags, member->index, source->cargo_type, source->cargo_subtype, false, true, 0));
 	}
 	return cost;
 }
@@ -342,13 +410,11 @@ CommandCost CmdRefitTrainFromTemplate(Train *t, const TemplateVehicle *tv, DoCom
 /* Set unit direction of each vehicle in t as is in tv, assume t and tv contain the same types of vehicles */
 void CmdSetTrainUnitDirectionFromTemplate(Train *t, const TemplateVehicle *tv, DoCommandFlags flags)
 {
-	while (t != nullptr && tv != nullptr) {
-		/* Refit t as tv */
-		if (t->flags.Test(VehicleRailFlag::Flipped) != HasBit(tv->ctrl_flags, TVCF_REVERSED)) {
-			Command<Commands::ReverseTrainDirection>::Do(flags, t->index, true);
-		}
-
-		t = t->GetNextUnit();
+	if (t == nullptr || tv == nullptr) return;
+	tv = tv->First()->GetUnitMain();
+	for (Train *main : CollectTrainPurchasedUnits(t)) {
+		if (tv == nullptr) break;
+		if (main->flags.Test(VehicleRailFlag::Flipped) != HasBit(tv->ctrl_flags, TVCF_REVERSED)) Command<Commands::ReverseTrainDirection>::Do(flags, main->index, true);
 		tv = tv->GetNextUnit();
 	}
 }
@@ -361,7 +427,7 @@ CommandCost TestBuyAllTemplateVehiclesInChain(const TemplateVehicle *tv, TileInd
 {
 	CommandCost cost(ExpensesType::NewVehicles);
 
-	for (; tv != nullptr; tv = tv->GetNextUnit()) {
+	for (tv = tv != nullptr ? tv->First()->GetUnitMain() : nullptr; tv != nullptr; tv = tv->GetNextUnit()) {
 		cost.AddCost(Command<Commands::BuildVehicle>::Do({}, tile, tv->engine_type, false, INVALID_CARGO, ClientID::Invalid));
 	}
 
@@ -378,7 +444,7 @@ CommandCost TestBuyAllTemplateVehiclesInChain(const TemplateVehicle *tv, TileInd
  */
 void TransferCargoForTrain(Train *old_veh, Train *new_head)
 {
-	assert(new_head->IsPrimaryVehicle() || new_head->IsFreeWagon());
+	new_head = new_head->First();
 
 	const CargoType cargo_type = old_veh->cargo_type;
 	const uint8_t cargo_subtype = old_veh->cargo_subtype;
@@ -386,10 +452,11 @@ void TransferCargoForTrain(Train *old_veh, Train *new_head)
 	/* How much cargo has to be moved (if possible) */
 	uint remainingAmount = old_veh->cargo.TotalCount();
 	/* Each vehicle in the new chain shall be given as much of the old cargo as possible, until none is left */
-	for (Train *tmp = new_head; tmp != nullptr && remainingAmount > 0; tmp = tmp->GetNextUnit()) {
+	for (Train *tmp = new_head; tmp != nullptr && remainingAmount > 0; tmp = tmp->Next()) {
 		if (tmp->cargo_type == cargo_type && tmp->cargo_subtype == cargo_subtype) {
 			/* Calculate the free space for new cargo on the current vehicle */
-			uint curCap = tmp->cargo_cap - tmp->cargo.TotalCount();
+				uint stored = tmp->cargo.TotalCount();
+				uint curCap = stored < tmp->cargo_cap ? tmp->cargo_cap - stored : 0;
 			uint moveAmount = std::min(remainingAmount, curCap);
 			/* Move (parts of) the old vehicle's cargo onto the current vehicle of the new chain */
 			if (moveAmount > 0) {
@@ -412,27 +479,16 @@ void UpdateAllTemplateVehicleImages()
 		if (tv->Prev() == nullptr) {
 			Backup<CompanyID> cur_company(_current_company, tv->owner, FILE_LINE);
 			StringID err;
-			Train *t = VirtualTrainFromTemplateVehicle(tv, err, (ClientID)0);
+			TemplateTrainMapping mapping;
+			Train *t = VirtualTrainFromTemplateVehicle(tv, err, (ClientID)0, &mapping);
 			if (t != nullptr) {
-				int tv_len = 0;
-				for (TemplateVehicle *u = tv; u != nullptr; u = u->Next()) {
-					tv_len++;
+				for (const auto &[source, member] : mapping) {
+					TemplateVehicle *u = const_cast<TemplateVehicle *>(source);
+					member->GetImage(_current_text_dir == TD_RTL ? Direction::E : Direction::W, EngineImageType::InDepot, &u->sprite_seq);
+					u->image_dimensions.SetFromTrain(member);
+					u->colourmap = GetVehiclePalette(member);
 				}
-				int t_len = 0;
-				for (Train *u = t; u != nullptr; u = u->Next()) {
-					t_len++;
-				}
-				if (t_len == tv_len) {
-					Train *v = t;
-					for (TemplateVehicle *u = tv; u != nullptr; u = u->Next(), v = v->Next()) {
-						v->GetImage(_current_text_dir == TD_RTL ? Direction::E : Direction::W, EngineImageType::InDepot, &u->sprite_seq);
-						u->image_dimensions.SetFromTrain(v);
-						u->colourmap = GetVehiclePalette(v);
-					}
-				} else {
-					Debug(misc, 0, "UpdateAllTemplateVehicleImages: vehicle count mismatch: {}, {}", t_len, tv_len);
-				}
-				delete t;
+				delete t->First();
 			}
 			cur_company.Restore();
 		}

@@ -25,6 +25,7 @@
 #include "../error.h"
 #include "../strings_func.h"
 #include "../economy_base.h"
+#include "../news_func.h"
 #include "../event_logs.h"
 #include "../date_func.h"
 #include "../3rdparty/cpp-btree/btree_map.h"
@@ -37,6 +38,7 @@
 #include "table/strings.h"
 
 #include <map>
+#include <set>
 
 #include "../safeguards.h"
 
@@ -44,15 +46,68 @@ extern btree::btree_multimap<VehicleID, PendingSpeedRestrictionChange> _pending_
 
 extern SaveLoadStructHandlerFactory MakeOrderExtraDataStructHandler();
 
+/** Physical chain IDs with lossy legacy reconstruction; never simulation state. */
+static std::set<VehicleID> _legacy_train_unit_recovery_warnings;
+static std::vector<std::pair<VehicleID, std::string>> _legacy_train_unit_recovery_identities;
+
+/** Snapshot before phase 2 can delete temporary/invalid vehicles. */
+static void CaptureTrainUnitRecoveryWarnings()
+{
+	std::set<VehicleID> captured;
+	for (VehicleID id : _legacy_train_unit_recovery_warnings) {
+		const Train *vehicle = Train::GetIfValid(id);
+		if (vehicle == nullptr) continue;
+		const Train *head = vehicle->First();
+		if (!captured.insert(head->index).second) continue;
+		const Vehicle *primary = head->Primary();
+		const std::string name = StrMakeValid(GetString(STR_VEHICLE_NAME, primary->index), {});
+		_legacy_train_unit_recovery_identities.emplace_back(primary->index,
+				GetString(STR_TRAIN_UNIT_RECOVERY_ENTRY, name));
+	}
+}
+
+/** Publish after load has completed, including a full list if advice history is capped. */
+void ShowTrainUnitRecoveryWarnings()
+{
+	if (_legacy_train_unit_recovery_identities.empty()) {
+		_legacy_train_unit_recovery_warnings.clear();
+		return;
+	}
+	std::string affected;
+	for (const auto &[id, entry] : _legacy_train_unit_recovery_identities) {
+		if (!affected.empty()) affected += "\n";
+		affected += entry;
+		/* Snapshot the identity instead of a VEHICLE parameter that can be rewritten
+		 * by autoreplace. No owner filter: other companies must not be omitted. */
+		const NewsReference reference = Train::GetIfValid(id) == nullptr ? NewsReference{} : NewsReference{id};
+		AddNewsItem(GetEncodedString(STR_NEWS_TRAIN_UNIT_RECOVERY, entry), NewsType::Advice,
+				NewsStyle::Small, {NewsFlag::InColour}, reference);
+	}
+	if (!affected.empty()) {
+		/* This list also covers spectators, other companies and advice evicted by
+		 * MAX_NEWS_AMOUNT. Recovery warnings are never grounds for rejecting a save. */
+		ShowErrorMessage(GetEncodedString(STR_TRAIN_UNIT_RECOVERY_WARNING),
+				GetEncodedString(STR_JUST_RAW_STRING, affected), WarningLevel::Critical);
+	}
+	_legacy_train_unit_recovery_warnings.clear();
+	_legacy_train_unit_recovery_identities.clear();
+}
+
 /**
  * Link front and rear multiheaded engines to each other
  * This is done when loading a savegame
  */
 void ConnectMultiheadedTrains()
 {
+	_legacy_train_unit_recovery_warnings.clear();
+	_legacy_train_unit_recovery_identities.clear();
 	for (Train *v : Train::Iterate()) {
 		v->other_multiheaded_part = nullptr;
 	}
+
+	/* v4 encodes the rear half's exact front main. Do not guess a partner (or
+	 * change subtype/sprite) before chain pointers and these refs are restored. */
+	if (SlXvIsFeaturePresent(XSLFI_TRAIN_UNIT_MAIN, 4)) return;
 
 	for (Train *v : Train::Iterate()) {
 		if (!v->IsFrontEngine() && !v->IsFreeWagon() && !v->IsFrontWagon()) continue;
@@ -68,14 +123,16 @@ void ConnectMultiheadedTrains()
 			 * sprites. */
 			for (Train *u = v; u != nullptr; u = u->Next()) {
 				if (!u->IsMultiheaded() || u->other_multiheaded_part != nullptr) continue;
-				Train *w = nullptr;
-				for (Train *cand = v; cand != nullptr; cand = cand->Next()) {
-					if (cand == u || !cand->IsMultiheaded() || cand->other_multiheaded_part != nullptr) continue;
-					if (cand->engine_type != u->engine_type) continue;
-					if (cand->IsEngine() == u->IsEngine()) continue;
-					w = cand;
-					break;
-				}
+					Train *w = nullptr;
+					uint matches = 0;
+					for (Train *cand = v; cand != nullptr; cand = cand->Next()) {
+						if (cand == u || !cand->IsMultiheaded() || cand->other_multiheaded_part != nullptr) continue;
+						if (cand->engine_type != u->engine_type) continue;
+						if (cand->IsEngine() == u->IsEngine()) continue;
+						if (w == nullptr) w = cand;
+						matches++;
+					}
+					if (matches != 1) _legacy_train_unit_recovery_warnings.insert(v->index);
 				if (w != nullptr) {
 					u->other_multiheaded_part = w;
 					w->other_multiheaded_part = u;
@@ -159,140 +216,239 @@ void ConnectMultiheadedTrains()
 	}
 }
 
-/**
- * Rebuild the unit-main pointers after loading. Multi-part units may be stored
- * in either orientation (base-first or part-first), so the main part cannot be
- * inferred from chain position alone. The saved consist_unit_main flag marks
- * the main part of each unit.
- */
+/** Restore exact v4 refs, or conservatively recover the historical train-unit formats. */
 void RebuildTrainUnitMains()
 {
-	/* v3 saves carry each articulated part's main VehicleID, which restores
-	 * membership exactly, including merged runs (a forward unit coupled
-	 * directly behind a reversed one share one contiguous part run). */
-	const bool v3_unit_main = _sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN] >= 3;
-
-	for (Train *v : Train::Iterate()) {
-		if (v->Previous() != nullptr) continue;
-
-		for (Train *u = v; u != nullptr; u = u->Next()) u->SetUnitMain(nullptr);
-
-		/* Dual-headed pairs: both halves point at the engine half. */
-		for (Train *u = v; u != nullptr; u = u->Next()) {
-			if (!u->IsMultiheaded() || u->other_multiheaded_part == nullptr) continue;
-			Train *main = u->IsEngine() ? u : u->other_multiheaded_part;
-			if (main != nullptr && main->IsEngine()) {
-				u->SetUnitMain(main);
-				u->other_multiheaded_part->SetUnitMain(main);
+	const uint16_t version = _sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN];
+	SlTrainUnitMainLegacyEncoding encoding = SlGetTrainUnitMainLegacyEncoding();
+	bool ambiguous_encoding = false;
+	if (version == 3 && encoding == SlTrainUnitMainLegacyEncoding::Unknown) {
+		/* The writer chose one encoding for the whole save, not per consist. */
+		bool consistent[2] = {true, true};
+		uint exact[2] = {};
+		bool different = false;
+		std::map<const Train *, std::array<Train *, 2>> decoded;
+		for (Train *p : Train::Iterate()) {
+			if (!p->IsArticulatedPart()) continue;
+			Train *left = p->Previous(), *right = p->Next();
+			while (left != nullptr && left->IsArticulatedPart()) left = left->Previous();
+			while (right != nullptr && right->IsArticulatedPart()) right = right->Next();
+			Train *candidates[2] = {
+				left != nullptr && left->SavedUnitMainPartsFollow() && (!left->IsMultiheaded() || left->IsEngine()) ? left : nullptr,
+				right != nullptr && right->SavedUnitMainPartsPrecede() && (!right->IsMultiheaded() || right->IsEngine()) ? right : nullptr,
+			};
+			Train *mains[2] = {};
+			for (uint offset = 0; offset < 2; offset++) {
+				uint matches = 0;
+				for (Train *cand : candidates) {
+					if (cand == nullptr || ((cand->index.base() + offset) & 0xFFFF) != p->GetSavedUnitMainID()) continue;
+					mains[offset] = cand;
+					matches++;
+				}
+				if (matches != 1) mains[offset] = nullptr;
+				if (mains[offset] != nullptr) exact[offset]++;
+				if (matches == 0 && p->GetSavedUnitMainID() != 0) consistent[offset] = false;
+			}
+			different |= mains[0] != mains[1];
+			decoded.emplace(p, std::array<Train *, 2>{mains[0], mains[1]});
+		}
+		for (Train *head : Train::Iterate()) {
+			if (head->Previous() != nullptr) continue;
+			bool reached_right[2] = {};
+			for (Train *p = head; p != nullptr; p = p->Next()) {
+				if (!p->IsArticulatedPart()) { reached_right[0] = reached_right[1] = false; continue; }
+				Train *right = p->Next();
+				while (right != nullptr && right->IsArticulatedPart()) right = right->Next();
+				for (uint offset = 0; offset < 2; offset++) {
+					Train *main = decoded.at(p)[offset];
+					if (main == nullptr) continue;
+					if (main == right) reached_right[offset] = true;
+					else if (reached_right[offset]) consistent[offset] = false;
+				}
 			}
 		}
+		if (consistent[0] != consistent[1]) {
+			encoding = consistent[0] ? SlTrainUnitMainLegacyEncoding::Raw : SlTrainUnitMainLegacyEncoding::Offset;
+		} else {
+			encoding = exact[0] > exact[1] ? SlTrainUnitMainLegacyEncoding::Raw : SlTrainUnitMainLegacyEncoding::Offset;
+			ambiguous_encoding = different;
+		}
+	}
+	for (Train *head : Train::Iterate()) {
+		if (head->Previous() != nullptr) continue;
+		std::vector<Train *> chain;
+		std::vector<Train *> bases;
+		for (Train *u = head; u != nullptr; u = u->Next()) {
+			u->SetUnitMain(nullptr);
+			chain.push_back(u);
+			if (!u->IsArticulatedPart()) bases.push_back(u);
+		}
 
-		if (v3_unit_main) {
-			for (Train *u = v; u != nullptr; u = u->Next()) {
-				if (!u->IsArticulatedPart() || u->GetSavedUnitMainID() == 0) continue;
-				/* The saved ID is the main's VehicleID + 1; 0 means "no main". */
-				Train *main = Train::GetIfValid(static_cast<VehicleID>(u->GetSavedUnitMainID() - 1));
-				/* The main must be a non-part member of this same chain. */
-				if (main == nullptr || main->IsArticulatedPart() || main->First() != v) {
-					u->SetSavedUnitMainID(0);
-					continue;
+		if (version >= 4) {
+			for (Train *u : chain) {
+				const uint32_t encoded = u->GetSavedUnitMainID();
+				if (encoded == 0) continue; // Null membership is valid, including crashed remnants.
+				Train *main = Train::GetIfValid(VehicleID(encoded - 1));
+				if (main == nullptr || main->First() != head || main->IsArticulatedPart() ||
+						main->GetSavedUnitMainID() != main->index.base() + 1) {
+					SlErrorCorrupt("Invalid train unit main reference");
 				}
-				main->SetUnitMain(main);
+				if (main != u && !u->IsArticulatedPart() && !(u->IsMultiheaded() && !u->IsEngine())) {
+					SlErrorCorrupt("Invalid train unit member");
+				}
 				u->SetUnitMain(main);
+				if (!u->IsArticulatedPart() && main != u) {
+					if (!main->IsMultiheaded() || !main->IsEngine() || main->engine_type != u->engine_type ||
+							main->other_multiheaded_part != nullptr) SlErrorCorrupt("Invalid train dual-headed reference");
+					u->other_multiheaded_part = main;
+					main->other_multiheaded_part = u;
+				}
+			}
+			for (size_t i = 0; i < chain.size(); i++) {
+				Train *u = chain[i];
+				if (u->IsMultiheaded() && u->other_multiheaded_part == nullptr &&
+						!u->vehstatus.Test(VehState::Crashed) && !head->Primary()->vehstatus.Test(VehState::Crashed)) {
+					SlErrorCorrupt("Unpaired train dual-headed unit");
+				}
+				if (!u->IsArticulatedPart() || !u->HasUnitMain()) continue;
+				Train *main = Train::From(u->GetUnitMain());
+				/* Every articulated member lies in one consecutive segment next to
+				 * its base; cross-unit same-chain refs are not a valid v4 encoding. */
+				int direction = 0;
+				for (size_t j = 0; j < chain.size(); j++) {
+					if (chain[j] == main) { direction = j < i ? -1 : 1; break; }
+				}
+				for (Train *p = u; p != main; p = direction < 0 ? p->Previous() : p->Next()) {
+					if (p == nullptr || !p->IsArticulatedPart() || !p->HasUnitMain() || p->GetUnitMain() != main) {
+						SlErrorCorrupt("Non-contiguous train articulated unit");
+					}
+				}
+				const Train *other_side = direction < 0 ? main->Previous() : main->Next();
+				if (other_side != nullptr && other_side->IsArticulatedPart() && other_side->HasUnitMain() &&
+						other_side->GetUnitMain() == main) SlErrorCorrupt("Train unit base lies inside articulated run");
 			}
 			continue;
 		}
 
-		/* Articulated runs: a contiguous run of articulated parts belongs to
-		 * the adjacent base, which may be before or after the run. The base is
-		 * not necessarily an engine: NewGRF articulated wagons have a wagon
-		 * base too. */
-		for (Train *u = v; u != nullptr;) {
-			if (!u->IsArticulatedPart()) {
-				u = u->Next();
-				continue;
+		/* Legacy dual halves have already been connected by the historical loader. */
+		for (Train *u : chain) {
+			if (u->IsMultiheaded() && u->other_multiheaded_part != nullptr) {
+				Train *main = u->IsEngine() ? u : u->other_multiheaded_part;
+				u->SetUnitMain(main);
+			} else if (version != 0 && u->IsSavedUnitMain() && !u->IsArticulatedPart()) {
+				u->SetUnitMain(u);
 			}
-
-			Train *run_start = u;
-			Train *run_end = u;
-			while (run_end->Next() != nullptr && run_end->Next()->IsArticulatedPart()) run_end = run_end->Next();
-
-			Train *left = run_start->Previous();
-			Train *right = run_end->Next();
-
-			uint32_t run_size = 0;
-			for (Train *p = run_start; ; p = p->Next()) {
-				run_size++;
-				if (p == run_end) break;
-			}
-
-			/* Articulated parts are allocated directly after their base, so
-			 * their VehicleIDs are contiguous with it. This also identifies the
-			 * real base when the unit was stored part-first and no saved flag is
-			 * available (old saves from intermediate builds). */
-			auto is_base_for_run = [&](const Train *cand) {
-				if (cand == nullptr || cand->IsArticulatedPart()) return false;
-				const uint32_t cid = cand->index.base();
-				for (const Train *p = run_start; ; p = p->Next()) {
-					const uint32_t pid = p->index.base();
-					if (pid <= cid || pid - cid > run_size) return false;
-					if (p == run_end) break;
-				}
-				return true;
-			};
-
-			const bool left_matches = is_base_for_run(left);
-			const bool right_matches = is_base_for_run(right);
-
-			Train *main = nullptr;
-			/* XSLFI_TRAIN_UNIT_MAIN v2 saves each unit main's position explicitly
-			 * (1 = parts follow, 2 = parts precede), which is authoritative and
-			 * orientation-independent. Falls through to the heuristics below only
-			 * for saves without the encoding. */
-			if (_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN] >= 2) {
-				if (left != nullptr && left->IsSavedUnitMain() && left->SavedUnitMainPartsFollow()) {
-					main = left;
-				} else if (right != nullptr && right->IsSavedUnitMain() && right->SavedUnitMainPartsPrecede()) {
-					main = right;
-				}
-			}
-			if (main == nullptr) {
-				/* ID contiguity is orientation-independent: a unit's parts are
-				 * allocated directly after its base at creation, no matter how the
-				 * chain was later reversed. Check it first. The saved flag alone
-				 * cannot decide: every plain vehicle also reports it (its
-				 * unit_main is null), so a run's unrelated left neighbour would
-				 * masquerade as the base of a part-first (reversed) unit. */
-				if (left_matches != right_matches) {
-					main = left_matches ? left : right;
-				} else if (left != nullptr && left->IsSavedUnitMain()) {
-					/* Saved flags disambiguate broken contiguity (pool ID reuse). */
-					main = left;
-				} else if (right != nullptr && right->IsSavedUnitMain()) {
-					main = right;
-				} else if (left != nullptr && left->IsEngine()) {
-					main = left;
-				} else if (right != nullptr && right->IsEngine()) {
-					main = right;
-				} else if (left != nullptr && !left->IsArticulatedPart() && left->HasArticulatedPart()) {
-					/* Old/base-first save: the base precedes its parts. */
-					main = left;
-				} else if (right != nullptr && !right->IsArticulatedPart()) {
-					/* Reversed unit: the base follows the parts. */
-					main = right;
-				}
-			}
-
-			if (main != nullptr) {
-				main->SetUnitMain(main);
-				for (Train *p = run_start; ; p = p->Next()) {
-					p->SetUnitMain(main);
-					if (p == run_end) break;
-				}
-			}
-			u = run_end->Next();
 		}
+		std::sort(bases.begin(), bases.end(), [](const Train *a, const Train *b) { return a->index < b->index; });
+
+		struct PartEvidence {
+			Train *part;
+			std::vector<Train *> candidates;
+			Train *allocation_main;
+		};
+		std::vector<PartEvidence> parts;
+		for (size_t i = 0; i < chain.size();) {
+			if (!chain[i]->IsArticulatedPart()) { i++; continue; }
+			const size_t start = i;
+			while (i < chain.size() && chain[i]->IsArticulatedPart()) i++;
+			Train *left = start == 0 ? nullptr : chain[start - 1];
+			Train *right = i == chain.size() ? nullptr : chain[i];
+			std::vector<Train *> candidates;
+			/* Only inward-facing adjacent bases can own this run. Both may own a
+			 * subset: [B,b,a,A] is not one unit. Part engine types need not match. */
+			if (left != nullptr && (!left->IsMultiheaded() || left->IsEngine()) &&
+					(version < 2 || left->SavedUnitMainPartsFollow())) candidates.push_back(left);
+			if (right != nullptr && (!right->IsMultiheaded() || right->IsEngine()) &&
+					(version < 2 || right->SavedUnitMainPartsPrecede())) candidates.push_back(right);
+			for (size_t j = start; j < i; j++) {
+				Train *p = chain[j];
+				/* Pool allocation is ascending, not necessarily contiguous. The last
+				 * base allocated before this part separates merged opposite runs. */
+				auto next_base = std::lower_bound(bases.begin(), bases.end(), p,
+						[](const Train *a, const Train *b) { return a->index < b->index; });
+				Train *allocation_main = next_base == bases.begin() ? nullptr : *std::prev(next_base);
+				if (std::find(candidates.begin(), candidates.end(), allocation_main) == candidates.end()) allocation_main = nullptr;
+				parts.push_back({p, candidates, allocation_main});
+			}
+		}
+
+		auto limit_to_valid_partitions = [&]() {
+			for (size_t i = 0; i < chain.size();) {
+				if (!chain[i]->IsArticulatedPart()) { i++; continue; }
+				const size_t start = i;
+				while (i < chain.size() && chain[i]->IsArticulatedPart()) i++;
+				Train *left = start == 0 ? nullptr : chain[start - 1];
+				Train *right = i == chain.size() ? nullptr : chain[i];
+				bool reached_right = false;
+				for (size_t j = start; j < i; j++) {
+					Train *p = chain[j];
+					if (!p->HasUnitMain()) continue;
+					Train *main = Train::From(p->GetUnitMain());
+					if (main == right) reached_right = true;
+					else if (main != left || reached_right) {
+						/* Reused allocation IDs must not create an L,R,L interleave.
+						 * Preserve one deterministic boundary, and warn about loss. */
+						p->SetUnitMain(reached_right ? right : nullptr);
+						_legacy_train_unit_recovery_warnings.insert(head->index);
+					}
+				}
+			}
+		};
+
+		if (version == 3) {
+			struct Interpretation {
+				std::vector<Train *> mains;
+			};
+			auto interpret = [&](bool offset) {
+				Interpretation result;
+				for (const PartEvidence &e : parts) {
+					const uint32_t saved = e.part->GetSavedUnitMainID();
+					std::vector<Train *> matches;
+					for (Train *cand : e.candidates) {
+						if (((cand->index.base() + (offset ? 1 : 0)) & 0xFFFF) == saved) matches.push_back(cand);
+					}
+					Train *main = matches.size() == 1 ? matches.front() : nullptr;
+					if (matches.size() > 1 && e.allocation_main != nullptr &&
+							std::find(matches.begin(), matches.end(), e.allocation_main) != matches.end()) {
+						main = e.allocation_main;
+						_legacy_train_unit_recovery_warnings.insert(head->index);
+					}
+					/* Zero was also the missing-main sentinel. Only allocation/topology
+					 * evidence can distinguish that from raw #0 or offset overflow. */
+					if (saved == 0 && main != e.allocation_main) main = nullptr;
+					result.mains.push_back(main);
+				}
+				return result;
+			};
+			const Interpretation chosen = interpret(encoding != SlTrainUnitMainLegacyEncoding::Raw);
+			if (ambiguous_encoding && !parts.empty()) _legacy_train_unit_recovery_warnings.insert(head->index);
+			for (size_t i = 0; i < parts.size(); i++) {
+				Train *main = chosen.mains[i];
+				if (main == nullptr) {
+					/* Historical data can be irrecoverable. Attempt only a bounded,
+					 * deterministic same-run mapping, never an arbitrary pool pointer. */
+					main = parts[i].allocation_main;
+					if (main == nullptr && !parts[i].candidates.empty()) main = parts[i].candidates.front();
+					if (main != nullptr || parts[i].part->GetSavedUnitMainID() != 0) _legacy_train_unit_recovery_warnings.insert(head->index);
+				}
+				if (main != nullptr) { main->SetUnitMain(main); parts[i].part->SetUnitMain(main); }
+			}
+			limit_to_valid_partitions();
+			continue;
+		}
+
+		for (const PartEvidence &e : parts) {
+			if (e.candidates.size() > 1) _legacy_train_unit_recovery_warnings.insert(head->index);
+			Train *main = version >= 2 && e.candidates.size() == 1 ? e.candidates.front() : e.allocation_main;
+			if (main == nullptr) {
+				if (!e.candidates.empty()) main = e.candidates.front();
+				_legacy_train_unit_recovery_warnings.insert(head->index);
+			}
+			if (main != nullptr) { main->SetUnitMain(main); e.part->SetUnitMain(main); }
+		}
+		limit_to_valid_partitions();
 	}
+	CaptureTrainUnitRecoveryWarnings();
 }
 
 /**
@@ -425,8 +581,10 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 
 		if (part_of_load) v->fill_percent_te_id = INVALID_TE_ID;
 		v->first = nullptr;
-		v->primary = nullptr;
-		v->unit_main = nullptr;
+		if (part_of_load) {
+			v->primary = nullptr;
+			v->unit_main = nullptr;
+		}
 		v->last = nullptr;
 		if (v->IsGroundVehicle()) v->GetGroundVehicleCache()->first_engine = EngineID::Invalid();
 	}
@@ -527,9 +685,9 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 			}
 		}
 
-		/* Fill the primary pointers. The flag is only saved with XSLFI_TRAIN_PRIMARY,
-		 * for older savegames it is zero and primary defaults to first. */
-		if (v->Previous() == nullptr) {
+		/* Saved primary flags are load temporaries, not live state. A NewGRF
+		 * reload must preserve the current carrier and unit membership. */
+		if (part_of_load && v->Previous() == nullptr) {
 			/* Locate the flagged primary carrier first (there is exactly one per
 			 * chain; vehicles ahead of it must not receive an intermediate
 			 * value), then assign it to every member of the chain. */
@@ -966,30 +1124,17 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 	{
 		v->consist_primary = (v->Primary() == v) ? 1 : 0;
 		v->consist_unit_main_id = 0;
-		if (v->type == VehicleType::Train) {
-			/* XSLFI_TRAIN_UNIT_MAIN: encode membership explicitly so the client
-			 * rebuilds unit structure without heuristics. v2 byte: 1 = unit main
-			 * with its articulated run following it, 2 = run preceding it.
-			 * v3 extra: every articulated part saves its main's VehicleID, which
-			 * also splits merged runs (a forward unit coupled directly behind a
-			 * reversed one share one contiguous part run). */
-			if (v->HasUnitMain() && v->unit_main == v) {
-				const Vehicle *n = v->Next();
-				if (n != nullptr && n->IsArticulatedPart() && n->GetUnitMain() == v) {
-					v->consist_unit_main = 1;
-				} else {
+			if (v->type == VehicleType::Train) {
+				/* v4 persists every explicit membership, including main->self and
+				 * dual rear->front. Zero preserves null, not an inferred singleton. */
+				if (v->HasUnitMain()) v->consist_unit_main_id = v->unit_main->index.base() + 1;
+				if (v->HasUnitMain() && v->unit_main == v) {
 					const Vehicle *p = v->Previous();
 					v->consist_unit_main = (p != nullptr && p->IsArticulatedPart() && p->GetUnitMain() == v) ? 2 : 1;
+				} else {
+					v->consist_unit_main = 0;
 				}
-			} else if (v->IsArticulatedPart()) {
-				v->consist_unit_main = 0;
-				/* Store the main's ID + 1: vehicle #0 is a valid main, 0 must
-				 * stay reserved for "no main". */
-				if (v->HasUnitMain()) v->consist_unit_main_id = v->unit_main->index.base() + 1;
 			} else {
-				v->consist_unit_main = 0;
-			}
-		} else {
 			v->consist_unit_main = (v->GetUnitMain() == v) ? 1 : 0;
 		}
 		SlObjectSaveFiltered(v, this->GetLoadDescription());
@@ -1288,8 +1433,9 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 
 		NSL("vehstatus",                      SLE_VAR(Vehicle, vehstatus,                 SLE_UINT8)),
 		NSL("consist_primary",          SLE_CONDVAR_X(Vehicle, consist_primary,           SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_PRIMARY))),
-		NSL("consist_unit_main",        SLE_CONDVAR_X(Vehicle, consist_unit_main,         SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_UNIT_MAIN))),
-		NSL("consist_unit_main_id",     SLE_CONDVAR_X(Vehicle, consist_unit_main_id,      SLE_UINT16,                 SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_UNIT_MAIN, 3, 3))),
+		NSL("consist_unit_main",        SLE_CONDVAR_X(Vehicle, consist_unit_main,         SLE_UINT8,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_UNIT_MAIN))),
+		NSL("consist_unit_main_id",     SLE_CONDVAR_X(Vehicle, consist_unit_main_id,      SLE_FILE_U16 | SLE_VAR_U32,  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_UNIT_MAIN, 3, 3))),
+		NSL("consist_unit_main_id",     SLE_CONDVAR_X(Vehicle, consist_unit_main_id,      SLE_UINT32,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_UNIT_MAIN, 4))),
 		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_FILE_U8  | SLE_VAR_U16, SL_MIN_VERSION, SLV_5)),
 		NSL("last_station_visited",       SLE_CONDVAR(Vehicle, last_station_visited,      SLE_UINT16,                 SLV_5, SL_MAX_VERSION)),

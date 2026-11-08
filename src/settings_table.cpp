@@ -242,11 +242,13 @@ static void StationSpreadChanged(int32_t new_value)
 
 static void UpdateConsists(int32_t new_value)
 {
-	for (Train *t : Train::IterateFrontOnly()) {
-		/* Update the consist of all trains so the maximum speed is set correctly. */
-		if (t->IsFrontEngine() || t->IsFreeWagon()) {
-			t->ConsistChanged(CCF_TRACK);
-			if (t->lookahead != nullptr) t->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
+	for (Train *head : Train::IterateFrontOnly()) {
+		if (head != head->First()) continue;
+		Train *primary = head->Primary();
+		/* Compute physical aggregates once; advisory state belongs to the primary. */
+		if (primary->IsPrimaryVehicle() || primary->IsFreeWagon()) {
+			head->ConsistChanged(CCF_TRACK);
+			if (primary->lookahead != nullptr) primary->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
 		}
 	}
 
@@ -297,7 +299,9 @@ static void UpdateAllServiceInterval(int32_t new_value)
 
 	if (update_vehicles) {
 		const Company *c = Company::Get(_current_company);
-		for (Vehicle *v : Vehicle::IterateFrontOnly()) {
+		for (Vehicle *head : Vehicle::IterateFrontOnly()) {
+			if (head->type == VehicleType::Train && head != head->First()) continue;
+			Vehicle *v = head->Primary();
 			if (v->owner == _current_company && v->IsPrimaryVehicle() && !v->ServiceIntervalIsCustom()) {
 				v->SetServiceInterval(CompanyServiceInterval(c, v->type));
 				v->SetServiceIntervalIsPercent(new_value != 0);
@@ -325,7 +329,9 @@ static bool CanUpdateServiceInterval(VehicleType type, int32_t &new_value)
 static void UpdateServiceInterval(VehicleType type, int32_t new_value)
 {
 	if (_game_mode != GameMode::Menu && Company::IsValidID(_current_company)) {
-		for (Vehicle *v : Vehicle::IterateTypeFrontOnly(type)) {
+		for (Vehicle *head : Vehicle::IterateTypeFrontOnly(type)) {
+			if (type == VehicleType::Train && head != head->First()) continue;
+			Vehicle *v = head->Primary();
 			if (v->owner == _current_company && v->IsPrimaryVehicle() && !v->ServiceIntervalIsCustom()) {
 				v->SetServiceInterval(new_value);
 			}
@@ -494,14 +500,13 @@ static std::pair<int32_t, uint32_t> GetServiceIntervalRange(const IntSettingDesc
 
 static void TrainAccelerationModelChanged(int32_t new_value)
 {
-	for (Train *t : Train::IterateFrontOnly()) {
-		if (t->Primary()->IsFrontEngine()) {
-			t->tcache.cached_max_curve_speed = t->GetCurveSpeedLimit();
-			t->UpdateAcceleration();
-			/* The recomputation only updates the chain head; re-broadcast the
-			 * consist-level caches or the other vehicles keep stale copies. */
-			t->BroadcastConsistCaches();
-			Train *primary = t->Primary();
+	for (Train *head : Train::IterateFrontOnly()) {
+		if (head != head->First()) continue;
+		Train *primary = head->Primary();
+		if (primary->IsPrimaryVehicle()) {
+			head->tcache.cached_max_curve_speed = head->GetCurveSpeedLimit();
+			head->UpdateAcceleration();
+			head->BroadcastConsistCaches();
 			if (primary->lookahead != nullptr) primary->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
 		}
 	}
@@ -554,7 +559,7 @@ static void TrainBrakingModelChanged(int32_t new_value)
 		if (!t->vehstatus.Test(VehState::Crashed)) {
 			t->crash_anim_pos = 0;
 		}
-		if (t == t->First() && t->Primary()->IsFrontEngine()) {
+		if (t == t->First() && t->Primary()->IsPrimaryVehicle()) {
 			t->UpdateAcceleration();
 			t->BroadcastConsistCaches();
 		}
@@ -577,14 +582,18 @@ static void TrainBrakingModelChanged(int32_t new_value)
 		SCOPE_INFO_FMT([&v_cur], "TrainBrakingModelChanged: {}", VehicleInfoDumper(v_cur));
 		extern bool _long_reserve_disabled;
 		_long_reserve_disabled = true;
-		for (Train *v : Train::IterateFrontOnly()) {
+		for (Train *head : Train::IterateFrontOnly()) {
+			if (head != head->First()) continue;
+			Train *v = head->Primary();
 			v_cur = v;
 			Train *moving_front = v->GetMovingFront();
 			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried() || moving_front->track == TRACK_BIT_DEPOT) continue;
 			TryPathReserve(v, true, HasStationTileRail(moving_front->tile));
 		}
 		_long_reserve_disabled = false;
-		for (Train *v : Train::IterateFrontOnly()) {
+		for (Train *head : Train::IterateFrontOnly()) {
+			if (head != head->First()) continue;
+			Train *v = head->Primary();
 			v_cur = v;
 			Train *moving_front = v->GetMovingFront();
 			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried() || moving_front->track == TRACK_BIT_DEPOT) continue;
@@ -594,7 +603,9 @@ static void TrainBrakingModelChanged(int32_t new_value)
 	} else if (new_value == TBM_ORIGINAL && (_game_mode == GameMode::Normal || _game_mode == GameMode::Editor)) {
 		Train *v_cur = nullptr;
 		SCOPE_INFO_FMT([&v_cur], "TrainBrakingModelChanged: {}", VehicleInfoDumper(v_cur));
-		for (Train *v : Train::IterateFrontOnly()) {
+		for (Train *head : Train::IterateFrontOnly()) {
+			if (head != head->First()) continue;
+			Train *v = head->Primary();
 			v_cur = v;
 			Train *moving_front = v->GetMovingFront();
 			if (!v->IsPrimaryVehicle() || v->vehstatus.Test(VehState::Crashed) || v->IsVirtualOrCarried() || moving_front->track == TRACK_BIT_DEPOT) {
@@ -626,10 +637,13 @@ static void TrainBrakingModelChanged(int32_t new_value)
  */
 static void TrainSlopeSteepnessChanged(int32_t new_value)
 {
-	for (Train *t : Train::IterateFrontOnly()) {
-		if (t->IsFrontEngine()) {
-			t->CargoChanged();
-			if (t->lookahead != nullptr) t->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
+	for (Train *head : Train::IterateFrontOnly()) {
+		if (head != head->First()) continue;
+		Train *primary = head->Primary();
+		if (primary->IsPrimaryVehicle() || primary->IsFreeWagon()) {
+			head->CargoChanged();
+			head->BroadcastConsistCaches();
+			if (primary->lookahead != nullptr) primary->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
 		}
 	}
 }

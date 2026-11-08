@@ -267,7 +267,7 @@ private:
 	uint8_t consist_primary = 0;                 ///< SAVE(XSLFI_TRAIN_PRIMARY): temporary flag used to persist which vehicle of the chain is the primary
 	Vehicle *unit_main = nullptr;                ///< NOSAVE: pointer to the main part (base/front engine) of this multi-part unit; nullptr means same as this
 	uint8_t consist_unit_main = 0;               ///< SAVE(XSLFI_TRAIN_UNIT_MAIN): temporary flag used to persist which vehicle is the unit main
-	uint16_t consist_unit_main_id = 0;           ///< SAVE(XSLFI_TRAIN_UNIT_MAIN v3): for articulated parts, their unit main's VehicleID + 1 (0 = none)
+	uint32_t consist_unit_main_id = 0;           ///< SAVE(XSLFI_TRAIN_UNIT_MAIN): v3 truncated legacy ID; v4 full main VehicleID + 1 (0 = null)
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order
@@ -769,9 +769,9 @@ public:
 	/** Saved main encoding (XSLFI_TRAIN_UNIT_MAIN v2): 1 = main whose articulated parts follow it, 2 = parts precede it. */
 	inline bool SavedUnitMainPartsFollow() const { return this->consist_unit_main == 1; }
 	inline bool SavedUnitMainPartsPrecede() const { return this->consist_unit_main == 2; }
-	/** Saved main VehicleID of an articulated part (XSLFI_TRAIN_UNIT_MAIN v3). */
-	inline uint16_t GetSavedUnitMainID() const { return this->consist_unit_main_id; }
-	inline void SetSavedUnitMainID(uint16_t id) { this->consist_unit_main_id = id; }
+	/** Saved membership: v3 legacy 16-bit residue; v4 full main VehicleID + 1, zero null. */
+	inline uint32_t GetSavedUnitMainID() const { return this->consist_unit_main_id; }
+	inline void SetSavedUnitMainID(uint32_t id) { this->consist_unit_main_id = id; }
 	/** @return The main part (base/front engine) of this multi-part unit, or this vehicle for a singleton. */
 	inline Vehicle *GetUnitMain() const { return this->unit_main != nullptr ? this->unit_main : const_cast<Vehicle *>(this); }
 

@@ -14,6 +14,7 @@
 #include "../core/enum_type.hpp"
 
 #include <array>
+#include <string>
 #include <vector>
 
 enum SaveLoadVersion : uint16_t;
@@ -242,6 +243,11 @@ enum SlXvFeatureIndex {
 
 extern std::array<uint16_t, XSLFI_SIZE> _sl_xv_feature_versions;
 extern std::array<uint16_t, XSLFI_SIZE> _sl_xv_feature_static_versions;
+extern std::string _sl_xv_version_label;
+
+/** Historical v3 builds used incompatible raw/offset 16-bit main IDs. */
+enum class SlTrainUnitMainLegacyEncoding : uint8_t { Unknown, Raw, Offset };
+SlTrainUnitMainLegacyEncoding SlGetTrainUnitMainLegacyEncoding();
 
 /**
  * Operator to use when combining traditional savegame number test with an extended feature version test

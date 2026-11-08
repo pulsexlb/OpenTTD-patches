@@ -1044,130 +1044,288 @@ CommandCost CmdVirtualTrainFromTemplate(DoCommandFlags flags, TemplateID templat
 	return CommandCost();
 }
 
+/** Purchased identity, including both halves of a dual-headed purchase. */
+static const Train *SourceUnitMain(const Train *part)
+{
+	if (part->IsRearDualheaded() && part->other_multiheaded_part != nullptr) return part->other_multiheaded_part;
+	return Train::From(part->GetUnitMain());
+}
+
+static const TemplateVehicle *SourceUnitMain(const TemplateVehicle *part) { return part->GetUnitMain(); }
+static bool SourcePartReversed(const Train *part) { return part->flags.Test(VehicleRailFlag::Flipped); }
+static bool SourcePartReversed(const TemplateVehicle *part) { return HasBit(part->ctrl_flags, TVCF_REVERSED); }
+static bool CopyBuildReversedAllowed(const Train *source, Train *main)
+{
+	return !TestVehicleBuildProbability(source, BuildProbabilityType::Reversed).has_value() &&
+		!TestVehicleBuildProbability(main, BuildProbabilityType::Reversed).has_value();
+}
+static bool CopyBuildReversedAllowed(const TemplateVehicle *, Train *) { return true; }
+
 template <typename T>
-void UpdateNewVirtualTrainFromSource(Train *v, const T *src)
+static std::vector<const T *> SourcePurchasedUnits(const T *head)
 {
-	struct helper {
-		static bool IsTrainPartReversed(const Train *src) { return src->flags.Test(VehicleRailFlag::Flipped); }
-		static bool IsTrainPartReversed(const TemplateVehicle *src) { return HasBit(src->ctrl_flags, TVCF_REVERSED); }
-		static const Train *GetTrainMultiheadOtherPart(const Train *src) { return src->other_multiheaded_part; }
-		static const TemplateVehicle *GetTrainMultiheadOtherPart(const TemplateVehicle *src) { return src; }
-	};
-
-	v->flags.Set(VehicleRailFlag::Flipped, helper::IsTrainPartReversed(src));
-
-	if (v->IsMultiheaded()) {
-		const T *other = helper::GetTrainMultiheadOtherPart(src);
-		/* For template vehicles, just use the front part, fix any discrepancy later */
-		v->other_multiheaded_part->cargo_type = other->cargo_type;
-		v->other_multiheaded_part->cargo_subtype = other->cargo_subtype;
+	std::vector<const T *> units;
+	if (head == nullptr || head->First() == nullptr) return units;
+	const T *root = head->First();
+	std::vector<const T *> members;
+	for (const T *part = root; part != nullptr; part = part->Next()) members.push_back(part);
+	for (const T *part : members) {
+		const T *main = SourceUnitMain(part);
+		/* Reject unresolved/orphan parts and references outside this physical
+		 * chain before buying anything, including in release builds. */
+		if (main == nullptr || std::find(members.begin(), members.end(), main) == members.end() ||
+				main->First() != root || main->IsArticulatedPart() || main->IsRearDualheaded() || SourceUnitMain(main) != main) return {};
+		if (std::find(units.begin(), units.end(), main) == units.end()) units.push_back(main);
 	}
+	return units;
+}
 
-	while (true) {
-		v->cargo_type = src->cargo_type;
-		v->cargo_subtype = src->cargo_subtype;
+/** Callback ordinals are base first, followed by articulated members. Physical
+ * order can be the reverse; the rear dual half has its own role, not an ordinal. */
+template <typename T>
+static std::vector<const T *> CanonicalSourceMembers(const T *main)
+{
+	std::vector<const T *> members;
+	for (const T *part = main->First(); part != nullptr; part = part->Next()) {
+		if (SourceUnitMain(part) == main && !part->IsRearDualheaded()) members.push_back(part);
+	}
+	if (!members.empty() && members.front() != main) std::reverse(members.begin(), members.end());
+	return members;
+}
 
-		if (v->HasArticulatedPart()) {
-			v = v->Next();
-		} else {
+template <typename T>
+struct ClonedTrainUnit {
+	const T *source;
+	Train *main;
+	std::vector<Train *> members; // canonical ordinal order, rear dual half excluded
+};
+
+template <typename T>
+static std::optional<ClonedTrainUnit<T>> MapClonedTrainUnit(const T *source, Train *main, std::vector<std::pair<const T *, Train *>> &mapping, bool virtual_train)
+{
+	if (source == nullptr || main == nullptr) return std::nullopt;
+	main = Train::From(main->GetUnitMain());
+	if (main == nullptr || main->IsArticulatedPart() || main->IsRearDualheaded()) return std::nullopt;
+	ClonedTrainUnit<T> unit{source, main, {}};
+	const auto old_members = CanonicalSourceMembers(source);
+	if (old_members.empty() || old_members.front() != source) return std::nullopt;
+	for (const Train *part : CanonicalSourceMembers(main)) unit.members.push_back(const_cast<Train *>(part));
+	if (unit.members.empty() || unit.members.front() != main) return std::nullopt;
+	for (size_t ordinal = 0; ordinal < unit.members.size(); ordinal++) {
+		/* Extra callback parts inherit from this unit's final ordinal, never
+		 * consume the first member of the following purchase. */
+		const T *old = old_members[std::min(ordinal, old_members.size() - 1)];
+		Train *part = unit.members[ordinal];
+		mapping.emplace_back(old, part);
+		if (virtual_train) {
+			part->cargo_type = old->cargo_type;
+			part->cargo_subtype = old->cargo_subtype;
+			part->flags.Set(VehicleRailFlag::Flipped, SourcePartReversed(old));
+		} else if (CopyBuildReversedAllowed(source, main)) {
+			part->flags.Set(VehicleRailFlag::Flipped, SourcePartReversed(old));
+		}
+	}
+	if (main->IsMultiheaded() && main->other_multiheaded_part != nullptr) {
+		for (const T *old = source->First(); old != nullptr; old = old->Next()) {
+			if (SourceUnitMain(old) != source || !old->IsRearDualheaded()) continue;
+			Train *rear = main->other_multiheaded_part;
+			mapping.emplace_back(old, rear);
+			if (virtual_train) {
+				rear->cargo_type = old->cargo_type;
+				rear->cargo_subtype = old->cargo_subtype;
+				rear->flags.Set(VehicleRailFlag::Flipped, SourcePartReversed(old));
+			} else if (CopyBuildReversedAllowed(old, rear)) {
+				rear->flags.Set(VehicleRailFlag::Flipped, SourcePartReversed(old));
+			}
 			break;
 		}
+	}
+	return unit;
+}
 
-		if (src->HasArticulatedPart()) {
-			src = src->Next();
-		} else {
-			break;
+template <typename T>
+static std::vector<Train *> ClonedTrainLayout(const T *source, const std::vector<ClonedTrainUnit<T>> &units)
+{
+	std::vector<Train *> layout;
+	std::vector<const T *> emitted;
+	for (const T *part = source->First(); part != nullptr; part = part->Next()) {
+		const T *main = SourceUnitMain(part);
+		auto unit = std::find_if(units.begin(), units.end(), [main](const auto &u) { return u.source == main; });
+		if (unit == units.end()) return {};
+		if (part->IsRearDualheaded()) {
+			if (unit->main->other_multiheaded_part != nullptr) layout.push_back(unit->main->other_multiheaded_part);
+		} else if (std::find(emitted.begin(), emitted.end(), main) == emitted.end()) {
+			emitted.push_back(main);
+			if (part == main) {
+				layout.insert(layout.end(), unit->members.begin(), unit->members.end());
+			} else {
+				layout.insert(layout.end(), unit->members.rbegin(), unit->members.rend());
+			}
 		}
 	}
+	return layout;
+}
 
-	v->First()->ConsistChanged(CCF_ARRANGE);
+/** Reuse the same physical-token layout algorithm for active replacement. */
+CommandCost BuildTemplateTrainLayout(const TemplateVehicle *tv, const TemplateTrainMapping &bindings, std::vector<Train *> &members)
+{
+	members.clear();
+	if (tv == nullptr) return CMD_ERROR;
+	auto purchased = SourcePurchasedUnits(tv);
+	if (purchased.empty() || bindings.size() != purchased.size()) return CMD_ERROR;
+	std::vector<ClonedTrainUnit<TemplateVehicle>> units;
+	std::vector<Train *> seen;
+	for (const TemplateVehicle *source : purchased) {
+		auto binding = std::find_if(bindings.begin(), bindings.end(), [source](const auto &b) { return b.first == source; });
+		if (binding == bindings.end() || binding->second == nullptr) return CMD_ERROR;
+		Train *main = binding->second;
+		if (main->IsArticulatedPart() || main->IsRearDualheaded() || main->GetUnitMain() != main || main->engine_type != source->engine_type || std::find(seen.begin(), seen.end(), main) != seen.end()) return CMD_ERROR;
+		seen.push_back(main);
+		ClonedTrainUnit<TemplateVehicle> unit{source, main, {}};
+		for (const Train *part : CanonicalSourceMembers(main)) unit.members.push_back(const_cast<Train *>(part));
+		if (unit.members.empty()) return CMD_ERROR;
+		units.push_back(std::move(unit));
+	}
+	members = ClonedTrainLayout(tv, units);
+	if (members.empty()) return CMD_ERROR;
+	std::vector<Train *> unique;
+	for (Train *part : members) {
+		if (part == nullptr || std::find(unique.begin(), unique.end(), part) != unique.end()) { members.clear(); return CMD_ERROR; }
+		unique.push_back(part);
+	}
+	for (const auto &unit : units) {
+		if (unit.main->IsMultiheaded() && (unit.main->other_multiheaded_part == nullptr || std::find(unique.begin(), unique.end(), unit.main->other_multiheaded_part) == unique.end())) { members.clear(); return CMD_ERROR; }
+	}
+	return CommandCost();
+}
+
+/** Cleanup by live physical roots: native moves may have joined or split units. */
+static void DeleteNewTrainUnits(const std::vector<VehicleID> &ids, DoCommandFlags flags, bool virtual_train)
+{
+	std::vector<VehicleID> roots;
+	for (VehicleID id : ids) {
+		Train *unit = Train::GetIfValid(id);
+		if (unit == nullptr) continue;
+		VehicleID root = unit->First()->index;
+		if (std::find(roots.begin(), roots.end(), root) == roots.end()) roots.push_back(root);
+	}
+	for (VehicleID root : roots) {
+		Train *head = Train::GetIfValid(root);
+		if (head == nullptr) continue;
+		std::vector<Train *> members;
+		bool only_new = true;
+		for (Train *part = head->First(); part != nullptr; part = part->Next()) {
+			members.push_back(part);
+			only_new &= std::find(ids.begin(), ids.end(), part->index) != ids.end();
+		}
+		/* Never let failure cleanup sell an existing depot vehicle, even if a
+		 * preceding native operation unexpectedly attached it to a new unit. */
+		if (!only_new || members.empty()) continue;
+		if (virtual_train) {
+			CmdDeleteVirtualTrain(flags, root);
+			continue;
+		}
+		if (head->IsRearDualheaded() || head->GetUnitChainFront()->IsRearDualheaded()) {
+			Train *primary = head->Primary();
+			auto front = std::find_if(members.begin(), members.end(), [](Train *part) {
+				return !part->IsRearDualheaded() && !part->IsArticulatedPart() && part->GetUnitMain() == part;
+			});
+			if (front == members.end()) continue;
+			/* The entire new chain is being discarded. Rotate its physical
+			 * members without attachment callbacks or native world movement;
+			 * CmdSellRailWagon rejects a rear dual half as its sale anchor. */
+			std::rotate(members.begin(), front, members.end());
+			for (size_t i = 0; i < members.size(); i++) {
+				members[i]->SetNextRaw(i + 1 < members.size() ? members[i + 1] : nullptr);
+				members[i]->SetPreviousRaw(i > 0 ? members[i - 1] : nullptr);
+				members[i]->SetFirst(members.front());
+				members[i]->SetLast(members.back());
+			}
+			head = members.front();
+			BindTrainPrimary(head, primary);
+		}
+		DoCommandFlags cleanup_flags = flags;
+		cleanup_flags.Set(DoCommandFlag::AutoReplace);
+		Command<Commands::SellVehicle>::Do(cleanup_flags, head->tile, head->index, SellVehicleFlags::SellChain, ClientID::Invalid);
+	}
+}
+
+template <typename T>
+static Train *BuildVirtualTrainFromSource(const T *source, const T *source_primary, StringID &err, ClientID user,
+		std::vector<std::pair<const T *, Train *>> *output_mapping = nullptr)
+{
+	auto purchased = SourcePurchasedUnits(source);
+	if (purchased.empty()) { err = STR_ERROR_CAN_T_BUY_TRAIN; return nullptr; }
+	std::vector<ClonedTrainUnit<T>> units;
+	std::vector<std::pair<const T *, Train *>> mapping;
+	std::vector<VehicleID> built;
+	Train *tail = nullptr;
+	Train *primary = nullptr;
+	for (const T *src : purchased) {
+		Train *main = BuildVirtualRailVehicle(src->engine_type, err, user, true);
+		if (main == nullptr) { DeleteNewTrainUnits(built, DoCommandFlag::Execute, true); return nullptr; }
+		for (Train *part = main->First(); part != nullptr; part = part->Next()) {
+			if (SourceUnitMain(part) == main) built.push_back(part->index);
+		}
+		auto unit = MapClonedTrainUnit(src, main, mapping, true);
+		if (!unit.has_value()) { DeleteNewTrainUnits(built, DoCommandFlag::Execute, true); err = STR_ERROR_CAN_T_BUY_TRAIN; return nullptr; }
+		units.push_back(std::move(*unit));
+		if (source_primary != nullptr && src == SourceUnitMain(source_primary)) {
+			for (const auto &[old, member] : mapping) if (old == source_primary && primary == nullptr) primary = member;
+			if (primary == nullptr) primary = main;
+		}
+		if (tail != nullptr) {
+			CommandCost result = CmdMoveRailVehicle({DoCommandFlag::Execute, DoCommandFlag::AutoReplace}, main->index, tail->index, MoveRailVehicleFlags::Virtual | MoveRailVehicleFlags::MoveChain);
+			if (result.Failed()) {
+				err = result.GetErrorMessage();
+				DeleteNewTrainUnits(built, DoCommandFlag::Execute, true);
+				return nullptr;
+			}
+		}
+		tail = main;
+	}
+	if (units.empty()) return nullptr;
+	if (primary == nullptr) primary = units.front().main;
+	auto layout = ClonedTrainLayout(source, units);
+	CommandCost result = RebuildTrainDepotLayout(layout, primary);
+	if (result.Failed()) {
+		err = result.GetErrorMessage();
+		DeleteNewTrainUnits(built, DoCommandFlag::Execute, true);
+		return nullptr;
+	}
+	layout.front()->ConsistChanged(CCF_ARRANGE);
+	if (output_mapping != nullptr) *output_mapping = std::move(mapping);
 	InvalidateVehicleTickCaches();
+	return layout.front();
 }
 
-Train *VirtualTrainFromTemplateVehicle(const TemplateVehicle *tv, StringID &err, ClientID user)
+Train *VirtualTrainFromTemplateVehicle(const TemplateVehicle *tv, StringID &err, ClientID user, TemplateTrainMapping *mapping)
 {
-	const TemplateVehicle *tv_head = tv;
-
+	if (tv == nullptr) return nullptr;
+	tv = tv->First();
 	assert(tv->owner == _current_company);
-
-	Train *head = BuildVirtualRailVehicle(tv->engine_type, err, user, true);
-	if (!head) return nullptr;
-
-	UpdateNewVirtualTrainFromSource(head, tv);
-
-	Train *tail = head;
-	tv = tv->GetNextUnit();
-	while (tv != nullptr) {
-		Train *tmp = BuildVirtualRailVehicle(tv->engine_type, err, user, true);
-		if (tmp == nullptr) {
-			CmdDeleteVirtualTrain(DoCommandFlag::Execute, head->index);
-			return nullptr;
-		}
-
-		UpdateNewVirtualTrainFromSource(tmp, tv);
-
-		CommandCost move_result = CmdMoveRailVehicle({DoCommandFlag::Execute, DoCommandFlag::AutoReplace}, tmp->index, tail->index, MoveRailVehicleFlags::Virtual);
-		if (move_result.Failed()) {
-			CmdDeleteVirtualTrain(DoCommandFlag::Execute, tmp->index);
-			CmdDeleteVirtualTrain(DoCommandFlag::Execute, head->index);
-			return nullptr;
-		}
-		tail = tmp;
-
-		tv = tv->GetNextUnit();
-	}
-
-	Train *tmp = nullptr;
-	for (tv = tv_head, tmp = head; tv != nullptr && tmp != nullptr; tv = tv->Next(), tmp = tmp->Next()) {
-		tmp->cargo_type = tv->cargo_type;
-		tmp->cargo_subtype = tv->cargo_subtype;
-	}
-
-	return head;
+	return BuildVirtualTrainFromSource(tv, tv->Primary(), err, user, mapping);
 }
 
-/**
- * Create a virtual train from a regular train.
- * @param flags type of operation
- * @param vehicle_id the train index
- * @param client user
- * @return the cost of this operation or an error
- */
+/** Create a virtual copy of the entire physical train, retaining its primary. */
 CommandCost CmdVirtualTrainFromTrain(DoCommandFlags flags, VehicleID vehicle_id, ClientID client)
 {
 	Train *train = Train::GetIfValid(vehicle_id);
 	if (train == nullptr) return CMD_ERROR;
-
+	CommandCost ret = CheckOwnership(train->owner);
+	if (ret.Failed()) return ret;
+	for (const Train *part = train->First(); part != nullptr; part = part->Next()) {
+		ret = CheckOwnership(part->owner);
+		if (ret.Failed()) return ret;
+	}
 	if (flags.Test(DoCommandFlag::Execute)) {
 		StringID err = INVALID_STRING_ID;
-
-		Train *head = BuildVirtualRailVehicle(train->engine_type, err, client, true);
+		Train *head = BuildVirtualTrainFromSource(train->First(), train->Primary(), err, client);
 		if (head == nullptr) return CommandCost(err);
-
-		UpdateNewVirtualTrainFromSource(head, train);
-
-		Train *tail = head;
-		train = train->GetNextUnit();
-		while (train != nullptr) {
-			Train *tmp = BuildVirtualRailVehicle(train->engine_type, err, client, true);
-			if (tmp == nullptr) {
-				CmdDeleteVirtualTrain(flags, head->index);
-				return CommandCost(err);
-			}
-
-			UpdateNewVirtualTrainFromSource(tmp, train);
-
-			CmdMoveRailVehicle(DoCommandFlag::Execute, tmp->index, tail->index, MoveRailVehicleFlags::Virtual);
-			tail = tmp;
-
-			train = train->GetNextUnit();
-		}
-
 		CommandCost cost;
 		cost.SetResultData(head->index);
 		return cost;
 	}
-
 	return CommandCost();
 }
 
@@ -1286,14 +1444,18 @@ CommandCost CmdTemplateVehicleFromTrain(DoCommandFlags flags, VehicleID veh_id)
 	Train *clicked = Train::GetIfValid(veh_id);
 	if (clicked == nullptr) return CMD_ERROR;
 
-	Train *init_clicked = clicked;
+	clicked = clicked->First();
+	CommandCost ownership = CheckOwnership(clicked->owner);
+	if (ownership.Failed()) return ownership;
 
 	uint len = CountVehiclesInChain(clicked);
 	if (!TemplateVehicle::CanAllocateItem(len)) {
 		return CMD_ERROR;
 	}
 
-	for (Train *v = clicked; v != nullptr; v = v->GetNextUnit()) {
+	auto purchased = SourcePurchasedUnits(clicked);
+	if (purchased.empty()) return CMD_ERROR;
+	for (const Train *v : purchased) {
 		const Engine *e = Engine::GetIfValid(v->engine_type);
 		if (e == nullptr || e->type != VehicleType::Train) {
 			return CommandCost(STR_ERROR_RAIL_VEHICLE_NOT_AVAILABLE + to_underlying(VehicleType::Train));
@@ -1301,16 +1463,7 @@ CommandCost CmdTemplateVehicleFromTrain(DoCommandFlags flags, VehicleID veh_id)
 	}
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		TemplateVehicle *tmp = nullptr;
-		TemplateVehicle *prev = nullptr;
-		for (; clicked != nullptr; clicked = clicked->Next()) {
-			tmp = TemplateVehicle::Create(clicked->engine_type);
-			SetupTemplateVehicleFromVirtual(tmp, prev, clicked);
-			tmp->owner = _current_company;
-			prev = tmp;
-		}
-
-		tmp->First()->SetRealLength(CeilDiv(init_clicked->gcache.cached_total_length * 10, TILE_SIZE));
+		TemplateVehicleFromVirtualTrain(clicked);
 
 		InvalidateWindowClassesData(WindowClass::TemplateReplacementGuiMain);
 	}
@@ -1399,8 +1552,142 @@ CommandCost CmdDeleteTemplateReplacement(DoCommandFlags flags, GroupID group_id)
  * @param share_orders shared orders, else copied orders
  * @return the cost of this operation or an error
  */
+/** Clone purchases once, then map their callback members into source physical
+ * order. Source identity resources are only ever read, never transferred. */
+static CommandCost CloneTrain(DoCommandFlags flags, TileIndex tile, Train *clicked, bool share_orders)
+{
+	Train *source = clicked->First();
+	Train *source_primary = source->Primary();
+	if (source_primary == nullptr || !source_primary->IsPrimaryVehicle()) return CMD_ERROR;
+	CommandCost ret = CheckOwnership(clicked->owner);
+	if (ret.Failed()) return ret;
+	for (const Train *part = source; part != nullptr; part = part->Next()) {
+		ret = CheckOwnership(part->owner);
+		if (ret.Failed()) return ret;
+		if (part->IsRearDualheaded() && (part->other_multiheaded_part == nullptr || part->other_multiheaded_part->First() != source)) return CMD_ERROR;
+	}
+	if (source_primary->vehstatus.Test(VehState::Crashed) && source_primary->crash_anim_pos >= 4400) return CommandCost(STR_ERROR_VEHICLE_IS_DESTROYED);
+	if (GetFreeUnitNumber(VehicleType::Train, source_primary->owner) == UINT16_MAX) return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
+	if (!flags.Test(DoCommandFlag::Execute) && !Vehicle::CanAllocateItem(CountVehiclesInChain(source))) return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
+
+	auto purchased = SourcePurchasedUnits(source);
+	if (purchased.empty()) return CMD_ERROR;
+	CommandCost total_cost(ExpensesType::NewVehicles);
+	std::vector<ClonedTrainUnit<Train>> units;
+	std::vector<std::pair<const Train *, Train *>> mapping;
+	std::vector<VehicleID> built;
+	Train *tail = nullptr;
+	Train *mapped_primary = nullptr;
+	for (const Train *src : purchased) {
+		DoCommandFlags build_flags = flags;
+		/* Clone construction must not absorb existing free wagons. The clone's
+		 * one number is allocated locally after assembling its final identity. */
+		build_flags.Set(DoCommandFlag::AutoReplace);
+		CommandCost cost = Command<Commands::BuildVehicle>::Do(build_flags, tile, src->engine_type, false, INVALID_CARGO, ClientID::Invalid);
+		if (cost.Failed()) { DeleteNewTrainUnits(built, flags, false); return cost; }
+		total_cost.AddCost(cost.GetCost());
+		if (!flags.Test(DoCommandFlag::Execute)) {
+			for (const Train *part = source; part != nullptr; part = part->Next()) {
+				if (SourceUnitMain(part) != src) continue;
+				const Engine *e = part->GetEngine();
+				CargoType initial_cargo = e->CanCarryCargo() ? e->GetDefaultCargoType() : INVALID_CARGO;
+				if (part->cargo_type != initial_cargo && initial_cargo != INVALID_CARGO) {
+					bool dummy;
+					total_cost.AddCost(GetRefitCost(nullptr, part->engine_type, part->cargo_type, part->cargo_subtype, &dummy));
+				}
+			}
+			continue;
+		}
+		auto id = cost.GetResultData<VehicleID>();
+		if (!id.has_value()) { DeleteNewTrainUnits(built, flags, false); return CMD_ERROR; }
+		Train *main = Train::Get(*id);
+		for (Train *part = main->First(); part != nullptr; part = part->Next()) {
+			if (SourceUnitMain(part) == main) built.push_back(part->index);
+		}
+		auto unit = MapClonedTrainUnit(src, main, mapping, false);
+		if (!unit.has_value()) { DeleteNewTrainUnits(built, flags, false); return CMD_ERROR; }
+		units.push_back(std::move(*unit));
+		if (std::any_of(mapping.begin(), mapping.end(), [source_primary](const auto &m) { return m.first == source_primary; })) {
+			/* A controller may be hosted on a physical part. Preserve that exact
+			 * role when available; if callbacks removed it, use its new base. */
+			for (const auto &[old, member] : mapping) if (old == source_primary && mapped_primary == nullptr) mapped_primary = member;
+		} else if (src == SourceUnitMain(source_primary)) {
+			mapped_primary = main;
+		}
+		if (tail != nullptr) {
+			/* Retain native depot, ownership, attachment and length checks before
+			 * asking the transactional layout helper to restore physical order. */
+			CommandCost move = Command<Commands::MoveRailVehicle>::Do(flags, main->index, tail->index, MoveRailVehicleFlags::MoveChain);
+			if (move.Failed()) { DeleteNewTrainUnits(built, flags, false); return move; }
+		}
+		tail = main;
+	}
+	if (!flags.Test(DoCommandFlag::Execute)) return total_cost;
+	if (mapped_primary == nullptr) { DeleteNewTrainUnits(built, flags, false); return CMD_ERROR; }
+
+	auto layout = ClonedTrainLayout(source, units);
+	Train *temporary_primary = tail->First()->Primary();
+	if (temporary_primary->IsPrimaryVehicle()) GroupStatistics::CountVehicle(temporary_primary, -1);
+	ret = RebuildTrainDepotLayout(layout, mapped_primary);
+	if (ret.Failed()) {
+		if (temporary_primary->IsPrimaryVehicle()) GroupStatistics::CountVehicle(temporary_primary, 1);
+		DeleteNewTrainUnits(built, flags, false);
+		return ret;
+	}
+	GroupStatistics::CountVehicle(mapped_primary, 1);
+	/* Every allocated number here belongs to a newly constructed clone. Do
+	 * not copy the source number or invoke destructive source identity moves. */
+	Company *company = Company::Get(mapped_primary->owner);
+	for (Train *part : layout) {
+		if (part == mapped_primary || part->unitnumber == 0) continue;
+		company->freeunits[VehicleType::Train].ReleaseID(part->unitnumber);
+		part->unitnumber = 0;
+	}
+	if (mapped_primary->unitnumber == 0) {
+		/* GetFreeUnitNumber checks the count before this clone is registered. */
+		GroupStatistics::CountVehicle(mapped_primary, -1);
+		UnitID number = GetFreeUnitNumber(VehicleType::Train, mapped_primary->owner);
+		GroupStatistics::CountVehicle(mapped_primary, 1);
+		if (number == UINT16_MAX) { DeleteNewTrainUnits(built, flags, false); return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME); }
+		mapped_primary->unitnumber = company->freeunits[VehicleType::Train].UseID(number);
+	}
+	mapped_primary->service_interval = source_primary->service_interval;
+	mapped_primary->SetServiceIntervalIsCustom(source_primary->ServiceIntervalIsCustom());
+	mapped_primary->SetServiceIntervalIsPercent(source_primary->ServiceIntervalIsPercent());
+
+	for (const auto &[old, part] : mapping) {
+		uint8_t subtype = GetBestFittingSubType(old, part, old->cargo_type);
+		if (part->cargo_type == old->cargo_type && part->cargo_subtype == subtype) continue;
+		CommandCost cost = Command<Commands::RefitVehicle>::Do(flags, part->index, old->cargo_type, subtype, false, true, 0);
+		if (cost.Succeeded()) total_cost.AddCost(cost.GetCost());
+	}
+	Train *head = layout.front();
+	head->ConsistChanged(CCF_ARRANGE);
+	if (!head->CanConsistChange(CCF_ARRANGE)) {
+		DeleteNewTrainUnits(built, flags, false);
+		return CMD_ERROR;
+	}
+	if (head->gcache.cached_total_length > _settings_game.vehicle.max_train_length * TILE_SIZE) {
+		DeleteNewTrainUnits(built, flags, false);
+		return CommandCost(STR_ERROR_TRAIN_TOO_LONG);
+	}
+	ret = Command<Commands::CloneOrder>::Do(flags, share_orders ? CO_SHARE : CO_COPY, mapped_primary->index, source_primary->index);
+	if (ret.Failed()) { DeleteNewTrainUnits(built, flags, false); return ret; }
+	if (!CheckCompanyHasMoney(total_cost)) { DeleteNewTrainUnits(built, flags, false); return total_cost; }
+	const Company *owner = Company::GetIfValid(_current_company);
+	if (share_orders || owner == nullptr || owner->settings.copy_clone_add_to_group) {
+		ret = Command<Commands::AddVehicleToGroup>::Do(flags, source_primary->group_id, mapped_primary->index, false);
+		if (ret.Failed()) { DeleteNewTrainUnits(built, flags, false); return ret; }
+	}
+	if (!source_primary->name.empty()) CloneVehicleName(source_primary, mapped_primary);
+	total_cost.SetResultData(mapped_primary->index);
+	return total_cost;
+}
+
 CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_id, bool share_orders)
 {
+	Vehicle *clicked = Vehicle::GetIfValid(veh_id);
+	if (clicked != nullptr && clicked->type == VehicleType::Train) return CloneTrain(flags, tile, Train::From(clicked), share_orders);
 	CommandCost total_cost(ExpensesType::NewVehicles);
 
 	Vehicle *v = Vehicle::GetIfValid(veh_id);
@@ -1664,7 +1951,7 @@ CommandCost CmdCloneVehicleFromTemplate(DoCommandFlags flags, TileIndex tile, Te
 
 	ret = Command<Commands::CloneVehicle>::Do(flags, tile, *result_v, false);
 
-	delete virt;
+	delete virt->First();
 
 	return ret;
 }

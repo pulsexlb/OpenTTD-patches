@@ -64,6 +64,19 @@ std::vector<uint32_t> _sl_xv_discardable_chunk_ids;              ///< list of ch
 std::string _sl_xv_version_label;                                ///< optional SLXI version label
 SaveLoadVersion _sl_xv_upstream_version;                         ///< optional SLXI upstream version
 
+SlTrainUnitMainLegacyEncoding SlGetTrainUnitMainLegacyEncoding()
+{
+	/* Dirty/custom labels cannot establish which of the two incompatible v3
+	 * writers produced the save. They must be decided from the stored topology. */
+	if (_sl_xv_version_label.find("dirty") != std::string::npos ||
+			_sl_xv_version_label.find("-m") != std::string::npos ||
+			_sl_xv_version_label.find('M') != std::string::npos) return SlTrainUnitMainLegacyEncoding::Unknown;
+	if (_sl_xv_version_label.find("cd4c80069") != std::string::npos ||
+			_sl_xv_version_label.find("11399ae64") != std::string::npos) return SlTrainUnitMainLegacyEncoding::Raw;
+	if (_sl_xv_version_label.find("a5a8e95b8") != std::string::npos) return SlTrainUnitMainLegacyEncoding::Offset;
+	return SlTrainUnitMainLegacyEncoding::Unknown;
+}
+
 static const uint32_t _sl_xv_slxi_chunk_version = 0;             ///< current version of SLXI chunk
 
 static void loadVL(const SlxiSubChunkInfo &info, uint32_t length);
@@ -112,7 +125,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_REVERSE_AT_WAYPOINT,              XSCF_NULL,                1,   1, "reverse_at_waypoint",              nullptr, nullptr, nullptr          },
 	{ XSLFI_VEH_LIFETIME_PROFIT,              XSCF_NULL,                1,   1, "veh_lifetime_profit",              nullptr, nullptr, nullptr          },
 	{ XSLFI_LINKGRAPH_DAY_SCALE,              XSCF_NULL,                7,   7, "linkgraph_day_scale",              nullptr, nullptr, nullptr          },
-	{ XSLFI_TEMPLATE_REPLACEMENT,             XSCF_NULL,               10,  10, "template_replacement",             nullptr, nullptr, "TRPL,TMPL"      },
+	{ XSLFI_TEMPLATE_REPLACEMENT,             XSCF_NULL,               11,  11, "template_replacement",             nullptr, nullptr, "TRPL,TMPL"      },
 	{ XSLFI_MORE_RAIL_TYPES,                  XSCF_NULL,                0,   1, "more_rail_types",                  nullptr, nullptr, nullptr          },
 	{ XSLFI_CARGO_TYPE_ORDERS,                XSCF_NULL,                5,   5, "cargo_type_orders",                nullptr, nullptr, nullptr          },
 	{ XSLFI_EXTENDED_GAMELOG,                 XSCF_NULL,                2,   2, "extended_gamelog",                 nullptr, nullptr, nullptr          },
@@ -265,7 +278,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_FIXED_SERVICE_NUMBER, XSCF_NULL, 2, 2, "pxp_fixed_service_number", nullptr, nullptr, nullptr },
 	{ XSLFI_AUTO_YIELD_ROUTE_PLAN,           XSCF_NULL,                1,   1, "pxp_auto_yield_route_plan",         nullptr, nullptr, nullptr          },
 	{ XSLFI_TRAIN_DECOUPLE_PART,              XSCF_NULL,                1,   1, "train_decouple_part",              nullptr, nullptr, nullptr          },
-	{ XSLFI_TRAIN_UNIT_MAIN,                  XSCF_NULL,                3,   3, "train_unit_main",                  nullptr, nullptr, nullptr          },
+	{ XSLFI_TRAIN_UNIT_MAIN,                  XSCF_NULL,                4,   4, "train_unit_main",                  nullptr, nullptr, nullptr          },
 	{ XSLFI_COUPLE_SERVICE_NUMBER,           XSCF_NULL,                1,   1, "couple_service_number",           nullptr, nullptr, nullptr          },
 };
 

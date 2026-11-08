@@ -83,6 +83,8 @@ private:
 	TemplateVehicle *next = nullptr;           ///< pointer to the next vehicle in the chain
 	TemplateVehicle *previous = nullptr;       ///< NOSAVE: pointer to the previous vehicle in the chain
 	TemplateVehicle *first = nullptr;          ///< NOSAVE: pointer to the first vehicle in the chain
+	TemplateVehicle *unit_main = nullptr;      ///< Purchased base of this physical member (including the rear dual head).
+	TemplateVehicle *primary = nullptr;        ///< Consist identity carrier; independent of physical order.
 
 public:
 	friend NamedSaveLoadTable GetTemplateVehicleDesc();
@@ -137,6 +139,10 @@ public:
 	void SetNext(TemplateVehicle *v);
 	void SetPrev(TemplateVehicle *v);
 	void SetFirst(TemplateVehicle *v);
+	TemplateVehicle *GetUnitMain() const { return this->unit_main != nullptr ? this->unit_main : const_cast<TemplateVehicle *>(this); }
+	TemplateVehicle *Primary() const { return this->primary; }
+	void SetUnitMain(TemplateVehicle *v) { this->unit_main = v; }
+	void SetPrimary(TemplateVehicle *v) { this->primary = v; }
 
 	TemplateVehicle *GetNextUnit() const;
 
@@ -149,7 +155,7 @@ public:
 	void SetRefitAsTemplate(bool as_template) { this->refit_as_template = as_template; }
 	void SetReplaceOldOnly(bool old_only) { this->replace_old_only = old_only; }
 
-	bool IsPrimaryVehicle() const { return this->IsFrontEngine(); }
+	bool IsPrimaryVehicle() const { return this == this->primary; }
 	inline bool IsFrontEngine() const { return HasBit(this->subtype, GVSF_FRONT); }
 	inline bool HasArticulatedPart() const { return this->Next() != nullptr && this->Next()->IsArticulatedPart(); }
 

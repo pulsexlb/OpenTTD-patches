@@ -13,6 +13,7 @@
 #include "3rdparty/cpp-btree/btree_map.h"
 #include "command_type.h"
 #include "vehicle_type.h"
+#include "train.h"
 
 enum class MoveRailVehicleFlags : uint8_t {
 	None                  = 0,         ///< No flag set.
@@ -23,6 +24,16 @@ enum class MoveRailVehicleFlags : uint8_t {
 DECLARE_ENUM_AS_BIT_SET(MoveRailVehicleFlags)
 
 struct Order;
+
+/** Bind a consist identity without copying orders, numbers, slots or statistics. */
+void BindTrainPrimary(Train *head, Train *primary);
+/** Move an identity between distinct same-owner vehicles; callers account group statistics. */
+void MoveTrainIdentity(Train *old_primary, Train *new_primary);
+/** Purchased unit bases in physical first-encounter order, including rear-first dual heads. */
+std::vector<Train *> CollectTrainPurchasedUnits(Train *head);
+/** Atomically validate/relink complete physical members, safely detaching omitted complete units.
+ * No resource accounting/world movement; rebuilds caches but leaves capacity/cargo for caller commit. */
+CommandCost RebuildTrainDepotLayout(const std::vector<Train *> &members, Train *primary, ConsistChangeFlags allowed_changes = CCF_ARRANGE);
 
 DEF_CMD_TUPLE_LT (Commands::MoveRailVehicle,          CmdMoveRailVehicle,           {}, CommandType::VehicleConstruction, CmdDataT<VehicleID, VehicleID, MoveRailVehicleFlags>)
 DEF_CMD_TUPLE_LT (Commands::ForceTrainProceed,        CmdForceTrainProceed,         {}, CommandType::VehicleManagement,   CmdDataT<VehicleID>)

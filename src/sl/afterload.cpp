@@ -4995,6 +4995,11 @@ bool AfterLoadGame()
 		}
 	}
 
+	/* Every ambiguous legacy train is named individually in advice; the load
+	 * warning also lists all identities if history limits would omit any. */
+	extern void ShowTrainUnitRecoveryWarnings();
+	ShowTrainUnitRecoveryWarnings();
+
 	/* Show this message last to avoid covering up an error message if we bail out part way */
 	switch (gcf_res) {
 		case GRFListCompatibility::Compatible: ShowErrorMessage(GetEncodedString(STR_NEWGRF_COMPATIBLE_LOAD_WARNING), {}, WarningLevel::Critical); break;

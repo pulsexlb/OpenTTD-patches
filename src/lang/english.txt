@@ -951,6 +951,9 @@ STR_NEWS_VEHICLE_IS_GETTING_OLD                                 :{WHITE}{VEHICLE
 STR_NEWS_VEHICLE_IS_GETTING_VERY_OLD                            :{WHITE}{VEHICLE} is getting very old
 STR_NEWS_VEHICLE_IS_GETTING_VERY_OLD_AND                        :{WHITE}{VEHICLE} is getting very old and urgently needs replacing
 STR_NEWS_TRAIN_IS_STUCK                                         :{WHITE}{VEHICLE} can't find a path to continue
+STR_NEWS_TRAIN_UNIT_RECOVERY                                    :{WHITE}{RAW_STRING}{}Old-save train unit membership could not be recovered reliably. A limited recovery was attempted. Repurchase and reform this train, then check its orders. Do not rely on cloning to repair historical membership.
+STR_TRAIN_UNIT_RECOVERY_ENTRY                                  :{RAW_STRING}
+STR_TRAIN_UNIT_RECOVERY_WARNING                                :Some trains have ambiguous or missing unit membership in this old save. Limited recovery was attempted. Repurchase and reform the listed trains and check their orders. Cloning is not a reliable repair for irrecoverable historical membership.
 STR_NEWS_VEHICLE_IS_LOST                                        :{WHITE}{VEHICLE} is lost
 STR_NEWS_RV_TRANSPORT_UNLOAD_OVERDUE                            :{WHITE}{VEHICLE} has been carried for {NUM} days without being unloaded
 STR_NEWS_VEHICLE_UNPROFITABLE_YEAR                              :{WHITE}{VEHICLE}'s profit last year was {CURRENCY_LONG}

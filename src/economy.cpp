@@ -1626,11 +1626,11 @@ bool IterateVehicleParts(Vehicle *v, Taction action, bool ignore_multihead_rear 
 {
 	/* Train units may be stored in either orientation. Walk the complete unit
 	 * through its explicit main part instead of relying on articulation order. */
-	if (v->type == VehicleType::Train && v->HasUnitMain() && !Train::From(v)->IsMultiheaded()) {
+	if (v->type == VehicleType::Train && !Train::From(v)->IsMultiheaded()) {
 		Vehicle *main = v->GetUnitMain();
 		for (Vehicle *w = main->First(); w != nullptr; w = w->Next()) {
 			if (w->GetUnitMain() != main) continue;
-			if (ignore_multihead_rear && w->type == VehicleType::Train && Train::From(w)->IsRearDualheaded()) continue;
+			if (ignore_multihead_rear && Train::From(w)->IsRearDualheaded()) continue;
 			if (!action(w)) return false;
 		}
 		return true;
@@ -2061,13 +2061,10 @@ static void LoadUnloadVehicle(Vehicle *front)
 		return;
 	}
 
-	/* RoRo: a carrier loads/unloads road vehicles according to its order parameter block.
-	 * Every part of a multi-part carrier (a multi-hold ship, for instance) is a vehicle of its own
-	 * which enters the station and runs this code, while the road vehicles it carries are attached to
-	 * the *front* vehicle, so always work with the front. A station order which does not set the
-	 * vehicle transport flags leaves the carrier's parts alone here; it loads/unloads normal cargo. */
+	/* RoRo: orders belong to the primary controller; carrier helpers traverse
+	 * First() separately to cover every physical hold, including the prefix. */
 	if (front->type != VehicleType::Road) {
-		Vehicle *carrier = front->First();
+		Vehicle *carrier = front->Primary();
 		const uint8_t rv_order_flags = carrier->current_order.GetRVTransportFlags();
 		if ((rv_order_flags & ORVTF_UNLOAD) != 0) {
 			RVTransportDetachAtStation(carrier, st);
@@ -2449,10 +2446,9 @@ static void LoadUnloadVehicle(Vehicle *front)
 			Train::From(front)->flags.Set(VehicleRailFlag::AdvanceInPlatform);
 		}
 
-		/* RoRo: a carrier ordered to wait for road vehicles keeps loading while there is still
-		 * somebody to pick up at this station, and while nothing has been loaded yet. (As above, the
-		 * carried road vehicles belong to the front vehicle of a multi-part carrier.) */
-		Vehicle *rv_carrier = front->First();
+		/* RoRo: waiting criteria come from the primary's order, while hold
+		 * membership and capacity still cover the complete physical chain. */
+		Vehicle *rv_carrier = front->Primary();
 		if (const uint8_t rv_order = rv_carrier->current_order.GetRVTransportFlags(); _settings_game.vehicle.rv_transport_enabled && (rv_order & ORVTF_WAIT) != 0 && (rv_order & ORVTF_LOAD) != 0) {
 			if (RVTransportFindWaitingAtStation(st, rv_carrier) != nullptr || RVTransportCountOnCarrier(rv_carrier) == 0) {
 				finished_loading = false;

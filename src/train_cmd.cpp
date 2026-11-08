@@ -8,6 +8,8 @@
 /** @file train_cmd.cpp Handling of trains. */
 
 #include "stdafx.h"
+#include <map>
+#include <set>
 #include "error.h"
 #include "articulated_vehicles.h"
 #include "command_func.h"
@@ -242,12 +244,12 @@ void CheckTrainsLengths()
  */
 void CheckBreakdownFlags(Train *v)
 {
-	dbg_assert(v->IsFrontEngine());
+	dbg_assert(v->IsPrimaryVehicle());
 	/* clear the flags we're gonna check first, we'll set them again later (if applicable) */
 	v->flags.Reset(VehicleRailFlag::BreakdownBraking);
 	v->flags.Reset(VehicleRailFlagsIsBroken);
 
-	for (const Train *w = v; w != nullptr; w = w->Next()) {
+	for (const Train *w = v->First(); w != nullptr; w = w->Next()) {
 		if (w->IsEngine() || w->IsMultiheaded()) {
 			if (w->breakdown_ctr == 2) {
 				v->flags.Set(VehicleRailFlag::BreakdownBraking);
@@ -291,15 +293,14 @@ void CheckBreakdownFlags(Train *v)
 static void RefreshConsistBreakdownState(Train *part)
 {
 	bool broken = false;
-	for (Train *w = part->First(); w != nullptr; w = w->GetNextVehicle()) {
+	for (Train *w = part->First(); w != nullptr; w = w->Next()) {
 		if (w->breakdown_ctr != 0 && (w->IsEngine() || w->IsMultiheaded())) {
 			broken = true;
 			break;
 		}
 	}
 	part->flags.Set(VehicleRailFlag::ConsistBreakdown, broken);
-	/* CheckBreakdownFlags() expects a front engine and rewrites the flags from the chain. */
-	if (part->IsFrontEngine()) CheckBreakdownFlags(part);
+	if (part->IsPrimaryVehicle()) CheckBreakdownFlags(part);
 }
 
 uint16_t GetTrainVehicleMaxSpeed(const Train *u, const RailVehicleInfo &rvi_u, const Train *front)
@@ -545,10 +546,12 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 
 		uint16_t new_cap = e_u->DetermineCapacity(u);
 		if (allowed_changes.Test(ConsistChangeFlag::Capacity)) {
-			/* Update vehicle capacity. */
-			if (u->cargo.TotalCount() > new_cap) u->cargo.Truncate(u->cargo.TotalCount() - new_cap);
-			u->refit_cap = std::min(new_cap, u->refit_cap);
-			u->cargo_cap = new_cap;
+			/* Layout trials may update caches, but must never discard cargo. */
+			if (!allowed_changes.Test(ConsistChangeFlag::CheckOnly)) {
+				if (u->cargo.TotalCount() > new_cap) u->cargo.Truncate(u->cargo.TotalCount() - new_cap);
+				u->refit_cap = std::min(new_cap, u->refit_cap);
+				u->cargo_cap = new_cap;
+			}
 		} else {
 			/* Verify capacity hasn't changed. */
 			if (new_cap != u->cargo_cap) ShowNewGrfVehicleError(u->engine_type, STR_NEWGRF_BROKEN, STR_NEWGRF_BROKEN_CAPACITY, GRFBug::VehCapacity, true);
@@ -715,6 +718,16 @@ int GetTileMarginInFrontOfTrain(const Train *v, int x_pos, int y_pos)
  * @param station_length 'return' the station length in 1/16th tiles
  * @return the location, calculated from the begin of the station to stop at.
  */
+/** The current order belongs to the logical primary; geometry belongs to First(). */
+static OrderStopLocation GetTrainOrderStopLocation(const Train *v, DestinationID dest)
+{
+	const Order &order = v->Primary()->current_order;
+	if (order.IsType(OT_GOTO_STATION) && order.GetDestination() == dest) return order.GetStopLocation();
+	if (order.IsType(OT_LOADING_ADVANCE) && order.GetDestination() == dest) return OrderStopLocation::Through;
+	if (order.IsType(OT_GOTO_WAYPOINT) && order.GetDestination() == dest) return OrderStopLocation::FarEnd;
+	return OrderStopLocation::Middle;
+}
+
 int GetTrainStopLocation(StationID station_id, TileIndex tile, Train *v, bool update_train_state, int *station_ahead, int *station_length)
 {
 	Train *front = v->First();
@@ -728,14 +741,7 @@ int GetTrainStopLocation(StationID station_id, TileIndex tile, Train *v, bool up
 
 	/* Default to the middle of the station for stations stops that are not in
 	 * the order list like intermediate stations when non-stop is disabled */
-	OrderStopLocation osl = OrderStopLocation::Middle;
-	if (front->current_order.IsType(OT_GOTO_STATION) && front->current_order.GetDestination() == station_id) {
-		osl = front->current_order.GetStopLocation();
-	} else if (front->current_order.IsType(OT_LOADING_ADVANCE) && front->current_order.GetDestination() == station_id) {
-		osl = OrderStopLocation::Through;
-	} else if (front->current_order.IsType(OT_GOTO_WAYPOINT) && front->current_order.GetDestination() == station_id) {
-		osl = OrderStopLocation::FarEnd;
-	}
+	OrderStopLocation osl = GetTrainOrderStopLocation(v, station_id);
 	int overhang = front->gcache.cached_total_length - *station_length;
 	int adjust = 0;
 	if (osl == OrderStopLocation::Through && overhang > 0) {
@@ -972,30 +978,15 @@ void AdvanceOrderIndex(const Vehicle *v, VehicleOrderID &index)
 
 int PredictStationStoppingLocation(const Train *v, const Order *order, int station_length, DestinationID dest)
 {
-	/* Resolve the stop location from the same source GetTrainStopLocation()
-	 * uses for the real stop pixel: the chain head's current_order. The
-	 * lookahead-walked `order` cannot be used here: with the native station
-	 * arrival the real order index is advanced as soon as the reservation
-	 * reaches the platform, which frees current_order (OT_NOTHING) while the
-	 * train still rolls towards the stop pixel. GetTrainStopLocation() then
-	 * falls back to its Middle default, and an advisory that kept braking
-	 * towards the original order's stop location would overshoot that pixel
-	 * by the distance between the two stop locations. */
-	const Order *real_order = &v->First()->current_order;
-	OrderStopLocation osl = OrderStopLocation::Middle;
-	if (real_order->IsType(OT_GOTO_STATION) && real_order->GetDestination() == dest) {
-		osl = real_order->GetStopLocation();
-	} else if (real_order->IsType(OT_LOADING_ADVANCE) && real_order->GetDestination() == dest) {
-		osl = OrderStopLocation::Through;
-	} else if (real_order->IsType(OT_GOTO_WAYPOINT) && real_order->GetDestination() == dest) {
-		osl = OrderStopLocation::FarEnd;
-	}
-	(void)order; /* Kept for signature compatibility; the osl must mirror GetTrainStopLocation(). */
+	/* Predict the same primary-owned current order as the real stop pixel. */
+	OrderStopLocation osl = GetTrainOrderStopLocation(v, dest);
+	(void)order;
+	const Train *front = v->First();
 
-	int overhang = v->gcache.cached_total_length - station_length;
+	int overhang = front->gcache.cached_total_length - station_length;
 	int adjust = 0;
 	if (osl == OrderStopLocation::Through && overhang > 0) {
-		for (const Train *u = v; u != nullptr; u = u->Next()) {
+		for (const Train *u = front; u != nullptr; u = u->Next()) {
 			/* Passengers may not be through-loaded */
 			if (u->cargo_cap > 0 && IsCargoInClass(u->cargo_type, CargoClass::Passengers)) {
 				osl = OrderStopLocation::FarEnd;
@@ -1015,7 +1006,7 @@ int PredictStationStoppingLocation(const Train *v, const Order *order, int stati
 				beyond += u->gcache.cached_veh_length;
 			}
 			/* Adjust for the remaining amount of train being less than the station length */
-			int overshoot = station_length - std::min(v->gcache.cached_total_length - beyond, station_length);
+			int overshoot = station_length - std::min(front->gcache.cached_total_length - beyond, station_length);
 			adjust = beyond - overshoot;
 		} else {
 			/* Train hasn't reached the platform yet, or no advancing has occurred, use predictive mode */
@@ -1055,11 +1046,11 @@ int PredictStationStoppingLocation(const Train *v, const Order *order, int stati
 		default: NOT_REACHED();
 
 		case OrderStopLocation::NearEnd:
-			stop = v->gcache.cached_total_length;
+			stop = front->gcache.cached_total_length;
 			break;
 
 		case OrderStopLocation::Middle:
-			stop = station_length - (station_length - v->gcache.cached_total_length) / 2;
+			stop = station_length - (station_length - front->gcache.cached_total_length) / 2;
 			break;
 
 		case OrderStopLocation::FarEnd:
@@ -1076,9 +1067,9 @@ int PredictStationStoppingLocation(const Train *v, const Order *order, int stati
 	 * of the remaining gap. For a short front vehicle that residual speed stays
 	 * within the in-station emergency clamp's threshold, but a long articulated
 	 * front (half length >= 4) crosses above it and the station is overshot. */
-	const Train *front = v->GetMovingFront();
-	uint8_t rounding = front->IsDrivingBackwards() ? 2 : 1;
-	stop -= (front->gcache.cached_veh_length + rounding) / 2;
+	const Train *moving_front = v->GetMovingFront();
+	uint8_t rounding = moving_front->IsDrivingBackwards() ? 2 : 1;
+	stop -= (moving_front->gcache.cached_veh_length + rounding) / 2;
 
 	if (v->IsDrivingBackwards()) adjust--;
 	return stop + adjust;
@@ -1573,7 +1564,8 @@ void Train::UpdateAcceleration()
 
 	/* Aggregate caches belong to the physical head, which may be an articulated
 	 * part. Engine identity and orders remain on the primary behind it. */
-	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && !IsTrainOnNonRealisticBrakingTrack(this) && this->Primary()->IsFrontEngine()) {
+	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && !IsTrainOnNonRealisticBrakingTrack(this) &&
+			this->Primary()->IsPrimaryVehicle() && (this->Primary()->IsFrontEngine() || power != 0)) {
 		this->tcache.cached_tflags |= TCF_RL_BRAKING;
 		switch (_settings_game.vehicle.train_acceleration_model) {
 			default: NOT_REACHED();
@@ -2158,7 +2150,27 @@ static std::vector<Train *> FindGoodVehiclePosList(const Train *src)
 }
 
 /** Helper type for lists/vectors of trains */
-typedef std::vector<Train *> TrainList;
+struct TrainList : std::vector<Train *> {
+	struct State {
+		Train *vehicle;
+		Vehicle *unit_main;
+		Train *primary;
+		uint8_t subtype;
+		Direction direction;
+		bool driving_backwards;
+	};
+	std::vector<State> states;
+	void RestoreState() const
+	{
+		for (const State &s : this->states) {
+			s.vehicle->SetUnitMain(s.unit_main);
+			s.vehicle->SetPrimary(s.primary);
+			s.vehicle->subtype = s.subtype;
+			s.vehicle->direction = s.direction;
+			s.vehicle->vehicle_flags.Set(VehicleFlag::DrivingBackwards, s.driving_backwards);
+		}
+	}
+};
 
 /**
  * Make a backup of a train into a train list.
@@ -2167,7 +2179,11 @@ typedef std::vector<Train *> TrainList;
  */
 static void MakeTrainBackup(TrainList &list, Train *t)
 {
-	for (; t != nullptr; t = t->Next()) list.push_back(t);
+	for (; t != nullptr; t = t->Next()) {
+		list.push_back(t);
+		list.states.push_back({t, t->HasUnitMain() ? t->GetUnitMain() : nullptr, t->Primary(), t->subtype,
+				t->direction, t->vehicle_flags.Test(VehicleFlag::DrivingBackwards)});
+	}
 }
 
 /**
@@ -2190,6 +2206,7 @@ static void RestoreTrainBackup(TrainList &list)
 		}
 		prev = t;
 	}
+	list.RestoreState();
 }
 
 /**
@@ -2221,6 +2238,7 @@ static void RestoreChainFromList(const TrainList &list)
 	}
 	/* Terminate the tail: it may still point into the other trial chain. */
 	prev->SetNext(nullptr);
+	list.RestoreState();
 }
 
 /**
@@ -2782,26 +2800,252 @@ static void ArrangeTrains(Train **dst_head, Train *dst, Train **src_head, Train 
  * we have changed and update all kinds of variables.
  * @param head the train to update.
  */
-/**
- * Materialise the primary pointers of a chain: prefer the first engine in the
- * chain (it carries the consist identity), fall back to the chain head for
- * engine-less wagon chains. Call after building a chain and after any chain
- * surgery so the fallback rule in Primary() is never relied upon.
- */
+/** Bind physical markers and a single logical identity without moving resources. */
+void BindTrainPrimary(Train *head, Train *primary)
+{
+	if (head == nullptr) return;
+	head = head->First();
+	bool valid = false;
+	bool has_engine = false;
+	for (Train *u = head; u != nullptr; u = u->Next()) {
+		valid |= u == primary;
+		has_engine |= u->IsEngine();
+	}
+	if (!valid) {
+		primary = nullptr;
+		/* Preserve an existing identity, but not the implicit physical-head
+		 * fallback of a newly built part-first unit. */
+		Train *existing = head->Primary();
+		for (Train *u = head; u != nullptr; u = u->Next()) {
+			if (u == existing && !u->IsArticulatedPart() && !u->IsRearDualheaded() &&
+					(u->IsPrimaryVehicle() || u->unitnumber != 0 || u->orders != nullptr)) primary = u;
+		}
+		if (primary == nullptr) {
+			for (Train *u = head; u != nullptr; u = u->Next()) {
+				if (u->IsEngine()) { primary = u; break; }
+				if (primary == nullptr && !u->IsArticulatedPart() && !u->IsRearDualheaded()) primary = u;
+			}
+		}
+		if (primary == nullptr) primary = head;
+	}
+	const bool wagon_identity = primary->IsFrontWagon() || has_engine || primary->unitnumber != 0 || primary->orders != nullptr;
+	for (Train *u = head; u != nullptr; u = u->Next()) {
+		u->SetPrimary(primary);
+		u->ClearFrontEngine();
+		u->ClearFrontWagon();
+		u->ClearFreeWagon();
+	}
+	if (has_engine || wagon_identity) {
+		if (head->IsEngine()) head->SetFrontEngine(); else head->SetFrontWagon();
+	} else {
+		head->SetFreeWagon();
+	}
+	if (primary->IsEngine()) primary->SetFrontEngine();
+	else if (wagon_identity) primary->SetFrontWagon();
+}
+
 static void MaterialiseTrainPrimary(Train *head)
 {
-	Train *prim = head;
+	BindTrainPrimary(head, nullptr);
+}
+
+/** Transfer identity only; the caller removes/adds group vehicle statistics. */
+void MoveTrainIdentity(Train *old_primary, Train *new_primary)
+{
+	if (old_primary == nullptr || new_primary == nullptr || old_primary == new_primary || old_primary->owner != new_primary->owner) return;
+	const Money lifetime = old_primary->profit_lifetime;
+	const GroupID group = old_primary->group_id;
+	DeleteVehicleOrders(new_primary);
+	new_primary->orders = old_primary->orders;
+	new_primary->primary_order = old_primary->primary_order;
+	new_primary->primary_order_index = old_primary->primary_order_index;
+	new_primary->execute_schedule_stack = old_primary->execute_schedule_stack;
+	if (new_primary->orders != nullptr) new_primary->AddToShared(old_primary);
+	new_primary->CopyVehicleConfigAndStatistics(old_primary);
+	new_primary->unbunch_state = std::move(old_primary->unbunch_state);
+	new_primary->profit_lifetime = lifetime;
+	new_primary->speed_restriction = old_primary->speed_restriction;
+	new_primary->flags.Set(VehicleRailFlag::SpeedAdaptationExempt, old_primary->flags.Test(VehicleRailFlag::SpeedAdaptationExempt));
+	for (VehicleFlag flag : {VehicleFlag::TimetableStarted, VehicleFlag::AutofillTimetable,
+			VehicleFlag::AutofillPreserveWaitTime, VehicleFlag::ServiceIntervalIsCustom,
+			VehicleFlag::ServiceIntervalIsPercent, VehicleFlag::ReplacementPending}) {
+		new_primary->vehicle_flags.Set(flag, old_primary->vehicle_flags.Test(flag));
+	}
+	if (old_primary->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
+		TraceRestrictTransferVehicleOccupantInAllSlots(old_primary->index, new_primary->index);
+		new_primary->vehicle_flags.Set(VehicleFlag::HaveSlot);
+		old_primary->vehicle_flags.Reset(VehicleFlag::HaveSlot);
+	}
+	DeleteVehicleOrders(old_primary);
+	old_primary->execute_schedule_stack.clear();
+	old_primary->dispatch_records.clear();
+	old_primary->vehicle_flags.Reset(VehicleFlag::ReplacementPending);
+	OrderBackup::ClearVehicle(old_primary);
+	SetTrainGroupID(new_primary, group);
+}
+
+std::vector<Train *> CollectTrainPurchasedUnits(Train *head)
+{
+	std::vector<Train *> units;
+	if (head == nullptr) return units;
+	head = head->First();
 	for (Train *u = head; u != nullptr; u = u->Next()) {
-		if (u->IsEngine()) {
-			prim = u;
-			break;
+		Train *main = Train::From(u->GetUnitMain());
+		if (u->IsRearDualheaded()) main = u->other_multiheaded_part;
+		if (main == nullptr || main->First() != head || main->IsArticulatedPart() || main->IsRearDualheaded()) continue;
+		if (std::find(units.begin(), units.end(), main) == units.end()) units.push_back(main);
+	}
+	return units;
+}
+
+/** Validate a complete purchased-unit selection, then relink without world movement. */
+CommandCost RebuildTrainDepotLayout(const std::vector<Train *> &members, Train *primary, ConsistChangeFlags allowed_changes)
+{
+	if (members.empty() || primary == nullptr) return CMD_ERROR;
+	std::set<Train *> selected;
+	std::vector<TrainList> originals;
+	std::set<Train *> heads;
+	for (Train *u : members) {
+		if (u == nullptr || !selected.insert(u).second) return CMD_ERROR;
+		if (heads.insert(u->First()).second) {
+			originals.emplace_back();
+			MakeTrainBackup(originals.back(), u->First());
 		}
 	}
-	for (Train *u = head; u != nullptr; u = u->Next()) u->SetPrimary(prim);
-	/* The carrier must carry the front-engine marker wherever it sits in the
-	 * chain -- vanilla surgery (e.g. NormaliseSubtypes) strips it from every
-	 * non-head vehicle without knowing about primary pointers. */
-	if (prim->IsEngine()) prim->SetFrontEngine();
+	if (!selected.count(primary)) return CMD_ERROR;
+	/* A selected purchased unit must be complete. Independent wagons wrapped
+	 * between a dual head's halves are not members of that purchased unit. */
+	for (const TrainList &chain : originals) {
+		std::map<Train *, bool> unit_selection;
+		for (Train *u : chain) {
+			Train *main = Train::From(u->GetUnitMain());
+			if (u->IsRearDualheaded()) main = u->other_multiheaded_part;
+			if (main == nullptr || main->First() != chain.front()) return CMD_ERROR;
+			const bool chosen = selected.count(u) != 0;
+			auto [it, inserted] = unit_selection.emplace(main, chosen);
+			if (!inserted && it->second != chosen) return CMD_ERROR;
+		}
+	}
+	struct Snapshot {
+		Train *u;
+		Train *next;
+		Train *previous;
+		Train *first;
+		Train *last;
+		Train *primary;
+		Vehicle *unit_main;
+		uint8_t subtype;
+		VehicleRailFlags flags;
+		VehicleFlags vehicle_flags;
+		NewGRFCache grf_cache;
+		TrainCache tcache;
+		GroundVehicleCache gcache;
+		VehicleCache vcache;
+		Direction direction;
+		GroundVehicleFlags gv_flags;
+		RailTypes railtypes;
+		RailTypes compatible_railtypes;
+		uint8_t acceleration;
+	};
+	std::vector<Snapshot> snapshots;
+	for (const TrainList &chain : originals) {
+		for (Train *u : chain) snapshots.push_back({u, u->Next(), Train::From(u->Previous()), u->First(), u->Last(), u->Primary(),
+				u->HasUnitMain() ? u->GetUnitMain() : nullptr, u->subtype, u->flags, u->vehicle_flags, u->grf_cache, u->tcache,
+				u->gcache, u->vcache, u->direction, u->gv_flags, u->railtypes, u->compatible_railtypes, u->acceleration});
+	}
+	SavedRandomSeeds seeds;
+	SaveRandomSeeds(&seeds);
+	auto link = [](const std::vector<Train *> &chain) {
+		if (chain.empty()) return;
+		for (size_t i = 0; i < chain.size(); ++i) {
+			chain[i]->SetNextRaw(i + 1 < chain.size() ? chain[i + 1] : nullptr);
+			chain[i]->SetPreviousRaw(i > 0 ? chain[i - 1] : nullptr);
+			chain[i]->SetFirst(chain.front());
+			chain[i]->SetLast(chain.back());
+		}
+		ResetChainNonFrontMarkers(chain.front());
+	};
+	/* Cut every link first: omitted vehicles must never retain links into the
+	 * selected chain, including when autoreplace restores the old layout. */
+	for (const Snapshot &s : snapshots) {
+		s.u->SetNextRaw(nullptr);
+		s.u->SetPreviousRaw(nullptr);
+		s.u->SetFirst(s.u);
+		s.u->SetLast(s.u);
+	}
+	std::vector<Train *> omitted_heads;
+	for (const TrainList &chain : originals) {
+		TrainList omitted;
+		for (Train *u : chain) if (!selected.count(u)) omitted.push_back(u);
+		if (omitted.empty()) continue;
+		link(omitted);
+		Train *old_primary = nullptr;
+		for (const Snapshot &s : snapshots) if (s.u == chain.front()) { old_primary = s.primary; break; }
+		BindTrainPrimary(omitted.front(), old_primary);
+		omitted_heads.push_back(omitted.front());
+	}
+	link(members);
+	BindTrainPrimary(members.front(), primary);
+	members.front()->InvalidateNewGRFCacheOfChain();
+	CommandCost result;
+	uint length = 0;
+	for (Train *u : members) length += u->gcache.cached_veh_length;
+	if (length > _settings_game.vehicle.max_train_length * TILE_SIZE) result = CommandCost(STR_ERROR_TRAIN_TOO_LONG);
+	if (result.Succeeded()) result = CheckTrainAttachment(members.front());
+	/* Attachment callbacks temporarily cut the chain, including on failure. */
+	link(members);
+	for (const Snapshot &s : snapshots) s.u->SetUnitMain(s.unit_main);
+	BindTrainPrimary(members.front(), primary);
+	ConsistChangeFlags check_changes = allowed_changes;
+	check_changes.Set(ConsistChangeFlag::CheckOnly);
+	if (result.Succeeded() && !members.front()->CanConsistChange(check_changes)) result = CMD_ERROR;
+	/* Use the proposed callback lengths, not stale pre-rebuild geometry. */
+	if (result.Succeeded()) {
+		uint proposed_length = 0;
+		for (Train *u : members) {
+			const Engine *e = u->GetEngine();
+			const RailVehicleInfo &rvi = e->VehInfo<RailVehicleInfo>();
+			uint16_t shorten = CALLBACK_FAILED;
+			if (e->GetGRF() != nullptr && e->GetGRF()->grf_version >= 8) shorten = GetVehicleProperty(u, PROP_TRAIN_SHORTEN_FACTOR, CALLBACK_FAILED);
+			else if (e->info.callback_mask.Test(VehicleCallbackMask::Length)) shorten = GetVehicleCallback(CBID_VEHICLE_LENGTH, 0, 0, u->engine_type, u);
+			if (shorten == CALLBACK_FAILED) shorten = rvi.shorten_factor;
+			proposed_length += VEHICLE_LENGTH - Clamp(shorten, 0, VEHICLE_LENGTH - 1);
+		}
+		if (proposed_length > _settings_game.vehicle.max_train_length * TILE_SIZE) result = CommandCost(STR_ERROR_TRAIN_TOO_LONG);
+	}
+	RestoreRandomSeeds(seeds);
+	if (result.Failed()) {
+		for (const Snapshot &s : snapshots) {
+			s.u->SetNextRaw(s.next);
+			s.u->SetPreviousRaw(s.previous);
+			s.u->SetFirst(s.first);
+			s.u->SetLast(s.last);
+			s.u->SetPrimary(s.primary);
+			s.u->SetUnitMain(s.unit_main);
+			s.u->subtype = s.subtype;
+			s.u->flags = s.flags;
+			s.u->vehicle_flags = s.vehicle_flags;
+			s.u->grf_cache = s.grf_cache;
+			s.u->tcache = s.tcache;
+			s.u->gcache = s.gcache;
+			s.u->vcache = s.vcache;
+			s.u->direction = s.direction;
+			s.u->gv_flags = s.gv_flags;
+			s.u->railtypes = s.railtypes;
+			s.u->compatible_railtypes = s.compatible_railtypes;
+			s.u->acceleration = s.acceleration;
+		}
+		for (Train *head : heads) ResetChainNonFrontMarkers(head);
+		return result;
+	}
+	/* Cache-only finalization: callers apply Capacity at their irrevocable
+	 * Execute stage after identity/cargo transfers have succeeded. */
+	ConsistChangeFlags cache_changes = allowed_changes;
+	cache_changes.Set(ConsistChangeFlag::CheckOnly);
+	members.front()->ConsistChanged(cache_changes);
+	for (Train *head : omitted_heads) head->ConsistChanged(cache_changes);
+	InvalidateVehicleTickCaches();
+	return CommandCost();
 }
 
 /**
@@ -2873,24 +3117,9 @@ static void NormaliseTrainHead(Train *head, ConsistChangeFlags allowed_changes)
 		std::vector<Train *> members;
 		for (Train *u = head; u != nullptr; u = u->Next()) members.push_back(u);
 
-		bool valid = false;
-		for (Train *u : members) {
-			/* An explicit, in-chain primary is authoritative. Do not replace
-			 * it merely because NormaliseSubtypes() temporarily cleared its
-			 * front-engine marker: that would move the whole consist identity
-			 * (orders, name, unit number, group, profits, timetables, ...)
-			 * to another vehicle. */
-			if (u == head->Primary()) valid = true;
-		}
-
-		if (!valid) {
-			MaterialiseTrainPrimary(head);
-		}
-
+		BindTrainPrimary(head, head->Primary());
 		Train *new_prim = head->Primary();
 		for (Train *u : members) {
-			u->SetPrimary(new_prim);
-
 			DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, u->index.base());
 		}
 
@@ -3016,6 +3245,10 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 	/* don't move the same vehicle.. */
 	if (src == dst) return CommandCost();
 
+	/* A suffix move starts at the physical front of the clicked purchased
+	 * unit, never at a reversed unit's base behind its articulated parts. */
+	if (move_chain) src = src->GetUnitChainFront();
+
 	/* locate the head of the two chains */
 	Train *src_head = src->First();
 	assert(HasBit(src_head->subtype, GVSF_VIRTUAL) == HasBit(src->subtype, GVSF_VIRTUAL));
@@ -3071,8 +3304,10 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 	/* We want this information from before the rearrangement, but execute this after the validation.
 	 * original_src_head can't be nullptr; src is by definition != nullptr, so src_head can't be nullptr as
 	 * src->GetFirst() always yields non-nullptr, so eventually original_src_head != nullptr as well. */
-	bool original_src_head_front_engine = original_src_head->IsPrimaryVehicle();
-	bool original_dst_head_front_engine = original_dst_head != nullptr && original_dst_head->IsPrimaryVehicle();
+	Train *original_src_primary = src_head->Primary();
+	Train *original_dst_primary = original_dst_head == nullptr ? nullptr : original_dst_head->Primary();
+	bool original_src_head_front_engine = original_src_primary->IsPrimaryVehicle();
+	bool original_dst_head_front_engine = original_dst_primary != nullptr && original_dst_primary->IsPrimaryVehicle();
 
 	/* (Re)arrange the trains in the wanted arrangement. */
 	ArrangeTrains(&dst_head, dst, &src_head, src, move_chain);
@@ -3102,84 +3337,61 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 
 	/* do it? */
 	if (flags.Test(DoCommandFlag::Execute)) {
-		/* Remove old heads from the statistics */
-		if (original_src_head_front_engine) GroupStatistics::CountVehicle(original_src_head, -1);
-		if (original_dst_head_front_engine) GroupStatistics::CountVehicle(original_dst_head, -1);
+		/* Count logical identities, never both physical head and mid-chain primary. */
+		if (original_src_head_front_engine) GroupStatistics::CountVehicle(original_src_primary, -1);
+		if (original_dst_head_front_engine) GroupStatistics::CountVehicle(original_dst_primary, -1);
 
-		/* First normalise the sub types of the chains. */
-		NormaliseSubtypes(src_head);
-		NormaliseSubtypes(dst_head);
-
-		/* NormaliseSubtypes strips front markers from every non-head vehicle
-		 * and knows nothing about primary pointers; re-materialise each
-		 * resulting chain's primary onto its carrier (first engine, or the
-		 * head for engine-less wagon chains) so mid-chain primaries stay
-		 * drivable and stale self-references are cleaned up. */
-		if (src_head != nullptr) MaterialiseTrainPrimary(src_head);
-		if (dst_head != nullptr) MaterialiseTrainPrimary(dst_head);
-
-		/* There are 14 different cases:
-		 *  1) front engine gets moved to a new train, it stays a front engine.
-		 *     a) the 'next' part is a wagon that becomes a free wagon chain.
-		 *     b) the 'next' part is an engine that becomes a front engine.
-		 *     c) there is no 'next' part, nothing else happens
-		 *  2) front engine gets moved to another train, it is not a front engine anymore
-		 *     a) the 'next' part is a wagon that becomes a free wagon chain.
-		 *     b) the 'next' part is an engine that becomes a front engine.
-		 *     c) there is no 'next' part, nothing else happens
-		 *  3) front engine gets moved to later in the current train, it is not a front engine anymore.
-		 *     a) the 'next' part is a wagon that becomes a free wagon chain.
-		 *     b) the 'next' part is an engine that becomes a front engine.
-		 *  4) free wagon gets moved
-		 *     a) the 'next' part is a wagon that becomes a free wagon chain.
-		 *     b) the 'next' part is an engine that becomes a front engine.
-		 *     c) there is no 'next' part, nothing else happens
-		 *  5) non front engine gets moved and becomes a new train, nothing else happens
-		 *  6) non front engine gets moved within a train / to another train, nothing happens
-		 *  7) wagon gets moved, nothing happens
-		 */
-		if (src == original_src_head && original_src_head_front_engine && (!src->IsPrimaryVehicle() || new_head)) {
-			/* Cases #2 and #3: the front engine gets trashed. */
-			CloseWindowById(WindowClass::VehicleView, src->index);
-			CloseWindowById(WindowClass::VehicleOrders, src->index);
-			CloseWindowById(WindowClass::VehicleRefit, src->index);
-			CloseWindowById(WindowClass::VehicleDetails, src->index);
-			CloseWindowById(WindowClass::VehicleTimetable, src->index);
-			CloseWindowById(WindowClass::ScheduledDispatchSlots, src->index);
-			CloseWindowById(WindowClass::VehicleOrderImportErrors, src->index);
-			DeleteNewGRFInspectWindow(GrfSpecFeature::Trains, src->index.base());
-			SetWindowDirty(WindowClass::Company, _current_company);
-
-			if (src_head != nullptr && src_head->IsFrontEngine()) {
-				/* Cases #?b: Transfer order, unit number and other stuff
-				 * to the new front engine. */
-				src_head->orders = src->orders;
-				src_head->primary_order = src->primary_order;
-				src_head->primary_order_index = src->primary_order_index;
-				src_head->execute_schedule_stack = src->execute_schedule_stack;
-				if (src_head->orders != nullptr) src_head->AddToShared(src);
-				src_head->CopyVehicleConfigAndStatistics(src);
+		auto contains = [](Train *head, const Train *part) {
+			for (Train *u = head; u != nullptr; u = u->Next()) if (u == part) return true;
+			return false;
+		};
+		auto choose = [&](Train *head) -> Train * {
+			if (head == nullptr) return nullptr;
+			if (contains(head, original_dst_primary) && original_dst_head_front_engine) return original_dst_primary;
+			if (!new_head && contains(head, original_src_primary) && original_src_head_front_engine) return original_src_primary;
+			Train *fallback = nullptr;
+			for (Train *u = head; u != nullptr; u = u->Next()) {
+				if (new_head && u == original_src_primary) continue;
+				if (u->IsEngine()) return u;
+				if (fallback == nullptr && !u->IsArticulatedPart() && !u->IsRearDualheaded()) fallback = u;
 			}
-			/* Remove stuff not valid anymore for non-front engines. */
-			DeleteVehicleOrders(src);
-			src->ReleaseUnitNumber();
-			src->dispatch_records.clear();
-			if (!_settings_game.vehicle.non_leading_engines_keep_name) {
-				src->name.clear();
-			}
-			if (src->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
-				TraceRestrictRemoveVehicleFromAllSlots(src->index);
-				src->vehicle_flags.Reset(VehicleFlag::HaveSlot);
-			}
-			src->vehicle_flags.Reset(VehicleFlag::ReplacementPending);
-			OrderBackup::ClearVehicle(src);
+			return fallback != nullptr ? fallback : Train::From(head->GetUnitMain());
+		};
+		Train *src_primary = choose(src_head);
+		Train *dst_primary = choose(dst_head);
+		if (src_head != nullptr) {
+			BindTrainPrimary(src_head, src_primary);
+			src_primary = src_head->Primary();
+		}
+		if (dst_head != nullptr) {
+			BindTrainPrimary(dst_head, dst_primary);
+			dst_primary = dst_head->Primary();
 		}
 
-		/* We weren't a front engine but are becoming one. So
-		 * we should be put in the default group. */
-		if ((original_src_head != src || new_head) && dst_head == src) {
-			SetTrainGroupID(src, DEFAULT_GROUP);
+		/* If an old identity is absorbed by an existing destination, hand it to
+		 * the surviving source only when the source needs that identity. A move
+		 * within one chain keeps its original carrier in place. NewHead explicitly
+		 * requests dropping the moved carrier's identity, as before. */
+		if (original_src_head_front_engine && ((original_src_primary != src_primary && original_src_primary != dst_primary) || new_head)) {
+			if (src_primary != nullptr && src_primary->IsPrimaryVehicle() && src_primary->owner == original_src_primary->owner) {
+				MoveTrainIdentity(original_src_primary, src_primary);
+			} else {
+				DeleteVehicleOrders(original_src_primary);
+				original_src_primary->ReleaseUnitNumber();
+				original_src_primary->dispatch_records.clear();
+				original_src_primary->execute_schedule_stack.clear();
+				if (original_src_primary->vehicle_flags.Test(VehicleFlag::HaveSlot)) TraceRestrictRemoveVehicleFromAllSlots(original_src_primary->index);
+				original_src_primary->vehicle_flags.Reset(VehicleFlag::HaveSlot);
+				original_src_primary->vehicle_flags.Reset(VehicleFlag::ReplacementPending);
+				OrderBackup::ClearVehicle(original_src_primary);
+			}
+			if (!_settings_game.vehicle.non_leading_engines_keep_name) original_src_primary->name.clear();
 			SetWindowDirty(WindowClass::Company, _current_company);
+		}
+		/* An independent newly created train starts in the default group; a
+		 * transferred identity or a retained carrier keeps its existing group. */
+		for (Train *prim : {src_primary, dst_primary}) {
+			if (prim != nullptr && prim->IsPrimaryVehicle() && prim->unitnumber == 0 && prim != original_src_primary && prim != original_dst_primary) SetTrainGroupID(prim, DEFAULT_GROUP);
 		}
 
 		/* Handle 'new engine' part of cases #1b, #2b, #3b, #4b and #5 in NormaliseTrainHead. */
@@ -3188,8 +3400,8 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 
 		/* Add new heads to statistics.
 		 * This should be done after NormaliseTrainHead due to engine total limit checks in GetFreeUnitNumber. */
-		if (src_head != nullptr && src_head->IsPrimaryVehicle()) GroupStatistics::CountVehicle(src_head, 1);
-		if (dst_head != nullptr && dst_head->IsPrimaryVehicle()) GroupStatistics::CountVehicle(dst_head, 1);
+		if (src_head != nullptr && src_head->Primary()->IsPrimaryVehicle()) GroupStatistics::CountVehicle(src_head->Primary(), 1);
+		if (dst_head != nullptr && dst_head->Primary()->IsPrimaryVehicle()) GroupStatistics::CountVehicle(dst_head->Primary(), 1);
 
 		if (!flags.Test(DoCommandFlag::NoCargoCapacityCheck)) {
 			CheckCargoCapacity(src_head);
@@ -3270,11 +3482,12 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 {
 	/* Reject selling a rear dual-headed half before resolving the unit main. */
 	if (Train::From(t)->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
-	Train *v = Train::From(t)->GetFirstEnginePart();
+	Train *v = Train::From(t)->GetUnitChainFront();
 	/* The primary (consist info carrier) may sit anywhere in the chain; all
 	 * chain surgery below must be anchored at the physical chain head. */
 	Train *first = v->First();
 	Train *primary = v->Primary();
+	const bool original_primary_vehicle = primary->IsPrimaryVehicle();
 
 	if (v->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
 
@@ -3308,7 +3521,7 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 		return ret;
 	}
 
-	if (primary->orders == nullptr && !OrderList::CanAllocateItem()) {
+	if (new_head != nullptr && primary->orders == nullptr && !OrderList::CanAllocateItem()) {
 		/* Restore the train we had. */
 		RestoreTrainBackup(original);
 		return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
@@ -3333,43 +3546,25 @@ CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, 
 			}
 		}
 
+		if (primary_sold && original_primary_vehicle) GroupStatistics::CountVehicle(primary, -1);
+		if (new_head != nullptr) BindTrainPrimary(new_head, primary_sold ? nullptr : primary);
 		if (primary_sold && new_head != nullptr) {
-			/* The info carrier is sold but the consist survives: materialise
-			 * the surviving chain's own carrier. Only hand the consist
-			 * identity over when that carrier belongs to the same company.
-			 * After a cross-company coupling the surviving engine may belong
-			 * to another company; it must not inherit the seller's orders,
-			 * unit number, name or statistics. */
-			MaterialiseTrainPrimary(new_head);
 			Train *new_primary = new_head->Primary();
-
-			if (new_primary->owner == primary->owner) {
-				/* Transfer the consist identity (orders, unit number,
-				 * statistics) so the surviving chain keeps running as the
-				 * same train. */
-				new_primary->orders = primary->orders;
-				new_primary->primary_order = primary->primary_order;
-				new_primary->primary_order_index = primary->primary_order_index;
-				new_primary->execute_schedule_stack = primary->execute_schedule_stack;
-				new_primary->AddToShared(primary);
-				DeleteVehicleOrders(primary);
-
-				/* Copy other important data from the old carrier */
-				new_primary->CopyVehicleConfigAndStatistics(primary);
-				new_primary->speed_restriction = primary->speed_restriction;
-				Train::From(new_primary)->flags.Set(VehicleRailFlag::SpeedAdaptationExempt, Train::From(primary)->flags.Test(VehicleRailFlag::SpeedAdaptationExempt));
-			}
-
-			/* The new carrier becomes an independent train again, regardless
-			 * of its owner. GroupStatistics::CountVehicle() is called after
-			 * the identity transfer because that copies the profit values. */
-			GroupStatistics::CountVehicle(new_primary, 1);
-		} else if (primary->IsPrimaryVehicle() && backup_order) {
+			if (new_primary->owner == primary->owner && new_primary->IsPrimaryVehicle()) MoveTrainIdentity(primary, new_primary);
+			/* Deletion must not count the old identity a second time. */
+			primary->ClearFrontEngine();
+			primary->ClearFrontWagon();
+		} else if (primary_sold && primary->IsPrimaryVehicle() && backup_order) {
 			OrderBackup::Backup(primary, user);
+		}
+		if (primary_sold) {
+			primary->ClearFrontEngine();
+			primary->ClearFrontWagon();
 		}
 
 		/* We need to update the information about the train. */
 		NormaliseTrainHead(new_head, CCF_ARRANGE);
+		if (primary_sold && new_head != nullptr && new_head->Primary()->IsPrimaryVehicle()) GroupStatistics::CountVehicle(new_head->Primary(), 1);
 
 		/* We are undoubtedly changing something in the depot and train list. */
 		/* Unless its a virtual train */
@@ -3694,9 +3889,7 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 	 * half. Normalise the subtype flags so ConsistChanged() sees a legal head.
 	 * Keep the original primary: it carries orders, name, unit number, group,
 	 * profits, timetable/dispatch state and all other consist identity. */
-	NormaliseSubtypes(new_first);
-	for (Train *u = new_first; u != nullptr; u = u->Next()) u->SetPrimary(primary);
-	if (primary->IsEngine()) primary->SetFrontEngine();
+	BindTrainPrimary(new_first, primary);
 
 	/* Direct pointer assignment bypasses SetNext()'s marker maintenance;
 	 * recompute the pool's front/non-front markers for the new chain,
@@ -7013,11 +7206,17 @@ struct TrialConsistGuard {
 		NewGRFCache grf_cache;
 		uint8_t user_def_data;
 		uint8_t cached_veh_flags;
+		Vehicle *unit_main;
+		Train *primary;
+		uint8_t subtype;
+		Direction direction;
+		bool driving_backwards;
 		bool flipped;
 	};
 
 	std::vector<TrialCache> caches;
 	SavedRandomSeeds seeds;
+	bool restore_structure = true;
 
 	TrialConsistGuard()
 	{
@@ -7027,7 +7226,9 @@ struct TrialConsistGuard {
 	void SnapshotChain(const TrainList &chain)
 	{
 		for (Train *t : chain) {
-			this->caches.push_back({t, t->grf_cache, t->tcache.user_def_data, t->vcache.cached_veh_flags, t->flags.Test(VehicleRailFlag::Flipped)});
+			this->caches.push_back({t, t->grf_cache, t->tcache.user_def_data, t->vcache.cached_veh_flags,
+					t->HasUnitMain() ? t->GetUnitMain() : nullptr, t->Primary(), t->subtype, t->direction,
+					t->vehicle_flags.Test(VehicleFlag::DrivingBackwards), t->flags.Test(VehicleRailFlag::Flipped)});
 		}
 	}
 
@@ -7037,6 +7238,13 @@ struct TrialConsistGuard {
 			cache.vehicle->grf_cache = cache.grf_cache;
 			cache.vehicle->tcache.user_def_data = cache.user_def_data;
 			cache.vehicle->vcache.cached_veh_flags = cache.cached_veh_flags;
+			if (this->restore_structure) {
+				cache.vehicle->SetUnitMain(cache.unit_main);
+				cache.vehicle->SetPrimary(cache.primary);
+				cache.vehicle->subtype = cache.subtype;
+				cache.vehicle->direction = cache.direction;
+				cache.vehicle->vehicle_flags.Set(VehicleFlag::DrivingBackwards, cache.driving_backwards);
+			}
 			cache.vehicle->flags.Set(VehicleRailFlag::Flipped, cache.flipped);
 		}
 		if (this->seeds.random.state[0] != _random.state[0] || this->seeds.random.state[1] != _random.state[1]) {
@@ -7090,6 +7298,8 @@ static bool TryTrainDecouple(Train *v, Train *u)
 		v->ConsistChanged(CCF_ARRANGE_STATION);
 		return false;
 	}
+	/* This caller intentionally keeps a successful split for DecoupleTrain. */
+	trial_guard.restore_structure = false;
 	/* Splitting creates a new train front; invalidate the tick caches or the new front will not be ticked. */
 	InvalidateVehicleTickCaches();
 	return true;
@@ -7431,73 +7641,37 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_r
 	/* The decoupled part now runs a separate schedule: mark it as the second part. */
 	dec_head->decouple_part = 2;
 
-	/* The decoupled part inherits the slot occupants held by the consist part,
-	 * so both trains share the same slots. Slots have a maximum occupant
-	 * count; if adding the decoupled part would exceed that limit, it does not inherit. */
+	/* The new part has its own logical controller, independent of its physical
+	 * head. Keep the head marker even when the engine carrier sits behind it. */
+	Train *dec_primary = nullptr;
+	for (Train *w = dec_head; w != nullptr; w = w->Next()) {
+		if (w->IsEngine()) { dec_primary = w; break; }
+		if (dec_primary == nullptr && !w->IsArticulatedPart() && !w->IsRearDualheaded()) dec_primary = w;
+	}
+	if (dec_primary == nullptr) dec_primary = dec_head;
+	if (!dec_primary->IsEngine()) dec_primary->SetFrontWagon();
+	BindTrainPrimary(dec_head, dec_primary);
+	BindTrainPrimary(consist_head, v);
+
+	/* Slots, groups and statistics belong to the logical controller. */
 	if (v->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
 		std::vector<TraceRestrictSlotID> slots;
 		TraceRestrictGetVehicleSlots(v->index, slots);
-		for (TraceRestrictSlotID slot_id : slots) {
-			TraceRestrictSlot::Get(slot_id)->Occupy(dec_head);
-		}
+		for (TraceRestrictSlotID slot_id : slots) TraceRestrictSlot::Get(slot_id)->Occupy(dec_primary);
 	}
+	NormalizeLastLoadingStation(dec_primary);
+	NormalizeLastLoadingStation(v);
+	dec_primary->decouple_part = 2;
+	SetTrainGroupID(dec_primary, dec_primary->owner == v->owner ? v->group_id : DEFAULT_GROUP);
 
-	if (dec_head->IsEngine()) {
-		dec_head->SetFrontEngine();
-	} else {
-		dec_head->SetFrontWagon();
-	}
-
-	/* Pin the decoupled part's primary to its first engine (if any), even
-	 * when the chain head is a wagon: the engine carries the consist's age,
-	 * unit number and identity. For an engine-less part the chain head wagon
-	 * becomes the primary. Either way every member must be re-pinned: before
-	 * the split they may still have pointed into the consist part. */
-	{
-		Train *dec_prim = dec_head;
-		for (Train *w = dec_head; w != nullptr; w = w->Next()) {
-			if (w->IsEngine()) {
-				dec_prim = w;
-				break;
-			}
-		}
-		for (Train *w = dec_head; w != nullptr; w = w->Next()) w->SetPrimary(dec_prim);
-		if (dec_prim != dec_head) {
-			/* Restore the front-engine flag: it may have been cleared when
-			 * this engine's train was absorbed by a couple. Without it the
-			 * NormaliseTrainHead self-heal would reject the pinned primary
-			 * and fall back to the chain head. */
-			dec_prim->SetFrontEngine();
-			/* Only one vehicle of a chain may be a driver: drop the front-wagon
-			 * flag of the chain head, otherwise both the wagon head and the
-			 * mid-chain engine tick independently and drag the consist apart. */
-			dec_head->ClearFrontWagon();
-		}
-		/* Keep the last-loading-station records valid on both resulting parts
-		 * instead of invalidating them; see PropagateLastLoadingStation. */
-		NormalizeLastLoadingStation(dec_prim);
-		NormalizeLastLoadingStation(v);
-		dec_prim->decouple_part = 2;
-	}
-
-	/* The decoupled part keeps the vehicle group of the original consist.
-	 * dec_head can be a front wagon ahead of the part's engine; then it is not
-	 * the primary vehicle and SetTrainGroupID() must not be called with a
-	 * non-default group (the engine primary already carries the group). */
-	const GroupID original_group = v->group_id;
-	if (dec_head->IsPrimaryVehicle()) {
-		SetTrainGroupID(dec_head, original_group);
-	}
-	GroupStatistics::CountVehicle(v, -1);
-
-	GroupStatistics::CountVehicle(v, 1);
-	GroupStatistics::CountVehicle(dec_head, 1);
+	/* The old carrier never changed identity, so only the new identity is added. */
 
 	/* Normalise both parts from their physical heads so the primary pointers
 	 * of the head-side vehicles (which sit before the primary) are refreshed
 	 * too; normalising from the mid-chain primary would leave them stale. */
 	NormaliseTrainHead(dec_head, CCF_COUPLE);
 	NormaliseTrainHead(consist_head, CCF_COUPLE);
+	GroupStatistics::CountVehicle(dec_primary, 1);
 
 	/* The split created a new chain front; invalidate the vehicle tick caches
 	 * so both parts are ticked from now on (same as couple/flip do). */
@@ -8173,26 +8347,18 @@ Train *ResolveCoupleTargetStation(const Train *moving, TileIndex tile, Trackdir 
 }
 
 /**
- * The direction a vehicle carries after a full in-place flip
- * (ReverseTrainForCouple). Every vehicle keeps its position, its direction is
- * reversed and Flipped is toggled, so the stored direction is simply reversed.
- */
-static Direction FlippedDirection(const Train *v)
-{
-	return ReverseDir(v->direction);
-}
-
-/**
- * Reverse the trial chain order the way ReverseTrainForCouple would. The whole
- * chain order is reversed and Flipped follows the real reversal's sprite rule.
- * Physical positions and directions are untouched -- only the order the NewGRF start/stop check
- * enumerates is modelled. RestoreTrainBackup() fully undoes the relink.
+ * Reverse the trial chain order and orientation the way ReverseTrainForCouple
+ * would. Positions are untouched; the guard restores directions, driving state
+ * and Flipped after the NewGRF check, and RestoreTrainBackup undoes the relink.
  */
 static void TrialReverseChainOrder(Train *head)
 {
+	Train *primary = head->Primary();
 	std::vector<Train *> order;
 	for (Train *t = head; t != nullptr; t = t->Next()) {
 		order.push_back(t);
+		t->direction = ReverseDir(t->direction);
+		t->vehicle_flags.Reset(VehicleFlag::DrivingBackwards);
 		/* The guard restores the same Flipped changes as the real reversal. */
 		if (ShouldFlipTrainForCouple(t)) t->flags.Flip(VehicleRailFlag::Flipped);
 	}
@@ -8207,6 +8373,7 @@ static void TrialReverseChainOrder(Train *head)
 		t->SetFirst(new_first);
 		t->SetLast(new_last);
 	}
+	BindTrainPrimary(new_first, primary);
 	ResetChainNonFrontMarkers(new_first);
 }
 
@@ -8225,9 +8392,9 @@ static void TrialApplyCoupleOrientation(Train **v_phys, Train **u_phys)
 	/* v's own driving state decides whether it must be turned around. */
 	Direction v_dir = v_prim->direction;
 	if (!v_prim->IsDrivingBackwards()) {
-		v_dir = FlippedDirection(v_prim);
 		TrialReverseChainOrder(*v_phys);
 		*v_phys = (*v_phys)->First();
+		v_dir = v_prim->direction;
 	}
 
 	/* u couples as-is when it faces the (possibly flipped) v within 45 degrees. */
@@ -8391,6 +8558,8 @@ static bool TryTrainCouple(Train *v, Train *u)
 		return false;
 	}
 
+	/* This caller intentionally keeps the successful merge. */
+	trial_guard.restore_structure = false;
 	/* Coupling removes a train front; invalidate the tick caches or the merged chain will be ticked twice. */
 	InvalidateVehicleTickCaches();
 	return true;
@@ -11549,9 +11718,8 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 Money Train::GetRunningCost() const
 {
 	Money cost = 0;
-	const Train *v = this;
-
-	do {
+	for (const Train *v = this->First(); v != nullptr; v = v->Next()) {
+		if (v->IsArticulatedPart()) continue;
 		const Engine *e = v->GetEngine();
 		if (e->VehInfo<RailVehicleInfo>().running_cost_class == Price::Invalid) continue;
 
@@ -11562,7 +11730,7 @@ Money Train::GetRunningCost() const
 		if (v->IsMultiheaded()) cost_factor /= 2;
 
 		cost += GetPrice(e->VehInfo<RailVehicleInfo>().running_cost_class, cost_factor, e->GetGRF());
-	} while ((v = v->GetNextVehicle()) != nullptr);
+	}
 
 	if (this->cur_speed == 0) {
 		if (this->IsInDepot()) {
@@ -12046,319 +12214,390 @@ static inline CommandCost CmdStartStopVehicle(const Vehicle *v, bool evaluate_ca
 */
 static CommandCost CmdTemplateReplaceVehicle(DoCommandFlags flags, Train *incoming, Train *&outgoing)
 {
-	CommandCost buy(ExpensesType::NewVehicles);
-
-	const bool was_stopped = incoming->vehstatus.Test(VehState::Stopped);
-	if (!was_stopped) {
-		CommandCost cost = CmdStartStopVehicle(incoming, true);
-		if (cost.Failed()) return cost;
+	Train *old_primary = incoming->Primary();
+	Train *old_head = incoming->First();
+	outgoing = old_primary;
+	TemplateVehicle *tv = GetTemplateVehicleByGroupIDRecursive(old_primary->group_id);
+	if (tv == nullptr) return CMD_ERROR;
+	tv = tv->First();
+	for (const TemplateVehicle *p = tv; p != nullptr; p = p->Next()) {
+		CommandCost owner = CheckOwnership(p->owner);
+		if (owner.Failed()) return owner;
 	}
-	auto guard = scope_guard([&]() {
-		outgoing = incoming;
-		if (!was_stopped) buy.AddCost(CmdStartStopVehicle(incoming, false));
-	});
-
-	Train *new_chain = nullptr;
-	Train *remainder_chain = nullptr;
-	TemplateVehicle *tv = GetTemplateVehicleByGroupIDRecursive(incoming->group_id);
-	if (tv == nullptr) {
-		return CMD_ERROR;
-	}
-	EngineID eid = tv->engine_type;
-
-	CommandCost tmp_result(ExpensesType::NewVehicles);
-
-	/* first some tests on necessity and sanity */
-	if (tv == nullptr) return CommandCost();
-	if (tv->IsReplaceOldOnly() && !incoming->NeedsAutorenewing(Company::Get(incoming->owner), false)) {
-		return CommandCost();
-	}
-	const TBTRDiffFlags diff = TrainTemplateDifference(incoming, tv);
+	if (tv->IsReplaceOldOnly() && !old_primary->NeedsAutorenewing(Company::Get(old_primary->owner), false)) return CommandCost();
+	const TBTRDiffFlags diff = TrainTemplateDifference(old_head, tv);
 	if (diff == TBTRDF_NONE) return CommandCost();
-
-	const bool need_replacement = (diff & TBTRDF_CONSIST);
-	const bool need_refit = (diff & TBTRDF_REFIT);
+	if (tv->IsFreeWagonChain()) return CommandCost(STR_TMPL_ERROR_NOT_RUNNABLE);
 	const bool refit_to_template = tv->refit_as_template;
-	const TileIndex tile = incoming->tile;
-
-	CargoType store_refit_ct = INVALID_CARGO;
-	uint16_t store_refit_csubt = 0;
-	// if a train shall keep its old refit, store the refit setting of its first vehicle
-	if (!refit_to_template) {
-		for (Train *getc = incoming; getc != nullptr; getc = getc->GetNextUnit()) {
-			if (getc->cargo_type != INVALID_CARGO && getc->cargo_cap > 0) {
-				store_refit_ct = getc->cargo_type;
-				break;
-			}
-		}
+	const bool need_replacement = (diff & TBTRDF_CONSIST) != 0;
+	const bool was_stopped = old_primary->vehstatus.Test(VehState::Stopped);
+	const bool driving_backwards = old_primary->vehicle_flags.Test(VehicleFlag::DrivingBackwards);
+	const TileIndex tile = old_head->tile;
+	const DoCommandFlags query_flags = DoCommandFlags{flags}.Reset(DoCommandFlag::Execute) | DoCommandFlag::AutoReplace;
+	CommandCost buy(ExpensesType::NewVehicles);
+	CargoType stored_cargo = INVALID_CARGO;
+	for (Train *p = old_head; p != nullptr; p = p->Next()) {
+		if (p->cargo_type != INVALID_CARGO && p->cargo_cap > 0) { stored_cargo = p->cargo_type; break; }
 	}
-
-	if (need_replacement) {
-		CommandCost buy_cost = TestBuyAllTemplateVehiclesInChain(tv, tile);
-		if (buy_cost.Failed()) {
-			if (buy_cost.GetErrorMessage() == INVALID_STRING_ID) return CommandCost(STR_ERROR_CAN_T_BUY_TRAIN);
-			return buy_cost;
-		} else if (!CheckCompanyHasMoney(buy_cost)) {
-			return CommandCost(STR_ERROR_NOT_ENOUGH_CASH_REQUIRES_CURRENCY);
-		}
+	std::vector<const TemplateVehicle *> template_units;
+	for (const TemplateVehicle *p = tv; p != nullptr; p = p->Next()) {
+		const TemplateVehicle *main = p->GetUnitMain();
+		if (main == nullptr || main->IsArticulatedPart() || main->IsRearDualheaded()) return CMD_ERROR;
+		if (std::find(template_units.begin(), template_units.end(), main) == template_units.end()) template_units.push_back(main);
 	}
-
-	if (tv->IsFreeWagonChain()) {
-		return CommandCost(STR_TMPL_ERROR_NOT_RUNNABLE);
-	}
-
+	std::vector<Train *> available = CollectTrainPurchasedUnits(old_head);
 	TemplateDepotVehicles depot_vehicles;
-	if (tv->IsSetReuseDepotVehicles()) depot_vehicles.Init(tile);
+	if (need_replacement && tv->IsSetReuseDepotVehicles()) depot_vehicles.Init(tile);
 
-	auto refit_unit = [&](const Train *unit, CargoType cid, uint16_t csubt) {
-		CommandCost refit_cost = Command<Commands::RefitVehicle>::Do(flags, unit->index, cid, csubt, false, false, 1);
-		if (refit_cost.Succeeded()) buy.AddCost(refit_cost.GetCost());
-	};
-
+	/* CMD_NO_TEST keeps an approximate estimate. Never execute a purchase with
+	 * refitting, stop command or refit merely to query original vehicles. */
 	if (!flags.Test(DoCommandFlag::Execute)) {
-		/* Simplified operation for cost estimation, this doesn't have to exactly match the actual cost due to CMD_NO_TEST */
-		if (need_replacement || need_refit) {
-			std::vector<const Train *> in;
-			for (const Train *u = incoming; u != nullptr; u = u->GetNextUnit()) {
-				in.push_back(u);
+		for (const TemplateVehicle *source : template_units) {
+			Train *unit = nullptr;
+			auto found = std::find_if(available.begin(), available.end(), [source](Train *u) { return u->engine_type == source->engine_type; });
+			if (found != available.end()) { unit = *found; available.erase(found); }
+			if (unit == nullptr && tv->IsSetReuseDepotVehicles()) {
+				unit = depot_vehicles.ContainsEngine(source->engine_type, old_head);
+				if (unit != nullptr) depot_vehicles.RemoveVehicle(unit->index);
 			}
-			auto process_unit = [&](const TemplateVehicle *cur_tmpl) {
-				for (auto iter = in.begin(); iter != in.end(); ++iter) {
-					const Train *u = *iter;
-					if (u->engine_type == cur_tmpl->engine_type) {
-						/* use existing engine */
-						in.erase(iter);
-						if (refit_to_template) {
-							buy.AddCost(Command<Commands::RefitVehicle>::Do(flags, u->index, cur_tmpl->cargo_type, cur_tmpl->cargo_subtype, false, false, 1));
-						} else {
-							refit_unit(u, store_refit_ct, store_refit_csubt);
-						}
-						return;
-					}
+			if (unit == nullptr) buy.AddCost(Command<Commands::BuildVehicle>::Do(query_flags, tile, source->engine_type, false, INVALID_CARGO, ClientID::Invalid));
+			CargoType cargo = refit_to_template ? source->cargo_type : stored_cargo;
+			if (cargo < NUM_CARGO && (unit == nullptr || unit->cargo_type != cargo || (refit_to_template && unit->cargo_subtype != source->cargo_subtype))) {
+				/* Approximate new-purchase refit cost remains zero in this
+				 * CMD_NO_TEST estimate; execution queries actual built members. */
+				if (unit != nullptr && unit->Primary()->IsStoppedInDepot()) {
+					std::vector<std::pair<Train *, NewGRFCache>> caches;
+					for (Train *part = unit->First(); part != nullptr; part = part->Next()) caches.emplace_back(part, part->grf_cache);
+					SavedRandomSeeds query_seeds;
+					SaveRandomSeeds(&query_seeds);
+					buy.AddCost(Command<Commands::RefitVehicle>::Do(query_flags, unit->index, cargo, refit_to_template ? source->cargo_subtype : 0, false, false, 1));
+					for (const auto &[part, cache] : caches) part->grf_cache = cache;
+					RestoreRandomSeeds(query_seeds);
 				}
-
-				if (tv->IsSetReuseDepotVehicles()) {
-					const Train *depot_eng = depot_vehicles.ContainsEngine(cur_tmpl->engine_type, incoming);
-					if (depot_eng != nullptr) {
-						depot_vehicles.RemoveVehicle(depot_eng->index);
-						if (refit_to_template) {
-							buy.AddCost(Command<Commands::RefitVehicle>::Do(flags, depot_eng->index, cur_tmpl->cargo_type, cur_tmpl->cargo_subtype, false, false, 1));
-						} else {
-							refit_unit(depot_eng, store_refit_ct, store_refit_csubt);
-						}
-						return;
-					}
-				}
-
-				CargoType refit_cargo = refit_to_template ? cur_tmpl->cargo_type : store_refit_ct;
-				buy.AddCost(Command<Commands::BuildVehicle>::Do(flags, tile, cur_tmpl->engine_type, false, refit_cargo, ClientID::Invalid));
-			};
-			for (const TemplateVehicle *cur_tmpl = tv; cur_tmpl != nullptr; cur_tmpl = cur_tmpl->GetNextUnit()) {
-				process_unit(cur_tmpl);
 			}
-			if (!tv->IsSetKeepRemainingVehicles()) {
-				/* Sell leftovers */
-				for (const Train *u : in) {
-					/* Do not dry-run selling each part using Commands::SellVehicle because this can fail due to consist/wagon-attachment callbacks */
-					buy.AddCost(-u->value);
-					if (u->other_multiheaded_part != nullptr) {
-						buy.AddCost(-u->other_multiheaded_part->value);
-					}
-				}
+		}
+		if (!tv->IsSetKeepRemainingVehicles()) {
+			for (Train *p = old_head; p != nullptr; p = p->Next()) {
+				Train *main = p->IsRearDualheaded() ? p->other_multiheaded_part : Train::From(p->GetUnitMain());
+				if (std::find(available.begin(), available.end(), main) != available.end()) buy.AddCost(-p->value);
 			}
 		}
 		if (buy.Failed()) buy.MultiplyCost(0);
 		return buy;
 	}
 
+	/* No cargo packets or identity resources are touched before commit. Save
+	 * full original and provisional chains, including callback caches/markers. */
+	struct Snapshot {
+		Train *u, *next, *previous, *first, *last, *primary;
+		Vehicle *unit_main;
+		uint8_t subtype;
+		VehicleRailFlags flags;
+		VehicleFlags vehicle_flags;
+		NewGRFCache grf_cache;
+		TrainCache tcache;
+		GroundVehicleCache gcache;
+		VehicleCache vcache;
+		decltype(old_head->vehstatus) vehstatus;
+		CargoType cargo_type;
+		uint8_t cargo_subtype;
+		uint16_t cargo_cap, refit_cap;
+		Direction direction;
+		GroundVehicleFlags gv_flags;
+		RailTypes railtypes, compatible_railtypes;
+		uint8_t acceleration;
+		decltype(old_head->colourmap) colourmap;
+	};
+	std::vector<Snapshot> snapshots;
+	std::vector<std::pair<Train *, std::vector<uint32_t>>> routes;
+	std::vector<Train *> counted_primaries, new_units;
+	bool counts_removed = false;
+	bool committed = false;
+	SavedRandomSeeds seeds;
+	SaveRandomSeeds(&seeds);
+	auto save_chain = [&](Train *head) -> CommandCost {
+		head = head->First();
+		if (std::any_of(routes.begin(), routes.end(), [head](const auto &r) { return r.first == head; })) return CommandCost();
+		for (Train *p = head; p != nullptr; p = p->Next()) {
+			CommandCost owner = CheckOwnership(p->owner);
+			if (owner.Failed()) return owner;
+			if (p->tile != tile || p->track != TRACK_BIT_DEPOT || p->IsVirtual()) return CMD_ERROR;
+		}
+		Train *primary = head->Primary();
+		if (primary->IsPrimaryVehicle() && std::find(counted_primaries.begin(), counted_primaries.end(), primary) == counted_primaries.end()) counted_primaries.push_back(primary);
+		routes.emplace_back(head, head->early_route);
+		for (Train *p = head; p != nullptr; p = p->Next()) snapshots.push_back({p, p->Next(), Train::From(p->Previous()), p->First(), p->Last(), p->Primary(),
+			p->HasUnitMain() ? p->GetUnitMain() : nullptr, p->subtype, p->flags, p->vehicle_flags,
+			p->grf_cache, p->tcache, p->gcache, p->vcache, p->vehstatus, p->cargo_type, p->cargo_subtype,
+			p->cargo_cap, p->refit_cap, p->direction, p->gv_flags, p->railtypes, p->compatible_railtypes, p->acceleration, p->colourmap});
+		return CommandCost();
+	};
+	auto rollback = scope_guard([&]() {
+		if (committed) return;
+		for (const Snapshot &s : snapshots) {
+			s.u->SetNextRaw(s.next); s.u->SetPreviousRaw(s.previous);
+			s.u->SetFirst(s.first); s.u->SetLast(s.last); s.u->SetPrimary(s.primary); s.u->SetUnitMain(s.unit_main);
+			s.u->subtype = s.subtype; s.u->flags = s.flags; s.u->vehicle_flags = s.vehicle_flags;
+			s.u->grf_cache = s.grf_cache; s.u->tcache = s.tcache; s.u->gcache = s.gcache; s.u->vcache = s.vcache;
+			s.u->vehstatus = s.vehstatus; s.u->cargo_type = s.cargo_type; s.u->cargo_subtype = s.cargo_subtype;
+			s.u->cargo_cap = s.cargo_cap; s.u->refit_cap = s.refit_cap; s.u->direction = s.direction;
+			s.u->gv_flags = s.gv_flags; s.u->railtypes = s.railtypes; s.u->compatible_railtypes = s.compatible_railtypes;
+			s.u->acceleration = s.acceleration; s.u->colourmap = s.colourmap;
+		}
+		for (const auto &[head, route] : routes) { head->early_route = route; ResetChainNonFrontMarkers(head); }
+		if (counts_removed) for (Train *primary : counted_primaries) GroupStatistics::CountVehicle(primary, 1);
+		/* Only fresh isolated purchases are deleted, after restoring every link. */
+		for (Train *unit : new_units) delete unit->First();
+		RestoreRandomSeeds(seeds);
+		InvalidateVehicleTickCaches();
+	});
+	CommandCost result = save_chain(old_head);
+	if (result.Failed()) return result;
+	if (!was_stopped) {
+		result = CmdStartStopVehicle(query_flags, old_primary->index, true);
+		if (result.Failed()) return result;
+	}
+	/* Staging a stop bit is reversible; executing a stop would reset schedules,
+	 * separation and reservation state before the replacement is known valid. */
+	old_primary->vehstatus.Set(VehState::Stopped);
+	TemplateTrainMapping bindings;
+	for (const TemplateVehicle *source : template_units) {
+		Train *unit = nullptr;
+		auto found = std::find_if(available.begin(), available.end(), [source](Train *u) { return u->engine_type == source->engine_type; });
+		if (found != available.end()) { unit = *found; available.erase(found); }
+		if (unit == nullptr && tv->IsSetReuseDepotVehicles()) {
+			unit = depot_vehicles.ContainsEngine(source->engine_type, old_head);
+			if (unit != nullptr) {
+				result = save_chain(unit);
+				if (result.Failed()) return result;
+				depot_vehicles.RemoveVehicle(unit->index);
+			}
+		}
+		if (unit == nullptr) {
+			CommandCost purchased = Command<Commands::BuildVehicle>::Do(flags | DoCommandFlag::AutoReplace, tile, source->engine_type, false, INVALID_CARGO, ClientID::Invalid);
+			if (purchased.Failed()) return purchased;
+			auto id = purchased.GetResultData<VehicleID>();
+			if (!id.has_value()) return CMD_ERROR;
+			unit = Train::From(Train::Get(*id)->GetUnitMain());
+			new_units.push_back(unit);
+			result = save_chain(unit);
+			if (result.Failed()) return result;
+			buy.AddCost(purchased.GetCost());
+		}
+		bindings.emplace_back(source, unit);
+	}
+	std::vector<Train *> members;
+	result = BuildTemplateTrainLayout(tv, bindings, members);
+	if (result.Failed()) return result;
+	TemplateTrainMapping mapping;
+	Train *new_primary = nullptr;
+	for (const auto &[source, unit] : bindings) {
+		std::vector<const TemplateVehicle *> old_parts;
+		std::vector<Train *> new_parts;
+		const TemplateVehicle *rear = nullptr;
+		for (const TemplateVehicle *p = tv; p != nullptr; p = p->Next()) {
+			if (p->GetUnitMain() != source) continue;
+			if (p->IsRearDualheaded()) rear = p; else old_parts.push_back(p);
+		}
+		for (Train *p = unit->First(); p != nullptr; p = p->Next()) {
+			Train *main = p->IsRearDualheaded() ? p->other_multiheaded_part : Train::From(p->GetUnitMain());
+			if (main == unit && !p->IsRearDualheaded()) new_parts.push_back(p);
+		}
+		if (old_parts.empty() || new_parts.empty()) return CMD_ERROR;
+		if (old_parts.front() != source) std::reverse(old_parts.begin(), old_parts.end());
+		if (new_parts.front() != unit) std::reverse(new_parts.begin(), new_parts.end());
+		for (size_t i = 0; i < new_parts.size(); ++i) mapping.emplace_back(old_parts[std::min(i, old_parts.size() - 1)], new_parts[i]);
+		if (rear != nullptr && unit->other_multiheaded_part != nullptr) mapping.emplace_back(rear, unit->other_multiheaded_part);
+		if (tv->Primary() != nullptr && tv->Primary()->GetUnitMain() == source) {
+			for (const auto &[old, part] : mapping) if (old == tv->Primary() && new_primary == nullptr) new_primary = part;
+			if (new_primary == nullptr) new_primary = unit;
+		}
+	}
+	if (new_primary == nullptr) return CMD_ERROR;
+	/* Captured old and built identities are counted exactly once before bind. */
+	for (Train *primary : counted_primaries) GroupStatistics::CountVehicle(primary, -1);
+	counts_removed = true;
+	for (const auto &[source, part] : mapping) {
+		part->flags.Set(VehicleRailFlag::Flipped, HasBit(source->ctrl_flags, TVCF_REVERSED));
+		part->vehstatus.Set(VehState::Stopped);
+		part->vehicle_flags.Set(VehicleFlag::DrivingBackwards, driving_backwards &&
+			(_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::None || members.back()->CanLeadTrain()));
+	}
+	result = RebuildTrainDepotLayout(members, new_primary, CCF_ARRANGE | ConsistChangeFlag::CheckOnly);
+	if (result.Failed()) return result;
+	/* Native only-this refit queries validate/cost each physical member without
+	 * executing RefitVehicle's immediate cargo truncation. */
+	for (const auto &[source, part] : mapping) {
+		if (!refit_to_template && !need_replacement) continue;
+		const CargoType cargo = refit_to_template ? source->cargo_type : stored_cargo;
+		const uint8_t subtype = refit_to_template ? source->cargo_subtype : 0;
+		if (cargo >= NUM_CARGO || !part->GetEngine()->CanCarryCargo() || (part->cargo_type == cargo && part->cargo_subtype == subtype)) continue;
+		result = Command<Commands::RefitVehicle>::Do(query_flags, part->index, cargo, subtype, false, true, 0);
+		if (result.Failed()) return result;
+		buy.AddCost(result.GetCost());
+		const Engine *engine = part->GetEngine();
+		if (!engine->info.refit_mask.Test(cargo) || ((cargo == RV_TRANSPORT_CARGO_SLOT || cargo == RAIL_TRANSPORT_CARGO_SLOT) && !RVTransportEngineMayBeRefitToVehicles(engine))) continue;
+		const uint8_t actual_subtype = subtype == 0xFF ? GetBestFittingSubType(part, part, cargo) : subtype;
+		part->refit_cap = part->cargo_type == cargo ? part->refit_cap : 0;
+		part->cargo_type = cargo;
+		part->cargo_subtype = actual_subtype;
+		members.front()->InvalidateNewGRFCacheOfChain();
+	}
+	result = RebuildTrainDepotLayout(members, new_primary, CCF_ARRANGE | ConsistChangeFlag::CheckOnly);
+	if (result.Failed()) return result;
+
+	struct Remainder {
+		Train *primary;
+		std::vector<Train *> members;
+		bool sell, incoming, engine;
+		UnitID number = 0;
+	};
+	std::vector<Remainder> remainders;
+	for (const auto &[head, route] : routes) {
+		std::vector<Train *> omitted;
+		for (const Snapshot &s : snapshots) if (s.first == head && std::find(members.begin(), members.end(), s.u) == members.end()) omitted.push_back(s.u);
+		if (omitted.empty()) continue;
+		if (head != old_head) {
+			Train *primary = Train::From(omitted.front()->GetUnitMain());
+			remainders.push_back({primary, std::move(omitted), false, false, false});
+			continue;
+		}
+		std::vector<Train *> wagons;
+		for (Train *unit : available) {
+			std::vector<Train *> parts;
+			for (Train *p : omitted) {
+				Train *main = p->IsRearDualheaded() ? p->other_multiheaded_part : Train::From(p->GetUnitMain());
+				if (main == unit && !p->IsRearDualheaded()) parts.push_back(p);
+			}
+			if (parts.empty()) return CMD_ERROR;
+			if (unit->other_multiheaded_part != nullptr) parts.push_back(unit->other_multiheaded_part);
+			if (!tv->IsSetKeepRemainingVehicles() || unit->IsEngine()) remainders.push_back({unit, std::move(parts), !tv->IsSetKeepRemainingVehicles(), true, unit->IsEngine()});
+			else wagons.insert(wagons.end(), parts.begin(), parts.end());
+		}
+		if (!wagons.empty()) {
+			Train *primary = Train::From(wagons.front()->GetUnitMain());
+			remainders.push_back({primary, std::move(wagons), false, true, false});
+		}
+	}
+	for (Remainder &r : remainders) {
+		if (r.sell) {
+			for (size_t i = 0; i < r.members.size(); ++i) {
+				r.members[i]->SetNextRaw(i + 1 < r.members.size() ? r.members[i + 1] : nullptr);
+				r.members[i]->SetPreviousRaw(i > 0 ? r.members[i - 1] : nullptr);
+				r.members[i]->SetFirst(r.members.front()); r.members[i]->SetLast(r.members.back());
+			}
+			ResetChainNonFrontMarkers(r.members.front());
+			BindTrainPrimary(r.members.front(), r.primary);
+		} else {
+			result = RebuildTrainDepotLayout(r.members, r.primary, CCF_ARRANGE | ConsistChangeFlag::CheckOnly);
+			if (result.Failed()) return result;
+		}
+		r.primary->vehstatus.Set(VehState::Stopped);
+		if (r.sell) {
+			result = Command<Commands::SellVehicle>::Do(query_flags, tile, r.primary->index, SellVehicleFlags::SellChain, ClientID::Invalid);
+			if (result.Failed()) return result;
+			buy.AddCost(result.GetCost());
+		}
+	}
+	{
+		/* Old primary can now be inside the proposed layout, without a marker. */
+		AutoRestoreBackup old_subtype(old_primary->subtype, old_primary->subtype);
+		if (old_primary->IsEngine()) old_primary->SetFrontEngine(); else old_primary->SetFrontWagon();
+		result = CopyHeadSpecificThings(old_primary, new_primary, query_flags, !was_stopped);
+	}
+	if (result.Failed()) return result;
+	if (!CheckCompanyHasMoney(buy)) return CommandCost(STR_ERROR_NOT_ENOUGH_CASH_REQUIRES_CURRENCY);
+	Company *company = Company::Get(old_primary->owner);
+	FreeUnitIDGenerator numbers = company->freeunits[VehicleType::Train];
+	for (Train *primary : counted_primaries) if (primary != old_primary && primary->unitnumber != 0) numbers.ReleaseID(primary->unitnumber);
+	uint final_count = company->group_all[VehicleType::Train].num_vehicle + 1;
+	for (Remainder &r : remainders) {
+		if (r.sell || !r.engine) continue;
+		if (final_count >= _settings_game.vehicle.max_trains) return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
+		++final_count;
+		r.number = numbers.NextID();
+		if (r.number == 0 || r.number == UINT16_MAX) return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
+		numbers.UseID(r.number);
+	}
+
+	/* Commit barrier. No snapshots are restored after identity/cargo moves or
+	 * deletion. All fallible native checks and number planning have succeeded. */
+	committed = true;
 	RegisterGameEvents(GEF_TBTR_REPLACEMENT);
-
-	if (need_replacement) {
-		const bool old_driving_backwards = incoming->vehicle_flags.Test(VehicleFlag::DrivingBackwards);
-
-		// step 1: generate primary for newchain and generate remainder_chain
-		// 1. primary of incoming might already fit the template
-		//    leave incoming's primary as is and move the rest to a free chain = remainder_chain
-		// 2. needed primary might be one of incoming's member vehicles
-		// 3. primary might be available as orphan vehicle in the depot
-		// 4. we need to buy a new engine for the primary
-		// all options other than 1. need to make sure to copy incoming's primary's status
-		auto setup_head = [&]() -> CommandCost {
-			/* Case 1 */
-			if (eid == incoming->engine_type) {
-				new_chain = incoming;
-				remainder_chain = incoming->GetNextUnit();
-				if (remainder_chain != nullptr) {
-					DoCommandFlags subflags = flags;
-					if (!tv->IsSetKeepRemainingVehicles()) subflags.Set(DoCommandFlag::AutoReplace);
-					CommandCost move_cost = CmdMoveRailVehicle(subflags, remainder_chain->index, VehicleID::Invalid(), MoveRailVehicleFlags::MoveChain);
-					if (move_cost.Failed()) {
-						/* This should not fail, if it does give up immediately */
-						return move_cost;
-					}
-				}
-				return CommandCost();
-			}
-
-			/* Case 2 */
-			new_chain = ChainContainsEngine(eid, incoming);
-			if (new_chain != nullptr) {
-				/* new_chain is the needed engine, move it to an empty spot in the depot */
-				CommandCost move_cost = Command<Commands::MoveRailVehicle>::Do(flags | DoCommandFlag::AutoReplace, new_chain->index, VehicleID::Invalid(), MoveRailVehicleFlags::None);
-				if (move_cost.Succeeded()) {
-					remainder_chain = incoming;
-					return CommandCost();
-				}
-			}
-
-			/* Case 3 */
-			if (tv->IsSetReuseDepotVehicles()) {
-				new_chain = depot_vehicles.ContainsEngine(eid, incoming);
-				if (new_chain != nullptr) {
-					ClearVehicleWindows(new_chain);
-					CommandCost move_cost = Command<Commands::MoveRailVehicle>::Do(flags | DoCommandFlag::AutoReplace, new_chain->index, VehicleID::Invalid(), MoveRailVehicleFlags::None);
-					if (move_cost.Succeeded()) {
-						depot_vehicles.RemoveVehicle(new_chain->index);
-						remainder_chain = incoming;
-						return CommandCost();
-					}
-				}
-			}
-
-			/* Case 4 */
-			CommandCost buy_cost = Command<Commands::BuildVehicle>::Do(flags | DoCommandFlag::AutoReplace, tile, eid, false, INVALID_CARGO, ClientID::Invalid);
-			/* break up in case buying the vehicle didn't succeed */
-			if (buy_cost.Failed()) return buy_cost;
-			auto buy_veh_id = buy_cost.GetResultData<VehicleID>();
-			if (!buy_veh_id.has_value()) return buy_cost;
-
-			buy.AddCost(buy_cost.GetCost());
-			new_chain = Train::Get(*buy_veh_id);
-			/* prepare the remainder chain */
-			remainder_chain = incoming;
-			return CommandCost();
-		};
-		CommandCost head_result = setup_head();
-		if (head_result.Failed()) return head_result;
-
-		// If we bought a new engine or reused one from the depot, copy some parameters from the incoming primary engine
-		if (incoming != new_chain) {
-			CopyHeadSpecificThings(incoming, new_chain, flags, false);
-			NeutralizeStatus(incoming);
-
-			// additionally, if we don't want to use the template refit, refit as incoming
-			// the template refit will be set further down, if we use it at all
-			if (!refit_to_template) {
-				refit_unit(new_chain, store_refit_ct, store_refit_csubt);
-			}
-		}
-
-		// step 2: fill up newchain according to the template
-		// foreach member of template (after primary):
-		// 1. needed engine might be within remainder_chain already
-		// 2. needed engine might be orphaned within the depot (copy status)
-		// 3. we need to buy (again)                           (copy status)
-		Train *last_veh = new_chain;
-		for (TemplateVehicle *cur_tmpl = tv->GetNextUnit(); cur_tmpl != nullptr; cur_tmpl = cur_tmpl->GetNextUnit()) {
-			Train *new_part = nullptr;
-			auto setup_chain_part = [&]() {
-				/* Case 1: engine contained in remainder chain */
-				new_part = ChainContainsEngine(cur_tmpl->engine_type, remainder_chain);
-				if (new_part != nullptr) {
-					Train *remainder_chain_next = remainder_chain;
-					if (new_part == remainder_chain) {
-						remainder_chain_next = remainder_chain->GetNextUnit();
-					}
-					CommandCost move_cost = CmdMoveRailVehicle(flags | DoCommandFlag::AutoReplace, new_part->index, last_veh->index, MoveRailVehicleFlags::None);
-					if (move_cost.Succeeded()) {
-						remainder_chain = remainder_chain_next;
-						return;
-					}
-				}
-
-				/* Case 2: engine contained somewhere else in the depot */
-				if (tv->IsSetReuseDepotVehicles()) {
-					new_part = depot_vehicles.ContainsEngine(cur_tmpl->engine_type, new_chain);
-					if (new_part != nullptr) {
-						CommandCost move_cost = CmdMoveRailVehicle(flags, new_part->index, last_veh->index, MoveRailVehicleFlags::None);
-						if (move_cost.Succeeded()) {
-							depot_vehicles.RemoveVehicle(new_part->index);
-							return;
-						}
-					}
-				}
-
-				/* Case 3: must buy new engine */
-				CommandCost buy_cost = Command<Commands::BuildVehicle>::Do(flags | DoCommandFlag::AutoReplace, tile, cur_tmpl->engine_type, false, INVALID_CARGO, ClientID::Invalid);
-				if (buy_cost.Failed()) {
-					new_part = nullptr;
-					return;
-				}
-				auto buy_veh_id = buy_cost.GetResultData<VehicleID>();
-				if (!buy_veh_id.has_value()) {
-					new_part = nullptr;
-					return;
-				}
-
-				new_part = Train::Get(*buy_veh_id);
-				CommandCost move_cost = CmdMoveRailVehicle(flags | DoCommandFlag::AutoReplace, new_part->index, last_veh->index, MoveRailVehicleFlags::None);
-				if (move_cost.Succeeded()) {
-					buy.AddCost(buy_cost.GetCost());
-				} else {
-					Command<Commands::SellVehicle>::Do(flags, new_part->tile, new_part->index, SellVehicleFlags::None, ClientID::Invalid);
-					new_part = nullptr;
-				}
-			};
-			setup_chain_part();
-			if (new_part != nullptr) {
-				last_veh = new_part;
-			}
-
-			if (!refit_to_template && new_part != nullptr) {
-				refit_unit(new_part, store_refit_ct, store_refit_csubt);
-			}
-		}
-
-		if (new_chain != nullptr && old_driving_backwards && !new_chain->vehicle_flags.Test(VehicleFlag::DrivingBackwards) &&
-				(_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::None || new_chain->Last()->CanLeadTrain())) {
-			new_chain->vehicle_flags.Set(VehicleFlag::DrivingBackwards);
-			new_chain->ConsistChanged(CCF_ARRANGE);
-		}
-	} else {
-		/* no replacement done */
-		new_chain = incoming;
+	if (old_primary != new_primary) {
+		MoveTrainIdentity(old_primary, new_primary);
+		extern void ChangeVehicleViewports(VehicleID from_index, VehicleID to_index);
+		extern void ChangeVehicleNews(VehicleID from_index, VehicleID to_index);
+		ChangeVehicleViewports(old_primary->index, new_primary->index);
+		ChangeVehicleViewWindow(old_primary->index, new_primary->index);
+		ChangeVehicleNews(old_primary->index, new_primary->index);
+	} else SetTrainGroupID(new_primary, new_primary->group_id);
+	for (Train *primary : counted_primaries) {
+		if (primary == new_primary) continue;
+		DeleteVehicleOrders(primary); primary->ReleaseUnitNumber(); primary->name.clear();
+		primary->execute_schedule_stack.clear(); primary->dispatch_records.clear();
+		primary->profit_this_year = primary->profit_last_year = primary->profit_lifetime = 0;
+		primary->ClearFrontEngine(); primary->ClearFrontWagon();
 	}
-
-	/// step 3: reorder and neutralize the remaining vehicles from incoming
-	// wagons remaining from remainder_chain should be filled up in as few free wagon chains as possible
-	// each loco might be left as singular in the depot
-	// neutralize each remaining engine's status
-
-	// refit, only if the template option is set so
-	if (refit_to_template && (need_refit || need_replacement)) {
-		buy.AddCost(CmdRefitTrainFromTemplate(new_chain, tv, flags));
-	}
-
-	CmdSetTrainUnitDirectionFromTemplate(new_chain, tv, flags);
-
-	if (new_chain != nullptr && remainder_chain != nullptr) {
-		for (Train *ct = remainder_chain; ct != nullptr; ct = ct->Next()) {
-			TransferCargoForTrain(ct, new_chain);
+	BindTrainPrimary(members.front(), new_primary);
+	GroupStatistics::CountVehicle(new_primary, 1);
+	for (Remainder &r : remainders) {
+		SetTrainGroupID(r.primary, DEFAULT_GROUP);
+		if (r.sell || !r.engine) {
+			for (Train *p : r.members) { p->ClearFrontEngine(); p->ClearFrontWagon(); p->ClearFreeWagon(); }
+			r.members.front()->SetFreeWagon();
+		} else {
+			BindTrainPrimary(r.members.front(), r.primary);
+			r.primary->unitnumber = company->freeunits[VehicleType::Train].UseID(r.number);
+			GroupStatistics::CountVehicle(r.primary, 1);
 		}
 	}
-
-	// point incoming to the newly created train so that starting/stopping affects the replacement train
-	incoming = new_chain;
-
-	if (remainder_chain != nullptr && tv->IsSetKeepRemainingVehicles()) {
-		BreakUpRemainders(remainder_chain);
-	} else if (remainder_chain != nullptr) {
-		buy.AddCost(Command<Commands::SellVehicle>::Do(flags, remainder_chain->tile, remainder_chain->index, SellVehicleFlags::SellChain, ClientID::Invalid));
+	/* Preserve the ORIGINAL cargo key of packets on refitted physical parts.
+	 * They must not become the new refit cargo merely by changing metadata. */
+	struct HeldCargo { CargoType type; uint8_t subtype; std::unique_ptr<VehicleCargoList> cargo; };
+	std::vector<HeldCargo> held;
+	for (const Snapshot &s : snapshots) {
+		if (std::find(members.begin(), members.end(), s.u) == members.end() || s.u->cargo_type == s.cargo_type || s.u->cargo.TotalCount() == 0) continue;
+		held.push_back({s.cargo_type, s.cargo_subtype, std::make_unique<VehicleCargoList>()});
+		s.u->cargo.Shift(s.u->cargo.TotalCount(), held.back().cargo.get());
 	}
-
-	/* Redraw main gui for changed statistics */
+	Train *final_head = members.front();
+	final_head->InvalidateNewGRFCacheOfChain();
+	for (Train *p : members) { p->cargo_cap = p->GetEngine()->DetermineCapacity(p); p->refit_cap = std::min(p->refit_cap, p->cargo_cap); }
+	CheckCargoCapacity(final_head);
+	auto transfer = [&](VehicleCargoList &cargo, CargoType type, uint8_t subtype) {
+		for (Train *dest : members) {
+			if (cargo.TotalCount() == 0) break;
+			if (dest->cargo_type != type || dest->cargo_subtype != subtype || dest->cargo.TotalCount() >= dest->cargo_cap) continue;
+			cargo.Shift(std::min<uint>(cargo.TotalCount(), dest->cargo_cap - dest->cargo.TotalCount()), &dest->cargo);
+		}
+	};
+	for (HeldCargo &h : held) transfer(*h.cargo, h.type, h.subtype);
+	for (Remainder &r : remainders) if (r.incoming) for (Train *p : r.members) transfer(p->cargo, p->cargo_type, p->cargo_subtype);
+	final_head->ConsistChanged(CCF_ARRANGE);
+	outgoing = new_primary;
+	for (Remainder &r : remainders) {
+		if (!r.sell) {
+			r.members.front()->InvalidateNewGRFCacheOfChain();
+			for (Train *p : r.members) p->cargo_cap = p->GetEngine()->DetermineCapacity(p);
+			CheckCargoCapacity(r.members.front()); r.members.front()->ConsistChanged(CCF_ARRANGE);
+			continue;
+		}
+		Train *unit = r.primary;
+		r.primary = nullptr; r.members.clear();
+		CommandCost sold = Command<Commands::SellVehicle>::Do(flags | DoCommandFlag::AutoReplace, tile, unit->index, SellVehicleFlags::SellChain, ClientID::Invalid);
+		assert(sold.Succeeded());
+		if (sold.Failed()) return sold; // Never restore pointers of already sold units.
+	}
+	if (!was_stopped) {
+		result = CmdStartStopVehicle(flags | DoCommandFlag::AutoReplace, new_primary->index, false);
+		if (result.Failed()) return result;
+		buy.AddCost(result.GetCost());
+	}
+	SetWindowDirty(WindowClass::VehicleDepot, tile.base());
+	InvalidateVehicleListWindows(VehicleType::Train);
 	SetWindowClassesDirty(WindowClass::TemplateReplacementGuiMain);
-
+	InvalidateVehicleTickCaches();
 	return buy;
 }
 
@@ -12371,11 +12610,14 @@ static CommandCost CmdTemplateReplaceVehicle(DoCommandFlags flags, Train *incomi
 CommandCost CmdTemplateReplaceVehicle(DoCommandFlags flags, VehicleID veh_id)
 {
 	Train *incoming = Train::GetIfValid(veh_id);
-
-	if (incoming == nullptr || !incoming->IsPrimaryVehicle() || !incoming->IsChainInDepot()) {
-		return CMD_ERROR;
+	if (incoming == nullptr || incoming->Primary() != incoming || !incoming->IsPrimaryVehicle() || !incoming->IsChainInDepot()) return CMD_ERROR;
+	CommandCost control = CheckVehicleControlAllowed(incoming);
+	if (control.Failed()) return control;
+	/* An owned controller does not authorize replacing a foreign prefix. */
+	for (Train *part = incoming->First(); part != nullptr; part = part->Next()) {
+		CommandCost owner = CheckOwnership(part->owner);
+		if (owner.Failed()) return owner;
 	}
-
 	Train *outgoing = incoming;
 	CommandCost cost = CmdTemplateReplaceVehicle(flags, incoming, outgoing);
 	cost.SetResultData(outgoing->index);

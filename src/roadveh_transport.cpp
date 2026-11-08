@@ -340,7 +340,6 @@ bool RVTransportPartHoldsRoadVehicles(const Vehicle *part)
 	for (const Vehicle *v : Vehicle::Iterate()) {
 		if ((v->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) == 0) continue;
 		if (v->transported_host_part != part->index) continue;
-		if (!RVTransportIsStateHolder(v)) continue;
 		return true;
 	}
 	return false;
@@ -733,7 +732,8 @@ bool RVTransportAttach(Vehicle *carrier, Vehicle *part, Vehicle *rv, bool force)
 	if (rv->type != VehicleType::Road && rv->type != VehicleType::Train) return false;
 	if (!RVTransportIsStateHolder(rv)) return false;     // carriers take a whole vehicle, never a lone part
 	if ((rv->rv_transport_flags & RVTF_TRANSPORTED) != 0) return false;
-	if (part->First() != carrier) return false;          // part must belong to this carrier
+	carrier = carrier->Primary();
+	if (part->First() != carrier->First()) return false; // membership is physical, control is primary
 	if (!force && !RVTransportPartCanCarry(part)) return false;
 
 	/* Carrying a vehicle of another company is infrastructure sharing of a sort, and is off by
@@ -752,51 +752,45 @@ bool RVTransportAttach(Vehicle *carrier, Vehicle *part, Vehicle *rv, bool force)
 	std::vector<Vehicle *> carriage_hosts;                 // host part per chain vehicle (train only)
 	std::vector<uint32_t> carriage_weights;                // weight each member records (train only)
 	if (rv->type == VehicleType::Train && !force) {
-		/* Weight of each carriage: an articulated unit counts once, on its first part. */
+		/* Membership, not a contiguous dual-headed span, defines a carriage.
+		 * Reversed articulated parts can precede their main, and ordinary
+		 * wagons between dual heads must remain independent carriages. */
 		std::vector<std::pair<Vehicle *, uint32_t>> carriages;
+		std::map<Vehicle *, size_t> unit_indices;
+		std::vector<size_t> member_units;
 		for (Vehicle *u = rv->First(); u != nullptr; u = u->Next()) {
-			const uint32_t w = Train::From(u)->GetSelfWeight();
-			if (u->IsArticulatedPart() && !carriages.empty()) {
-				carriages.back().second += w;
-				continue;
+			Vehicle *main = u->GetUnitMain();
+			if (Train::From(main)->IsRearDualheaded() && Train::From(main)->other_multiheaded_part != nullptr) {
+				main = Train::From(main)->other_multiheaded_part;
 			}
-			carriages.emplace_back(u, w);
+			auto [it, inserted] = unit_indices.emplace(main, carriages.size());
+			if (inserted) carriages.emplace_back(u, 0);
+			carriages[it->second].second += Train::From(u)->GetSelfWeight();
+			member_units.push_back(it->second);
 		}
 
-		carriage_hosts.clear();
-		carriage_weights.clear();
+		/* Plan all holds before committing, including the weight of units
+		 * already assigned during this transaction. All members of one unit
+		 * share one hold even when those members are non-contiguous. */
+		std::vector<Vehicle *> unit_hosts;
+		std::map<Vehicle *, uint32_t> assigned_weight;
 		Vehicle *part_it = part;
-		size_t ci = 0;
-		Vehicle *current_host = part;
-		for (Vehicle *u = rv->First(); u != nullptr; u = u->Next()) {
-			uint32_t member_weight = 0;
-			if (ci < carriages.size() && carriages[ci].first == u) {
-				member_weight = carriages[ci].second;
-				/* Fill the parts onwards, in order, with whole carriages: find the first hold with
-				 * room for this carriage on its own. */
-				while (part_it != nullptr && (!RVTransportPartCanCarry(part_it)
-						|| RVTransportGetPartUsedTonnes(part_it) + carriages[ci].second > RVTransportGetPartCapacityTonnes(part_it))) {
-					part_it = part_it->Next();
-				}
-				if (part_it == nullptr) {
-					/* Some carriage found no hold with room for it: nothing is loaded. */
-					return false;
-				}
-				current_host = part_it;
-				ci++;
+		for (const auto &carriage : carriages) {
+			const uint32_t unit_weight = carriage.second;
+			while (part_it != nullptr && (!RVTransportPartCanCarry(part_it)
+					|| RVTransportGetPartUsedTonnes(part_it) + assigned_weight[part_it] + unit_weight > RVTransportGetPartCapacityTonnes(part_it))) {
+				part_it = part_it->Next();
 			}
-			carriage_hosts.push_back(current_host);
-			carriage_weights.push_back(member_weight);
+			if (part_it == nullptr) return false; // no partial load
+			unit_hosts.push_back(part_it);
+			assigned_weight[part_it] += unit_weight;
 		}
-		{
-			uint32_t total = 0;
-			unsigned holds = 0;
-			const Vehicle *prev = nullptr;
-			for (size_t i = 0; i < carriage_hosts.size(); i++) {
-				total += carriage_weights[i];
-				if (carriage_hosts[i] != prev) holds++;
-				prev = carriage_hosts[i];
-			}
+
+		size_t member_index = 0;
+		for (Vehicle *u = rv->First(); u != nullptr; u = u->Next(), member_index++) {
+			const size_t unit_index = member_units[member_index];
+			carriage_hosts.push_back(unit_hosts[unit_index]);
+			carriage_weights.push_back(carriages[unit_index].first == u ? carriages[unit_index].second : 0);
 		}
 	} else if (!force) {
 		const uint32_t capacity = RVTransportGetPartCapacityTonnes(part);
@@ -870,7 +864,7 @@ bool RVTransportAttach(Vehicle *carrier, Vehicle *part, Vehicle *rv, bool force)
 			/* Weight on the host part: a distributed train puts every carriage's weight on its first
 			 * vehicle; everything else keeps the whole weight on the state holder. */
 			u->transported_weight = 0;
-			if (distributed && carriage_weights[i] != 0) {
+			if (distributed) {
 				u->transported_weight = static_cast<uint16_t>(std::min<uint32_t>(carriage_weights[i], UINT16_MAX));
 			} else if (u == rv) {
 				u->transported_weight = static_cast<uint16_t>(std::min<uint32_t>(weight, UINT16_MAX));
@@ -916,12 +910,13 @@ bool RVTransportAttachAuto(Vehicle *carrier, Vehicle *rv, bool force)
 {
 	if (carrier == nullptr) return false;
 
+	carrier = carrier->Primary();
 	/* The "load road vehicles" order of this carrier may cap how many it carries at once (0 = no cap);
 	 * this is the one place through which every load goes, so the cap is checked here. */
 	const uint8_t max_load = carrier->current_order.GetRVTransportMax();
 	if (!force && max_load != 0 && RVTransportCountOnCarrier(carrier) >= max_load) return false;
 
-	for (Vehicle *part = carrier; part != nullptr; part = part->Next()) {
+	for (Vehicle *part = carrier->First(); part != nullptr; part = part->Next()) {
 		if (RVTransportAttach(carrier, part, rv, force)) return true;
 	}
 	return false;
@@ -1703,6 +1698,7 @@ bool RVTransportDetachAtStation(Vehicle *carrier, Station *st, bool force)
 	extern void UpdateVehicleTileHash(Vehicle *v, bool remove);
 
 	if (carrier == nullptr || st == nullptr) return false;
+	carrier = carrier->Primary();
 
 	/* Remove phantom reservations before trying to place anything. */
 	RVTransportHealOrphanReservations(st);
@@ -1971,7 +1967,9 @@ uint32_t RVTransportCountWantingUnloadHere(const Vehicle *carrier, const Station
  */
 StationID RVTransportGetNextCarrierStop(const Vehicle *carrier)
 {
-	if (carrier == nullptr || carrier->orders == nullptr) return StationID::Invalid();
+	if (carrier == nullptr) return StationID::Invalid();
+	carrier = carrier->Primary();
+	if (carrier->orders == nullptr) return StationID::Invalid();
 	const OrderList *ol = carrier->orders;
 	const VehicleOrderID num = ol->GetNumOrders();
 	for (VehicleOrderID i = static_cast<VehicleOrderID>(carrier->cur_real_order_index + 1); i < num; i++) {
@@ -1985,7 +1983,7 @@ StationID RVTransportGetNextCarrierStop(const Vehicle *carrier)
 static uint32_t RVTransportCandidateCargoCount(const Vehicle *rv)
 {
 	uint32_t count = 0;
-	for (const Vehicle *u = rv; u != nullptr; u = u->Next()) count += u->cargo.StoredCount();
+	for (const Vehicle *u = rv->First(); u != nullptr; u = u->Next()) count += u->cargo.StoredCount();
 	return count;
 }
 
@@ -1993,7 +1991,7 @@ static uint32_t RVTransportCandidateCargoCount(const Vehicle *rv)
 static uint32_t RVTransportCandidateCargoCapacity(const Vehicle *rv)
 {
 	uint32_t cap = 0;
-	for (const Vehicle *u = rv; u != nullptr; u = u->Next()) cap += u->cargo_cap;
+	for (const Vehicle *u = rv->First(); u != nullptr; u = u->Next()) cap += u->cargo_cap;
 	return cap;
 }
 
@@ -2019,6 +2017,8 @@ bool RVTransportOrderHasCriteria(const Order &order)
 bool RVTransportOrderAllowsCandidate(const Vehicle *carrier, const Vehicle *rv)
 {
 	if (carrier == nullptr || rv == nullptr) return false;
+	carrier = carrier->Primary();
+	rv = rv->Primary();
 	const Order &order = carrier->current_order;
 
 	/* Declared destination: the carrier's next stop (the road vehicle's own "be unloaded here" order). */
@@ -2069,7 +2069,7 @@ bool RVTransportOrderAllowsCandidate(const Vehicle *carrier, const Vehicle *rv)
 		if (!IsValidCargoType(cargo)) return false;
 
 		bool ok = false;
-		for (const Vehicle *u = rv; u != nullptr && !ok; u = u->Next()) {
+		for (const Vehicle *u = rv->First(); u != nullptr && !ok; u = u->Next()) {
 			if (u->cargo_type != cargo) continue;
 			ok = (cargo_mode == RVTC_CAN_CARRY) ? (u->cargo_cap > 0) : (u->cargo.StoredCount() > 0);
 		}
