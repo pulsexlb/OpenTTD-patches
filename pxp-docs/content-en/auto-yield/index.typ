@@ -78,3 +78,5 @@ Except for trains that need to enter the station, trains will preferentially yie
 )
 
 Set after the siding merges back into the main line. After a train passes, it returns the slot and cleans up the data, completing the yielding.
+
+*⚠️Note: currently, between claiming the yielding slot and returning it, trains should not perform reversing operations; otherwise the trains may become jammed.*
