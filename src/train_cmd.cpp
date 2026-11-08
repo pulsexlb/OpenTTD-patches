@@ -644,6 +644,7 @@ void Train::BroadcastConsistCaches()
 		u->gcache.cached_power = this->gcache.cached_power;
 		u->gcache.cached_air_drag = this->gcache.cached_air_drag;
 		u->gcache.cached_total_length = this->gcache.cached_total_length;
+		u->acceleration = this->acceleration;
 		/* cached_tflags also carries the per-vehicle TCF_MOVING_UNIT_START bit, which
 		 * ConsistChanged() computed for every vehicle individually right before this
 		 * broadcast. Keep each vehicle's own value and only take the consist-wide bits
@@ -1563,14 +1564,16 @@ static bool IsTrainOnNonRealisticBrakingTrack(const Train *t)
 /** Update acceleration of the train from the cached power and weight. */
 void Train::UpdateAcceleration()
 {
-	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon());
+	dbg_assert(this->IsFrontEngine() || this->IsFrontWagon() || this->IsFreeWagon());
 
 	uint power = this->gcache.cached_power;
 	uint weight = this->gcache.cached_weight;
 	assert(weight != 0);
 	this->acceleration = Clamp(power / weight * 4, 1, 255);
 
-	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && !IsTrainOnNonRealisticBrakingTrack(this) && this->IsFrontEngine()) {
+	/* Aggregate caches belong to the physical head, which may be an articulated
+	 * part. Engine identity and orders remain on the primary behind it. */
+	if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && !IsTrainOnNonRealisticBrakingTrack(this) && this->Primary()->IsFrontEngine()) {
 		this->tcache.cached_tflags |= TCF_RL_BRAKING;
 		switch (_settings_game.vehicle.train_acceleration_model) {
 			default: NOT_REACHED();
@@ -3633,11 +3636,21 @@ static void ReverseTrainChainOrder(Train *v)
 	}
 }
 
+/** Whether an in-place reversal preserves this vehicle's visible facing via Flipped. */
+static bool ShouldFlipTrainForCouple(const Train *v)
+{
+	/* A custom articulated base must follow its parts, even when it sits at the
+	 * end of a reversed unit. Ordinary custom-sprite singletons keep their variant. */
+	return !IsCustomVehicleSpriteNum(v->spritenum) || v->IsMultiheaded() || v->IsArticulatedPart() ||
+			v->GetUnitChainFront() != v->GetUnitChainLast();
+}
+
 /**
  * Reverse a train in place without moving any vehicle: every vehicle keeps its
  * world position, its direction is reversed and VehicleRailFlag::Flipped is
- * toggled, so its rendered sprite stays exactly the same. The chain order is
- * reversed so it still follows the new travelling direction. Multi-part units
+ * toggled for default sprites and multi-part units to preserve their visible
+ * facing. Ordinary custom-sprite singletons keep their sprite variant. The chain
+ * order is reversed so it still follows the new travelling direction. Multi-part units
  * therefore end up with their parts in reverse chain order (part-first /
  * rear-first); the unit-main pointer, not chain position, identifies the
  * base/front engine.
@@ -3649,27 +3662,13 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 	Train *primary = v->Primary();
 
 	/* Reverse the chain order, but keep every vehicle at its world position.
-	 * Every vehicle's facing is reversed and the per-vehicle Flipped flag is
-	 * toggled, so the rendered sprite stays exactly the same. Multi-part units
-	 * therefore end up with their parts in reverse chain order (part-first /
-	 * rear-first), which is the only order that keeps chain order aligned with
-	 * the new travelling direction without moving the parts. */
+	 * Multi-part units end up part-first / rear-first; their unit-main pointers
+	 * preserve membership independently of the new travelling direction. */
 	std::vector<Train *> order;
 	for (Train *u = v; u != nullptr; u = u->Next()) {
 		order.push_back(u);
 		u->direction = ReverseDir(u->direction);
-		/* A NewGRF custom sprite set selects its own orientation from the
-		 * vehicle direction. Toggling Flipped also changes the spritenum passed
-		 * to the callback (0xFD -> 0xFE), which some GRFs do not define for
-		 * intermediate/articulated vehicles, making their style disappear.
-		 * Default sprites keep the old visual-compatible toggle. */
-		const bool custom_sprite = IsCustomVehicleSpriteNum(u->spritenum);
-		/* Dual-headed halves and articulated parts are asymmetric unit members;
-		 * they must keep their original rendered facing when the chain order is
-		 * reversed. Plain intermediate custom-sprite wagons must not switch to
-		 * the reversed spritenum variant (0xFD -> 0xFE), as some GRFs only
-		 * define that variant for articulation. */
-		if (!custom_sprite || u->IsMultiheaded() || u->IsArticulatedPart()) u->flags.Flip(VehicleRailFlag::Flipped);
+		if (ShouldFlipTrainForCouple(u)) u->flags.Flip(VehicleRailFlag::Flipped);
 		SwapTrainFlags(&u->gv_flags, &u->gv_flags);
 		u->InvalidateImageCache();
 		u->UpdateIsDrawn();
@@ -8162,10 +8161,9 @@ static Direction FlippedDirection(const Train *v)
 }
 
 /**
- * Reverse the trial chain order the way ReverseTrainForCouple would. Every
- * vehicle is a singleton reversal block now, so the whole chain order is
- * reversed and every vehicle toggles Flipped. Physical positions and
- * directions are untouched -- only the order the NewGRF start/stop check
+ * Reverse the trial chain order the way ReverseTrainForCouple would. The whole
+ * chain order is reversed and Flipped follows the real reversal's sprite rule.
+ * Physical positions and directions are untouched -- only the order the NewGRF start/stop check
  * enumerates is modelled. RestoreTrainBackup() fully undoes the relink.
  */
 static void TrialReverseChainOrder(Train *head)
@@ -8173,11 +8171,8 @@ static void TrialReverseChainOrder(Train *head)
 	std::vector<Train *> order;
 	for (Train *t = head; t != nullptr; t = t->Next()) {
 		order.push_back(t);
-		/* Mirror the real reversal: dual-headed halves and articulated parts
-		 * keep their facing via Flipped, while plain intermediate custom-sprite
-		 * wagons do not switch to the reversed spritenum variant. The guard's
-		 * destructor restores flags. */
-		if (!IsCustomVehicleSpriteNum(t->spritenum) || t->IsMultiheaded() || t->IsArticulatedPart()) t->flags.Flip(VehicleRailFlag::Flipped);
+		/* The guard restores the same Flipped changes as the real reversal. */
+		if (ShouldFlipTrainForCouple(t)) t->flags.Flip(VehicleRailFlag::Flipped);
 	}
 	std::reverse(order.begin(), order.end());
 	for (size_t i = 0; i < order.size(); i++) {
@@ -8555,11 +8550,9 @@ static bool RepairStoppedTrainSpacing(Train *consist)
 /**
  * Reverse a train for coupling by flipping the consist in place.
  *
- * Single vehicles keep their physical position and only turn around; the chain
- * order is reversed so the former tail becomes the front. Dual-headed and
- * articulated units are reversed as whole blocks (their parts exchange
- * positions inside the block). The primary vehicle is not moved, so the train
- * keeps its identity, orders and group.
+ * The chain order is reversed without exchanging multi-part members' positions.
+ * Unit-main pointers keep their identity, and the moving tail or waiting head
+ * anchors the subsequent spacing correction.
  */
 static void ReverseTrainForCouple(Train *v, bool joint_at_tail)
 {

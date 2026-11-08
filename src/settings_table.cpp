@@ -495,13 +495,14 @@ static std::pair<int32_t, uint32_t> GetServiceIntervalRange(const IntSettingDesc
 static void TrainAccelerationModelChanged(int32_t new_value)
 {
 	for (Train *t : Train::IterateFrontOnly()) {
-		if (t->IsFrontEngine()) {
+		if (t->Primary()->IsFrontEngine()) {
 			t->tcache.cached_max_curve_speed = t->GetCurveSpeedLimit();
 			t->UpdateAcceleration();
 			/* The recomputation only updates the chain head; re-broadcast the
 			 * consist-level caches or the other vehicles keep stale copies. */
 			t->BroadcastConsistCaches();
-			if (t->lookahead != nullptr) t->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
+			Train *primary = t->Primary();
+			if (primary->lookahead != nullptr) primary->lookahead->flags.Set(TrainReservationLookAheadFlag::ApplyAdvisory);
 		}
 	}
 
@@ -553,8 +554,9 @@ static void TrainBrakingModelChanged(int32_t new_value)
 		if (!t->vehstatus.Test(VehState::Crashed)) {
 			t->crash_anim_pos = 0;
 		}
-		if (t->IsFrontEngine()) {
+		if (t == t->First() && t->Primary()->IsFrontEngine()) {
 			t->UpdateAcceleration();
+			t->BroadcastConsistCaches();
 		}
 	}
 	if (new_value == TBM_REALISTIC && (_game_mode == GameMode::Normal || _game_mode == GameMode::Editor)) {
