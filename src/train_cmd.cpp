@@ -971,16 +971,25 @@ void AdvanceOrderIndex(const Vehicle *v, VehicleOrderID &index)
 
 int PredictStationStoppingLocation(const Train *v, const Order *order, int station_length, DestinationID dest)
 {
-	/* Default to the middle of the station for stations stops that are not in
-	 * the order list like intermediate stations when non-stop is disabled */
+	/* Resolve the stop location from the same source GetTrainStopLocation()
+	 * uses for the real stop pixel: the chain head's current_order. The
+	 * lookahead-walked `order` cannot be used here: with the native station
+	 * arrival the real order index is advanced as soon as the reservation
+	 * reaches the platform, which frees current_order (OT_NOTHING) while the
+	 * train still rolls towards the stop pixel. GetTrainStopLocation() then
+	 * falls back to its Middle default, and an advisory that kept braking
+	 * towards the original order's stop location would overshoot that pixel
+	 * by the distance between the two stop locations. */
+	const Order *real_order = &v->First()->current_order;
 	OrderStopLocation osl = OrderStopLocation::Middle;
-	if (order->IsType(OT_GOTO_STATION) && order->GetDestination() == dest) {
-		osl = order->GetStopLocation();
-	} else if (order->IsType(OT_LOADING_ADVANCE) && order->GetDestination() == dest) {
+	if (real_order->IsType(OT_GOTO_STATION) && real_order->GetDestination() == dest) {
+		osl = real_order->GetStopLocation();
+	} else if (real_order->IsType(OT_LOADING_ADVANCE) && real_order->GetDestination() == dest) {
 		osl = OrderStopLocation::Through;
-	} else if (order->IsType(OT_GOTO_WAYPOINT) && order->GetDestination() == dest) {
+	} else if (real_order->IsType(OT_GOTO_WAYPOINT) && real_order->GetDestination() == dest) {
 		osl = OrderStopLocation::FarEnd;
 	}
+	(void)order; /* Kept for signature compatibility; the osl must mirror GetTrainStopLocation(). */
 
 	int overhang = v->gcache.cached_total_length - station_length;
 	int adjust = 0;
@@ -1057,6 +1066,19 @@ int PredictStationStoppingLocation(const Train *v, const Order *order, int stati
 			stop = station_length;
 			break;
 	}
+
+	/* The stop location is where the FRONT of the train must be, so subtract
+	 * half the front vehicle's length, exactly like GetTrainStopLocation() does
+	 * for the real stop pixel. Without this the advisory braking target lies
+	 * half a front vehicle beyond the actual stop pixel: the train brakes
+	 * towards a point past the pixel and crosses it at the braking-curve speed
+	 * of the remaining gap. For a short front vehicle that residual speed stays
+	 * within the in-station emergency clamp's threshold, but a long articulated
+	 * front (half length >= 4) crosses above it and the station is overshot. */
+	const Train *front = v->GetMovingFront();
+	uint8_t rounding = front->IsDrivingBackwards() ? 2 : 1;
+	stop -= (front->gcache.cached_veh_length + rounding) / 2;
+
 	if (v->IsDrivingBackwards()) adjust--;
 	return stop + adjust;
 }
