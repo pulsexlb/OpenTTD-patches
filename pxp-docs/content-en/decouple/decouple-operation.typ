@@ -26,7 +26,6 @@ To choose the number of vehicles to decouple, you can directly click the marker 
 #figure(
   image("../../static/images/decouple-num.png", width: 80%),
 )
-*⚠️Note: if the number of vehicles to decouple is greater than the actual number of vehicles, the train will still decouple one vehicle.*
 *Note: when the number of vehicles to decouple is 0, the leading locomotive will be decoupled automatically*
 
 = Conditional order jump

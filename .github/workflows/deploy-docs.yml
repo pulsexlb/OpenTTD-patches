@@ -23,6 +23,11 @@ jobs:
         with:
           typst-version: "0.15.1"
 
+      # The docs figures embed Chinese text baked into SVG paths at build
+      # time; the runner image has no CJK fonts, so install them explicitly.
+      - name: Install CJK fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+
       - name: Build docs
         run: typst compile --features bundle,html --format bundle main.typ dist
 
