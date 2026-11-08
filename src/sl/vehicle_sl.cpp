@@ -339,6 +339,25 @@ void RebuildTrainUnitMains()
 				u->SetUnitMain(u);
 			}
 		}
+		/* Before unit-main was stored, articulated vehicles were written base
+		 * first, even when the train drove backwards. Pool IDs can be reused;
+		 * they are not evidence that the following base owns a preceding part. */
+		if (version == 0) {
+			Train *main = nullptr;
+			for (Train *part : chain) {
+				if (!part->IsArticulatedPart()) {
+					main = part;
+					continue;
+				}
+				if (main == nullptr || main->IsRearDualheaded()) {
+					_legacy_train_unit_recovery_warnings.insert(head->index);
+					continue;
+				}
+				main->SetUnitMain(main);
+				part->SetUnitMain(main);
+			}
+			continue;
+		}
 		std::sort(bases.begin(), bases.end(), [](const Train *a, const Train *b) { return a->index < b->index; });
 
 		struct PartEvidence {
@@ -424,12 +443,19 @@ void RebuildTrainUnitMains()
 			if (ambiguous_encoding && !parts.empty()) _legacy_train_unit_recovery_warnings.insert(head->index);
 			for (size_t i = 0; i < parts.size(); i++) {
 				Train *main = chosen.mains[i];
+				const uint32_t saved = parts[i].part->GetSavedUnitMainID();
+				const bool active_part = !parts[i].part->vehstatus.Test(VehState::Crashed) &&
+						!head->Primary()->vehstatus.Test(VehState::Crashed);
+				/* v3 zero can mean missing membership, raw main #0, or a
+				 * truncated offset. A topology guess must not silently clear this
+				 * ambiguity just because it found an adjacent candidate. */
+				if (saved == 0 && active_part) _legacy_train_unit_recovery_warnings.insert(head->index);
 				if (main == nullptr) {
 					/* Historical data can be irrecoverable. Attempt only a bounded,
 					 * deterministic same-run mapping, never an arbitrary pool pointer. */
 					main = parts[i].allocation_main;
 					if (main == nullptr && !parts[i].candidates.empty()) main = parts[i].candidates.front();
-					if (main != nullptr || parts[i].part->GetSavedUnitMainID() != 0) _legacy_train_unit_recovery_warnings.insert(head->index);
+					if (active_part || main != nullptr || saved != 0) _legacy_train_unit_recovery_warnings.insert(head->index);
 				}
 				if (main != nullptr) { main->SetUnitMain(main); parts[i].part->SetUnitMain(main); }
 			}

@@ -7575,6 +7575,7 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_pt
  */
 static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_reason)
 {
+	v = v->Primary();
 	consist_in_rear = false;
 	failure_reason = STR_NULL;
 	if (!CanDecouple(v)) {
@@ -7613,6 +7614,18 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_r
 	 * mid-chain (engine-less head side), so all surgery is anchored at the
 	 * physical heads, never at the primary. */
 	Train *front_head = v->First();
+	const GroupID inherited_group = v->group_id;
+	std::vector<Train *> slot_holders;
+	std::vector<TraceRestrictSlotID> inherited_slots;
+	for (Train *part = front_head; part != nullptr; part = part->Next()) {
+		std::vector<TraceRestrictSlotID> slots;
+		TraceRestrictGetVehicleSlots(part->index, slots);
+		if (part->owner != v->owner || slots.empty()) continue;
+		for (TraceRestrictSlotID slot : slots) {
+			if (std::find(inherited_slots.begin(), inherited_slots.end(), slot) == inherited_slots.end()) inherited_slots.push_back(slot);
+		}
+		slot_holders.push_back(part);
+	}
 
 	/* Preserve each wagon's last-loading-station attribution across the split
 	 * instead of dropping it: the decoupled part keeps recording links from
@@ -7653,16 +7666,28 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_r
 	BindTrainPrimary(dec_head, dec_primary);
 	BindTrainPrimary(consist_head, v);
 
-	/* Slots, groups and statistics belong to the logical controller. */
-	if (v->vehicle_flags.Test(VehicleFlag::HaveSlot)) {
-		std::vector<TraceRestrictSlotID> slots;
-		TraceRestrictGetVehicleSlots(v->index, slots);
-		for (TraceRestrictSlotID slot_id : slots) TraceRestrictSlot::Get(slot_id)->Occupy(dec_primary);
+	/* Existing claims can belong to a marked physical head rather than the
+	 * controller. Move those claims to their resulting part's primary without
+	 * releasing/reacquiring them or changing ordinary slot capacity rules. */
+	for (Train *holder : slot_holders) {
+		Train *primary = holder->Primary();
+		if (holder == primary) continue;
+		TraceRestrictTransferVehicleOccupantInAllSlots(holder->index, primary->index);
+		holder->vehicle_flags.Reset(VehicleFlag::HaveSlot);
+		primary->vehicle_flags.Set(VehicleFlag::HaveSlot);
+	}
+	for (TraceRestrictSlotID slot_id : inherited_slots) {
+		TraceRestrictSlot *slot = TraceRestrictSlot::Get(slot_id);
+		for (Train *primary : {v, dec_primary}) {
+			if (primary->owner != v->owner) continue;
+			slot->Occupy(primary);
+		}
 	}
 	NormalizeLastLoadingStation(dec_primary);
 	NormalizeLastLoadingStation(v);
 	dec_primary->decouple_part = 2;
-	SetTrainGroupID(dec_primary, dec_primary->owner == v->owner ? v->group_id : DEFAULT_GROUP);
+	SetTrainGroupID(v, inherited_group);
+	SetTrainGroupID(dec_primary, dec_primary->owner == v->owner ? inherited_group : DEFAULT_GROUP);
 
 	/* The old carrier never changed identity, so only the new identity is added. */
 

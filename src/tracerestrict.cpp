@@ -4047,7 +4047,8 @@ CommandCost CmdAddVehicleTraceRestrictSlot(DoCommandFlags flags, TraceRestrictSl
 	Vehicle *v = Vehicle::GetIfValid(vehicle_id);
 	if (slot == nullptr || slot->owner != _current_company) return CMD_ERROR;
 	if (v == nullptr || v->owner != _current_company) return CMD_ERROR;
-	if (v->type != slot->vehicle_type || !v->IsPrimaryVehicle()) return CMD_ERROR;
+	if (v->type == VehicleType::Train) v = v->Primary();
+	if (v->owner != _current_company || v->type != slot->vehicle_type || !v->IsPrimaryVehicle()) return CMD_ERROR;
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		slot->Occupy(v, true);
@@ -4067,6 +4068,8 @@ CommandCost CmdRemoveVehicleTraceRestrictSlot(DoCommandFlags flags, TraceRestric
 	if (v == nullptr) return CMD_ERROR; // permit removing vehicles of other owners from your own slot
 
 	if (flags.Test(DoCommandFlag::Execute)) {
+		/* Remove the logical claim and any legacy claim on the selected head. */
+		if (v->type == VehicleType::Train && v->Primary() != v) slot->Vacate(v->Primary());
 		slot->Vacate(v);
 	}
 
