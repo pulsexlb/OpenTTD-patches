@@ -6885,6 +6885,13 @@ Train *GetDecoupleVehicleForCount(Train *v, uint num_decouple)
 	/* The editor can query single-unit consists, unlike the execution caller. */
 	if (ret == nullptr) return nullptr;
 
+	/* The split count keeps that many units in the first part; a consist has
+	 * only one fewer internal cut boundary than units, so a count covering the
+	 * whole consist means "no split": the entire train stays the first part. */
+	uint total_units = 0;
+	for (Train *t = head; t != nullptr; t = t->GetNextVehicle()) total_units++;
+	if (num_decouple >= total_units) return nullptr;
+
 	/* GetNextVehicle() skips whole multi-part units, so the cut can never land
 	 * inside a dual-headed or articulated unit. */
 	for (uint i = 1; i < num_decouple && ret->GetNextVehicle() != nullptr; i++) {
@@ -7373,6 +7380,21 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_r
 				after_decouple != nullptr ? after_decouple->GetNumDecouple() : -1);
 	}
 	if (u == nullptr) {
+		/* GetDecoupleVehicle returns null both when there is no decouple marker
+		 * behind the current order and when the requested split count covers the
+		 * whole consist. In the latter case the split is vacuous: keep the whole
+		 * train as the first part and report success instead of a cut failure. */
+		const Order *after_decouple = (v->orders != nullptr) ? v->orders->GetOrderAt(v->cur_implicit_order_index + 1) : nullptr;
+		if (after_decouple != nullptr && after_decouple->IsType(OT_DECOUPLE)) {
+			uint num_decouple = after_decouple->GetNumDecouple();
+			if (num_decouple == 0) num_decouple = GetDecoupleVehicleAuto(v);
+			uint total_units = 0;
+			for (Train *t = v->First(); t != nullptr; t = t->GetNextVehicle()) total_units++;
+			if (num_decouple >= total_units) {
+				v->decouple_part = 1;
+				return v;
+			}
+		}
 		failure_reason = STR_DECOUPLE_DIAGNOSTIC_CUT;
 		return v;
 	}
