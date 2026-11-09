@@ -300,6 +300,7 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	ClosestDepot FindClosestDepot() const override;
 
 	void ReserveTrackUnderConsist() const;
+	static void ClearReferencesToRemovedPart(Train *head, const Train *removed);
 
 	uint16_t GetCurveSpeedLimit() const;
 

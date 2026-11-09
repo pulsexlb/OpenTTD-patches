@@ -2949,7 +2949,7 @@ CommandCost RebuildTrainDepotLayout(const std::vector<Train *> &members, Train *
 	};
 	std::vector<Snapshot> snapshots;
 	for (const TrainList &chain : originals) {
-		for (Train *u : chain) snapshots.push_back({u, u->Next(), Train::From(u->Previous()), u->First(), u->Last(), u->Primary(),
+		for (Train *u : chain) snapshots.push_back({u, u->Next(), u->Previous(), u->First(), u->Last(), u->Primary(),
 				u->HasUnitMain() ? u->GetUnitMain() : nullptr, u->subtype, u->flags, u->vehicle_flags, u->grf_cache, u->tcache,
 				u->gcache, u->vcache, u->direction, u->gv_flags, u->railtypes, u->compatible_railtypes, u->acceleration});
 	}
@@ -11016,6 +11016,18 @@ static bool IsRailStationPlatformOccupied(TileIndex tile)
 	return false;
 }
 
+/** Clear references in the surviving physical chain before deleting one part. */
+void Train::ClearReferencesToRemovedPart(Train *head, const Train *removed)
+{
+	if (head == nullptr || removed == nullptr) return;
+	Vehicle::ClearUnitMainOfChain(head, removed);
+	for (Train *u = head; u != nullptr; u = u->Next()) {
+		if (u->Primary() == removed) u->SetPrimary(head);
+		/* Keep the surviving half's role for engine counts and saved wreckage. */
+		if (u->other_multiheaded_part == removed) u->other_multiheaded_part = nullptr;
+	}
+}
+
 /**
  * Deletes/Clears the last wagon of a crashed train. It takes the engine of the
  * train, then goes to the last wagon and deletes that. Each call to this function
@@ -11039,15 +11051,7 @@ static void DeleteLastWagon(Train *v)
 	 * primary vehicle that is about to be freed. The wreck no longer needs a
 	 * logical identity, so use its surviving physical head as a safe anchor. */
 	bool deleting_primary = first != v && first->Primary() == v;
-	if (deleting_primary) {
-		for (Train *u = first; u != nullptr; u = u->Next()) u->SetPrimary(first);
-	}
-
-	/* The same applies to the unit-main pointers: this function frees one
-	 * vehicle per call, so the base of a multi-part unit can be freed while
-	 * other members are still alive. A dangling unit_main makes every
-	 * GetUnitMain() user abort once the pool reuses the freed slot. */
-	if (first != v) Vehicle::ClearUnitMainOfChain(first, v);
+	if (first != v) Train::ClearReferencesToRemovedPart(first, v);
 
 	if (first != v) {
 		/* Recalculate cached train properties while a valid logical carrier is
@@ -11965,7 +11969,10 @@ void DeleteVisibleTrain(Train *v)
 	do {
 		u = prev;
 		prev = u->Previous();
-		if (prev != nullptr) prev->SetNext(nullptr);
+		if (prev != nullptr) {
+			prev->SetNext(nullptr);
+			Train::ClearReferencesToRemovedPart(prev->First(), u);
+		}
 
 		/* 'u' shouldn't be accessed after it has been deleted */
 		TileIndex tile = u->tile;
@@ -12351,7 +12358,7 @@ static CommandCost CmdTemplateReplaceVehicle(DoCommandFlags flags, Train *incomi
 		Train *primary = head->Primary();
 		if (primary->IsPrimaryVehicle() && std::find(counted_primaries.begin(), counted_primaries.end(), primary) == counted_primaries.end()) counted_primaries.push_back(primary);
 		routes.emplace_back(head, head->early_route);
-		for (Train *p = head; p != nullptr; p = p->Next()) snapshots.push_back({p, p->Next(), Train::From(p->Previous()), p->First(), p->Last(), p->Primary(),
+		for (Train *p = head; p != nullptr; p = p->Next()) snapshots.push_back({p, p->Next(), p->Previous(), p->First(), p->Last(), p->Primary(),
 			p->HasUnitMain() ? p->GetUnitMain() : nullptr, p->subtype, p->flags, p->vehicle_flags,
 			p->grf_cache, p->tcache, p->gcache, p->vcache, p->vehstatus, p->cargo_type, p->cargo_subtype,
 			p->cargo_cap, p->refit_cap, p->direction, p->gv_flags, p->railtypes, p->compatible_railtypes, p->acceleration, p->colourmap});

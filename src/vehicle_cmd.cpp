@@ -1561,12 +1561,14 @@ static CommandCost CloneTrain(DoCommandFlags flags, TileIndex tile, Train *click
 	if (source_primary == nullptr || !source_primary->IsPrimaryVehicle()) return CMD_ERROR;
 	CommandCost ret = CheckOwnership(clicked->owner);
 	if (ret.Failed()) return ret;
+	/* Crash animation and tail-first cleanup run on the physical head. */
+	if (source->vehstatus.Test(VehState::Crashed) && source->crash_anim_pos >= 4400) return CommandCost(STR_ERROR_VEHICLE_IS_DESTROYED);
 	for (const Train *part = source; part != nullptr; part = part->Next()) {
 		ret = CheckOwnership(part->owner);
 		if (ret.Failed()) return ret;
-		if (part->IsRearDualheaded() && (part->other_multiheaded_part == nullptr || part->other_multiheaded_part->First() != source)) return CMD_ERROR;
+		if (part->IsMultiheaded() && (part->other_multiheaded_part == nullptr ||
+				part->other_multiheaded_part->First() != source || part->other_multiheaded_part->other_multiheaded_part != part)) return CMD_ERROR;
 	}
-	if (source_primary->vehstatus.Test(VehState::Crashed) && source_primary->crash_anim_pos >= 4400) return CommandCost(STR_ERROR_VEHICLE_IS_DESTROYED);
 	if (GetFreeUnitNumber(VehicleType::Train, source_primary->owner) == UINT16_MAX) return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
 	if (!flags.Test(DoCommandFlag::Execute) && !Vehicle::CanAllocateItem(CountVehiclesInChain(source))) return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
 

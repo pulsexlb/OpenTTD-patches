@@ -5191,7 +5191,7 @@ void GetVehicleSet(VehicleSet &set, Vehicle *v, uint8_t num_vehicles)
 				include(set, u->index);
 
 				/* If the vehicle is multiheaded, add the other part too. */
-				if (u->IsMultiheaded()) include(set, u->other_multiheaded_part->index);
+				if (u->IsMultiheaded() && u->other_multiheaded_part != nullptr) include(set, u->other_multiheaded_part->index);
 
 				const bool at_unit_end = (u == unit_last);
 				u = u->Next();

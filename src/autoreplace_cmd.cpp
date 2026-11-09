@@ -788,7 +788,7 @@ static CommandCost ReplaceTrainChain(Vehicle **chain, DoCommandFlags flags, bool
 		Train *primary = root->Primary();
 		if (primary->IsPrimaryVehicle() && std::ranges::find(counted_primaries, primary) == counted_primaries.end()) counted_primaries.push_back(primary);
 		for (Train *u = root->First(); u != nullptr; u = u->Next()) {
-			snapshots.push_back({u, u->Next(), Train::From(u->Previous()), u->First(), u->Last(), u->Primary(),
+			snapshots.push_back({u, u->Next(), u->Previous(), u->First(), u->Last(), u->Primary(),
 				u->HasUnitMain() ? u->GetUnitMain() : nullptr, u->subtype, u->flags, u->vehicle_flags,
 				u->grf_cache, u->tcache, u->gcache, u->vcache, u->vehstatus, u->cargo_type, u->cargo_subtype,
 				u->cargo_cap, u->refit_cap, u->group_id, u->direction, u->railtypes,

@@ -2238,7 +2238,11 @@ void RVTransportValidateAfterLoad()
 			u->transported_by = VehicleID::Invalid();
 			u->transported_host_part = VehicleID::Invalid();
 			u->transported_weight = 0;
-			if (u->Previous() != nullptr) u->Previous()->SetNext(nullptr);
+			if (u->Previous() != nullptr) {
+				Vehicle *head = u->First();
+				u->Previous()->SetNext(nullptr);
+				if (u->type == VehicleType::Train) Train::ClearReferencesToRemovedPart(Train::From(head), Train::From(u));
+			}
 			delete u;
 		}
 	}
@@ -2351,7 +2355,11 @@ void RVTransportDestroyCarriedVehicles(Vehicle *carrier)
 			u->transported_by = VehicleID::Invalid();
 			u->transported_host_part = VehicleID::Invalid();
 			u->transported_weight = 0;
-			if (u->Previous() != nullptr) u->Previous()->SetNext(nullptr);
+			if (u->Previous() != nullptr) {
+				Vehicle *head = u->First();
+				u->Previous()->SetNext(nullptr);
+				if (u->type == VehicleType::Train) Train::ClearReferencesToRemovedPart(Train::From(head), Train::From(u));
+			}
 			delete u;
 		}
 	}
