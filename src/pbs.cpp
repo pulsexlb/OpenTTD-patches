@@ -881,11 +881,13 @@ struct FindTrainOnTrackInfo {
  * Find the best matching vehicle on a tile.
  * @param[in,out] info State of the finding a vehicle on a reservation.
  * @param tile The tile to search for.
+ * @param departing Train whose geometrically separated split partner can be ignored.
  */
-static void CheckTrainsOnTrack(FindTrainOnTrackInfo &info, TileIndex tile)
+static void CheckTrainsOnTrack(FindTrainOnTrackInfo &info, TileIndex tile, const Train *departing = nullptr)
 {
 	for (Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
 		if (t->vehstatus.Test(VehState::Crashed)) continue;
+		if (departing != nullptr && IsDecoupledPartBehindDeparture(departing, t)) continue;
 
 		if (t->track & TRACK_BIT_WORMHOLE) {
 			/* Do not find trains inside bridges, when the search track is a bridge-bypassing custom bridge head track. */
@@ -977,17 +979,21 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 	ftoti.res = FollowReservation(v->owner, v->GetIndirectCompatibleRailTypes(), tile, trackdir, FRF_NONE, v, nullptr);
 	ftoti.res.okay = flags.Test(FollowTrainReservationFlag::OkayUnused) ? false : IsSafeWaitingPosition(v, ftoti.res.tile, ftoti.res.trackdir, true, _settings_game.pf.forbid_90_deg);
 	if (train_on_res != nullptr) {
-		CheckTrainsOnTrack(ftoti, ftoti.res.tile);
+		CheckTrainsOnTrack(ftoti, ftoti.res.tile, v);
 		if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
 		if (*train_on_res == nullptr && IsRailStationTile(ftoti.res.tile)) {
-			/* The target tile is a rail station. The track follower
-			 * has stopped on the last platform tile where we haven't
-			 * found a train. Also check all previous platform tiles
-			 * for a possible train. */
+			/* The follower skips platform tiles. Check back towards the entry,
+			 * but never past our moving front on this platform: a split partner
+			 * behind it is not standing on the path we are about to take. */
+			const Train *moving_front = v->GetMovingFront();
+			const bool front_on_platform = IsCompatibleTrainStationTile(moving_front->tile, ftoti.res.tile);
 			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(ftoti.res.trackdir)));
-			for (TileIndex st_tile = ftoti.res.tile + diff; *train_on_res == nullptr && IsCompatibleTrainStationTile(st_tile, ftoti.res.tile); st_tile += diff) {
-				CheckTrainsOnTrack(ftoti, st_tile);
-				if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
+			if (!front_on_platform || moving_front->tile != ftoti.res.tile) {
+				for (TileIndex st_tile = ftoti.res.tile + diff; *train_on_res == nullptr && IsCompatibleTrainStationTile(st_tile, ftoti.res.tile); st_tile += diff) {
+					CheckTrainsOnTrack(ftoti, st_tile, v);
+					if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
+					if (front_on_platform && st_tile == moving_front->tile) break;
+				}
 			}
 		}
 		if (*train_on_res == nullptr && IsTileType(ftoti.res.tile, TileType::TunnelBridge) && IsTrackAcrossTunnelBridge(ftoti.res.tile, TrackdirToTrack(ftoti.res.trackdir)) && !IsTunnelBridgeWithSignalSimulation(ftoti.res.tile)) {
