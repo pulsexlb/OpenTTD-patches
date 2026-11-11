@@ -3613,6 +3613,7 @@ void Vehicle::BeginLoading(bool timetable_arrival_booked)
 		assert_tile(IsTileType(this->tile, TileType::Station) || this->type == VehicleType::Ship, this->tile);
 	}
 
+	const bool resume_payment = this->type == VehicleType::Train && this->cargo_payment != nullptr;
 	bool no_load_prepare = false;
 	if (this->current_order.IsType(OT_GOTO_STATION) &&
 			this->current_order.GetDestination() == this->last_station_visited) {
@@ -3624,7 +3625,9 @@ void Vehicle::BeginLoading(bool timetable_arrival_booked)
 		this->current_order.MakeLoading(true);
 		/* A split part keeping the same arrival has already booked its inbound
 		 * leg and dispatch slot. Starting its loading is not another arrival. */
-		if (!timetable_arrival_booked) {
+		if (resume_payment) {
+			/* This arrival already owns a cargo transaction and its elapsed time. */
+		} else if (!timetable_arrival_booked) {
 			UpdateVehicleTimetable(this, true);
 		} else {
 			this->current_order_time = 0;
@@ -3724,7 +3727,16 @@ void Vehicle::BeginLoading(bool timetable_arrival_booked)
 		this->current_order.MakeLoading(false);
 	}
 
-	if (!no_load_prepare) {
+	if (resume_payment) {
+		/* A split can expose a carrier whose station transaction survived the
+		 * order change. Keep the staged cargo and the accumulated payment. */
+		auto &queue = Station::Get(this->last_station_visited)->loading_vehicles;
+		if (std::find(queue.begin(), queue.end(), this) == queue.end()) {
+			this->RemoveFromLoadingQueues();
+			queue.push_back(this);
+		}
+		this->cargo_payment->current_station = this->last_station_visited;
+	} else if (!no_load_prepare) {
 		VehicleIncreaseStats(this);
 
 		PrepareUnload(this);

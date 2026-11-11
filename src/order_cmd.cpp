@@ -3221,7 +3221,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				break;
 
 			case OT_WAIT_COUPLE:
-				if (mof != MOF_WAIT_COUPLE_STATION) return CMD_ERROR;
+				if (mof != MOF_WAIT_COUPLE_STATION && mof != MOF_WAIT_COUPLE_TRACTION && mof != MOF_WAIT_COUPLE_COMPANY) return CMD_ERROR;
 				break;
 
 			case OT_DECOUPLE:
@@ -3690,6 +3690,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				const Station *st = Station::GetIfValid(data - 1);
 				if (st == nullptr) return CMD_ERROR;
 			}
+			break;
+
+		case MOF_WAIT_COUPLE_COMPANY:
+			if ((!is_list && v->type != VehicleType::Train) || data > MAX_COMPANIES || (data != 0 && !Company::IsValidID(data - 1))) return CMD_ERROR;
+			break;
+
+		case MOF_WAIT_COUPLE_TRACTION:
+			if ((!is_list && v->type != VehicleType::Train) || data > 3) return CMD_ERROR;
 			break;
 
 		case MOF_WAIT_COUPLE_STATION:
@@ -4203,6 +4211,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				order->SetCoupleStation(data == 0 ? StationID::Invalid() : StationID{(uint16_t)(data - 1)});
 				break;
 
+			case MOF_WAIT_COUPLE_COMPANY:
+				order->SetWaitCoupleCompany(data);
+				break;
+
+			case MOF_WAIT_COUPLE_TRACTION:
+				order->SetWaitCoupleTraction(data);
+				break;
+
 			case MOF_WAIT_COUPLE_STATION:
 				order->SetWaitCoupleStation(data == 0 ? StationID::Invalid() : StationID{(uint16_t)(data - 1)});
 				break;
@@ -4439,6 +4455,13 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_STATION) {
 				u->current_order.SetWaitCoupleStation(order->GetWaitCoupleStation());
 				u->SetDestTile(order->HasWaitCoupleStation() ? u->GetOrderStationLocation(order->GetWaitCoupleStation()) : INVALID_TILE);
+			}
+
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_TRACTION) {
+				u->current_order.SetWaitCoupleTraction(order->GetWaitCoupleTraction());
+			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_COMPANY) {
+				u->current_order.SetWaitCoupleCompany(order->GetWaitCoupleCompany());
 			}
 
 			/* Unbunching data is no longer valid. */

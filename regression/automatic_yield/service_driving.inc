@@ -61,6 +61,15 @@ void StationServiceDrivingTick()
   DemoRequire(CmdSkipToOrder(DoCommandFlag::Execute, demo_slow->index, VehicleOrderID{0}), "activate first stop");
   assert(demo_slow->GetActiveServiceNumber() == "OLD");
   assert(demo_slow->GetServiceNumberForDeparture(demo_slow->GetOrder(0), first_number) == first_number);
+  if (mode == "split-implicit") {
+   /* Recreate the two order indices left by an intermediate implicit stop.
+    * Let the train drive to the scheduled stop and run the real split. */
+   Order implicit;
+   implicit.MakeImplicit(second_station);
+   demo_slow->orders->InsertOrderAt(std::move(implicit), 0);
+   demo_slow->cur_implicit_order_index = 0;
+   demo_slow->cur_real_order_index = 1;
+  }
   fprintf(demo_log, "SERVICE inbound=OLD first_outbound=G123 second_outbound=G456 mode=%s\n", mode.c_str());
   setup = true;
  } else if (!setup && reload && _game_mode == GameMode::Normal) {
@@ -119,7 +128,17 @@ void StationServiceDrivingTick()
      fprintf(demo_log,"DISPATCH_ONCE shared=1 both=%u last=%d departure=%lld state=%lld wagon_lateness=%d reload=%u\n",shared_both,schedule.GetScheduledDispatchLastDispatch(),(long long)record->second.dispatched.base(),(long long)_state_ticks.base(),carriages->lateness_counter,reload);
     }
     fprintf(demo_log,"SPLIT tick=%u locomotive=%u number=%s suppressed=%u carriages=%u number=%s\n",ticks,demo_slow->index.base(),demo_slow->GetActiveServiceNumber().c_str(),demo_slow->service_number_suppressed,carriages->index.base(),carriages->GetActiveServiceNumber().c_str());
-    if(!reload)DemoSave("service-split");saved=true;
+    assert(carriages->unitnumber != 0 && carriages->Primary() == carriages);
+    for (const Train *part = carriages->First(); part != nullptr; part = part->Next()) {
+     assert(part == carriages || !part->IsPrimaryVehicle());
+    }
+    if (!reload) {
+     const bool legacy_carrier = mode == "split-legacy-carrier";
+     if (legacy_carrier) carriages->ClearFrontWagon();
+     DemoSave("service-split");
+     if (legacy_carrier) carriages->SetFrontWagon();
+    }
+    saved=true;
    }
    if(recoupling&&!recouple_posted){
     /* The completed split stop must not execute a second split immediately after recoupling. */

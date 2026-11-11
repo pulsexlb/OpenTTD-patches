@@ -398,6 +398,39 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Decouple - single unit has no cut")
 	CHECK(GetDecoupleCuts(v).empty());
 }
 
+TEST_CASE_METHOD(TrainDecoupleFixture, "Couple reversal preserves facing of every articulated wagon member")
+{
+	Train *base = MakeTrain(), *middle = MakeTrain(), *end = MakeTrain(), *plain = MakeTrain();
+	for (Train *part : {base, middle, end, plain}) {
+		part->ClearEngine();
+		part->SetWagon();
+		part->spritenum = CUSTOM_VEHICLE_SPRITENUM;
+	}
+	middle->SetArticulatedPart();
+	end->SetArticulatedPart();
+	middle->SetUnitMain(base);
+	end->SetUnitMain(base);
+	SECTION("base has an explicit self reference") { base->SetUnitMain(base); }
+	SECTION("base uses its implicit self reference") {}
+	SECTION("parts precede the base after a coupling reversal") {
+		end->SetNext(middle);
+		middle->SetNext(base);
+		base->SetNext(plain);
+	}
+	if (base->Next() == nullptr) {
+		base->SetNext(middle);
+		middle->SetNext(end);
+		end->SetNext(plain);
+	}
+	for (const Train *part : {base, middle, end}) CHECK(part->PreserveFacingOnCoupleReverse());
+	CHECK_FALSE(plain->PreserveFacingOnCoupleReverse());
+	plain->SetEngine();
+	CHECK(plain->PreserveFacingOnCoupleReverse());
+	plain->ClearEngine();
+	plain->SetMultiheaded();
+	CHECK(plain->PreserveFacingOnCoupleReverse());
+}
+
 TEST_CASE_METHOD(TrainDecoupleFixture, "Train snapshot keeps ownership of adjacent articulated units facing opposite directions")
 {
 	AllocateMap(64, 64);
@@ -1047,6 +1080,35 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - custom speed comparisons filter
 	CHECK(random_checker.Check());
 }
 
+TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - waiting traction and approaching speed limits both apply")
+{
+	AllocateMap(64, 64);
+	auto map_cleanup = scope_guard([]() { DeallocateMap(); });
+	Train *moving = MakeTrain();
+	Train *waiting = MakeTrain();
+	waiting->tile = TileXY(1, 1);
+	MakeRailNormal(waiting->tile, OWNER_NONE, TRACK_BIT_X, RAILTYPE_RAIL);
+	waiting->current_order.MakeWaitCouple();
+	waiting->current_order.SetCoupleSlot(TraceRestrictSlotID::Invalid());
+	CHECK(waiting->current_order.GetWaitCoupleTraction() == 0);
+	const uint8_t traction = GENERATE(0, 1, 2, 3);
+	const auto engine_class = GENERATE(EngineClass::Steam, EngineClass::Diesel, EngineClass::Electric);
+	this->engine->VehInfo<RailVehicleInfo>().engclass = engine_class;
+	waiting->current_order.SetWaitCoupleTraction(traction);
+	const Order copied_wait = waiting->current_order;
+	CHECK(copied_wait.GetWaitCoupleTraction() == traction);
+	Order approach;
+	approach.MakeGoToCouple();
+	approach.SetCoupleSlot(TraceRestrictSlotID::Invalid());
+	approach.SetCoupleSpeedComparator(0, 6); // >= 80
+	approach.SetCoupleSpeedValue(0, 80);
+	waiting->vcache.cached_max_speed = GENERATE(79, 80);
+	const bool matching = traction == 0 || traction == to_underlying(engine_class) + 1;
+	const auto expected = !matching ? CoupleCandidateResult::Traction :
+			waiting->vcache.cached_max_speed < 80 ? CoupleCandidateResult::SpeedRange : CoupleCandidateResult::Platform;
+	CHECK(GetCoupleCandidateResult(moving, approach, waiting, waiting->tile, false) == expected);
+}
+
 TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - both custom speed boundaries must match and disabled rows do not filter")
 {
 	AllocateMap(64, 64);
@@ -1297,6 +1359,21 @@ TEST_CASE_METHOD(CouplePowerFixture, "Couple power - unsuitable stronger locomot
 	CHECK(strong->couple_target == VehicleID::Invalid());
 	if (IsValidTile(strong->tile)) CHECK(GetRailReservationTrackBits(strong->tile) == TRACK_BIT_NONE);
 	CHECK(random_checker.Check());
+}
+
+TEST_CASE_METHOD(CouplePowerFixture, "Couple - waiting company restricts and revalidates existing claims")
+{
+	low->couple_target = waiting->index;
+	waiting->couple_claimant = low->index;
+	REQUIRE(GetCoupleClaimant(waiting) == low);
+	const uint8_t company = low->owner.base() + 1;
+	waiting->current_order.SetWaitCoupleCompany(company == 1 ? 2 : 1);
+	CHECK(GetCoupleCandidateResult(low, low->current_order, waiting, waiting->tile, false) == CoupleCandidateResult::WaitingCompany);
+	CHECK(GetCoupleClaimant(waiting) == nullptr);
+	waiting->current_order.SetWaitCoupleCompany(company);
+	CHECK(GetCoupleClaimant(waiting) == low);
+	waiting->current_order.SetWaitCoupleCompany(0);
+	CHECK(GetCoupleClaimant(waiting) == low);
 }
 
 TEST_CASE_METHOD(CouplePowerFixture, "Couple power - protect valid claims in both directions")

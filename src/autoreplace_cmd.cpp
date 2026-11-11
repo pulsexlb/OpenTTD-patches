@@ -814,8 +814,13 @@ static CommandCost ReplaceChain(Vehicle **chain, DoCommandFlags flags, bool wago
 						if (cost.Failed()) break;
 					} else {
 						/* We have reached 'last_engine', continue with the next engine towards the front */
-						assert(append == last_engine);
-						last_engine = Train::From(last_engine)->GetPrevUnit();
+						if (append != last_engine) {
+							cost = CMD_ERROR;
+							break;
+						}
+						/* The preceding physical member may be an articulated part.
+						 * Compare and insert using the same unit identity as the replacement list. */
+						last_engine = GetAutoreplaceUnitStart(Train::From(last_engine)->GetPrevUnit());
 					}
 				}
 			}
@@ -961,6 +966,9 @@ CommandCost CmdAutoreplaceVehicle(DoCommandFlags flags, VehicleID veh_id, bool s
 	if (v->type == VehicleType::Train) {
 		Train *t = Train::From(v);
 		if (t->IsArticulatedPart() || t->IsRearDualheaded()) return CMD_ERROR;
+		/* ReplaceChain rebuilds from the physical first unit. A primary behind
+		 * a different unit cannot be passed as its chain head. */
+		if (t->IsPrimaryVehicle() && GetAutoreplaceUnitStart(t->First()) != t) return CMD_ERROR;
 		free_wagon = !t->IsPrimaryVehicle();
 		if (free_wagon && t->First()->IsPrimaryVehicle()) return CMD_ERROR;
 	} else {

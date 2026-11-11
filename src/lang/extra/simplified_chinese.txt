@@ -2691,3 +2691,18 @@ STR_ORDER_COUPLE_ANY_STATION                                   :任意车站
 STR_SCHDISPATCH_SET_LAST_DISPATCH                              :{BLACK}设置上次发车时间
 
 STR_SCHDISPATCH_SET_LAST_DISPATCH_TOOLTIP                      :{BLACK}手动设置此计时调度最近一次发车的时间。
+
+STR_WAIT_COUPLE_TRACTION_BUTTON                                    :车头类型
+STR_WAIT_COUPLE_TRACTION_TOOLTIP                                   :{BLACK}选择哪种车头可以与这组等待中的车辆连挂
+STR_WAIT_COUPLE_TRACTION_ANY                                       :不限
+STR_WAIT_COUPLE_TRACTION_STEAM                                     :蒸汽
+STR_WAIT_COUPLE_TRACTION_DIESEL                                    :内燃
+STR_WAIT_COUPLE_TRACTION_ELECTRIC                                  :电力
+STR_WAIT_COUPLE_TRACTION_SUFFIX                                    :（{STRING}）
+STR_WAIT_COUPLE_TRACTION_MISMATCH                                  :等待中的车辆要求另一种车头类型
+
+STR_WAIT_COUPLE_COMPANY_BUTTON                                    :来车公司
+STR_WAIT_COUPLE_COMPANY_TOOLTIP                                   :{BLACK}选择哪家公司的车头可以前往连挂
+STR_WAIT_COUPLE_COMPANY_SUFFIX                                    :（{COMPANY}）
+STR_WAIT_COUPLE_COMPANY_MISSING                                   :（指定公司不存在）
+STR_WAIT_COUPLE_COMPANY_MISMATCH                                  :等待中的车辆要求另一家公司的车头

@@ -386,6 +386,8 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_COUPLE_SERVICE_NUMBER, ///< Change the service number the waiting train must have (text).
 	MOF_DECOUPLE_FIRST_RESET_LATENESS, ///< Reset this part's early/late offset when adopting an independent schedule.
 	MOF_DECOUPLE_SECOND_RESET_LATENESS,
+	MOF_WAIT_COUPLE_TRACTION, ///< Select the approaching locomotive's traction class.
+	MOF_WAIT_COUPLE_COMPANY, ///< Select the approaching locomotive's company.
 	MOF_END
 };
 

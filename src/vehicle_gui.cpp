@@ -5227,6 +5227,7 @@ static WindowDesc _train_view_desc(__FILE__, __LINE__,
  */
 void ShowVehicleViewWindow(const Vehicle *v)
 {
+	if (v->type == VehicleType::Train) v = v->Primary();
 	AllocateWindowDescFront<VehicleViewWindow>((v->type == VehicleType::Train) ? _train_view_desc : _vehicle_view_desc, v->index);
 }
 

@@ -2766,3 +2766,18 @@ STR_ORDER_WAYPOINT_STOP_BUTTON                                 :{BLACK}Stop
 STR_ORDER_WAYPOINT_STOP_TOOLTIP                                :{BLACK}Stop here using the normal station stopping process. Stop and Reverse are mutually exclusive.
 STR_ORDER_WAYPOINT_STOP_SUFFIX                                 : (stop)
 STR_ORDER_COUPLE_ANY_STATION                                   :Any station
+
+STR_WAIT_COUPLE_TRACTION_BUTTON                                    :Locomotive type
+STR_WAIT_COUPLE_TRACTION_TOOLTIP                                   :{BLACK}Choose which locomotive types can couple to this waiting train
+STR_WAIT_COUPLE_TRACTION_ANY                                       :Any type
+STR_WAIT_COUPLE_TRACTION_STEAM                                     :Steam
+STR_WAIT_COUPLE_TRACTION_DIESEL                                    :Diesel
+STR_WAIT_COUPLE_TRACTION_ELECTRIC                                  :Electric
+STR_WAIT_COUPLE_TRACTION_SUFFIX                                    : ({STRING})
+STR_WAIT_COUPLE_TRACTION_MISMATCH                                  :The waiting train requires a different locomotive type
+
+STR_WAIT_COUPLE_COMPANY_BUTTON                                    :Approaching company
+STR_WAIT_COUPLE_COMPANY_TOOLTIP                                   :{BLACK}Choose which company may send a locomotive to couple
+STR_WAIT_COUPLE_COMPANY_SUFFIX                                    : ({COMPANY})
+STR_WAIT_COUPLE_COMPANY_MISSING                                   : (company unavailable)
+STR_WAIT_COUPLE_COMPANY_MISMATCH                                  :The waiting train requires a locomotive from a different company

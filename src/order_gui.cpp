@@ -1279,6 +1279,8 @@ static StringID GetCoupleCandidateResultString(CoupleCandidateResult result)
 		case CoupleCandidateResult::Slot:        return STR_COUPLE_DIAGNOSTIC_SLOT;
 		case CoupleCandidateResult::SlotGroup:   return STR_COUPLE_DIAGNOSTIC_SLOT_GROUP;
 		case CoupleCandidateResult::Group:       return STR_COUPLE_DIAGNOSTIC_GROUP;
+		case CoupleCandidateResult::WaitingCompany: return STR_WAIT_COUPLE_COMPANY_MISMATCH;
+		case CoupleCandidateResult::Traction: return STR_WAIT_COUPLE_TRACTION_MISMATCH;
 		case CoupleCandidateResult::ServiceNumber: return STR_COUPLE_DIAGNOSTIC_SERVICE_NUMBER;
 		case CoupleCandidateResult::Station:     return STR_COUPLE_DIAGNOSTIC_STATION;
 		case CoupleCandidateResult::Platform:    return STR_COUPLE_DIAGNOSTIC_PLATFORM;
@@ -3220,6 +3222,17 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 
 		case OT_WAIT_COUPLE:
 			AppendStringInPlace(line, STR_ORDER_WAIT_FOR_COUPLE);
+			if (const uint8_t company = order->GetWaitCoupleCompany(); company != 0) {
+				const CompanyID id{static_cast<uint8_t>(company - 1)};
+				if (Company::IsValidID(id)) {
+					AppendStringInPlace(line, STR_WAIT_COUPLE_COMPANY_SUFFIX, id);
+				} else {
+					AppendStringInPlace(line, STR_WAIT_COUPLE_COMPANY_MISSING);
+				}
+			}
+			if (order->GetWaitCoupleTraction() != 0) {
+				AppendStringInPlace(line, STR_WAIT_COUPLE_TRACTION_SUFFIX, STR_WAIT_COUPLE_TRACTION_ANY + order->GetWaitCoupleTraction());
+			}
 			if (order->HasWaitCoupleStation() && Station::IsValidID(order->GetWaitCoupleStation())) AppendStringInPlace(line, STR_ORDER_WAIT_COUPLE_AT, order->GetWaitCoupleStation());
 			break;
 
@@ -6504,6 +6517,29 @@ public:
 				this->ShowWaitCoupleDiagnostics();
 				break;
 
+			case WID_O_WAIT_COUPLE_COMPANY: {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order == nullptr || !order->IsType(OT_WAIT_COUPLE)) break;
+				DropDownList list;
+				list.push_back(MakeDropDownListStringItem(STR_WAIT_COUPLE_TRACTION_ANY, CompanyID::Invalid().base()));
+				for (const Company *company : Company::Iterate()) list.push_back(MakeCompanyDropDownListItem(company->index));
+				const int selected = order->GetWaitCoupleCompany() == 0 ? CompanyID::Invalid().base() : order->GetWaitCoupleCompany() - 1;
+				ShowDropDownList(this, std::move(list), selected, widget, 0);
+				break;
+			}
+
+			case WID_O_WAIT_COUPLE_TRACTION: {
+				static constexpr StringID choices[] = {
+					STR_WAIT_COUPLE_TRACTION_ANY, STR_WAIT_COUPLE_TRACTION_STEAM,
+					STR_WAIT_COUPLE_TRACTION_DIESEL, STR_WAIT_COUPLE_TRACTION_ELECTRIC, INVALID_STRING_ID,
+				};
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order != nullptr && order->IsType(OT_WAIT_COUPLE)) {
+					ShowDropDownMenu(this, choices, order->GetWaitCoupleTraction(), widget, 0, 0);
+				}
+				break;
+			}
+
 			case WID_O_WAIT_COUPLE_STATION: {
 				const Order *sel_order = OrderAt(this->OrderGetSel());
 				if (this->goto_type != OPOS_NONE) {
@@ -6705,6 +6741,14 @@ public:
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		switch (widget) {
+			case WID_O_WAIT_COUPLE_COMPANY:
+				this->ModifyOrder(this->OrderGetSel(), MOF_WAIT_COUPLE_COMPANY, index == CompanyID::Invalid().base() ? 0 : index + 1);
+				break;
+
+			case WID_O_WAIT_COUPLE_TRACTION:
+				this->ModifyOrder(this->OrderGetSel(), MOF_WAIT_COUPLE_TRACTION, index);
+				break;
+
 			case WID_O_NON_STOP:
 				this->OrderClick_Nonstop(index);
 				break;
@@ -7757,7 +7801,10 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 				EndContainer(),
 			EndContainer(),
 			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
-				NWidget(WWT_PANEL, Colours::Grey), SetResize(1, 0), EndContainer(),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_WAIT_COUPLE_COMPANY), SetFill(1, 0),
+					SetStringTip(STR_WAIT_COUPLE_COMPANY_BUTTON, STR_WAIT_COUPLE_COMPANY_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_WAIT_COUPLE_TRACTION), SetFill(1, 0),
+					SetStringTip(STR_WAIT_COUPLE_TRACTION_BUTTON, STR_WAIT_COUPLE_TRACTION_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_WAIT_COUPLE_DIAGNOSTICS), SetMinimalSize(124, 12), SetFill(1, 0),
 														SetStringTip(STR_COUPLE_DIAGNOSTIC_BUTTON, STR_WAIT_COUPLE_DIAGNOSTIC_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_WAIT_COUPLE_STATION), SetMinimalSize(124, 12), SetFill(1, 0),
@@ -8048,6 +8095,7 @@ static WindowDesc _orderlist_other_desc(__FILE__, __LINE__,
 
 void ShowOrdersWindow(const Vehicle *v)
 {
+	if (v->type == VehicleType::Train) v = v->Primary();
 	CloseWindowById(WindowClass::VehicleDetails, v->index, false);
 	CloseWindowById(WindowClass::VehicleTimetable, v->index, false);
 	if (BringWindowToFrontById(WindowClass::VehicleOrders, v->index) != nullptr) return;

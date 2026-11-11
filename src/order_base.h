@@ -983,6 +983,12 @@ public:
 	inline bool HasWaitCoupleStation() const { return this->IsType(OT_WAIT_COUPLE) && HasBit(this->GetXFlags(), 6); }
 	inline StationID GetWaitCoupleStation() const { return this->HasWaitCoupleStation() ? this->GetDestination().ToStationID() : StationID::Invalid(); }
 	inline void SetWaitCoupleStation(StationID station) { AssignBit(this->GetXFlagsRef(), 6, station != StationID::Invalid()); this->SetDestination(station); }
+	/** Waiting-order traction filter: 0 any, 1 steam, 2 diesel, 3 electric. */
+	inline uint8_t GetWaitCoupleTraction() const { return GB(this->GetXData2(), 30, 2); }
+	inline void SetWaitCoupleTraction(uint8_t traction) { SB(this->GetXData2Ref(), 30, 2, traction); }
+	/** Zero allows any company; otherwise the stored value is the company ID plus one. */
+	inline uint8_t GetWaitCoupleCompany() const { return GB(this->GetXData2(), 16, 8); }
+	inline void SetWaitCoupleCompany(uint8_t company) { SB(this->GetXData2Ref(), 16, 8, company); }
 	/** Set what orders first part should get */
 	inline void SetDecoupleFirstOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 0, 3, to_underlying(orders_type)); }
 	/** Set what orders second part should get */

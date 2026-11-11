@@ -531,6 +531,15 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 					break;
 				}
 			}
+			if (part_of_load && v->type == VehicleType::Train && primary->consist_primary != 0 &&
+					!primary->IsPrimaryVehicle() && primary->orders != nullptr && Train::From(primary)->decouple_part == 2) {
+				/* Older builds could drop the wagon carrier's flag during a reversal. */
+				bool has_other_carrier = false;
+				for (Train *t = Train::From(v); t != nullptr; t = t->Next()) {
+					if (t->IsEngine() || t->IsPrimaryVehicle()) has_other_carrier = true;
+				}
+				if (!has_other_carrier) Train::From(primary)->SetFrontWagon();
+			}
 			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
 				u->primary = primary;
 			}
@@ -825,6 +834,14 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 		if ((v->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) == 0) v->UpdatePosition();
 		if (v->type != VehicleType::Ship || v->Previous() == nullptr) v->UpdateViewport(false);
 		v->cargo.AssertCountConsistency();
+	}
+
+	/* Allocate after reserving all unit numbers already present in the save. */
+	if (part_of_load) {
+		for (Train *t : Train::Iterate()) {
+			if (t->Primary() != t || !t->IsFrontWagon() || t->decouple_part != 2 || t->orders == nullptr || t->unitnumber != 0) continue;
+			t->unitnumber = Company::Get(t->owner)->freeunits[t->type].UseID(GetFreeUnitNumber(t->type, t->owner));
+		}
 	}
 }
 

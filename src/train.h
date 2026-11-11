@@ -142,6 +142,8 @@ enum class CoupleCandidateResult : uint8_t {
 	Faster,
 	SpeedRange,
 	ServiceNumber,
+	Traction,
+	WaitingCompany,
 	Arrangement,
 };
 
@@ -718,6 +720,7 @@ public:
 
 	bool CanLeadTrain() const;
 	bool NeedsCabFlip() const;
+	bool PreserveFacingOnCoupleReverse() const;
 
 	/**
 	 * Resolve this vehicle to the first chain member of its multi-part unit.
