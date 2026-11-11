@@ -29,6 +29,33 @@
 
 #include "../../safeguards.h"
 
+/** Script wagon indices follow physical unit order, but commands target each
+ * unit's main vehicle. Do not use GetNextUnit(): dual-headed halves may have
+ * ordinary wagons between them, and reversed articulated parts precede the main.
+ * Preserve legacy rear-head exclusion: a dual unit takes its slot at the front
+ * half's position, even when the rear half precedes intervening wagons. */
+static std::vector<const Train *> GetScriptTrainUnits(const Train *train)
+{
+	std::vector<const Train *> units;
+	for (const Train *part = train->First(); part != nullptr; part = part->Next()) {
+		/* A rear dual head is not an independently indexed wagon. Do not jump
+		 * to its partner: doing so skips or reorders wagons between the halves. */
+		if (part->IsRearDualheaded()) continue;
+		const Train *main = Train::From(part->GetUnitMain());
+		if (main->IsRearDualheaded() || main->First() != train->First()) continue;
+		if (std::find(units.begin(), units.end(), main) == units.end()) units.push_back(main);
+	}
+	return units;
+}
+
+/** Resolve a non-negative script wagon index without walking beyond the chain. */
+static const Train *GetScriptTrainUnit(const Train *train, SQInteger wagon)
+{
+	if (wagon < 0) return nullptr;
+	const auto units = GetScriptTrainUnits(train);
+	return static_cast<size_t>(wagon) < units.size() ? units[static_cast<size_t>(wagon)] : nullptr;
+}
+
 /* static */ bool ScriptVehicle::IsValidVehicle(VehicleID vehicle_id)
 {
 	EnforceDeityOrCompanyModeValid(false);
@@ -54,14 +81,8 @@
 {
 	if (!IsValidVehicle(vehicle_id)) return -1;
 
-	int num = 1;
-
 	const Train *v = ::Train::GetIfValid(vehicle_id);
-	if (v != nullptr) {
-		while ((v = v->GetNextUnit()) != nullptr) num++;
-	}
-
-	return num;
+	return v != nullptr ? GetScriptTrainUnits(v).size() : 1;
 }
 
 /* static */ SQInteger ScriptVehicle::GetLength(VehicleID vehicle_id)
@@ -126,18 +147,14 @@
 /* static */ bool ScriptVehicle::_MoveWagonInternal(VehicleID source_vehicle_id, SQInteger source_wagon, bool move_attached_wagons, SQInteger dest_vehicle_id, SQInteger dest_wagon)
 {
 	EnforceCompanyModeValid(false);
-	EnforcePrecondition(false, IsValidVehicle(source_vehicle_id) && source_wagon < GetNumWagons(source_vehicle_id));
-	EnforcePrecondition(false, dest_vehicle_id == -1 || (IsValidVehicle(static_cast<VehicleID>(dest_vehicle_id)) && dest_wagon < GetNumWagons(static_cast<VehicleID>(dest_vehicle_id))));
+	EnforcePrecondition(false, IsValidVehicle(source_vehicle_id) && source_wagon >= 0 && source_wagon < GetNumWagons(source_vehicle_id));
+	EnforcePrecondition(false, dest_vehicle_id == -1 || (IsValidVehicle(static_cast<VehicleID>(dest_vehicle_id)) && dest_wagon >= 0 && dest_wagon < GetNumWagons(static_cast<VehicleID>(dest_vehicle_id))));
 	EnforcePrecondition(false, ::Vehicle::Get(source_vehicle_id)->type == ::VehicleType::Train);
 	EnforcePrecondition(false, dest_vehicle_id == -1 || ::Vehicle::Get(static_cast<VehicleID>(dest_vehicle_id))->type == ::VehicleType::Train);
 
-	const Train *v = ::Train::Get(source_vehicle_id);
-	while (source_wagon-- > 0) v = v->GetNextUnit();
-	const Train *w = nullptr;
-	if (dest_vehicle_id != -1) {
-		w = ::Train::Get(dest_vehicle_id);
-		while (dest_wagon-- > 0) w = w->GetNextUnit();
-	}
+	const Train *v = GetScriptTrainUnit(::Train::Get(source_vehicle_id), source_wagon);
+	const Train *w = dest_vehicle_id == -1 ? nullptr : GetScriptTrainUnit(::Train::Get(static_cast<VehicleID>(dest_vehicle_id)), dest_wagon);
+	EnforcePrecondition(false, v != nullptr && (dest_vehicle_id == -1 || w != nullptr));
 
 	return ScriptObject::Command<Commands::MoveRailVehicle>::Do(v->index, w == nullptr ? VehicleID::Invalid() : w->index, move_attached_wagons ? MoveRailVehicleFlags::MoveChain : MoveRailVehicleFlags::None);
 }
@@ -184,11 +201,11 @@
 /* static */ bool ScriptVehicle::_SellWagonInternal(VehicleID vehicle_id, SQInteger wagon, bool sell_attached_wagons)
 {
 	EnforceCompanyModeValid(false);
-	EnforcePrecondition(false, IsValidVehicle(vehicle_id) && wagon < GetNumWagons(vehicle_id));
+	EnforcePrecondition(false, IsValidVehicle(vehicle_id) && wagon >= 0 && wagon < GetNumWagons(vehicle_id));
 	EnforcePrecondition(false, ::Vehicle::Get(vehicle_id)->type == ::VehicleType::Train);
 
-	const Train *v = ::Train::Get(vehicle_id);
-	while (wagon-- > 0) v = v->GetNextUnit();
+	const Train *v = GetScriptTrainUnit(::Train::Get(vehicle_id), wagon);
+	EnforcePrecondition(false, v != nullptr);
 
 	return ScriptObject::Command<Commands::SellVehicle>::Do(v->tile, v->index, sell_attached_wagons ? SellVehicleFlags::SellChain : SellVehicleFlags::None, ClientID::Invalid);
 }
@@ -290,13 +307,11 @@
 /* static */ EngineID ScriptVehicle::GetWagonEngineType(VehicleID vehicle_id, SQInteger wagon)
 {
 	if (!IsValidVehicle(vehicle_id)) return ::EngineID::Invalid();
-	if (wagon >= GetNumWagons(vehicle_id)) return ::EngineID::Invalid();
+	if (wagon < 0 || wagon >= GetNumWagons(vehicle_id)) return ::EngineID::Invalid();
 
 	const Vehicle *v = ::Vehicle::Get(vehicle_id);
-	if (v->type == ::VehicleType::Train) {
-		while (wagon-- > 0) v = ::Train::From(v)->GetNextUnit();
-	}
-	return v->engine_type;
+	if (v->type == ::VehicleType::Train) v = GetScriptTrainUnit(::Train::From(v), wagon);
+	return v != nullptr ? v->engine_type : ::EngineID::Invalid();
 }
 
 /* static */ SQInteger ScriptVehicle::GetUnitNumber(VehicleID vehicle_id)
@@ -323,13 +338,11 @@
 /* static */ SQInteger ScriptVehicle::GetWagonAge(VehicleID vehicle_id, SQInteger wagon)
 {
 	if (!IsValidVehicle(vehicle_id)) return -1;
-	if (wagon >= GetNumWagons(vehicle_id)) return -1;
+	if (wagon < 0 || wagon >= GetNumWagons(vehicle_id)) return -1;
 
 	const Vehicle *v = ::Vehicle::Get(vehicle_id);
-	if (v->type == ::VehicleType::Train) {
-		while (wagon-- > 0) v = ::Train::From(v)->GetNextUnit();
-	}
-	return v->age.base();
+	if (v->type == ::VehicleType::Train) v = GetScriptTrainUnit(::Train::From(v), wagon);
+	return v != nullptr ? v->age.base() : -1;
 }
 
 /* static */ SQInteger ScriptVehicle::GetMaxAge(VehicleID vehicle_id)

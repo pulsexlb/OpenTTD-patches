@@ -143,6 +143,11 @@ void MixedTick()
   if(mode=="mixed-rejoin-both-stop"&&demo_fast->cur_real_order_index>0)independent_fast_work=true;
  }
  n++;demo_tick=n;
+ static uint prior_order=UINT_MAX,prior_direction=UINT_MAX;
+ if(prior_order!=uint(demo_slow->current_order.GetType())||prior_direction!=uint(demo_slow->GetMovingFront()->direction)){
+  prior_order=uint(demo_slow->current_order.GetType());prior_direction=uint(demo_slow->GetMovingFront()->direction);
+  fprintf(demo_log,"MIXED ORDER %u type=%u index=%u dest=%u direction=%u xy=%u,%u flags=%u\n",n,prior_order,demo_slow->cur_real_order_index,demo_slow->current_order.GetDestination().base(),prior_direction,TileX(demo_slow->tile),TileY(demo_slow->tile),demo_slow->flags.base());fflush(demo_log);
+ }
  if(n==1&&std::getenv("PXP_STRICT_DEBUG"))_debug_levels[size_t(DebugLevelID::yapf)]=7;
  if(!reload&&!started&&n==(independent?100u:mode.starts_with("mixed-rejoin-")?150u:(scheduled||mode.ends_with("-signals"))?900u:400u)){
   started=true;DemoRequire(CmdStartStopVehicle(DoCommandFlag::Execute,demo_fast->index,true),"start mixed express");fprintf(demo_log,"MIXED START_FAST %u\n",n);

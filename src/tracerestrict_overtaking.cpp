@@ -2744,7 +2744,10 @@ void InvalidateAutoYieldAreas() { dirty = true; }
 void AutoYieldSignalChanged(TileIndex tile, Track track)
 {
 	bool relevant = dirty;
-	if (const auto *program = GetExistingTraceRestrictProgram(tile, track)) {
+	/* Removal notifications arrive after the simulation bits were cleared.
+	 * The restricted-signal accessor requires an active simulated signal. */
+	const bool usable = !IsTileType(tile, TileType::TunnelBridge) || IsTunnelBridgeWithSignalSimulation(tile);
+	if (const auto *program = usable ? GetExistingTraceRestrictProgram(tile, track) : nullptr) {
 		for (const auto iter : program->IterateInstructions()) {
 			if (IsAutoYieldInstruction(iter.Instruction().GetType())) { relevant = true; break; }
 		}

@@ -371,7 +371,22 @@ public:
 		TrackdirBits tdb = TrackdirToTrackdirBits(td);
 		if (!HasReservedTracks(tile, TrackdirBitsToTrackBits(tdb))) return nullptr;
 		Train *t = GetTrainForReservation(tile, TrackdirToTrack(td));
-		if (t == nullptr || (this->couple_target_filter != nullptr && t->Primary() != this->couple_target_filter)) return nullptr;
+		/* Reservation ownership may resolve a distant train. Only its physical
+		 * presence on this track proves that the search has reached it. */
+		const Train *occupant = nullptr;
+		if (t != nullptr) {
+			for (const Train *part : VehiclesOnTile<VehicleType::Train>(tile)) {
+				if (part->Primary() != t->Primary() || part->vehstatus.Test(VehState::Crashed)) continue;
+				if (part->track & TRACK_BIT_WORMHOLE) {
+					if (!IsTileType(tile, TileType::TunnelBridge) || !IsTrackAcrossTunnelBridge(tile, TrackdirToTrack(td)) ||
+							TileVirtXY(part->x_pos, part->y_pos) != tile) continue;
+				} else if ((part->track & TrackdirBitsToTrackBits(tdb)) == TRACK_BIT_NONE) {
+					continue;
+				}
+				if (occupant == nullptr || part->index < occupant->index) occupant = part;
+			}
+		}
+		if (occupant == nullptr || (this->couple_target_filter != nullptr && t->Primary() != this->couple_target_filter)) return nullptr;
 		return ValidateCoupleCandidate(Yapf().GetVehicle(), t->First(), tile, true, claim_cost, &this->dest_order);
 	}
 

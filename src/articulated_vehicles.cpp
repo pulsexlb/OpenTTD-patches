@@ -296,8 +296,16 @@ CargoTypes GetCargoTypesOfArticulatedVehicle(const Vehicle *v, CargoType *cargo_
 	CargoTypes cargoes{};
 	CargoType first_cargo = INVALID_CARGO;
 
+	const Vehicle *last = nullptr;
+	if (v->type == VehicleType::Train) {
+		const Train *unit = Train::From(v);
+		last = unit->GetUnitChainLast();
+		v = unit->GetUnitChainFront();
+	}
+
 	do {
-		if (v->cargo_type != INVALID_CARGO && v->GetEngine()->CanCarryCargo()) {
+		if (v->cargo_type < NUM_CARGO && v->GetEngine()->CanCarryCargo()) {
+			cargoes.Set(v->cargo_type);
 			if (first_cargo == INVALID_CARGO) first_cargo = v->cargo_type;
 			if (first_cargo != v->cargo_type) {
 				if (cargo_type != nullptr) {
@@ -307,7 +315,7 @@ CargoTypes GetCargoTypesOfArticulatedVehicle(const Vehicle *v, CargoType *cargo_
 			}
 		}
 
-		v = v->HasArticulatedPart() ? v->GetNextArticulatedPart() : nullptr;
+		v = last != nullptr ? (v == last ? nullptr : v->Next()) : (v->HasArticulatedPart() ? v->GetNextArticulatedPart() : nullptr);
 	} while (v != nullptr);
 
 	if (cargo_type != nullptr) *cargo_type = first_cargo;

@@ -437,7 +437,7 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Train snapshot keeps ownership of adjace
 	auto cleanup = scope_guard([] { DeallocateMap(); });
 	AutoRestoreBackup format(_savegame_format, std::string{"none"});
 	AutoRestoreBackup cursor(_cursor.sprites, std::vector<CursorSprite>{{0, 0, 0, 0}});
-	AutoRestoreBackup feature(_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN], uint16_t{2});
+	AutoRestoreBackup feature(_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN], uint16_t{4});
 	Train *a = MakeTrain(), *a_part = MakeTrain(), *b_part = MakeTrain(), *b = MakeTrain();
 	a->SetNext(a_part);
 	a_part->SetNext(b_part);
@@ -450,7 +450,7 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Train snapshot keeps ownership of adjace
 	b->SetUnitMain(b);
 	auto snapshot = std::make_shared<CoupleSnapshotCapture>();
 	REQUIRE(SaveWithFilter(snapshot, false, SMF_NET_SERVER) == SaveLoadResult::Ok);
-	const std::string field = "train_unit_main";
+	const std::string field = "consist_unit_main_id";
 	REQUIRE(std::search(snapshot->bytes.begin(), snapshot->bytes.end(), field.begin(), field.end()) != snapshot->bytes.end());
 	RebuildTrainUnitMains();
 	CHECK(a_part->GetUnitMain() == a);
@@ -463,7 +463,7 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Train snapshot restores exact partners o
 	auto cleanup = scope_guard([] { DeallocateMap(); });
 	AutoRestoreBackup format(_savegame_format, std::string{"none"});
 	AutoRestoreBackup cursor(_cursor.sprites, std::vector<CursorSprite>{{0, 0, 0, 0}});
-	AutoRestoreBackup feature(_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN], uint16_t{2});
+	AutoRestoreBackup feature(_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN], uint16_t{4});
 	Train *a = MakeTrain(), *b = MakeTrain(), *a_rear = MakeTrain(), *b_rear = MakeTrain();
 	a->SetNext(b);
 	b->SetNext(b_rear);
@@ -475,13 +475,58 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Train snapshot restores exact partners o
 	a_rear->other_multiheaded_part = a;
 	b->other_multiheaded_part = b_rear;
 	b_rear->other_multiheaded_part = b;
+	/* BuildMultiheadedTrain establishes both explicit unit memberships. */
+	a->SetUnitMain(a);
+	a_rear->SetUnitMain(a);
+	b->SetUnitMain(b);
+	b_rear->SetUnitMain(b);
 	auto snapshot = std::make_shared<CoupleSnapshotCapture>();
 	REQUIRE(SaveWithFilter(snapshot, false, SMF_NET_SERVER) == SaveLoadResult::Ok);
+	/* Runtime partner pointers are absent on load. */
+	for (Train *part : {a, b, a_rear, b_rear}) part->other_multiheaded_part = nullptr;
 	RebuildTrainUnitMains();
 	CHECK(a->other_multiheaded_part == a_rear);
 	CHECK(b->other_multiheaded_part == b_rear);
 	CHECK(a_rear->GetUnitMain() == a);
 	CHECK(b_rear->GetUnitMain() == b);
+}
+
+TEST_CASE_METHOD(TrainDecoupleFixture, "Local v2 unit references migrate to upstream v4 without changing group ownership")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { DeallocateMap(); });
+	AutoRestoreBackup format(_savegame_format, std::string{"none"});
+	AutoRestoreBackup cursor(_cursor.sprites, std::vector<CursorSprite>{{0, 0, 0, 0}});
+	AutoRestoreBackup feature(_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN], uint16_t{2});
+	Train *a = MakeTrain(), *a_part = MakeTrain(), *b_part = MakeTrain(), *b = MakeTrain();
+	a->SetNext(a_part);
+	a_part->SetNext(b_part);
+	b_part->SetNext(b);
+	a_part->SetArticulatedPart();
+	b_part->SetArticulatedPart();
+	/* Populate the load-only field through its registered save descriptor,
+	 * exactly as the local v2 loader does, without exposing a runtime setter. */
+	const auto fields = GetVehicleDescription(VehicleType::End);
+	const auto legacy = std::find_if(fields.begin(), fields.end(), [](const NamedSaveLoad &field) {
+		return std::string_view(field.name) == "train_unit_main";
+	});
+	REQUIRE(legacy != fields.end());
+	const auto load_ref = [&](Train *part, VehicleID id) {
+		*reinterpret_cast<VehicleID *>(reinterpret_cast<char *>(static_cast<Vehicle *>(part)) + legacy->save_load.offset) = id;
+	};
+	for (Train *part : {a, a_part}) load_ref(part, a->index);
+	for (Train *part : {b, b_part}) load_ref(part, b->index);
+	RebuildTrainUnitMains();
+	CHECK(a->HasUnitMain());
+	CHECK(b->HasUnitMain());
+	CHECK(a_part->GetUnitMain() == a);
+	CHECK(b_part->GetUnitMain() == b);
+	_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN] = 4;
+	auto snapshot = std::make_shared<CoupleSnapshotCapture>();
+	REQUIRE(SaveWithFilter(snapshot, false, SMF_NET_SERVER) == SaveLoadResult::Ok);
+	RebuildTrainUnitMains();
+	CHECK(a_part->GetUnitMain() == a);
+	CHECK(b_part->GetUnitMain() == b);
 }
 
 TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - network snapshot preserves wide IDs and invalid targets")
@@ -573,8 +618,10 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Decouple - articulated parts stay togeth
 	CHECK(cuts[0].num_keep == 1);
 	CHECK(cuts[0].vehicle == engine);
 	CHECK(GetDecoupleVehicleForCount(engine, 1) == engine);
-	/* Preserve the execution path's existing clamping for large order values. */
-	CHECK(GetDecoupleVehicleForCount(engine, 127) == engine);
+	/* Upstream keeps the whole consist when the requested first part covers
+	 * every unit; it must not silently split at the final internal boundary. */
+	CHECK(GetDecoupleVehicleForCount(engine, 2) == nullptr);
+	CHECK(GetDecoupleVehicleForCount(engine, 127) == nullptr);
 }
 
 TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - callback trial restores both consists on success and rejection")
@@ -2633,6 +2680,31 @@ TEST_CASE_METHOD(AutomaticYieldFixture, "Automatic yield - station platforms are
 	}
 	CHECK(random_checker.Check());
 	_station_pool.CleanPool();
+}
+
+TEST_CASE_METHOD(AutomaticYieldNativeLayoutFixture, "Automatic yield - removing bridge signals safely refreshes detector topology")
+{
+	const TileIndex entrance = TileXY(12,12), exit = TileXY(16,12);
+	MakeRailBridgeRamp(entrance, _current_company, 0, DiagDirection::SW, RAILTYPE_RAIL, false);
+	MakeRailBridgeRamp(exit, _current_company, 0, DiagDirection::NE, RAILTYPE_RAIL, false);
+	SetBridgeMiddle(TileXY(13,12), Axis::X);
+	SetBridgeMiddle(TileXY(14,12), Axis::X);
+	SetBridgeMiddle(TileXY(15,12), Axis::X);
+	SetTunnelBridgeSignalSimulationEntrance(entrance);
+	SetTunnelBridgeSignalSimulationExit(exit);
+	SECTION("remove a plain simulated signal") {
+		REQUIRE(CmdRemoveSingleSignal(DoCommandFlag::Execute, entrance, TRACK_X, RemoveSignalFlags::NoRemoveRestricted).Succeeded());
+		CHECK_FALSE(IsTunnelBridgeWithSignalSimulation(entrance));
+		CHECK_FALSE(IsTunnelBridgeWithSignalSimulation(exit));
+	}
+	SECTION("notification after removal remains idempotent") {
+		ClrTunnelBridgeSignalSimulationEntrance(entrance);
+		ClrTunnelBridgeSignalSimulationExit(exit);
+		AutoYieldSignalChanged(entrance, TRACK_X);
+		AutoYieldSignalChanged(exit, TRACK_X);
+		AutoYieldSignalChanged(entrance, TRACK_X);
+		CHECK(TraceRestrictSlot::ValidateVehicleIndex());
+	}
 }
 
 TEST_CASE_METHOD(AutomaticYieldFixture, "Automatic yield - ordinary bridges do not read simulated signal fields")

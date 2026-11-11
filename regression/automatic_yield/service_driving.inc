@@ -130,7 +130,10 @@ void StationServiceDrivingTick()
     fprintf(demo_log,"SPLIT tick=%u locomotive=%u number=%s suppressed=%u carriages=%u number=%s\n",ticks,demo_slow->index.base(),demo_slow->GetActiveServiceNumber().c_str(),demo_slow->service_number_suppressed,carriages->index.base(),carriages->GetActiveServiceNumber().c_str());
     assert(carriages->unitnumber != 0 && carriages->Primary() == carriages);
     for (const Train *part = carriages->First(); part != nullptr; part = part->Next()) {
-     assert(part == carriages || !part->IsPrimaryVehicle());
+     /* Upstream keeps physical-head subtype flags separately from the
+      * logical identity. Every member must resolve to the one owner. */
+     assert(part->Primary() == carriages);
+     assert(part == carriages || part == carriages->First() || !part->IsPrimaryVehicle());
     }
     if (!reload) {
      const bool legacy_carrier = mode == "split-legacy-carrier";

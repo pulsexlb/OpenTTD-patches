@@ -88,14 +88,19 @@ void TemplateVehicle::SetFirst(TemplateVehicle *v) { this->first = v; }
 
 TemplateVehicle *TemplateVehicle::GetNextUnit() const
 {
-		TemplateVehicle *tv = this->Next();
-		while (tv != nullptr && HasBit(tv->subtype, GVSF_ARTICULATED_PART)) {
-			tv = tv->Next();
-		}
-		if (tv != nullptr && HasBit(tv->subtype, GVSF_MULTIHEADED) && !HasBit(tv->subtype, GVSF_ENGINE)) {
-			tv = tv->Next();
-		}
-		return tv;
+	/* Unit traversal returns purchased bases, not whichever physical part is
+	 * next. A rear dual head can be separated from its base by other units. */
+	const TemplateVehicle *main = this->GetUnitMain();
+	bool found = false;
+	std::vector<const TemplateVehicle *> seen;
+	for (TemplateVehicle *part = this->First(); part != nullptr; part = part->Next()) {
+		TemplateVehicle *unit = part->GetUnitMain();
+		if (std::find(seen.begin(), seen.end(), unit) != seen.end()) continue;
+		seen.push_back(unit);
+		if (found) return unit;
+		if (unit == main) found = true;
+	}
+	return nullptr;
 }
 
 void ClearTemplateReplacements()
@@ -115,9 +120,9 @@ bool ShouldServiceTrainForTemplateReplacement(const Train *t, const TemplateVehi
 		if (_settings_game.difficulty.infinite_money) return true;
 		/* Check money.
 		 * We want 2*(the price of the whole template) without looking at the value of the vehicle(s) we are going to sell, or not need to buy. */
-		for (const TemplateVehicle *tv_unit = tv; tv_unit != nullptr; tv_unit = tv_unit->GetNextUnit()) {
-			if (!Engine::Get(tv->engine_type)->company_avail.Test(t->owner)) return false;
-			needed_money += 2 * Engine::Get(tv->engine_type)->GetCost();
+		for (const TemplateVehicle *tv_unit = tv->First()->GetUnitMain(); tv_unit != nullptr; tv_unit = tv_unit->GetNextUnit()) {
+			if (!Engine::Get(tv_unit->engine_type)->company_avail.Test(t->owner)) return false;
+			needed_money += 2 * Engine::Get(tv_unit->engine_type)->GetCost();
 		}
 		return needed_money <= c->money;
 	} else {

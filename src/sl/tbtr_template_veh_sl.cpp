@@ -13,6 +13,8 @@
 NamedSaveLoadTable GetTemplateVehicleDesc() {
 	static const NamedSaveLoad _template_veh_desc[] = {
 		NSL("next",                    SLE_REF(TemplateVehicle, next, REF_TEMPLATE_VEHICLE)),
+		NSL("unit_main",               SLE_CONDREF_X(TemplateVehicle, unit_main, REF_TEMPLATE_VEHICLE, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TEMPLATE_REPLACEMENT, 11))),
+		NSL("primary",                 SLE_CONDREF_X(TemplateVehicle, primary, REF_TEMPLATE_VEHICLE, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TEMPLATE_REPLACEMENT, 11))),
 
 		NSL("reuse_depot_vehicles",    SLE_VAR(TemplateVehicle, reuse_depot_vehicles, SLE_UINT8)),
 		NSL("keep_remaining_vehicles", SLE_VAR(TemplateVehicle, keep_remaining_vehicles, SLE_UINT8)),
@@ -100,6 +102,36 @@ void AfterLoadTemplateVehicles()
 		if (tv->previous == nullptr) {
 			for (TemplateVehicle *u = tv; u != nullptr; u = u->Next()) {
 				u->first = tv;
+			}
+			if (!SlXvIsFeaturePresent(XSLFI_TEMPLATE_REPLACEMENT, 11)) {
+				/* Older templates only encode base-first articulated runs and
+				 * subtype markers. Do not invent a pre-v11 relation field. */
+				TemplateVehicle *main = nullptr;
+				TemplateVehicle *primary = nullptr;
+				std::vector<TemplateVehicle *> dual_fronts;
+				for (TemplateVehicle *u = tv; u != nullptr; u = u->Next()) {
+					if (primary == nullptr && (u->IsFrontEngine() || HasBit(u->subtype, GVSF_FRONT_WAGON))) primary = u;
+					if (u->IsRearDualheaded()) {
+						auto front = std::find_if(dual_fronts.rbegin(), dual_fronts.rend(), [u](TemplateVehicle *f) { return f->engine_type == u->engine_type; });
+						if (front != dual_fronts.rend()) {
+							u->unit_main = *front;
+							dual_fronts.erase(std::next(front).base());
+						} else {
+							u->unit_main = u;
+						}
+					} else {
+						if (!u->IsArticulatedPart() || main == nullptr) main = u;
+						u->unit_main = main;
+						if (u->IsMultiheaded() && u->IsEngine()) dual_fronts.push_back(u);
+					}
+				}
+				for (TemplateVehicle *u = tv; u != nullptr; u = u->Next()) u->primary = primary;
+			} else {
+				TemplateVehicle *primary = tv->primary;
+				if (primary != nullptr && primary->first != tv) SlErrorCorrupt("Template primary is outside its physical chain");
+				for (TemplateVehicle *u = tv; u != nullptr; u = u->Next()) {
+					if (u->unit_main == nullptr || u->unit_main->first != tv || u->unit_main->unit_main != u->unit_main || u->primary != primary) SlErrorCorrupt("Invalid template vehicle relation");
+				}
 			}
 		}
 	}

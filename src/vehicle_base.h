@@ -267,7 +267,8 @@ private:
 	uint8_t consist_primary = 0;                 ///< SAVE(XSLFI_TRAIN_PRIMARY): temporary flag used to persist which vehicle of the chain is the primary
 	Vehicle *unit_main = nullptr;                ///< NOSAVE: pointer to the main part (base/front engine) of this multi-part unit; nullptr means same as this
 	uint8_t consist_unit_main = 0;               ///< SAVE(XSLFI_TRAIN_UNIT_MAIN): temporary flag used to persist which vehicle is the unit main
-	VehicleID saved_train_unit_main = VehicleID::Invalid(); ///< SAVE(XSLFI_TRAIN_UNIT_MAIN v2): exact main part of a multipart unit.
+	VehicleID saved_train_unit_main = VehicleID::Invalid(); ///< LOAD ONLY: local v2 exact unit-main reference.
+	uint32_t consist_unit_main_id = 0; ///< SAVE: v4 main VehicleID + 1, with zero for null.
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order
@@ -279,6 +280,7 @@ public:
 	friend void FixOldVehicles(LoadgameState &ls);
 	friend void AfterLoadVehiclesPhase1(bool part_of_load);     ///< So we can set the #previous and #first pointers while loading
 	friend void RebuildTrainUnitMains();                        ///< Restores multipart train ownership from the saved IDs.
+	friend void ConnectMultiheadedTrains();                    ///< Distinguishes local v2 exact refs from legacy orientation flags.
 	friend bool LoadOldVehicle(LoadgameState &ls, int num);     ///< So we can set the proper next pointer while loading
 
 	friend upstream_sl::SlVehicleCommon;
@@ -767,6 +769,12 @@ public:
 	inline void SetUnitMain(Vehicle *p) { this->unit_main = p; }
 	inline bool HasUnitMain() const { return this->unit_main != nullptr; }
 	inline bool IsSavedUnitMain() const { return this->consist_unit_main != 0; }
+	/** Saved main encoding (XSLFI_TRAIN_UNIT_MAIN v2): 1 = main whose articulated parts follow it, 2 = parts precede it. */
+	inline bool SavedUnitMainPartsFollow() const { return this->consist_unit_main == 1; }
+	inline bool SavedUnitMainPartsPrecede() const { return this->consist_unit_main == 2; }
+	/** Saved membership: v3 legacy 16-bit residue; v4 full main VehicleID + 1, zero null. */
+	inline uint32_t GetSavedUnitMainID() const { return this->consist_unit_main_id; }
+	inline void SetSavedUnitMainID(uint32_t id) { this->consist_unit_main_id = id; }
 	/** @return The main part (base/front engine) of this multi-part unit, or this vehicle for a singleton. */
 	inline Vehicle *GetUnitMain() const { return this->unit_main != nullptr ? this->unit_main : const_cast<Vehicle *>(this); }
 

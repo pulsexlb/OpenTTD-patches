@@ -18,6 +18,7 @@ In `More options`, the other available restriction options are:
 - *Cargo type:* restrict coupling to trains that can load the specified cargo
 - *Units couple:* restrict coupling to trains with a certain number of units
 - *Speed:* restrict coupling to trains with a speed within the specified range (skip if my train has a lower/higher top speed)
+- *Service number:* restrict coupling to the service number the train to couple with is currently executing
 
 == Coupling options
 
@@ -30,7 +31,7 @@ By default, the coupled train will use the orders of the train that was heading 
 
 == Early check point
 
-By default, a train with the Go to couple order only checks for trains available for coupling when it executes the Go to couple order. However, in many cases we want the train to wait somewhere for the waiting train to get into position and then go straight to couple, for example in the scenario shown:
+By default, a train with the Go to couple order only checks for trains available for coupling when it executes the Go to couple order. However, in many cases we want the train to wait somewhere until the waiting train is in position, without heading straight to couple, for example in the scenario shown:
 
 #figure(
   image("../../static/images/couple-early-check.png", width: 100%),

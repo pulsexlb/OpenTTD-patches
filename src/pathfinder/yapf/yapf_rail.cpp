@@ -1081,6 +1081,11 @@ struct CYapfRail_TypesT {
 
 template <typename Types>
 struct CYapfRailBase : CYapfT<Types> {
+	/* Declare TrackFollower here so a qualified lookup through a composed
+	 * YAPF type (Tpf::TrackFollower) is unambiguous: CYapfT inherits several
+	 * bases that each declare this typedef, which GCC rejects as ambiguous
+	 * while clang accepts. */
+	typedef typename Types::TrackFollower TrackFollower;
 	typedef typename Types::NodeList::Item Node;
 
 	/**

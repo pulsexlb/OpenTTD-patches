@@ -61,16 +61,20 @@ void GroundVehicle<T, Type>::PowerChanged()
 
 	this->gcache.cached_air_drag = air_drag + 3 * air_drag * number_of_parts / 20;
 
+	T *controller = T::From(this);
+	if constexpr (Type == VehicleType::Train) controller = controller->Primary();
+
 	if (this->gcache.cached_power != total_power || this->gcache.cached_max_te != max_te) {
-		/* Stop the vehicle if it has no power, unless it is a front wagon (can be coupled/decoupled). */
-		if (total_power == 0 && !this->IsFrontWagon()) {
-			this->vehstatus.Set(VehState::Stopped);
+		/* Stop the controller if it has no power, unless it is a front wagon
+		 * (can be coupled/decoupled). Aggregate caches stay on the physical head. */
+		if (total_power == 0 && !controller->IsFrontWagon()) {
+			controller->vehstatus.Set(VehState::Stopped);
 		}
 
 		this->gcache.cached_power = total_power;
 		this->gcache.cached_max_te = max_te;
-		SetWindowDirty(WindowClass::VehicleDetails, this->index);
-		SetWindowWidgetDirty(WindowClass::VehicleView, this->index, WID_VV_START_STOP);
+		SetWindowDirty(WindowClass::VehicleDetails, controller->index);
+		SetWindowWidgetDirty(WindowClass::VehicleView, controller->index, WID_VV_START_STOP);
 	}
 
 	this->gcache.cached_max_track_speed = max_track_speed;
@@ -83,6 +87,9 @@ void GroundVehicle<T, Type>::CalculatePower(uint32_t &total_power, uint32_t &max
 	max_te = 0;
 
 	const T *v = T::From(this);
+	/* Dynamic train power can be requested by a mid-chain controller. Include
+	 * the physical prefix as well; road vehicles retain their existing scope. */
+	if constexpr (Type == VehicleType::Train) v = v->First();
 
 	for (const T *u = v; u != nullptr; u = u->Next()) {
 		uint32_t current_power = u->GetPower() + u->GetPoweredPartPower();

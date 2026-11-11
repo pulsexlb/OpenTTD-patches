@@ -17,7 +17,10 @@
 
 enum class ClientID : uint32_t;
 
-Train *VirtualTrainFromTemplateVehicle(const TemplateVehicle *tv, StringID &err, ClientID user);
+using TemplateTrainMapping = std::vector<std::pair<const TemplateVehicle *, Train *>>;
+Train *VirtualTrainFromTemplateVehicle(const TemplateVehicle *tv, StringID &err, ClientID user, TemplateTrainMapping *mapping = nullptr);
+/** Bindings contain each template purchased base exactly once, paired with its live train base. */
+CommandCost BuildTemplateTrainLayout(const TemplateVehicle *tv, const TemplateTrainMapping &bindings, std::vector<Train *> &members);
 
 void BuildTemplateGuiList(GUITemplateList *, Scrollbar *, Owner, RailType);
 

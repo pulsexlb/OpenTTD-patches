@@ -302,6 +302,7 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	ClosestDepot FindClosestDepot() const override;
 
 	void ReserveTrackUnderConsist() const;
+	static void ClearReferencesToRemovedPart(Train *head, const Train *removed);
 
 	uint16_t GetCurveSpeedLimit() const;
 
@@ -542,10 +543,10 @@ protected: // These functions should not be called outside acceleration code.
 	 */
 	inline uint16_t GetBreakdownSpeed() const
 	{
-		assert(this->IsFrontEngine());
+		assert(this->IsPrimaryVehicle());
 		uint16_t speed = UINT16_MAX;
 
-		for (const Train *w = this; w != nullptr; w = w->Next()) {
+		for (const Train *w = this->First(); w != nullptr; w = w->Next()) {
 			if (w->breakdown_ctr == 1 && w->breakdown_type == BREAKDOWN_LOW_SPEED) {
 				speed = std::min<uint16_t>(speed, w->breakdown_severity);
 			}

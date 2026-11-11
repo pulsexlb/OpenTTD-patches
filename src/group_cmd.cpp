@@ -120,13 +120,13 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 	}
 
 	for (const Vehicle *v : Vehicle::Iterate()) {
-		if (!v->IsEngineCountable()) continue;
+		if (v->IsEngineCountable()) GroupStatistics::CountEngine(v, 1);
 
-		GroupStatistics::CountEngine(v, 1);
-		/* A chain whose primary sits mid-chain has both a front wagon at the head and the
-		 * primary engine returning IsPrimaryVehicle(); count each chain exactly once, at
-		 * its primary. */
-		if (v->IsPrimaryVehicle() && v->Primary() == v) GroupStatistics::CountVehicle(v, 1);
+		/* Count a train once at its physical head, using the primary's identity
+		 * and profit even when the head is an articulated part or a front wagon. */
+		if (v->type == VehicleType::Train ? v != v->First() : !v->IsPrimaryVehicle()) continue;
+		const Vehicle *primary = v->Primary();
+		if (primary->IsPrimaryVehicle()) GroupStatistics::CountVehicle(primary, 1);
 	}
 
 	for (const Company *c : Company::Iterate()) {
@@ -141,6 +141,8 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
  */
 /* static */ void GroupStatistics::CountVehicle(const Vehicle *v, int delta)
 {
+	/* Keep the caller's identity: a retiring primary may already belong to
+	 * another chain. Mutation callers must remove its count before rebinding. */
 	/* make virtual trains group-neutral */
 	if (v->IsVirtualOrCarried()) return;
 
@@ -223,7 +225,9 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 		g->statistics.ClearProfits();
 	}
 
-	for (const Vehicle *v : Vehicle::IterateFrontOnly()) {
+	for (const Vehicle *head : Vehicle::IterateFrontOnly()) {
+		if (head->type == VehicleType::Train && head != head->First()) continue;
+		const Vehicle *v = head->Primary();
 		if (v->IsPrimaryVehicle() && !v->IsVirtualOrCarried()) {
 			GroupStatistics::AddProfitLastYear(v);
 			if (v->economy_age > VEHICLE_PROFIT_MIN_AGE) GroupStatistics::VehicleReachedMinAge(v);
@@ -354,10 +358,12 @@ void IterateDescendantsOfGroup(GroupID id_top, F func)
 
 static void PropagateChildLiveryResetVehicleCache(const Group *g)
 {
-	/* Company colour data is indirectly cached. */
-	for (Vehicle *v : Vehicle::IterateFrontOnly()) {
+	/* Company colour data is indirectly cached. Visit each physical train once. */
+	for (Vehicle *head : Vehicle::IterateFrontOnly()) {
+		if (head->type == VehicleType::Train && head != head->First()) continue;
+		Vehicle *v = head->Primary();
 		if (v->IsPrimaryVehicle() && (v->group_id == g->index || IsGroupIDDescendantOfGroupID(v->group_id, g->index, g->owner))) {
-			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
+			for (Vehicle *u = v->First(); u != nullptr; u = u->Next()) {
 				u->colourmap = PAL_NONE;
 				u->InvalidateNewGRFCache();
 				u->InvalidateImageCache();
@@ -790,6 +796,7 @@ CommandCost CmdCreateGroupFromList(DoCommandFlags flags, VehicleListIdentifier v
  */
 static void AddVehicleToGroup(Vehicle *v, GroupID new_g)
 {
+	if (v->type == VehicleType::Train) v = v->Primary();
 	GroupStatistics::CountVehicle(v, -1);
 
 	switch (v->type) {
@@ -1082,18 +1089,19 @@ CommandCost CmdSetGroupFlag(DoCommandFlags flags, GroupID group_id, GroupFlag fl
  */
 void SetTrainGroupID(Train *v, GroupID new_g)
 {
+	v = v->Primary();
 	if (!Group::IsValidID(new_g) && !IsDefaultGroupID(new_g)) return;
 	/* Never propagate a group that its owner does not own (see IsGroupIDUsableByOwner). */
 	if (!IsGroupIDUsableByOwner(new_g, v->owner)) new_g = DEFAULT_GROUP;
 
 	assert(v->IsPrimaryVehicle() || IsDefaultGroupID(new_g));
 
-	/* A consist may mix companies after a cross-company couple. Only the head's
+	/* A consist may mix companies after a cross-company couple. Only the primary's
 	 * company may take \a new_g; vehicles of another company fall back to their
 	 * own default group, so no vehicle ever carries a foreign group id. */
-	const Owner head_owner = v->owner;
-	for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-		GroupID u_g = (u->owner == head_owner) ? new_g : DEFAULT_GROUP;
+	const Owner primary_owner = v->owner;
+	for (Vehicle *u = v->First(); u != nullptr; u = u->Next()) {
+		GroupID u_g = (u->owner == primary_owner) ? new_g : DEFAULT_GROUP;
 		if (u->IsEngineCountable()) UpdateNumEngineGroup(u, u->group_id, u_g);
 
 		u->group_id = u_g;
@@ -1120,6 +1128,7 @@ void SetTrainGroupID(Train *v, GroupID new_g)
  */
 void UpdateTrainGroupID(Train *v)
 {
+	v = v->Primary();
 	assert(v->IsFrontEngine() || v->IsFreeWagon() || v->IsFrontWagon());
 
 	/* A decoupled engine-less part is a front wagon but still a primary
@@ -1127,12 +1136,12 @@ void UpdateTrainGroupID(Train *v)
 	GroupID new_g = v->IsPrimaryVehicle() ? v->group_id : (GroupID)DEFAULT_GROUP;
 	/* Never propagate a group that its owner does not own (see IsGroupIDUsableByOwner). */
 	if (!IsGroupIDUsableByOwner(new_g, v->owner)) new_g = DEFAULT_GROUP;
-	/* A consist may mix companies after a cross-company couple. Only the head's
-	 * company takes the head's group; vehicles of another company fall back to
+	/* A consist may mix companies after a cross-company couple. Only the primary's
+	 * company takes its group; vehicles of another company fall back to
 	 * their own default group, so no vehicle ever carries a foreign group id. */
-	const Owner head_owner = v->owner;
-	for (Vehicle *u = v; u != nullptr; u = u->Next()) {
-		GroupID u_g = (u->owner == head_owner) ? new_g : DEFAULT_GROUP;
+	const Owner primary_owner = v->owner;
+	for (Vehicle *u = v->First(); u != nullptr; u = u->Next()) {
+		GroupID u_g = (u->owner == primary_owner) ? new_g : DEFAULT_GROUP;
 		if (u->IsEngineCountable()) UpdateNumEngineGroup(u, u->group_id, u_g);
 
 		u->group_id = u_g;
