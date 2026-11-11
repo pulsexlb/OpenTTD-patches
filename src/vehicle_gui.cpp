@@ -5302,11 +5302,15 @@ bool VehicleClicked(const GUIVehicleGroup &vehgroup)
 
 void StopGlobalFollowVehicle(const Vehicle *v)
 {
-	Window *w = FindWindowById(WindowClass::MainWindow, 0);
-	if (w != nullptr && w->viewport->follow_vehicle == v->index) {
-		const Vehicle *moving_front = RVTransportGetFollowVehicle(v)->GetMovingFront();
-		ScrollMainWindowTo(moving_front->x_pos, moving_front->y_pos, moving_front->z_pos, true); // lock the main view on the vehicle's last position
-		w->viewport->CancelFollow(*w);
+	const Vehicle *shown = RVTransportGetFollowVehicle(v);
+	const Vehicle *moving_front = shown != nullptr ? shown->GetMovingFront() : nullptr;
+	Window *main = FindWindowById(WindowClass::MainWindow, 0);
+	if (main != nullptr && main->viewport->follow_vehicle == v->index && moving_front != nullptr) {
+		ScrollMainWindowTo(moving_front->x_pos, moving_front->y_pos, moving_front->z_pos, true);
+	}
+	/* Vehicle IDs can be followed by auxiliary viewports too. */
+	for (Window *w : Window::Iterate()) {
+		if (w->viewport != nullptr && w->viewport->follow_vehicle == v->index) w->viewport->CancelFollow(*w);
 	}
 }
 

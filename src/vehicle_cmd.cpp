@@ -266,6 +266,7 @@ CommandCost CmdSellVehicle(DoCommandFlags flags, TileIndex tile, VehicleID v_id,
 	if (v->tile != tile) return CMD_ERROR;
 
 	Vehicle *front = v->Primary();
+	if (front == nullptr || front->First() != v->First()) return CMD_ERROR;
 
 	/* The vehicle the user picked must belong to the current company. The
 	 * sold chain is checked again in CmdSellRailWagon(), as it may contain
@@ -809,10 +810,17 @@ CommandCost CmdDepotSellAllVehicles(DoCommandFlags flags, TileIndex tile, Vehicl
 	/* Get the list of vehicles in the depot */
 	BuildDepotVehicleList(vehicle_type, tile, &list, &list);
 
+	/* Capture IDs before deletion; each entry represents a whole physical chain. */
+	std::vector<VehicleID> ids;
+	for (const Vehicle *v : list) {
+		const Vehicle *head = v->type == VehicleType::Train ? v->First() : v;
+		if (std::find(ids.begin(), ids.end(), head->index) == ids.end()) ids.push_back(head->index);
+	}
 	CommandCost last_error = CMD_ERROR;
 	bool had_success = false;
-	for (const Vehicle *v : list) {
-		if (v->owner != _current_company) continue;
+	for (VehicleID id : ids) {
+		const Vehicle *v = Vehicle::GetIfValid(id);
+		if (v == nullptr || v->owner != _current_company) continue;
 		CommandCost ret = Command<Commands::SellVehicle>::Do(flags, v->tile, v->index, SellVehicleFlags::SellChain, ClientID::Invalid);
 		if (ret.Succeeded()) {
 			cost.AddCost(ret.GetCost());

@@ -1128,8 +1128,9 @@ void SetTrainGroupID(Train *v, GroupID new_g)
  */
 void UpdateTrainGroupID(Train *v)
 {
-	v = v->Primary();
-	assert(v->IsFrontEngine() || v->IsFreeWagon() || v->IsFrontWagon());
+	Train *head = v->First();
+	v = head->Primary();
+	assert(v->IsPrimaryVehicle() || head->IsFreeWagon());
 
 	/* A decoupled engine-less part is a front wagon but still a primary
 	 * vehicle here; keep its group instead of falling back to the default. */

@@ -1278,7 +1278,9 @@ void Vehicle::PreDestructor()
 		InvalidateWindowData(WindowClass::VehicleDepot, this->tile.base());
 	}
 
-	if (this->IsPrimaryVehicle()) {
+	/* Train formation markers may already be cleared by sale or replacement.
+	 * Windows are keyed by vehicle ID, not by its current primary role. */
+	if (this->type == VehicleType::Train || this->IsPrimaryVehicle()) {
 		CloseWindowById(WindowClass::VehicleView, this->index);
 		CloseWindowById(WindowClass::VehicleOrders, this->index);
 		CloseWindowById(WindowClass::VehicleRefit, this->index);
@@ -1290,8 +1292,9 @@ void Vehicle::PreDestructor()
 		CloseWindowById(WindowClass::VehicleRVTransportCriteria, this->index);
 		CloseWindowById(WindowClass::VehicleOrderImportErrors, this->index);
 		SetWindowDirty(WindowClass::Company, this->owner);
-		OrderBackup::ClearVehicle(this);
 	}
+	/* A backup can still reference a vehicle whose identity was retired. */
+	OrderBackup::ClearVehicle(this);
 	InvalidateVehicleListWindows(this->type);
 
 	this->cargo.Truncate();

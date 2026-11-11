@@ -86,7 +86,8 @@ void BuildDepotVehicleList(VehicleType type, TileIndex tile, VehicleList *engine
 		if (type == VehicleType::Train) {
 			const Train *t = Train::From(v);
 			if (wagons != nullptr && t->First()->IsFreeWagon()) {
-				if (!t->IsArticulatedPart() && (individual_wagons || t->IsFreeWagon())) wagons->push_back(t);
+				/* A free parts-first unit has an articulated physical head. */
+				if (individual_wagons ? (!t->IsArticulatedPart() && !t->IsRearDualheaded()) : t == t->First()) wagons->push_back(t);
 				continue;
 			}
 		}

@@ -2480,73 +2480,6 @@ static void NormaliseDualHeads(Train *t, bool pull_in_free_cars)
 }
 
 /**
- * Normalise the sub types of the parts in this chain.
- * @param chain the chain to normalise.
- */
-static void NormaliseSubtypes(Train *chain)
-{
-	/* Nothing to do */
-	if (chain == nullptr) return;
-
-	/* We must be the first in the chain. Chain surgery can hand us any member
-	 * of the resulting chain -- a reversed unit stores its base behind its
-	 * articulated parts, so the vehicle that was selected (and possibly
-	 * re-inserted) is not necessarily the chain head. Walk to the head instead
-	 * of asserting: an assertion here only fires on layouts that are legal. */
-	chain = chain->First();
-
-	/* A unit main must always be a vehicle of the same chain. Coupling, reversing
-	 * and depot drags relink chains with raw SetNext() calls, which can leave a
-	 * member pointing at a base that stayed behind in the other chain. Such a
-	 * pointer makes GetFirstEnginePart()/GetLastEnginePart() answer with a
-	 * vehicle of a foreign chain, which then corrupts the next chain surgery.
-	 * Treat the orphan as its own unit; it is the layout that keeps every walk
-	 * inside this chain. */
-	for (Train *t = chain; t != nullptr; t = t->Next()) {
-		if (t->HasUnitMain() && t->GetUnitMain()->First() != chain) t->SetUnitMain(nullptr);
-	}
-
-	/* Set the appropriate bits for the first in the chain.
-	 *
-	 * Whether the chain is a free wagon chain depends on the whole chain having no engine, not
-	 * on the head being a wagon. The primary may sit mid-chain, so a chain can start with a
-	 * wagon and still have an engine behind it; marking such a chain as a free wagon chain makes
-	 * the depot list it as engine-less and hides the unit number, and #CanBuildNormalRailVehicle
-	 * and the build/buy vehicle list would skip the engine that can actually pull it. The
-	 * front-engine marker stays with the head when the head is an engine, and otherwise belongs
-	 * to the engine of the chain, which #MaterialiseTrainPrimary places right after this. */
-	bool has_engine = false;
-	for (const Train *t = chain; t != nullptr; t = t->Next()) {
-		if (t->IsEngine()) {
-			has_engine = true;
-			break;
-		}
-	}
-	if (has_engine) {
-		chain->ClearFreeWagon();
-		if (chain->IsEngine()) {
-			chain->SetFrontEngine();
-			chain->ClearFrontWagon();
-		} else {
-			/* A wagon head ahead of a mid-chain primary engine needs the front-wagon
-			 * marker (like a decoupled part gets) so it counts as the chain's primary
-			 * entry in statistics; leaving it bare skips GroupStatistics updates. */
-			chain->ClearFrontEngine();
-			chain->SetFrontWagon();
-		}
-	} else {
-		chain->SetFreeWagon();
-	}
-
-	/* Now clear the bits for the rest of the chain */
-	for (Train *t = chain->Next(); t != nullptr; t = t->Next()) {
-		t->ClearFreeWagon();
-		t->ClearFrontEngine();
-		t->ClearFrontWagon();
-	}
-}
-
-/**
  * Check/validate whether we may actually build a new train.
  * @note All vehicles are/were 'heads' of their chains.
  * @param original_dst The original destination chain.
@@ -2557,22 +2490,28 @@ static void NormaliseSubtypes(Train *chain)
  */
 static CommandCost CheckNewTrain(Train *original_dst, Train *dst, Train *original_src, Train *src)
 {
-	/* Just add 'new' engines and subtract the original ones.
-	 * If that's less than or equal to 0 we can be sure we did
-	 * not add any engines (read: trains) along the way. */
-	if ((src          != nullptr && src->unitnumber          ? 1 : 0) +
-			(dst          != nullptr && dst->unitnumber          ? 1 : 0) -
-			(original_src != nullptr && original_src->unitnumber ? 1 : 0) -
-			(original_dst != nullptr && original_dst->unitnumber ? 1 : 0) <= 0) {
-		return CommandCost();
-	}
+	/* Proposed chains may not have numbers yet, and a retained controller can
+	 * sit behind the physical head. Count identities, not head unit numbers. */
+	auto count_proposed = [](const Train *head) {
+		if (head == nullptr || head->IsVirtual()) return 0;
+		const Train *primary = head->Primary();
+		for (const Train *u = head; u != nullptr; u = u->Next()) {
+			if (u->IsEngine() || (u == primary && u->IsPrimaryVehicle())) return 1;
+		}
+		return 0;
+	};
+	auto count_original = [](const Train *head) {
+		return head != nullptr && !head->IsVirtual() && head->Primary()->IsPrimaryVehicle() ? 1 : 0;
+	};
+	if (count_proposed(src) + count_proposed(dst) - count_original(original_src) - count_original(original_dst) <= 0) return CommandCost();
 
 	/* Get a free unit number and check whether it's within the bounds.
 	 * There will always be a maximum of one new train. */
 	/* Pass the owner explicitly: consist surgery such as decoupling also runs
 	 * outside command context, where _current_company is not usable. */
-	Owner owner = src != nullptr ? src->owner : (dst != nullptr ? dst->owner : _current_company);
-	if (GetFreeUnitNumber(VehicleType::Train, owner) <= _settings_game.vehicle.max_trains) return CommandCost();
+	Train *proposed = src != nullptr ? src : dst;
+	Owner owner = proposed != nullptr ? proposed->Primary()->owner : _current_company;
+	if (GetFreeUnitNumber(VehicleType::Train, owner) != UINT16_MAX) return CommandCost();
 
 	return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
 }
@@ -2829,6 +2768,9 @@ void BindTrainPrimary(Train *head, Train *primary)
 		if (primary == nullptr) primary = head;
 	}
 	const bool wagon_identity = primary->IsFrontWagon() || has_engine || primary->unitnumber != 0 || primary->orders != nullptr;
+	/* Free wagon chains have no controller identity. Keep their primary on the
+	 * physical head, even when an articulated unit's base sits behind its parts. */
+	if (!wagon_identity) primary = head;
 	for (Train *u = head; u != nullptr; u = u->Next()) {
 		u->SetPrimary(primary);
 		u->ClearFrontEngine();
@@ -3450,23 +3392,6 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 }
 
 /**
- * Check that every vehicle of a chain about to be sold belongs to the
- * current company. A cross-company coupled consist keeps the owner of every
- * vehicle, so the primary vehicle's owner says nothing about the rest of the
- * chain.
- * @param sold The chain that will be deleted.
- * @return Success if the whole chain is owned by the current company.
- */
-static CommandCost CheckSaleChainOwnership(const Train *sold)
-{
-	for (const Train *part = sold; part != nullptr; part = part->Next()) {
-		CommandCost ret = CheckOwnership(part->owner);
-		if (ret.Failed()) return ret;
-	}
-	return CommandCost();
-}
-
-/**
  * Sell a (single) train wagon/engine.
  * @param flags type of operation
  * @param t     the train wagon to sell
@@ -3480,106 +3405,144 @@ static CommandCost CheckSaleChainOwnership(const Train *sold)
  */
 CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, bool backup_order, ClientID user)
 {
-	/* Reject selling a rear dual-headed half before resolving the unit main. */
-	if (Train::From(t)->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
-	Train *v = Train::From(t)->GetUnitChainFront();
-	/* The primary (consist info carrier) may sit anywhere in the chain; all
-	 * chain surgery below must be anchored at the physical chain head. */
+	Train *clicked = Train::From(t);
+	/* A rear-first complete consist is a legal whole-chain sale, but a rear
+	 * half cannot be sold independently of its purchased front half. */
+	if (clicked->IsRearDualheaded() && (!sell_chain || clicked != clicked->First())) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
+	Train *v = clicked->IsMultiheaded() ? clicked : clicked->GetUnitChainFront();
 	Train *first = v->First();
-	Train *primary = v->Primary();
+	Train *primary = first->Primary();
 	const bool original_primary_vehicle = primary->IsPrimaryVehicle();
-
-	if (v->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
-
-	/* First make a backup of the order of the train. That way we can do
-	 * whatever we want with the order and later on easily revert. */
 	TrainList original;
 	MakeTrainBackup(original, first);
 
-	/* We need to keep track of the new head and the head of what we're going to sell. */
-	Train *new_head = first;
-	Train *sell_head = nullptr;
-
-	/* Split the train in the wanted way. */
-	ArrangeTrains(&sell_head, nullptr, &new_head, v, sell_chain);
-
-	/* Never sell vehicles of another company. The check is done on the exact
-	 * chain that ArrangeTrains() selected, so single-wagon sales and chain
-	 * sales both only touch vehicles the current company owns. */
-	CommandCost owner_ret = CheckSaleChainOwnership(sell_head);
-	if (owner_ret.Failed()) {
-		/* Restore the train we had. */
-		RestoreTrainBackup(original);
-		return owner_ret;
+	/* Selling a purchase is not dragging its enclosing dual-head block:
+	 * independent wagons between the two halves must stay in the depot. */
+	std::set<Train *> selected;
+	if (sell_chain) {
+		for (Train *part = v; part != nullptr; part = part->Next()) selected.insert(part);
+	} else {
+		const Vehicle *main = clicked->GetUnitMain();
+		for (Train *part : original) if (part->GetUnitMain() == main) selected.insert(part);
 	}
-
-	/* We don't need to validate the second train; it's going to be sold. */
-	CommandCost ret = ValidateTrains(nullptr, nullptr, primary, new_head, !flags.Test(DoCommandFlag::AutoReplace));
-	if (ret.Failed()) {
-		/* Restore the train we had. */
-		RestoreTrainBackup(original);
-		return ret;
+	for (Train *part : original) {
+		const Train *main = Train::From(part->GetUnitMain());
+		if (main->First() != first || (part->IsArticulatedPart() && (main == part || main->IsArticulatedPart() || main->IsRearDualheaded()))) return CMD_ERROR;
+		if (!part->IsMultiheaded()) continue;
+		Train *other = part->other_multiheaded_part;
+		if (other == nullptr || other->First() != first || other->other_multiheaded_part != part) return CMD_ERROR;
+		if (!part->IsEngine()) continue;
+		/* A suffix starting at a wagon leaves the preceding engine's rear half
+		 * with that engine; selecting the front half always sells both halves. */
+		if (selected.count(part) != 0) selected.insert(other);
+		else selected.erase(other);
 	}
-
-	if (new_head != nullptr && primary->orders == nullptr && !OrderList::CanAllocateItem()) {
-		/* Restore the train we had. */
-		RestoreTrainBackup(original);
-		return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
-	}
-
+	TrainList sold, remaining;
 	CommandCost cost(ExpensesType::NewVehicles);
-	for (Train *part = sell_head; part != nullptr; part = part->Next()) cost.AddCost(-part->value);
+	for (Train *part : original) {
+		if (selected.count(part) != 0) {
+			CommandCost owner = CheckOwnership(part->owner);
+			if (owner.Failed()) return owner;
+			sold.push_back(part);
+			cost.AddCost(-part->value);
+		} else {
+			remaining.push_back(part);
+		}
+	}
+	if (sold.empty()) return CMD_ERROR;
+	const bool primary_sold = selected.count(primary) != 0;
 
-	/* do it? */
-	if (flags.Test(DoCommandFlag::Execute)) {
-		/* First normalise the sub types of the chain. */
-		NormaliseSubtypes(new_head);
-
-		/* Does the sold part contain the consist info carrier? The carrier may
-		 * sit anywhere in the chain, so selling a part around it can split the
-		 * consist identity off the surviving chain. */
-		bool primary_sold = false;
-		for (Train *part = sell_head; part != nullptr; part = part->Next()) {
-			if (part == primary) {
-				primary_sold = true;
-				break;
+	struct CacheSnapshot {
+		Train *part;
+		NewGRFCache grf_cache;
+		TrainCache tcache;
+		GroundVehicleCache gcache;
+		VehicleCache vcache;
+	};
+	std::vector<CacheSnapshot> caches;
+	for (Train *part : original) caches.push_back({part, part->grf_cache, part->tcache, part->gcache, part->vcache});
+	SavedRandomSeeds seeds;
+	SaveRandomSeeds(&seeds);
+	auto link = [](const TrainList &chain) {
+		for (size_t i = 0; i < chain.size(); ++i) {
+			chain[i]->SetNextRaw(i + 1 < chain.size() ? chain[i + 1] : nullptr);
+			chain[i]->SetPreviousRaw(i > 0 ? chain[i - 1] : nullptr);
+			chain[i]->SetFirst(chain.front());
+			chain[i]->SetLast(chain.back());
+		}
+		if (!chain.empty()) ResetChainNonFrontMarkers(chain.front());
+	};
+	bool committed = false;
+	auto rollback = scope_guard([&]() {
+		if (committed) return;
+		link(original);
+		original.RestoreState();
+		for (const CacheSnapshot &s : caches) {
+			s.part->grf_cache = s.grf_cache;
+			s.part->tcache = s.tcache;
+			s.part->gcache = s.gcache;
+			s.part->vcache = s.vcache;
+		}
+		RestoreRandomSeeds(seeds);
+		InvalidateVehicleTickCaches();
+	});
+	link(sold);
+	link(remaining);
+	Train *new_head = remaining.empty() ? nullptr : remaining.front();
+	Train *new_primary = nullptr;
+	if (new_head != nullptr) {
+		if (!primary_sold) new_primary = primary;
+		else {
+			/* A locomotive left behind keeps a train identity. Pure wagons
+			 * become a free chain, not an extra numbered front-wagon train. */
+			for (Train *part : remaining) {
+				part->ClearFrontEngine();
+				part->ClearFrontWagon();
+				part->ClearFreeWagon();
+				if (new_primary == nullptr && part->IsEngine()) new_primary = part;
 			}
 		}
-
-		if (primary_sold && original_primary_vehicle) GroupStatistics::CountVehicle(primary, -1);
-		if (new_head != nullptr) BindTrainPrimary(new_head, primary_sold ? nullptr : primary);
-		if (primary_sold && new_head != nullptr) {
-			Train *new_primary = new_head->Primary();
-			if (new_primary->owner == primary->owner && new_primary->IsPrimaryVehicle()) MoveTrainIdentity(primary, new_primary);
-			/* Deletion must not count the old identity a second time. */
-			primary->ClearFrontEngine();
-			primary->ClearFrontWagon();
-		} else if (primary_sold && primary->IsPrimaryVehicle() && backup_order) {
-			OrderBackup::Backup(primary, user);
-		}
-		if (primary_sold) {
-			primary->ClearFrontEngine();
-			primary->ClearFrontWagon();
-		}
-
-		/* We need to update the information about the train. */
-		NormaliseTrainHead(new_head, CCF_ARRANGE);
-		if (primary_sold && new_head != nullptr && new_head->Primary()->IsPrimaryVehicle()) GroupStatistics::CountVehicle(new_head->Primary(), 1);
-
-		/* We are undoubtedly changing something in the depot and train list. */
-		/* Unless its a virtual train */
-		if (!HasBit(v->subtype, GVSF_VIRTUAL)) {
-			InvalidateWindowData(WindowClass::VehicleDepot, v->tile.base());
-			InvalidateVehicleListWindows(VehicleType::Train);
-		}
-
-		/* Actually delete the sold 'goods' */
-		delete sell_head;
-	} else {
-		/* We don't want to execute what we're just tried. */
-		RestoreTrainBackup(original);
+		BindTrainPrimary(new_head, new_primary);
+		new_primary = new_head->Primary();
+		new_head->InvalidateNewGRFCacheOfChain();
+		CommandCost ret = CheckTrainAttachment(new_head);
+		/* Attachment callbacks cut links temporarily, including on failure. */
+		link(remaining);
+		if (ret.Failed()) return ret;
+		if (primary_sold && new_primary->IsPrimaryVehicle() && new_primary->owner != primary->owner &&
+				!flags.Test(DoCommandFlag::AutoReplace) && GetFreeUnitNumber(VehicleType::Train, new_primary->owner) == UINT16_MAX) return CommandCost(STR_ERROR_TOO_MANY_VEHICLES_IN_GAME);
 	}
+	if (!flags.Test(DoCommandFlag::Execute)) return cost;
 
+	/* No fallible checks or rollback may follow the identity transfer. */
+	committed = true;
+	if (primary_sold && original_primary_vehicle) GroupStatistics::CountVehicle(primary, -1);
+	if (primary_sold && original_primary_vehicle && new_primary != nullptr && new_primary->IsPrimaryVehicle() && new_primary->owner == primary->owner) {
+		MoveTrainIdentity(primary, new_primary);
+		extern void ChangeVehicleViewports(VehicleID from_index, VehicleID to_index);
+		extern void ChangeVehicleNews(VehicleID from_index, VehicleID to_index);
+		ChangeVehicleViewports(primary->index, new_primary->index);
+		ChangeVehicleViewWindow(primary->index, new_primary->index);
+		ChangeVehicleNews(primary->index, new_primary->index);
+	} else if (primary_sold && original_primary_vehicle && backup_order) {
+		OrderBackup::Backup(primary, user);
+	}
+	/* Retiring parts must not acquire a newly counted identity. Their windows
+	 * and backups are cleaned up by ID, independently of these markers. */
+	for (Train *part : sold) {
+		part->SetPrimary(sold.front());
+		part->ClearFrontEngine();
+		part->ClearFrontWagon();
+		part->ClearFreeWagon();
+	}
+	NormaliseTrainHead(new_head, CCF_ARRANGE);
+	if (primary_sold && new_primary != nullptr && new_primary->IsPrimaryVehicle()) GroupStatistics::CountVehicle(new_primary, 1);
+	if (!v->IsVirtual()) {
+		InvalidateWindowData(WindowClass::VehicleDepot, v->tile.base());
+		InvalidateVehicleListWindows(VehicleType::Train);
+	}
+	delete sold.front();
+	InvalidateVehicleTickCaches();
 	return cost;
 }
 

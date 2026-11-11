@@ -712,8 +712,14 @@ void InitializeWindowViewport(Window *w, int x, int y,
 		const Vehicle *veh;
 
 		vp->follow_vehicle = (VehicleID)(follow_flags & 0xFFFFF);
-		veh = RVTransportGetFollowVehicle(Vehicle::Get(vp->follow_vehicle))->GetMovingFront();
-		pt = MapXYZToViewport(vp, veh->x_pos, veh->y_pos, veh->z_pos);
+		const Vehicle *shown = RVTransportGetFollowVehicle(Vehicle::GetIfValid(vp->follow_vehicle));
+		veh = shown != nullptr ? shown->GetMovingFront() : nullptr;
+		if (veh != nullptr) {
+			pt = MapXYZToViewport(vp, veh->x_pos, veh->y_pos, veh->z_pos);
+		} else {
+			vp->follow_vehicle = VehicleID::Invalid();
+			pt = MapXYZToViewport(vp, 0, 0, 0);
+		}
 	} else {
 		x = TileX(TileIndex{follow_flags}) * TILE_SIZE;
 		y = TileY(TileIndex{follow_flags}) * TILE_SIZE;
@@ -4609,7 +4615,15 @@ void UpdateNextViewportPosition(Window *w, uint32_t delta_ms)
 	const Viewport *vp = w->viewport;
 
 	if (w->viewport->follow_vehicle != VehicleID::Invalid()) {
-		const Vehicle *veh = RVTransportGetFollowVehicle(Vehicle::Get(w->viewport->follow_vehicle))->GetMovingFront();
+		const Vehicle *shown = RVTransportGetFollowVehicle(Vehicle::GetIfValid(w->viewport->follow_vehicle));
+		const Vehicle *veh = shown != nullptr ? shown->GetMovingFront() : nullptr;
+		if (veh == nullptr) {
+			w->viewport->CancelFollow(*w);
+			w->viewport->next_scrollpos_x = w->viewport->scrollpos_x;
+			w->viewport->next_scrollpos_y = w->viewport->scrollpos_y;
+			w->viewport->force_update_overlay_pending = false;
+			return;
+		}
 		Point pt = MapXYZToViewport(vp, veh->x_pos, veh->y_pos, veh->z_pos);
 
 		w->viewport->next_scrollpos_x = pt.x;
