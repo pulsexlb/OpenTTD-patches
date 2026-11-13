@@ -911,6 +911,16 @@ public:
 	 */
 	inline bool IsExecutingSchedule() const { return this->orders != nullptr && this->primary_order != OrderListID::Invalid() && this->orders->index != this->primary_order; }
 
+	/** Find another vehicle sharing this home list, including vehicles executing a sub-schedule. */
+	const Vehicle *GetOtherPrimarySharedVehicle() const;
+
+	/** Get the home order list even while executing another schedule. */
+	inline OrderList *GetPrimaryOrderList() const
+	{
+		OrderList *home = OrderList::GetIfValid(this->primary_order);
+		return home != nullptr ? home : this->orders;
+	}
+
 	/**
 	 * Finished one full pass of the order list being executed: return to the
 	 * primary order list and resume at the remembered position.

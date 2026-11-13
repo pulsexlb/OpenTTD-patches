@@ -687,7 +687,7 @@ static void _DoCommandReturnSetOrderFlags(class ScriptInstance &instance)
 	EnforcePrecondition(false, ScriptVehicle::IsPrimaryVehicle(vehicle_id));
 	EnforcePrecondition(false, ScriptVehicle::IsPrimaryVehicle(main_vehicle_id));
 
-	return ScriptObject::Command<Commands::CloneOrder>::Do(CO_COPY, vehicle_id, main_vehicle_id);
+	return ScriptObject::Command<Commands::CloneOrder>::Do(CO_COPY_PRIMARY, vehicle_id, main_vehicle_id);
 }
 
 /* static */ bool ScriptOrder::ShareOrders(VehicleID vehicle_id, VehicleID main_vehicle_id)
@@ -696,7 +696,7 @@ static void _DoCommandReturnSetOrderFlags(class ScriptInstance &instance)
 	EnforcePrecondition(false, ScriptVehicle::IsPrimaryVehicle(vehicle_id));
 	EnforcePrecondition(false, ScriptVehicle::IsPrimaryVehicle(main_vehicle_id));
 
-	return ScriptObject::Command<Commands::CloneOrder>::Do(CO_SHARE, vehicle_id, main_vehicle_id);
+	return ScriptObject::Command<Commands::CloneOrder>::Do(CO_SHARE_PRIMARY, vehicle_id, main_vehicle_id);
 }
 
 /* static */ bool ScriptOrder::UnshareOrders(VehicleID vehicle_id)

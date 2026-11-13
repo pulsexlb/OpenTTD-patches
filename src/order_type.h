@@ -481,9 +481,11 @@ enum OrderDispatchTagConditionBits {
 
 /** Clone actions. */
 enum CloneOptions : uint8_t {
-	CO_SHARE   = 0,
-	CO_COPY    = 1,
-	CO_UNSHARE = 2
+	CO_SHARE         = 0,
+	CO_COPY          = 1,
+	CO_UNSHARE       = 2,
+	CO_SHARE_PRIMARY = 3, ///< Share the home list, not an executing schedule.
+	CO_COPY_PRIMARY  = 4, ///< Copy the home list, not an executing schedule.
 };
 
 struct Order;

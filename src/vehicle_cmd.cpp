@@ -1681,7 +1681,7 @@ static CommandCost CloneTrain(DoCommandFlags flags, TileIndex tile, Train *click
 		DeleteNewTrainUnits(built, flags, false);
 		return CommandCost(STR_ERROR_TRAIN_TOO_LONG);
 	}
-	ret = Command<Commands::CloneOrder>::Do(flags, share_orders ? CO_SHARE : CO_COPY, mapped_primary->index, source_primary->index);
+	ret = Command<Commands::CloneOrder>::Do(flags, share_orders ? CO_SHARE_PRIMARY : CO_COPY_PRIMARY, mapped_primary->index, source_primary->index);
 	if (ret.Failed()) { DeleteNewTrainUnits(built, flags, false); return ret; }
 	if (!CheckCompanyHasMoney(total_cost)) { DeleteNewTrainUnits(built, flags, false); return total_cost; }
 	const Company *owner = Company::GetIfValid(_current_company);
@@ -1903,7 +1903,7 @@ CommandCost CmdCloneVehicle(DoCommandFlags flags, TileIndex tile, VehicleID veh_
 		 * the vehicle refitted before doing this, otherwise the moved
 		 * cargo types might not match (passenger vs non-passenger)
 		 */
-		CommandCost result = Command<Commands::CloneOrder>::Do(flags, (share_orders ? CO_SHARE : CO_COPY), w_front->index, v_front->index);
+		CommandCost result = Command<Commands::CloneOrder>::Do(flags, (share_orders ? CO_SHARE_PRIMARY : CO_COPY_PRIMARY), w_front->index, v_front->index);
 		if (result.Failed()) {
 			/* The vehicle has already been bought, so now it must be sold again. */
 			Command<Commands::SellVehicle>::Do(flags, w_head->tile, w_head->index, SellVehicleFlags::SellChain, ClientID::Invalid);

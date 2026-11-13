@@ -3584,6 +3584,7 @@ private:
 	Scrollbar *vscroll = nullptr;
 	Scrollbar *decouple_scroll = nullptr;
 	int current_decouple_plane = SZSP_NONE;
+	bool primary_shared_orders = false; ///< Home sharing includes vehicles currently executing a sub-schedule.
 	bool can_do_refit = false;     ///< Vehicle chain can be refitted in depot.
 	bool can_do_autorefit = false; ///< Vehicle chain can be auto-refitted.
 	int query_text_widget = -1;    ///< widget which most recently called ShowQueryString
@@ -4379,19 +4380,19 @@ private:
 	 */
 	void OrderClick_StopSharing()
 	{
-		if (!this->HasVehicle()) return;
+		if (!this->HasVehicle() || this->vehicle->IsExecutingSchedule()) return;
 		/* Don't try to stop sharing orders if 'End of Shared Orders' isn't selected. */
-		if (!this->vehicle->IsOrderListShared() || this->selected_order != NumOrders()) return;
+		if (this->selected_order != NumOrders()) return;
+		const Vehicle *other_shared = this->vehicle->GetOtherPrimarySharedVehicle();
+		if (other_shared == nullptr) return;
 		/* If Ctrl is pressed, delete the order list as if we clicked the 'Delete' button. */
 		if (_ctrl_pressed) {
 			this->OrderClick_Delete();
 			return;
 		}
 
-		/* Get another vehicle that share orders with this vehicle. */
-		Vehicle *other_shared = (this->vehicle->FirstShared() == this->vehicle) ? this->vehicle->NextShared() : this->vehicle->PreviousShared();
-		/* Copy the order list of the other vehicle. */
-		if (Command<Commands::CloneOrder>::Post(STR_ERROR_CAN_T_STOP_SHARING_ORDER_LIST, this->vehicle->tile, CO_COPY, this->vehicle->index, other_shared->index)) {
+		/* The other vehicle may be executing a sub-schedule; copy its home list. */
+		if (Command<Commands::CloneOrder>::Post(STR_ERROR_CAN_T_STOP_SHARING_ORDER_LIST, this->vehicle->tile, CO_COPY_PRIMARY, this->vehicle->index, other_shared->index)) {
 			this->UpdateButtonState();
 		}
 	}
@@ -4748,6 +4749,7 @@ public:
 
 	void UpdateButtonState()
 	{
+		this->primary_shared_orders = this->HasVehicle() && this->vehicle->GetOtherPrimarySharedVehicle() != nullptr;
 		if (!IsLocalTarget()) {
 			/* The read-only layout for another company's schedule has no occupancy pane at all. */
 			if (auto *occupancy = this->GetWidget<NWidgetStacked>(WID_O_SEL_OCCUPANCY); occupancy != nullptr) {
@@ -4756,7 +4758,9 @@ public:
 			return; // No buttons are displayed with competitor order windows.
 		}
 
-		bool shared_orders = this->HasVehicle() && this->vehicle->IsOrderListShared();
+		bool executing_schedule = this->HasVehicle() && this->vehicle->IsExecutingSchedule();
+		bool shared_orders = executing_schedule ? this->vehicle->IsOrderListShared() : this->primary_shared_orders;
+		this->SetWidgetDisabledState(WID_O_STOP_SHARING, executing_schedule);
 		VehicleOrderID sel = this->OrderGetSel();
 		const Order *order = OrderAt(sel);
 
@@ -4766,10 +4770,10 @@ public:
 
 		/* delete / stop sharing / exit execution */
 		NWidgetStacked *delete_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_BOTTOM_MIDDLE);
-		if (this->HasVehicle() && this->vehicle->IsExecutingSchedule() && this->selected_order == NumOrders()) {
+		if (executing_schedule && this->selected_order == NumOrders()) {
 			/* The 'End of executed schedule' order is selected, show the 'exit execution' button. */
 			delete_sel->SetDisplayedPlane(DP_BOTTOM_MIDDLE_EXIT_EXECUTE);
-		} else if (shared_orders && this->selected_order == NumOrders()) {
+		} else if (shared_orders && !executing_schedule && this->selected_order == NumOrders()) {
 			/* The 'End of Shared Orders' order is selected, show the 'stop sharing' button. */
 			delete_sel->SetDisplayedPlane(DP_BOTTOM_MIDDLE_STOP_SHARING);
 		} else {
@@ -5374,7 +5378,7 @@ public:
 				std::string name = executed->GetName().empty() ? GetString(STR_ORDER_LIST_DEFAULT_NAME, executed->index.base() + 1) : executed->GetName();
 				str = GetString(STR_ORDERS_END_OF_EXECUTE_SCHEDULE, name);
 			} else {
-				str = GetString((this->HasVehicle() && this->vehicle->IsOrderListShared()) ? STR_ORDERS_END_OF_SHARED_ORDERS : STR_ORDERS_END_OF_ORDERS);
+				str = GetString(this->primary_shared_orders ? STR_ORDERS_END_OF_SHARED_ORDERS : STR_ORDERS_END_OF_ORDERS);
 			}
 			DrawString(rtl ? ir.left : middle, rtl ? middle : ir.right, y, str, (i == this->selected_order) ? TextColour::White : TextColour::Black);
 		}
@@ -7236,7 +7240,7 @@ public:
 		if (NumOrders() != 0 && !share_order) return false;
 
 		if (Command<Commands::CloneOrder>::Post(share_order ? STR_ERROR_CAN_T_SHARE_ORDER_LIST : STR_ERROR_CAN_T_COPY_ORDER_LIST,
-				this->vehicle->tile, share_order ? CO_SHARE : CO_COPY, this->vehicle->index, v->index)) {
+				this->vehicle->tile, share_order ? CO_SHARE_PRIMARY : CO_COPY_PRIMARY, this->vehicle->index, v->index)) {
 			this->selected_order = -1;
 			ResetObjectToPlace();
 		}
@@ -7258,8 +7262,8 @@ public:
 
 		if (!share_order) {
 			/* If CTRL is not pressed: If all the vehicles in this list have the same orders, then copy orders */
-			if (AllEqual(begin, end, [](const Vehicle *v1, const Vehicle *v2) {
-				return VehiclesHaveSameOrderList(v1, v2);
+			if (AllEqual(begin, end, [this](const Vehicle *v1, const Vehicle *v2) {
+				return VehiclesHaveSameOrderList(v1, v2, this->goto_type != OPOS_INSERT_FROM_VEHICLE);
 			})) {
 				OnVehicleSelect(*begin);
 			} else {
@@ -7267,8 +7271,10 @@ public:
 			}
 		} else {
 			/* If CTRL is pressed: If all the vehicles in this list share orders, then copy orders */
-			if (AllEqual(begin, end, [](const Vehicle *v1, const Vehicle *v2) {
-				return v1->FirstShared() == v2->FirstShared();
+			if (AllEqual(begin, end, [this](const Vehicle *v1, const Vehicle *v2) {
+				if (this->goto_type == OPOS_INSERT_FROM_VEHICLE) return v1->FirstShared() == v2->FirstShared();
+				const OrderList *orders = v1->GetPrimaryOrderList();
+				return orders != nullptr && orders == v2->GetPrimaryOrderList();
 			})) {
 				OnVehicleSelect(*begin);
 			} else {
@@ -7591,6 +7597,19 @@ void ShowDecoupleSchedulePicker(OrdersWindow &w, bool first, OrderDecoupleOrders
 
 	CloseWindowById(WindowClass::DecoupleSchedulePicker, w.window_number, false);
 	new DecoupleSchedulePickerWindow(&w, first, type, w.TargetOwner());
+}
+
+/** Refresh open order windows whose vehicles still name this list as their home. */
+void InvalidatePrimaryOrderSharingWindows(OrderListID home)
+{
+	if (home == OrderListID::Invalid()) return;
+	for (Window *w : Window::Iterate()) {
+		if (w->window_class != WindowClass::VehicleOrders) continue;
+		const Vehicle *v = Vehicle::GetIfValid(VehicleID(w->window_number));
+		if (v == nullptr) continue;
+		const OrderList *orders = v->GetPrimaryOrderList();
+		if (orders != nullptr && orders->index == home) w->InvalidateData(VIWD_MODIFY_ORDERS, false);
+	}
 }
 
 void InvalidateOrderListWindowOnOrderMove(VehicleID veh, VehicleOrderID from, VehicleOrderID to, uint16_t count)

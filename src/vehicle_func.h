@@ -207,7 +207,7 @@ void GetVehicleSet(VehicleSet &set, Vehicle *v, uint8_t num_vehicles);
 void CheckCargoCapacity(Vehicle *v);
 
 bool VehiclesHaveSameEngineList(const Vehicle *v1, const Vehicle *v2);
-bool VehiclesHaveSameOrderList(const Vehicle *v1, const Vehicle *v2);
+bool VehiclesHaveSameOrderList(const Vehicle *v1, const Vehicle *v2, bool primary = false);
 
 bool IsUniqueVehicleName(std::string_view name);
 Direction VehicleEnterTileCoordinates(GetNewVehiclePosResult &gp, DiagDirection enterdir, Track track);
