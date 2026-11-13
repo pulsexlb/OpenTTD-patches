@@ -8,6 +8,7 @@
 /** @file misc.cpp Misc functions that shouldn't be here. */
 
 #include "stdafx.h"
+#include "pbs_air.h"
 #include "blueprint.h"
 #include "landscape.h"
 #include "news_func.h"
@@ -122,6 +123,7 @@ void InitializeGame(uint size_x, uint size_y, bool reset_date, bool reset_settin
 	 * changing the map size. This avoids data races on the map size variables. */
 	LinkGraphSchedule::Clear();
 
+	ClearAircraftReservationIndexes();
 	AllocateMap(size_x, size_y);
 
 	ViewportMapClearTunnelCache();

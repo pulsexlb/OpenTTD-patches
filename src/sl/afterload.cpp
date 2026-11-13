@@ -8,6 +8,7 @@
 /** @file afterload.cpp Code updating data after game load. */
 
 #include "../stdafx.h"
+#include "../pbs_air.h"
 #include "../void_map.h"
 #include "../signs_base.h"
 #include "../depot_base.h"
@@ -4985,6 +4986,8 @@ bool AfterLoadGame()
 	UpdateCargoScalers();
 
 	AfterLoadValidateCoupleClaims();
+
+	AfterLoadAircraftReservations(SlXvIsFeatureMissing(XSLFI_AIRCRAFT_ROLLING_RESERVATION));
 
 	if (_networking && !_network_server) {
 		SlProcessVENC();

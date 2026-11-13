@@ -1658,6 +1658,10 @@ STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS                        :Airports never 
 STR_CONFIG_SETTING_NEVER_EXPIRE_AIRPORTS_HELPTEXT               :Enabling this setting makes each airport type stay available forever after its introduction
 STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS                    :Allow building customized airports: {STRING2}
 STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS_HELPTEXT           :Enabling this setting allows each player being able to build customized airports.
+STR_CONFIG_SETTING_AIR_ROTATION_STEP_TICKS                      :Aircraft taxi rotation step delay: {STRING2}
+STR_CONFIG_SETTING_AIR_ROTATION_STEP_TICKS_HELPTEXT             :Ticks an aircraft waits between each 45 degree rotation step while taxiing. Lower values make turning smoother, higher values look more deliberate
+STR_CONFIG_SETTING_AIR_PUSHBACK                                 :Aircraft push back from aprons: {STRING2}
+STR_CONFIG_SETTING_AIR_PUSHBACK_HELPTEXT                        :Aircraft reverse out of plane aprons tail-first and turn around on the taxiway, instead of rotating on the spot
 
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE                            :Warn if vehicle is lost: {STRING2}
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE_HELPTEXT                   :Trigger messages about vehicles unable to find a path to their ordered destination

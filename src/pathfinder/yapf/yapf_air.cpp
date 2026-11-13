@@ -158,72 +158,44 @@ public:
 		return 'a';
 	}
 
-	static Trackdir ChooseAircraftPath(const Aircraft *v, PBSTileInfo *best_dest, bool &path_found, AircraftState dest_state, AircraftPathChoice &path_cache)
+	static Trackdir ChooseAircraftPath(Aircraft *v, PBSTileInfo *best_dest, bool &path_found, AircraftState dest_state, AircraftPathChoice &path_cache)
 	{
-		if (!path_cache.empty()) path_cache.clear();
-
-		/* Handle special case: when next tile is destination tile. */
-		if (v->tile == v->GetNextTile()) {
-			path_found = true;
-			best_dest->okay = true;
-			best_dest->tile = v->tile;
-			best_dest->trackdir = v->trackdir;
-			return v->trackdir;
-		}
-
+		path_cache.clear();
+		best_dest->okay = false;
+		path_found = false;
 		assert(IsValidTrackdir(v->trackdir));
-		Track track= TrackdirToTrack(v->trackdir);
-		TrackdirBits trackdirs;
-		if ((GetAirportTileTracks(v->tile) & TRACK_BIT_CROSS) == TRACK_BIT_CROSS && (v->x_pos & 0xF) == 8 && (v->y_pos & 0xF) == 8) {
-			trackdirs = TrackBitsToTrackdirBits(TRACK_BIT_CROSS);
-		} else {
-			trackdirs = TrackBitsToTrackdirBits(TrackToTrackBits(track));
+		TrackdirBits trackdirs = TrackdirToTrackdirBits(v->trackdir);
+		/* At the centre of a diagonal track either direction is a legal
+		 * departure. The selected reverse route may then be driven tail-first
+		 * by pushback. Away from the centre retain the current travel direction. */
+		if ((v->x_pos & 0xF) == 8 && (v->y_pos & 0xF) == 8 && IsDiagonalTrackdir(v->trackdir)) {
+			trackdirs = TrackBitsToTrackdirBits(TrackToTrackBits(TrackdirToTrack(v->trackdir)));
+			if ((GetAirportTileTracks(v->tile) & TRACK_BIT_CROSS) == TRACK_BIT_CROSS) {
+				trackdirs = TrackBitsToTrackdirBits(TRACK_BIT_CROSS);
+			}
 		}
 
-		/* Create pathfinder instance. */
 		Tpf pf;
-
-		/* Set origin and destination nodes. */
 		pf.SetOrigin(v->tile, trackdirs);
 		pf.SetDestination(v->IsHelicopter(), dest_state);
-
-		/* Find best path. */
 		path_found = pf.FindPath(v);
-		bool do_track_reservation = path_found;
-		Node *pNode = pf.GetBestNode();
+		Node *last = pf.GetBestNode();
+		if (!path_found || last == nullptr) return INVALID_TRACKDIR;
 
-		Trackdir next_trackdir = INVALID_TRACKDIR;
-
-		if (pNode != nullptr) {
-			/* walk through the path back to the origin */
-			while (pNode->parent != nullptr) {
-				do_track_reservation &= pNode->m_reservable;
-				pNode = pNode->parent;
-			}
-			assert(pNode->GetTile() == v->tile);
-			/* return trackdir from the best next node (origin) */
-			next_trackdir = pNode->GetTrackdir();
-			/* Reserve path from origin till last safe waiting tile */
-			if (do_track_reservation) {
-				for (const Node *cur = pf.GetBestNode(); cur != nullptr; cur = cur->parent) {
-					assert(IsValidTrackdir(cur->GetTrackdir()));
-					SetAirportTrackReservation(cur->GetTile(), TrackdirToTrack(cur->GetTrackdir()));
-					if (cur->parent != nullptr && cur->GetIsChoice()) {
-						assert(cur->GetTile() == cur->parent->GetTile());
-						path_cache.td.push_front(cur->GetTrackdir());
-						path_cache.tile.push_front(cur->GetTile());
-					}
-				}
-			}
-
-			best_dest->tile = pf.GetBestNode()->GetTile();
-			best_dest->trackdir = pf.GetBestNode()->GetTrackdir();
+		std::deque<AircraftPlannedNode> route;
+		for (Node *n = last; n != nullptr; n = n->parent) {
+			route.push_front({n->GetTile(), n->GetTrackdir(), n->GetIsChoice()});
 		}
-
-		assert(!path_found || next_trackdir != INVALID_TRACKDIR);
-		best_dest->okay = do_track_reservation;
-
-		return next_trackdir;
+		best_dest->tile = last->GetTile();
+		best_dest->trackdir = last->GetTrackdir();
+		const bool gate = dest_state == AS_APRON || dest_state == AS_HELIPAD || dest_state == AS_HELIPORT;
+		if (gate && !TryClaimAircraftTerminal(v, last->GetTile())) return route.front().td;
+		v->planned_path = std::move(route);
+		/* A blocked first step is not a missing route. Keep the plan and wait
+		 * without leaving the current tile/hangar. No remote path tiles are
+		 * reserved by the pathfinder. */
+		best_dest->okay = true;
+		return v->planned_path.front().td;
 	}
 };
 
@@ -312,9 +284,9 @@ public:
 				   so better try finding another hangar tile. */
 				return IsHangar(tile) && (IsStandardHangar(tile) || !HasAirportTileAnyReservation(tile));
 			case AS_HELIPAD:
-				return IsHelipadTile(tile) || IsPlaneApronTile(tile);
+				return (IsHelipadTile(tile) || IsPlaneApronTile(tile)) && IsAircraftTerminalAvailable(Yapf().GetVehicle(), tile);
 			case AS_APRON:
-				return IsPlaneApronTile(tile);
+				return IsPlaneApronTile(tile) && IsAircraftTerminalAvailable(Yapf().GetVehicle(), tile);
 			case AS_ON_HOLD_APPROACHING:
 			case AS_DESCENDING:
 				return IsRunwayStart(tile) && IsLandingTypeTile(tile);
@@ -370,7 +342,9 @@ public:
 		c += IsDiagonalTrackdir(n.GetTrackdir()) ? YAPF_TILE_LENGTH : YAPF_TILE_CORNER_LENGTH;
 
 		/* Reserved tiles. */
-		if (!IsAirportTileFree(n.GetTile(), n.GetTrackdir())) {
+			const Aircraft *v = Yapf().GetVehicle();
+			if (!HasAircraftTileReservation(v, n.GetTile(), TrackToTrackBits(TrackdirToTrack(n.GetTrackdir()))) &&
+					!IsAirportTileFree(n.GetTile(), n.GetTrackdir())) {
 			n.m_reservable = false;
 			c *= 4;
 			/* Prefer other possible paths where the destination is not occupied. */
@@ -435,7 +409,7 @@ struct CYapfAircraft_TypesT
 struct CYapfAircraft : CYapfT<CYapfAircraft_TypesT<CYapfAircraft, CFollowTrackAirport, CYapfCostAircraftT> > {};
 
 /** Aircraft controller helper - path finder invoker */
-Trackdir YapfAircraftFindPath(const Aircraft *v, PBSTileInfo &best_dest, bool &path_found, AircraftState dest_state, AircraftPathChoice &path_cache)
+Trackdir YapfAircraftFindPath(Aircraft *v, PBSTileInfo &best_dest, bool &path_found, AircraftState dest_state, AircraftPathChoice &path_cache)
 {
 	return CYapfAircraft::ChooseAircraftPath(v, &best_dest, path_found, dest_state, path_cache);
 }

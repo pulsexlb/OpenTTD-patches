@@ -237,6 +237,7 @@ enum SlXvFeatureIndex {
 	 * PXP block: SlXvFeatureIndex values are savegame feature bitmap indices, so
 	 * inserting into the middle would shift every existing PXP feature. */
 	XSLFI_SCRIPT_RANDOMIZER,                      ///< See: SLV_SCRIPT_RANDOMIZER (PR#12063)
+	XSLFI_AIRCRAFT_ROLLING_RESERVATION,           ///< Directed taxi routes, exclusive rolling occupancy and pushback state.
 
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };

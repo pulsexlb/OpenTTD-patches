@@ -15,6 +15,7 @@
 #include "air.h"
 #include "air_map.h"
 #include "aircraft.h"
+#include "pbs_air.h"
 #include "airport_cmd.h"
 #include "station_cmd.h"
 #include "animated_tile_func.h"
@@ -2172,18 +2173,14 @@ void FloodAircraftOnAirport(const Station *st)
 			if (!a->IsHelicopter()) {
 				TileIndex test_tile = a->state == AS_FLYING_TAKEOFF ? a->tile : a->GetNextTile();
 				if (!IsAirportTileOfStation(test_tile, st->index)) continue;
-				/* Remove reservation and keep flying. */
+				ReleaseAircraftRunway(a);
+				ReleaseAircraftTaxiPath(a, false);
 				a->state = AS_FLYING_LEAVING_AIRPORT;
-				DiagDirection diagdir = TrackdirToExitdir(a->trackdir);
-				TileIndex start_tile = (a->state == AS_FLYING_TAKEOFF || a->state == AS_FLYING_LANDING) ?
-						GetRunwayExtreme(a->tile, ReverseDiagDir(diagdir)) : a->GetNextTile();
-				assert(IsRunwayStart(start_tile));
-				SetRunwayReservation(start_tile, false);
 			} else {
 				a->state = AS_FLYING_NO_DEST;
 				a->next_pos.pos = AP_DEFAULT;
 				assert(IsValidTrackdir(a->trackdir));
-				RemoveAirportTrackReservation(a->tile, TrackdirToTrack(a->trackdir));
+				ReleaseAircraftTaxiPath(a, false);
 			}
 		} else {
 			if (!IsAirportTileOfStation(a->tile, st->index)) continue;

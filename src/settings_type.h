@@ -1007,6 +1007,8 @@ struct StationSettings {
 	bool     distant_join_stations;            ///< allow to join non-adjacent stations
 	bool     never_expire_airports;            ///< never expire airports
 	bool     allow_modify_airports;            ///< allow change the layout of airports
+	uint16_t air_rotation_step_ticks;          ///< ticks between each 45 degree rotation step of taxiing aircraft
+	bool     air_pushback;                     ///< aircraft push back from plane aprons before taxiing
 	uint8_t  station_spread;                   ///< amount a station may spread
 	uint8_t  catchment_increase;               ///< amount by which station catchment is increased
 	bool     cargo_class_rating_wait_time;     ///< station rating tolerance to time since last cargo pickup depends on cargo class

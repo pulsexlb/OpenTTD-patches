@@ -1543,6 +1543,10 @@ STR_CONFIG_SETTING_DEFAULT_AIR_TYPE                            :默认航空类�
 STR_CONFIG_SETTING_DEFAULT_AIR_TYPE_HELPTEXT                   :选择开始或加载游戏后要使用的航空类型。'第一个可用'选择最旧的机场类型，'最后一个可用'选择最新的类型，'最常用'选择当前使用最多的类型
 STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS                    :允许建设自定义机场：{STRING}
 STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS_HELPTEXT           :启用此设置后，每位玩家都可以建设自定义机场
+STR_CONFIG_SETTING_AIR_ROTATION_STEP_TICKS                      :飞机滑行转向步进延迟：{STRING2}
+STR_CONFIG_SETTING_AIR_ROTATION_STEP_TICKS_HELPTEXT             :飞机滑行时每转 45 度等待的 tick 数。数值越小转向越流畅，数值越大看起来更从容
+STR_CONFIG_SETTING_AIR_PUSHBACK                                 :飞机从机位倒行推出：{STRING2}
+STR_CONFIG_SETTING_AIR_PUSHBACK_HELPTEXT                        :飞机从客机机位机尾朝后倒退滑出，在滑行道上再掉头，而不是原地转向
 
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE                            :列车无法找到路线时提示：{STRING}
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE_HELPTEXT                   :启用时将在载具无法到达命令目的地时提示

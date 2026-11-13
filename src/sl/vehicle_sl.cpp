@@ -1100,6 +1100,49 @@ struct VehicleCommonStructHandler final : public TypedSaveLoadStructHandler<Vehi
 	}
 };
 
+struct AircraftRouteStructHandler final : public TypedSaveLoadStructHandler<AircraftRouteStructHandler, Aircraft> {
+	NamedSaveLoadTable GetDescription() const override
+	{
+		static const NamedSaveLoad desc[] = {
+			NSL("tile", SLE_VAR(AircraftPlannedNode, tile, SLE_UINT32)),
+			NSL("trackdir", SLE_VAR(AircraftPlannedNode, td, SLE_UINT8)),
+			NSL("choice", SLE_VAR(AircraftPlannedNode, choice, SLE_BOOL)),
+		};
+		return desc;
+	}
+	void Save(Aircraft *v) const override
+	{
+		SlSetStructListLength(v->planned_path.size());
+		for (auto &n : v->planned_path) SlObjectSaveFiltered(&n, this->GetLoadDescription());
+	}
+	void Load(Aircraft *v) const override
+	{
+		v->planned_path.resize(SlGetStructListLength(1 << 20));
+		for (auto &n : v->planned_path) SlObjectLoadFiltered(&n, this->GetLoadDescription());
+	}
+};
+
+struct AircraftReservationStructHandler final : public TypedSaveLoadStructHandler<AircraftReservationStructHandler, Aircraft> {
+	NamedSaveLoadTable GetDescription() const override
+	{
+		static const NamedSaveLoad desc[] = {
+			NSL("tile", SLE_VAR(AircraftTileReservation, tile, SLE_UINT32)),
+			NSL("tracks", SLE_VAR(AircraftTileReservation, tracks, SLE_UINT8)),
+		};
+		return desc;
+	}
+	void Save(Aircraft *v) const override
+	{
+		SlSetStructListLength(v->reserved_path.size());
+		for (auto &r : v->reserved_path) SlObjectSaveFiltered(&r, this->GetLoadDescription());
+	}
+	void Load(Aircraft *v) const override
+	{
+		v->reserved_path.resize(SlGetStructListLength(2));
+		for (auto &r : v->reserved_path) SlObjectLoadFiltered(&r, this->GetLoadDescription());
+	}
+};
+
 struct VehicleTypeStructHandler final : public TypedSaveLoadStructHandler<VehicleTypeStructHandler, Vehicle> {
 	const VehicleType type;
 
@@ -1622,6 +1665,15 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("", SLE_INCLUDE(IncludeBaseVehicleDescription)),
 		NSLT_STRUCT<VehicleCommonStructHandler>("common"),
 
+		NSL("allocated_terminal", SLE_CONDVAR_X(Aircraft, allocated_terminal, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSL("reserved_runway", SLE_CONDVAR_X(Aircraft, reserved_runway, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSL("taxi_blocked_ticks", SLE_CONDVAR_X(Aircraft, taxi_blocked_ticks, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSL("pushback_origin", SLE_CONDVAR_X(Aircraft, pushback_origin, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSL("pushback_target", SLE_CONDVAR_X(Aircraft, pushback_target, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSL("pushback_progress", SLE_CONDVAR_X(Aircraft, pushback_progress, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSL("taxi_progress", SLE_CONDVAR_X(Aircraft, taxi_progress, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSLT_STRUCTLIST<AircraftRouteStructHandler>("taxi_route", SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION)),
+		NSLT_STRUCTLIST<AircraftReservationStructHandler>("taxi_reservations", SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION)),
 		NSL("trackdir",                  SLE_CONDVAR(Aircraft, trackdir,               SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("state",                      SLE_CONDVAR(Aircraft, state,                  SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_cached_state", SLE_CONDVAR_X(Aircraft, last_cached_state, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_CACHE_STATE))),
