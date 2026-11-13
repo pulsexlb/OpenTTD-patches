@@ -983,6 +983,23 @@ public:
 	inline bool HasWaitCoupleStation() const { return this->IsType(OT_WAIT_COUPLE) && HasBit(this->GetXFlags(), 6); }
 	inline StationID GetWaitCoupleStation() const { return this->HasWaitCoupleStation() ? this->GetDestination().ToStationID() : StationID::Invalid(); }
 	inline void SetWaitCoupleStation(StationID station) { AssignBit(this->GetXFlagsRef(), 6, station != StationID::Invalid()); this->SetDestination(station); }
+	/** Waiting-order traction filter: 0 any, 1 steam, 2 diesel, 3 electric. */
+	inline uint8_t GetWaitCoupleTraction() const { return GB(this->GetXData2(), 30, 2); }
+	inline void SetWaitCoupleTraction(uint8_t traction) { SB(this->GetXData2Ref(), 30, 2, traction); }
+	/** Optional acquire-before-wait/return-after-couple slot. The flag keeps old unused data inert. */
+	inline TraceRestrictSlotID GetWaitCoupleSlot() const { return this->IsType(OT_WAIT_COUPLE) && HasBit(this->GetXFlags(), 7) ? TraceRestrictSlotID{this->GetXData2Low()} : TraceRestrictSlotID::Invalid(); }
+	inline void SetWaitCoupleSlot(TraceRestrictSlotID slot) { AssignBit(this->GetXFlagsRef(), 7, slot != TraceRestrictSlotID::Invalid()); this->SetXData2Low(slot.base()); }
+	/** Zero allows any company; otherwise the stored value is the company ID plus one. */
+	inline uint8_t GetWaitCoupleCompany() const { return GB(this->GetXData2(), 16, 8); }
+	inline void SetWaitCoupleCompany(uint8_t company) { SB(this->GetXData2Ref(), 16, 8, company); this->GetXDataRef() = 0; }
+	/** Bitmask for multi-company restrictions; old single-company orders need no migration. Zero means unrestricted. */
+	inline uint16_t GetWaitCoupleCompanyMask() const
+	{
+		if (HasBit(this->GetXData(), 31)) return GB(this->GetXData(), 0, 15);
+		const uint8_t legacy = this->GetWaitCoupleCompany();
+		return legacy == 0 ? 0 : legacy <= MAX_COMPANIES ? (1U << (legacy - 1)) : 0;
+	}
+	inline void SetWaitCoupleCompanyMask(uint16_t mask) { this->SetWaitCoupleCompany(0); this->GetXDataRef() = (1U << 31) | (mask & 0x7FFF); }
 	/** Set what orders first part should get */
 	inline void SetDecoupleFirstOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 0, 3, to_underlying(orders_type)); }
 	/** Set what orders second part should get */
@@ -997,6 +1014,9 @@ public:
 	inline bool GetDecoupleSecondSameDirExit() const { return HasBit(this->GetXData(), 17); }
 	/** Set whether the second part may leave the decouple station in the same direction as the other part. */
 	inline void SetDecoupleSecondSameDirExit(bool on) { SB(this->GetXDataRef(), 17, 1, on ? 1 : 0); }
+	/** Opt in to keeping inherited lateness on schedule change (OT_DECOUPLE only); default is reset. */
+	inline bool GetDecoupleKeepLateness(bool first) const { return HasBit(this->GetXData(), first ? 18 : 19); }
+	inline void SetDecoupleKeepLateness(bool first, bool on) { SB(this->GetXDataRef(), first ? 18 : 19, 1, on ? 1 : 0); }
 	/** Get the schedule the first part adopts after decoupling (ODOF_EXECUTE_SCHEDULE and ODOF_LOAD_AND_SCHEDULE only). */
 	inline OrderListID GetDecoupleFirstScheduleID() const { return OrderListID{(uint16_t)this->GetXData()}; }
 	/** Set the schedule the first part adopts after decoupling. */

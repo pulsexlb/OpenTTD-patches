@@ -3848,6 +3848,10 @@ bool ClearOrderTraceRestrictSlotIf(Order *o, F cond)
 		o->GetXDataRef() = INVALID_TRACE_RESTRICT_SLOT_ID.base();
 		changed_order = true;
 	}
+	if (o->IsType(OT_WAIT_COUPLE) && cond(o->GetWaitCoupleSlot())) {
+		o->SetWaitCoupleSlot(TraceRestrictSlotID::Invalid());
+		changed_order = true;
+	}
 	if (o->IsType(OT_SLOT) && cond(static_cast<TraceRestrictSlotID>(o->GetDestination().base()))) {
 		o->SetDestination(INVALID_TRACE_RESTRICT_SLOT_ID);
 		changed_order = true;
@@ -3862,6 +3866,12 @@ bool ClearOrderTraceRestrictSlotIf(Order *o, F cond)
  */
 void TraceRestrictRemoveSlotID(TraceRestrictSlotID index)
 {
+	/* Invalidate transient references too, before an ID can be reused. */
+	for (Train *train : Train::Iterate()) {
+		if (train->wait_couple_acquired_slot == index) train->wait_couple_acquired_slot = TraceRestrictSlotID::Invalid();
+		if (train->current_order.GetWaitCoupleSlot() == index) train->current_order.SetWaitCoupleSlot(TraceRestrictSlotID::Invalid());
+	}
+
 	InvalidateAutoYieldAreas();
 	for (TraceRestrictProgram *prog : TraceRestrictProgram::Iterate()) {
 		if ((prog->actions_used_flags & TRPAUF_HAS_SLOT_FLAG_MASK) == 0) continue; // No slot or slot group references in this program

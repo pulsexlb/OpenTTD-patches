@@ -102,6 +102,9 @@ struct OutletProof {
 struct OutletEntry { const Area *area; const Train *train; OutletProof proof; };
 std::array<OutletEntry, MAX_PARTICIPANTS + 1> outlet_cache;
 size_t outlet_count = 0;
+struct DepartureRiskEntry { const Area *area; const Train *train; const Train *other; bool claimed; bool can_clear; };
+std::array<DepartureRiskEntry, MAX_PARTICIPANTS + 1> departure_risk_cache;
+size_t departure_risk_count = 0; ///< Read-only proofs, valid only within this evaluation.
 struct PassengerPriorityEntry { const Train *train; bool loaded; };
 std::array<PassengerPriorityEntry, MAX_PARTICIPANTS> passenger_priority_cache;
 size_t passenger_priority_count = 0; // Only valid within one read-only evaluation.
@@ -166,6 +169,7 @@ public:
 			probe_budget_remaining = MAX_PROBE_NODES_PER_EVALUATION;
 			passenger_priority_count = 0;
 			outlet_count = 0;
+			departure_risk_count = 0;
 			merge_proof_count = 0;
 			merge_probe_remaining = MAX_ROUTE_NODES;
 			split_proof_count = 0;
@@ -1766,13 +1770,7 @@ bool SafeYieldCycleFallback(const Area &area, const Train *v, const Train *targe
 	return true;
 }
 
-bool CanClearBefore(const Area &area, const Train *v, const Train *other)
-{
-	const auto slow = ProveOutlet(area, v), fast = ProveOutlet(area, other);
-	return DetectionSpeed(area, v) != DetectionSpeed(area, other) && slow.complete && fast.complete && slow.ref && slow.ref == fast.ref && fast.distance > slow.distance &&
-			uint64_t(fast.distance) * DetectionSpeed(area, v) >
-			uint64_t(slow.distance + CeilDiv(v->gcache.cached_total_length, TILE_SIZE) + 8) * DetectionSpeed(area, other);
-}
+bool CanClearBefore(const Area &area, const Train *v, const Train *other);
 bool StoppedQueueBehind(const Train *arrival, const Train *follower);
 
 struct TurnoverReleasePath {
@@ -1872,6 +1870,42 @@ std::optional<uint> EarliestTurnoverConflict(const Train *v,const TurnoverReleas
 	complete=pending.empty()&&unknown_distance==UINT_MAX;return std::nullopt;
 }
 
+bool ComputeCanClearBefore(const Area &area, const Train *v, const Train *other)
+{
+	const auto slow = ProveOutlet(area, v), fast = ProveOutlet(area, other);
+	if (!(DetectionSpeed(area, v) != DetectionSpeed(area, other) && slow.complete && fast.complete && slow.ref && slow.ref == fast.ref && fast.distance > slow.distance &&
+			uint64_t(fast.distance) * DetectionSpeed(area, v) >
+			uint64_t(slow.distance + CeilDiv(v->gcache.cached_total_length, TILE_SIZE) + 8) * DetectionSpeed(area, other))) return false;
+	if (!HasLaneClaim(area, v)) return true;
+	/* Leaving a claimed siding is a departure, not just passing Clear. The
+	 * following express needs the shared native block released too. Reuse
+	 * turnover's bounded, read-only proof and acceleration allowance: a nearby
+	 * area marker cannot justify pulling a slow departure in front of it. */
+	const auto path = ProveTurnoverReleasePath(area, v, nullptr);
+	if (!path) { Debug(yapf, 7, "AutoYield area={} departure={} reason=native-block-unproved budget={}", area.id, v->index, probe_budget_remaining); return false; }
+	bool complete = false;
+	const auto earliest = EarliestTurnoverConflict(other, *path, complete);
+	if (!earliest) return complete;
+	const uint speed = DetectionSpeed(area, v);
+	const uint departure_speed = std::max(1u, std::min(speed, std::max(uint(v->cur_speed), speed / 2)));
+	const uint64_t clear = uint64_t(path->distance + CeilDiv(v->gcache.cached_total_length, TILE_SIZE) + 8) * 65536 / departure_speed;
+	const uint64_t arrival = uint64_t(*earliest) * 65536 / std::max(1u, DetectionSpeed(area, other));
+	Debug(yapf, 7, "AutoYield area={} departure={} express={} release={} earliest={} clear={} arrival={} budget={}", area.id, v->index, other->index, path->distance, *earliest, clear, arrival, probe_budget_remaining);
+	return clear < arrival;
+}
+
+bool CanClearBefore(const Area &area, const Train *v, const Train *other)
+{
+	const bool claimed = HasLaneClaim(area, v);
+	for (size_t i = 0; i < departure_risk_count; i++) {
+		const auto &entry = departure_risk_cache[i];
+		if (entry.area == &area && entry.train == v && entry.other == other && entry.claimed == claimed) return entry.can_clear;
+	}
+	const bool can_clear = ComputeCanClearBefore(area, v, other);
+	if (departure_risk_count < departure_risk_cache.size()) departure_risk_cache[departure_risk_count++] = {&area, v, other, claimed, can_clear};
+	return can_clear;
+}
+
 /** Integer risk estimate, not permission to occupy track. Use the last common
  * resource for the departing tail and the first common resource for the
  * express head. Unknown geometry cannot justify a full-lane turnover. */
@@ -1967,9 +2001,15 @@ bool MustWait(const Area &area, const Train *v, bool *fully_known = nullptr)
 	}
 	/* Optional direction classification shares a small budget across all
 	 * candidates, leaving the original evacuation and claim checks room. */
-	AutoYieldPreferenceBudget direction_budget;
+	size_t direction_remaining = MAX_ROUTE_NODES;
 	for (size_t i = 0; i < count; i++) {
-		const auto conflict = ClassifyYieldConflict(area, v, faster[i]);
+		const auto conflict = [&] {
+			AutoYieldPreferenceBudget direction_budget(direction_remaining);
+			const size_t before = probe_budget_remaining;
+			const auto result = ClassifyYieldConflict(area, v, faster[i]);
+			direction_remaining -= before - probe_budget_remaining;
+			return result;
+		}();
 		Debug(yapf, 7, "AutoYield area={} train={} other={} wait-conflict={} saved-target={}", area.id, v->index, faster[i]->index, to_underlying(conflict), HasYieldObligation(area, v, faster[i]->index));
 		if (SafeYieldCycleFallback(area, v, faster[i])) continue;
 		/* A failed/limited forecast is not evidence that an accepted conflict
@@ -2705,7 +2745,10 @@ void FlushAutoYieldAreaUpdates() { if (dirty) UpdateAutoYieldAreas(); }
 void AutoYieldSignalChanged(TileIndex tile, Track track)
 {
 	bool relevant = dirty;
-	if (const auto *program = GetExistingTraceRestrictProgram(tile, track)) {
+	/* Removal notifications arrive after the simulation bits were cleared.
+	 * The restricted-signal accessor requires an active simulated signal. */
+	const bool usable = !IsTileType(tile, TileType::TunnelBridge) || IsTunnelBridgeWithSignalSimulation(tile);
+	if (const auto *program = usable ? GetExistingTraceRestrictProgram(tile, track) : nullptr) {
 		for (const auto iter : program->IterateInstructions()) {
 			if (IsAutoYieldInstruction(iter.Instruction().GetType())) { relevant = true; break; }
 		}
@@ -3248,6 +3291,18 @@ void AutoYieldGameTick()
 			Vehicle *vehicle = Vehicle::GetIfValid(id);
 			if (vehicle != nullptr && vehicle->type == VehicleType::Train) {
 				Train *v = Train::From(vehicle);
+				/* A changed express may still own a long approach reservation and
+				 * otherwise never reselect its split route until it reaches the
+				 * station. Only explicit saved dependents request this bounded,
+				 * non-reserving native refresh; single-outlet areas are untouched. */
+				if(area.clear_count>1 && Active(v) && ((_state_ticks.base()+id.base())&63)==0) {
+					bool requested=false;
+					for(const auto &[ref,targets]:area.targets) {
+						const auto lane=area.lanes.find(ref);
+						if(lane!=area.lanes.end()&&!lane->second->occupants.empty()&&targets->IsOccupant(id)){requested=true;break;}
+					}
+					if(requested)AutoYieldRefreshNativeRoute(v,area.id);
+				}
 				/* A parked train may have no forward reservation, so refresh its
 				 * live target set before the reservation-dependent early returns. */
 				if (Active(v) && YieldWaitInProgress(area, v)) {

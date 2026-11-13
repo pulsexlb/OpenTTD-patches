@@ -369,7 +369,7 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 	if (allowed_changes.Test(ConsistChangeFlag::Length) && allowed_changes.Test(ConsistChangeFlag::Capacity)) this->early_route.clear();
 	uint16_t max_speed = UINT16_MAX;
 
-	dbg_assert(this->IsFrontEngine() || this->IsFreeWagon() || this->IsFrontWagon());
+	dbg_assert(this->IsFreeWagon() || this->Primary()->IsPrimaryVehicle() || this->IsPrimaryVehicle());
 
 	const RailVehicleInfo *rvi_v = RailVehInfo(this->engine_type);
 	EngineID first_engine = this->IsFrontEngine() ? this->engine_type : EngineID::Invalid();
@@ -718,10 +718,9 @@ int GetTileMarginInFrontOfTrain(const Train *v, int x_pos, int y_pos)
  * @param station_length 'return' the station length in 1/16th tiles
  * @return the location, calculated from the begin of the station to stop at.
  */
-/** The current order belongs to the logical primary; geometry belongs to First(). */
-static OrderStopLocation GetTrainOrderStopLocation(const Train *v, DestinationID dest)
+/** Select the stop mode from the order being evaluated; geometry belongs to First(). */
+static OrderStopLocation GetTrainOrderStopLocation(const Order &order, DestinationID dest)
 {
-	const Order &order = v->Primary()->current_order;
 	if (order.IsType(OT_GOTO_STATION) && order.GetDestination() == dest) return order.GetStopLocation();
 	if (order.IsType(OT_LOADING_ADVANCE) && order.GetDestination() == dest) return OrderStopLocation::Through;
 	if (order.IsType(OT_GOTO_WAYPOINT) && order.GetDestination() == dest) return OrderStopLocation::FarEnd;
@@ -741,7 +740,7 @@ int GetTrainStopLocation(StationID station_id, TileIndex tile, Train *v, bool up
 
 	/* Default to the middle of the station for stations stops that are not in
 	 * the order list like intermediate stations when non-stop is disabled */
-	OrderStopLocation osl = GetTrainOrderStopLocation(v, station_id);
+	OrderStopLocation osl = GetTrainOrderStopLocation(v->Primary()->current_order, station_id);
 	int overhang = front->gcache.cached_total_length - *station_length;
 	int adjust = 0;
 	if (osl == OrderStopLocation::Through && overhang > 0) {
@@ -978,9 +977,8 @@ void AdvanceOrderIndex(const Vehicle *v, VehicleOrderID &index)
 
 int PredictStationStoppingLocation(const Train *v, const Order *order, int station_length, DestinationID dest)
 {
-	/* Predict the same primary-owned current order as the real stop pixel. */
-	OrderStopLocation osl = GetTrainOrderStopLocation(v, dest);
-	(void)order;
+	/* Lookahead may already be evaluating a later order. */
+	OrderStopLocation osl = GetTrainOrderStopLocation(*order, dest);
 	const Train *front = v->First();
 
 	int overhang = front->gcache.cached_total_length - station_length;
@@ -1059,17 +1057,17 @@ int PredictStationStoppingLocation(const Train *v, const Order *order, int stati
 			break;
 	}
 
-	/* The stop location is where the FRONT of the train must be, so subtract
-	 * half the front vehicle's length, exactly like GetTrainStopLocation() does
-	 * for the real stop pixel. Without this the advisory braking target lies
-	 * half a front vehicle beyond the actual stop pixel: the train brakes
-	 * towards a point past the pixel and crosses it at the braking-curve speed
-	 * of the remaining gap. For a short front vehicle that residual speed stays
-	 * within the in-station emergency clamp's threshold, but a long articulated
-	 * front (half length >= 4) crosses above it and the station is overshot. */
+	/* Preserve the existing advisory target for ordinary, unit-first stock.
+	 * Part-first/rear-first or extended-length fronts need the upstream centre
+	 * correction to avoid overshooting the actual platform stop. Applying it
+	 * to ordinary stock changes arrival/exit reservation timing and can make
+	 * a stopping train reverse towards a detour instead of its forward exit. */
 	const Train *moving_front = v->GetMovingFront();
-	uint8_t rounding = moving_front->IsDrivingBackwards() ? 2 : 1;
-	stop -= (moving_front->gcache.cached_veh_length + rounding) / 2;
+	if (moving_front->IsArticulatedPart() || moving_front->IsRearDualheaded() ||
+			moving_front->gcache.cached_veh_length > VEHICLE_LENGTH) {
+		uint8_t rounding = moving_front->IsDrivingBackwards() ? 2 : 1;
+		stop -= (moving_front->gcache.cached_veh_length + rounding) / 2;
+	}
 
 	if (v->IsDrivingBackwards()) adjust--;
 	return stop + adjust;
@@ -2805,6 +2803,7 @@ void MoveTrainIdentity(Train *old_primary, Train *new_primary)
 	if (new_primary->orders != nullptr) new_primary->AddToShared(old_primary);
 	new_primary->CopyVehicleConfigAndStatistics(old_primary);
 	new_primary->unbunch_state = std::move(old_primary->unbunch_state);
+	new_primary->wait_couple_acquired_slot = std::exchange(old_primary->wait_couple_acquired_slot, TraceRestrictSlotID::Invalid());
 	new_primary->profit_lifetime = lifetime;
 	new_primary->speed_restriction = old_primary->speed_restriction;
 	new_primary->flags.Set(VehicleRailFlag::SpeedAdaptationExempt, old_primary->flags.Test(VehicleRailFlag::SpeedAdaptationExempt));
@@ -3794,13 +3793,17 @@ static void ReverseTrainChainOrder(Train *v)
 	}
 }
 
-/** Whether an in-place reversal preserves this vehicle's visible facing via Flipped. */
-static bool ShouldFlipTrainForCouple(const Train *v)
+/** Keep the facing of locomotives and asymmetric parts during a coupling reversal. */
+bool Train::PreserveFacingOnCoupleReverse() const
 {
-	/* A custom articulated base must follow its parts, even when it sits at the
-	 * end of a reversed unit. Ordinary custom-sprite singletons keep their variant. */
-	return !IsCustomVehicleSpriteNum(v->spritenum) || v->IsMultiheaded() || v->IsArticulatedPart() ||
-			v->GetUnitChainFront() != v->GetUnitChainLast();
+	if (this->IsEngine() || this->IsMultiheaded() || this->IsArticulatedPart() || !IsCustomVehicleSpriteNum(this->spritenum)) return true;
+
+	/* Include an articulated wagon's base, whichever end of the chain its
+	 * children occupy after reversal. All members must preserve their facing
+	 * together. Inspect only neighbours so repeated reversals stay linear. */
+	const Vehicle *main = this->GetUnitMain();
+	return (this->Previous() != nullptr && this->Previous()->GetUnitMain() == main) ||
+			(this->Next() != nullptr && this->Next()->GetUnitMain() == main);
 }
 
 /**
@@ -3826,7 +3829,7 @@ static void ReverseTrainNoSwapVehicles(Train *v)
 	for (Train *u = v; u != nullptr; u = u->Next()) {
 		order.push_back(u);
 		u->direction = ReverseDir(u->direction);
-		if (ShouldFlipTrainForCouple(u)) u->flags.Flip(VehicleRailFlag::Flipped);
+		if (u->PreserveFacingOnCoupleReverse()) u->flags.Flip(VehicleRailFlag::Flipped);
 		SwapTrainFlags(&u->gv_flags, &u->gv_flags);
 		u->InvalidateImageCache();
 		u->UpdateIsDrawn();
@@ -4174,6 +4177,12 @@ static void ReverseTrainForCouple(Train *v, bool joint_at_tail);
  */
 static void RecheckSignalsAndTryReserve(Train *consist)
 {
+	/* A split can already have requested a station turnaround. Keep its
+	 * existing body/braking reservation intact, but do not acquire a new path
+	 * in the old direction. The completed turnaround re-enters here after
+	 * clearing Reversing and reserves from the new moving front. */
+	if (consist->flags.Test(VehicleRailFlag::Reversing)) return;
+
 	Train *moving_front = consist->GetMovingFront();
 
 	/* VehicleExitDir does not always produce the desired dir for depots and
@@ -5278,12 +5287,35 @@ static bool IsHoldingForCouple(const Train *train)
 			GetTrainCouplingStation(train) == train->current_order.GetWaitCoupleStation()));
 }
 
+/** Own only memberships acquired here; cancelling an order cannot return an unrelated slot. */
+void UpdateWaitCoupleSlot(Train *train)
+{
+	const TraceRestrictSlotID desired = IsHoldingForCouple(train) && !train->vehstatus.Test(VehState::Crashed) ? train->current_order.GetWaitCoupleSlot() : TraceRestrictSlotID::Invalid();
+	if (train->wait_couple_acquired_slot != desired) {
+		if (auto *old = TraceRestrictSlot::GetIfValid(train->wait_couple_acquired_slot)) old->Vacate(train);
+		train->wait_couple_acquired_slot = TraceRestrictSlotID::Invalid();
+	}
+	if (desired == TraceRestrictSlotID::Invalid() || train->cur_speed != 0) return;
+	auto *slot = TraceRestrictSlot::GetIfValid(desired);
+	if (slot == nullptr || slot->vehicle_type != VehicleType::Train || !slot->IsUsableByOwner(train->owner) || slot->IsOccupant(train->index)) return;
+	if (slot->Occupy(train)) train->wait_couple_acquired_slot = desired;
+}
+
+/** A full automatic slot keeps the body stopped, but offers no routing target. */
+static bool WaitCoupleSlotReady(const Train *train)
+{
+	const auto id = train->current_order.GetWaitCoupleSlot();
+	if (id == TraceRestrictSlotID::Invalid()) return true;
+	const auto *slot = TraceRestrictSlot::GetIfValid(id);
+	return slot != nullptr && slot->vehicle_type == VehicleType::Train && slot->IsUsableByOwner(train->owner) && slot->IsOccupant(train->index);
+}
+
 static bool HasWaitingCoupleTrain()
 {
 	for (Vehicle *v : Vehicle::Iterate()) {
 		if (v->type != VehicleType::Train || !v->IsPrimaryVehicle()) continue;
 		if (v->vehstatus.Test(VehState::Crashed)) continue;
-		if (IsHoldingForCouple(Train::From(v))) return true;
+		if (IsHoldingForCouple(Train::From(v)) && WaitCoupleSlotReady(Train::From(v))) return true;
 	}
 	return false;
 }
@@ -5299,7 +5331,7 @@ static const Train *GetWaitingCoupleCandidateOnTile(const Train *v, TileIndex ti
 		Train *candidate = u->Primary();
 		if (candidate == v->Primary()) continue;
 		if (!candidate->current_order.IsType(OT_WAIT_COUPLE)) continue;
-		if (!IsHoldingForCouple(candidate)) continue;
+		if (!IsHoldingForCouple(candidate) || !WaitCoupleSlotReady(candidate)) continue;
 		if (!IsTrainCouplingAllowed(v->owner, candidate->owner)) continue;
 		return candidate;
 	}
@@ -6046,6 +6078,13 @@ static void TryLongReserveChooseTrainTrack(Train *v, TileIndex tile, Trackdir td
 
 static void TryLongReserveChooseTrainTrackFromReservationEnd(Train *v, bool no_reserve_vehicle_tile)
 {
+	/* EndLoading leaves OT_LEAVESTATION until TrainLocoHandler resolves the
+	 * next order and checks the departure direction. Lookahead refreshes may
+	 * run in between; they must not extend the old forward reservation. Keep
+	 * existing body/braking protection, including while a moving train brakes
+	 * for reversal. ReverseTrainDirection reserves again after turning. */
+	if (v->cur_speed == 0 && (v->current_order.IsType(OT_LEAVESTATION) || v->flags.Test(VehicleRailFlag::Reversing))) return;
+
 	ClearLookAheadIfInvalid(v);
 
 	PBSTileInfo origin = FollowTrainReservation(v, nullptr, FollowTrainReservationFlag::OkayUnused);
@@ -6625,6 +6664,12 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 {
 	dbg_assert(consist->IsPrimaryVehicle());
 
+	/* Do not let a PBS retry decide the old direction before station
+	 * departure has resolved its next order, or while a stopped reversal is
+	 * pending. Do not mark it stuck: the normal departure/reversal handler
+	 * will retry from the correct front. Moving brake protection is unchanged. */
+	if (consist->cur_speed == 0 && (consist->current_order.IsType(OT_LEAVESTATION) || consist->flags.Test(VehicleRailFlag::Reversing))) return TPRRF_NONE;
+
 	ClearLookAheadIfInvalid(consist);
 
 	if (consist->lookahead != nullptr && consist->lookahead->flags.Test(TrainReservationLookAheadFlag::DepotEnd)) return TPRRF_RESERVATION_OK;
@@ -7053,6 +7098,17 @@ Train *GetDecoupleVehicleForCount(Train *v, uint num_decouple)
 	for (uint i = 1; i < num_decouple && ret->GetNextVehicle() != nullptr; i++) {
 		ret = ret->GetNextVehicle();
 	}
+	std::vector<const Train *> open_dual_heads;
+	for (const Train *part = head; part != ret; part = part->Next()) {
+		if (!part->IsMultiheaded() || part->other_multiheaded_part == nullptr) continue;
+		auto other = std::find(open_dual_heads.begin(), open_dual_heads.end(), part->other_multiheaded_part);
+		if (other == open_dual_heads.end()) {
+			open_dual_heads.push_back(part);
+		} else {
+			open_dual_heads.erase(other);
+		}
+	}
+	if (!open_dual_heads.empty()) return nullptr;
 	return ret;
 }
 
@@ -7418,7 +7474,8 @@ static bool AdoptDecoupleSchedule(Train *part, OrderListID schedule_id, StationI
 
 
 
-static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_ptr<OrderList> (&wait_orders)[2], uint32_t inbound_time)
+/** Assign each part's orders; return the parts requesting a post-arrival lateness reset. */
+static uint8_t SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_ptr<OrderList> (&wait_orders)[2], uint32_t inbound_time)
 {
 	/* The decouple marker has to sit behind the implicit index, which every
 	 * caller guarantees (see #TrainEnterStation). Re-check it instead of
@@ -7427,14 +7484,18 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_pt
 	const Order *decouple_marker = (v->orders != nullptr) ? v->orders->GetOrderAt(v->cur_implicit_order_index + 1) : nullptr;
 	if (decouple_marker == nullptr || !decouple_marker->IsType(OT_DECOUPLE)) {
 		Debug(desync, 1, "SplitOrders: veh={} has no decouple marker behind order {}", v->index, v->cur_implicit_order_index);
-		return;
+		return 0;
 	}
+	uint8_t reset_lateness = 0;
 	const Order after_decouple_flags = *decouple_marker;
 	const VehicleOrderID wait_index = v->cur_implicit_order_index + 2;
 	const BaseConsist order_state = *v;
 
 
 	if (v != u) {
+		/* Both parts start with the inbound offset; only a successful independent
+		 * schedule change below may request its post-arrival reset. */
+		u->lateness_counter = order_state.lateness_counter;
 		switch (after_decouple_flags.GetDecoupleSecondOrdersType()) {
 			case ODOF_LOAD_AND_WAIT:
 			case ODOF_KEEP_ORDERS:
@@ -7485,13 +7546,13 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_pt
 				if (!(load_trains & DECOUPLE_LOAD_SECOND)) u->IncrementImplicitOrderIndex();
 				break;
 			case ODOF_EXECUTE_SCHEDULE:
-				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID());
+				if (AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID()) && v != u && !after_decouple_flags.GetDecoupleKeepLateness(false)) reset_lateness |= DECOUPLE_LOAD_SECOND;
 				break;
 			case ODOF_LOAD_AND_SCHEDULE:
 				/* Load/unload at this station once, then run the schedule, skipping
 				 * the station order on all later passes. */
 				load_trains |= DECOUPLE_LOAD_SECOND;
-				AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID(), v->last_station_visited, &v->current_order);
+				if (AdoptDecoupleSchedule(u, after_decouple_flags.GetDecoupleSecondScheduleID(), v->last_station_visited, &v->current_order) && v != u && !after_decouple_flags.GetDecoupleKeepLateness(false)) reset_lateness |= DECOUPLE_LOAD_SECOND;
 				break;
 			default: NOT_REACHED();
 		}
@@ -7514,18 +7575,18 @@ static void SplitOrders(Train *v, Train *u, uint8_t &load_trains, std::unique_pt
 			v->IncrementImplicitOrderIndex();
 			break;
 		case ODOF_EXECUTE_SCHEDULE:
-			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID());
+			if (AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID()) && v != u && !after_decouple_flags.GetDecoupleKeepLateness(true)) reset_lateness |= DECOUPLE_LOAD_FIRST;
 			break;
 		case ODOF_LOAD_AND_SCHEDULE:
 			/* Load/unload at this station once, then run the schedule, skipping
 			 * the station order on all later passes. */
 			load_trains |= DECOUPLE_LOAD_FIRST;
-			AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID(), v->last_station_visited, &v->current_order);
+			if (AdoptDecoupleSchedule(v, after_decouple_flags.GetDecoupleFirstScheduleID(), v->last_station_visited, &v->current_order) && v != u && !after_decouple_flags.GetDecoupleKeepLateness(true)) reset_lateness |= DECOUPLE_LOAD_FIRST;
 			break;
 		default: NOT_REACHED();
 	}
 	ProcessOrders(v);
-
+	return reset_lateness;
 }
 
 /**
@@ -7999,9 +8060,18 @@ static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *movin
 	Train *carrier = rep->Primary();
 
 	if (!IsHoldingForCouple(carrier)) return CoupleCandidateResult::NotWaiting;
+	if (!WaitCoupleSlotReady(carrier)) return CoupleCandidateResult::NotWaiting;
 	if (carrier->vehstatus.Test(VehState::Crashed)) return CoupleCandidateResult::Crashed;
 	if (carrier->vehstatus.Test(VehState::Stopped)) return CoupleCandidateResult::Stopped;
 	if (!IsTrainCouplingAllowed(moving->owner, carrier->owner)) return CoupleCandidateResult::Owner;
+	const uint16_t companies = carrier->current_order.GetWaitCoupleCompanyMask();
+	if (companies != 0 && !HasBit(companies, moving->owner.base())) return CoupleCandidateResult::WaitingCompany;
+	const uint8_t traction = carrier->current_order.GetWaitCoupleTraction();
+	const Train *locomotive = moving->Primary();
+	if (traction != 0 && (!locomotive->IsEngine() ||
+			to_underlying(RailVehInfo(locomotive->engine_type)->engclass) + 1 != traction)) {
+		return CoupleCandidateResult::Traction;
+	}
 	/* Compare the consist capability, not temporary shunting, signal or track limits.
 	 * This read-only check is shared by checkpoint claims, routing and contact. */
 	const uint moving_speed = moving->Primary()->GetDisplayMaxSpeed();
@@ -8098,6 +8168,27 @@ static const Order *GetReadyPowerCoupleOrder(const Train *train, bool arriving_a
 	return nullptr;
 }
 
+/** A checkpoint claim can resume through ordinary intermediate waypoints.
+ * ProcessOrders does not permit automatic reversing for such an order change,
+ * so explicitly resolve the first post-checkpoint leg once. Do not consume the
+ * check while a saved pending reversal still has its completed checkpoint as
+ * the real order: ProcessOrders can restore it before advancing next tick. */
+static bool ShouldCheckCoupleCheckpointDirection(const Train *train)
+{
+	if (train->couple_target == VehicleID::Invalid() || train->reverse_distance != 0 ||
+			train->flags.Any({VehicleRailFlag::Reversing, VehicleRailFlag::CoupleDirectionChecked, VehicleRailFlag::JustDecoupled}) ||
+			(!train->current_order.IsType(OT_GOTO_WAYPOINT) && !train->current_order.IsType(OT_GOTO_STATION))) return false;
+	/* A blocked direction check must not consume this claim's one-shot retry. */
+	if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::EndOfLineOnly ||
+			train->GetMovingFront()->track == TRACK_BIT_DEPOT) return false;
+	const Order *couple = GetClaimCoupleOrder(train);
+	if (couple == nullptr || !couple->HasCoupleCheckPoint() ||
+			train->current_order.GetDestination().ToStationID() == couple->GetCoupleCheckPoint()) return false;
+	const uint interval = std::max<uint>(1, _settings_game.pf.path_backoff_interval);
+	if (train->cur_speed != 0 && _scaled_tick_counter % interval != train->index.base() % interval) return false;
+	return GetClaimedCoupleTarget(train) != nullptr;
+}
+
 /** Power arbitration is opt-in through either speed bound of this coupling order. */
 static bool HasCoupleSpeedCheck(const Order &order)
 {
@@ -8105,12 +8196,25 @@ static bool HasCoupleSpeedCheck(const Order &order)
 			order.GetCoupleSpeedComparator(0) != 0 || order.GetCoupleSpeedComparator(1) != 0;
 }
 
-/** Speed fit precedes power; equal gaps favour the locomotive that does not overspeed the wagons. */
+/** Speed fit precedes power; full power priority only applies to an exact speed match. */
 static auto GetCoupleClaimPriority(const Train *train, uint waiting_speed)
 {
 	const uint speed = train->GetDisplayMaxSpeed();
 	const uint gap = speed > waiting_speed ? speed - waiting_speed : waiting_speed - speed;
-	return std::make_tuple(gap, speed > waiting_speed, UINT32_MAX - train->gcache.cached_power);
+	return std::make_tuple(gap, speed > waiting_speed, gap == 0 ? UINT32_MAX - train->gcache.cached_power : 0u);
+}
+
+/** For slower wagons, slightly favour a lower-powered overspeed locomotive;
+ * underspeed locomotives retain their small high-power preference. Both are
+ * bounded below one tile, never an unconditional power rank. Integer arithmetic
+ * is deterministic; native path costs and reservations are unchanged. */
+static int64_t GetCoupleClaimRouteScore(const Train *train, uint32_t cost, uint waiting_speed)
+{
+	const uint speed = train->GetDisplayMaxSpeed();
+	if (speed == waiting_speed) return cost;
+	const uint64_t power = train->gcache.cached_power;
+	const uint power_weight = power * YAPF_TILE_LENGTH / (power + 5000);
+	return speed > waiting_speed ? int64_t(cost) + power_weight : int64_t(cost) - power_weight;
 }
 
 /** Resolve ready competitors without changing their orders, claims or reservations. */
@@ -8165,7 +8269,9 @@ static Train *SelectPowerCoupleClaimant(Train *moving, Train *carrier, Train *&c
 		uint32_t cost = 0;
 		/* Explicit criteria avoid temporarily changing a checkpoint's active order. */
 		if (YapfTrainCoupleTrack(other, true, &end, &cost, candidate.criteria, carrier, MAX_QUERY_NODES) == INVALID_TRACK || end == nullptr) continue;
-		if (candidate.priority == best_priority && std::tie(cost, other->index) >= std::tie(claim_cost, best->index)) continue;
+		if (candidate.priority == best_priority &&
+				std::make_tuple(GetCoupleClaimRouteScore(other, cost, waiting_speed), cost, other->index) >=
+				std::make_tuple(GetCoupleClaimRouteScore(best, claim_cost, waiting_speed), claim_cost, best->index)) continue;
 		best = other;
 		best_priority = candidate.priority;
 		contact = end;
@@ -8177,12 +8283,16 @@ static Train *SelectPowerCoupleClaimant(Train *moving, Train *carrier, Train *&c
 }
 
 /** Bounded soft preference, in tiles: matching speed never makes another valid partner ineligible. */
-uint GetCoupleSpeedPreferencePenalty(const Train *moving, const Train *waiting)
+uint GetCoupleSpeedPreferencePenalty(const Train *moving, const Train *waiting, const Order *criteria)
 {
 	const uint a = moving->Primary()->GetDisplayMaxSpeed();
 	const uint b = waiting->Primary()->GetDisplayMaxSpeed();
 	const uint gap = a > b ? a - b : b - a;
-	return std::min<uint>((gap + 3) / 4, 24);
+	const uint penalty = std::min<uint>((gap + 3) / 4, 24);
+	/* Only enabled speed checks reduce distance's relative influence (4/5).
+	 * Integer scoring stays deterministic and bounded at 30 tiles. Preserve
+	 * the previous disabled-order score and the ordinary route-cost metric. */
+	return HasCoupleSpeedCheck(criteria != nullptr ? *criteria : moving->current_order) ? (penalty * 5 + 3) / 4 : penalty;
 }
 
 /** Select a checkpoint partner deterministically, avoiding expensive checks for worse candidates. */
@@ -8192,7 +8302,7 @@ Train *FindBestCoupleCheckpointTarget(Train *moving, const Order &couple)
 	std::tuple<uint64_t, uint, uint32_t, uint32_t> best_key{};
 	for (Train *candidate : Train::Iterate()) {
 		if (!candidate->IsPrimaryVehicle() || candidate->Primary() == moving->Primary() || candidate->vehstatus.Test(VehState::Crashed)) continue;
-		const uint penalty = GetCoupleSpeedPreferencePenalty(moving, candidate);
+		const uint penalty = GetCoupleSpeedPreferencePenalty(moving, candidate, &couple);
 		for (Train *end : {candidate->First(), candidate->First()->Last()}) {
 			const uint distance = DistanceManhattan(end->tile, moving->tile);
 			const auto key = std::make_tuple(uint64_t(distance) + penalty, penalty, candidate->index.base(), end->index.base());
@@ -8348,7 +8458,7 @@ static void TrialReverseChainOrder(Train *head)
 		t->direction = ReverseDir(t->direction);
 		t->vehicle_flags.Reset(VehicleFlag::DrivingBackwards);
 		/* The guard restores the same Flipped changes as the real reversal. */
-		if (ShouldFlipTrainForCouple(t)) t->flags.Flip(VehicleRailFlag::Flipped);
+		if (t->PreserveFacingOnCoupleReverse()) t->flags.Flip(VehicleRailFlag::Flipped);
 	}
 	std::reverse(order.begin(), order.end());
 	for (size_t i = 0; i < order.size(); i++) {
@@ -8906,6 +9016,9 @@ static void Couple(Train *v, Train *u)
 	 * own primary. If the slot is still registered under u at that point, the
 	 * release is a no-op and the merged consist would keep holding a slot that
 	 * it already gave back. */
+	const TraceRestrictSlotID auto_return_slot = u->wait_couple_acquired_slot;
+	const auto *auto_return = TraceRestrictSlot::GetIfValid(auto_return_slot);
+	const bool approach_already_holds_slot = auto_return != nullptr && auto_return->IsOccupant(v->index);
 	const bool transferred_slots = u->vehicle_flags.Test(VehicleFlag::HaveSlot);
 	if (transferred_slots) {
 		TraceRestrictTransferVehicleOccupantInAllSlots(u->index, v->index);
@@ -8953,6 +9066,13 @@ static void Couple(Train *v, Train *u)
 		return;
 	}
 
+	/* Chain merge succeeded. Release only the acquired waiting membership;
+	 * a slot already held independently by the approaching train survives. */
+	if (auto *slot = TraceRestrictSlot::GetIfValid(auto_return_slot)) {
+		slot->Vacate(u);
+		if (!approach_already_holds_slot) slot->Vacate(v);
+	}
+	u->wait_couple_acquired_slot = TraceRestrictSlotID::Invalid();
 
 	/* The absorbed consist's primary pointers must follow the surviving
 	 * primary, otherwise vehicles of the absorbed part resolve their consist
@@ -9197,6 +9317,24 @@ static void TrainEnterStation(Train *consist, StationID station)
 	 * primary-hosted consist information; the caller only passes the physical
 	 * chain head because that is what movement code has at hand. */
 	consist = consist->Primary();
+	/* A loaded game can still have an active station transaction after the
+	 * active order reverted to the station approach. Resume that transaction
+	 * before any split or timetable work can book the same arrival twice. */
+	if (consist->cargo_payment != nullptr &&
+			((consist->current_order.IsType(OT_LOADING) && consist->last_station_visited == station) ||
+			 (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetDestination() == station))) {
+		auto &queue = Station::Get(station)->loading_vehicles;
+		if (std::find(queue.begin(), queue.end(), consist) == queue.end()) {
+			consist->RemoveFromLoadingQueues();
+			queue.push_back(consist);
+		}
+		consist->last_station_visited = station;
+		consist->current_order.MakeLoading(true);
+		consist->current_order.SetNonStopType(ONSF_NO_STOP_AT_ANY_STATION);
+		consist->cur_speed = 0;
+		SetWindowDirty(WindowClass::VehicleView, consist->index);
+		return;
+	}
 	if (consist->current_order.IsType(OT_GOTO_WAYPOINT) && TrainShouldWaitForCoupleAtCheckpoint(consist, nullptr, station)) {
 		consist->cur_speed = 0;
 		consist->subspeed = 0;
@@ -9229,43 +9367,29 @@ static void TrainEnterStation(Train *consist, StationID station)
 
 	Train *u = nullptr;
 	uint8_t load_trains = DECOUPLE_NO_LOAD;
-	/* The decouple handling below unconditionally reads the order after the current one and
-	 * expects it to be the OT_DECOUPLE marker (see #PrepareDecoupleWaitOrders and #SplitOrders).
-	 * A schedule edited around a depot detour can leave the implicit index on the last order,
-	 * with nothing following it: treat such a misaligned arrival as a plain stop instead of
-	 * walking off the end of the order list. */
-	const Order *after_current = (consist->orders != nullptr) ? consist->orders->GetOrderAt(consist->cur_implicit_order_index + 1) : nullptr;
-	bool want_decouple = after_current != nullptr && after_current->IsType(OT_DECOUPLE) &&
-			consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE;
-	if (want_decouple) {
-		/* Stopping at a via station leaves an OT_IMPLICIT marker at the implicit index (see the
-		 * implicit-order handling in #HandleLoading), so that index can point at the marker while
-		 * the order actually being run sits one place further along. Every step of the decouple
-		 * below assumes the implicit index is on a real order, as it is after a plain stop:
-		 * #PrepareDecoupleWaitOrders and #SplitOrders read the OT_DECOUPLE that follows it, the
-		 * wait orders are inserted relative to it, and the ODOF_WAIT_FOR_COUPLE branch steps past
-		 * the decouple with IncrementImplicitOrderIndex - which, from a marker, only re-syncs the
-		 * two indices and leaves the consist on the station order it was just at. Line the
-		 * implicit index up with the real one, which is never itself implicit (see
-		 * #UpdateRealOrderIndex), so all of that behaves as it does on a plain stop. */
-		const Order *implicit_order = consist->GetOrder(consist->cur_implicit_order_index);
-		if (implicit_order != nullptr && implicit_order->IsType(OT_IMPLICIT) &&
-				consist->cur_implicit_order_index != consist->cur_real_order_index) {
-			consist->cur_implicit_order_index = consist->cur_real_order_index;
-			consist->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+	uint8_t reset_lateness = 0;
+	const OrderListID arrival_order_list = consist->orders != nullptr ? consist->orders->index : OrderListID::Invalid();
+	bool arrival_booked = false;
+	bool first_keeps_arrival = false;
+	bool second_keeps_arrival = false;
+	/* The real order identifies the scheduled stop. An implicit order can still
+	 * occupy the other index after an intermediate stop. Resolve the marker
+	 * from the real order before aligning the indices for the split helpers. */
+	const Order *station_order = consist->GetOrder(consist->cur_real_order_index);
+	const Order *decouple_flags_order = nullptr;
+	if (consist->current_order.GetDestination() == station && consist->current_order.GetDecouple() == ODF_DECOUPLE &&
+			station_order != nullptr && station_order->IsType(OT_GOTO_STATION) &&
+			station_order->GetDestination() == station && station_order->GetDecouple() == ODF_DECOUPLE) {
+		const Order *marker = consist->GetOrder(consist->cur_real_order_index + 1);
+		if (marker != nullptr && marker->IsType(OT_DECOUPLE)) {
+			decouple_flags_order = marker;
+			if (consist->cur_implicit_order_index != consist->cur_real_order_index) {
+				consist->cur_implicit_order_index = consist->cur_real_order_index;
+				consist->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+			}
 		}
 	}
-	/* The decouple marker must sit right behind the (possibly just realigned)
-	 * implicit index: every step below reads it relative to that index, and the
-	 * realignment can move the index onto an order whose successor is not a
-	 * marker (or has none). Re-check it and treat the arrival as a plain stop
-	 * when there is no marker, instead of letting the decouple read a stale
-	 * position. */
-	const Order *decouple_flags_order = (want_decouple && consist->orders != nullptr) ? consist->orders->GetOrderAt(consist->cur_implicit_order_index + 1) : nullptr;
-	if (decouple_flags_order == nullptr || !decouple_flags_order->IsType(OT_DECOUPLE)) {
-		want_decouple = false;
-		decouple_flags_order = nullptr;
-	}
+	const bool want_decouple = decouple_flags_order != nullptr;
 	/* Which parts may leave the station in the same direction as the other
 	 * part. For such a part the JustDecoupled flag below is withheld, so the
 	 * normal departure reverse check can turn it back around once its natural
@@ -9301,12 +9425,15 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * and books the same leg through the regular arrival path, and a
 		 * pre-booking would let it re-book a near-zero value instead. */
 		const OrderDecoupleOrdersFlags first_orders_type = decouple_flags_order->GetDecoupleFirstOrdersType();
+		first_keeps_arrival = first_orders_type == ODOF_KEEP_ORDERS;
+		second_keeps_arrival = decouple_flags_order->GetDecoupleSecondOrdersType() == ODOF_KEEP_ORDERS;
 		const bool first_part_loads = first_orders_type == ODOF_LOAD_AND_WAIT || first_orders_type == ODOF_KEEP_ORDERS || first_orders_type == ODOF_LOAD_AND_SCHEDULE;
 		if (!first_part_loads) {
 			/* A via-station stop leaves the timetable index invalid after the
 			 * realignment above; the leg belongs to the real current order. */
 			if (consist->cur_timetable_order_index == INVALID_VEH_ORDER_ID) consist->cur_timetable_order_index = consist->cur_real_order_index;
 			UpdateVehicleTimetable(consist, true);
+			arrival_booked = true;
 		}
 		/* When the front part does not load here, nobody runs the loading flow
 		 * on this (original) order list: rear parts that load get their own
@@ -9378,7 +9505,7 @@ static void TrainEnterStation(Train *consist, StationID station)
 				u = u->Primary();
 			}
 		}
-		SplitOrders(consist, u, load_trains, wait_orders, decouple_inbound_time);
+		reset_lateness = SplitOrders(consist, u, load_trains, wait_orders, decouple_inbound_time);
 		/* The split can leave either part's carrier pointer on a vehicle that is
 		 * no longer that part's primary, and both the FreeTrainTrackReservation()
 		 * calls below and every use of current_order assume the primary. Re-anchor
@@ -9460,12 +9587,40 @@ static void TrainEnterStation(Train *consist, StationID station)
 	if (load_trains & DECOUPLE_LOAD_FIRST) {
 		consist->force_proceed = TFP_NONE;
 		InvalidateWindowData(WindowClass::VehicleView, consist->index);
-		consist->BeginLoading();
+		consist->BeginLoading(first_keeps_arrival && arrival_booked && consist->orders != nullptr && consist->orders->index == arrival_order_list);
+		if (first_keeps_arrival && consist->orders != nullptr && consist->orders->index == arrival_order_list) {
+			arrival_booked = true;
+			/* Both parts may keep this shared list. The rear part was copied
+			 * before the front began loading, so carry over the one booked
+			 * arrival rather than consuming the next dispatch slot for it. */
+			if (second_keeps_arrival && u != nullptr && u != consist && u->orders == consist->orders && (load_trains & DECOUPLE_LOAD_SECOND)) {
+				u->lateness_counter = consist->lateness_counter;
+				u->timetable_start = consist->timetable_start;
+				u->dispatch_records = consist->dispatch_records;
+				u->cur_timetable_order_index = consist->cur_timetable_order_index;
+				u->vehicle_flags.Set(VehicleFlag::TimetableStarted, consist->vehicle_flags.Test(VehicleFlag::TimetableStarted));
+			}
+		}
 	}
 	if (u != nullptr && u != consist && (load_trains & DECOUPLE_LOAD_SECOND)) {
 		u->force_proceed = TFP_NONE;
 		InvalidateWindowData(WindowClass::VehicleView, u->index);
-		u->BeginLoading();
+		u->BeginLoading(second_keeps_arrival && arrival_booked && u->orders != nullptr && u->orders->index == arrival_order_list);
+	}
+
+	/* BeginLoading has now booked the inbound leg (including the one-off load
+	 * wrapper). Reset each part that adopted a new list unless it opted to keep the offset;
+	 * keep dwell timers, dispatch slots and the continuing part's timing intact. */
+	for (auto [part, bit] : {std::pair{consist, DECOUPLE_LOAD_FIRST}, std::pair{u, DECOUPLE_LOAD_SECOND}}) {
+		if ((reset_lateness & bit) == 0) continue;
+		/* A dispatch-controlled stop uses the offset to enforce its selected
+		 * departure slot, not merely historical early running. Keep that clock. */
+		const Order *stop = part->GetOrder(part->cur_implicit_order_index);
+		if (part->current_order.IsAnyLoadingType() && part->vehicle_flags.Test(VehicleFlag::ScheduledDispatch) &&
+				stop != nullptr && stop->IsScheduledDispatchOrder(true)) continue;
+		part->lateness_counter = 0;
+		part->ResetDepotUnbunching();
+		SetWindowDirty(WindowClass::VehicleTimetable, part->index);
 	}
 
 	if (service_number_split) {
@@ -11342,6 +11497,9 @@ Money Train::CalculateCurrentOverallValue() const
  */
 static bool TrainLocoHandler(Train *consist, bool mode)
 {
+	if (consist->wait_couple_acquired_slot != TraceRestrictSlotID::Invalid() &&
+			(consist->current_order.GetWaitCoupleSlot() != consist->wait_couple_acquired_slot || consist->vehstatus.Test(VehState::Crashed))) UpdateWaitCoupleSlot(consist);
+
 	if (consist->couple_target != VehicleID::Invalid() && GetClaimCoupleOrder(consist) == nullptr) CancelTrainCoupleCheckpoint(consist);
 	/* Also recover saves made after requesting a depot trip while held at a checkpoint. */
 	if (consist->current_order.IsType(OT_GOTO_DEPOT) && !consist->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders)) {
@@ -11402,10 +11560,12 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	 * may gate this bypass). */
 	if (consist->cur_speed == 0 && (consist->current_order.IsType(OT_GOTO_STATION) || (consist->current_order.IsType(OT_WAIT_COUPLE) && consist->current_order.HasWaitCoupleStation() && consist->last_station_visited != consist->current_order.GetWaitCoupleStation()))
 			&& !(consist->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)
-			&& IsRailStationTile(consist->tile)) {
-		StationID station = GetStationIndex(consist->tile);
-		if (consist->current_order.GetDestination().ToStationID() == station && TrainFitStation(consist)) {
+			&& IsRailStationTile(consist->First()->tile)) {
+		StationID station = GetStationIndex(consist->First()->tile);
+		if (consist->current_order.GetDestination().ToStationID() == station && TrainFitStation(consist->First())) {
 			TrainEnterStation(consist, station);
+			/* Arrival can split the consist and change its primary. */
+			return true;
 		}
 	}
 	if (consist->cur_speed == 0 && consist->current_order.IsType(OT_GOTO_WAYPOINT) && IsRailWaypointTile(consist->GetMovingFront()->tile) &&
@@ -11426,7 +11586,10 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	}
 	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL) && !consist->current_order.IsExecuteScheduleOrder();
 	const bool check_direction = ProcessOrders(consist);
-	const bool reverse_for_order = check_direction && CheckReverseTrain(consist);
+	UpdateWaitCoupleSlot(consist);
+	const bool checkpoint_direction = ShouldCheckCoupleCheckpointDirection(consist);
+	const bool reverse_for_order = (check_direction || checkpoint_direction) && CheckReverseTrain(consist);
+	if (checkpoint_direction) consist->flags.Set(VehicleRailFlag::CoupleDirectionChecked);
 	if (check_direction && consist->cur_speed != 0 && consist->current_order.IsType(OT_GOTO_COUPLE) && GetClaimedCoupleTarget(consist) != nullptr) {
 		/* Persist the completed check with the claim. Repeated moving searches
 		 * can change their answer while braking across a turnout. A new claim
@@ -11434,7 +11597,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		consist->flags.Set(VehicleRailFlag::CoupleDirectionChecked);
 	}
 	if (reverse_for_order) {
-		if (consist->current_order.IsType(OT_GOTO_COUPLE) && consist->cur_speed != 0) {
+		if ((consist->current_order.IsType(OT_GOTO_COUPLE) || checkpoint_direction) && consist->cur_speed != 0) {
 			/* A newly available partner can be behind an already moving train.
 			 * Use native reverse braking, retaining its reservation until the normal
 			 * stopped turnaround; do not teleport a moving train to speed zero. */
@@ -11541,6 +11704,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		}
 		/* Keep only the body tiles reserved, so the partner can reserve a
 		 * path up to the contact point like for any other order. */
+		UpdateWaitCoupleSlot(consist);
 		HoldWaitingTrainBody(consist);
 		return true;
 	}
@@ -11578,7 +11742,11 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	}
 
 	/* Handle stuck trains. */
-	if (!mode && consist->flags.Test(VehicleRailFlag::Stuck)) {
+	/* Resolve station departure before the stuck-path retry: its destination
+	 * and reversal decision are still pending. Retrying the old direction here
+	 * used to reserve ahead; merely rejecting that retry would instead keep a
+	 * previously stuck train from ever reaching the departure handler below. */
+	if (!mode && consist->flags.Test(VehicleRailFlag::Stuck) && !consist->current_order.IsType(OT_LEAVESTATION)) {
 		++consist->wait_counter;
 
 		/* Should we try reversing this tick if still stuck? */
@@ -11779,7 +11947,7 @@ bool Train::Tick()
 	if (!TrainLocoHandler(prim, false)) return false;
 
 	/* We might change chain order during coupling or reversing */
-	if (!this->Primary()->IsPrimaryVehicle()) return true;
+	if (this->Primary() != prim || !prim->IsPrimaryVehicle()) return true;
 
 	return TrainLocoHandler(prim, true);
 }

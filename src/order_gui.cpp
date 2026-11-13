@@ -1001,6 +1001,7 @@ public:
 		}
 
 		switch (widget) {
+
 			/* A dropdown widget has to open its list itself. */
 			case WID_RVT_LOAD_STATE:
 				ShowDropDownList(this, this->BuildLoadStateList(), -1, WID_RVT_LOAD_STATE, 0);
@@ -1279,6 +1280,8 @@ static StringID GetCoupleCandidateResultString(CoupleCandidateResult result)
 		case CoupleCandidateResult::Slot:        return STR_COUPLE_DIAGNOSTIC_SLOT;
 		case CoupleCandidateResult::SlotGroup:   return STR_COUPLE_DIAGNOSTIC_SLOT_GROUP;
 		case CoupleCandidateResult::Group:       return STR_COUPLE_DIAGNOSTIC_GROUP;
+		case CoupleCandidateResult::WaitingCompany: return STR_WAIT_COUPLE_COMPANY_MISMATCH;
+		case CoupleCandidateResult::Traction: return STR_WAIT_COUPLE_TRACTION_MISMATCH;
 		case CoupleCandidateResult::ServiceNumber: return STR_COUPLE_DIAGNOSTIC_SERVICE_NUMBER;
 		case CoupleCandidateResult::Station:     return STR_COUPLE_DIAGNOSTIC_STATION;
 		case CoupleCandidateResult::Platform:    return STR_COUPLE_DIAGNOSTIC_PLATFORM;
@@ -2147,6 +2150,7 @@ enum OrderDropDownID {
 	ODDI_WAIT_FOR_COUPLE,
 	ODDI_GO_TO_COUPLE,
 	ODDI_DECOUPLE_SAME_DIR,
+	ODDI_DECOUPLE_KEEP_LATENESS,
 };
 
 static const StringID _order_decouple_orders_drowdown[] = {
@@ -3219,6 +3223,18 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 
 		case OT_WAIT_COUPLE:
 			AppendStringInPlace(line, STR_ORDER_WAIT_FOR_COUPLE);
+			if (TraceRestrictSlot::IsValidID(order->GetWaitCoupleSlot())) AppendStringInPlace(line, STR_WAIT_COUPLE_SLOT_SUFFIX, order->GetWaitCoupleSlot().base());
+			if (const uint16_t companies = order->GetWaitCoupleCompanyMask(); companies != 0) {
+				for (uint8_t company = 0; company < MAX_COMPANIES; ++company) {
+					if (!HasBit(companies, company)) continue;
+					const CompanyID id{company};
+					if (Company::IsValidID(id)) AppendStringInPlace(line, STR_WAIT_COUPLE_COMPANY_SUFFIX, id);
+					else AppendStringInPlace(line, STR_WAIT_COUPLE_COMPANY_MISSING);
+				}
+			}
+			if (order->GetWaitCoupleTraction() != 0) {
+				AppendStringInPlace(line, STR_WAIT_COUPLE_TRACTION_SUFFIX, STR_WAIT_COUPLE_TRACTION_ANY + order->GetWaitCoupleTraction());
+			}
 			if (order->HasWaitCoupleStation() && Station::IsValidID(order->GetWaitCoupleStation())) AppendStringInPlace(line, STR_ORDER_WAIT_COUPLE_AT, order->GetWaitCoupleStation());
 			break;
 
@@ -3245,6 +3261,8 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			/* Each split part can independently keep the original direction. */
 			if (order->GetDecoupleFirstSameDirExit()) AppendStringInPlace(line, STR_ORDER_DECOUPLE_SAME_DIR_FIRST);
 			if (order->GetDecoupleSecondSameDirExit()) AppendStringInPlace(line, STR_ORDER_DECOUPLE_SAME_DIR_SECOND);
+			if (order->GetDecoupleKeepLateness(true)) AppendStringInPlace(line, STR_ORDER_DECOUPLE_KEEP_LATENESS_FIRST);
+			if (order->GetDecoupleKeepLateness(false)) AppendStringInPlace(line, STR_ORDER_DECOUPLE_KEEP_LATENESS_SECOND);
 			break;
 		}
 
@@ -4702,6 +4720,10 @@ public:
 				return;
 			}
 			this->UpdateButtonState();
+			if (this->GetWidget<NWidgetCore>(WID_O_WAIT_COUPLE_COMPANY) != nullptr && this->IsWidgetLowered(WID_O_WAIT_COUPLE_COMPANY)) {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order != nullptr && order->IsType(OT_WAIT_COUPLE)) ReplaceDropDownList(this, this->BuildWaitCoupleCompanyList(*order), -1);
+			}
 			InvalidateWindowClassesData(WindowClass::VehicleCargoTypeLoadOrders, 0);
 			InvalidateWindowClassesData(WindowClass::VehicleCargoTypeUnloadOrders, 0);
 		}
@@ -5442,6 +5464,11 @@ public:
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		switch (widget) {
+			case WID_O_WAIT_COUPLE_SLOT: {
+				const auto *order = OrderAt(this->OrderGetSel());
+				const auto slot = order == nullptr ? TraceRestrictSlotID::Invalid() : order->GetWaitCoupleSlot();
+				return TraceRestrictSlot::IsValidID(slot) ? GetString(STR_WAIT_COUPLE_SLOT_BUTTON, slot.base()) : GetString(STR_WAIT_COUPLE_SLOT_NONE);
+			}
 			case WID_O_COND_VALUE: {
 				VehicleOrderID sel = this->OrderGetSel();
 				const Order *order = OrderAt(sel);
@@ -6505,6 +6532,39 @@ public:
 				this->ShowWaitCoupleDiagnostics();
 				break;
 
+			case WID_O_WAIT_COUPLE_SLOT: {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order == nullptr || !order->IsType(OT_WAIT_COUPLE)) break;
+				const auto selected = order->GetWaitCoupleSlot();
+				DropDownList list;
+				list.push_back(MakeDropDownListStringItem(STR_WAIT_COUPLE_SLOT_NONE, INVALID_TRACE_RESTRICT_SLOT_ID.base()));
+				int slot_selected = selected.base();
+				auto slots = GetSlotDropDownList(this->TargetOwner(), selected, slot_selected, this->RefType(), false);
+				std::erase_if(slots, [](const auto &item) { return item->result == NEW_TRACE_RESTRICT_SLOT_ID.base(); });
+				list.insert(list.end(), std::make_move_iterator(slots.begin()), std::make_move_iterator(slots.end()));
+				ShowDropDownList(this, std::move(list), selected.base(), widget, 0, {DropDownOption::Filterable, DropDownOption::ClickOnly}, DDSF_SHARED);
+				break;
+			}
+
+			case WID_O_WAIT_COUPLE_COMPANY: {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order == nullptr || !order->IsType(OT_WAIT_COUPLE)) break;
+				ShowDropDownList(this, this->BuildWaitCoupleCompanyList(*order), -1, widget, 0, {DropDownOption::Persist, DropDownOption::ClickOnly});
+				break;
+			}
+
+			case WID_O_WAIT_COUPLE_TRACTION: {
+				static constexpr StringID choices[] = {
+					STR_WAIT_COUPLE_TRACTION_ANY, STR_WAIT_COUPLE_TRACTION_STEAM,
+					STR_WAIT_COUPLE_TRACTION_DIESEL, STR_WAIT_COUPLE_TRACTION_ELECTRIC,
+				};
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order != nullptr && order->IsType(OT_WAIT_COUPLE)) {
+					ShowDropDownMenu(this, choices, order->GetWaitCoupleTraction(), widget, 0, 0);
+				}
+				break;
+			}
+
 			case WID_O_WAIT_COUPLE_STATION: {
 				const Order *sel_order = OrderAt(this->OrderGetSel());
 				if (this->goto_type != OPOS_NONE) {
@@ -6563,6 +6623,7 @@ public:
 					bool checked = first ? order->GetDecoupleFirstSameDirExit() : order->GetDecoupleSecondSameDirExit();
 					list.push_back(MakeDropDownListDividerItem());
 					list.push_back(MakeDropDownListCheckedItem(checked, STR_ORDER_DECOUPLE_SAME_DIR_EXIT, ODDI_DECOUPLE_SAME_DIR, false));
+					list.push_back(MakeDropDownListCheckedItem(order->GetDecoupleKeepLateness(first), STR_ORDER_DECOUPLE_KEEP_LATENESS, ODDI_DECOUPLE_KEEP_LATENESS, false));
 				}
 				ShowDropDownList(this, std::move(list), selected, widget);
 				break;
@@ -6702,9 +6763,32 @@ public:
 		}
 	}
 
+	DropDownList BuildWaitCoupleCompanyList(const Order &order) const
+	{
+		DropDownList list;
+		const uint16_t mask = order.GetWaitCoupleCompanyMask();
+		list.push_back(MakeDropDownListCheckedItem(mask == 0, STR_WAIT_COUPLE_TRACTION_ANY, CompanyID::Invalid().base()));
+		for (const Company *company : Company::Iterate()) {
+			list.push_back(MakeDropDownListCheckedItem(HasBit(mask, company->index.base()), GetString(STR_COMPANY_NAME, company->index), company->index.base()));
+		}
+		return list;
+	}
+
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		switch (widget) {
+			case WID_O_WAIT_COUPLE_SLOT:
+				this->ModifyOrder(this->OrderGetSel(), MOF_WAIT_COUPLE_SLOT, index);
+				break;
+
+			case WID_O_WAIT_COUPLE_COMPANY:
+				this->ModifyOrder(this->OrderGetSel(), MOF_WAIT_COUPLE_COMPANY, index == CompanyID::Invalid().base() ? 0 : 0x8000 + index);
+				break;
+
+			case WID_O_WAIT_COUPLE_TRACTION:
+				this->ModifyOrder(this->OrderGetSel(), MOF_WAIT_COUPLE_TRACTION, index);
+				break;
+
 			case WID_O_NON_STOP:
 				this->OrderClick_Nonstop(index);
 				break;
@@ -6770,6 +6854,11 @@ public:
 				break;
 
 			case WID_O_ORDERS_FIRST:
+				if (index == ODDI_DECOUPLE_KEEP_LATENESS) {
+					const Order *o = OrderAt(this->OrderGetSel());
+					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_FIRST_KEEP_LATENESS, o->GetDecoupleKeepLateness(true) ? 0 : 1);
+					break;
+				}
 				if (index == ODDI_DECOUPLE_SAME_DIR) {
 					const Order *o = OrderAt(this->OrderGetSel());
 					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_FIRST_SAME_DIR, o->GetDecoupleFirstSameDirExit() ? 0 : 1);
@@ -6779,6 +6868,11 @@ public:
 				break;
 
 			case WID_O_ORDERS_SECOND:
+				if (index == ODDI_DECOUPLE_KEEP_LATENESS) {
+					const Order *o = OrderAt(this->OrderGetSel());
+					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_SECOND_KEEP_LATENESS, o->GetDecoupleKeepLateness(false) ? 0 : 1);
+					break;
+				}
 				if (index == ODDI_DECOUPLE_SAME_DIR) {
 					const Order *o = OrderAt(this->OrderGetSel());
 					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_SECOND_SAME_DIR, o->GetDecoupleSecondSameDirExit() ? 0 : 1);
@@ -7762,7 +7856,11 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 				EndContainer(),
 			EndContainer(),
 			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
-				NWidget(WWT_PANEL, Colours::Grey), SetResize(1, 0), EndContainer(),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_WAIT_COUPLE_SLOT), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_WAIT_COUPLE_SLOT_NONE, STR_WAIT_COUPLE_SLOT_TOOLTIP),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_WAIT_COUPLE_COMPANY), SetFill(1, 0),
+					SetStringTip(STR_WAIT_COUPLE_COMPANY_BUTTON, STR_WAIT_COUPLE_COMPANY_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_WAIT_COUPLE_TRACTION), SetFill(1, 0),
+					SetStringTip(STR_WAIT_COUPLE_TRACTION_BUTTON, STR_WAIT_COUPLE_TRACTION_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_WAIT_COUPLE_DIAGNOSTICS), SetMinimalSize(124, 12), SetFill(1, 0),
 														SetStringTip(STR_COUPLE_DIAGNOSTIC_BUTTON, STR_WAIT_COUPLE_DIAGNOSTIC_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_WAIT_COUPLE_STATION), SetMinimalSize(124, 12), SetFill(1, 0),
@@ -8053,6 +8151,7 @@ static WindowDesc _orderlist_other_desc(__FILE__, __LINE__,
 
 void ShowOrdersWindow(const Vehicle *v)
 {
+	if (v->type == VehicleType::Train) v = v->Primary();
 	CloseWindowById(WindowClass::VehicleDetails, v->index, false);
 	CloseWindowById(WindowClass::VehicleTimetable, v->index, false);
 	if (BringWindowToFrontById(WindowClass::VehicleOrders, v->index) != nullptr) return;

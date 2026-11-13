@@ -53,6 +53,13 @@ void ConnectMultiheadedTrains()
 	for (Train *v : Train::Iterate()) {
 		v->other_multiheaded_part = nullptr;
 	}
+	/* Our v2 named refs already identify both halves. Do not let the legacy
+	 * matching pass change roles or sprites before those exact refs load. */
+	if (_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN] == 2) {
+		for (const Train *v : Train::Iterate()) {
+			if (v->saved_train_unit_main != VehicleID::Invalid()) return;
+		}
+	}
 
 	/* v4 encodes the rear half's exact front main. Do not guess a partner (or
 	 * change subtype/sprite) before chain pointers and these refs are restored. */
@@ -166,6 +173,14 @@ void ConnectMultiheadedTrains()
 void RebuildTrainUnitMains()
 {
 	const uint16_t version = _sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN];
+	/* Local v2 saves used a separate named 32-bit field. Upstream v2 stores
+	 * orientation markers instead, so never reinterpret one format as the other. */
+	bool local_exact_refs = false;
+	if (version == 2) {
+		for (const Train *u : Train::Iterate()) {
+			local_exact_refs |= u->saved_train_unit_main != VehicleID::Invalid();
+		}
+	}
 	SlTrainUnitMainLegacyEncoding encoding = SlGetTrainUnitMainLegacyEncoding();
 	if (version == 3 && encoding == SlTrainUnitMainLegacyEncoding::Unknown) {
 		/* The writer chose one encoding for the whole save, not per consist. */
@@ -226,7 +241,51 @@ void RebuildTrainUnitMains()
 			if (!u->IsArticulatedPart()) bases.push_back(u);
 		}
 
+		if (local_exact_refs) {
+			for (Train *u : chain) u->other_multiheaded_part = nullptr;
+			for (Train *u : chain) {
+				Train *main = Train::GetIfValid(u->saved_train_unit_main);
+				if (main == nullptr || main->First() != head || main->IsArticulatedPart()) continue;
+				if (main != u && !u->IsArticulatedPart()) {
+					if (!u->IsMultiheaded() || u->IsEngine() || !main->IsMultiheaded() || !main->IsEngine() ||
+						u->engine_type != main->engine_type || main->other_multiheaded_part != nullptr) continue;
+					u->other_multiheaded_part = main;
+					main->other_multiheaded_part = u;
+				}
+				/* Make the recovered base explicit for the next v4 save. */
+				main->SetUnitMain(main);
+				u->SetUnitMain(main);
+			}
+			continue;
+		}
+
 		if (version >= 4) {
+			/* Some older live consists saved a missing wagon base and assigned
+			 * its adjacent articulated run to the next, different engine. Recover
+			 * only a uniform run with exactly one adjacent matching null base and
+			 * demonstrably incompatible saved refs. Ambiguous/different corruption
+			 * still reaches the strict reference/contiguity checks below. */
+			for (size_t i = 0; i < chain.size();) {
+				if (!chain[i]->IsArticulatedPart()) { ++i; continue; }
+				const size_t begin = i;
+				while (i < chain.size() && chain[i]->IsArticulatedPart()) ++i;
+				Train *candidate = nullptr;
+				uint candidates = 0;
+				for (Train *base : {begin == 0 ? nullptr : chain[begin - 1], i == chain.size() ? nullptr : chain[i]}) {
+					if (base != nullptr && !base->IsMultiheaded() && base->GetSavedUnitMainID() == 0 && base->engine_type == chain[begin]->engine_type) { candidate = base; ++candidates; }
+				}
+				if (candidates != 1) continue;
+				bool incompatible = true;
+				for (size_t j = begin; j < i; ++j) {
+					const uint32_t encoded = chain[j]->GetSavedUnitMainID();
+					const Train *wrong = encoded == 0 ? nullptr : Train::GetIfValid(VehicleID{encoded - 1});
+					if (chain[j]->engine_type != candidate->engine_type || wrong == nullptr || wrong->First() != head || wrong->IsArticulatedPart() || wrong->engine_type == candidate->engine_type) incompatible = false;
+				}
+				if (!incompatible) continue;
+				candidate->SetSavedUnitMainID(candidate->index.base() + 1);
+				for (size_t j = begin; j < i; ++j) chain[j]->SetSavedUnitMainID(candidate->index.base() + 1);
+				Debug(sl, 1, "Recovered missing train unit base {} for {} adjacent articulated parts", candidate->index, i - begin);
+			}
 			for (Train *u : chain) {
 				const uint32_t encoded = u->GetSavedUnitMainID();
 				if (encoded == 0) continue; // Null membership is valid, including crashed remnants.
@@ -529,6 +588,10 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 		if (v->NextShared() != nullptr) v->NextShared()->previous_shared = v;
 
 		if (part_of_load) v->fill_percent_te_id = INVALID_TE_ID;
+		/* A NewGRF reload rebuilds caches in the running game. Persist its live
+		 * carrier before clearing pointers: consist_primary otherwise still
+		 * describes the last save, before any intervening couple or decouple. */
+		if (!part_of_load) v->consist_primary = v->Primary() == v;
 		v->first = nullptr;
 		if (part_of_load) {
 			v->primary = nullptr;
@@ -646,6 +709,16 @@ void AfterLoadVehiclesPhase1(bool part_of_load)
 					primary = u;
 					break;
 				}
+			}
+			if (part_of_load && v->type == VehicleType::Train && primary->consist_primary != 0 &&
+					!primary->IsPrimaryVehicle() && primary->orders != nullptr && Train::From(primary)->decouple_part == 2) {
+				/* Older builds could drop the wagon carrier's flag during a reversal. */
+				bool has_other_carrier = false;
+				for (Train *t = Train::From(v); t != nullptr; t = t->Next()) {
+					/* A physical head flag is not a second logical identity. */
+					if (t->IsEngine() || (t != primary && t->IsPrimaryVehicle() && t->consist_primary != 0)) has_other_carrier = true;
+				}
+				if (!has_other_carrier) Train::From(primary)->SetFrontWagon();
 			}
 			for (Vehicle *u = v; u != nullptr; u = u->Next()) {
 				u->primary = primary;
@@ -779,7 +852,16 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 				 * is always anchored on the physical chain head. */
 				if (t->Primary()->IsPrimaryVehicle() || t->IsFreeWagon()) {
 					t->gcache.last_speed = t->cur_speed; // update displayed train speed
-					t->First()->ConsistChanged(CCF_SAVELOAD);
+					Train *head = t->First();
+					const auto saved_acceleration = head->acceleration;
+					head->ConsistChanged(CCF_SAVELOAD);
+					/* VENC restores the server's weight and power caches after this
+					 * rebuild. Acceleration is serialized on the vehicle itself;
+					 * keep that value too, rather than mixing the server's caches
+					 * with acceleration calculated from the client's rebuilt caches. */
+					if (part_of_load && _networking && !_network_server && SlXvIsFeaturePresent(XSLFI_VENC_CHUNK)) {
+						head->acceleration = saved_acceleration;
+					}
 				}
 				break;
 			}
@@ -932,6 +1014,14 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 		if ((v->rv_transport_flags & Vehicle::RV_TRANSPORT_CARRIED) == 0) v->UpdatePosition();
 		if (v->type != VehicleType::Ship || v->Previous() == nullptr) v->UpdateViewport(false);
 		v->cargo.AssertCountConsistency();
+	}
+
+	/* Allocate after reserving all unit numbers already present in the save. */
+	if (part_of_load) {
+		for (Train *t : Train::Iterate()) {
+			if (t->Primary() != t || !t->IsFrontWagon() || t->decouple_part != 2 || t->orders == nullptr || t->unitnumber != 0) continue;
+			t->unitnumber = Company::Get(t->owner)->freeunits[t->type].UseID(GetFreeUnitNumber(t->type, t->owner));
+		}
 	}
 }
 
@@ -1383,6 +1473,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("vehstatus",                      SLE_VAR(Vehicle, vehstatus,                 SLE_UINT8)),
 		NSL("consist_primary",          SLE_CONDVAR_X(Vehicle, consist_primary,           SLE_UINT8,                  SLV_MULTITILE_AIRPORTS, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_OR, XSLFI_TRAIN_PRIMARY))),
 		NSL("consist_unit_main",        SLE_CONDVAR_X(Vehicle, consist_unit_main,         SLE_UINT8,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_UNIT_MAIN))),
+		NSL("train_unit_main",         SLE_CONDVAR_X(Vehicle, saved_train_unit_main,     SLE_UINT32,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_UNIT_MAIN, 2, 2))),
 		NSL("consist_unit_main_id",     SLE_CONDVAR_X(Vehicle, consist_unit_main_id,      SLE_FILE_U16 | SLE_VAR_U32,  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_UNIT_MAIN, 3, 3))),
 		NSL("consist_unit_main_id",     SLE_CONDVAR_X(Vehicle, consist_unit_main_id,      SLE_UINT32,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TRAIN_UNIT_MAIN, 4))),
 		NSL("wait_counter",               SLE_CONDVAR(Vehicle, wait_counter,              SLE_UINT16,                 SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
@@ -2234,6 +2325,7 @@ struct CoupleClaimSave {
 	VehicleID couple_claimant;
 	uint32_t couple_claim_cost;
 	uint8_t couple_body_hold;
+	TraceRestrictSlotID wait_couple_acquired_slot = TraceRestrictSlotID::Invalid();
 };
 
 static std::vector<CoupleClaimSave> _couple_claims;
@@ -2250,8 +2342,8 @@ void Save_CPLM()
 	SlAutolength([]() {
 		std::vector<CoupleClaimSave> claims;
 		for (Train *t : Train::Iterate()) {
-			if (t->couple_target == VehicleID::Invalid() && t->couple_claimant == VehicleID::Invalid() && !t->couple_body_hold) continue;
-			claims.push_back({t->index, t->couple_target, t->couple_claimant, t->couple_claim_cost, static_cast<uint8_t>(t->couple_body_hold ? 1 : 0)});
+			if (t->couple_target == VehicleID::Invalid() && t->couple_claimant == VehicleID::Invalid() && !t->couple_body_hold && t->wait_couple_acquired_slot == TraceRestrictSlotID::Invalid()) continue;
+			claims.push_back({t->index, t->couple_target, t->couple_claimant, t->couple_claim_cost, static_cast<uint8_t>(t->couple_body_hold ? 1 : 0), t->wait_couple_acquired_slot});
 		}
 
 		SlWriteUint32((uint32_t)claims.size());
@@ -2261,6 +2353,7 @@ void Save_CPLM()
 			SlWriteUint32(cs.couple_claimant.base());
 			SlWriteUint32(cs.couple_claim_cost);
 			SlWriteByte(cs.couple_body_hold);
+			SlWriteUint16(cs.wait_couple_acquired_slot.base());
 		}
 	});
 }
@@ -2272,7 +2365,8 @@ void Load_CPLM()
 
 	uint32_t count = SlReadUint32();
 	const bool wide_ids = SlXvIsFeaturePresent(XSLFI_COUPLE_CLAIM_STATE, 2);
-	const uint32_t record_size = wide_ids ? 17 : 13;
+	const bool has_wait_slot = SlXvIsFeaturePresent(XSLFI_COUPLE_CLAIM_STATE, 3);
+	const uint32_t record_size = has_wait_slot ? 19 : wide_ids ? 17 : 13;
 	if (count > VehicleID::End().base() || SlGetFieldLength() != 4ULL + uint64_t(count) * record_size) {
 		SlErrorCorrupt("Invalid couple claim record count");
 	}
@@ -2291,6 +2385,7 @@ void Load_CPLM()
 		}
 		cs.couple_claim_cost = SlReadUint32();
 		cs.couple_body_hold = SlReadByte() != 0;
+		if (has_wait_slot) cs.wait_couple_acquired_slot = TraceRestrictSlotID{SlReadUint16()};
 	}
 }
 
@@ -2303,6 +2398,7 @@ void SlApplyCoupleClaims()
 		t->couple_claimant = cs.couple_claimant;
 		t->couple_claim_cost = cs.couple_claim_cost;
 		t->couple_body_hold = cs.couple_body_hold != 0;
+		t->wait_couple_acquired_slot = cs.wait_couple_acquired_slot;
 	}
 	_couple_claims.clear();
 }

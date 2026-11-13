@@ -168,7 +168,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_TRAIN_NO_DEPOT_TEMPORARY_STOP,     XSCF_NULL,                1,   1, "train_no_depot_temporary_stop",     nullptr, nullptr, nullptr          },
 	{ XSLFI_MORE_VEHICLE_ORDERS,              XSCF_NULL,                1,   1, "more_veh_orders",                  nullptr, nullptr, nullptr          },
 	{ XSLFI_ORDER_FLAGS_EXTRA,                XSCF_NULL,                1,   1, "order_flags_extra",                nullptr, nullptr, nullptr          },
-	{ XSLFI_ORDER_DECOUPLE,                   XSCF_NULL,                1,   1, "order_decouple",                   nullptr, nullptr, nullptr          },
+	{ XSLFI_ORDER_DECOUPLE,                   XSCF_NULL,                2,   2, "order_decouple",                   nullptr, nullptr, nullptr          },
 	{ XSLFI_TRAIN_PRIMARY,                   XSCF_NULL,                1,   1, "train_primary",                    nullptr, nullptr, nullptr          },
 	{ XSLFI_VEHICLE_PRIMARY_ORDER,           XSCF_NULL,                2,   2, "vehicle_primary_order",            nullptr, nullptr, nullptr          },
 	{ XSLFI_ONE_WAY_DT_ROAD_STOP,             XSCF_NULL,                1,   1, "one_way_dt_road_stop",             nullptr, nullptr, nullptr          },
@@ -265,7 +265,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 
 	{ XSLFI_ROAD_VEH_TRANSPORT,               XSCF_NULL,                4,   4, "road_veh_transport",               nullptr, nullptr, nullptr          },
 	{ XSLFI_CARGO_TYPES_128,                  XSCF_NULL,                1,   1, "cargo_types_128",                  nullptr, nullptr, nullptr          },
-	{ XSLFI_COUPLE_CLAIM_STATE,               XSCF_NULL,                2,   2, "couple_claim_state",               nullptr, nullptr, "CPLM"           },
+	{ XSLFI_COUPLE_CLAIM_STATE,               XSCF_NULL,                3,   3, "couple_claim_state",               nullptr, nullptr, "CPLM"           },
 	{ XSLFI_WEATHER,                          XSCF_NULL,                1,   1, "weather",                          nullptr, nullptr, "WTHR"           },
 	{ XSLFI_COUPLE_SEARCH_FAIL_CACHE,         XSCF_NULL,                1,   1, "couple_search_fail_cache",         nullptr, nullptr, "CSFC"           },
 	{ XSLFI_ORDER_LIST_GROUPS,               XSCF_NULL,                1,   1, "order_list_groups",               nullptr, nullptr, nullptr          },
@@ -280,6 +280,9 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_TRAIN_DECOUPLE_PART,              XSCF_NULL,                1,   1, "train_decouple_part",              nullptr, nullptr, nullptr          },
 	{ XSLFI_TRAIN_UNIT_MAIN,                  XSCF_NULL,                4,   4, "train_unit_main",                  nullptr, nullptr, nullptr          },
 	{ XSLFI_COUPLE_SERVICE_NUMBER,           XSCF_NULL,                1,   1, "couple_service_number",           nullptr, nullptr, nullptr          },
+	{ XSLFI_WAIT_COUPLE_COMPANIES,          XSCF_NULL,                1,   1, "wait_couple_companies",            nullptr, nullptr, nullptr          },
+	{ XSLFI_WAIT_COUPLE_SLOT, XSCF_NULL, 1, 1, "wait_couple_slot", nullptr, nullptr, nullptr },
+	{ XSLFI_DECOUPLE_KEEP_LATENESS, XSCF_NULL, 1, 1, "decouple_keep_lateness", nullptr, nullptr, nullptr },
 };
 
 /**

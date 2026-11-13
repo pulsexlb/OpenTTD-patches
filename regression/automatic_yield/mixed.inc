@@ -143,6 +143,11 @@ void MixedTick()
   if(mode=="mixed-rejoin-both-stop"&&demo_fast->cur_real_order_index>0)independent_fast_work=true;
  }
  n++;demo_tick=n;
+ static uint prior_order=UINT_MAX,prior_direction=UINT_MAX;
+ if(prior_order!=uint(demo_slow->current_order.GetType())||prior_direction!=uint(demo_slow->GetMovingFront()->direction)){
+  prior_order=uint(demo_slow->current_order.GetType());prior_direction=uint(demo_slow->GetMovingFront()->direction);
+  fprintf(demo_log,"MIXED ORDER %u type=%u index=%u dest=%u direction=%u xy=%u,%u flags=%u\n",n,prior_order,demo_slow->cur_real_order_index,demo_slow->current_order.GetDestination().base(),prior_direction,TileX(demo_slow->tile),TileY(demo_slow->tile),demo_slow->flags.base());fflush(demo_log);
+ }
  if(n==1&&std::getenv("PXP_STRICT_DEBUG"))_debug_levels[size_t(DebugLevelID::yapf)]=7;
  if(!reload&&!started&&n==(independent?100u:mode.starts_with("mixed-rejoin-")?150u:(scheduled||mode.ends_with("-signals"))?900u:400u)){
   started=true;DemoRequire(CmdStartStopVehicle(DoCommandFlag::Execute,demo_fast->index,true),"start mixed express");fprintf(demo_log,"MIXED START_FAST %u\n",n);
@@ -153,7 +158,10 @@ void MixedTick()
  if(!entered&&x>=56&&x<74&&(MixedInRows(row,mixed_platform_rows)||MixedInRows(row,mixed_ordinary_rows))){
   chosen_row=row;entered=true;
   fprintf(demo_log,"MIXED ENTER %u row=%u scheduled=%u platform=%u\n",n,row,scheduled,MixedInRows(row,mixed_platform_rows));
-  if(scheduled!=MixedInRows(row,mixed_platform_rows)){fprintf(demo_log,"FAIL mixed wrong lane class row=%u scheduled=%u\n",row,scheduled);fflush(demo_log);exit(161);}
+  /* A platform-only fixture has no ordinary lane to prefer. Existing
+   * mixed layouts retain the original scheduled/non-stop class assertion. */
+  const bool platform_required=scheduled||mixed_ordinary_rows.empty();
+  if(platform_required!=MixedInRows(row,mixed_platform_rows)){fprintf(demo_log,"FAIL mixed wrong lane class row=%u scheduled=%u\n",row,scheduled);fflush(demo_log);exit(161);}
  }
  if(demo_slow->current_order.IsAnyLoadingType()&&!station_work){station_work=true;fprintf(demo_log,"MIXED SCHEDULED_LOADING %u row=%u\n",n,row);}
  if(!scheduled&&!independent_stops&&demo_slow->current_order.IsAnyLoadingType()){fprintf(demo_log,"FAIL non-stop mixed arrival performed station work\n");exit(162);}

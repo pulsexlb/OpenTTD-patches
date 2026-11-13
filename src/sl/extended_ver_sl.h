@@ -238,6 +238,9 @@ enum SlXvFeatureIndex {
 	 * inserting into the middle would shift every existing PXP feature. */
 	XSLFI_SCRIPT_RANDOMIZER,                      ///< See: SLV_SCRIPT_RANDOMIZER (PR#12063)
 
+	XSLFI_WAIT_COUPLE_COMPANIES,                  ///< Waiting trains may select multiple coupling companies.
+	XSLFI_WAIT_COUPLE_SLOT,                       ///< Optional acquire/wait/return slot.
+	XSLFI_DECOUPLE_KEEP_LATENESS,                 ///< Independent schedules reset lateness unless opted out.
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
 
