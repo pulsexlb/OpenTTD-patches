@@ -89,7 +89,8 @@ jobs:
             elif path.suffix == ".deb":
                 result = subprocess.run(["dpkg-deb", "--info", str(path)], cwd=TOOLS,
                                         check=True, capture_output=True, text=True)
-                if "Architecture: amd64" not in result.stdout or TAG not in result.stdout:
+                fields = dict(line.strip().split(": ", 1) for line in result.stdout.splitlines() if ": " in line)
+                if fields.get("Architecture") != "amd64" or fields.get("Version") != TAG.removeprefix("pxp-"):
                     raise ValueError(f"Unexpected Debian package metadata: {result.stdout}")
             elif path.suffix == ".dmg":
                 with path.open("rb") as stream:
