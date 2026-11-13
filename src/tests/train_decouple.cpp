@@ -1422,6 +1422,38 @@ TEST_CASE_METHOD(CouplePowerFixture, "Couple power - nonmatching speeds have onl
 	}
 }
 
+TEST_CASE_METHOD(CouplePowerFixture, "Couple - maximum speed checking never requires exact speed or preferred power")
+{
+	waiting->vcache.cached_max_speed = 160;
+	low->vcache.cached_max_speed = 170;
+	low->gcache.cached_power = 1;
+	for (Train *t : {low, strong}) t->current_order.SetCoupleSpeedBoundMode(1, CoupleSpeedBoundMode::OwnMax);
+	SECTION("matching locomotive is not ready") { strong->vehstatus.Set(VehState::Stopped); }
+	SECTION("matching locomotive is unreachable") {
+		Place(strong, 12, 15);
+		MakeRailNormal(strong->tile, _current_company, TRACK_BIT_X, RAILTYPE_RAIL);
+	}
+	SECTION("powerful competitor has a worse speed fit") {
+		strong->vcache.cached_max_speed = 300;
+		strong->gcache.cached_power = UINT32_MAX;
+	}
+	SECTION("large legal speed difference is still a valid fallback") {
+		waiting->vcache.cached_max_speed = 60;
+		strong->vehstatus.Set(VehState::Stopped);
+	}
+	REQUIRE(GetCoupleCandidateResult(low, low->current_order, waiting, waiting->tile, false) == CoupleCandidateResult::Valid);
+	Train *end = nullptr;
+	uint32_t cost = 0;
+	REQUIRE(YapfTrainCoupleTrack(low, true, &end, &cost, nullptr, waiting) != INVALID_TRACK);
+	REQUIRE(end == waiting);
+	GameRandomSeedChecker random_checker;
+	low->couple_target = waiting->index;
+	ClaimCoupleTarget(low, waiting, cost);
+	CHECK(GetCoupleClaimant(waiting) == low);
+	CHECK(low->couple_target == waiting->index);
+	CHECK(random_checker.Check());
+}
+
 TEST_CASE_METHOD(CouplePowerFixture, "Couple power - unsuitable stronger locomotives never block normal claims")
 {
 	SECTION("query budget exhausted") {

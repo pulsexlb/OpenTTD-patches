@@ -5,7 +5,7 @@ p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--build-dir',type=Path,required=True)
 p.add_argument('--baseset',type=Path,required=True)
 p.add_argument('--output',type=Path,required=True)
-p.add_argument('--modes',default='station,split,split-implicit,split-legacy-carrier,split-load,split-both,split-dispatch,split-dispatch-shared,split-dispatch-shared-both,split-dispatch-shared-schedule,recouple,recouple-waypoint,recouple-waypoint-late,recouple-slot,recouple-slot-full')
+p.add_argument('--modes',default='station,split,split-implicit,split-legacy-carrier,split-load,split-both,split-dispatch,split-dispatch-shared,split-dispatch-shared-both,split-dispatch-shared-schedule,recouple,recouple-waypoint,recouple-waypoint-late,recouple-checkpoint,recouple-checkpoint-reversed,recouple-slot,recouple-slot-full')
 a=p.parse_args();here=Path(__file__).resolve().parent;r=here.parents[1];b=a.build_dir.resolve();out=a.output.resolve();out.mkdir(parents=True,exist_ok=True)
 for folder,source in [('lang',b/'lang'),('baseset',a.baseset.resolve())]:shutil.copytree(source,out/folder,dirs_exist_ok=True)
 s=(r/'src/openttd.cpp').read_text(encoding='utf8')
@@ -27,7 +27,7 @@ for mode in a.modes.split(','):
   env={k:v for k,v in os.environ.items() if not k.startswith('PXP_')};env.update(PXP_SERVICE_MODE=mode,PXP_STRICT='basic',PXP_DEMO_OUTPUT=str(case))
   argv=[str(exe),'-v','null:until_exit','-s','null','-m','null','-x','-X','-Q','-c',str(out/'test.cfg')]
   if reload:
-   env['PXP_SERVICE_RELOAD']='1';argv+=['-g',str(case/('service-first.sav' if mode=='station' else 'service-split.sav'))]
+   env['PXP_SERVICE_RELOAD']='1';argv+=['-g',str(case/('service-first.sav' if mode=='station' else 'couple-checkpoint-waiting.sav' if mode.startswith('recouple-checkpoint') else 'service-split.sav'))]
   else:argv+=['-e']
   with (case/('reload-stderr.log' if reload else 'stderr.log')).open('w') as f:run=subprocess.run(argv,cwd=out,env=env,stdout=f,stderr=f,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),timeout=90)
   log=case/('reload.log' if reload else 'run.log');last=log.read_text(encoding='utf8').splitlines()[-1]

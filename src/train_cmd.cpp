@@ -8205,6 +8205,27 @@ static const Order *GetReadyPowerCoupleOrder(const Train *train, bool arriving_a
 	return nullptr;
 }
 
+/** A checkpoint claim can resume through ordinary intermediate waypoints.
+ * ProcessOrders does not permit automatic reversing for such an order change,
+ * so explicitly resolve the first post-checkpoint leg once. Do not consume the
+ * check while a saved pending reversal still has its completed checkpoint as
+ * the real order: ProcessOrders can restore it before advancing next tick. */
+static bool ShouldCheckCoupleCheckpointDirection(const Train *train)
+{
+	if (train->couple_target == VehicleID::Invalid() || train->reverse_distance != 0 ||
+			train->flags.Any({VehicleRailFlag::Reversing, VehicleRailFlag::CoupleDirectionChecked, VehicleRailFlag::JustDecoupled}) ||
+			(!train->current_order.IsType(OT_GOTO_WAYPOINT) && !train->current_order.IsType(OT_GOTO_STATION))) return false;
+	/* A blocked direction check must not consume this claim's one-shot retry. */
+	if (_settings_game.difficulty.train_flip_reverse_allowed == TrainFlipReversingAllowed::EndOfLineOnly ||
+			train->GetMovingFront()->track == TRACK_BIT_DEPOT) return false;
+	const Order *couple = GetClaimCoupleOrder(train);
+	if (couple == nullptr || !couple->HasCoupleCheckPoint() ||
+			train->current_order.GetDestination().ToStationID() == couple->GetCoupleCheckPoint()) return false;
+	const uint interval = std::max<uint>(1, _settings_game.pf.path_backoff_interval);
+	if (train->cur_speed != 0 && _scaled_tick_counter % interval != train->index.base() % interval) return false;
+	return GetClaimedCoupleTarget(train) != nullptr;
+}
+
 /** Power arbitration is opt-in through either speed bound of this coupling order. */
 static bool HasCoupleSpeedCheck(const Order &order)
 {
@@ -11603,7 +11624,9 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	bool valid_order = !consist->current_order.IsType(OT_NOTHING) && consist->current_order.GetType() != OT_CONDITIONAL && !consist->current_order.IsSlotCounterOrder() && !consist->current_order.IsType(OT_LABEL) && !consist->current_order.IsExecuteScheduleOrder();
 	const bool check_direction = ProcessOrders(consist);
 	UpdateWaitCoupleSlot(consist);
-	const bool reverse_for_order = check_direction && CheckReverseTrain(consist);
+	const bool checkpoint_direction = ShouldCheckCoupleCheckpointDirection(consist);
+	const bool reverse_for_order = (check_direction || checkpoint_direction) && CheckReverseTrain(consist);
+	if (checkpoint_direction) consist->flags.Set(VehicleRailFlag::CoupleDirectionChecked);
 	if (check_direction && consist->cur_speed != 0 && consist->current_order.IsType(OT_GOTO_COUPLE) && GetClaimedCoupleTarget(consist) != nullptr) {
 		/* Persist the completed check with the claim. Repeated moving searches
 		 * can change their answer while braking across a turnout. A new claim
@@ -11611,7 +11634,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		consist->flags.Set(VehicleRailFlag::CoupleDirectionChecked);
 	}
 	if (reverse_for_order) {
-		if (consist->current_order.IsType(OT_GOTO_COUPLE) && consist->cur_speed != 0) {
+		if ((consist->current_order.IsType(OT_GOTO_COUPLE) || checkpoint_direction) && consist->cur_speed != 0) {
 			/* A newly available partner can be behind an already moving train.
 			 * Use native reverse braking, retaining its reservation until the normal
 			 * stopped turnaround; do not teleport a moving train to speed zero. */
