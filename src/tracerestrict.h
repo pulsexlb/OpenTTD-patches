@@ -1418,9 +1418,9 @@ inline bool IsRestrictedSignalTile(TileIndex t)
 {
 	switch (GetTileType(t)) {
 		case TileType::Railway:
-			return IsRestrictedSignal(t);
+			return HasSignals(t) && IsRestrictedSignal(t);
 		case TileType::TunnelBridge:
-			return IsTunnelBridgeRestrictedSignal(t);
+			return IsTunnelBridgeWithSignalSimulation(t) && IsTunnelBridgeRestrictedSignal(t);
 		default:
 			return false;
 	}

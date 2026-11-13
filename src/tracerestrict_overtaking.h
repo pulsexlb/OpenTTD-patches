@@ -23,6 +23,7 @@ void MigrateLegacyAutoYieldSpeedCaps(TraceRestrictProgram &program);
 void InvalidateAutoYieldAreas();
 void ResetAutoYieldAreas();
 void UpdateAutoYieldAreas();
+void FlushAutoYieldAreaUpdates();
 void AutoYieldSignalChanged(TileIndex tile, Track track);
 bool MigrateAutoYieldAreasToSlots();
 void AutoYieldSettingsChanged();

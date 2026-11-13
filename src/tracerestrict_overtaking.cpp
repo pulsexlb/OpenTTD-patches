@@ -2697,6 +2697,7 @@ void MigrateLegacyAutoYieldSpeedCaps(TraceRestrictProgram &program)
 	}
 }
 void InvalidateAutoYieldAreas() { dirty = true; }
+void FlushAutoYieldAreaUpdates() { if (dirty) UpdateAutoYieldAreas(); }
 
 /** Signal direction is part of marker identity. Refresh at the synchronized
  * command boundary, before native re-reservation; a local YAPF cache generation
@@ -3234,7 +3235,7 @@ static bool AwaitedPendingApproach(const Area &area, const Train *v)
 
 void AutoYieldGameTick()
 {
-	if (dirty) UpdateAutoYieldAreas();
+	FlushAutoYieldAreaUpdates();
 	if (!_settings_game.vehicle.automatic_yield) return;
 	/* Use saved ticks and stable vehicle IDs, rather than a local cache or
 	 * slot iteration order, to spread bounded pre-fork rechecks over 8 ticks. */
