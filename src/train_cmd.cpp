@@ -7583,7 +7583,7 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_r
 	for (Train *part = front_head; part != nullptr; part = part->Next()) {
 		std::vector<TraceRestrictSlotID> slots;
 		TraceRestrictGetVehicleSlots(part->index, slots);
-		if (part->owner != v->owner || slots.empty()) continue;
+		if (slots.empty()) continue;
 		for (TraceRestrictSlotID slot : slots) {
 			if (std::find(inherited_slots.begin(), inherited_slots.end(), slot) == inherited_slots.end()) inherited_slots.push_back(slot);
 		}
@@ -7639,10 +7639,11 @@ static Train *DecoupleTrain(Train *v, bool &consist_in_rear, StringID &failure_r
 		holder->vehicle_flags.Reset(VehicleFlag::HaveSlot);
 		primary->vehicle_flags.Set(VehicleFlag::HaveSlot);
 	}
+	/* Slot claims are inherited by both parts regardless of company ownership;
+	 * unlike vehicle groups, they are not tied to the original carrier's owner. */
 	for (TraceRestrictSlotID slot_id : inherited_slots) {
 		TraceRestrictSlot *slot = TraceRestrictSlot::Get(slot_id);
 		for (Train *primary : {v, dec_primary}) {
-			if (primary->owner != v->owner) continue;
 			slot->Occupy(primary);
 		}
 	}
