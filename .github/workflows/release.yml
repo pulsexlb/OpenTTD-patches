@@ -1,116 +1,199 @@
-name: Release
-
-on:
-  push:
-    tags:
-    - '*'
+name: Release (publish existing artifacts only)
+'on':
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Ref to build (for Pull Requests, use refs/pull/NNN/head)'
+        description: Existing release tag; no builds are performed
         required: true
-#  repository_dispatch:
-#    # client_payload should be the same as the inputs for workflow_dispatch.
-#    types:
-#    - Build*
-#  release:
-#    types:
-#    - published
-
+        default: pxp-2611.1-fix.2
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-existing-pxp-2611.1-fix.2
+  cancel-in-progress: false
 jobs:
-  source:
-    name: Source
-
-    uses: ./.github/workflows/release-source.yml
-    secrets: inherit
-
-  docs:
-    name: Docs
-    needs: source
-
-    uses: ./.github/workflows/release-docs.yml
-    secrets: inherit
-
-    with:
-      version: ${{ needs.source.outputs.version }}
-
-  linux:
-    name: Linux (Generic)
-    needs: source
-
-    uses: ./.github/workflows/release-linux.yml
-    secrets: inherit
-
-    with:
-      survey_key: ${{ needs.source.outputs.survey_key }}
-
-  linux_distros:
-    name: Linux (Distros)
-    needs: source
-
-    uses: ./.github/workflows/release-linux-distros.yml
-    secrets: inherit
-
-    with:
-      survey_key: ${{ needs.source.outputs.survey_key }}
-
-  linux-dedicated:
-    name: Linux (Dedicated)
-    needs: source
-
-    uses: ./.github/workflows/release-linux-dedicated.yml
-    secrets: inherit
-
-    with:
-      survey_key: ${{ needs.source.outputs.survey_key }}
-
-  macos:
-    name: MacOS
-    needs: source
-
-    uses: ./.github/workflows/release-macos.yml
-    secrets: inherit
-
-    with:
-      survey_key: ${{ needs.source.outputs.survey_key }}
-
-  windows:
-    name: Windows
-    needs: source
-
-    uses: ./.github/workflows/release-windows.yml
-    secrets: inherit
-
-    with:
-      is_tag: ${{ needs.source.outputs.is_tag }}
-      survey_key: ${{ needs.source.outputs.survey_key }}
-
-  android:
-    name: Android (APK)
-    needs: source
-
-    uses: ./.github/workflows/android.yml
-    secrets: inherit
-
-  publish:
-    name: Publish to GitHub Release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    needs: [source, docs, linux, linux_distros, linux-dedicated, macos, windows, android]
-
+  publish-existing:
+    name: Publish pxp-2611.1-fix.2 without rebuilding or x86
+    if: github.event_name == 'workflow_dispatch' && inputs.ref == 'pxp-2611.1-fix.2'
+      && github.ref == 'refs/heads/release-only/pxp-2611.1-fix.2-43410680085'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: pulsexlb/OpenTTD-patches
     steps:
-    - name: Download all build artifacts
-      uses: actions/download-artifact@v8
-      with:
-        pattern: openttd-*
-        merge-multiple: true
+    - name: Verify original artifacts and publish original tag
+      shell: bash
+      run: |
+        set -euo pipefail
+        artifacts=$(mktemp -d)
+        tools=$(mktemp -d)
+        python3 -I - "$artifacts" "$tools" <<'PY'
+        import hashlib
+        import json
+        import lzma
+        import os
+        from pathlib import Path, PurePosixPath
+        import re
+        import stat
+        import subprocess
+        import sys
+        import tarfile
+        import zipfile
 
-    - name: Publish release
-      uses: softprops/action-gh-release@v3
-      with:
-        tag_name: ${{ github.ref_name }}
-        name: ${{ github.ref_name }}
-        files: openttd-*
+        REPO = "pulsexlb/OpenTTD-patches"
+        RUN = 43410680085
+        TAG = "pxp-2611.1-fix.2"
+        SHA = "b1ab39a4a2b00f5291fdd9b40f5c1b64c017c4db"
+        EXPECTED = {
+            "openttd-source": ["source.tar.xz", "source.zip"],
+            "openttd-docs": ["docs.tar.xz", "docs-ai.tar.xz", "docs-gs.tar.xz"],
+            "openttd-linux-jammy": ["linux--jammy-amd64.deb"],
+            "openttd-linux-noble": ["linux--noble-amd64.deb"],
+            "openttd-linux-bookworm": ["linux--bookworm-amd64.deb"],
+            "openttd-linux-generic": ["linux-generic-amd64.tar.xz"],
+            "openttd-linux-dedicated": ["linux-dedicated-amd64.tar.xz"],
+            "openttd-macos-universal": ["macos-universal.dmg", "macos-universal.zip"],
+            "openttd-windows-x64": ["windows-win64.zip"],
+            "openttd-windows-arm64": ["windows-arm64.zip", "windows-arm64.pdb.xz"],
+            "openttd-android": ["android-arm64-v8a.apk"],
+        }
+        ROOT = Path(sys.argv[1]).resolve()
+        TOOLS = Path(sys.argv[2]).resolve()
+
+
+        def gh_json(endpoint):
+            return json.loads(subprocess.check_output(["gh", "api", endpoint], cwd=TOOLS))
+
+
+        def checksum(path):
+            with path.open("rb") as stream:
+                return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+        def verify_asset(path):
+            if path.name.endswith((".zip", ".apk")):
+                with zipfile.ZipFile(path) as bundle:
+                    bad = bundle.testzip()
+                    if bad is not None:
+                        raise ValueError(f"Corrupt ZIP entry: {path}: {bad}")
+            elif path.name.endswith(".xz"):
+                with lzma.open(path, "rb") as stream:
+                    while stream.read(1024 * 1024):
+                        pass
+                if path.name.endswith(".tar.xz"):
+                    with tarfile.open(path, "r:xz") as bundle:
+                        if not bundle.getmembers():
+                            raise ValueError(f"Empty tar archive: {path}")
+            elif path.suffix == ".deb":
+                result = subprocess.run(["dpkg-deb", "--info", str(path)], cwd=TOOLS,
+                                        check=True, capture_output=True, text=True)
+                if "Architecture: amd64" not in result.stdout or TAG not in result.stdout:
+                    raise ValueError(f"Unexpected Debian package metadata: {result.stdout}")
+            elif path.suffix == ".dmg":
+                with path.open("rb") as stream:
+                    stream.seek(-512, os.SEEK_END)
+                    if stream.read(4) != b"koly":
+                        raise ValueError(f"Missing UDIF trailer: {path}")
+
+
+        run = gh_json(f"repos/{REPO}/actions/runs/{RUN}")
+        assert run["status"] == "completed" and run["conclusion"] == "failure" and run["head_sha"] == SHA
+        assert run["head_branch"] == TAG and run["run_attempt"] >= 1
+        jobs = gh_json(f"repos/{REPO}/actions/runs/{RUN}/jobs?per_page=100")["jobs"]
+        failures = [job["name"] for job in jobs if job["conclusion"] == "failure"]
+        assert failures == ["Windows / Windows MinGW (x86)"], failures
+        for job in jobs:
+            if job["name"] not in failures:
+                expected = "skipped" if job["name"] == "Publish to GitHub Release" else "success"
+                assert job["conclusion"] == expected, job
+        ref = gh_json(f"repos/{REPO}/git/ref/tags/{TAG}")
+        assert ref["object"]["type"] == "commit" and ref["object"]["sha"] == SHA
+        artifacts = gh_json(f"repos/{REPO}/actions/runs/{RUN}/artifacts?per_page=100")["artifacts"]
+        selected = {a["name"]: a for a in artifacts if a["name"] in EXPECTED}
+        assert set(selected) == set(EXPECTED)
+        LOCKED = {'openttd-linux-generic': {'id': 14031295834, 'digest': 'sha256:cbefba5a4ee209c77f474670cc37b69acb335daafd4b622dc5df50ac2b176c9d'}, 'openttd-android': {'id': 14030812191, 'digest': 'sha256:aaa0373143c99cc4fc8502afb4e32e5f3d039412bcf238fe7d06247fbe2cd591'}, 'openttd-windows-arm64': {'id': 14030667852, 'digest': 'sha256:6929c059dcc76cdabf0b8d576e853e0c6bb132b0dfb79b28ac0a873500ef397b'}, 'openttd-macos-universal': {'id': 14030623200, 'digest': 'sha256:a111e020643384581417a2a2b04a64a6f747fb0bc50c586235f99bc74a1664a8'}, 'openttd-linux-noble': {'id': 14030470820, 'digest': 'sha256:ec05acb4b7180a4dfe1040b40c74ac4e381d469d4c64744d4a0f43168f3a407b'}, 'openttd-linux-dedicated': {'id': 14030259411, 'digest': 'sha256:14af5b41dcab3d13789cc145b6cabc114cbd7ef9554b7efcd5c1753e8bf608ca'}, 'openttd-windows-x64': {'id': 14030183429, 'digest': 'sha256:df2d030463d04aa2efeea370aef25f7e8cbcc8b3e53192a3e5b9a6cf3c3afc2c'}, 'openttd-linux-bookworm': {'id': 14030147911, 'digest': 'sha256:ed2b8ae2c51de05fe81974428d4ea98027748063d0b0e37a98aba9b14caf5ad2'}, 'openttd-source': {'id': 14029910707, 'digest': 'sha256:d79464c762bdbfd93c29966d97f7532792c76b60d125570c181518b5283526eb'}, 'openttd-linux-jammy': {'id': 14029599334, 'digest': 'sha256:95c9dffbf8d44f0835b4e883a27738bcbbae14e1c6a294017dd35a161c25e6f7'}, 'openttd-docs': {'id': 14029537466, 'digest': 'sha256:5e82d0894d2cc6601f4ea4aa0d727e0c4aa143a8c3d5112c292430429a6c5639'}}
+        assert {name: {"id": a["id"], "digest": a["digest"]} for name, a in selected.items()} == LOCKED
+        assert len([a for a in artifacts if a["name"] in EXPECTED]) == len(EXPECTED)
+        (TOOLS / "artifact-metadata.json").write_text(json.dumps(artifacts, indent=2) + "\n")
+        manifest = []
+        for name, suffixes in EXPECTED.items():
+            artifact = selected[name]
+            assert not artifact["expired"] and artifact["workflow_run"]["head_sha"] == SHA
+            directory = ROOT / name
+            directory.mkdir()
+            archive = directory / "artifact.zip"
+            print(f"Downloading {name} ({artifact['size_in_bytes']:,} bytes)", flush=True)
+            with archive.open("xb") as out:
+                subprocess.run(["gh", "api", f"repos/{REPO}/actions/artifacts/{artifact['id']}/zip"],
+                               cwd=TOOLS, stdout=out, check=True)
+            actual_digest = "sha256:" + checksum(archive)
+            assert actual_digest == artifact["digest"], (name, actual_digest, artifact["digest"])
+            extracted = directory / "contents"
+            extracted.mkdir()
+            expected_files = {f"openttd-{TAG}-{suffix}" for suffix in suffixes}
+            with zipfile.ZipFile(archive) as bundle:
+                names = set()
+                for entry in bundle.infolist():
+                    raw = entry.filename
+                    pure = PurePosixPath(raw)
+                    mode = entry.external_attr >> 16
+                    assert not pure.is_absolute() and ".." not in pure.parts and "\\" not in raw
+                    assert not stat.S_ISLNK(mode), raw
+                    assert len(pure.parts) == 1, raw
+                    assert raw not in names, raw
+                    names.add(raw)
+                    assert raw in expected_files or (name == "openttd-source" and raw in {
+                        "README.md", "released.txt", "changelog.md"
+                    }), raw
+                    assert entry.file_size < 1024 * 1024 * 1024, raw
+                assert expected_files <= names, (name, names, expected_files)
+                assert bundle.testzip() is None
+                bundle.extractall(extracted)
+            for filename in sorted(expected_files):
+                path = extracted / filename
+                assert path.is_file() and path.stat().st_size > 0
+                assert not re.search(r"win32|windows-x86|i686", filename)
+                verify_asset(path)
+                manifest.append({"path": str(path), "name": filename,
+                                 "size": path.stat().st_size, "sha256": checksum(path),
+                                 "artifact_id": artifact["id"]})
+            print(f"Verified {name}: digest, archive integrity, {len(expected_files)} assets", flush=True)
+        assert len(manifest) == 16
+        (TOOLS / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        (TOOLS / "assets.txt").write_text("\n".join(asset["path"] for asset in manifest) + "\n")
+        print(json.dumps({"run": RUN, "tag": TAG, "commit": SHA, "assets": manifest}, indent=2), flush=True)
+
+        # Keep uploads private until the complete asset list has been checked.
+        probe = subprocess.run(["gh", "api", f"repos/{REPO}/releases/tags/{TAG}"],
+                               capture_output=True, text=True, cwd=TOOLS)
+        assert probe.returncode != 0 and "HTTP 404" in probe.stderr, probe.stdout + probe.stderr
+        paths = [a["path"] for a in manifest]
+        subprocess.run(["gh", "release", "create", TAG, "--repo", REPO, "--verify-tag",
+                        "--title", TAG, "--notes", "", "--draft", *paths], check=True, cwd=TOOLS)
+        release = gh_json(f"repos/{REPO}/releases/tags/{TAG}")
+        assert release["draft"] and not release["prerelease"] and release["tag_name"] == TAG
+        remote_assets = {a["name"]: a for a in release["assets"]}
+        assert set(remote_assets) == {a["name"] for a in manifest}
+        for asset in manifest:
+            uploaded = remote_assets[asset["name"]]
+            assert uploaded["size"] == asset["size"] and uploaded["state"] == "uploaded"
+            assert uploaded["digest"] == "sha256:" + asset["sha256"]
+        ref = gh_json(f"repos/{REPO}/git/ref/tags/{TAG}")
+        assert ref["object"]["sha"] == SHA
+        subprocess.run(["gh", "release", "edit", TAG, "--repo", REPO, "--draft=false", "--latest"],
+                       check=True, cwd=TOOLS)
+        release = gh_json(f"repos/{REPO}/releases/tags/{TAG}")
+        assert not release["draft"] and not release["prerelease"] and len(release["assets"]) == 16
+        latest = gh_json(f"repos/{REPO}/releases/latest")
+        assert latest["tag_name"] == TAG
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+            summary.write(f"## Published {TAG}\n\nOriginal build commit: `{SHA}`\n\n")
+            summary.write("No compilation, version generation, source checkout, or x86 upload took place.\n\n")
+            summary.write(f"[Release]({release['html_url']}) — 16 verified assets.\n\n")
+            for asset in manifest:
+                summary.write(f"- `{asset['name']}` — SHA256 `{asset['sha256']}`\n")
+        print("VERIFIED RELEASE:", release["html_url"], flush=True)
+
+        PY
