@@ -3290,6 +3290,18 @@ void AutoYieldGameTick()
 			Vehicle *vehicle = Vehicle::GetIfValid(id);
 			if (vehicle != nullptr && vehicle->type == VehicleType::Train) {
 				Train *v = Train::From(vehicle);
+				/* A changed express may still own a long approach reservation and
+				 * otherwise never reselect its split route until it reaches the
+				 * station. Only explicit saved dependents request this bounded,
+				 * non-reserving native refresh; single-outlet areas are untouched. */
+				if(area.clear_count>1 && Active(v) && ((_state_ticks.base()+id.base())&63)==0) {
+					bool requested=false;
+					for(const auto &[ref,targets]:area.targets) {
+						const auto lane=area.lanes.find(ref);
+						if(lane!=area.lanes.end()&&!lane->second->occupants.empty()&&targets->IsOccupant(id)){requested=true;break;}
+					}
+					if(requested)AutoYieldRefreshNativeRoute(v,area.id);
+				}
 				/* A parked train may have no forward reservation, so refresh its
 				 * live target set before the reservation-dependent early returns. */
 				if (Active(v) && YieldWaitInProgress(area, v)) {

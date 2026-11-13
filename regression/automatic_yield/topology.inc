@@ -1,5 +1,6 @@
 /* Native merge/split fixtures. Stock rolling stock, real construction/orders,
  * actual tails and PBS reservations only; no engine edits or path erasure. */
+#include "group_cmd.h"
 namespace {
 Train *topology_extra = nullptr;
 uint topology_clear_x = 90;
@@ -39,10 +40,14 @@ void TopologyPassStation(Train*train,uint x,uint y)
 }
 bool TopologyTailClear(const Train*train)
 {
- if(demo_slot->IsOccupant(train->index))return false;
+ const bool split_refresh = std::string_view(std::getenv("PXP_STRICT"))=="topology-merge2-refresh";
+ if(!split_refresh&&demo_slot->IsOccupant(train->index))return false;
  for(const Train*part=train;part;part=part->Next()){
-  if(TileX(part->tile)<=topology_clear_x)return false;
-  if(TileY(part->tile)!=40&&TileY(part->tile)!=25&&TileY(part->tile)!=20)return false;
+  /* In this two-outlet fixture, the last shared following rail is
+   * x=109. At x=110 the express has only the diverging switch movement
+   * left; that short crossing remains protected by native PBS. */
+  if(split_refresh ? TileX(part->tile)<110u : TileX(part->tile)<=topology_clear_x)return false;
+  if(TileY(part->tile)!=40&&TileY(part->tile)!=25&&TileY(part->tile)!=20&&!(split_refresh&&TileY(part->tile)<40))return false;
  }
  return true;
 }
@@ -109,6 +114,11 @@ void TopologyBuild(std::string_view mode)
   DemoSign(39,65,"两入口先合流，站内有正线、待避线及出口分流");
   DemoSign(112,44,"出口分流：共用前段仍需正确让行");
  }
+ if(mode=="topology-merge2-refresh"){
+  /* Put both real clearance boundaries after the split. The original merge
+   * fixture intentionally ends its one control region before that fork. */
+  TopologyClearProgram(90,40);DemoSignal(125,40,AutoYieldRole::Clear);DemoSignal(125,25,AutoYieldRole::Clear);topology_clear_x=125;
+ }
  AutoYieldSettingsChanged();
  fprintf(demo_log,"TOPOLOGY READY mode=%.*s slow_design=%u fast_design=%u third=%u clear=%u\n",int(mode.size()),mode.data(),demo_slow->GetDisplayMaxSpeed(),demo_fast->GetDisplayMaxSpeed(),topology_extra!=nullptr,topology_clear_x);
  fflush(demo_log);
@@ -118,6 +128,9 @@ void TopologyBuild(std::string_view mode)
 void TopologyTick()
 {
  static uint n=0,held=0,first_pass_held=0,extra_pass_held=0,negative_overlap=0;
+ static bool regrouped=false,replanned=false;
+ static uint32_t prior_signature=0;
+ static uint regroup_tick=0;
  static bool entered=false,stopped=false,saved=false,resumed=false,conflict=false,first_clear=false,extra_clear=false,first_started=false,portable_saved=false;
  const std::string_view mode=std::getenv("PXP_STRICT");const bool reload=std::getenv("PXP_STRICT_RELOAD")!=nullptr;
  const bool independent=mode=="topology-split",third=mode.starts_with("topology-merge3");
@@ -142,6 +155,15 @@ void TopologyTick()
   for(const Train*part=demo_slow;part;part=part->Next())if(TileY(part->tile)!=42||TileX(part->tile)<=50){fprintf(demo_log,"FAIL topology tail not safely parked\n");exit(131);}
   held++;
  }
+ if(mode=="topology-merge2-refresh"&&stopped){
+  if(!regrouped){
+   assert(demo_fast->early_route.size()>=14);prior_signature=demo_fast->early_route[11];
+   DemoRequire(CmdAddVehicleGroup(DoCommandFlag::Execute,NEW_GROUP,demo_fast->index,false),"change express group while slow waits");
+   regrouped=true;regroup_tick=n;fprintf(demo_log,"ROUTE_SIGNATURE_CHANGED tick=%u prior=%u\n",n,prior_signature);
+  }
+  if(demo_fast->early_route.size()>=14&&demo_fast->early_route[11]!=prior_signature){replanned=true;}
+  if(n>regroup_tick+96&&!replanned){fprintf(demo_log,"FAIL invalid express plan not refreshed within 96 ticks\n");exit(140);}
+ }
  if(third&&n==1000&&!topology_extra_started&&!reload){topology_extra_started=true;DemoRequire(CmdStartStopVehicle(DoCommandFlag::Execute,topology_extra->index,true),"start third entrance express");fprintf(demo_log,"TOPOLOGY START_THIRD %u\n",n);}
  if(!reload&&!portable_saved&&n==(third?1000u:independent?300u:800u)){
   if(demo_fast->vehstatus.Test(VehState::Stopped)||(third&&topology_extra->vehstatus.Test(VehState::Stopped))){fprintf(demo_log,"FAIL portable snapshot needs future start command\n");exit(139);}
@@ -151,7 +173,7 @@ void TopologyTick()
  if(third&&!extra_clear&&TopologyTailClear(topology_extra)){extra_clear=true;fprintf(demo_log,"TOPOLOGY THIRD_TAIL_CLEAR %u\n",n);}
  const bool all_clear=first_clear&&(!third||extra_clear);
  if(stopped&&!all_clear){
-  if(demo_slow->cur_speed||TrainReservationPassesThroughTile(demo_slow,TileXY(75,42),TRACK_X)){fprintf(demo_log,"FAIL topology moved/reserved while actual fast tail pending tick=%u\n",n);exit(132);}
+  if(demo_slow->cur_speed||TrainReservationPassesThroughTile(demo_slow,TileXY(75,42),TRACK_X)){fprintf(demo_log,"FAIL topology moved/reserved while actual fast tail pending tick=%u\n",n);for(const Train*p=demo_fast->First();p;p=p->Next())fprintf(demo_log,"FAST_BODY id=%u xy=%u,%u track=%u td=%u\n",p->index.base(),TileX(p->tile),TileY(p->tile),uint(p->track),uint(p->GetVehicleTrackdir()));fflush(demo_log);exit(132);}
   const auto pass=[&](Train*v,uint&counter){if(TileY(v->tile)==40&&TileX(v->tile)>=74&&TileX(v->tile)<=90){if(v->cur_speed==0){fprintf(demo_log,"FAIL topology express stopped in safe main corridor\n");exit(133);}counter++;}};
   pass(demo_fast,first_pass_held);if(third)pass(topology_extra,extra_pass_held);
  }
@@ -164,6 +186,7 @@ void TopologyTick()
  if(!saved&&!reload&&((stopped&&(!third||StreamHasTarget(topology_extra)))||(independent&&negative_overlap>16))){DemoSave("strict-waiting");saved=true;}
  if(all_clear&&TileY(demo_slow->tile)==40&&TileX(demo_slow->tile)>topology_clear_x+4&&!demo_slot->IsOccupant(demo_slow->index)&&TopologyAllResourcesReleased()){
   if(!saved||(independent?negative_overlap==0:!entered||!stopped||held<2||!resumed||first_pass_held==0||(third&&extra_pass_held==0)||(!reload&&!conflict))){fprintf(demo_log,"FAIL topology missing mandatory stage negative_overlap=%u held=%u first_pass=%u extra_pass=%u\n",negative_overlap,held,first_pass_held,extra_pass_held);exit(137);}
+  if(mode=="topology-merge2-refresh"){assert(regrouped&&replanned);fprintf(demo_log,"ROUTE_RESELECTED after_group_change=1 original_shared_wait_preserved=1\n");}
   fprintf(demo_log,"STRICT PASS mode=%.*s reload=%u entered=%u stopped=%u held=%u first_pass_held=%u third_pass_held=%u all_actual_tails_clear=1 resumed=%u released=1 independent_overlap=%u\n",int(mode.size()),mode.data(),reload,entered,stopped,held,first_pass_held,extra_pass_held,resumed,negative_overlap);fflush(demo_log);_exit_game=true;
  }
  if(n%256==0)fprintf(demo_log,"TOPOLOGY TRACE %u slow=%u,%u/%u need=%u first=%u,%u/%u target=%u third=%u,%u/%u target=%u\n",n,TileX(demo_slow->tile),TileY(demo_slow->tile),demo_slow->cur_speed,need,TileX(demo_fast->tile),TileY(demo_fast->tile),demo_fast->cur_speed,StreamHasTarget(demo_fast),topology_extra?TileX(topology_extra->tile):0,topology_extra?TileY(topology_extra->tile):0,topology_extra?topology_extra->cur_speed:0,topology_extra&&StreamHasTarget(topology_extra));

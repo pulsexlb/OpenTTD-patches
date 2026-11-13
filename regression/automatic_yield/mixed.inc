@@ -158,7 +158,10 @@ void MixedTick()
  if(!entered&&x>=56&&x<74&&(MixedInRows(row,mixed_platform_rows)||MixedInRows(row,mixed_ordinary_rows))){
   chosen_row=row;entered=true;
   fprintf(demo_log,"MIXED ENTER %u row=%u scheduled=%u platform=%u\n",n,row,scheduled,MixedInRows(row,mixed_platform_rows));
-  if(scheduled!=MixedInRows(row,mixed_platform_rows)){fprintf(demo_log,"FAIL mixed wrong lane class row=%u scheduled=%u\n",row,scheduled);fflush(demo_log);exit(161);}
+  /* A platform-only fixture has no ordinary lane to prefer. Existing
+   * mixed layouts retain the original scheduled/non-stop class assertion. */
+  const bool platform_required=scheduled||mixed_ordinary_rows.empty();
+  if(platform_required!=MixedInRows(row,mixed_platform_rows)){fprintf(demo_log,"FAIL mixed wrong lane class row=%u scheduled=%u\n",row,scheduled);fflush(demo_log);exit(161);}
  }
  if(demo_slow->current_order.IsAnyLoadingType()&&!station_work){station_work=true;fprintf(demo_log,"MIXED SCHEDULED_LOADING %u row=%u\n",n,row);}
  if(!scheduled&&!independent_stops&&demo_slow->current_order.IsAnyLoadingType()){fprintf(demo_log,"FAIL non-stop mixed arrival performed station work\n");exit(162);}

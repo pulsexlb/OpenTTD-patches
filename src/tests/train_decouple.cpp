@@ -17,6 +17,7 @@
 #include "../date_func.h"
 #include "../train_cmd.h"
 #include "../order_func.h"
+#include "../order_cmd.h"
 #include "../company_base.h"
 #include "../company_func.h"
 #include "../core/pool_func.hpp"
@@ -542,6 +543,7 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - network snapshot preserves wide
 	a->execute_schedule_stack = {0x00120034, 0x00560078};
 	b->couple_claimant = a->index;
 	b->couple_body_hold = true;
+	b->wait_couple_acquired_slot = TraceRestrictSlotID{0x1234};
 	auto snapshot = std::make_shared<CoupleSnapshotCapture>();
 	const SaveLoadResult result = SaveWithFilter(snapshot, false, SMF_NET_SERVER);
 	DeallocateMap();
@@ -558,21 +560,23 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - network snapshot preserves wide
 	/* SLXI also mentions CPLM by name; the actual state chunk is the last occurrence. */
 	auto chunk = std::find_end(snapshot->bytes.begin(), snapshot->bytes.end(), marker.begin(), marker.end());
 	REQUIRE(chunk != snapshot->bytes.end());
-	REQUIRE(std::distance(chunk, snapshot->bytes.end()) >= 46);
+	REQUIRE(std::distance(chunk, snapshot->bytes.end()) >= 50);
 	auto read32 = [&](size_t offset) {
 		return (uint32_t(chunk[offset]) << 24) | (uint32_t(chunk[offset + 1]) << 16) | (uint32_t(chunk[offset + 2]) << 8) | chunk[offset + 3];
 	};
-	CHECK(read32(4) == 38); // 4-byte count and two 17-byte records.
+	CHECK(read32(4) == 42); // 4-byte count and two v3 19-byte records, including the acquired slot.
 	CHECK(read32(8) == 2);
 	CHECK(read32(12) == 0x10001);
 	CHECK(read32(16) == 0x20002);
 	CHECK(read32(20) == VehicleID::Invalid().base());
 	CHECK(read32(24) == 123);
 	CHECK(chunk[28] == 0);
-	CHECK(read32(29) == 0x20002);
-	CHECK(read32(33) == VehicleID::Invalid().base());
-	CHECK(read32(37) == 0x10001);
-	CHECK(chunk[45] == 1);
+	CHECK(read32(31) == 0x20002);
+	CHECK(read32(35) == VehicleID::Invalid().base());
+	CHECK(read32(39) == 0x10001);
+	CHECK(chunk[47] == 1);
+	CHECK(chunk[29] == 0xFF); CHECK(chunk[30] == 0xFF);
+	CHECK(chunk[48] == 0x12); CHECK(chunk[49] == 0x34);
 }
 
 TEST_CASE_METHOD(TrainDecoupleFixture, "Decouple - cuts preserve legacy dual-head order counts")
@@ -732,27 +736,27 @@ TEST_CASE("Decouple - independent timing options preserve schedule IDs and exit 
 {
 	Order order;
 	order.MakeDecouple();
-	CHECK_FALSE(order.GetDecoupleResetLateness(true));
-	CHECK_FALSE(order.GetDecoupleResetLateness(false));
+	CHECK_FALSE(order.GetDecoupleKeepLateness(true));
+	CHECK_FALSE(order.GetDecoupleKeepLateness(false));
 	order.SetDecoupleFirstScheduleID(OrderListID{1234});
 	order.SetDecoupleSecondScheduleID(OrderListID{5678});
 	order.SetDecoupleFirstSameDirExit(true);
 	order.SetDecoupleSecondSameDirExit(true);
-	order.SetDecoupleResetLateness(true, true);
-	CHECK(order.GetDecoupleResetLateness(true));
-	CHECK_FALSE(order.GetDecoupleResetLateness(false));
-	order.SetDecoupleResetLateness(false, true);
-	order.SetDecoupleResetLateness(true, false);
+	order.SetDecoupleKeepLateness(true, true);
+	CHECK(order.GetDecoupleKeepLateness(true));
+	CHECK_FALSE(order.GetDecoupleKeepLateness(false));
+	order.SetDecoupleKeepLateness(false, true);
+	order.SetDecoupleKeepLateness(true, false);
 	Order copy(order);
-	CHECK_FALSE(copy.GetDecoupleResetLateness(true));
-	CHECK(copy.GetDecoupleResetLateness(false));
+	CHECK_FALSE(copy.GetDecoupleKeepLateness(true));
+	CHECK(copy.GetDecoupleKeepLateness(false));
 	CHECK(copy.GetDecoupleFirstSameDirExit());
 	CHECK(copy.GetDecoupleSecondSameDirExit());
 	CHECK(copy.GetDecoupleFirstScheduleID() == OrderListID{1234});
 	CHECK(copy.GetDecoupleSecondScheduleID() == OrderListID{5678});
 	copy.SetDecoupleFirstScheduleID(OrderListID{4321});
-	CHECK(copy.GetDecoupleResetLateness(false));
-	CHECK_FALSE(order.GetDecoupleResetLateness(true));
+	CHECK(copy.GetDecoupleKeepLateness(false));
+	CHECK_FALSE(order.GetDecoupleKeepLateness(true));
 }
 
 TEST_CASE("Decouple - procedural orders do not keep timetable incomplete")
@@ -1240,8 +1244,21 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - checkpoint speed preference is 
 	matching->tile = TileXY(19, 10);
 	MakeRailStation(matching->tile, OWNER_NONE, StationID{0}, Axis::X, 0, RAILTYPE_RAIL);
 	CHECK(FindBestCoupleCheckpointTarget(moving, moving->current_order) == matching);
+	/* A small extra distance previously outweighed speed fit. Only an enabled
+	 * criterion widens that soft preference; it never makes a partner illegal. */
+	matching->tile = TileXY(22, 10);
+	MakeRailStation(matching->tile, OWNER_NONE, StationID{0}, Axis::X, 0, RAILTYPE_RAIL);
+	CHECK(FindBestCoupleCheckpointTarget(moving, moving->current_order) == slow);
+	Order speed_criteria(moving->current_order);
+	speed_criteria.SetCoupleSpeedBoundMode(1, CoupleSpeedBoundMode::Manual);
+	speed_criteria.SetCoupleSpeedValue(1, UINT16_MAX);
+	CHECK(GetCoupleSpeedPreferencePenalty(moving, slow, &speed_criteria) == 13);
+	CHECK(FindBestCoupleCheckpointTarget(moving, speed_criteria) == matching);
+	CHECK(GetCoupleSpeedPreferencePenalty(moving, slow) == 10);
+	CHECK(moving->current_order.GetCoupleSpeedBoundMode(1) == CoupleSpeedBoundMode::Disabled);
 	matching->vcache.cached_max_speed = UINT16_MAX;
 	CHECK(GetCoupleSpeedPreferencePenalty(moving, matching) <= 24); // Large gaps cannot impose an unbounded detour.
+	CHECK(GetCoupleSpeedPreferencePenalty(moving, matching, &speed_criteria) <= 30);
 	matching->vcache.cached_max_speed = 120;
 	matching->current_order.MakeDummy();
 	CHECK(FindBestCoupleCheckpointTarget(moving, moving->current_order) == slow);
@@ -1249,6 +1266,7 @@ TEST_CASE_METHOD(TrainDecoupleFixture, "Couple - checkpoint speed preference is 
 	matching->tile = TileXY(40, 10);
 	MakeRailStation(matching->tile, OWNER_NONE, StationID{0}, Axis::X, 0, RAILTYPE_RAIL);
 	CHECK(FindBestCoupleCheckpointTarget(moving, moving->current_order) == slow); // A large detour must not force a match.
+	CHECK(FindBestCoupleCheckpointTarget(moving, speed_criteria) == slow);
 	moving->couple_target = slow->index;
 	slow->couple_claimant = moving->index;
 	CHECK(GetCoupleClaimant(slow) == moving);
@@ -1336,6 +1354,8 @@ protected:
 
 TEST_CASE_METHOD(CouplePowerFixture, "Couple power - ready stronger same-speed locomotive wins before claim")
 {
+	SECTION("stronger locomotive is nearer") {}
+	SECTION("stronger locomotive is farther") { Place(strong, 6, 12); }
 	GameRandomSeedChecker random_checker;
 	Train *contact = nullptr;
 	uint32_t cost = 0;
@@ -1352,6 +1372,55 @@ TEST_CASE_METHOD(CouplePowerFixture, "Couple power - ready stronger same-speed l
 	for (Train *train : {low, strong, waiting}) CHECK(ValidateVehicleTileHash(train));
 }
 
+
+TEST_CASE_METHOD(CouplePowerFixture, "Couple power - nonmatching speeds have only a bounded soft power preference")
+{
+	/* Catch2 generators must precede SECTION traversal to enumerate both callers
+	 * independently; placing one after the sections can reuse an invalid tracker. */
+	const bool strong_calls = GENERATE(false, true);
+	waiting->vcache.cached_max_speed = 100;
+	Train *expected = low;
+	bool same_cost = false;
+	SECTION("a much stronger but farther locomotive does not steal the target") {
+		Place(strong, 6, 12);
+		strong->gcache.cached_power = UINT32_MAX;
+	}
+	SECTION("slower wagons slightly prefer lower power at equal route cost") {
+		same_cost = true;
+		Place(strong, 8, 12);
+	}
+	SECTION("a farther lower-powered locomotive must not force a detour") {
+		Place(low, 6, 8);
+		Place(strong, 8, 12);
+		expected = strong;
+	}
+	SECTION("faster wagons retain the existing soft higher-power preference") {
+		waiting->vcache.cached_max_speed = 140;
+		same_cost = true;
+		Place(strong, 8, 12);
+		expected = strong;
+	}
+	Train *end = nullptr;
+	uint32_t low_cost = 0, strong_cost = 0;
+	REQUIRE(YapfTrainCoupleTrack(low, true, &end, &low_cost, nullptr, waiting) != INVALID_TRACK);
+	REQUIRE(YapfTrainCoupleTrack(strong, true, &end, &strong_cost, nullptr, waiting) != INVALID_TRACK);
+	if (same_cost) REQUIRE(low_cost == strong_cost);
+	else if (expected == low) REQUIRE(strong_cost >= low_cost + YAPF_TILE_LENGTH);
+	else REQUIRE(low_cost >= strong_cost + YAPF_TILE_LENGTH);
+	GameRandomSeedChecker random_checker;
+	/* Start with the powerful caller as well: it must yield to the nearer
+	 * same-gap alternative, rather than only keeping an existing nearer claim. */
+	Train *caller = strong_calls ? strong : low;
+	caller->couple_target = waiting->index;
+	ClaimCoupleTarget(caller, waiting, caller == strong ? strong_cost : low_cost);
+	CHECK(GetCoupleClaimant(waiting) == expected);
+	CHECK(expected->couple_target == waiting->index);
+	CHECK(random_checker.Check());
+	for (Train *train : {low, strong, waiting}) {
+		CHECK(ValidateVehicleTileHash(train));
+		CHECK(GetRailReservationTrackBits(train->tile) == TRACK_BIT_NONE);
+	}
+}
 
 TEST_CASE_METHOD(CouplePowerFixture, "Couple power - unsuitable stronger locomotives never block normal claims")
 {
@@ -6096,4 +6165,107 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - NewGRF cache reload pre
 	AfterLoadVehiclesPhase1(false);
 	for (const Train *part : {head, waiting, rear}) CHECK(part->Primary() == head);
 	CHECK(random_checker.Check());
+}
+
+TEST_CASE_METHOD(CouplePowerFixture, "Couple - waiting company mask allows several companies without bypassing approach filters")
+{
+ const uint16_t owner = 1U << low->owner.base();
+ waiting->current_order.SetWaitCoupleCompanyMask(owner | (1U << (MAX_COMPANIES - 1)));
+ CHECK(waiting->current_order.GetWaitCoupleCompanyMask() == (owner | (1U << (MAX_COMPANIES - 1))));
+ CHECK(GetCoupleCandidateResult(low, low->current_order, waiting, waiting->tile, false) != CoupleCandidateResult::WaitingCompany);
+ waiting->current_order.SetWaitCoupleCompanyMask(1U << (MAX_COMPANIES - 1));
+ CHECK(GetCoupleCandidateResult(low, low->current_order, waiting, waiting->tile, false) == CoupleCandidateResult::WaitingCompany);
+ waiting->current_order.SetWaitCoupleCompany(low->owner.base() + 1);
+ CHECK(waiting->current_order.GetWaitCoupleCompanyMask() == owner);
+ waiting->current_order.SetWaitCoupleCompanyMask(0);
+ CHECK(GetCoupleCandidateResult(low, low->current_order, waiting, waiting->tile, false) != CoupleCandidateResult::WaitingCompany);
+ waiting->current_order.SetWaitCoupleTraction(3);
+ CHECK(waiting->current_order.GetWaitCoupleTraction() == 3);
+ waiting->current_order.SetWaitCoupleCompanyMask(owner);
+ CHECK(waiting->current_order.GetWaitCoupleTraction() == 3);
+ Order copy = waiting->current_order;
+ CHECK(copy.GetWaitCoupleCompanyMask() == owner);
+ CHECK(copy.GetWaitCoupleTraction() == 3);
+}
+
+TEST_CASE_METHOD(CouplePowerFixture, "Couple - waiting slot gates targets and returns only acquired membership")
+{
+ auto cleanup = scope_guard([](){ _tracerestrictslot_pool.CleanPool(); });
+ auto *slot = TraceRestrictSlot::Create(_current_company, VehicleType::Train);
+ slot->max_occupancy = 1;
+ waiting->current_order.SetWaitCoupleSlot(slot->index);
+ SECTION("full slot excludes a waiting target until capacity is free") {
+  REQUIRE(slot->Occupy(low));
+  UpdateWaitCoupleSlot(waiting);
+  CHECK_FALSE(slot->IsOccupant(waiting->index));
+  CHECK(GetCoupleCandidateResult(strong, strong->current_order, waiting, waiting->tile, false) == CoupleCandidateResult::NotWaiting);
+  slot->Vacate(low);
+  UpdateWaitCoupleSlot(waiting);
+  CHECK(slot->IsOccupant(waiting->index));
+  CHECK(waiting->wait_couple_acquired_slot == slot->index);
+  waiting->current_order.MakeDummy();
+  UpdateWaitCoupleSlot(waiting);
+  CHECK_FALSE(slot->IsOccupant(waiting->index));
+  CHECK(waiting->wait_couple_acquired_slot == TraceRestrictSlotID::Invalid());
+ }
+ SECTION("an existing unrelated membership survives cancellation") {
+  REQUIRE(slot->Occupy(waiting));
+  UpdateWaitCoupleSlot(waiting);
+  CHECK(waiting->wait_couple_acquired_slot == TraceRestrictSlotID::Invalid());
+  waiting->current_order.MakeDummy();UpdateWaitCoupleSlot(waiting);
+  CHECK(slot->IsOccupant(waiting->index));
+ }
+ SECTION("company filter coexists with the optional slot") {
+  waiting->current_order.SetWaitCoupleCompanyMask(1U << low->owner.base());
+  UpdateWaitCoupleSlot(waiting);
+  CHECK(waiting->current_order.GetWaitCoupleSlot() == slot->index);
+  CHECK(GetCoupleCandidateResult(low, low->current_order, waiting, waiting->tile, false) != CoupleCandidateResult::NotWaiting);
+ }
+}
+TEST_CASE_METHOD(CouplePowerFixture, "Couple - company clicks are applied as synchronized toggles")
+{
+ Company *other = Company::Create();
+ Order wait;wait.MakeWaitCouple();
+ REQUIRE(CmdInsertOrder(DoCommandFlag::Execute, InsertOrderCmdData(low->index, VehicleOrderID{0}, wait)).Succeeded());
+ auto modify = [&](uint16_t data, DoCommandFlags flags) { return CmdModifyOrder(flags,OrderTargetType::Vehicle,low->index.base(),VehicleOrderID{0},MOF_WAIT_COUPLE_COMPANY,data,INVALID_CARGO,{}); };
+ const uint16_t first=0x8000+low->owner.base(),second=0x8000+other->index.base();
+ REQUIRE(modify(first,{}).Succeeded()); CHECK(low->GetOrder(0)->GetWaitCoupleCompanyMask()==0);
+ REQUIRE(modify(first,DoCommandFlag::Execute).Succeeded());
+ REQUIRE(modify(second,DoCommandFlag::Execute).Succeeded());
+ CHECK(low->GetOrder(0)->GetWaitCoupleCompanyMask()==((1U<<low->owner.base())|(1U<<other->index.base())));
+ REQUIRE(modify(first,DoCommandFlag::Execute).Succeeded());
+ CHECK(low->GetOrder(0)->GetWaitCoupleCompanyMask()==(1U<<other->index.base()));
+ REQUIRE(modify(0,DoCommandFlag::Execute).Succeeded());CHECK(low->GetOrder(0)->GetWaitCoupleCompanyMask()==0);
+ CHECK(modify(0x8000+MAX_COMPANIES,DoCommandFlag::Execute).Failed());
+}
+
+TEST_CASE_METHOD(TrainDecoupleFixture, "Train v4 load recovers only a uniquely matching missing articulated base")
+{
+ AutoRestoreBackup feature(_sl_xv_feature_versions[XSLFI_TRAIN_UNIT_MAIN], uint16_t{4});
+ Train *base=MakeTrain(), *p1=MakeTrain(), *p2=MakeTrain(), *wrong=MakeTrain(), *own=MakeTrain();
+ base->SetNext(p1);p1->SetNext(p2);p2->SetNext(wrong);wrong->SetNext(own);
+ p1->SetArticulatedPart();p2->SetArticulatedPart();own->SetArticulatedPart();
+ wrong->engine_type=own->engine_type=EngineID{uint16_t(engine->index.base()+1)};
+ for(Train*t:{p1,p2,wrong,own})t->SetSavedUnitMainID(wrong->index.base()+1);
+ base->SetSavedUnitMainID(0);
+ RebuildTrainUnitMains();
+ CHECK(base->GetUnitMain()==base);CHECK(p1->GetUnitMain()==base);CHECK(p2->GetUnitMain()==base);
+ CHECK(wrong->GetUnitMain()==wrong);CHECK(own->GetUnitMain()==wrong);
+ CHECK(base->Next()==p1);CHECK(p2->Next()==wrong);
+}
+
+TEST_CASE_METHOD(CouplePowerFixture, "Couple - shared waiting slot command never allocates in shared-list order")
+{
+ auto cleanup=scope_guard([](){_tracerestrictslot_pool.CleanPool();});
+ auto *slot=TraceRestrictSlot::Create(_current_company,VehicleType::Train);slot->max_occupancy=1;
+ Order wait;wait.MakeWaitCouple();
+ REQUIRE(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(low->index,VehicleOrderID{0},wait)).Succeeded());
+ strong->orders=low->orders;strong->AddToShared(low);
+ low->current_order=wait;strong->current_order=wait;
+ auto modify=[&](DoCommandFlags flags){return CmdModifyOrder(flags,OrderTargetType::Vehicle,low->index.base(),VehicleOrderID{0},MOF_WAIT_COUPLE_SLOT,slot->index.base(),INVALID_CARGO,{});};
+ REQUIRE(modify({}).Succeeded());CHECK(slot->occupants.empty());
+ REQUIRE(modify(DoCommandFlag::Execute).Succeeded());CHECK(slot->occupants.empty());
+ CHECK(low->current_order.GetWaitCoupleSlot()==slot->index);CHECK(strong->current_order.GetWaitCoupleSlot()==slot->index);
+ UpdateWaitCoupleSlot(low);UpdateWaitCoupleSlot(strong);
+ CHECK(slot->IsOccupant(low->index));CHECK_FALSE(slot->IsOccupant(strong->index));
 }

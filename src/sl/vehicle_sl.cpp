@@ -260,6 +260,32 @@ void RebuildTrainUnitMains()
 		}
 
 		if (version >= 4) {
+			/* Some older live consists saved a missing wagon base and assigned
+			 * its adjacent articulated run to the next, different engine. Recover
+			 * only a uniform run with exactly one adjacent matching null base and
+			 * demonstrably incompatible saved refs. Ambiguous/different corruption
+			 * still reaches the strict reference/contiguity checks below. */
+			for (size_t i = 0; i < chain.size();) {
+				if (!chain[i]->IsArticulatedPart()) { ++i; continue; }
+				const size_t begin = i;
+				while (i < chain.size() && chain[i]->IsArticulatedPart()) ++i;
+				Train *candidate = nullptr;
+				uint candidates = 0;
+				for (Train *base : {begin == 0 ? nullptr : chain[begin - 1], i == chain.size() ? nullptr : chain[i]}) {
+					if (base != nullptr && !base->IsMultiheaded() && base->GetSavedUnitMainID() == 0 && base->engine_type == chain[begin]->engine_type) { candidate = base; ++candidates; }
+				}
+				if (candidates != 1) continue;
+				bool incompatible = true;
+				for (size_t j = begin; j < i; ++j) {
+					const uint32_t encoded = chain[j]->GetSavedUnitMainID();
+					const Train *wrong = encoded == 0 ? nullptr : Train::GetIfValid(VehicleID{encoded - 1});
+					if (chain[j]->engine_type != candidate->engine_type || wrong == nullptr || wrong->First() != head || wrong->IsArticulatedPart() || wrong->engine_type == candidate->engine_type) incompatible = false;
+				}
+				if (!incompatible) continue;
+				candidate->SetSavedUnitMainID(candidate->index.base() + 1);
+				for (size_t j = begin; j < i; ++j) chain[j]->SetSavedUnitMainID(candidate->index.base() + 1);
+				Debug(sl, 1, "Recovered missing train unit base {} for {} adjacent articulated parts", candidate->index, i - begin);
+			}
 			for (Train *u : chain) {
 				const uint32_t encoded = u->GetSavedUnitMainID();
 				if (encoded == 0) continue; // Null membership is valid, including crashed remnants.
@@ -2299,6 +2325,7 @@ struct CoupleClaimSave {
 	VehicleID couple_claimant;
 	uint32_t couple_claim_cost;
 	uint8_t couple_body_hold;
+	TraceRestrictSlotID wait_couple_acquired_slot = TraceRestrictSlotID::Invalid();
 };
 
 static std::vector<CoupleClaimSave> _couple_claims;
@@ -2315,8 +2342,8 @@ void Save_CPLM()
 	SlAutolength([]() {
 		std::vector<CoupleClaimSave> claims;
 		for (Train *t : Train::Iterate()) {
-			if (t->couple_target == VehicleID::Invalid() && t->couple_claimant == VehicleID::Invalid() && !t->couple_body_hold) continue;
-			claims.push_back({t->index, t->couple_target, t->couple_claimant, t->couple_claim_cost, static_cast<uint8_t>(t->couple_body_hold ? 1 : 0)});
+			if (t->couple_target == VehicleID::Invalid() && t->couple_claimant == VehicleID::Invalid() && !t->couple_body_hold && t->wait_couple_acquired_slot == TraceRestrictSlotID::Invalid()) continue;
+			claims.push_back({t->index, t->couple_target, t->couple_claimant, t->couple_claim_cost, static_cast<uint8_t>(t->couple_body_hold ? 1 : 0), t->wait_couple_acquired_slot});
 		}
 
 		SlWriteUint32((uint32_t)claims.size());
@@ -2326,6 +2353,7 @@ void Save_CPLM()
 			SlWriteUint32(cs.couple_claimant.base());
 			SlWriteUint32(cs.couple_claim_cost);
 			SlWriteByte(cs.couple_body_hold);
+			SlWriteUint16(cs.wait_couple_acquired_slot.base());
 		}
 	});
 }
@@ -2337,7 +2365,8 @@ void Load_CPLM()
 
 	uint32_t count = SlReadUint32();
 	const bool wide_ids = SlXvIsFeaturePresent(XSLFI_COUPLE_CLAIM_STATE, 2);
-	const uint32_t record_size = wide_ids ? 17 : 13;
+	const bool has_wait_slot = SlXvIsFeaturePresent(XSLFI_COUPLE_CLAIM_STATE, 3);
+	const uint32_t record_size = has_wait_slot ? 19 : wide_ids ? 17 : 13;
 	if (count > VehicleID::End().base() || SlGetFieldLength() != 4ULL + uint64_t(count) * record_size) {
 		SlErrorCorrupt("Invalid couple claim record count");
 	}
@@ -2356,6 +2385,7 @@ void Load_CPLM()
 		}
 		cs.couple_claim_cost = SlReadUint32();
 		cs.couple_body_hold = SlReadByte() != 0;
+		if (has_wait_slot) cs.wait_couple_acquired_slot = TraceRestrictSlotID{SlReadUint16()};
 	}
 }
 
@@ -2368,6 +2398,7 @@ void SlApplyCoupleClaims()
 		t->couple_claimant = cs.couple_claimant;
 		t->couple_claim_cost = cs.couple_claim_cost;
 		t->couple_body_hold = cs.couple_body_hold != 0;
+		t->wait_couple_acquired_slot = cs.wait_couple_acquired_slot;
 	}
 	_couple_claims.clear();
 }

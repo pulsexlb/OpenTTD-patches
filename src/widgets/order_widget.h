@@ -89,6 +89,7 @@ enum OrderWidgets : WidgetID {
 	WID_O_WAIT_COUPLE_DIAGNOSTICS,   ///< Show whether a waiting train has been claimed.
 	WID_O_WAIT_COUPLE_COMPANY,       ///< Select the approaching locomotive's company.
 	WID_O_WAIT_COUPLE_TRACTION,      ///< Select the approaching locomotive's traction class.
+	WID_O_WAIT_COUPLE_SLOT,          ///< Acquire before waiting and return after coupling.
 	WID_O_WAIT_COUPLE_STATION,       ///< Select the station a waiting train travels to before holding.
 };
 

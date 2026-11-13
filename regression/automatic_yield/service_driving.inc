@@ -10,7 +10,12 @@ void StationServiceDrivingTick()
  const bool reload = std::getenv("PXP_SERVICE_RELOAD") != nullptr;
  const bool waypoint_coupling = mode.starts_with("recouple-waypoint");
  const bool late_partner = mode == "recouple-waypoint-late";
- const bool recoupling = mode == "recouple" || waypoint_coupling;
+ const bool auto_slot = mode.starts_with("recouple-slot");
+ const bool full_auto_slot = mode == "recouple-slot-full";
+ const bool recoupling = mode == "recouple" || waypoint_coupling || auto_slot;
+ static TraceRestrictSlot *wait_slot = nullptr;
+ static uint full_wait_ticks = 0;
+ static bool full_slot_released = false;
  static bool waypoint_waited = false;
  static VehicleID late_target = VehicleID::Invalid();
  static uint late_stuck_ticks = 0;
@@ -112,9 +117,25 @@ void StationServiceDrivingTick()
   Train *carriages=nullptr;
   for(auto *t:Train::Iterate())if(t->IsPrimaryVehicle()&&t!=demo_slow&&t!=demo_fast&&t->last_station_visited==first_station)carriages=t;
   if(carriages!=nullptr && demo_slow->last_station_visited==first_station) {
+   if(auto_slot&&!carriages->current_order.IsType(OT_WAIT_COUPLE))return;
    assert(carriages->GetActiveServiceNumber()==first_number);
    if(mode=="split-both")assert(demo_slow->GetActiveServiceNumber()==first_number);
    else {assert(demo_slow->GetActiveServiceNumber().empty());assert(demo_slow->service_number_suppressed);}
+   if (auto_slot && wait_slot == nullptr) {
+    for (auto *slot:TraceRestrictSlot::Iterate()) if(slot->name=="service-auto-wait")wait_slot=slot;
+    if(wait_slot==nullptr){wait_slot=TraceRestrictSlot::Create(carriages->owner,VehicleType::Train);wait_slot->name="service-auto-wait";wait_slot->max_occupancy=1;if(full_auto_slot)assert(wait_slot->Occupy(demo_fast));}
+    DemoRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,carriages->index.base(),carriages->cur_real_order_index,MOF_WAIT_COUPLE_SLOT,wait_slot->index.base(),INVALID_CARGO,{}),"wait acquires automatic slot");
+    DemoRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,carriages->index.base(),carriages->cur_real_order_index,MOF_WAIT_COUPLE_COMPANY,carriages->owner.base()+1,INVALID_CARGO,{}),"waiting company restriction");
+    /* The command selects the slot; actual acquisition belongs to the next native train tick. */
+   }
+   if(auto_slot&&!full_auto_slot){
+    if(!wait_slot->IsOccupant(carriages->index))return;
+    assert(carriages->wait_couple_acquired_slot==wait_slot->index);
+   }
+   if(full_auto_slot&&!full_slot_released){
+    assert(wait_slot->IsOccupant(demo_fast->index));assert(!wait_slot->IsOccupant(carriages->index));assert(carriages->cur_speed==0);
+    if(++full_wait_ticks>=200){wait_slot->Vacate(demo_fast);full_slot_released=true;fprintf(demo_log,"AUTO_SLOT full_wait_ticks=%u released=1\n",full_wait_ticks);}
+   }
    if(!saved){
     if(shared_dispatch){
      const auto &schedule=carriages->orders->GetDispatchScheduleByIndex(0);
@@ -181,9 +202,9 @@ void StationServiceDrivingTick()
   }
   if(recoupling&&recouple_posted&&demo_slow->GetActiveServiceNumber()=="G123") {
    uint wagons=0;for(const Train*t=demo_slow->First();t;t=t->Next())if(t->IsWagon()&&!t->IsArticulatedPart())wagons++;
-   if(wagons==3){if(waypoint_coupling)assert(waypoint_waited);if(late_partner)assert(late_released&&late_stuck_ticks>=60);fprintf(demo_log,"STRICT PASS %s actual_wagons=3 restored=G123 waypoint_waited=%u reload=%u ticks=%u\n",mode.c_str(),waypoint_waited,reload,ticks);fflush(demo_log);_exit_game=true;}
+   if(wagons==3){if(auto_slot){assert(wait_slot!=nullptr&&wait_slot->occupants.empty());assert(demo_slow->wait_couple_acquired_slot==TraceRestrictSlotID::Invalid());if(full_auto_slot)assert(full_slot_released&&full_wait_ticks>=200);fprintf(demo_log,"AUTO_SLOT acquired_and_returned=1 reload=%u\n",reload);}if(waypoint_coupling)assert(waypoint_waited);if(late_partner)assert(late_released&&late_stuck_ticks>=60);fprintf(demo_log,"STRICT PASS %s actual_wagons=3 restored=G123 waypoint_waited=%u reload=%u ticks=%u\n",mode.c_str(),waypoint_waited,reload,ticks);fflush(demo_log);_exit_game=true;}
   }
-  if(mode=="recouple"&&recouple_posted&&!return_posted&&TileX(demo_slow->GetMovingFront()->tile)>=130) {
+  if((mode=="recouple"||auto_slot)&&recouple_posted&&!return_posted&&TileX(demo_slow->GetMovingFront()->tile)>=130) {
    DemoRequire(CmdReverseTrainDirection(DoCommandFlag::Execute,demo_slow->index,false),"native reverse to waiting carriages");return_posted=true;
   }
  }

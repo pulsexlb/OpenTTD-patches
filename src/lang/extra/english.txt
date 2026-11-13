@@ -2776,8 +2776,13 @@ STR_WAIT_COUPLE_TRACTION_ELECTRIC                                  :Electric
 STR_WAIT_COUPLE_TRACTION_SUFFIX                                    : ({STRING})
 STR_WAIT_COUPLE_TRACTION_MISMATCH                                  :The waiting train requires a different locomotive type
 
-STR_WAIT_COUPLE_COMPANY_BUTTON                                    :Approaching company
-STR_WAIT_COUPLE_COMPANY_TOOLTIP                                   :{BLACK}Choose which company may send a locomotive to couple
+STR_WAIT_COUPLE_COMPANY_BUTTON                                    :Coupling train company
+STR_WAIT_COUPLE_COMPANY_TOOLTIP                                   :{BLACK}Select companies allowed to send a coupling train; multiple selections are allowed, Any clears the filter
 STR_WAIT_COUPLE_COMPANY_SUFFIX                                    : ({COMPANY})
 STR_WAIT_COUPLE_COMPANY_MISSING                                   : (company unavailable)
 STR_WAIT_COUPLE_COMPANY_MISMATCH                                  :The waiting train requires a locomotive from a different company
+
+STR_WAIT_COUPLE_SLOT_NONE :Automatic slot: off
+STR_WAIT_COUPLE_SLOT_BUTTON :Automatic slot: {TRSLOT}
+STR_WAIT_COUPLE_SLOT_TOOLTIP :{BLACK}Acquire this slot before accepting a coupling train, then return it after coupling. If full, keep waiting. An independently held slot is preserved.
+STR_WAIT_COUPLE_SLOT_SUFFIX : (acquire then return {TRSLOT})

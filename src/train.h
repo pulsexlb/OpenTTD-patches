@@ -152,7 +152,7 @@ bool HasPotentialCoupleTarget(const Train *moving);
 
 CoupleCandidateResult GetCoupleCandidateResult(const Train *moving, const Order &order,
 		Train *waiting_first, TileIndex contact_tile, bool respect_claim = true, uint32_t claim_cost = 0);
-uint GetCoupleSpeedPreferencePenalty(const Train *moving, const Train *waiting);
+uint GetCoupleSpeedPreferencePenalty(const Train *moving, const Train *waiting, const Order *criteria = nullptr);
 Train *FindBestCoupleCheckpointTarget(Train *moving, const Order &couple);
 Train *ValidateCoupleCandidate(const Train *moving, Train *waiting_first, TileIndex contact_tile,
 		bool respect_claim = true, uint32_t claim_cost = 0, const Order *criteria = nullptr);
@@ -243,6 +243,7 @@ struct Train final : public GroundVehicle<Train, VehicleType::Train> {
 	 * can reserve up to the contact point with the regular reservation
 	 * machinery. Kept on the consist Primary. */
 	bool couple_body_hold = false;
+	TraceRestrictSlotID wait_couple_acquired_slot = TraceRestrictSlotID::Invalid(); ///< Only a membership newly acquired by this waiting order; saved in CPLM.
 	/* Transient state (not saved): the player manually ordered this train to
 	 * a depot and we are pathfinding for the nearest depot before the order
 	 * is set, so the depot-impassability rule must not block depot tiles. */

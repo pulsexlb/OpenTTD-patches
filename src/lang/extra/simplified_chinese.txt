@@ -2695,14 +2695,19 @@ STR_SCHDISPATCH_SET_LAST_DISPATCH_TOOLTIP                      :{BLACK}手动设
 STR_WAIT_COUPLE_TRACTION_BUTTON                                    :车头类型
 STR_WAIT_COUPLE_TRACTION_TOOLTIP                                   :{BLACK}选择哪种车头可以与这组等待中的车辆连挂
 STR_WAIT_COUPLE_TRACTION_ANY                                       :不限
-STR_WAIT_COUPLE_TRACTION_STEAM                                     :蒸汽
-STR_WAIT_COUPLE_TRACTION_DIESEL                                    :内燃
-STR_WAIT_COUPLE_TRACTION_ELECTRIC                                  :电力
+STR_WAIT_COUPLE_TRACTION_STEAM                                     :蒸汽机车
+STR_WAIT_COUPLE_TRACTION_DIESEL                                    :内燃机车
+STR_WAIT_COUPLE_TRACTION_ELECTRIC                                  :电力机车
 STR_WAIT_COUPLE_TRACTION_SUFFIX                                    :（{STRING}）
 STR_WAIT_COUPLE_TRACTION_MISMATCH                                  :等待中的车辆要求另一种车头类型
 
-STR_WAIT_COUPLE_COMPANY_BUTTON                                    :来车公司
-STR_WAIT_COUPLE_COMPANY_TOOLTIP                                   :{BLACK}选择哪家公司的车头可以前往连挂
+STR_WAIT_COUPLE_COMPANY_BUTTON                                    :对接列车公司
+STR_WAIT_COUPLE_COMPANY_TOOLTIP                                   :{BLACK}勾选允许前往对接的列车公司；可多选，选择“不限”取消公司限制
 STR_WAIT_COUPLE_COMPANY_SUFFIX                                    :（{COMPANY}）
 STR_WAIT_COUPLE_COMPANY_MISSING                                   :（指定公司不存在）
 STR_WAIT_COUPLE_COMPANY_MISMATCH                                  :等待中的车辆要求另一家公司的车头
+
+STR_WAIT_COUPLE_SLOT_NONE :自动路签：关闭
+STR_WAIT_COUPLE_SLOT_BUTTON :自动路签：{TRSLOT}
+STR_WAIT_COUPLE_SLOT_TOOLTIP :{BLACK}领取所选路签后才接受对接，连接成功后归还；路签满时继续等待。已为其他用途持有的路签不会自动归还。
+STR_WAIT_COUPLE_SLOT_SUFFIX :（领取并归还路签：{TRSLOT}）
