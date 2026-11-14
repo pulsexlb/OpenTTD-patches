@@ -11,6 +11,7 @@
  */
 
 #include "stdafx.h"
+#include <cstdio>
 #include "air.h"
 #include "aircraft.h"
 #include "news_func.h"
@@ -38,6 +39,7 @@
 #include "depot_base.h"
 #include "company_base.h"
 #include "pbs_air.h"
+#include "scope.h"
 
 #include "pathfinder/yapf/yapf.h"
 #include "pathfinder/follow_track.hpp"
@@ -466,7 +468,7 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
 			u->vehstatus.Set(VehState::Hidden);
 		} else {
 			assert(IsValidTrackdir(v->trackdir));
-			if (!TryReserveAircraftTile(v, tile, TrackToTrackBits(TrackdirToTrack(v->trackdir)))) NOT_REACHED();
+			if (!TryReserveAircraftTile(v, tile, TrackToTrackBits(TrackdirToTrack(v->trackdir)), TrackdirToTrackdirBits(v->trackdir))) NOT_REACHED();
 		}
 
 		v->spritenum = avi->image_index;
@@ -1414,7 +1416,7 @@ static bool FinishAircraftTaxiRoute(Aircraft *v);
  */
 void UpdateAircraftState(Aircraft *v)
 {
-	if (!v->IsNormalAircraft()) return;
+	if (!v->IsNormalAircraft() || v->current_order.IsType(OT_WAITING)) return;
 	// revise: check conditions
 	// revise: is IsAircraftOnNextPosition always true here?
 	if (v->state == AS_RUNNING && !IsAircraftOnNextPosition(v)) return;
@@ -1544,6 +1546,7 @@ void AircraftEntersHangar(Aircraft *v)
 	v->progress = 0;
 	v->cur_speed = 0;
 	v->state = AS_HANGAR;
+	LogAircraftReservationState(v, "hangar-entry-release");
 	ReleaseAircraftTaxiPath(v, false);
 
 	{
@@ -1596,8 +1599,8 @@ void AircraftLeavesHangar(Aircraft *v)
  */
 static void AircraftEntersTerminal(Aircraft *v)
 {
-	assert(HasAirportTrackReserved(v->tile));
-	assert(CountBits(GetReservedAirportTracks(v->tile)) == 1);
+	assert(v->ignore_airport_reservations || HasAirportTrackReserved(v->tile));
+	assert(v->ignore_airport_reservations || CountBits(GetReservedAirportTracks(v->tile)) == 1);
 	assert(IsDiagonalTrackdir(v->trackdir));
 	assert(Station::IsValidID(v->targetairport));
 
@@ -1683,6 +1686,7 @@ bool RaiseLowerHelicopter(Aircraft *v)
 							cur_company.Restore();
 						}
 						ReleaseAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(v->trackdir)));
+						ResetAircraftIgnoreReservations(v);
 						v->state = AS_FLYING;
 						AircraftUpdateNextPos(v);
 					}
@@ -1804,6 +1808,7 @@ void HandleAircraftTakingoff(Aircraft *v)
 			/* Next tile contains the runway end, so it can be unreserved. */
 			TileIndex old_runway_tile = v->GetNextTile();
 			ReleaseAircraftRunway(v);
+			ResetAircraftIgnoreReservations(v);
 			v->state = AS_FLYING_LEAVING_AIRPORT;
 			v->UpdateNextTile(old_runway_tile);
 			break;
@@ -1907,7 +1912,7 @@ void HandleAircraftFlying(Aircraft *v)
 					landing_tile = FindClosestFreeLandingTile(v);
 					can_land = landing_tile != INVALID_TILE && !(Station::Get(v->targetairport))->airport.IsClosed();
 					if (can_land) {
-						trackdir = GetFreeAirportTrackdir(landing_tile, DiagDirToDiagTrackdir(DirToDiagDir(v->direction)));
+						trackdir = GetFreeAirportTrackdir(landing_tile, DiagDirToDiagTrackdir(DirToDiagDir(v->direction)), v);
 						can_land = trackdir != INVALID_TRACKDIR;
 					}
 				}
@@ -1924,7 +1929,7 @@ void HandleAircraftFlying(Aircraft *v)
 				if (can_land) {
 					assert(IsValidTrackdir(trackdir));
 					if (!TryClaimAircraftTerminal(v, landing_tile) ||
-							!TryReserveAircraftTile(v, landing_tile, TrackToTrackBits(TrackdirToTrack(trackdir)))) {
+							!TryReserveAircraftTile(v, landing_tile, TrackToTrackBits(TrackdirToTrack(trackdir)), TrackdirToTrackdirBits(trackdir))) {
 						ReleaseAircraftTerminal(v);
 						break;
 					}
@@ -1953,7 +1958,7 @@ void HandleAircraftFlying(Aircraft *v)
 				 * have diverted the aircraft from a closed order airport to an open one;
 				 * using the pre-divert flag keeps it circling forever. */
 				bool can_land = !(Station::Get(v->targetairport))->airport.IsClosed();
-				bool reservable = landing_tile != TileIndex{} && IsValidTile(landing_tile) && CanRunwayBeReserved(landing_tile);
+				bool reservable = landing_tile != TileIndex{} && IsValidTile(landing_tile) && IsAircraftRunwayAvailable(v, landing_tile);
 				/* Do not begin an approach unless there will be somewhere to go after
 				 * touchdown: without a free apron the aircraft would land and block the
 				 * runway end while waiting for a gate. Aircraft heading to a hangar
@@ -2032,10 +2037,13 @@ void HandleAircraftLanding(Aircraft *v)
 			assert(IsRunwayExtreme(v->tile));
 			assert(IsRunwayEnd(v->tile));
 
-			/* Free platform and reserve a track and set it to next trackdir. */
+			LogAircraftReservationState(v, "landing-roll-end");
+			/* Keep the complete runway until a checked local taxi track exists. */
 			Trackdir trackdir = DiagDirToDiagTrackdir(GetRunwayExtremeDirection(v->tile));
-			Trackdir next_trackdir = GetFreeAirportTrackdir(v->tile, trackdir);
-			if (!IsValidTrackdir(next_trackdir)) {
+			Trackdir next_trackdir = GetFreeAirportTrackdir(v->tile, trackdir, v);
+			if (!IsValidTrackdir(next_trackdir) ||
+					!TryReserveAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(next_trackdir)), TrackdirToTrackdirBits(next_trackdir))) {
+				LogAircraftReservationState(v, "landing-exit-blocked");
 				/* No exit from the runway end yet: keep this complete runway
 				 * exclusively booked until a safe taxi exit is available.
 				 * Zero the speed and stop moving this tick: any movement now
@@ -2050,16 +2058,20 @@ void HandleAircraftLanding(Aircraft *v)
 				break;
 			}
 
-			v->trackdir = trackdir;
-			if (next_trackdir != v->trackdir) {
-				v->next_trackdir = next_trackdir;
-				v->SetWaitTime(AircraftRotationStepTicks());
-			}
-			if (!TryReserveAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(next_trackdir)))) NOT_REACHED();
+			/* Select a legal taxi origin without rotating before route admission.
+			 * The sprite and position stay at the landing stop until both virtual
+			 * route and real departure window have been acquired. */
+			v->trackdir = v->Next()->trackdir = next_trackdir;
+			v->next_trackdir = v->Next()->next_trackdir = INVALID_TRACKDIR;
+			v->ClearWaitTime();
 			v->state = AS_IDLE;
 			v->cur_speed = 0;
+			v->subspeed = 0;
+			v->progress = 0;
+			v->taxi_progress = 0;
 			SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
 			v->UpdateNextTile(INVALID_TILE);
+			LogAircraftReservationState(v, "landing-await-virtual-route");
 			break;
 		}
 
@@ -2667,7 +2679,7 @@ TileIndex FindClosestLandingTile(Aircraft *v)
 				landing_tile = it;
 				best_dist = DistanceSquare(it, v->tile);
 			}
-			if (!HasAirportTrackReserved(it) && DistanceSquare(it, v->tile) < free_best_dist) {
+			if (IsAircraftGroundTileAvailable(v, it) && DistanceSquare(it, v->tile) < free_best_dist) {
 				free_landing_tile = it;
 				free_best_dist = DistanceSquare(it, v->tile);
 			}
@@ -2681,7 +2693,7 @@ TileIndex FindClosestLandingTile(Aircraft *v)
 					landing_tile = it;
 					best_dist = DistanceSquare(it, v->tile);
 				}
-				if (!HasAirportTrackReserved(it) && DistanceSquare(it, v->tile) < free_best_dist) {
+				if (IsAircraftGroundTileAvailable(v, it) && DistanceSquare(it, v->tile) < free_best_dist) {
 					free_landing_tile = it;
 					free_best_dist = DistanceSquare(it, v->tile);
 				}
@@ -2695,7 +2707,7 @@ TileIndex FindClosestLandingTile(Aircraft *v)
 				landing_tile = it;
 				best_dist = DistanceSquare(it, v->tile);
 			}
-			if (!HasAirportTrackReserved(it) && DistanceSquare(it, v->tile) < free_best_dist) {
+			if (IsAircraftGroundTileAvailable(v, it) && DistanceSquare(it, v->tile) < free_best_dist) {
 				free_landing_tile = it;
 				free_best_dist = DistanceSquare(it, v->tile);
 			}
@@ -2708,7 +2720,7 @@ TileIndex FindClosestLandingTile(Aircraft *v)
 				landing_tile = it;
 				best_dist = DistanceSquare(it, v->tile);
 			}
-			if (!HasAirportTrackReserved(it) && DistanceSquare(it, v->tile) < free_best_dist) {
+			if (IsAircraftGroundTileAvailable(v, it) && DistanceSquare(it, v->tile) < free_best_dist) {
 				free_landing_tile = it;
 				free_best_dist = DistanceSquare(it, v->tile);
 			}
@@ -2723,7 +2735,7 @@ TileIndex FindClosestLandingTile(Aircraft *v)
 			landing_tile = it;
 			best_dist = DistanceSquare(it, v->tile);
 		}
-		if (CanRunwayBeReserved(it) &&
+		if (IsAircraftRunwayAvailable(v, it) &&
 				DistanceSquare(it, v->tile) < free_best_dist) {
 			free_landing_tile = it;
 			free_best_dist = DistanceSquare(it, v->tile);
@@ -2744,7 +2756,7 @@ TileIndex FindClosestLandingTile(Aircraft *v)
 TileIndex FindClosestFreeLandingTile(Aircraft *v) {
 	TileIndex tile = FindClosestLandingTile(v);
 	if (tile == TileIndex{} || !IsValidTile(tile)) return INVALID_TILE;
-	if (HasAirportTrackReserved(tile)) return INVALID_TILE;
+	if (!IsAircraftGroundTileAvailable(v, tile)) return INVALID_TILE;
 	return tile;
 }
 
@@ -2917,6 +2929,19 @@ void Aircraft::SetDestTile(TileIndex tile)
 	SetWindowWidgetDirty(WindowClass::VehicleView, this->index, WID_VV_START_STOP);
 }
 
+CommandCost CmdIgnoreAircraftReservations(DoCommandFlags flags, VehicleID veh_id)
+{
+	Aircraft *v = Aircraft::GetIfValid(veh_id);
+	if (v == nullptr || !v->IsNormalAircraft() || v->vehstatus.Test(VehState::Crashed) || v->IsAircraftFlying()) return CMD_ERROR;
+	CommandCost ret = CheckVehicleControlAllowed(v);
+	if (ret.Failed()) return ret;
+	if (flags.Test(DoCommandFlag::Execute)) {
+		EnableAircraftIgnoreReservations(v);
+		InvalidateWindowData(WindowClass::VehicleView, v->index);
+	}
+	return CommandCost();
+}
+
 /** Start a turn at a known position on the directed taxi route. */
 static void BeginOriginRotation(Aircraft *v, Trackdir td)
 {
@@ -2980,8 +3005,17 @@ static bool PrepareAircraftPushback(Aircraft *v, Trackdir first)
 
 bool TryReservePath(Aircraft *v)
 {
-	if (!IsAirportTile(v->tile) || !MayHaveAirTracks(v->tile) || !IsValidTrackdir(v->trackdir)) return false;
-	ReleaseAircraftTaxiPath(v, true);
+	const bool leaving_hangar = v->vehstatus.Test(VehState::Hidden) && IsValidTile(v->tile) && IsHangarTile(v->tile);
+	/* Failed admission must not retain a partial virtual route or doorway.
+	 * Only an aircraft already on the ground keeps its current real tile. */
+	auto rollback = scope_guard([&]() {
+		AircraftTaxiBlock block = v->taxi_block_reason;
+		ReleaseAircraftTaxiPath(v, !leaving_hangar);
+		v->taxi_block_reason = block;
+	});
+	if (!IsValidTile(v->tile) || !IsAirportTile(v->tile) || !MayHaveAirTracks(v->tile) || !IsValidTrackdir(v->trackdir)) return false;
+	v->taxi_block_reason = AircraftTaxiBlock::None;
+	ReleaseAircraftTaxiPath(v, !leaving_hangar);
 	v->UpdateNextTile(INVALID_TILE);
 	PBSTileInfo destination{};
 	bool found = false;
@@ -2989,12 +3023,17 @@ bool TryReservePath(Aircraft *v)
 	Trackdir first = YapfAircraftFindPath(v, destination, found, dest_state, v->path);
 	v->HandlePathfindingResult(found);
 	if (!found || !destination.okay || !IsValidTrackdir(first)) {
+		LogAircraftReservationState(v, "taxi-route-unavailable");
 		return false;
 	}
 	const bool pushback = PrepareAircraftPushback(v, first);
+	if (!TryReserveAircraftTaxiPath(v)) return false;
+	if (IsTerminalState(dest_state) && !TryClaimAircraftTerminal(v, destination.tile)) return false;
 	if (!ExtendAircraftTaxiReservation(v)) {
+		LogAircraftReservationState(v, "taxi-window-blocked");
 		return false;
 	}
+	rollback.cancel();
 
 	const bool was_hidden = v->vehstatus.Test(VehState::Hidden);
 	if (IsHangarTile(v->tile)) {
@@ -3003,6 +3042,7 @@ bool TryReservePath(Aircraft *v)
 			v->direction = v->Next()->direction = TrackdirToDirection(first);
 			SetVisibility(v, true);
 		}
+		LogAircraftReservationState(v, "hangar-exit-admitted");
 		AircraftLeavesHangar(v);
 		v->PlayLeaveStationSound();
 	}
@@ -3011,6 +3051,7 @@ bool TryReservePath(Aircraft *v)
 	v->next_pos.pos = AP_DEFAULT;
 	v->UpdateNextTile(destination.tile);
 	v->taxi_blocked_ticks = 0;
+	LogAircraftReservationState(v, "taxi-window-ready", destination.tile);
 
 	if (pushback) {
 		SetBit(v->flags, VAF_PUSHBACK);
@@ -3060,6 +3101,7 @@ static bool FinishAircraftTaxiRoute(Aircraft *v)
 	/* Finish any local orientation before handing the tile to loading/depot code. */
 	if (v->trackdir != final.td || v->direction != TrackdirToDirection(final.td)) {
 		v->planned_path = {final};
+		PruneAircraftVirtualReservations(v);
 		BeginOriginRotation(v, final.td);
 		return true;
 	}
@@ -3085,7 +3127,9 @@ static bool MoveTaxiAircraft(Aircraft *v)
 		return false;
 	}
 	const AircraftPlannedNode current = v->planned_path.front();
-	if (!HasAircraftTileReservation(v, v->tile, TrackToTrackBits(TrackdirToTrack(current.td)))) {
+	if (!HasAircraftVirtualTileReservation(v, v->tile, TrackdirToTrackdirBits(current.td)) ||
+			!HasAircraftTileReservation(v, v->tile, TrackToTrackBits(TrackdirToTrack(current.td)))) {
+		LogAircraftReservationState(v, "taxi-current-not-owned");
 		StopTaxiAircraft(v);
 		return false;
 	}
@@ -3097,13 +3141,22 @@ static bool MoveTaxiAircraft(Aircraft *v)
 			(!v->planned_path[1].choice && gp.new_tile != v->tile))) {
 		const auto next = v->planned_path[1];
 		/* Edge manoeuvres need the swept adjacent tile to be free as well. */
-		if (!next.choice && IsAirportTile(gp.new_tile) && MayHaveAirTracks(gp.new_tile) &&
-				HasAirportTileAnyReservation(gp.new_tile) && !HasAircraftTileReservation(v, gp.new_tile, TRACK_BIT_NONE)) {
-			StopTaxiAircraft(v);
-			return false;
+		if (!next.choice) {
+			CFollowTrackAirport swept(v);
+			if (!swept.Follow(v->tile, current.td) || swept.new_tile != gp.new_tile ||
+					!HasAircraftVirtualTileReservation(v, swept.new_tile, swept.new_td_bits)) {
+				LogAircraftReservationState(v, "edge-turn-without-virtual", gp.new_tile);
+				StopTaxiAircraft(v);
+				return false;
+			}
+			if (!IsAircraftTaxiEnvelopeAvailable(v, gp.new_tile)) {
+				StopTaxiAircraft(v);
+				return false;
+			}
 		}
 		ReleaseAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(current.td)) & ~TrackToTrackBits(TrackdirToTrack(next.td)));
 		v->planned_path.pop_front();
+		PruneAircraftVirtualReservations(v);
 		if (next.choice) {
 			v->x_pos = gp.x;
 			v->y_pos = gp.y;
@@ -3121,6 +3174,7 @@ static bool MoveTaxiAircraft(Aircraft *v)
 		}
 		const auto next = v->planned_path[1];
 		if (!IsValidTile(gp.new_tile) || !IsAirportTile(gp.new_tile) || !MayHaveAirTracks(gp.new_tile) ||
+				!HasAircraftVirtualTileReservation(v, gp.new_tile, TrackdirToTrackdirBits(next.td)) ||
 				!HasAircraftTileReservation(v, gp.new_tile, TrackToTrackBits(TrackdirToTrack(next.td)))) {
 			StopTaxiAircraft(v);
 			return false;
@@ -3137,13 +3191,21 @@ static bool MoveTaxiAircraft(Aircraft *v)
 		if (result.Test(VehicleEnterTileState::CannotEnter)) { StopTaxiAircraft(v); return false; }
 		TileIndex previous = v->tile;
 		v->planned_path.pop_front();
+		PruneAircraftVirtualReservations(v);
 		v->trackdir = v->Next()->trackdir = next.td;
 		v->direction = v->Next()->direction = sub.dir;
 		v->tile = gp.new_tile;
+		/* Publish the new physical tile before releasing old occupancy or
+		 * requesting the next window; local presence queries use this hash. */
+		v->UpdatePosition();
+		fprintf(stderr, "[AIR-EXIT] crossing veh=%u from=%u to=%u pos=%d,%d runway=%u td=%u\n",
+			v->index.base(), previous.base(), gp.new_tile.base(), gp.x, gp.y, v->reserved_runway.base(), (uint)next.td);
 		ReleaseAircraftTile(v, previous, TRACK_BIT_ALL);
 		if (v->allocated_terminal == previous) ReleaseAircraftTerminal(v);
 		if (v->reserved_runway != INVALID_TILE && !IsRunway(v->tile)) {
+			LogAircraftReservationState(v, "left-runway-before-release", previous);
 			ReleaseAircraftRunway(v);
+			LogAircraftReservationState(v, "left-runway-after-release", v->tile);
 		}
 		/* Never extend past the final stop; its local alignment is handled by arrival. */
 		if (v->tile != v->GetNextTile()) ExtendAircraftTaxiReservation(v);
@@ -3175,8 +3237,9 @@ static bool HandleTaxiAircraft(Aircraft *v)
 	if (!within_pushback_target && v->planned_path.size() > 1 && !ExtendAircraftTaxiReservation(v)) {
 		StopTaxiAircraft(v);
 		if (v->taxi_blocked_ticks < UINT16_MAX) ++v->taxi_blocked_ticks;
-		if (v->taxi_blocked_ticks >= 30 && !HasBit(v->flags, VAF_PUSHBACK) &&
-				(v->x_pos & 15) == 8 && (v->y_pos & 15) == 8) UpdatePath(v);
+		/* An admitted route stays booked while its real window waits. Releasing
+		 * it here would let opposite traffic split ownership of the route. */
+		UpdateAircraftTaxiTraffic(v, false);
 		return true;
 	}
 	v->taxi_blocked_ticks = 0;
@@ -3199,7 +3262,8 @@ static bool HandleTaxiAircraft(Aircraft *v)
 			auto gp = GetNewVehiclePos(v);
 			v->direction = facing;
 			if (gp.new_tile != v->tile) {
-				if (gp.new_tile != target || !HasAircraftTileReservation(v, target, TrackToTrackBits(TrackdirToTrack(v->trackdir)))) {
+				if (gp.new_tile != target || !HasAircraftVirtualTileReservation(v, target, TrackdirToTrackdirBits(v->trackdir)) ||
+						!HasAircraftTileReservation(v, target, TrackToTrackBits(TrackdirToTrack(v->trackdir)))) {
 					StopTaxiAircraft(v); break;
 				}
 				TileIndex previous = v->tile;
@@ -3209,7 +3273,11 @@ static bool HandleTaxiAircraft(Aircraft *v)
 					break;
 				}
 				v->planned_path.pop_front();
+				PruneAircraftVirtualReservations(v);
 				v->tile = target;
+				v->UpdatePosition();
+				fprintf(stderr, "[AIR-EXIT] push-crossing veh=%u from=%u to=%u pos=%d,%d\n",
+					v->index.base(), previous.base(), target.base(), gp.x, gp.y);
 				ReleaseAircraftTile(v, previous, TRACK_BIT_ALL);
 				if (v->allocated_terminal == previous) ReleaseAircraftTerminal(v);
 			}
@@ -3222,6 +3290,7 @@ static bool HandleTaxiAircraft(Aircraft *v)
 					const auto next = v->planned_path[1];
 					ReleaseAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(desired)) & ~TrackToTrackBits(TrackdirToTrack(next.td)));
 					v->planned_path.pop_front(); desired = next.td;
+					PruneAircraftVirtualReservations(v);
 				}
 				/* trackdir describes travel; the sprite still faces the stand. */
 				v->trackdir = desired;
@@ -3240,9 +3309,12 @@ static bool HandleTaxiAircraft(Aircraft *v)
 		return true;
 	}
 	if (v->planned_path.size() == 1 && IsAircraftOnNextPosition(v)) count = std::max(1u, count);
+	bool moved = false;
 	for (; count > 0; --count) {
 		if (!MoveTaxiAircraft(v) || FinishAircraftTaxiRoute(v)) break;
+		moved = true;
 	}
+	UpdateAircraftTaxiTraffic(v, moved);
 	SetAircraftPosition(v, v->x_pos, v->y_pos, v->z_pos);
 	return true;
 }
@@ -3321,6 +3393,19 @@ bool HandleAircraftMovement(Aircraft *v)
 		return true;
 	}
 
+	if (v->state == AS_IDLE && DoesAircraftNeedRotation(v)) {
+		/* Older snapshots may still contain a pre-admission landing turn. */
+		LogAircraftReservationState(v, "taxi-cancel-unadmitted-turn");
+		v->next_trackdir = v->Next()->next_trackdir = INVALID_TRACKDIR;
+		v->cur_speed = 0;
+		v->ClearWaitTime();
+	}
+	if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile ||
+			!HasAircraftVirtualTileReservation(v, v->tile, TrackdirToTrackdirBits(v->planned_path.front().td)))) {
+		LogAircraftReservationState(v, "taxi-movement-without-virtual");
+		StopTaxiAircraft(v);
+		return true;
+	}
 
 	if (DoesAircraftNeedRotation(v)) {
 		DoRotationStep(v);
@@ -3393,6 +3478,15 @@ static bool AircraftController(Aircraft *v, bool mode)
 		return true;
 	}
 
+	if (v->current_order.IsType(OT_WAITING)) {
+		/* Depot orders can wait without holding the doorway or planning an
+		 * exit. Only the first controller call may advance the waiting order. */
+		if (mode) return true;
+		v->HandleWaiting(false, true);
+		if (v->current_order.IsType(OT_WAITING)) return true;
+		UpdateAircraftState(v);
+	}
+
 	ProcessOrders(v);
 
 	v->HandleLoading(mode);
@@ -3413,6 +3507,7 @@ static bool AircraftController(Aircraft *v, bool mode)
 	if (!TryReservePath(v)) {
 		/* Aircraft cannot reserve a path now. */
 		v->SetWaitTime(v->state == AS_HANGAR ? AIRCRAFT_WAIT_LEAVE_HANGAR_TICKS : AIRCRAFT_WAIT_FREE_PATH_TICKS);
+		UpdateAircraftTaxiTraffic(v, false);
 	}
 
 	return true;

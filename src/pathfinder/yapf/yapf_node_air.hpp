@@ -17,14 +17,12 @@ struct CYapfAircraftNodeT : CYapfNodeT<Tkey_, CYapfAircraftNodeT<Tkey_> > {
 
 	TileIndex m_segment_last_tile;
 	Trackdir  m_segment_last_td;
-	bool m_reservable;
 
-	void Set(CYapfAircraftNodeT *parent, TileIndex tile, Trackdir td, bool is_choice, bool reservable)
+	void Set(CYapfAircraftNodeT *parent, TileIndex tile, Trackdir td, bool is_choice)
 	{
 		base::Set(parent, tile, td, is_choice);
 		m_segment_last_tile = tile;
 		m_segment_last_td = td;
-		m_reservable = reservable;
 	}
 };
 

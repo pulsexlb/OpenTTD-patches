@@ -1143,6 +1143,60 @@ struct AircraftReservationStructHandler final : public TypedSaveLoadStructHandle
 	}
 };
 
+/* Only the v2 loader consumes the obsolete corridor admission fields. */
+static TileIndex _old_aircraft_taxi_request_corridor;
+static uint8_t _old_aircraft_taxi_request_direction;
+static int64_t _old_aircraft_taxi_request_tick;
+
+struct AircraftLegacyPermit {
+	TileIndex corridor;
+	uint8_t direction;
+};
+
+struct AircraftPermitStructHandler final : public TypedSaveLoadStructHandler<AircraftPermitStructHandler, Aircraft> {
+	NamedSaveLoadTable GetDescription() const override
+	{
+		static const NamedSaveLoad desc[] = {
+			NSL("corridor", SLE_VAR(AircraftLegacyPermit, corridor, SLE_UINT32)),
+			NSL("direction", SLE_VAR(AircraftLegacyPermit, direction, SLE_UINT8)),
+		};
+		return desc;
+	}
+	void Save(Aircraft *) const override
+	{
+		SlSetStructListLength(0);
+	}
+	void Load(Aircraft *) const override
+	{
+		size_t count = SlGetStructListLength(8);
+		for (size_t i = 0; i < count; ++i) {
+			AircraftLegacyPermit permit{};
+			SlObjectLoadFiltered(&permit, this->GetLoadDescription());
+		}
+	}
+};
+
+struct AircraftVirtualReservationStructHandler final : public TypedSaveLoadStructHandler<AircraftVirtualReservationStructHandler, Aircraft> {
+	NamedSaveLoadTable GetDescription() const override
+	{
+		static const NamedSaveLoad desc[] = {
+			NSL("tile", SLE_VAR(AircraftVirtualReservation, tile, SLE_UINT32)),
+			NSL("trackdirs", SLE_VAR(AircraftVirtualReservation, trackdirs, SLE_UINT16)),
+		};
+		return desc;
+	}
+	void Save(Aircraft *v) const override
+	{
+		SlSetStructListLength(v->virtual_path.size());
+		for (auto &record : v->virtual_path) SlObjectSaveFiltered(&record, this->GetLoadDescription());
+	}
+	void Load(Aircraft *v) const override
+	{
+		v->virtual_path.resize(SlGetStructListLength(1 << 20));
+		for (auto &record : v->virtual_path) SlObjectLoadFiltered(&record, this->GetLoadDescription());
+	}
+};
+
 struct VehicleTypeStructHandler final : public TypedSaveLoadStructHandler<VehicleTypeStructHandler, Vehicle> {
 	const VehicleType type;
 
@@ -1668,12 +1722,20 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("allocated_terminal", SLE_CONDVAR_X(Aircraft, allocated_terminal, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("reserved_runway", SLE_CONDVAR_X(Aircraft, reserved_runway, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("taxi_blocked_ticks", SLE_CONDVAR_X(Aircraft, taxi_blocked_ticks, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSL("taxi_jam_ticks", SLE_CONDVAR_X(Aircraft, taxi_jam_ticks, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2))),
+		NSL("taxi_block_reason", SLE_CONDVAR_X(Aircraft, taxi_block_reason, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2))),
+		NSL("ignore_airport_reservations", SLE_CONDVAR_X(Aircraft, ignore_airport_reservations, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 4))),
+		NSL("taxi_request_corridor", SLEG_CONDVAR_X(_old_aircraft_taxi_request_corridor, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2, 2))),
+		NSL("taxi_request_direction", SLEG_CONDVAR_X(_old_aircraft_taxi_request_direction, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2, 2))),
+		NSL("taxi_request_tick", SLEG_CONDVAR_X(_old_aircraft_taxi_request_tick, SLE_INT64, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2, 2))),
 		NSL("pushback_origin", SLE_CONDVAR_X(Aircraft, pushback_origin, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("pushback_target", SLE_CONDVAR_X(Aircraft, pushback_target, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("pushback_progress", SLE_CONDVAR_X(Aircraft, pushback_progress, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("taxi_progress", SLE_CONDVAR_X(Aircraft, taxi_progress, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSLT_STRUCTLIST<AircraftRouteStructHandler>("taxi_route", SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION)),
 		NSLT_STRUCTLIST<AircraftReservationStructHandler>("taxi_reservations", SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION)),
+		NSLT_STRUCTLIST<AircraftPermitStructHandler>("taxi_permits", SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2, 2)),
+		NSLT_STRUCTLIST<AircraftVirtualReservationStructHandler>("taxi_virtual_reservations", SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 3)),
 		NSL("trackdir",                  SLE_CONDVAR(Aircraft, trackdir,               SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("state",                      SLE_CONDVAR(Aircraft, state,                  SLE_UINT8,                   SLV_CUSTOM_SUBSIDY_DURATION, SL_MAX_VERSION)),
 		NSL("last_cached_state", SLE_CONDVAR_X(Aircraft, last_cached_state, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_CACHE_STATE))),

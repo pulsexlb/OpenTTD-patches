@@ -792,6 +792,7 @@ enum class Commands : uint8_t {
 	SetVehicleServiceNumber,                 ///< Select fixed or scheduled-dispatch service numbering.
 	SetOrderServiceNumber,                   ///< Service number on departure from a scheduled stop.
 
+	IgnoreAircraftReservations,             ///< Manually ignore airport reservations until takeoff.
 	End,                                    ///< Must ALWAYS be on the end of this list!! (period)
 };
 

@@ -4895,6 +4895,9 @@ STR_VEHICLE_VIEW_ROAD_VEHICLE_SHOW_DETAILS_TOOLTIP              :{BLACK}Show veh
 STR_VEHICLE_VIEW_SHIP_SHOW_DETAILS_TOOLTIP                      :{BLACK}Show ship details. Ctrl+Click to show ship's group
 STR_VEHICLE_VIEW_AIRCRAFT_SHOW_DETAILS_TOOLTIP                  :{BLACK}Show aircraft details. Ctrl+Click to show aircraft's group
 
+STR_ERROR_CAN_T_IGNORE_AIRCRAFT_RESERVATIONS                     :{WHITE}Can't ignore aircraft reservations...
+STR_VEHICLE_VIEW_AIRCRAFT_IGNORE_RESERVATIONS_TOOLTIP           :{BLACK}Ignore all airport reservations until takeoff. Other aircraft also ignore this aircraft's occupancy; aircraft may pass through one another
+
 ###length VEHICLE_TYPES
 STR_VEHICLE_VIEW_TRAIN_STATUS_START_STOP_TOOLTIP                :{BLACK}Current train action - click to stop/start train
 STR_VEHICLE_VIEW_ROAD_VEHICLE_STATUS_START_STOP_TOOLTIP         :{BLACK}Current vehicle action - click to stop/start vehicle

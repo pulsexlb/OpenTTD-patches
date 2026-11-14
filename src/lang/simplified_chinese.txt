@@ -4598,6 +4598,9 @@ STR_VEHICLE_VIEW_ROAD_VEHICLE_SHOW_DETAILS_TOOLTIP              :{BLACK}显示�
 STR_VEHICLE_VIEW_SHIP_SHOW_DETAILS_TOOLTIP                      :{BLACK}显示船只详情。按住 <Ctrl> 键点选以显示船只载具组
 STR_VEHICLE_VIEW_AIRCRAFT_SHOW_DETAILS_TOOLTIP                  :{BLACK}显示飞机详情。按住 <Ctrl> 键点选以显示飞机载具组
 
+STR_ERROR_CAN_T_IGNORE_AIRCRAFT_RESERVATIONS                     :{WHITE}无法忽略飞机预留...
+STR_VEHICLE_VIEW_AIRCRAFT_IGNORE_RESERVATIONS_TOOLTIP           :{BLACK}忽略全部机场预留，起飞后自动复位。其它飞机也忽略本机占用，允许飞机相互穿过
+
 ###length VEHICLE_TYPES
 STR_VEHICLE_VIEW_TRAIN_STATUS_START_STOP_TOOLTIP                :{BLACK}当前列车状态 - 点击以停止或启动列车
 STR_VEHICLE_VIEW_ROAD_VEHICLE_STATUS_START_STOP_TOOLTIP         :{BLACK}当前载具状态 - 点击以停止或启动载具
