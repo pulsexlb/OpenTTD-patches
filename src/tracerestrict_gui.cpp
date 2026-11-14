@@ -2346,6 +2346,7 @@ class TraceRestrictWindow : public Window {
 	TraceRestrictInstructionItem expecting_inserted_item{};                     ///< set to instruction when performing an instruction insertion, used to handle selection update on insertion
 	int current_placement_widget = -1;                                          ///< which widget has a SetObjectToPlaceWnd, if any
 	int current_registration_plane = 0;
+	int current_left_plane = 0;                                                 ///< current plane for TR_WIDGET_SEL_TOP_LEFT widget
 	int current_left_aux_plane = 0;                                             ///< current plane for TR_WIDGET_SEL_TOP_LEFT_AUX widget
 	int current_right_plane = 0;                                                ///< current plane for TR_WIDGET_SEL_TOP_RIGHT widget
 	int base_copy_plane = 0;                                                    ///< base plane for TR_WIDGET_SEL_COPY widget
@@ -3992,6 +3993,12 @@ private:
 				this->ReInit();
 			}
 			this->current_right_plane = right_sel->shown_plane;
+			/* TR_WIDGET_SEL_TOP_LEFT switches to/from the zero-size SZSP_NONE plane,
+			 * so a re-initialisation is needed whenever its displayed plane changes. */
+			if (this->current_left_plane != left_sel->shown_plane) {
+				this->current_left_plane = left_sel->shown_plane;
+				this->ReInit();
+			}
 			if (this->current_left_aux_plane != left_aux_sel->shown_plane) {
 				this->current_left_aux_plane = left_aux_sel->shown_plane;
 				this->ReInit();
