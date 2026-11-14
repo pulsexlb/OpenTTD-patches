@@ -1538,9 +1538,30 @@ void UpdateAircraftState(Aircraft *v)
 /**
  * Handle Aircraft specific tasks when an Aircraft enters a hangar.
  * @param v Vehicle that enters the hangar.
+ * @return Whether the aircraft actually entered the hangar. Entry is only
+ *         allowed when moving through the door; a back-wall approach stops
+ *         the aircraft and lets it replan instead of hiding it inside.
  */
-void AircraftEntersHangar(Aircraft *v)
+static bool AircraftEntersHangar(Aircraft *v)
 {
+	assert(IsHangarTile(v->tile));
+	assert(IsValidTrackdir(v->trackdir));
+	if (!v->vehstatus.Test(VehState::Hidden) &&
+			ReverseDiagDir(GetHangarDirection(v->tile)) != TrackdirToExitdir(v->trackdir)) {
+		/* The door shares its diagonal track with the back wall, so track
+		 * alignment alone cannot distinguish a legal entry; check the
+		 * direction of travel. */
+		Debug(misc, 1, "Aircraft {} tried to enter a hangar through its back wall", v->unitnumber);
+		ReleaseAircraftTaxiPath(v, false);
+		v->state = AS_IDLE;
+		v->cur_speed = 0;
+		v->subspeed = 0;
+		v->progress = 0;
+		v->UpdateNextTile(INVALID_TILE);
+		SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
+		return false;
+	}
+
 	v->subspeed = 0;
 	v->progress = 0;
 	v->cur_speed = 0;
@@ -1548,8 +1569,6 @@ void AircraftEntersHangar(Aircraft *v)
 	ReleaseAircraftTaxiPath(v, false);
 
 	{
-		assert(IsValidTrackdir(v->trackdir));
-		assert(TrackdirToTrack(v->trackdir) == DiagDirToDiagTrack(GetHangarDirection(v->tile)));
 		if (!v->vehstatus.Test(VehState::Hidden)) {
 			v->direction = v->Next()->direction = DiagDirToDir(GetHangarDirection(v->tile));
 			ReleaseAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(v->trackdir)));
@@ -1560,6 +1579,7 @@ void AircraftEntersHangar(Aircraft *v)
 		}
 		VehicleEnterDepot(v);
 	}
+	return true;
 }
 
 /**
@@ -2224,7 +2244,7 @@ bool HandleAircraftState(Aircraft *v)
 			case OT_NOTHING:
 			case OT_GOTO_DEPOT:
 				if (IsHangarTile(v->tile) && v->state != AS_HANGAR) {
-					AircraftEntersHangar(v);
+					if (!AircraftEntersHangar(v)) return true;
 					v->UpdateNextTile(INVALID_TILE);
 					return true;
 				} else if (v->state == AS_RUNNING) {
@@ -2290,7 +2310,7 @@ bool HandleAircraftState(Aircraft *v)
 
 		case AS_HANGAR:
 			if (IsHangarTile(v->tile)) {
-				AircraftEntersHangar(v);
+				if (!AircraftEntersHangar(v)) return true;
 				v->UpdateNextTile(INVALID_TILE);
 				UpdateAircraftState(v);
 				return true;
@@ -3169,6 +3189,12 @@ static bool MoveTaxiAircraft(Aircraft *v)
 			return false;
 		}
 		DiagDirection entry = DiagdirBetweenTiles(v->tile, gp.new_tile);
+		if (IsHangarTile(gp.new_tile) && entry != ReverseDiagDir(GetHangarDirection(gp.new_tile))) {
+			/* Never slip into a hangar through its back wall: the door shares
+			 * its diagonal track with the back side, so re-plan via the door. */
+			StopTaxiAircraft(v);
+			return false;
+		}
 		const auto &sub = _aircraft_subcoord[static_cast<uint>(entry)][TrackdirToTrack(next.td)];
 		if (!IsValidDirection(sub.dir)) {
 			StopTaxiAircraft(v);
@@ -3247,7 +3273,10 @@ static bool HandleTaxiAircraft(Aircraft *v)
 			auto gp = GetNewVehiclePos(v);
 			v->direction = facing;
 			if (gp.new_tile != v->tile) {
-				if (gp.new_tile != target || !HasAircraftVirtualTileReservation(v, target, TrackdirToTrackdirBits(v->trackdir)) ||
+				if (gp.new_tile != target ||
+						/* Pushback must never end inside a hangar reached through its back wall. */
+						(IsHangarTile(target) && DiagdirBetweenTiles(v->tile, target) != ReverseDiagDir(GetHangarDirection(target))) ||
+						!HasAircraftVirtualTileReservation(v, target, TrackdirToTrackdirBits(v->trackdir)) ||
 						!HasAircraftTileReservation(v, target, TrackToTrackBits(TrackdirToTrack(v->trackdir)))) {
 					StopTaxiAircraft(v); break;
 				}
