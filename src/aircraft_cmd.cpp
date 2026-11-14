@@ -11,7 +11,6 @@
  */
 
 #include "stdafx.h"
-#include <cstdio>
 #include "air.h"
 #include "aircraft.h"
 #include "news_func.h"
@@ -1546,7 +1545,6 @@ void AircraftEntersHangar(Aircraft *v)
 	v->progress = 0;
 	v->cur_speed = 0;
 	v->state = AS_HANGAR;
-	LogAircraftReservationState(v, "hangar-entry-release");
 	ReleaseAircraftTaxiPath(v, false);
 
 	{
@@ -2037,13 +2035,11 @@ void HandleAircraftLanding(Aircraft *v)
 			assert(IsRunwayExtreme(v->tile));
 			assert(IsRunwayEnd(v->tile));
 
-			LogAircraftReservationState(v, "landing-roll-end");
 			/* Keep the complete runway until a checked local taxi track exists. */
 			Trackdir trackdir = DiagDirToDiagTrackdir(GetRunwayExtremeDirection(v->tile));
 			Trackdir next_trackdir = GetFreeAirportTrackdir(v->tile, trackdir, v);
 			if (!IsValidTrackdir(next_trackdir) ||
 					!TryReserveAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(next_trackdir)), TrackdirToTrackdirBits(next_trackdir))) {
-				LogAircraftReservationState(v, "landing-exit-blocked");
 				/* No exit from the runway end yet: keep this complete runway
 				 * exclusively booked until a safe taxi exit is available.
 				 * Zero the speed and stop moving this tick: any movement now
@@ -2071,7 +2067,6 @@ void HandleAircraftLanding(Aircraft *v)
 			v->taxi_progress = 0;
 			SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
 			v->UpdateNextTile(INVALID_TILE);
-			LogAircraftReservationState(v, "landing-await-virtual-route");
 			break;
 		}
 
@@ -3023,14 +3018,12 @@ bool TryReservePath(Aircraft *v)
 	Trackdir first = YapfAircraftFindPath(v, destination, found, dest_state, v->path);
 	v->HandlePathfindingResult(found);
 	if (!found || !destination.okay || !IsValidTrackdir(first)) {
-		LogAircraftReservationState(v, "taxi-route-unavailable");
 		return false;
 	}
 	const bool pushback = PrepareAircraftPushback(v, first);
 	if (!TryReserveAircraftTaxiPath(v)) return false;
 	if (IsTerminalState(dest_state) && !TryClaimAircraftTerminal(v, destination.tile)) return false;
 	if (!ExtendAircraftTaxiReservation(v)) {
-		LogAircraftReservationState(v, "taxi-window-blocked");
 		return false;
 	}
 	rollback.cancel();
@@ -3042,7 +3035,6 @@ bool TryReservePath(Aircraft *v)
 			v->direction = v->Next()->direction = TrackdirToDirection(first);
 			SetVisibility(v, true);
 		}
-		LogAircraftReservationState(v, "hangar-exit-admitted");
 		AircraftLeavesHangar(v);
 		v->PlayLeaveStationSound();
 	}
@@ -3051,7 +3043,6 @@ bool TryReservePath(Aircraft *v)
 	v->next_pos.pos = AP_DEFAULT;
 	v->UpdateNextTile(destination.tile);
 	v->taxi_blocked_ticks = 0;
-	LogAircraftReservationState(v, "taxi-window-ready", destination.tile);
 
 	if (pushback) {
 		SetBit(v->flags, VAF_PUSHBACK);
@@ -3129,7 +3120,6 @@ static bool MoveTaxiAircraft(Aircraft *v)
 	const AircraftPlannedNode current = v->planned_path.front();
 	if (!HasAircraftVirtualTileReservation(v, v->tile, TrackdirToTrackdirBits(current.td)) ||
 			!HasAircraftTileReservation(v, v->tile, TrackToTrackBits(TrackdirToTrack(current.td)))) {
-		LogAircraftReservationState(v, "taxi-current-not-owned");
 		StopTaxiAircraft(v);
 		return false;
 	}
@@ -3145,7 +3135,6 @@ static bool MoveTaxiAircraft(Aircraft *v)
 			CFollowTrackAirport swept(v);
 			if (!swept.Follow(v->tile, current.td) || swept.new_tile != gp.new_tile ||
 					!HasAircraftVirtualTileReservation(v, swept.new_tile, swept.new_td_bits)) {
-				LogAircraftReservationState(v, "edge-turn-without-virtual", gp.new_tile);
 				StopTaxiAircraft(v);
 				return false;
 			}
@@ -3198,14 +3187,10 @@ static bool MoveTaxiAircraft(Aircraft *v)
 		/* Publish the new physical tile before releasing old occupancy or
 		 * requesting the next window; local presence queries use this hash. */
 		v->UpdatePosition();
-		fprintf(stderr, "[AIR-EXIT] crossing veh=%u from=%u to=%u pos=%d,%d runway=%u td=%u\n",
-			v->index.base(), previous.base(), gp.new_tile.base(), gp.x, gp.y, v->reserved_runway.base(), (uint)next.td);
 		ReleaseAircraftTile(v, previous, TRACK_BIT_ALL);
 		if (v->allocated_terminal == previous) ReleaseAircraftTerminal(v);
 		if (v->reserved_runway != INVALID_TILE && !IsRunway(v->tile)) {
-			LogAircraftReservationState(v, "left-runway-before-release", previous);
 			ReleaseAircraftRunway(v);
-			LogAircraftReservationState(v, "left-runway-after-release", v->tile);
 		}
 		/* Never extend past the final stop; its local alignment is handled by arrival. */
 		if (v->tile != v->GetNextTile()) ExtendAircraftTaxiReservation(v);
@@ -3276,8 +3261,6 @@ static bool HandleTaxiAircraft(Aircraft *v)
 				PruneAircraftVirtualReservations(v);
 				v->tile = target;
 				v->UpdatePosition();
-				fprintf(stderr, "[AIR-EXIT] push-crossing veh=%u from=%u to=%u pos=%d,%d\n",
-					v->index.base(), previous.base(), target.base(), gp.x, gp.y);
 				ReleaseAircraftTile(v, previous, TRACK_BIT_ALL);
 				if (v->allocated_terminal == previous) ReleaseAircraftTerminal(v);
 			}
@@ -3395,14 +3378,12 @@ bool HandleAircraftMovement(Aircraft *v)
 
 	if (v->state == AS_IDLE && DoesAircraftNeedRotation(v)) {
 		/* Older snapshots may still contain a pre-admission landing turn. */
-		LogAircraftReservationState(v, "taxi-cancel-unadmitted-turn");
 		v->next_trackdir = v->Next()->next_trackdir = INVALID_TRACKDIR;
 		v->cur_speed = 0;
 		v->ClearWaitTime();
 	}
 	if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile ||
 			!HasAircraftVirtualTileReservation(v, v->tile, TrackdirToTrackdirBits(v->planned_path.front().td)))) {
-		LogAircraftReservationState(v, "taxi-movement-without-virtual");
 		StopTaxiAircraft(v);
 		return true;
 	}

@@ -43,6 +43,5 @@ bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme);
 void ReleaseAircraftRunway(Aircraft *v);
 void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual = false);
 void ClearAircraftReservationIndexes();
-void LogAircraftReservationState(const Aircraft *v, const char *event, TileIndex tile = INVALID_TILE);
 
 #endif /* PBS_AIR_H */

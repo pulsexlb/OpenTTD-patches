@@ -18,7 +18,6 @@
 #include <map>
 #include <set>
 #include "sl/extended_ver_sl.h"
-#include <cstdio>
 
 #include "safeguards.h"
 
@@ -84,13 +83,11 @@ bool IsAircraftTerminalAvailable(const Aircraft *v, TileIndex tile)
 bool TryClaimAircraftTerminal(Aircraft *v, TileIndex tile)
 {
 	if (!IsAircraftTerminalAvailable(v, tile)) {
-		LogAircraftReservationState(v, "terminal-claim-denied", tile);
 		return false;
 	}
 	if (v->allocated_terminal != tile) ReleaseAircraftTerminal(v);
 	if (!v->ignore_airport_reservations) _aircraft_terminal_owners[tile] = v->index;
 	v->allocated_terminal = tile;
-	fprintf(stderr, "[AIR-RES] terminal-claimed veh=%u tile=%u current=%u\n", v->index.base(), tile.base(), v->tile.base());
 	return true;
 }
 
@@ -98,7 +95,6 @@ void ReleaseAircraftTerminal(Aircraft *v)
 {
 	auto it = _aircraft_terminal_owners.find(v->allocated_terminal);
 	if (it != _aircraft_terminal_owners.end() && it->second == v->index) {
-		fprintf(stderr, "[AIR-RES] terminal-release veh=%u tile=%u current=%u\n", v->index.base(), v->allocated_terminal.base(), v->tile.base());
 		_aircraft_terminal_owners.erase(it);
 	}
 	v->allocated_terminal = INVALID_TILE;
@@ -119,67 +115,6 @@ bool HasAircraftTileReservation(const Aircraft *v, TileIndex tile, TrackBits tra
 		if (r.tile == tile) return r.tracks == held && (GetReservedAirportTracks(tile) & tracks) == tracks;
 	}
 	return false;
-}
-
-void LogAircraftReservationState(const Aircraft *v, const char *event, TileIndex tile)
-{
-	auto log_aircraft = [&](const Aircraft *aircraft, const char *role) {
-		fprintf(stderr, "[AIR-RES] %s role=%s veh=%u tick=%u state=%u tile=%u pos=%d,%d dir=%u td=%u next_td=%u hidden=%u goal=%u gate=%u runway=%u booked=%zu route=%zu virtual=%zu jam=%u block=%u phase=%u ignore=%u\n",
-			event, role, aircraft->index.base(), (uint)aircraft->tick_counter, (uint)aircraft->state, aircraft->tile.base(),
-			aircraft->x_pos, aircraft->y_pos, (uint)aircraft->direction, (uint)aircraft->trackdir, (uint)aircraft->next_trackdir,
-			(uint)aircraft->vehstatus.Test(VehState::Hidden), aircraft->GetNextTile().base(), aircraft->allocated_terminal.base(),
-			aircraft->reserved_runway.base(), aircraft->reserved_path.size(), aircraft->planned_path.size(), aircraft->virtual_path.size(),
-			(uint)aircraft->taxi_jam_ticks, (uint)aircraft->taxi_block_reason, (uint)HasBit(aircraft->flags, VAF_TAXI_PHASING), (uint)aircraft->ignore_airport_reservations);
-		for (const auto &record : aircraft->virtual_path) {
-			fprintf(stderr, "[AIR-RES] virtual veh=%u tile=%u trackdirs=%04x\n", aircraft->index.base(), record.tile.base(), (uint)record.trackdirs);
-		}
-		for (const auto &record : aircraft->reserved_path) {
-			fprintf(stderr, "[AIR-RES] held veh=%u tile=%u tracks=%02x\n", aircraft->index.base(), record.tile.base(), (uint)record.tracks);
-		}
-		for (const auto &node : aircraft->planned_path) {
-			fprintf(stderr, "[AIR-RES] plan veh=%u tile=%u td=%u choice=%u\n", aircraft->index.base(), node.tile.base(), (uint)node.td, (uint)node.choice);
-		}
-	};
-	log_aircraft(v, "requester");
-	if (tile == INVALID_TILE) tile = v->tile;
-	if (!IsTaxiTile(tile)) return;
-	auto log_tile = [&](TileIndex current) {
-		if (!IsTaxiTile(current)) return;
-		auto taxi = _aircraft_tile_owners.find(current);
-		auto gate = _aircraft_terminal_owners.find(current);
-		auto runway = _aircraft_runway_owners.find(current);
-		fprintf(stderr, "[AIR-RES] tile event=%s veh=%u tile=%u xy=%u,%u built=%02x map=%02x runway_flag=%u taxi_owners=%zu gate_owner=%u runway_owner=%u\n",
-			event, v->index.base(), current.base(), TileX(current), TileY(current), (uint)GetAirportTileTracks(current),
-			(uint)GetReservedAirportTracks(current), (uint)(IsRunway(current) && GetReservationAsRunway(current)),
-			taxi == _aircraft_tile_owners.end() ? 0 : taxi->second.size(),
-			gate == _aircraft_terminal_owners.end() ? VehicleID::Invalid().base() : gate->second.base(),
-			runway == _aircraft_runway_owners.end() ? VehicleID::Invalid().base() : runway->second.base());
-		std::set<VehicleID> peers;
-		if (taxi != _aircraft_tile_owners.end()) {
-			for (const auto &[id, tracks] : taxi->second) {
-				fprintf(stderr, "[AIR-RES] owner tile=%u veh=%u tracks=%02x\n", current.base(), id.base(), (uint)tracks);
-				peers.insert(id);
-			}
-		}
-			auto virtuals = _aircraft_virtual_bookings.find(current);
-			if (virtuals != _aircraft_virtual_bookings.end()) {
-				for (const auto &[id, trackdirs] : virtuals->second) {
-					fprintf(stderr, "[AIR-RES] virtual-owner tile=%u veh=%u trackdirs=%04x\n", current.base(), id.base(), (uint)trackdirs);
-					peers.insert(id);
-				}
-			}
-			if (gate != _aircraft_terminal_owners.end()) peers.insert(gate->second);
-		if (runway != _aircraft_runway_owners.end()) peers.insert(runway->second);
-		for (const Aircraft *other : VehiclesOnTile<VehicleType::Aircraft>(current)) {
-			if (other->IsNormalAircraft()) peers.insert(other->index);
-		}
-		for (VehicleID id : peers) {
-			const Vehicle *other = Vehicle::GetIfValid(id);
-			if (other != nullptr && other != v && other->type == VehicleType::Aircraft && Aircraft::From(other)->IsNormalAircraft()) log_aircraft(Aircraft::From(other), "peer");
-		}
-	};
-	log_tile(tile);
-	for (Track track = TRACK_UPPER; track < TRACK_END; ++track) log_tile(TileAddByDir(tile, _aircraft_envelope_directions[track]));
 }
 
 static AircraftTaxiBlock MergeAircraftBlock(AircraftTaxiBlock a, AircraftTaxiBlock b)
@@ -275,10 +210,6 @@ static AircraftTaxiBlock CheckAircraftAssociatedTrack(const Aircraft *v, TileInd
 		if ((IsValidTrackdir(other->trackdir) && TrackdirToTrack(other->trackdir) == opposite) ||
 				(IsValidTrackdir(other->next_trackdir) && TrackdirToTrack(other->next_trackdir) == opposite)) inspect(other);
 	}
-	if (block != AircraftTaxiBlock::None) {
-		fprintf(stderr, "[AIR-RES] half-envelope-blocked veh=%u tile=%u track=%u neighbour=%u opposite=%u block=%u\n",
-			v->index.base(), tile.base(), (uint)track, neighbour.base(), (uint)opposite, (uint)block);
-	}
 	return block;
 }
 
@@ -298,11 +229,10 @@ static AircraftTaxiBlock CheckAircraftTaxiTracks(const Aircraft *v, TileIndex ti
 	return block;
 }
 
-static bool RecordAircraftTaxiBlock(Aircraft *v, AircraftTaxiBlock block, TileIndex tile)
+static bool RecordAircraftTaxiBlock(Aircraft *v, AircraftTaxiBlock block, TileIndex)
 {
 	if (block == AircraftTaxiBlock::None) return true;
 	v->taxi_block_reason = MergeAircraftBlock(v->taxi_block_reason, block);
-	LogAircraftReservationState(v, block == AircraftTaxiBlock::Traffic ? "taxi-traffic-blocked" : "taxi-protected-blocked", tile);
 	return false;
 }
 
@@ -355,7 +285,6 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 	 * ground acquisition (landing/building) has no planned route yet. */
 	if (!v->planned_path.empty() && (travel == TRACKDIR_BIT_NONE || TrackdirBitsToTrackBits(travel) != tracks ||
 			(AircraftOwnedVirtualTrackdirs(v, tile) & travel) != travel)) {
-		LogAircraftReservationState(v, "real-without-virtual", tile);
 		return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, tile);
 	}
 	/* Existing committed tracks remain usable when another aircraft phases past. */
@@ -373,8 +302,6 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 	v->reserved_path.push_back({tile, tracks});
 	_aircraft_tile_owners[tile][v->index] = tracks;
 	SetAirportTracksReservation(tile, tracks);
-	fprintf(stderr, "[AIR-RES] acquire veh=%u tile=%u tracks=%02x phase=%u owners=%zu\n", v->index.base(), tile.base(), (uint)tracks,
-		(uint)HasBit(v->flags, VAF_TAXI_PHASING), _aircraft_tile_owners[tile].size());
 	return true;
 }
 
@@ -389,7 +316,6 @@ void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks)
 		}
 		auto owners = _aircraft_tile_owners.find(tile);
 		if (owners == _aircraft_tile_owners.end() || owners->second.find(v->index) == owners->second.end() || owners->second.at(v->index) != it->tracks) {
-			LogAircraftReservationState(v, "release-stale-record", tile);
 			v->reserved_path.erase(it);
 			return;
 		}
@@ -403,7 +329,6 @@ void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks)
 		}
 		if (owners->second.empty()) _aircraft_tile_owners.erase(owners);
 		TrackBits remove = before & ~AircraftReservedTracks(tile);
-		fprintf(stderr, "[AIR-RES] release veh=%u tile=%u clear=%02x remaining=%02x\n", v->index.base(), tile.base(), (uint)remove, (uint)AircraftReservedTracks(tile));
 		if (IsTaxiTile(tile)) {
 			while (remove != TRACK_BIT_NONE) RemoveAirportTrackReservation(tile, RemoveFirstTrack(&remove));
 		}
@@ -479,7 +404,6 @@ static void ReleaseAircraftVirtualPath(Aircraft *v)
 		if (booking->second.empty()) _aircraft_virtual_bookings.erase(booking);
 		if (_show_airport_tracks && IsTaxiTile(record.tile)) MarkTileDirtyByTile(record.tile);
 	}
-	if (!v->virtual_path.empty()) fprintf(stderr, "[AIR-RES] virtual-release veh=%u tiles=%zu\n", v->index.base(), v->virtual_path.size());
 	v->virtual_path.clear();
 }
 
@@ -502,8 +426,6 @@ bool TryReserveAircraftTaxiPath(Aircraft *v)
 	for (const auto &[tile, trackdirs] : desired) {
 		AircraftTaxiBlock block = CheckAircraftVirtualTile(v, tile, trackdirs);
 		if (block != AircraftTaxiBlock::None) {
-			fprintf(stderr, "[AIR-RES] virtual-denied veh=%u tile=%u want=%04x block=%u route=%zu\n",
-				v->index.base(), tile.base(), (uint)trackdirs, (uint)block, desired.size());
 			return RecordAircraftTaxiBlock(v, block, tile);
 		}
 	}
@@ -519,8 +441,6 @@ bool TryReserveAircraftTaxiPath(Aircraft *v)
 		if (!v->ignore_airport_reservations) _aircraft_virtual_bookings[tile][v->index] = trackdirs;
 		if (_show_airport_tracks) MarkTileDirtyByTile(tile);
 	}
-	fprintf(stderr, "[AIR-RES] virtual-acquired veh=%u from=%u to=%u tiles=%zu nodes=%zu\n",
-		v->index.base(), v->tile.base(), destination.tile.base(), desired.size(), v->planned_path.size());
 	return true;
 }
 
@@ -541,8 +461,6 @@ void PruneAircraftVirtualReservations(Aircraft *v)
 		}
 		auto booking = _aircraft_virtual_bookings.find(it->tile);
 		assert(booking != _aircraft_virtual_bookings.end() && booking->second.at(v->index) == it->trackdirs);
-		fprintf(stderr, "[AIR-RES] virtual-prune veh=%u tile=%u before=%04x remaining=%04x\n",
-			v->index.base(), it->tile.base(), (uint)it->trackdirs, (uint)keep);
 		if (_show_airport_tracks && IsTaxiTile(it->tile)) MarkTileDirtyByTile(it->tile);
 		if (keep == TRACKDIR_BIT_NONE) {
 			booking->second.erase(v->index);
@@ -578,7 +496,6 @@ void UpdateAircraftTaxiTraffic(Aircraft *v, bool moved)
 			}
 			if (clean) {
 				ClrBit(v->flags, VAF_TAXI_PHASING);
-				LogAircraftReservationState(v, "taxi-phase-end");
 			}
 		}
 		return;
@@ -591,7 +508,6 @@ void UpdateAircraftTaxiTraffic(Aircraft *v, bool moved)
 		if (v->taxi_jam_ticks > 1480 && !HasBit(v->flags, VAF_TAXI_PHASING)) {
 			SetBit(v->flags, VAF_TAXI_PHASING);
 			v->ClearWaitTime();
-			LogAircraftReservationState(v, "taxi-phase-start");
 		}
 	} else {
 		v->taxi_jam_ticks = 0;
@@ -661,8 +577,6 @@ bool ExtendAircraftTaxiReservation(Aircraft *v)
 	if (next == INVALID_TILE || TryReserveAircraftTile(v, next, ahead, ahead_tds)) return true;
 	TrackBits added = AircraftOwnedTracks(v, tile) & ~previous;
 	if (added != TRACK_BIT_NONE) {
-		fprintf(stderr, "[AIR-RES] window-rollback veh=%u tile=%u added=%02x retained=%02x next=%u\n",
-			v->index.base(), tile.base(), (uint)added, (uint)previous, next.base());
 		ReleaseAircraftTile(v, tile, added);
 	}
 	return false;
@@ -690,14 +604,12 @@ bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme)
 	if (v->ignore_airport_reservations) {
 		ReleaseAircraftTaxiPath(v, false);
 		v->reserved_runway = extreme;
-		LogAircraftReservationState(v, "runway-ignore-acquired", extreme);
 		return true;
 	}
 	for (TileIndex tile : tiles) {
 		/* Virtual taxi routes do not block takeoff/landing. The complete runway
 		 * lock still prevents their real windows from entering until released. */
 		if (CheckAircraftTaxiTracks(v, tile, TRACK_BIT_NONE, false) != AircraftTaxiBlock::None) {
-			LogAircraftReservationState(v, "runway-real-occupancy-blocked", tile);
 			return false;
 		}
 		auto runway = _aircraft_runway_owners.find(tile);
@@ -715,7 +627,6 @@ bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme)
 		SetReservationAsRunway(tile, true);
 		if (_show_airport_tracks) MarkTileDirtyByTile(tile);
 	}
-	LogAircraftReservationState(v, "runway-acquired", extreme);
 	return true;
 }
 
@@ -725,7 +636,6 @@ void ReleaseAircraftRunway(Aircraft *v)
 	if (v->ignore_airport_reservations) { v->reserved_runway = INVALID_TILE; return; }
 	const auto endpoint = v->reserved_runway;
 	const auto tiles = RunwayTiles(endpoint);
-	LogAircraftReservationState(v, "runway-release-begin", endpoint);
 	if (tiles.empty()) {
 		/* The owning airport command may already have removed the layout.
 		 * Clear only this aircraft's index records, not another owner's tiles. */
@@ -741,10 +651,8 @@ void ReleaseAircraftRunway(Aircraft *v)
 		for (TileIndex tile : tiles) {
 			auto it = _aircraft_runway_owners.find(tile);
 			if (it == _aircraft_runway_owners.end() || it->second != v->index) {
-				LogAircraftReservationState(v, "runway-release-owner-mismatch", tile);
 				continue;
 			}
-			fprintf(stderr, "[AIR-RES] runway-release veh=%u tile=%u\n", v->index.base(), tile.base());
 			SetReservationAsRunway(tile, false);
 			if (_show_airport_tracks) MarkTileDirtyByTile(tile);
 			_aircraft_runway_owners.erase(it);
@@ -789,7 +697,6 @@ void EnableAircraftIgnoreReservations(Aircraft *v)
 	v->taxi_block_reason = AircraftTaxiBlock::None;
 	v->taxi_blocked_ticks = v->taxi_jam_ticks = 0;
 	v->ClearWaitTime();
-	LogAircraftReservationState(v, "manual-ignore-enabled");
 }
 
 void ResetAircraftIgnoreReservations(Aircraft *v)
@@ -799,7 +706,6 @@ void ResetAircraftIgnoreReservations(Aircraft *v)
 	ReleaseAircraftRunway(v);
 	v->ignore_airport_reservations = false;
 	InvalidateWindowData(WindowClass::VehicleView, v->index);
-	LogAircraftReservationState(v, "manual-ignore-takeoff-reset");
 }
 
 Trackdir GetFreeAirportTrackdir(TileIndex tile, Trackdir preferred_trackdir, const Aircraft *v)
@@ -851,24 +757,16 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 				 * leave the aircraft unreserved and let its controller wait or
 				 * replan from the current state; physical occupancy still blocks
 				 * other aircraft from the runway meanwhile. */
-				if (!IsTaxiTile(extreme) || !IsRunwayExtreme(extreme) || !TryReserveAircraftRunway(v, extreme)) {
-					fprintf(stderr, "[AIR-RES] migrate-runway-skip veh=%u state=%u tile=%u endpoint=%u\n",
-						v->index.base(), (uint)v->state, v->tile.base(), extreme.base());
-				}
+				if (IsTaxiTile(extreme) && IsRunwayExtreme(extreme)) TryReserveAircraftRunway(v, extreme);
 				continue;
 			}
 			/* A holding fixed-wing aircraft has not committed to landing. */
 			if (v->IsAircraftFreelyFlying() || (!v->IsHelicopter() && v->state == AS_ON_HOLD_APPROACHING)) continue;
 			if (v->vehstatus.Test(VehState::Hidden) || !IsTaxiTile(v->tile)) continue;
 			Trackdir td = IsValidTrackdir(v->next_trackdir) ? v->next_trackdir : v->trackdir;
-			if (IsValidTrackdir(td) && TryReserveAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(td)), TrackdirToTrackdirBits(td))) {
-				if (IsApron(v->tile) && (IsTerminalState(v->state) || v->current_order.IsType(OT_LOADING)) &&
-						!TryClaimAircraftTerminal(v, v->tile)) {
-					fprintf(stderr, "[AIR-RES] migrate-gate-skip veh=%u tile=%u\n", v->index.base(), v->tile.base());
-				}
-			} else {
-				fprintf(stderr, "[AIR-RES] migrate-taxi-skip veh=%u state=%u tile=%u td=%u\n",
-					v->index.base(), (uint)v->state, v->tile.base(), (uint)td);
+			if (IsValidTrackdir(td) && TryReserveAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(td)), TrackdirToTrackdirBits(td)) &&
+					IsApron(v->tile) && (IsTerminalState(v->state) || v->current_order.IsType(OT_LOADING))) {
+				TryClaimAircraftTerminal(v, v->tile);
 			}
 			if (v->state == AS_RUNNING) {
 				v->state = AS_IDLE;
@@ -962,7 +860,6 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 			}
 			if (v->state == AS_RUNNING && TryReserveAircraftTaxiPath(v)) continue;
 			if (v->planned_path.empty()) continue;
-			fprintf(stderr, "[AIR-RES] migrate-virtual-wait veh=%u tile=%u nodes=%zu\n", v->index.base(), v->tile.base(), v->planned_path.size());
 			ReleaseAircraftTaxiPath(v, !v->vehstatus.Test(VehState::Hidden));
 			if (v->state != AS_RUNNING) continue;
 			v->state = AS_IDLE;
