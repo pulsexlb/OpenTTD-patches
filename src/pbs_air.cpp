@@ -597,6 +597,14 @@ static std::vector<TileIndex> RunwayTiles(TileIndex extreme)
 	return {};
 }
 
+static AircraftTaxiBlock CheckAircraftRunwayTile(const Aircraft *v, TileIndex tile)
+{
+	/* The whole runway tile remains exclusive, but only its actual runway
+	 * tracks interact with half-track envelopes on neighbouring taxi tiles. */
+	return MergeAircraftBlock(CheckAircraftTaxiTile(v, tile, false),
+		CheckIncomingAircraftEnvelopes(v, tile, false, GetRunwayTracks(tile)));
+}
+
 bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme)
 {
 	const auto tiles = RunwayTiles(extreme);
@@ -609,7 +617,8 @@ bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme)
 	for (TileIndex tile : tiles) {
 		/* Virtual taxi routes do not block takeoff/landing. The complete runway
 		 * lock still prevents their real windows from entering until released. */
-		if (CheckAircraftTaxiTracks(v, tile, TRACK_BIT_NONE, false) != AircraftTaxiBlock::None) {
+		AircraftTaxiBlock block = CheckAircraftRunwayTile(v, tile);
+		if (block != AircraftTaxiBlock::None) {
 			return false;
 		}
 		auto runway = _aircraft_runway_owners.find(tile);
@@ -670,7 +679,7 @@ bool IsAircraftRunwayAvailable(const Aircraft *v, TileIndex extreme)
 {
 	const auto tiles = RunwayTiles(extreme);
 	if (tiles.empty()) return false;
-	for (TileIndex tile : tiles) { if (!IsAircraftGroundTileAvailable(v, tile)) return false; }
+	for (TileIndex tile : tiles) { if (CheckAircraftRunwayTile(v, tile) != AircraftTaxiBlock::None) return false; }
 	return true;
 }
 

@@ -2159,7 +2159,12 @@ AircraftState GetNextAircraftState(const Aircraft &a)
 		return AS_START_TAKEOFF;
 	}
 
-	if (a.state != AS_RUNNING && IsRunwayEnd(a.tile)) {
+	/* A hangar diversion selected at the runway end remains the route's
+	 * destination until it is reached, even after entering AS_RUNNING. */
+	if (a.state == AS_RUNNING && a.current_order.IsType(OT_GOTO_STATION) &&
+			a.Next()->state == AS_HANGAR && !a.planned_path.empty() && IsHangarTile(a.planned_path.back().tile)) return AS_HANGAR;
+
+	if (IsRunwayEnd(a.tile) && a.state != AS_RUNNING) {
 		Airport *airport = &Station::GetByTile(a.tile)->airport;
 		bool free_terminal = false;
 		for (TileIndex tile : airport->aprons) {
@@ -3239,8 +3244,13 @@ static bool HandleTaxiAircraft(Aircraft *v)
 				v->allocated_terminal != INVALID_TILE &&
 				GetStationIndex(v->allocated_terminal) != v->targetairport;
 		if (wanted != v->Next()->state || wrong_station) {
-			UpdatePath(v);
-			return true;
+			/* Finish the already admitted runway exit before obeying a changed
+			 * order. Cancelling it at the landing stop can strand the runway lock
+			 * behind departing aircraft waiting at the opposite end. */
+			if (v->reserved_runway == INVALID_TILE || !IsRunway(v->tile)) {
+				UpdatePath(v);
+				return true;
+			}
 		}
 	}
 	if (v->planned_path.empty()) { UpdatePath(v); return true; }
