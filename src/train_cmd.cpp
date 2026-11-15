@@ -3555,8 +3555,11 @@ void Train::UpdateDeltaXY()
 	/* If flipped and vehicle length is odd, we need to adjust the bounding box offset slightly. */
 	int flip_offs = flipped && (this->gcache.cached_veh_length & 1);
 
+	/* The sprite direction is reversed for every Flipped vehicle in GetImage(),
+	 * including old depot-flip NewGRFs. Keep its anchor on the same facing;
+	 * RailFlips only opts out of the additional shortening/rounding correction. */
 	Direction dir = this->direction;
-	if (flipped) dir = ReverseDir(dir);
+	if (this->flags.Test(VehicleRailFlag::Flipped)) dir = ReverseDir(dir);
 
 	if (!IsDiagonalDirection(dir)) {
 		static constexpr DiagDirectionIndexArray<Point> _sign_table{{{

@@ -398,18 +398,36 @@ static const Livery *LiveryHelper(EngineID engine, const Vehicle *v)
  */
 static uint32_t PositionHelper(const Vehicle *v, bool consecutive)
 {
-	const Vehicle *u;
 	uint8_t chain_before = 0;
-	uint8_t chain_after  = 0;
+	uint8_t chain_after = 0;
+	bool found = false;
 
-	for (u = v->First(); u != v; u = u->Next()) {
-		chain_before++;
-		if (consecutive && u->engine_type != v->engine_type) chain_before = 0;
-	}
+	for (const Vehicle *first = v->First(); first != nullptr;) {
+		const Vehicle *last = first;
+		bool reversed = false;
+		if (first->type == VehicleType::Train && !first->IsMultiheadedVehicle()) {
+			last = Train::From(first)->GetUnitChainLast();
+			reversed = first != last && first->GetUnitMain() == last;
+		}
 
-	while (u->Next() != nullptr && (!consecutive || u->Next()->engine_type == v->engine_type)) {
-		chain_after++;
-		u = u->Next();
+		/* A coupling reversal keeps the physical parts in reverse order. NewGRF
+		 * position-based lengths still need the base-first order within each unit;
+		 * the units themselves retain their current order in the consist. */
+		for (const Vehicle *u = reversed ? last : first; ; u = reversed ? u->Previous() : u->Next()) {
+			if (u == v) {
+				found = true;
+			} else if (!found) {
+				chain_before++;
+				if (consecutive && u->engine_type != v->engine_type) chain_before = 0;
+			} else {
+				if (consecutive && u->engine_type != v->engine_type) {
+					return chain_before | chain_after << 8 | (chain_before + chain_after + consecutive) << 16;
+				}
+				chain_after++;
+			}
+			if (u == (reversed ? first : last)) break;
+		}
+		first = last->Next();
 	}
 
 	return chain_before | chain_after << 8 | (chain_before + chain_after + consecutive) << 16;
