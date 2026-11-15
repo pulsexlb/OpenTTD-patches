@@ -1812,6 +1812,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 
 		NSL("allocated_terminal", SLE_CONDVAR_X(Aircraft, allocated_terminal, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("reserved_runway", SLE_CONDVAR_X(Aircraft, reserved_runway, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSL("taxi_runways", SLE_CONDVARVEC_X(Aircraft, taxi_runways, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 6))),
 		NSL("taxi_blocked_ticks", SLE_CONDVAR_X(Aircraft, taxi_blocked_ticks, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("taxi_jam_ticks", SLE_CONDVAR_X(Aircraft, taxi_jam_ticks, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2))),
 		NSL("taxi_block_reason", SLE_CONDVAR_X(Aircraft, taxi_block_reason, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2))),

@@ -3172,6 +3172,7 @@ static bool MoveTaxiAircraft(Aircraft *v)
 				return false;
 			}
 		}
+		BeginOriginRotation(v, next.td);
 		ReleaseAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(current.td)) & ~TrackToTrackBits(TrackdirToTrack(next.td)));
 		v->planned_path.pop_front();
 		PruneAircraftVirtualReservations(v);
@@ -3180,7 +3181,6 @@ static bool MoveTaxiAircraft(Aircraft *v)
 			v->y_pos = gp.y;
 			SetAircraftPosition(v, gp.x, gp.y, v->z_pos);
 		}
-		BeginOriginRotation(v, next.td);
 		return false;
 	}
 
@@ -3427,6 +3427,12 @@ bool HandleAircraftMovement(Aircraft *v)
 	}
 	if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile ||
 			!HasAircraftVirtualTileReservation(v, v->tile, TrackdirToTrackdirBits(v->planned_path.front().td)))) {
+		StopTaxiAircraft(v);
+		return true;
+	}
+
+	if ((v->state <= AS_RUNNING || v->state == AS_START_TAKEOFF || v->state == AS_LANDED) &&
+			!v->vehstatus.Test(VehState::Hidden) && !EnsureAircraftTaxiRunways(v)) {
 		StopTaxiAircraft(v);
 		return true;
 	}

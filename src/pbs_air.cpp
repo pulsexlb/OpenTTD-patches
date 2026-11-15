@@ -264,6 +264,11 @@ bool HasAircraftVirtualTileReservation(const Aircraft *v, TileIndex tile, Trackd
 	return travel != TRACKDIR_BIT_NONE && (AircraftOwnedVirtualTrackdirs(v, tile) & travel) == travel;
 }
 
+static bool TryReserveAircraftTaxiRunways(Aircraft *v, TileIndex tile, TrackBits tracks);
+static void PruneAircraftTaxiRunways(Aircraft *v, bool keep_physical = true);
+static void ReleaseAircraftTaxiRunways(Aircraft *v);
+static void RestoreAircraftTaxiRunways(Aircraft *v, const std::vector<TileIndex> &runways);
+
 bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, TrackdirBits travel)
 {
 	if (!IsTaxiTile(tile) || tracks == TRACK_BIT_NONE) return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, tile);
@@ -271,9 +276,14 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 		if ((GetAirportTileTracks(tile) & tracks) != tracks ||
 				(!v->planned_path.empty() && !HasAircraftVirtualTileReservation(v, tile, travel))) return false;
 		for (auto &record : v->reserved_path) {
-			if (record.tile == tile) { record.tracks |= tracks; return true; }
+			if (record.tile == tile) {
+				if (!TryReserveAircraftTaxiRunways(v, tile, record.tracks | tracks)) return false;
+				record.tracks |= tracks;
+				return true;
+			}
 		}
 		if (v->reserved_path.size() >= 2) return false;
+		if (!TryReserveAircraftTaxiRunways(v, tile, tracks)) return false;
 		v->reserved_path.push_back({tile, tracks});
 		return true;
 	}
@@ -287,10 +297,13 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 			(AircraftOwnedVirtualTrackdirs(v, tile) & travel) != travel)) {
 		return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, tile);
 	}
-	/* Existing committed tracks remain usable when another aircraft phases past. */
-	if ((held & tracks) == tracks) return true;
+	/* Even existing real tracks restored from an old save need a complete
+	 * runway lock before they can be used. Phasing cannot bypass this lock. */
+	if ((held & tracks) == tracks) return TryReserveAircraftTaxiRunways(v, tile, tracks);
+	if (held == TRACK_BIT_NONE && v->reserved_path.size() >= 2) return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, tile);
 	if (IsApron(tile) && !IsAircraftTerminalAvailable(v, tile)) return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, tile);
 	if (!RecordAircraftTaxiBlock(v, CheckAircraftTaxiTracks(v, tile, tracks, HasBit(v->flags, VAF_TAXI_PHASING)), tile)) return false;
+	if (!TryReserveAircraftTaxiRunways(v, tile, held | tracks)) return false;
 	for (auto &r : v->reserved_path) {
 		if (r.tile != tile) continue;
 		r.tracks |= tracks;
@@ -312,11 +325,13 @@ void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks)
 		if (v->ignore_airport_reservations) {
 			it->tracks &= ~tracks;
 			if (it->tracks == TRACK_BIT_NONE) v->reserved_path.erase(it);
+			PruneAircraftTaxiRunways(v);
 			return;
 		}
 		auto owners = _aircraft_tile_owners.find(tile);
 		if (owners == _aircraft_tile_owners.end() || owners->second.find(v->index) == owners->second.end() || owners->second.at(v->index) != it->tracks) {
 			v->reserved_path.erase(it);
+			PruneAircraftTaxiRunways(v);
 			return;
 		}
 		TrackBits before = AircraftReservedTracks(tile);
@@ -332,6 +347,7 @@ void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks)
 		if (IsTaxiTile(tile)) {
 			while (remove != TRACK_BIT_NONE) RemoveAirportTrackReservation(tile, RemoveFirstTrack(&remove));
 		}
+		PruneAircraftTaxiRunways(v);
 		return;
 	}
 }
@@ -471,6 +487,7 @@ void PruneAircraftVirtualReservations(Aircraft *v)
 			++it;
 		}
 	}
+	PruneAircraftTaxiRunways(v);
 }
 
 TrackBits GetAircraftVirtualBookedTracks(TileIndex tile)
@@ -540,6 +557,8 @@ void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current)
 		TrackBits keep = TrackToTrackBits(TrackdirToTrack(v->trackdir));
 		ReleaseAircraftTile(v, v->tile, TRACK_BIT_ALL & ~keep);
 	}
+	if (keep_current) PruneAircraftTaxiRunways(v);
+	else ReleaseAircraftTaxiRunways(v);
 }
 
 void LiftAirportPathReservation(Aircraft *v, bool skip_first_track)
@@ -572,14 +591,21 @@ bool ExtendAircraftTaxiReservation(Aircraft *v)
 		}
 	}
 	v->taxi_block_reason = AircraftTaxiBlock::None;
-	TrackBits previous = AircraftOwnedTracks(v, tile);
+	const auto previous_runways = v->taxi_runways;
+	TrackBits previous = TRACK_BIT_NONE;
+	for (const auto &record : v->reserved_path) { if (record.tile == tile) previous |= record.tracks; }
 	if (!TryReserveAircraftTile(v, tile, current, current_tds)) return false;
 	if (next == INVALID_TILE || TryReserveAircraftTile(v, next, ahead, ahead_tds)) return true;
-	TrackBits added = AircraftOwnedTracks(v, tile) & ~previous;
-	if (added != TRACK_BIT_NONE) {
-		ReleaseAircraftTile(v, tile, added);
-	}
+	TrackBits added = current & ~previous;
+	if (added != TRACK_BIT_NONE) ReleaseAircraftTile(v, tile, added);
+	RestoreAircraftTaxiRunways(v, previous_runways);
 	return false;
+}
+
+static TileIndex AircraftRunwayStep(TileIndex tile, DiagDirection dir)
+{
+	const auto delta = TileIndexDiffCByDiagDir(dir);
+	return TileAddWrap(tile, delta.x, delta.y);
 }
 
 static std::vector<TileIndex> RunwayTiles(TileIndex extreme)
@@ -587,14 +613,115 @@ static std::vector<TileIndex> RunwayTiles(TileIndex extreme)
 	std::vector<TileIndex> result;
 	if (!IsTaxiTile(extreme) || !IsRunwayExtreme(extreme)) return result;
 	const StationID station = GetStationIndex(extreme);
+	const Track axis = DiagDirToDiagTrack(GetRunwayExtremeDirection(extreme));
 	DiagDirection dir = GetRunwayExtremeDirection(extreme);
 	if (IsRunwayEnd(extreme)) dir = ReverseDiagDir(dir);
-	for (TileIndex tile = extreme; IsTaxiTile(tile) && IsAirportTileOfStation(tile, station) && IsRunway(tile);
-			tile = TileAdd(tile, TileOffsByDiagDir(dir))) {
+	for (TileIndex tile = extreme; IsTaxiTile(tile) && IsAirportTileOfStation(tile, station) && IsRunway(tile) && HasTrack(GetRunwayTracks(tile), axis);
+			tile = AircraftRunwayStep(tile, dir)) {
 		result.push_back(tile);
-		if (tile != extreme && IsRunwayExtreme(tile)) return result;
+		if (tile != extreme && IsRunwayExtreme(tile)) {
+			if (DiagDirToDiagTrack(GetRunwayExtremeDirection(tile)) != axis || IsRunwayEnd(tile) == IsRunwayEnd(extreme)) return {};
+			return result;
+		}
 	}
 	return {};
+}
+
+/* Resolve every runway crossing this tile without using the unbounded legacy
+ * endpoint walk. A crossing tile belongs to both runway axes. */
+static bool CollectAircraftRunways(TileIndex tile, std::set<TileIndex> &runways)
+{
+	if (!IsTaxiTile(tile)) return false;
+	if (!IsRunway(tile)) return true;
+	const StationID station = GetStationIndex(tile);
+	for (Track axis : SetTrackBitIterator(GetRunwayTracks(tile))) {
+		const DiagDirection dir = TrackdirToExitdir(TrackToTrackdir(axis));
+		TileIndex endpoint = tile;
+		while (IsTaxiTile(endpoint) && IsAirportTileOfStation(endpoint, station) && IsRunway(endpoint) && HasTrack(GetRunwayTracks(endpoint), axis)) {
+			if (IsRunwayExtreme(endpoint)) break;
+			endpoint = AircraftRunwayStep(endpoint, dir);
+		}
+		const auto tiles = RunwayTiles(endpoint);
+		if (tiles.empty() || std::find(tiles.begin(), tiles.end(), tile) == tiles.end()) return false;
+		runways.insert(IsRunwayStart(endpoint) ? endpoint : tiles.back());
+	}
+	return true;
+}
+
+static bool CollectAircraftTaxiRunways(const Aircraft *v, TileIndex added_tile, TrackBits added_tracks, bool keep_physical, std::set<TileIndex> &runways)
+{
+	std::map<TileIndex, TrackBits> window;
+	for (const auto &record : v->reserved_path) window[record.tile] |= record.tracks;
+	if (added_tile != INVALID_TILE) window[added_tile] |= added_tracks;
+	const bool taxiing = v->state <= AS_RUNNING || v->state == AS_START_TAKEOFF || v->state == AS_LANDED;
+	if (keep_physical && taxiing && !v->vehstatus.Test(VehState::Hidden) && IsTaxiTile(v->tile)) {
+		if (!CollectAircraftRunways(v->tile, runways)) return false;
+	}
+	for (const auto &[tile, tracks] : window) {
+		if (!CollectAircraftRunways(tile, runways)) return false;
+		for (Track track : SetTrackBitIterator(tracks)) {
+			if (IsDiagonalTrack(track)) continue;
+			TileIndex neighbour = TileAddByDir(tile, _aircraft_envelope_directions[track]);
+			if (!CollectAircraftRunways(neighbour, runways)) return false;
+		}
+	}
+	/* A booked local edge turn sweeps a third tile without adding a third
+	 * real reservation. Its runway must stay exclusive through the turn too. */
+	for (size_t i = 1; i < v->planned_path.size(); ++i) {
+		const auto &previous = v->planned_path[i - 1];
+		const auto &turn = v->planned_path[i];
+		if (previous.tile != turn.tile || turn.choice || window.count(previous.tile) == 0) continue;
+		CFollowTrackAirport follower(v);
+		if (!follower.Follow(previous.tile, previous.td) || !CollectAircraftRunways(follower.new_tile, runways)) return false;
+	}
+	return true;
+}
+
+static std::set<TileIndex> AircraftLockedRunwayTiles(const Aircraft *v)
+{
+	std::set<TileIndex> tiles;
+	for (TileIndex extreme : v->taxi_runways) {
+		for (TileIndex tile : RunwayTiles(extreme)) tiles.insert(tile);
+	}
+	for (TileIndex tile : RunwayTiles(v->reserved_runway)) tiles.insert(tile);
+	return tiles;
+}
+
+static void ReleaseAircraftRunwayTiles(const Aircraft *v, const std::set<TileIndex> &tiles)
+{
+	if (v->ignore_airport_reservations) return;
+	const auto retained = AircraftLockedRunwayTiles(v);
+	for (TileIndex tile : tiles) {
+		if (retained.count(tile) != 0) continue;
+		auto owner = _aircraft_runway_owners.find(tile);
+		if (owner == _aircraft_runway_owners.end() || owner->second != v->index) continue;
+		if (IsTaxiTile(tile) && IsRunway(tile)) {
+			SetReservationAsRunway(tile, false);
+			if (_show_airport_tracks) MarkTileDirtyByTile(tile);
+		}
+		_aircraft_runway_owners.erase(owner);
+	}
+}
+
+static void PruneAircraftTaxiRunways(Aircraft *v, bool keep_physical)
+{
+	if (v->taxi_runways.empty()) return;
+	/* The old edge track has already been pruned from the route while the
+	 * sprite is still turning through its swept space. Keep these locks until
+	 * rotation completes, including across save/load. */
+	if (v->state == AS_RUNNING && v->next_trackdir != INVALID_TRACKDIR) return;
+	std::set<TileIndex> required;
+	if (!CollectAircraftTaxiRunways(v, INVALID_TILE, TRACK_BIT_NONE, keep_physical, required)) return;
+	const auto previous = AircraftLockedRunwayTiles(v);
+	std::erase_if(v->taxi_runways, [&](TileIndex extreme) { return required.count(extreme) == 0; });
+	ReleaseAircraftRunwayTiles(v, previous);
+}
+
+static void ReleaseAircraftTaxiRunways(Aircraft *v)
+{
+	const auto previous = AircraftLockedRunwayTiles(v);
+	v->taxi_runways.clear();
+	ReleaseAircraftRunwayTiles(v, previous);
 }
 
 /* Construction must also respect local records of ignored aircraft. These
@@ -613,9 +740,7 @@ TrackBits GetAircraftAirportEditTracks(TileIndex tile)
 		for (const auto &record : v->reserved_path) { if (record.tile == tile) tracks |= record.tracks; }
 		for (const auto &record : v->virtual_path) { if (record.tile == tile) tracks |= TrackdirBitsToTrackBits(record.trackdirs); }
 		for (const auto &node : v->planned_path) { if (node.tile == tile && IsValidTrackdir(node.td)) tracks |= TrackToTrackBits(TrackdirToTrack(node.td)); }
-		if (v->reserved_runway != INVALID_TILE) {
-			for (TileIndex runway_tile : RunwayTiles(v->reserved_runway)) { if (runway_tile == tile) return TRACK_BIT_ALL; }
-		}
+		if (AircraftLockedRunwayTiles(v).count(tile) != 0) return TRACK_BIT_ALL;
 	}
 	return tracks;
 }
@@ -626,6 +751,62 @@ static AircraftTaxiBlock CheckAircraftRunwayTile(const Aircraft *v, TileIndex ti
 	 * tracks interact with half-track envelopes on neighbouring taxi tiles. */
 	return MergeAircraftBlock(CheckAircraftTaxiTile(v, tile, false),
 		CheckIncomingAircraftEnvelopes(v, tile, false, GetRunwayTracks(tile)));
+}
+
+static bool TryReserveAircraftTaxiRunways(Aircraft *v, TileIndex tile, TrackBits tracks)
+{
+	std::set<TileIndex> required;
+	if (!CollectAircraftTaxiRunways(v, tile, tracks, true, required)) return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, tile);
+	std::set<TileIndex> added;
+	for (TileIndex extreme : required) {
+		if (std::find(v->taxi_runways.begin(), v->taxi_runways.end(), extreme) != v->taxi_runways.end()) continue;
+		for (TileIndex runway_tile : RunwayTiles(extreme)) added.insert(runway_tile);
+	}
+	if (!v->ignore_airport_reservations) {
+		for (TileIndex runway_tile : added) {
+			auto owner = _aircraft_runway_owners.find(runway_tile);
+			if (owner != _aircraft_runway_owners.end() && owner->second == v->index) continue;
+			/* Complete runway occupancy is protected even against timeout phasing. */
+			if (MergeAircraftBlock(CheckAircraftRunwayTile(v, runway_tile),
+					CheckIncomingAircraftEnvelopes(v, runway_tile, false)) != AircraftTaxiBlock::None) {
+				return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, runway_tile);
+			}
+		}
+	}
+	/* Publish only after every affected runway has passed; the real route and
+	 * virtual reservation remain untouched by this acquisition. */
+	for (TileIndex extreme : required) {
+		if (std::find(v->taxi_runways.begin(), v->taxi_runways.end(), extreme) == v->taxi_runways.end()) v->taxi_runways.push_back(extreme);
+	}
+	std::sort(v->taxi_runways.begin(), v->taxi_runways.end());
+	if (!v->ignore_airport_reservations) {
+		for (TileIndex runway_tile : added) {
+			_aircraft_runway_owners[runway_tile] = v->index;
+			SetReservationAsRunway(runway_tile, true);
+			if (_show_airport_tracks) MarkTileDirtyByTile(runway_tile);
+		}
+	}
+	return true;
+}
+
+bool EnsureAircraftTaxiRunways(Aircraft *v)
+{
+	PruneAircraftTaxiRunways(v);
+	return TryReserveAircraftTaxiRunways(v, INVALID_TILE, TRACK_BIT_NONE);
+}
+
+static void RestoreAircraftTaxiRunways(Aircraft *v, const std::vector<TileIndex> &runways)
+{
+	const auto previous = AircraftLockedRunwayTiles(v);
+	v->taxi_runways = runways;
+	ReleaseAircraftRunwayTiles(v, previous);
+	if (!v->ignore_airport_reservations) {
+		for (TileIndex tile : AircraftLockedRunwayTiles(v)) {
+			_aircraft_runway_owners[tile] = v->index;
+			SetReservationAsRunway(tile, true);
+			if (_show_airport_tracks) MarkTileDirtyByTile(tile);
+		}
+	}
 }
 
 bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme)
@@ -652,8 +833,8 @@ bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme)
 		if (taxi == _aircraft_tile_owners.end() && HasAirportTrackReserved(tile)) return false;
 	}
 	if (v->reserved_runway != INVALID_TILE) ReleaseAircraftRunway(v);
-	ReleaseAircraftTaxiPath(v, false);
 	v->reserved_runway = extreme;
+	ReleaseAircraftTaxiPath(v, false);
 	for (TileIndex tile : tiles) {
 		_aircraft_runway_owners[tile] = v->index;
 		SetReservationAsRunway(tile, true);
@@ -665,32 +846,15 @@ bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme)
 void ReleaseAircraftRunway(Aircraft *v)
 {
 	if (v->reserved_runway == INVALID_TILE) return;
-	if (v->ignore_airport_reservations) { v->reserved_runway = INVALID_TILE; return; }
-	const auto endpoint = v->reserved_runway;
-	const auto tiles = RunwayTiles(endpoint);
-	if (tiles.empty()) {
-		/* The owning airport command may already have removed the layout.
-		 * Clear only this aircraft's index records, not another owner's tiles. */
-		for (auto it = _aircraft_runway_owners.begin(); it != _aircraft_runway_owners.end();) {
-			if (it->second != v->index) { ++it; continue; }
-			if (IsTaxiTile(it->first) && IsRunway(it->first)) {
-				SetReservationAsRunway(it->first, false);
-				if (_show_airport_tracks) MarkTileDirtyByTile(it->first);
-			}
-			it = _aircraft_runway_owners.erase(it);
-		}
-	} else {
-		for (TileIndex tile : tiles) {
-			auto it = _aircraft_runway_owners.find(tile);
-			if (it == _aircraft_runway_owners.end() || it->second != v->index) {
-				continue;
-			}
-			SetReservationAsRunway(tile, false);
-			if (_show_airport_tracks) MarkTileDirtyByTile(tile);
-			_aircraft_runway_owners.erase(it);
-		}
-	}
+	std::set<TileIndex> tiles;
+	for (TileIndex tile : RunwayTiles(v->reserved_runway)) tiles.insert(tile);
 	v->reserved_runway = INVALID_TILE;
+	if (tiles.empty()) {
+		/* The layout may already have been removed. Retain any independent
+		 * taxi locks, and clear only this aircraft's remaining index records. */
+		for (const auto &[tile, owner] : _aircraft_runway_owners) { if (owner == v->index) tiles.insert(tile); }
+	}
+	ReleaseAircraftRunwayTiles(v, tiles);
 }
 
 bool IsAircraftGroundTileAvailable(const Aircraft *v, TileIndex tile)
@@ -713,14 +877,17 @@ void EnableAircraftIgnoreReservations(Aircraft *v)
 	 * Other aircraft's map bits and runway locks must never be cleared. */
 	auto real = v->reserved_path;
 	auto virtuals = v->virtual_path;
+	auto taxi_runways = v->taxi_runways;
 	TileIndex gate = v->allocated_terminal;
 	TileIndex runway = v->reserved_runway;
 	for (const auto &record : real) ReleaseAircraftTile(v, record.tile, record.tracks);
 	ReleaseAircraftVirtualPath(v);
 	ReleaseAircraftTerminal(v);
+	ReleaseAircraftTaxiRunways(v);
 	ReleaseAircraftRunway(v);
 	v->reserved_path = std::move(real);
 	v->virtual_path = std::move(virtuals);
+	v->taxi_runways = std::move(taxi_runways);
 	v->allocated_terminal = gate;
 	v->reserved_runway = runway;
 	/* An ignored aircraft keeps its local movement records but has no public
@@ -800,6 +967,18 @@ static void MigrateAircraftReservationState(Aircraft *v)
 	}
 }
 
+static void InitializeAircraftTaxiRunwaysAfterLoad()
+{
+	for (Aircraft *v : Aircraft::Iterate()) {
+		if (!v->IsNormalAircraft()) continue;
+		const AircraftTaxiBlock reason = v->taxi_block_reason;
+		/* Legacy overlapping real windows remain authoritative. Do not choose
+		 * a winner, drop occupancy or reject the save when a lock must wait. */
+		EnsureAircraftTaxiRunways(v);
+		v->taxi_block_reason = reason;
+	}
+}
+
 /* Validate without changing the saved simulation state; rebuild indexes only. */
 void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 {
@@ -821,6 +1000,7 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 			v->planned_path.clear();
 			v->path.clear();
 			v->reserved_runway = INVALID_TILE;
+			v->taxi_runways.clear();
 			v->allocated_terminal = INVALID_TILE;
 			v->pushback_origin = v->pushback_target = INVALID_TILE;
 			ClrBit(v->flags, VAF_PUSHBACK);
@@ -876,6 +1056,7 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 			v->next_pos.pos = AP_DEFAULT;
 			v->UpdateNextTile(destination.tile);
 		}
+		InitializeAircraftTaxiRunwaysAfterLoad();
 		return;
 	}
 
@@ -900,7 +1081,20 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 			const auto tiles = RunwayTiles(v->reserved_runway);
 			if (tiles.empty()) SlErrorCorrupt("Invalid saved aircraft runway");
 			for (TileIndex tile : tiles) {
-				if (!v->ignore_airport_reservations && (!GetReservationAsRunway(tile) || !_aircraft_runway_owners.emplace(tile, v->index).second)) SlErrorCorrupt("Invalid saved aircraft runway reservation");
+				if (v->ignore_airport_reservations) continue;
+				auto [owner, inserted] = _aircraft_runway_owners.emplace(tile, v->index);
+				if (!GetReservationAsRunway(tile) || (!inserted && owner->second != v->index)) SlErrorCorrupt("Invalid saved aircraft runway reservation");
+			}
+		}
+		if (v->taxi_runways.size() > 16) SlErrorCorrupt("Too many saved aircraft taxi runway locks");
+		std::set<TileIndex> taxi_runways;
+		for (TileIndex extreme : v->taxi_runways) {
+			const auto tiles = RunwayTiles(extreme);
+			if (tiles.empty() || !IsRunwayStart(extreme) || !taxi_runways.insert(extreme).second) SlErrorCorrupt("Invalid saved aircraft taxi runway lock");
+			for (TileIndex tile : tiles) {
+				if (v->ignore_airport_reservations) continue;
+				auto [owner, inserted] = _aircraft_runway_owners.emplace(tile, v->index);
+				if (!GetReservationAsRunway(tile) || (!inserted && owner->second != v->index)) SlErrorCorrupt("Conflicting saved aircraft taxi runway locks");
 			}
 		}
 		if (!v->vehstatus.Test(VehState::Crashed)) {
@@ -952,6 +1146,7 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 			v->UpdateNextTile(INVALID_TILE);
 			v->ClearWaitTime();
 		}
+		InitializeAircraftTaxiRunwaysAfterLoad();
 		return;
 	}
 
@@ -992,4 +1187,5 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 			}
 		}
 	}
+	if (SlXvIsFeatureMissing(XSLFI_AIRCRAFT_ROLLING_RESERVATION, 6)) InitializeAircraftTaxiRunwaysAfterLoad();
 }

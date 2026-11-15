@@ -40,6 +40,7 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks);
 void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current);
 bool ExtendAircraftTaxiReservation(Aircraft *v);
+bool EnsureAircraftTaxiRunways(Aircraft *v);
 bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme);
 void ReleaseAircraftRunway(Aircraft *v);
 void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual = false);

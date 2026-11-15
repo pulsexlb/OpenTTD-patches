@@ -246,6 +246,7 @@ struct Aircraft final : public SpecializedVehicle<Aircraft, VehicleType::Aircraf
 	std::vector<AircraftTileReservation> reserved_path; ///< Current tile and one tile ahead, saved.
 	TileIndex allocated_terminal = INVALID_TILE; ///< Logical gate claim, independent of taxi reservations.
 	TileIndex reserved_runway = INVALID_TILE; ///< Start of an exclusively reserved runway.
+	std::vector<TileIndex> taxi_runways; ///< Complete runway locks required by the real taxi window, saved.
 	uint16_t taxi_blocked_ticks = 0;
 	uint16_t taxi_jam_ticks = 0;
 	AircraftTaxiBlock taxi_block_reason = AircraftTaxiBlock::None;
