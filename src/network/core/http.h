@@ -13,6 +13,8 @@
 #include "tcp.h"
 #include "../../core/alloc_type.hpp"
 
+#include <memory>
+
 constexpr int HTTP_429_TOO_MANY_REQUESTS = 429; ///< HTTP error code for when the client is doing too many requests.
 
 /** Callback for when the HTTP handler has something to tell us. */
@@ -51,10 +53,11 @@ public:
 	 * Connect to the given URI.
 	 *
 	 * @param uri      the URI to connect to (https://.../..).
-	 * @param callback the callback to send data back on.
+	 * @param callback the callback to send data back on. Ownership is shared with the HTTP layer, so
+	 *                 the caller may release its reference as soon as the transfer ended or failed.
 	 * @param data     the data we want to send. When non-empty, this will be a POST request, otherwise a GET request.
 	 */
-	static void Connect(std::string_view uri, HTTPCallback *callback, std::string &&data = {});
+	static void Connect(std::string_view uri, std::shared_ptr<HTTPCallback> callback, std::string &&data = {});
 
 	/**
 	 * Do the receiving for all HTTP connections.

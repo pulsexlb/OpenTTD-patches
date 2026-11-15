@@ -58,6 +58,9 @@ struct ContentCallback {
 	virtual ~ContentCallback() = default;
 };
 
+/** Download context for a single content file being downloaded over HTTP. */
+class ContentDownload;
+
 /**
  * Socket handler for the content server connection
  */
@@ -69,16 +72,23 @@ protected:
 	ContentIDList queued;                         ///< ContentID queue to be requested.
 	ContentVector infos;                          ///< All content info we received
 	btree::btree_multimap<ContentID, ContentID> reverse_dependency_map; ///< Content reverse dependency map
-	std::vector<char> http_response;              ///< The HTTP response to the requests we've been doing
+	std::vector<char> http_response;              ///< The HTTP response to the manifest request we've been doing
 	int http_response_index = -2;                 ///< Where we are, in the response, with handling it
 
-	std::optional<FileHandle> cur_file;           ///< Currently downloaded file
-	std::unique_ptr<ContentInfo> cur_info;        ///< Information about the currently downloaded file
+	std::vector<std::pair<std::unique_ptr<ContentInfo>, std::string>> pending_downloads; ///< Files parsed from the manifest, waiting to be downloaded
+	std::vector<std::shared_ptr<ContentDownload>> active_downloads; ///< Files that are currently being downloaded
+	uint failed_downloads = 0;                    ///< Number of failed downloads in the current batch
+	uint32_t download_batch = 0;                  ///< Identifier of the current download batch; used to ignore late events of aborted batches
+	bool scheduling_downloads = false;            ///< Whether we're currently inside StartNextDownloads() (guards against re-entrancy)
+
+	std::optional<FileHandle> cur_file;           ///< Currently downloaded file (TCP fallback path; downloads one file at a time)
+	std::unique_ptr<ContentInfo> cur_info;        ///< Information about the currently downloaded file (TCP fallback path)
 	bool is_connecting = false;                   ///< Whether we're connecting
 	bool is_cancelled = false;                    ///< Whether the download has been cancelled
 	std::chrono::steady_clock::time_point last_activity = std::chrono::steady_clock::now(); ///< The last time there was network activity
 
 	friend class NetworkContentConnecter;
+	friend class ContentDownload;
 
 	bool ReceiveServerInfo(Packet &p) override;
 	bool ReceiveServerContent(Packet &p) override;
@@ -99,6 +109,11 @@ protected:
 
 	bool BeforeDownload();
 	void AfterDownload();
+
+	bool ParseContentManifest();
+	void StartNextDownloads();
+	void OnDownloadFailed(const ContentInfo &ci, uint32_t batch);
+	void AbortActiveDownloads();
 
 	void DownloadSelectedContentHTTP(const ContentIDList &content);
 	void DownloadSelectedContentFallback(const ContentIDList &content);

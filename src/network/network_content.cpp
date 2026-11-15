@@ -9,6 +9,7 @@
 
 #include "../stdafx.h"
 #include "../rev.h"
+#include <atomic>
 #include "../ai/ai.hpp"
 #include "../game/game.hpp"
 #include "../window_func.h"
@@ -314,6 +315,11 @@ void ClientNetworkContentSocketHandler::DownloadSelectedContent(uint &files, uin
 	if (fallback) {
 		this->DownloadSelectedContentFallback(content);
 	} else {
+		/* Abort any downloads of a previous batch that are still running. */
+		this->pending_downloads.clear();
+		this->AbortActiveDownloads();
+
+		this->download_batch++;
 		this->DownloadSelectedContentHTTP(content);
 	}
 }
@@ -331,7 +337,8 @@ void ClientNetworkContentSocketHandler::DownloadSelectedContentHTTP(const Conten
 
 	this->http_response_index = -1;
 
-	NetworkHTTPSocketHandler::Connect(NetworkContentMirrorUriString(), this, content_request.to_string());
+	/* The handler is a singleton that outlives the request; share it without taking ownership. */
+	NetworkHTTPSocketHandler::Connect(NetworkContentMirrorUriString(), std::shared_ptr<HTTPCallback>(static_cast<HTTPCallback *>(this), [](HTTPCallback *) {}), content_request.to_string());
 }
 
 /**
@@ -450,6 +457,161 @@ static bool GunzipFile(const ContentInfo &ci)
 #endif /* defined(WITH_ZLIB) */
 }
 
+/**
+ * Handle the extracting of a file after downloading it has been done.
+ * @param ci container with filename
+ * @return true iff the file was extracted successfully.
+ */
+static bool FinishDownload(const ContentInfo &ci)
+{
+	if (GunzipFile(ci)) {
+		FioRemove(GetFullFilename(ci, true));
+
+		Subdirectory sd = GetContentInfoSubDir(ci.type);
+		if (sd == Subdirectory::None) NOT_REACHED();
+
+		TarScanner ts;
+		std::string fname = GetFullFilename(ci, false);
+		ts.AddFile(sd, fname);
+
+		if (ci.type == ContentType::BaseMusic) {
+			/* Music can't be in a tar. So extract the tar! */
+			ExtractTar(fname, Subdirectory::Baseset);
+			FioRemove(fname);
+		}
+
+#ifdef __EMSCRIPTEN__
+		EM_ASM(if (window["openttd_syncfs"]) openttd_syncfs());
+#endif
+
+		return true;
+	}
+
+	ShowErrorMessage(GetEncodedString(STR_CONTENT_ERROR_COULD_NOT_EXTRACT), {}, WarningLevel::Error);
+	return false;
+}
+
+/**
+ * A single content file being downloaded over HTTP.
+ *
+ * Every download has its own file handle and HTTP request, so multiple files
+ * can be downloaded at the same time. The HTTP layer shares ownership of this
+ * object, so it stays alive until the HTTP request itself is gone.
+ */
+class ContentDownload : public HTTPCallback, public std::enable_shared_from_this<ContentDownload> {
+public:
+	ContentDownload(ClientNetworkContentSocketHandler &parent, std::unique_ptr<ContentInfo> info, std::string url, uint32_t batch) :
+		parent(parent),
+		info(std::move(info)),
+		url(std::move(url)),
+		batch(batch)
+	{
+	}
+
+	const ContentInfo &GetInfo() const { return *this->info; }
+	const std::string &GetUrl() const { return this->url; }
+
+	/**
+	 * Open the file to write the downloaded data to.
+	 * @return false on any error.
+	 */
+	bool OpenFile()
+	{
+		if (this->info->filesize != 0) {
+			/* The filesize is > 0, so we are going to download it */
+			std::string filename = GetFullFilename(*this->info, true);
+			if (filename.empty() || !(this->file = FileHandle::Open(filename, "wb")).has_value()) {
+				/* Unless that fails of course... */
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Start downloading the file. */
+	void Start()
+	{
+		NetworkHTTPSocketHandler::Connect(this->url, this->shared_from_this());
+	}
+
+	/**
+	 * Abort the download, e.g. because a new batch of downloads was started.
+	 * The HTTP request will be cancelled as soon as possible; any data it still
+	 * delivers is ignored.
+	 */
+	void Abort()
+	{
+		this->aborted = true;
+		this->finished = true;
+		this->file.reset();
+	}
+
+	bool IsFinished() const { return this->finished; }
+
+	void OnFailure() override
+	{
+		if (this->finished) return;
+		this->finished = true;
+
+		this->file.reset();
+		this->parent.OnDownloadFailed(*this->info, this->batch);
+		this->parent.StartNextDownloads();
+	}
+
+	void OnReceiveData(UniqueBuffer<char> data) override
+	{
+		assert(data.get() == nullptr || data.size() != 0);
+
+		/* Ignore any latent data coming from a finished or aborted download. */
+		if (this->finished) return;
+
+		if (data != nullptr) {
+			/* We have data, so write it to the file. */
+			if (this->file.has_value() && fwrite(data.get(), 1, data.size(), *this->file) == data.size()) {
+				/* Just received the data. */
+				this->parent.OnDownloadProgress(*this->info, (int)data.size());
+			} else {
+				/* Writing failed somehow; mark this download as failed. */
+				this->OnFailure();
+			}
+
+			/* Nothing more to do now. */
+			return;
+		}
+
+		/* We've finished downloading the file. */
+		this->finished = true;
+		this->file.reset();
+
+		if (FinishDownload(*this->info)) {
+			this->parent.OnDownloadComplete(this->info->id);
+		} else {
+			this->parent.OnDownloadFailed(*this->info, this->batch);
+		}
+		this->parent.StartNextDownloads();
+	}
+
+	bool IsCancelled() const override
+	{
+		return this->aborted || this->parent.IsCancelled();
+	}
+
+private:
+	ClientNetworkContentSocketHandler &parent; ///< The handler this download belongs to.
+	std::unique_ptr<ContentInfo> info;         ///< Information about the file being downloaded.
+	const std::string url;                     ///< URL to download the file from.
+	std::optional<FileHandle> file;            ///< The file we are writing the download to.
+	uint32_t batch;                            ///< The download batch we belong to.
+	std::atomic<bool> aborted = false;         ///< Whether the download was aborted.
+	bool finished = false;                     ///< Whether the download has finished or failed.
+};
+
+/** Abort all downloads that are currently running. */
+void ClientNetworkContentSocketHandler::AbortActiveDownloads()
+{
+	for (auto &download : this->active_downloads) download->Abort();
+}
+
 bool ClientNetworkContentSocketHandler::ReceiveServerContent(Packet &p)
 {
 	if (!this->cur_file.has_value()) {
@@ -527,29 +689,8 @@ void ClientNetworkContentSocketHandler::AfterDownload()
 	 * Now gunzip the tar and make it known. */
 	this->cur_file.reset();
 
-	if (GunzipFile(*this->cur_info)) {
-		FioRemove(GetFullFilename(*this->cur_info, true));
-
-		Subdirectory sd = GetContentInfoSubDir(this->cur_info->type);
-		if (sd == Subdirectory::None) NOT_REACHED();
-
-		TarScanner ts;
-		std::string fname = GetFullFilename(*this->cur_info, false);
-		ts.AddFile(sd, fname);
-
-		if (this->cur_info->type == ContentType::BaseMusic) {
-			/* Music can't be in a tar. So extract the tar! */
-			ExtractTar(fname, Subdirectory::Baseset);
-			FioRemove(fname);
-		}
-
-#ifdef __EMSCRIPTEN__
-		EM_ASM(if (window["openttd_syncfs"]) openttd_syncfs());
-#endif
-
+	if (FinishDownload(*this->cur_info)) {
 		this->OnDownloadComplete(this->cur_info->id);
-	} else {
-		ShowErrorMessage(GetEncodedString(STR_CONTENT_ERROR_COULD_NOT_EXTRACT), {}, WarningLevel::Error);
 	}
 }
 
@@ -564,12 +705,6 @@ void ClientNetworkContentSocketHandler::OnFailure()
 	this->http_response.clear();
 	this->http_response.shrink_to_fit();
 	this->http_response_index = -2;
-
-	if (this->cur_file.has_value()) {
-		this->OnDownloadProgress(*this->cur_info, -1);
-
-		this->cur_file.reset();
-	}
 
 	/* If we fail, download the rest via the 'old' system. */
 	if (!this->is_cancelled) {
@@ -597,71 +732,74 @@ void ClientNetworkContentSocketHandler::OnReceiveData(UniqueBuffer<char> data)
 			/* Make sure the response is properly terminated. */
 			this->http_response.push_back('\0');
 
-			/* And prepare for receiving the rest of the data. */
+			/* And prepare for parsing the response. */
 			this->http_response_index = 0;
 		}
 	}
 
-	if (data != nullptr) {
-		/* We have data, so write it to the file. */
-		if (fwrite(data.get(), 1, data.size(), *this->cur_file) != data.size()) {
-			/* Writing failed somehow, let try via the old method. */
-			this->OnFailure();
-		} else {
-			/* Just received the data. */
-			this->OnDownloadProgress(*this->cur_info, (int)data.size());
-		}
+	/* The manifest is fully buffered; any further data of this connection is unexpected,
+	 * as the file downloads each have their own callback. */
+	if (data != nullptr) return;
 
-		/* Nothing more to do now. */
-		return;
-	}
-
-	if (this->cur_file.has_value()) {
-		/* We've finished downloading a file. */
-		this->AfterDownload();
-	}
-
-	if ((uint)this->http_response_index >= this->http_response.size()) {
-		/* It's not a real failure, but if there's
-		 * nothing more to download it helps with
-		 * cleaning up the stuff we allocated. */
+	if (!this->ParseContentManifest()) {
 		this->OnFailure();
 		return;
 	}
 
-	/* When we haven't opened a file this must be our first packet with metadata. */
-	this->cur_info = std::make_unique<ContentInfo>();
+	/* The manifest has been consumed; ignore any latent data of this connection. */
+	this->http_response.clear();
+	this->http_response.shrink_to_fit();
+	this->http_response_index = -2;
+
+	this->StartNextDownloads();
+}
+
+/**
+ * Parse the manifest received from the content mirror into the queue of pending downloads.
+ * @return true iff the manifest could be parsed.
+ */
+bool ClientNetworkContentSocketHandler::ParseContentManifest()
+{
+	this->pending_downloads.clear();
+	this->failed_downloads = 0;
+
+	std::string_view buffer{this->http_response.data(), this->http_response.size()};
+	/* An empty manifest means the mirror knows nothing about the requested content; retry via the fallback system. */
+	if (buffer.size() <= 1) return false;
+
+	/* The last byte is the '\0' terminator we added, and not part of a line. */
+	size_t end = buffer.size() - 1;
+	size_t offset = 0;
 
 	try {
-		for (;;) {
-			std::string_view buffer{this->http_response.data(), this->http_response.size()};
-			buffer.remove_prefix(this->http_response_index);
-			auto len = buffer.find('\n');
+		while (offset < end) {
+			std::string_view line = buffer.substr(offset);
+			auto len = line.find('\n');
 			if (len == std::string_view::npos) throw std::exception{};
-			/* Update the index for the next one */
-			this->http_response_index += static_cast<int>(len + 1);
+			line = line.substr(0, len);
+			offset += len + 1;
 
-			StringConsumer consumer{buffer.substr(0, len)};
+			auto ci = std::make_unique<ContentInfo>();
+			StringConsumer consumer{line};
 
 			/* Read the ID */
-			this->cur_info->id = static_cast<ContentID>(consumer.ReadIntegerBase<uint>(10));
+			ci->id = static_cast<ContentID>(consumer.ReadIntegerBase<uint>(10));
 			if (!consumer.ReadIf(",")) throw std::exception{};
 
 			/* Read the type */
-			this->cur_info->type = static_cast<ContentType>(consumer.ReadIntegerBase<uint>(10));
+			ci->type = static_cast<ContentType>(consumer.ReadIntegerBase<uint>(10));
 			if (!consumer.ReadIf(",")) throw std::exception{};
 
 			/* Read the file size */
-			this->cur_info->filesize = consumer.ReadIntegerBase<uint32_t>(10);
+			ci->filesize = consumer.ReadIntegerBase<uint32_t>(10);
 			if (!consumer.ReadIf(",")) throw std::exception{};
 
 			/* Read the URL */
 			auto url = consumer.GetLeftData();
 
-			/* Is it a fallback URL? If so, just continue with the next one. */
+			/* Is it a fallback URL? If so, download it via the fallback system instead. */
 			if (consumer.ReadIf("ottd")) {
-				/* Have we gone through all lines? */
-				if (static_cast<size_t>(this->http_response_index) >= this->http_response.size()) throw std::exception{};
+				this->failed_downloads++;
 				continue;
 			}
 
@@ -681,17 +819,90 @@ void ClientNetworkContentSocketHandler::OnReceiveData(UniqueBuffer<char> data)
 			}
 
 			/* Copy the string, without extension, to the filename. */
-			this->cur_info->filename = filename;
+			ci->filename = filename;
 
-			/* Request the next file. */
-			if (!this->BeforeDownload()) throw std::exception{};
-
-			NetworkHTTPSocketHandler::Connect(url, this);
-			break;
+			this->pending_downloads.emplace_back(std::move(ci), std::string(url));
 		}
 	} catch (const std::exception&) {
-		this->OnFailure();
+		return false;
 	}
+
+	return true;
+}
+
+/**
+ * Start as many pending downloads as the configured concurrency allows.
+ *
+ * Called whenever a download finishes or fails, to refill the set of
+ * concurrent downloads, and to finalise the batch when everything is done.
+ */
+void ClientNetworkContentSocketHandler::StartNextDownloads()
+{
+	/* A re-entrant call means the outer invocation is still busy starting downloads; it will handle the work. */
+	if (this->scheduling_downloads) {
+		return;
+	}
+	this->scheduling_downloads = true;
+
+	/* Prune finished downloads. The HTTP layer keeps them alive for as long as their request is running. */
+	std::erase_if(this->active_downloads, [](const auto &download) { return download->IsFinished(); });
+
+	while (this->active_downloads.size() < _settings_client.network.max_concurrent_content_downloads && !this->pending_downloads.empty()) {
+		auto entry = std::move(this->pending_downloads.front());
+		this->pending_downloads.erase(this->pending_downloads.begin());
+
+		std::unique_ptr<ContentInfo> info = std::move(entry.first);
+		if (!info->IsValid()) {
+			this->OnDownloadFailed(*info, this->download_batch);
+			continue;
+		}
+
+		auto download = std::make_shared<ContentDownload>(*this, std::move(info), std::move(entry.second), this->download_batch);
+
+		if (!download->OpenFile()) {
+			ShowErrorMessage(
+				GetEncodedString(STR_CONTENT_ERROR_COULD_NOT_DOWNLOAD),
+				GetEncodedString(STR_CONTENT_ERROR_COULD_NOT_DOWNLOAD_FILE_NOT_WRITABLE),
+				WarningLevel::Error);
+			this->OnDownloadFailed(download->GetInfo(), this->download_batch);
+			continue;
+		}
+
+		download->Start();
+
+		if (download->IsFinished()) {
+			/* The request failed synchronously, e.g. when no HTTP backend was compiled in. */
+			continue;
+		}
+
+		this->active_downloads.push_back(std::move(download));
+	}
+
+	this->scheduling_downloads = false;
+
+	/* The whole batch is done; retry any failed downloads via the fallback system. */
+	if (this->pending_downloads.empty() && this->active_downloads.empty() && this->failed_downloads > 0 && !this->is_cancelled) {
+		this->failed_downloads = 0;
+		uint files, bytes;
+		this->DownloadSelectedContent(files, bytes, true);
+	}
+}
+
+/**
+ * Handle the failure of a single file download.
+ * @param ci    The content info of the file that failed to download.
+ * @param batch The download batch the failure belongs to.
+ */
+void ClientNetworkContentSocketHandler::OnDownloadFailed(const ContentInfo &ci, uint32_t batch)
+{
+	if (batch != this->download_batch) {
+		return;
+	}
+
+	this->failed_downloads++;
+
+	/* Tell the window this file has been reset. */
+	this->OnDownloadProgress(ci, -1);
 }
 
 /** Connect to the content server. */
@@ -752,6 +963,7 @@ NetworkRecvStatus ClientNetworkContentSocketHandler::CloseConnection([[maybe_unu
 void ClientNetworkContentSocketHandler::Cancel(void)
 {
 	this->is_cancelled = true;
+	this->pending_downloads.clear();
 	this->CloseConnection();
 }
 
@@ -838,7 +1050,6 @@ ContentInfo *ClientNetworkContentSocketHandler::GetContent(ContentID cid)
 	}
 	return nullptr;
 }
-
 
 /**
  * Select a specific content id.

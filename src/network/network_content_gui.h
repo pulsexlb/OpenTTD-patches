@@ -10,6 +10,8 @@
 #ifndef NETWORK_CONTENT_GUI_H
 #define NETWORK_CONTENT_GUI_H
 
+#include <map>
+#include <set>
 #include "network_content.h"
 #include "../window_gui.h"
 #include "../widgets/network_content_widget.h"
@@ -22,8 +24,9 @@ protected:
 	uint total_files = 0; ///< Number of files to download
 	uint downloaded_files = 0; ///< Number of files downloaded
 
-	uint32_t cur_id = UINT32_MAX; ///< The current ID of the downloaded file
-	std::string name{}; ///< The current name of the downloaded file
+	std::map<ContentID, uint> file_downloaded{}; ///< Number of bytes downloaded per file
+	std::map<ContentID, std::string> downloading_files{}; ///< The files that are currently being downloaded
+	std::set<ContentID> completed_files{}; ///< The files that have finished downloading
 
 public:
 	/**
@@ -36,6 +39,7 @@ public:
 	void UpdateWidgetSize(WidgetID widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override;
 	void DrawWidget(const Rect &r, WidgetID widget) const override;
 	void OnDownloadProgress(const ContentInfo &ci, int bytes) override;
+	void OnDownloadComplete(ContentID cid) override;
 };
 
 void BuildContentTypeStringList();

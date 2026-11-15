@@ -1975,6 +1975,10 @@ STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_VAL           :{COMMA} minute{
 ###setting-zero-is-special
 STR_CONFIG_SETTING_INVITE_CODE_KEEPALIVE_INTERVAL_ZERO          :Disabled (do not verify invite code registration)
 
+STR_CONFIG_SETTING_MAX_CONCURRENT_CONTENT_DOWNLOADS             :Concurrent content downloads: {STRING2}
+STR_CONFIG_SETTING_MAX_CONCURRENT_CONTENT_DOWNLOADS_HELPTEXT    :Maximum number of content files that are downloaded at the same time. Higher values can make downloading multiple files faster, but puts more load on the content server
+STR_CONFIG_SETTING_MAX_CONCURRENT_CONTENT_DOWNLOADS_VAL         :{COMMA} file{P "" s} at a time
+
 STR_CONFIG_SETTING_SOUND_TICKER                                 :News ticker: {STRING2}
 STR_CONFIG_SETTING_SOUND_TICKER_HELPTEXT                        :Play sound for summarised news messages
 

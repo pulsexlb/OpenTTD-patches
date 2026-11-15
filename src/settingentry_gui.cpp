@@ -1291,6 +1291,7 @@ SettingsContainer &GetSettingsTree()
 		{
 			network->Add(new SettingEntry("network.use_relay_service"));
 			network->Add(new SettingEntry("network.invite_code_keepalive_interval"));
+			network->Add(new SettingEntry("network.max_concurrent_content_downloads"));
 		}
 
 		main->Init();

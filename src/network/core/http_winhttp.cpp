@@ -26,6 +26,7 @@ static HINTERNET _winhttp_session = nullptr; ///< Currently running download ses
 class NetworkHTTPRequest {
 private:
 	const std::wstring uri; ///< URI to connect to.
+	std::shared_ptr<HTTPCallback> callback_owner; ///< Keeps the callback alive for as long as the request is running.
 	HTTPThreadSafeCallback callback; ///< Callback to send data back on.
 	const std::string data; ///< Data to send, if any.
 
@@ -35,7 +36,7 @@ private:
 	int depth = 0;                       ///< Current redirect depth we are in.
 
 public:
-	NetworkHTTPRequest(std::wstring &&uri, HTTPCallback *callback, std::string &&data);
+	NetworkHTTPRequest(std::wstring &&uri, std::shared_ptr<HTTPCallback> callback, std::string &&data);
 
 	~NetworkHTTPRequest();
 
@@ -60,9 +61,10 @@ static std::mutex _new_http_callback_mutex; ///< Mutex to prevent concurrent acc
  * @param callback the callback to send data back on.
  * @param data     the data we want to send. When non-empty, this will be a POST request, otherwise a GET request.
  */
-NetworkHTTPRequest::NetworkHTTPRequest(std::wstring &&uri, HTTPCallback *callback, std::string &&data) :
+NetworkHTTPRequest::NetworkHTTPRequest(std::wstring &&uri, std::shared_ptr<HTTPCallback> callback, std::string &&data) :
 	uri(std::move(uri)),
-	callback(callback),
+	callback_owner(std::move(callback)),
+	callback(this->callback_owner),
 	data(std::move(data))
 {
 	std::lock_guard<std::mutex> lock(_new_http_callback_mutex);
@@ -303,9 +305,9 @@ NetworkHTTPRequest::~NetworkHTTPRequest()
 	_http_callbacks.erase(std::remove(_http_callbacks.begin(), _http_callbacks.end(), &this->callback), _http_callbacks.end());
 }
 
-/* static */ void NetworkHTTPSocketHandler::Connect(std::string_view uri, HTTPCallback *callback, std::string &&data)
+/* static */ void NetworkHTTPSocketHandler::Connect(std::string_view uri, std::shared_ptr<HTTPCallback> callback, std::string &&data)
 {
-	auto request = new NetworkHTTPRequest(std::wstring(uri.begin(), uri.end()), callback, std::move(data));
+	auto request = new NetworkHTTPRequest(std::wstring(uri.begin(), uri.end()), std::move(callback), std::move(data));
 	request->Connect();
 
 	std::lock_guard<std::mutex> lock(_new_http_requests_mutex);
