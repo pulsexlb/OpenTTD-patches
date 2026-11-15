@@ -1524,6 +1524,12 @@ void UpdateAircraftState(Aircraft *v)
 					v->Next()->Next()->cur_speed = 0;
 					break;
 				}
+				/* A helicopter lands in a terminal state, but a hangar order
+				 * must taxi from that stand, not begin loading and lose the order. */
+				if (v->state != AS_RUNNING) {
+					v->state = AS_IDLE;
+					v->UpdateNextTile(INVALID_TILE);
+				}
 			} else if (v->current_order.IsType(OT_GOTO_DEPOT) && v->current_order.GetDestination() == GetDepotDestinationIndex(v->tile)) {
 				v->UpdateNextTile(v->tile);
 			}
