@@ -66,6 +66,7 @@
 #include "../smallmap_gui.h"
 #include "../news_func.h"
 #include "../order_backup.h"
+#include "../order_func.h"
 #include "../error.h"
 #include "../disaster_vehicle.h"
 #include "../ship.h"
@@ -3247,6 +3248,33 @@ bool AfterLoadGame()
 		}
 		if (convert_airports) LogAirportConversionSummary("Loading the game");
 	}
+
+	/* Heal aircraft hangar orders whose hangar no longer exists, e.g. saves
+	 * written before hangar removal cleaned up its orders. Such an order can
+	 * never be served and keeps prodding the aircraft into leaving for a
+	 * destination it can never reach. Nearest-depot orders re-resolve their
+	 * destination at runtime and are left alone. */
+	for (Aircraft *a : Aircraft::Iterate()) {
+		if (!a->IsNormalAircraft()) continue;
+
+		if (a->current_order.IsType(OT_GOTO_DEPOT) &&
+				(a->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) == 0 &&
+				GetOrderHangar(a->current_order) == nullptr) {
+			a->current_order.MakeDummy();
+		}
+
+		if (a->orders == nullptr || a->orders->GetFirstSharedVehicle() != a) continue;
+
+		for (Order *order : a->Orders()) {
+			if (!order->IsType(OT_GOTO_DEPOT)) continue;
+			if ((order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0) continue;
+			if (GetOrderHangar(*order) == nullptr) {
+				order->InvalidateGuiOnRemove();
+				order->MakeDummy();
+			}
+		}
+	}
+
 	if (legacy_airport_tiles) {
 		/* Delete already crashed zeppelins. */
 		DeleteCrashedZeppelins();
