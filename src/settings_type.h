@@ -941,6 +941,7 @@ struct EconomySettings {
 	TownFounding found_town;                 ///< town founding.
 	PlaceHouses place_houses;                ///< players are allowed to place town houses.
 	bool     station_noise_level;            ///< build new airports when the town noise level is still within accepted limits
+	uint8_t  custom_airport_noise_divisor;   ///< denominator of the noise multiplier applied to custom airports (1..6)
 	uint16_t town_noise_population[3];       ///< population to base decision on noise evaluation (@see town_council_tolerance)
 	bool     infrastructure_sharing[4];      ///< enable infrastructure sharing for rail/road/water/air
 	bool     allow_coupling_other_company_trains; ///< allow coupling with trains owned by other companies

@@ -2061,6 +2061,16 @@ STR_CONFIG_SETTING_ALLOW_TOWN_LEVEL_CROSSINGS_HELPTEXT          :启用时允许
 STR_CONFIG_SETTING_NOISE_LEVEL                                  :允许城镇限制机场噪音：{STRING}
 STR_CONFIG_SETTING_NOISE_LEVEL_HELPTEXT                         :允许城镇基于城镇人口、机场大小和距离控制机场噪音。禁用此设置时，每座城镇只允许建设两座机场，除非将地方政府态度设为“放任”
 
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR                 :自定义机场噪音倍率：{STRING}
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_HELPTEXT        :应用于自定义机场所产生噪音的分数倍率。倍率越小，自定义机场产生的噪音越少，可缓解建造大型机场时噪音限制过于严格的问题。1/1 表示不改变噪音
+###length 6
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_1               :1/1（不改变）
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_2               :1/2
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_3               :1/3
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_4               :1/4
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_5               :1/5
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_6               :1/6
+
 STR_CONFIG_SETTING_TOWN_FOUNDING                                :在游戏中建立城镇：{STRING}
 STR_CONFIG_SETTING_TOWN_FOUNDING_HELPTEXT                       :启用时，允许玩家在游戏中建设新城镇
 ###length 3

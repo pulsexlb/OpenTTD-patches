@@ -173,10 +173,17 @@ uint16_t CalculateAirportNoiseLevel(const Airport airport, AirType airtype = INV
 	/* Custom airports are charged for the size of their area: convert it into the number of runways it
 	 * can hold (including their supporting tiles), capped at the number of runways the airtype allows. */
 	if (airport.type == AT_CUSTOM) {
+		uint noise_level = air_type_info->base_noise_level;
 		const uint tiles_per_runway = CUSTOM_AIRPORT_TILES_PER_RUNWAY_FACTOR * air_type_info->min_runway_length;
-		if (tiles_per_runway == 0) return air_type_info->base_noise_level;
-		const uint runways = std::min<uint>((airport.num_tiles + tiles_per_runway - 1) / tiles_per_runway, air_type_info->max_num_runways);
-		return static_cast<uint16_t>(std::min<uint>(air_type_info->base_noise_level + runways * air_type_info->runway_noise_level, UINT16_MAX));
+		if (tiles_per_runway != 0) {
+			const uint runways = std::min<uint>((airport.num_tiles + tiles_per_runway - 1) / tiles_per_runway, air_type_info->max_num_runways);
+			noise_level += runways * air_type_info->runway_noise_level;
+		}
+		noise_level = std::min<uint>(noise_level, UINT16_MAX);
+		/* Apply the user-configurable noise multiplier (expressed as a fraction 1/divisor) to custom airports. */
+		const uint divisor = _settings_game.economy.custom_airport_noise_divisor;
+		if (noise_level > 0 && divisor > 1) noise_level = std::max<uint>(noise_level / divisor, 1);
+		return static_cast<uint16_t>(noise_level);
 	}
 
 	return static_cast<uint16_t>(air_type_info->base_noise_level +
