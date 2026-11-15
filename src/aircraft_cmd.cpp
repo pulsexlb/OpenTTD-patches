@@ -2920,7 +2920,18 @@ void HandleMissingAircraftOrders(Aircraft *v)
 		CommandCost ret = Command<Commands::SendVehicleToDepot>::Do(DoCommandFlag::Execute, v->index, DepotCommandFlags{}, INVALID_TILE);
 		cur_company.Restore();
 
-		if (ret.Failed()) HandleAircraftFalling(v);
+		if (ret.Failed()) {
+			if (v->IsAircraftFalling()) {
+				/* Already descending: continue the fall. */
+				HandleAircraftFalling(v);
+			} else if (v->IsAircraftFreelyFlying()) {
+				/* Airborne with no destination and no reachable hangar:
+				 * start the fall, like the flight controller does. */
+				AircraftStartsFalling(v);
+			}
+			/* A grounded aircraft without a reachable hangar simply stays
+			 * where it is; it must not crash or assert on deleted orders. */
+		}
 	} else if (!v->current_order.IsType(OT_GOTO_DEPOT)) {
 		v->current_order.Free();
 	}
