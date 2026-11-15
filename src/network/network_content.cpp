@@ -287,6 +287,47 @@ void ClientNetworkContentSocketHandler::RequestContentList(ContentVector *cv, bo
 	}
 }
 
+/** A manifest owns its response and never forwards events to a newer batch. */
+class ContentManifestDownload : public HTTPCallback {
+public:
+	ContentManifestDownload(ClientNetworkContentSocketHandler &parent, uint32_t batch) : parent(parent), batch(batch) {}
+
+	void Abort()
+	{
+		this->finished = true;
+		this->response.clear();
+	}
+
+	bool IsCancelled() const override
+	{
+		return this->finished || this->batch != this->parent.download_batch || this->parent.IsCancelled();
+	}
+
+	void OnFailure() override
+	{
+		if (this->IsCancelled()) return;
+		this->finished = true;
+		this->parent.OnManifestFailed(this->batch);
+	}
+
+	void OnReceiveData(UniqueBuffer<char> data) override
+	{
+		if (this->IsCancelled()) return;
+		if (data != nullptr) {
+			this->response.append(data.get(), data.size());
+			return;
+		}
+		this->finished = true;
+		this->parent.OnManifestComplete(this->batch, this->response);
+	}
+
+private:
+	ClientNetworkContentSocketHandler &parent;
+	const uint32_t batch;
+	std::string response;
+	bool finished = false;
+};
+
 /**
  * Actually begin downloading the content we selected.
  * @param[out] files The number of files we are going to download.
@@ -315,10 +356,11 @@ void ClientNetworkContentSocketHandler::DownloadSelectedContent(uint &files, uin
 	if (fallback) {
 		this->DownloadSelectedContentFallback(content);
 	} else {
-		/* Abort any downloads of a previous batch that are still running. */
+		/* A new batch cannot inherit a manifest, file or TCP fallback stream. */
 		this->pending_downloads.clear();
 		this->AbortActiveDownloads();
-
+		this->CloseConnection();
+		this->failed_downloads = 0;
 		this->download_batch++;
 		this->DownloadSelectedContentHTTP(content);
 	}
@@ -335,10 +377,8 @@ void ClientNetworkContentSocketHandler::DownloadSelectedContentHTTP(const Conten
 		content_request.format("{}\n", id);
 	}
 
-	this->http_response_index = -1;
-
-	/* The handler is a singleton that outlives the request; share it without taking ownership. */
-	NetworkHTTPSocketHandler::Connect(NetworkContentMirrorUriString(), std::shared_ptr<HTTPCallback>(static_cast<HTTPCallback *>(this), [](HTTPCallback *) {}), content_request.to_string());
+	this->manifest_download = std::make_shared<ContentManifestDownload>(*this, this->download_batch);
+	NetworkHTTPSocketHandler::Connect(NetworkContentMirrorUriString(), this->manifest_download, content_request.to_string());
 }
 
 /**
@@ -550,7 +590,7 @@ public:
 
 	void OnFailure() override
 	{
-		if (this->finished) return;
+		if (this->finished || this->parent.IsCancelled() || this->batch != this->parent.download_batch) return;
 		this->finished = true;
 
 		this->file.reset();
@@ -563,7 +603,7 @@ public:
 		assert(data.get() == nullptr || data.size() != 0);
 
 		/* Ignore any latent data coming from a finished or aborted download. */
-		if (this->finished) return;
+		if (this->finished || this->parent.IsCancelled() || this->batch != this->parent.download_batch) return;
 
 		if (data != nullptr) {
 			/* We have data, so write it to the file. */
@@ -593,7 +633,7 @@ public:
 
 	bool IsCancelled() const override
 	{
-		return this->aborted || this->parent.IsCancelled();
+		return this->aborted || this->finished || this->batch != this->parent.download_batch || this->parent.IsCancelled();
 	}
 
 private:
@@ -609,7 +649,10 @@ private:
 /** Abort all downloads that are currently running. */
 void ClientNetworkContentSocketHandler::AbortActiveDownloads()
 {
+	if (this->manifest_download != nullptr) this->manifest_download->Abort();
+	this->manifest_download.reset();
 	for (auto &download : this->active_downloads) download->Abort();
+	this->active_downloads.clear();
 }
 
 bool ClientNetworkContentSocketHandler::ReceiveServerContent(Packet &p)
@@ -699,58 +742,25 @@ bool ClientNetworkContentSocketHandler::IsCancelled() const
 	return this->is_cancelled;
 }
 
-/* Also called to just clean up the mess. */
-void ClientNetworkContentSocketHandler::OnFailure()
+void ClientNetworkContentSocketHandler::OnManifestFailed(uint32_t batch)
 {
-	this->http_response.clear();
-	this->http_response.shrink_to_fit();
-	this->http_response_index = -2;
-
-	/* If we fail, download the rest via the 'old' system. */
-	if (!this->is_cancelled) {
-		uint files, bytes;
-
-		this->DownloadSelectedContent(files, bytes, true);
-	}
+	if (batch != this->download_batch || this->is_cancelled) return;
+	this->pending_downloads.clear();
+	this->AbortActiveDownloads();
+	/* Retry only this batch, after closing any old TCP file or stream. */
+	this->CloseConnection();
+	uint files, bytes;
+	this->DownloadSelectedContent(files, bytes, true);
 }
 
-void ClientNetworkContentSocketHandler::OnReceiveData(UniqueBuffer<char> data)
+void ClientNetworkContentSocketHandler::OnManifestComplete(uint32_t batch, std::string_view response)
 {
-	assert(data.get() == nullptr || data.size() != 0);
-
-	/* Ignore any latent data coming from a connection we closed. */
-	if (this->http_response_index == -2) {
+	if (batch != this->download_batch || this->is_cancelled) return;
+	if (!this->ParseContentManifest(response)) {
+		this->OnManifestFailed(batch);
 		return;
 	}
-
-	if (this->http_response_index == -1) {
-		if (data != nullptr) {
-			/* Append the rest of the response. */
-			this->http_response.insert(this->http_response.end(), data.get(), data.get() + data.size());
-			return;
-		} else {
-			/* Make sure the response is properly terminated. */
-			this->http_response.push_back('\0');
-
-			/* And prepare for parsing the response. */
-			this->http_response_index = 0;
-		}
-	}
-
-	/* The manifest is fully buffered; any further data of this connection is unexpected,
-	 * as the file downloads each have their own callback. */
-	if (data != nullptr) return;
-
-	if (!this->ParseContentManifest()) {
-		this->OnFailure();
-		return;
-	}
-
-	/* The manifest has been consumed; ignore any latent data of this connection. */
-	this->http_response.clear();
-	this->http_response.shrink_to_fit();
-	this->http_response_index = -2;
-
+	this->manifest_download.reset();
 	this->StartNextDownloads();
 }
 
@@ -758,17 +768,14 @@ void ClientNetworkContentSocketHandler::OnReceiveData(UniqueBuffer<char> data)
  * Parse the manifest received from the content mirror into the queue of pending downloads.
  * @return true iff the manifest could be parsed.
  */
-bool ClientNetworkContentSocketHandler::ParseContentManifest()
+bool ClientNetworkContentSocketHandler::ParseContentManifest(std::string_view buffer)
 {
 	this->pending_downloads.clear();
 	this->failed_downloads = 0;
+	/* An empty manifest means the mirror knows nothing about the requested content. */
+	if (buffer.empty()) return false;
 
-	std::string_view buffer{this->http_response.data(), this->http_response.size()};
-	/* An empty manifest means the mirror knows nothing about the requested content; retry via the fallback system. */
-	if (buffer.size() <= 1) return false;
-
-	/* The last byte is the '\0' terminator we added, and not part of a line. */
-	size_t end = buffer.size() - 1;
+	size_t end = buffer.size();
 	size_t offset = 0;
 
 	try {
@@ -839,7 +846,7 @@ bool ClientNetworkContentSocketHandler::ParseContentManifest()
 void ClientNetworkContentSocketHandler::StartNextDownloads()
 {
 	/* A re-entrant call means the outer invocation is still busy starting downloads; it will handle the work. */
-	if (this->scheduling_downloads) {
+	if (this->scheduling_downloads || this->is_cancelled) {
 		return;
 	}
 	this->scheduling_downloads = true;
@@ -916,12 +923,14 @@ public:
 
 	void OnFailure() override
 	{
+		_network_content_client.connecter.reset();
 		_network_content_client.is_connecting = false;
 		_network_content_client.OnConnect(false);
 	}
 
 	void OnConnect(SOCKET s) override
 	{
+		_network_content_client.connecter.reset();
 		assert(_network_content_client.sock == INVALID_SOCKET);
 		_network_content_client.last_activity = std::chrono::steady_clock::now();
 		_network_content_client.is_connecting = false;
@@ -941,12 +950,17 @@ void ClientNetworkContentSocketHandler::Connect()
 	this->is_cancelled = false;
 	this->is_connecting = true;
 
-	TCPConnecter::Create<NetworkContentConnecter>(NetworkContentServerConnectionString());
+	this->connecter = TCPConnecter::Create<NetworkContentConnecter>(NetworkContentServerConnectionString());
 }
 
 /** Disconnect from the content server. @copydoc NetworkTCPSocketHandler::CloseConnection */
 NetworkRecvStatus ClientNetworkContentSocketHandler::CloseConnection([[maybe_unused]] bool error)
 {
+	if (this->connecter != nullptr) this->connecter->Kill();
+	this->connecter.reset();
+	this->is_connecting = false;
+	this->cur_file.reset();
+	this->cur_info.reset();
 	NetworkContentSocketHandler::CloseConnection();
 
 	if (this->sock == INVALID_SOCKET) return NetworkRecvStatus::Okay;
@@ -963,7 +977,10 @@ NetworkRecvStatus ClientNetworkContentSocketHandler::CloseConnection([[maybe_unu
 void ClientNetworkContentSocketHandler::Cancel(void)
 {
 	this->is_cancelled = true;
+	this->download_batch++;
 	this->pending_downloads.clear();
+	this->AbortActiveDownloads();
+	this->failed_downloads = 0;
 	this->CloseConnection();
 }
 
@@ -1259,6 +1276,7 @@ void ClientNetworkContentSocketHandler::CheckDependencyState(const ContentInfo &
 /** Clear all downloaded content information. */
 void ClientNetworkContentSocketHandler::Clear()
 {
+	this->Cancel();
 	this->infos.clear();
 	this->requested.clear();
 	this->queued.clear();

@@ -5016,7 +5016,7 @@ bool AfterLoadGame()
 	AfterLoadValidateCoupleClaims();
 
 	AfterLoadAircraftReservations(SlXvIsFeatureMissing(XSLFI_AIRCRAFT_ROLLING_RESERVATION),
-		SlXvIsFeaturePresent(XSLFI_AIRCRAFT_ROLLING_RESERVATION) && SlXvIsFeatureMissing(XSLFI_AIRCRAFT_ROLLING_RESERVATION, 4));
+		SlXvIsFeaturePresent(XSLFI_AIRCRAFT_ROLLING_RESERVATION) && SlXvIsFeatureMissing(XSLFI_AIRCRAFT_ROLLING_RESERVATION, 5));
 
 	if (_networking && !_network_server) {
 		SlProcessVENC();

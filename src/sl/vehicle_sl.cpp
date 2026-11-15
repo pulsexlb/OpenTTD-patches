@@ -853,15 +853,15 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 				if (t->Primary()->IsPrimaryVehicle() || t->IsFreeWagon()) {
 					t->gcache.last_speed = t->cur_speed; // update displayed train speed
 					Train *head = t->First();
-					const auto saved_acceleration = head->acceleration;
-					head->ConsistChanged(CCF_SAVELOAD);
-					/* VENC restores the server's weight and power caches after this
-					 * rebuild. Acceleration is serialized on the vehicle itself;
-					 * keep that value too, rather than mixing the server's caches
-					 * with acceleration calculated from the client's rebuilt caches. */
-					if (part_of_load && _networking && !_network_server && SlXvIsFeaturePresent(XSLFI_VENC_CHUNK)) {
-						head->acceleration = saved_acceleration;
+					const bool restore_acceleration = part_of_load && _networking && !_network_server && SlXvIsFeaturePresent(XSLFI_VENC_CHUNK);
+					std::vector<std::pair<Train *, uint8_t>> saved_accelerations;
+					if (restore_acceleration) {
+						for (Train *part = head; part != nullptr; part = part->Next()) saved_accelerations.emplace_back(part, part->acceleration);
 					}
+					head->ConsistChanged(CCF_SAVELOAD);
+					/* ConsistChanged broadcasts acceleration to every part, including
+					 * a mid-chain controller. VENC does not restore this saved field. */
+					for (const auto &[part, acceleration] : saved_accelerations) part->acceleration = acceleration;
 				}
 				break;
 			}

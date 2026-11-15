@@ -597,6 +597,29 @@ static std::vector<TileIndex> RunwayTiles(TileIndex extreme)
 	return {};
 }
 
+/* Construction must also respect local records of ignored aircraft. These
+ * records do not block other aircraft, but still depend on the map geometry. */
+TrackBits GetAircraftAirportEditTracks(TileIndex tile)
+{
+	if (!IsTaxiTile(tile)) return TRACK_BIT_NONE;
+	TrackBits tracks = GetReservedAirportTracks(tile) | GetAircraftVirtualBookedTracks(tile);
+	if (_aircraft_terminal_owners.count(tile) != 0 || _aircraft_runway_owners.count(tile) != 0 ||
+			(IsRunway(tile) && GetReservationAsRunway(tile))) return TRACK_BIT_ALL;
+	for (const Aircraft *v : Aircraft::Iterate()) {
+		if (!v->IsNormalAircraft()) continue;
+		if (v->allocated_terminal == tile) return TRACK_BIT_ALL;
+		if (v->tile == tile && !v->vehstatus.Test(VehState::Hidden) && !v->IsAircraftFlying()) return TRACK_BIT_ALL;
+		if (!v->ignore_airport_reservations) continue;
+		for (const auto &record : v->reserved_path) { if (record.tile == tile) tracks |= record.tracks; }
+		for (const auto &record : v->virtual_path) { if (record.tile == tile) tracks |= TrackdirBitsToTrackBits(record.trackdirs); }
+		for (const auto &node : v->planned_path) { if (node.tile == tile && IsValidTrackdir(node.td)) tracks |= TrackToTrackBits(TrackdirToTrack(node.td)); }
+		if (v->reserved_runway != INVALID_TILE) {
+			for (TileIndex runway_tile : RunwayTiles(v->reserved_runway)) { if (runway_tile == tile) return TRACK_BIT_ALL; }
+		}
+	}
+	return tracks;
+}
+
 static AircraftTaxiBlock CheckAircraftRunwayTile(const Aircraft *v, TileIndex tile)
 {
 	/* The whole runway tile remains exclusive, but only its actual runway
@@ -729,6 +752,54 @@ Trackdir GetFreeAirportTrackdir(TileIndex tile, Trackdir preferred_trackdir, con
 	return follower.Follow(tile, td) ? td : ReverseTrackdir(td);
 }
 
+/* Migrate only stale local state that older builds could produce through
+ * normal play. Current snapshots must retain their exact simulation state. */
+static void MigrateAircraftReservationState(Aircraft *v)
+{
+	if (v->IsHelicopter() && v->IsAircraftFreelyFlying()) v->allocated_terminal = INVALID_TILE;
+	if (!v->ignore_airport_reservations) return;
+	bool valid = v->allocated_terminal == INVALID_TILE || IsTaxiTile(v->allocated_terminal);
+	valid &= v->reserved_runway == INVALID_TILE || !RunwayTiles(v->reserved_runway).empty();
+	for (const auto &record : v->reserved_path) {
+		valid &= IsTaxiTile(record.tile) && record.tracks != TRACK_BIT_NONE &&
+				(GetAirportTileTracks(record.tile) & record.tracks) == record.tracks;
+	}
+	for (size_t i = 0; i < v->planned_path.size(); ++i) {
+		const auto &node = v->planned_path[i];
+		if (!IsTaxiTile(node.tile) || !IsValidTrackdir(node.td) || !HasTrack(GetAirportTileTracks(node.tile), TrackdirToTrack(node.td))) {
+			valid = false;
+			continue;
+		}
+		if (i == 0 || node.tile == v->planned_path[i - 1].tile) continue;
+		const auto &previous = v->planned_path[i - 1];
+		if (!IsTaxiTile(previous.tile) || !IsValidTrackdir(previous.td)) { valid = false; continue; }
+		CFollowTrackAirport follower(v);
+		valid &= follower.Follow(previous.tile, previous.td) && follower.new_tile == node.tile &&
+				(follower.new_td_bits & TrackdirToTrackdirBits(node.td)) != TRACKDIR_BIT_NONE;
+	}
+	if (valid) return;
+	const bool airborne = v->IsAircraftFlying() || v->state == AS_TAKEOFF_BEFORE_FLYING || !IsTaxiTile(v->tile);
+	const TileIndex runway = !RunwayTiles(v->reserved_runway).empty() ? v->reserved_runway : INVALID_TILE;
+	ReleaseAircraftTaxiPath(v, false);
+	v->reserved_runway = runway;
+	v->taxi_progress = v->pushback_progress = 0;
+	v->next_trackdir = v->Next()->next_trackdir = INVALID_TRACKDIR;
+	v->next_pos.pos = AP_DEFAULT;
+	v->ClearWaitTime();
+	if (airborne) {
+		v->state = AS_FLYING_NO_DEST;
+		v->reserved_runway = INVALID_TILE;
+		v->UpdateNextTile(v->tile);
+	} else {
+		v->state = AS_IDLE;
+		v->cur_speed = v->subspeed = v->progress = 0;
+		v->UpdateNextTile(INVALID_TILE);
+		if (IsValidTrackdir(v->trackdir)) {
+			TryReserveAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(v->trackdir)));
+		}
+	}
+}
+
 /* Validate without changing the saved simulation state; rebuild indexes only. */
 void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 {
@@ -810,6 +881,7 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 
 	for (Aircraft *v : Aircraft::Iterate()) {
 		if (!v->IsNormalAircraft()) continue;
+		if (SlXvIsFeatureMissing(XSLFI_AIRCRAFT_ROLLING_RESERVATION, 5)) MigrateAircraftReservationState(v);
 		if (v->reserved_path.size() > 2) SlErrorCorrupt("Aircraft rolling reservation exceeds two tiles");
 		std::set<TileIndex> real_tiles;
 		for (const auto &r : v->reserved_path) {
@@ -831,10 +903,12 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 				if (!v->ignore_airport_reservations && (!GetReservationAsRunway(tile) || !_aircraft_runway_owners.emplace(tile, v->index).second)) SlErrorCorrupt("Invalid saved aircraft runway reservation");
 			}
 		}
-		if (HasBit(v->flags, VAF_PUSHBACK) && (v->state != AS_RUNNING ||
-				!IsTaxiTile(v->pushback_origin) || !IsTaxiTile(v->pushback_target) || v->planned_path.empty())) SlErrorCorrupt("Invalid saved aircraft pushback");
-		if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile)) SlErrorCorrupt("Aircraft route does not start at its current tile");
-		if (v->state == AS_RUNNING && !HasAircraftTileReservation(v, v->tile, TRACK_BIT_NONE)) SlErrorCorrupt("Taxiing aircraft has no current tile reservation");
+		if (!v->vehstatus.Test(VehState::Crashed)) {
+			if (HasBit(v->flags, VAF_PUSHBACK) && (v->state != AS_RUNNING ||
+					!IsTaxiTile(v->pushback_origin) || !IsTaxiTile(v->pushback_target) || v->planned_path.empty())) SlErrorCorrupt("Invalid saved aircraft pushback");
+			if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile)) SlErrorCorrupt("Aircraft route does not start at its current tile");
+			if (v->state == AS_RUNNING && !HasAircraftTileReservation(v, v->tile, TRACK_BIT_NONE)) SlErrorCorrupt("Taxiing aircraft has no current tile reservation");
+		}
 		if (v->taxi_progress > 255 || v->pushback_progress > 255) SlErrorCorrupt("Invalid aircraft movement remainder");
 		for (size_t i = 0; i < v->planned_path.size(); ++i) {
 			const auto &n = v->planned_path[i];
@@ -856,9 +930,9 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 		if (taxi != _aircraft_tile_owners.end() && (taxi->second.size() != 1 || taxi->second.begin()->first != runway_owner)) SlErrorCorrupt("Aircraft taxi reservation overlaps another aircraft runway");
 	}
 	if (migrate_virtual) {
-		/* v1-v3 do not record edge-turn swept directions. Convert once;
-		 * conflicting old plans wait on their actual tile rather than refusing
-		 * the save or taking a partial prefix of another aircraft's route. */
+		/* Older builds did not protect swept geometry against construction.
+		 * Convert once; conflicting old plans wait on their actual tile rather
+		 * than refusing the save or taking a partial prefix of another route. */
 		for (Aircraft *v : Aircraft::Iterate()) {
 			if (!v->IsNormalAircraft()) continue;
 			v->virtual_path.clear();
@@ -867,7 +941,7 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 				v->taxi_block_reason = AircraftTaxiBlock::None;
 				ClrBit(v->flags, VAF_TAXI_PHASING);
 			}
-			if (v->state == AS_RUNNING && TryReserveAircraftTaxiPath(v)) continue;
+			if (v->state == AS_RUNNING && !v->vehstatus.Test(VehState::Crashed) && TryReserveAircraftTaxiPath(v)) continue;
 			if (v->planned_path.empty()) continue;
 			ReleaseAircraftTaxiPath(v, !v->vehstatus.Test(VehState::Hidden));
 			if (v->state != AS_RUNNING) continue;

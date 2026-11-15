@@ -1072,11 +1072,9 @@ uint Aircraft::Crash(bool flooded)
 	/* Remove the loading indicators (if any) */
 	HideFillingPercent(&this->fill_percent_te_id);
 
-	// revise: what happens if a falling aircraft falls in an airport?
-	if (!this->IsAircraftFalling() && this->reserved_runway == INVALID_TILE) {
-		/* Lift reserved path except the first tile. Skip reserved runways. */
-		LiftAirportPathReservation(this, true);
-	}
+	/* Wreckage keeps its current occupancy and complete runway lock, but never
+	 * an active taxi route or pushback manoeuvre. */
+	ReleaseAircraftTaxiPath(this, true);
 
 	this->dest_tile = TileIndex{};
 
@@ -1703,7 +1701,7 @@ bool RaiseLowerHelicopter(Aircraft *v)
 							Command<Commands::SendVehicleToDepot>::Do(DoCommandFlag::Execute, v->index, DepotCommandFlags{DepotCommandFlag::Service}, INVALID_TILE);
 							cur_company.Restore();
 						}
-						ReleaseAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(v->trackdir)));
+						ReleaseAircraftTaxiPath(v, false);
 						ResetAircraftIgnoreReservations(v);
 						v->state = AS_FLYING;
 						AircraftUpdateNextPos(v);

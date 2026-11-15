@@ -424,8 +424,7 @@ CommandCost AircraftInAirport(const Station *st)
 	for (TileIndex tile : st->airport) {
 		if (!st->TileBelongsToAirport(tile)) continue;
 
-		if ((MayHaveAirTracks(tile) && (HasAirportTrackReserved(tile) || GetAircraftVirtualBookedTracks(tile) != TRACK_BIT_NONE)) ||
-			(IsRunway(tile) && GetReservationAsRunway(tile)))
+		if (GetAircraftAirportEditTracks(tile) != TRACK_BIT_NONE)
 			return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 
 		/* Aircraft can be hidden inside depots with no associated reservation. */
@@ -453,6 +452,8 @@ CommandCost AddAirportTrack(TileIndex tile, Track track, DoCommandFlags flags)
 	if (ret.Failed()) return ret;
 	if (!MayHaveAirTracks(tile)) return CommandCost(STR_ERROR_AIRPORT_CAN_T_HAVE_TRACKS);
 	if (HasAirportTileTrack(tile, track)) return CommandCost(STR_ERROR_ALREADY_BUILT);
+	/* Adding a connection changes the swept directions of an admitted edge turn. */
+	if (GetAircraftAirportEditTracks(tile) != TRACK_BIT_NONE) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 	AirportTileType att = GetAirportTileType(tile);
 	if ((att == ATT_HANGAR_STANDARD || att == ATT_HANGAR_EXTENDED) && !IsDiagonalTrack(track)) return CommandCost(STR_ERROR_AIRPORT_CAN_T_ADD_TRACK_HANGAR);
 
@@ -476,8 +477,7 @@ CommandCost RemoveAirportTrack(TileIndex tile, Track track, DoCommandFlags flags
 
 	if (!MayHaveAirTracks(tile) || !HasAirportTileTrack(tile, track)) return CommandCost();
 
-	if (GetAircraftVirtualBookedTracks(tile) != TRACK_BIT_NONE || HasAirportTrackReserved(tile, track) ||
-			(IsRunwayExtreme(tile) && GetReservationAsRunway(tile))) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
+	if (GetAircraftAirportEditTracks(tile) != TRACK_BIT_NONE) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		SetAirportTileTracks(tile, GetAirportTileTracks(tile) & ~TrackToTrackBits(track));
@@ -577,6 +577,8 @@ CommandCost CmdAddRemoveTracksToAirport(DoCommandFlags flags, TileIndex start_ti
 	return last_error;
 }
 
+bool HasReservationsOnNeighbourTiles(TileIndex tile);
+
 /**
  * Define/undefine a runway.
  * @param flags operation to perform
@@ -626,6 +628,7 @@ CommandCost AddRunway(DoCommandFlags flags, TileIndex start_tile, TileIndex end_
 		if (!IsAirportTile(tile_iter)) return CommandCost(STR_ERROR_AIRPORT_RUNWAY_INCOMPLETE);
 		if (GetStationIndex(tile_iter) != st->index) return CommandCost(STR_ERROR_AIRPORT_RUNWAY_INCOMPLETE);
 		if (!IsSimpleTrack(tile_iter) && !IsPlainRunway(tile_iter)) return CommandCost(STR_ERROR_AIRPORT_RUNWAY_CAN_T_BUILD_OVER);
+		if (GetAircraftAirportEditTracks(tile_iter) != TRACK_BIT_NONE || HasReservationsOnNeighbourTiles(tile_iter)) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 		if (IsPlainRunway(tile_iter)) {
 			/* Cannot build an extreme runway tile on an already existing runway. */
 			if (tile_iter == start_tile || tile_iter == end_tile) return CommandCost(STR_ERROR_AIRPORT_RUNWAY_OVERLAP);
@@ -721,8 +724,7 @@ CommandCost RemoveRunway(DoCommandFlags flags, TileIndex start_tile, TileIndex e
 		assert(IsRunway(tile_iter));
 		/* A virtual taxi route does not block runway use, but removing any part
 		 * of that route would invalidate its saved destination or connections. */
-		if (GetAircraftVirtualBookedTracks(tile_iter) != TRACK_BIT_NONE || GetReservationAsRunway(tile_iter) ||
-				HasAirportTrackReserved(tile_iter)) {
+		if (GetAircraftAirportEditTracks(tile_iter) != TRACK_BIT_NONE || HasReservationsOnNeighbourTiles(tile_iter)) {
 			return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 		}
 	}
@@ -784,7 +786,7 @@ bool HasReservationsOnNeighbourTiles(TileIndex tile)
 		if (!IsAirportTileOfStation(neighbour, station_id)) continue;
 		if (!MayHaveAirTracks(neighbour)) continue;
 
-		TrackBits reserved = GetReservedAirportTracks(neighbour) | GetAircraftVirtualBookedTracks(neighbour);
+		TrackBits reserved = GetAircraftAirportEditTracks(neighbour);
 		switch (dir) {
 			case Direction::N:
 				reserved &= TRACK_BIT_LOWER;
@@ -953,6 +955,7 @@ CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, Ti
 			if (air_tile_type == ATT_APRON_HELIPORT &&
 				!AreHeliportsAvailable(air_type)) return CommandCost(STR_ERROR_AIRPORT_CAN_T_BUILD_HELIPORT);
 			if (GetAirportTileType(tile_iter) == air_tile_type) continue;
+			if (GetAircraftAirportEditTracks(tile_iter) != TRACK_BIT_NONE || close_tracks) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 
 			cost.AddCost(_price[Price::BuildStationAirport] * ati->cost_multiplier);
 
@@ -1011,8 +1014,8 @@ CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, Ti
 				if (!IsInfrastructure(tile_iter) || GetAirportTileType(tile_iter) != air_tile_type) continue;
 			}
 
-			if (GetAircraftVirtualBookedTracks(tile_iter) != TRACK_BIT_NONE ||
-					(reserved_tracks & TRACK_BIT_CROSS) != TRACK_BIT_NONE) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
+			if (GetAircraftAirportEditTracks(tile_iter) != TRACK_BIT_NONE ||
+					HasReservationsOnNeighbourTiles(tile_iter)) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 
 			cost.AddCost(_price[Price::ClearStationAirport] * ati->cost_multiplier);
 			if (flags.Test(DoCommandFlag::Execute)) {
@@ -1400,8 +1403,7 @@ CommandCost RemoveAirportTiles(DoCommandFlags flags, TileIndex start_tile, TileI
 	for (TileIndex tile : ta) {
 		if (!IsAirportTile(tile)) continue;
 		if (air_type != GetAirType(tile)) continue;
-		if (MayHaveAirTracks(tile) && (HasAirportTrackReserved(tile) || GetAircraftVirtualBookedTracks(tile) != TRACK_BIT_NONE ||
-				HasReservationsOnNeighbourTiles(tile))) continue;
+		if (GetAircraftAirportEditTracks(tile) != TRACK_BIT_NONE || HasReservationsOnNeighbourTiles(tile)) continue;
 
 		if (_current_company != OWNER_WATER) {
 			CommandCost ret = CheckTileOwnership(tile);
@@ -1508,7 +1510,7 @@ CommandCost ClearAirportTile(TileIndex tile, DoCommandFlags flags)
 {
 	assert(IsAirportTile(tile));
 	/* Reject before dismantling a runway or its tile. */
-	if (GetAircraftVirtualBookedTracks(tile) != TRACK_BIT_NONE || HasReservationsOnNeighbourTiles(tile)) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
+	if (GetAircraftAirportEditTracks(tile) != TRACK_BIT_NONE || HasReservationsOnNeighbourTiles(tile)) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 	CommandCost cost(ExpensesType::Construction);
 
 	if (IsRunway(tile)) {

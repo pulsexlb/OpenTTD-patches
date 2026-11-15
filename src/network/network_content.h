@@ -60,11 +60,12 @@ struct ContentCallback {
 
 /** Download context for a single content file being downloaded over HTTP. */
 class ContentDownload;
+class ContentManifestDownload;
 
 /**
  * Socket handler for the content server connection
  */
-class ClientNetworkContentSocketHandler : public NetworkContentSocketHandler, ContentCallback, HTTPCallback {
+class ClientNetworkContentSocketHandler : public NetworkContentSocketHandler, ContentCallback {
 protected:
 	using ContentIDList = std::vector<ContentID>; ///< List of content IDs to (possibly) select.
 	std::vector<ContentCallback *> callbacks;     ///< Callbacks to notify "the world"
@@ -72,8 +73,8 @@ protected:
 	ContentIDList queued;                         ///< ContentID queue to be requested.
 	ContentVector infos;                          ///< All content info we received
 	btree::btree_multimap<ContentID, ContentID> reverse_dependency_map; ///< Content reverse dependency map
-	std::vector<char> http_response;              ///< The HTTP response to the manifest request we've been doing
-	int http_response_index = -2;                 ///< Where we are, in the response, with handling it
+	std::shared_ptr<ContentManifestDownload> manifest_download; ///< Current batch's independently buffered HTTP manifest.
+	std::shared_ptr<TCPConnecter> connecter;      ///< Pending content-server connection; cancelled with the batch.
 
 	std::vector<std::pair<std::unique_ptr<ContentInfo>, std::string>> pending_downloads; ///< Files parsed from the manifest, waiting to be downloaded
 	std::vector<std::shared_ptr<ContentDownload>> active_downloads; ///< Files that are currently being downloaded
@@ -89,6 +90,7 @@ protected:
 
 	friend class NetworkContentConnecter;
 	friend class ContentDownload;
+	friend class ContentManifestDownload;
 
 	bool ReceiveServerInfo(Packet &p) override;
 	bool ReceiveServerContent(Packet &p) override;
@@ -103,14 +105,14 @@ protected:
 	void OnDownloadProgress(const ContentInfo &ci, int bytes) override;
 	void OnDownloadComplete(ContentID cid) override;
 
-	void OnFailure() override;
-	void OnReceiveData(UniqueBuffer<char> data) override;
-	bool IsCancelled() const override;
+	void OnManifestFailed(uint32_t batch);
+	void OnManifestComplete(uint32_t batch, std::string_view response);
+	bool IsCancelled() const;
 
 	bool BeforeDownload();
 	void AfterDownload();
 
-	bool ParseContentManifest();
+	bool ParseContentManifest(std::string_view buffer);
 	void StartNextDownloads();
 	void OnDownloadFailed(const ContentInfo &ci, uint32_t batch);
 	void AbortActiveDownloads();
