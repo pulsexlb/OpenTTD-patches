@@ -1543,6 +1543,10 @@ STR_CONFIG_SETTING_DEFAULT_AIR_TYPE                            :默认航空类�
 STR_CONFIG_SETTING_DEFAULT_AIR_TYPE_HELPTEXT                   :选择开始或加载游戏后要使用的航空类型。'第一个可用'选择最旧的机场类型，'最后一个可用'选择最新的类型，'最常用'选择当前使用最多的类型
 STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS                    :允许建设自定义机场：{STRING}
 STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS_HELPTEXT           :启用此设置后，每位玩家都可以建设自定义机场
+STR_CONFIG_SETTING_AIR_ROTATION_STEP_TICKS                      :飞机滑行转向步进延迟：{STRING2}
+STR_CONFIG_SETTING_AIR_ROTATION_STEP_TICKS_HELPTEXT             :飞机滑行时每转 45 度等待的 tick 数。数值越小转向越流畅，数值越大看起来更从容
+STR_CONFIG_SETTING_AIR_PUSHBACK                                 :飞机从机位倒行推出：{STRING2}
+STR_CONFIG_SETTING_AIR_PUSHBACK_HELPTEXT                        :飞机从客机机位机尾朝后倒退滑出，在滑行道上再掉头，而不是原地转向
 
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE                            :列车无法找到路线时提示：{STRING}
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE_HELPTEXT                   :启用时将在载具无法到达命令目的地时提示
@@ -2056,6 +2060,16 @@ STR_CONFIG_SETTING_ALLOW_TOWN_LEVEL_CROSSINGS_HELPTEXT          :启用时允许
 
 STR_CONFIG_SETTING_NOISE_LEVEL                                  :允许城镇限制机场噪音：{STRING}
 STR_CONFIG_SETTING_NOISE_LEVEL_HELPTEXT                         :允许城镇基于城镇人口、机场大小和距离控制机场噪音。禁用此设置时，每座城镇只允许建设两座机场，除非将地方政府态度设为“放任”
+
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR                 :自定义机场噪音倍率：{STRING}
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_HELPTEXT        :应用于自定义机场所产生噪音的分数倍率。倍率越小，自定义机场产生的噪音越少，可缓解建造大型机场时噪音限制过于严格的问题。1/1 表示不改变噪音
+###length 6
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_1               :1/1（不改变）
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_2               :1/2
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_3               :1/3
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_4               :1/4
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_5               :1/5
+STR_CONFIG_SETTING_CUSTOM_AIRPORT_NOISE_DIVISOR_6               :1/6
 
 STR_CONFIG_SETTING_TOWN_FOUNDING                                :在游戏中建立城镇：{STRING}
 STR_CONFIG_SETTING_TOWN_FOUNDING_HELPTEXT                       :启用时，允许玩家在游戏中建设新城镇
@@ -4593,6 +4607,9 @@ STR_VEHICLE_VIEW_TRAIN_SHOW_DETAILS_TOOLTIP                     :{BLACK}显示�
 STR_VEHICLE_VIEW_ROAD_VEHICLE_SHOW_DETAILS_TOOLTIP              :{BLACK}显示汽车详情。按住 <Ctrl> 键点选以显示汽车载具组
 STR_VEHICLE_VIEW_SHIP_SHOW_DETAILS_TOOLTIP                      :{BLACK}显示船只详情。按住 <Ctrl> 键点选以显示船只载具组
 STR_VEHICLE_VIEW_AIRCRAFT_SHOW_DETAILS_TOOLTIP                  :{BLACK}显示飞机详情。按住 <Ctrl> 键点选以显示飞机载具组
+
+STR_ERROR_CAN_T_IGNORE_AIRCRAFT_RESERVATIONS                     :{WHITE}无法忽略飞机预留...
+STR_VEHICLE_VIEW_AIRCRAFT_IGNORE_RESERVATIONS_TOOLTIP           :{BLACK}忽略全部机场预留，起飞后自动复位。其它飞机也忽略本机占用，允许飞机相互穿过
 
 ###length VEHICLE_TYPES
 STR_VEHICLE_VIEW_TRAIN_STATUS_START_STOP_TOOLTIP                :{BLACK}当前列车状态 - 点击以停止或启动列车

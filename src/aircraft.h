@@ -13,6 +13,8 @@
 #include "station_map.h"
 #include "vehicle_base.h"
 
+#include <deque>
+
 #include "3rdparty/cpp-ring-buffer/ring_buffer.hpp"
 
 /**
@@ -47,6 +49,9 @@ enum AirVehicleFlags : uint8_t {
 	VAF_IN_MIN_HEIGHT_CORRECTION = 2, ///< The vehicle is currently raising its altitude because it hit the lower bound.
 
 	VAF_CAN_T_LAND               = 3, ///< The vehicle cannot land on destination airport.
+
+	VAF_PUSHBACK                 = 4, ///< The vehicle is pushing back from a plane apron (moving tail-first).
+	VAF_TAXI_PHASING             = 5, ///< Temporary escape from prolonged ordinary taxi traffic blockage.
 };
 
 static const int ROTOR_Z_OFFSET         = 5;    ///< Z Offset between helicopter- and rotorsprite.
@@ -206,11 +211,49 @@ struct AircraftPathChoice {
 	}
 };
 
+/** A directed step of a taxi route, including turns within a tile. */
+struct AircraftPlannedNode {
+	TileIndex tile;
+	Trackdir td;
+	bool choice;
+};
+
+/** Tracks exclusively booked by an aircraft on one tile. */
+struct AircraftTileReservation {
+	TileIndex tile;
+	TrackBits tracks;
+};
+
+enum class AircraftTaxiBlock : uint8_t {
+	None,
+	Traffic,
+	Protected,
+};
+
+/** Directional tracks acquired in one atomic taxi route reservation. */
+struct AircraftVirtualReservation {
+	TileIndex tile;
+	TrackdirBits trackdirs;
+};
+
 /**
  * Aircraft, helicopters, rotors and their shadows belong to this class.
  */
 struct Aircraft final : public SpecializedVehicle<Aircraft, VehicleType::Aircraft, Vehicle> {
 	AircraftPathChoice path;       ///< Cached path choices
+	std::deque<AircraftPlannedNode> planned_path; ///< Remaining directed taxi route, saved.
+	std::vector<AircraftVirtualReservation> virtual_path; ///< Complete acquired route, pruned as it is traversed, saved.
+	std::vector<AircraftTileReservation> reserved_path; ///< Current tile and one tile ahead, saved.
+	TileIndex allocated_terminal = INVALID_TILE; ///< Logical gate claim, independent of taxi reservations.
+	TileIndex reserved_runway = INVALID_TILE; ///< Start of an exclusively reserved runway.
+	uint16_t taxi_blocked_ticks = 0;
+	uint16_t taxi_jam_ticks = 0;
+	AircraftTaxiBlock taxi_block_reason = AircraftTaxiBlock::None;
+	bool ignore_airport_reservations = false; ///< Manual phasing until takeoff, saved.
+	TileIndex pushback_origin = INVALID_TILE;
+	TileIndex pushback_target = INVALID_TILE;
+	uint16_t pushback_progress = 0;
+	uint16_t taxi_progress = 0;
 	uint16_t crashed_counter;      ///< Timer for handling crash animations.
 	Trackdir trackdir;             ///< Current trackdir while aircraft is on land.
 	AircraftState state = AS_HANGAR; ///< Current aircraft state. @see AircraftState

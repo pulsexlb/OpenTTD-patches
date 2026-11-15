@@ -189,4 +189,4 @@ struct Aircraft;
 struct PBSTileInfo;
 struct AircraftPathChoice;
 enum AircraftState : uint8_t;
-Trackdir YapfAircraftFindPath(const Aircraft *v, PBSTileInfo &best_dest, bool &path_found, AircraftState dest_state, AircraftPathChoice &path_cache);
+Trackdir YapfAircraftFindPath(Aircraft *v, PBSTileInfo &best_dest, bool &path_found, AircraftState dest_state, AircraftPathChoice &path_cache);

@@ -50,6 +50,7 @@
 #include "newgrf_station.h"
 #include "station_func.h"
 #include "tracerestrict.h"
+#include "tracerestrict_overtaking.h"
 #include "newgrf_roadstop.h"
 #include "newgrf_newsignals.h"
 #include "spritecache.h"
@@ -1410,6 +1411,7 @@ static CommandCost DoClearTunnel(TileIndex tile, DoCommandFlags flags)
 
 			YapfNotifyTrackLayoutChange(tile,    track);
 			YapfNotifyTrackLayoutChange(endtile, track);
+			FlushAutoYieldAreaUpdates();
 
 			for (Train *v : vehicles_affected) {
 				TryPathReserve(v);
@@ -1592,6 +1594,7 @@ static CommandCost DoClearBridge(TileIndex tile, DoCommandFlags flags)
 			};
 			notify_track_change(tile, direction, tile_tracks);
 			notify_track_change(endtile, ReverseDiagDir(direction), endtile_tracks);
+			FlushAutoYieldAreaUpdates();
 
 			for (uint i = 0; i < vehicles_affected.size(); ++i) {
 				TryPathReserve(vehicles_affected[i], true);

@@ -13,6 +13,7 @@
 #include "3rdparty/md5/md5.h"
 #include "fontcache.h"
 #include "gfx_func.h"
+#include "spritecache.h"
 #include "transparency.h"
 #include "blitter/factory.hpp"
 #include "video/video_driver.hpp"
@@ -263,6 +264,24 @@ static void LoadSpriteTables()
 	_grfconfig.insert(std::next(std::begin(_grfconfig)), std::move(baseset_extra));
 
 	LoadNewGRF(SPR_NEWGRFS_BASE, 2);
+
+	/* Build the yellow selection palette from the blue one: duplicate the blue
+	 * recolour table and map its blue destinations to yellow shades. Nothing
+	 * uses slot 774, so this is a purely additive baseset patch. */
+	if (GetSpriteType(PALETTE_SEL_TILE_BLUE) == SpriteType::Recolour && !SpriteExists(PALETTE_SEL_TILE_YELLOW)) {
+		DupSprite(PALETTE_SEL_TILE_BLUE, PALETTE_SEL_TILE_YELLOW);
+		uint8_t *table = const_cast<uint8_t *>(GetNonSprite(PALETTE_SEL_TILE_YELLOW, SpriteType::Recolour));
+		if (table != nullptr) {
+			for (uint i = 1; i < 256; i++) {
+				switch (table[i]) {
+					case 0x96: case 0x97: case 0x98: case 0x99: table[i] = 0x45; break; // very light yellow
+					case 0x9A: case 0x9B: case 0x9C: table[i] = 0x44; break;            // light yellow
+					case 0x9D: case 0x9E: case 0x9F: table[i] = 0xBF; break;            // yellow
+					default: break;
+				}
+			}
+		}
+	}
 
 	uint total_extra_graphics = SPR_NEWGRFS_BASE - SPR_OPENTTD_BASE;
 	Debug(sprite, 4, "Checking sprites from fallback grf");

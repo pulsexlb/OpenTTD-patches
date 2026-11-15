@@ -1700,6 +1700,7 @@ static const PaletteID PAL_NONE                    = 0;
 static const PaletteID PALETTE_TILE_RED_PULSATING  = 771;  ///< pulsating red tile drawn if you try to build a wrong tunnel or raise/lower land where it is not possible
 static const PaletteID PALETTE_SEL_TILE_RED        = 772;  ///< makes a square red. is used when removing rails or other stuff
 static const PaletteID PALETTE_SEL_TILE_BLUE       = 773;  ///< This draws a blueish square (catchment areas for example)
+static const PaletteID PALETTE_SEL_TILE_YELLOW     = 774;  ///< This draws a yellowish square (airport real taxi occupancy)
 
 /* Company re-colour sprites */
 static const PaletteID PALETTE_RECOLOUR_START      = 775;  ///< First recolour sprite for company colours

@@ -328,6 +328,16 @@ protected:
 	 */
 	inline bool CanEnterNewTile()
 	{
+		/* hangar can be entered from its door direction only; the back side
+		 * shares the same diagonal track, so alignment alone is not enough */
+		if (IsAirTT() && IsHangarTile(this->new_tile)) {
+			DiagDirection doordir = GetHangarDirection(this->new_tile);
+			if (ReverseDiagDir(doordir) != this->exitdir) {
+				this->err = ErrorCode::NoWay;
+				return false;
+			}
+		}
+
 		if (IsRoadTT() && IsBayRoadStopTile(this->new_tile)) {
 			/* road stop can be entered from one direction only unless it's a drive-through stop */
 			DiagDirection exitdir = GetBayRoadStopDir(this->new_tile);

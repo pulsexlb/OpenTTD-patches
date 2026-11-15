@@ -242,6 +242,7 @@ enum SlXvFeatureIndex {
 	XSLFI_WAIT_COUPLE_SLOT,                       ///< Optional acquire/wait/return slot.
 	XSLFI_DECOUPLE_KEEP_LATENESS,                 ///< Independent schedules reset lateness unless opted out.
 	XSLFI_WAIT_COUPLE_CRITERIA,                   ///< Wait-for-couple orders may restrict the approaching train by slot, slot group and vehicle group.
+	XSLFI_AIRCRAFT_ROLLING_RESERVATION,           ///< Directed taxi routes, exclusive rolling occupancy and pushback state.
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
 

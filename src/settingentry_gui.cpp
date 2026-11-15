@@ -1144,6 +1144,7 @@ SettingsContainer &GetSettingsTree()
 				authorities->Add(new SettingEntry("economy.fund_roads"));
 				authorities->Add(new SettingEntry("economy.fund_buildings"));
 				authorities->Add(new SettingEntry("economy.station_noise_level"));
+				authorities->Add(new SettingEntry("economy.custom_airport_noise_divisor"));
 			}
 
 			SettingsPage *towns = environment->Add(new SettingsPage(STR_CONFIG_SETTING_ENVIRONMENT_TOWNS));

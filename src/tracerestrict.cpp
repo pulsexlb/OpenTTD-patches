@@ -31,6 +31,7 @@
 #include "string_func.h"
 #include "pathfinder/yapf/yapf_cache.h"
 #include "scope_info.h"
+#include "scope.h"
 #include "vehicle_func.h"
 #include "date_func.h"
 #include "strings_func.h"
@@ -2876,6 +2877,7 @@ CommandCost CmdProgramSignalTraceRestrict(DoCommandFlags flags, TileIndex tile, 
 			 * so delete it, as it's redundant */
 			TraceRestrictCheckRefreshSingleSignal(prog, MakeTraceRestrictRefId(tile, track), old_actions_used_flags);
 			TraceRestrictRemoveProgramMapping(MakeTraceRestrictRefId(tile, track));
+			FlushAutoYieldAreaUpdates();
 		} else {
 			TraceRestrictCheckRefreshSignals(prog, old_size, old_actions_used_flags);
 
@@ -2900,11 +2902,12 @@ CommandCost CmdProgramSignalTraceRestrict(DoCommandFlags flags, TileIndex tile, 
 	return CommandCost();
 }
 
-static void TraceRestrictUpdateLabelInstructionsFromSource(std::span<TraceRestrictProgramItem> instructions, TraceRestrictProgram *prog, const TraceRestrictProgram *source)
+static void TraceRestrictUpdateLabelInstructionsFromSource(std::span<TraceRestrictProgramItem> instructions, TraceRestrictProgram *prog, std::span<const std::string> source_labels)
 {
 	for (auto iter : TraceRestrictInstructionIterateWrapper(instructions)) {
 		if (iter.Instruction().GetType() == TRIT_GUI_LABEL) {
-			iter.InstructionRef().SetValue(prog->AddLabel(source->GetLabel(iter.Instruction().GetValue())));
+			const uint16_t id = iter.Instruction().GetValue();
+			iter.InstructionRef().SetValue(prog->AddLabel(id < source_labels.size() ? std::string_view(source_labels[id]) : std::string_view{}));
 		}
 	}
 }
@@ -2950,6 +2953,11 @@ CommandCost CmdProgramSignalTraceRestrictMgmt(DoCommandFlags flags, TileIndex ti
 		return CMD_ERROR;
 	}
 
+	/* Mapping changes must be complete before rebuilding saved yield resources. */
+	auto refresh_yield_areas = scope_guard([&]() {
+		if (flags.Test(DoCommandFlag::Execute)) FlushAutoYieldAreaUpdates();
+	});
+
 	switch (type) {
 		case TRMDCT_PROG_COPY: {
 			if (!flags.Test(DoCommandFlag::Execute)) return CommandCost();
@@ -2978,6 +2986,9 @@ CommandCost CmdProgramSignalTraceRestrictMgmt(DoCommandFlags flags, TileIndex ti
 
 			TraceRestrictProgram *source_prog = GetTraceRestrictProgram(source, false);
 			if (source_prog != nullptr && !source_prog->items.empty()) {
+				/* Shared mappings can make the source and destination the same program. */
+				const std::vector<TraceRestrictProgramItem> source_items = source_prog->items;
+				const std::vector<std::string> source_labels = source_prog->texts != nullptr ? source_prog->texts->labels : std::vector<std::string>{};
 				TraceRestrictProgram *prog = GetTraceRestrictProgram(self, true);
 				if (prog == nullptr) {
 					/* Allocation failed */
@@ -2987,12 +2998,11 @@ CommandCost CmdProgramSignalTraceRestrictMgmt(DoCommandFlags flags, TileIndex ti
 				size_t old_size = prog->items.size();
 				TraceRestrictProgramActionsUsedFlags old_actions_used_flags = prog->actions_used_flags;
 
-				prog->items.reserve(prog->items.size() + source_prog->items.size()); // this is in case prog == source_prog
-				prog->items.insert(prog->items.end(), source_prog->items.begin(), source_prog->items.end()); // append
-				std::span<TraceRestrictProgramItem> edit_region = std::span<TraceRestrictProgramItem>(prog->items).last(source_prog->items.size());
+				prog->items.insert(prog->items.end(), source_items.begin(), source_items.end()); // append
+				std::span<TraceRestrictProgramItem> edit_region = std::span<TraceRestrictProgramItem>(prog->items).last(source_items.size());
 				TraceRestrictRemoveNonOwnedReferencesFromInstructionRange(edit_region, _current_company);
 				if (prog != source_prog) {
-					TraceRestrictUpdateLabelInstructionsFromSource(edit_region, prog, source_prog);
+					TraceRestrictUpdateLabelInstructionsFromSource(edit_region, prog, source_labels);
 				}
 				prog->Validate();
 
@@ -3021,10 +3031,11 @@ CommandCost CmdProgramSignalTraceRestrictMgmt(DoCommandFlags flags, TileIndex ti
 			if (!flags.Test(DoCommandFlag::Execute)) return CommandCost();
 
 			std::vector<TraceRestrictProgramItem> items;
-			TraceRestrictProgram *prog = GetTraceRestrictProgram(self, false);
-			if (prog != nullptr) {
-				/* Copy program into temporary */
+			std::unique_ptr<TraceRestrictProgramTexts> texts;
+			if (const TraceRestrictProgram *prog = GetTraceRestrictProgram(self, false)) {
+				/* Copy the complete program before removing its last possible reference. */
 				items = prog->items;
+				if (prog->texts != nullptr) texts = std::make_unique<TraceRestrictProgramTexts>(*prog->texts);
 			}
 			/* Remove old program */
 			TraceRestrictRemoveProgramMapping(self);
@@ -3038,7 +3049,7 @@ CommandCost CmdProgramSignalTraceRestrictMgmt(DoCommandFlags flags, TileIndex ti
 				}
 
 				new_prog->items.swap(items);
-				if (prog != nullptr && prog->texts != nullptr) new_prog->texts = std::make_unique<TraceRestrictProgramTexts>(*prog->texts); // copy texts
+				new_prog->texts = std::move(texts);
 				new_prog->Validate();
 				TraceRestrictCheckRefreshSingleSignal(new_prog, self, TRPAUF_NONE);
 			}

@@ -19,6 +19,7 @@ void StartRemoveOrderFromAllVehiclesBatch();
 void StopRemoveOrderFromAllVehiclesBatch();
 void RemoveOrderFromAllVehicles(OrderType type, DestinationID destination, bool hangar = false);
 void InvalidateVehicleOrder(const Vehicle *v, int data);
+void InvalidatePrimaryOrderSharingWindows(OrderListID home);
 void InvalidateVehicleOrderOnMove(const Vehicle *v, VehicleOrderID from, VehicleOrderID to, uint16_t count);
 void CheckOrders(const Vehicle*);
 void DeleteVehicleOrders(Vehicle *v, bool keep_orderlist = false, bool reset_order_indices = true);
@@ -34,7 +35,7 @@ enum ProcessConditionalOrderMode {
 VehicleOrderID ProcessConditionalOrder(const Order *order, const Vehicle *v, ProcessConditionalOrderMode mode = PCO_EXEC);
 VehicleOrderID AdvanceOrderIndexDeferred(const Vehicle *v, VehicleOrderID index);
 void FlushAdvanceOrderIndexDeferred(const Vehicle *v, bool apply);
-uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int conditional_depth = 0);
+uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int conditional_depth = 0, const OrderList *orders = nullptr);
 
 void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int y, bool selected, bool timetable, int left, int middle, int right, bool dispatch_enabled = false, const OrderList *orders = nullptr);
 

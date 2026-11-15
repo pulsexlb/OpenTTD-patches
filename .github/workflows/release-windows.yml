@@ -20,7 +20,7 @@ on:
         default: ""
 
 jobs:
-  # x86/x64: MinGW (msvcrt) build, compatible with Windows 7.
+  # x64: MinGW (msvcrt) build, compatible with Windows 7.
   # MSVC builds import Win8+ APIs (CopyFile2/CreateFile2/GetSystemTimePreciseAsFileTime)
   # via the statically linked MSVC STL <filesystem>, which cannot run on Windows 7.
   windows-mingw:
@@ -31,9 +31,6 @@ jobs:
         - arch: x64
           msystem: MINGW64
           prefix: x86_64
-        - arch: x86
-          msystem: MINGW32
-          prefix: i686
 
     name: Windows MinGW (${{ matrix.arch }})
 
@@ -77,24 +74,8 @@ jobs:
         tar -xf source.tar.gz --strip-components=1
 
     - name: Install lzo2 (x64, from repo)
-      if: matrix.arch == 'x64'
       run: |
         pacman --noconfirm -S --needed mingw-w64-x86_64-lzo2
-
-    # MSYS2 no longer ships i686 lzo2/make packages; build lzo2 with cmake
-    # (already installed) from source for x86.
-    - name: Build lzo2 from source (i686 only)
-      if: matrix.arch == 'x86'
-      run: |
-        curl -sL -o lzo.tar.gz https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
-        tar -xf lzo.tar.gz
-        cmake -B lzo-build -S lzo-2.10 -GNinja \
-          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=OFF \
-          -DCMAKE_INSTALL_PREFIX=/mingw32
-        cmake --build lzo-build
-        cmake --install lzo-build
 
     - name: Install pandoc
       shell: pwsh
@@ -124,9 +105,6 @@ jobs:
         cd build
 
         echo "::group::CMake"
-        # i686: GCC 16 LTO mis-compiles/merges template weak symbols
-        # (multiple definition of vector::_M_realloc_append at link time),
-        # so disable LTO for the 32-bit build only.
         cmake ${GITHUB_WORKSPACE} \
           -GNinja \
           -DHOST_BINARY_DIR=${GITHUB_WORKSPACE}/build-host \
@@ -135,7 +113,6 @@ jobs:
           -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
           -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++" \
           -DOPTION_SURVEY_KEY=${{ inputs.survey_key }} \
-          ${{ matrix.arch == 'x86' && '-DOPTION_NO_LTO=ON' || '' }} \
           # EOF
         echo "::endgroup::"
 
