@@ -397,7 +397,7 @@ public:
 		if (this->prefer_matching_speed && n.flags_u.flags_s.target_seen) {
 			Train *target = this->GetCoupleDestination(n.GetLastTile(), n.GetLastTrackdir(), n.GetCost());
 			if (target != nullptr) {
-				const uint penalty = GetCoupleSpeedPreferencePenalty(Yapf().GetVehicle(), target) * YAPF_TILE_LENGTH;
+				const uint penalty = GetCoupleSpeedPreferencePenalty(Yapf().GetVehicle(), target, &this->dest_order) * YAPF_TILE_LENGTH;
 				this->speed_preference_applied |= penalty != 0;
 				n.estimate = std::min<int64_t>(int64_t(n.cost) + penalty, INT_MAX);
 			}

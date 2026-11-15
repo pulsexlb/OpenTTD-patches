@@ -1001,6 +1001,7 @@ public:
 		}
 
 		switch (widget) {
+
 			/* A dropdown widget has to open its list itself. */
 			case WID_RVT_LOAD_STATE:
 				ShowDropDownList(this, this->BuildLoadStateList(), -1, WID_RVT_LOAD_STATE, 0);
@@ -1279,6 +1280,11 @@ static StringID GetCoupleCandidateResultString(CoupleCandidateResult result)
 		case CoupleCandidateResult::Slot:        return STR_COUPLE_DIAGNOSTIC_SLOT;
 		case CoupleCandidateResult::SlotGroup:   return STR_COUPLE_DIAGNOSTIC_SLOT_GROUP;
 		case CoupleCandidateResult::Group:       return STR_COUPLE_DIAGNOSTIC_GROUP;
+		case CoupleCandidateResult::WaitingCompany: return STR_WAIT_COUPLE_COMPANY_MISMATCH;
+		case CoupleCandidateResult::Traction: return STR_WAIT_COUPLE_TRACTION_MISMATCH;
+		case CoupleCandidateResult::WaitPartnerSlot: return STR_WAIT_COUPLE_PARTNER_SLOT_MISMATCH;
+		case CoupleCandidateResult::WaitPartnerSlotGroup: return STR_WAIT_COUPLE_PARTNER_SLOT_GROUP_MISMATCH;
+		case CoupleCandidateResult::WaitPartnerGroup: return STR_WAIT_COUPLE_PARTNER_GROUP_MISMATCH;
 		case CoupleCandidateResult::ServiceNumber: return STR_COUPLE_DIAGNOSTIC_SERVICE_NUMBER;
 		case CoupleCandidateResult::Station:     return STR_COUPLE_DIAGNOSTIC_STATION;
 		case CoupleCandidateResult::Platform:    return STR_COUPLE_DIAGNOSTIC_PLATFORM;
@@ -1967,6 +1973,352 @@ void ShowCoupleOptionsWindow(Window *parent, const OrderCriteriaTarget &target, 
 	w->parent = parent;
 }
 
+/** Widgets of the #WaitCoupleOptionsWindow (selection criteria of a wait-for-coupling order). */
+enum WaitCoupleCriteriaWidgets : WidgetID {
+	WID_WCP_CAPTION,             ///< Caption of the window.
+	WID_WCP_SLOT_LABEL,          ///< Label of the approaching train's slot criterion.
+	WID_WCP_SLOT,                ///< Trace restrict slot the approaching train must hold ("路签").
+	WID_WCP_SLOT_GROUP_LABEL,    ///< Label of the approaching train's slot group criterion.
+	WID_WCP_SLOT_GROUP,          ///< Slot group the approaching train must hold a slot of ("路签组").
+	WID_WCP_GROUP_LABEL,         ///< Label of the approaching train's vehicle group criterion.
+	WID_WCP_GROUP,               ///< Vehicle group the approaching train must belong to ("载具组").
+	WID_WCP_TRACTION_LABEL,      ///< Label of the traction class criterion.
+	WID_WCP_TRACTION,            ///< Traction class criterion (any / steam / diesel / electric).
+	WID_WCP_DIAGNOSTICS,         ///< Show whether a waiting train has been claimed.
+	WID_WCP_CLOSE,               ///< Close button.
+};
+
+/**
+ * Window with the selection criteria of a wait-for-coupling order which do not have their own
+ * button in the order window: the trace restrict slot, slot group and vehicle group the
+ * approaching train must satisfy, the traction class of its locomotive, and the claim
+ * diagnostics.
+ */
+class WaitCoupleOptionsWindow : public Window {
+private:
+	OrderCriteriaTarget target; ///< Vehicle or standalone order list whose order is edited.
+	VehicleOrderID order_id;    ///< Order which is being edited.
+	const Order *order;         ///< The order itself (used to check the window is still valid).
+	uint order_count;           ///< Number of orders the target had when the window was opened.
+
+	/** Snapshot of the criteria which are shown, to refresh the dropdowns when the order changes. */
+	struct SettingsSnapshot {
+		uint8_t traction = 0;
+		uint16_t slot = 0;        ///< Slot id + 1, 0 = any.
+		uint16_t slot_group = 0;  ///< Slot group id + 1, 0 = any.
+		uint16_t group = 0;       ///< Group id + 1, 0 = any.
+
+		bool operator==(const SettingsSnapshot &other) const
+		{
+			return this->traction == other.traction && this->slot == other.slot && this->slot_group == other.slot_group && this->group == other.group;
+		}
+	};
+
+	SettingsSnapshot last_settings{}; ///< Settings the widgets currently show.
+
+	/** Is the edited order still there? */
+	bool CheckOrderStillValid() const
+	{
+		if (this->target.GetNumOrders() != this->order_count) return false;
+		return this->target.GetOrder(this->order_id) == this->order;
+	}
+
+	/** Apply an order change through the real order modification command. */
+	void ModifyOrder(ModifyOrderFlags mof, uint16_t data)
+	{
+		if (!this->CheckOrderStillValid()) return;
+		Command<Commands::ModifyOrder>::Post(STR_ERROR_CAN_T_MODIFY_THIS_ORDER, this->target.CmdTile(), this->target.TargetKind(), this->target.TargetId(),
+				this->order_id, mof, data, INVALID_CARGO, {});
+	}
+
+	/** Read the criteria which the widgets should show. */
+	SettingsSnapshot GetSettings() const
+	{
+		SettingsSnapshot s;
+		s.traction = this->order->GetWaitCoupleTraction();
+		s.slot = this->order->HasWaitCouplePartnerSlot() ? this->order->GetWaitCouplePartnerSlot().base() + 1 : 0;
+		s.slot_group = this->order->HasWaitCouplePartnerSlotGroup() ? this->order->GetWaitCouplePartnerSlotGroup().base() + 1 : 0;
+		s.group = this->order->HasWaitCouplePartnerGroup() ? this->order->GetWaitCouplePartnerGroup().base() + 1 : 0;
+		return s;
+	}
+
+	/** Show the current criteria on the dropdowns. The parameterized names (slot name, slot group
+	 * name, vehicle group name) are resolved by #GetWidgetString; these are the fallbacks used
+	 * while no parameter is available. */
+	void UpdateWidgetTexts()
+	{
+		this->GetWidget<NWidgetCore>(WID_WCP_SLOT)->SetString(STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_ANY);
+		this->GetWidget<NWidgetCore>(WID_WCP_SLOT_GROUP)->SetString(STR_ORDER_COUPLE_ANY_GROUP);
+		this->GetWidget<NWidgetCore>(WID_WCP_GROUP)->SetString(STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
+		this->GetWidget<NWidgetCore>(WID_WCP_TRACTION)->SetString(STR_WAIT_COUPLE_TRACTION_ANY + this->order->GetWaitCoupleTraction());
+	}
+
+	/** Build the dropdown which selects the trace restrict slot the approaching train must hold.
+	 * The list works with raw slot ids, with the "any" entry using the invalid slot sentinel. */
+	DropDownList BuildPartnerSlotList() const
+	{
+		const TraceRestrictSlotID current = this->order->GetWaitCouplePartnerSlot();
+
+		int selected;
+		DropDownList slots = GetSlotDropDownList(this->target.owner, current, selected, this->target.ref_type, false);
+
+		DropDownList list;
+		list.push_back(MakeDropDownListCheckedItem(current == TraceRestrictSlotID::Invalid(), STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_ANY, INVALID_TRACE_RESTRICT_SLOT_ID.base()));
+		for (auto &item : slots) {
+			/* Leave out the entry which creates a new trace restrict slot, and the divider which
+			 * separates it from the slots: the "any" entry above is in its place. */
+			if (item->result == NEW_TRACE_RESTRICT_SLOT_ID.base()) continue;
+			if (list.size() == 1 && item->result == -1) continue;
+			list.push_back(std::move(item));
+		}
+		return list;
+	}
+
+	/** Build the dropdown which selects the slot group the approaching train must hold a slot of. */
+	DropDownList BuildPartnerSlotGroupList() const
+	{
+		const TraceRestrictSlotGroupID current = this->order->GetWaitCouplePartnerSlotGroup();
+
+		int selected;
+		DropDownList groups = GetSlotGroupDropDownList(this->target.owner, current, selected, this->target.ref_type);
+
+		DropDownList list;
+		list.push_back(MakeDropDownListCheckedItem(current == TraceRestrictSlotGroupID::Invalid(), STR_ORDER_COUPLE_ANY_GROUP, CPO_SLOT_GROUP_ANY));
+		for (auto &item : groups) {
+			list.push_back(std::move(item));
+		}
+		return list;
+	}
+
+	/** Build the dropdown which selects the vehicle group the approaching train must belong to. */
+	DropDownList BuildPartnerGroupList() const
+	{
+		const GroupID current = this->order->GetWaitCouplePartnerGroup();
+
+		int selected;
+		/* The default group is left out: a train in the default group has no user-assigned group,
+		 * so "any vehicle group" is the appropriate criterion for it. */
+		DropDownList groups = GetGroupDropDownList(this->target.owner, current, selected, false, this->target.ref_type);
+
+		DropDownList list;
+		list.push_back(MakeDropDownListCheckedItem(current == GroupID::Invalid(), STR_ORDER_COUPLE_ANY_VEHICLE_GROUP, CPO_GROUP_ANY));
+		for (auto &item : groups) {
+			list.push_back(std::move(item));
+		}
+		return list;
+	}
+
+public:
+	WaitCoupleOptionsWindow(WindowDesc &desc, const OrderCriteriaTarget &target, VehicleOrderID order_id) : Window(desc)
+	{
+		this->target = target;
+		this->order_id = order_id;
+		this->order_count = target.GetNumOrders();
+		this->order = target.GetOrder(order_id);
+
+		this->CreateNestedTree();
+		/* Set the widget texts before the layout is computed, so that the dropdowns are sized to
+		 * fit their current value. */
+		this->UpdateWidgetTexts();
+		this->FinishInitNested(target.window_number);
+		if (target.vehicle == nullptr || target.vehicle->type != VehicleType::Train) {
+			/* Standalone schedules have no train whose claim could be queried. */
+			this->DisableWidget(WID_WCP_DIAGNOSTICS);
+		}
+		this->last_settings = this->GetSettings();
+		this->owner = target.owner;
+	}
+
+	void Close(int data = 0) override
+	{
+		FocusWindowById(this->target.parent_class, this->target.window_number);
+		this->Window::Close();
+	}
+
+	/**
+	 * Refresh the widgets when the order changed. The order commands run asynchronously and do not
+	 * invalidate this window, and the game may well be paused while the player edits, so this polls
+	 * from the realtime tick (which runs regardless of the pause state).
+	 */
+	void OnRealtimeTick([[maybe_unused]] uint delta_ms) override
+	{
+		if (!this->CheckOrderStillValid()) {
+			this->Close();
+			return;
+		}
+		this->order = this->target.GetOrder(this->order_id);
+		const SettingsSnapshot current = this->GetSettings();
+		if (!(current == this->last_settings)) {
+			this->last_settings = current;
+			this->UpdateWidgetTexts();
+			this->ReInit();
+			this->SetDirty();
+		}
+	}
+
+	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
+	{
+		switch (widget) {
+			case WID_WCP_SLOT:
+				ShowDropDownList(this, this->BuildPartnerSlotList(), -1, WID_WCP_SLOT, 0,
+						{DropDownOption::Filterable, DropDownOption::ClickOnly}, DDSF_SHARED);
+				break;
+
+			case WID_WCP_SLOT_GROUP:
+				ShowDropDownList(this, this->BuildPartnerSlotGroupList(), -1, WID_WCP_SLOT_GROUP, 0);
+				break;
+
+			case WID_WCP_GROUP:
+				ShowDropDownList(this, this->BuildPartnerGroupList(), -1, WID_WCP_GROUP, 0);
+				break;
+
+			case WID_WCP_TRACTION: {
+				static constexpr StringID choices[] = {
+					STR_WAIT_COUPLE_TRACTION_ANY, STR_WAIT_COUPLE_TRACTION_STEAM,
+					STR_WAIT_COUPLE_TRACTION_DIESEL, STR_WAIT_COUPLE_TRACTION_ELECTRIC,
+				};
+				ShowDropDownMenu(this, choices, this->order->GetWaitCoupleTraction(), widget, 0, 0);
+				break;
+			}
+
+			case WID_WCP_DIAGNOSTICS:
+				if (this->target.vehicle != nullptr && this->target.vehicle->type == VehicleType::Train) {
+					::ShowWaitCoupleDiagnostics(Train::From(this->target.vehicle)->Primary(), this->order, this->order_id);
+				}
+				break;
+
+			case WID_WCP_CLOSE:
+				this->Close();
+				break;
+
+			default:
+				break;
+		}
+	}
+
+	void OnDropdownSelect(WidgetID widget, int index, int) override
+	{
+		switch (widget) {
+			case WID_WCP_SLOT:
+				/* The list works with raw slot ids; the "any" entry is the invalid slot sentinel. */
+				this->ModifyOrder(MOF_WAIT_COUPLE_PARTNER_SLOT, static_cast<uint16_t>(index));
+				break;
+
+			case WID_WCP_SLOT_GROUP:
+				/* The dropdown result is the raw slot group id; the order stores group id + 1
+				 * with 0 meaning "any". */
+				if (index == CPO_SLOT_GROUP_ANY) {
+					this->ModifyOrder(MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP, 0);
+				} else if (index >= 0) {
+					this->ModifyOrder(MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP, static_cast<uint16_t>(index + 1));
+				}
+				break;
+
+			case WID_WCP_GROUP:
+				/* The dropdown result is the group id itself, except for the "any" entry; the order
+				 * stores group id + 1 with 0 meaning "any". */
+				if (index == CPO_GROUP_ANY) {
+					this->ModifyOrder(MOF_WAIT_COUPLE_PARTNER_GROUP, 0);
+				} else if (index >= 0) {
+					this->ModifyOrder(MOF_WAIT_COUPLE_PARTNER_GROUP, static_cast<uint16_t>(index + 1));
+				}
+				break;
+
+			case WID_WCP_TRACTION:
+				this->ModifyOrder(MOF_WAIT_COUPLE_TRACTION, static_cast<uint16_t>(index));
+				break;
+
+			default:
+				break;
+		}
+	}
+
+	/**
+	 * Show the name of the selected slot / slot group / vehicle group on its widget. The widget
+	 * string mechanism is bypassed because the text carries a parameter.
+	 */
+	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	{
+		switch (widget) {
+			case WID_WCP_SLOT: {
+				const auto slot = this->order->GetWaitCouplePartnerSlot();
+				return TraceRestrictSlot::IsValidID(slot) ? GetString(STR_TRACE_RESTRICT_SLOT_NAME, slot.base()) : GetString(STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_ANY);
+			}
+
+			case WID_WCP_SLOT_GROUP: {
+				const auto slot_group = this->order->GetWaitCouplePartnerSlotGroup();
+				return TraceRestrictSlotGroup::IsValidID(slot_group) ? GetString(STR_TRACE_RESTRICT_SLOT_GROUP_NAME, slot_group.base()) : GetString(STR_ORDER_COUPLE_ANY_GROUP);
+			}
+
+			case WID_WCP_GROUP: {
+				const auto group = this->order->GetWaitCouplePartnerGroup();
+				return Group::IsValidID(group) ? GetString(STR_GROUP_NAME, group) : GetString(STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
+			}
+
+			default:
+				return Window::GetWidgetString(widget, stringid);
+		}
+	}
+};
+
+/** Widgets of the wait-for-coupling criteria window. */
+static constexpr NWidgetPart _nested_wait_couple_options_widgets[] = {
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_CLOSEBOX, Colours::Grey),
+		NWidget(WWT_CAPTION, Colours::Grey, WID_WCP_CAPTION), SetStringTip(STR_ORDER_WAIT_COUPLE_OPTIONS_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
+		NWidget(WWT_SHADEBOX, Colours::Grey),
+		NWidget(WWT_DEFSIZEBOX, Colours::Grey),
+		NWidget(WWT_STICKYBOX, Colours::Grey),
+	EndContainer(),
+	NWidget(WWT_PANEL, Colours::Grey),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_WCP_SLOT_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_LABEL, STR_NULL),
+			NWidget(WWT_DROPDOWN, Colours::Grey, WID_WCP_SLOT), SetFill(0, 0), SetResize(0, 0),
+		EndContainer(),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_WCP_SLOT_GROUP_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_GROUP_LABEL, STR_NULL),
+			NWidget(WWT_DROPDOWN, Colours::Grey, WID_WCP_SLOT_GROUP), SetFill(0, 0), SetResize(0, 0),
+		EndContainer(),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_WCP_GROUP_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_WAIT_COUPLE_PARTNER_GROUP_LABEL, STR_NULL),
+			NWidget(WWT_DROPDOWN, Colours::Grey, WID_WCP_GROUP), SetFill(0, 0), SetResize(0, 0),
+		EndContainer(),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_TEXT, Colours::Invalid, WID_WCP_TRACTION_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_WAIT_COUPLE_TRACTION_BUTTON, STR_WAIT_COUPLE_TRACTION_TOOLTIP),
+			NWidget(WWT_DROPDOWN, Colours::Grey, WID_WCP_TRACTION), SetFill(0, 0), SetResize(0, 0), SetToolTip(STR_WAIT_COUPLE_TRACTION_TOOLTIP),
+		EndContainer(),
+		NWidget(NWID_HORIZONTAL), SetPIP(2, 4, 2),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_WCP_DIAGNOSTICS), SetFill(1, 0), SetResize(1, 0),
+													SetStringTip(STR_COUPLE_DIAGNOSTIC_BUTTON, STR_WAIT_COUPLE_DIAGNOSTIC_TOOLTIP),
+		EndContainer(),
+	EndContainer(),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(WWT_TEXTBTN, Colours::Grey, WID_WCP_CLOSE), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_CARGO_TYPE_ORDERS_CLOSE_BUTTON, STR_TOOLTIP_CLOSE_WINDOW),
+		NWidget(WWT_RESIZEBOX, Colours::Grey),
+	EndContainer(),
+};
+
+/** Window description of the wait-for-coupling criteria window. */
+static WindowDesc _wait_couple_options_desc(__FILE__, __LINE__,
+	WindowPosition::Automatic, "wait_couple_criteria", 200, 118,
+	WindowClass::VehicleWaitCoupleCriteria, WindowClass::VehicleOrders,
+	WindowDefaultFlag::Construction,
+	_nested_wait_couple_options_widgets
+);
+
+/**
+ * Show the window with all selection criteria of a wait-for-coupling order.
+ * @param parent The parent order window.
+ * @param target The vehicle or standalone order list the order belongs to.
+ * @param order_id Which order to edit.
+ */
+void ShowWaitCoupleOptionsWindow(Window *parent, const OrderCriteriaTarget &target, VehicleOrderID order_id)
+{
+	CloseWindowById(WindowClass::VehicleWaitCoupleCriteria, target.window_number);
+	WaitCoupleOptionsWindow *w = new WaitCoupleOptionsWindow(_wait_couple_options_desc, target, order_id);
+	w->parent = parent;
+}
+
 /** Order load types that could be given to station orders. */
 static const StringID _station_load_types[][8][8] = {
 	{
@@ -2147,6 +2499,7 @@ enum OrderDropDownID {
 	ODDI_WAIT_FOR_COUPLE,
 	ODDI_GO_TO_COUPLE,
 	ODDI_DECOUPLE_SAME_DIR,
+	ODDI_DECOUPLE_KEEP_LATENESS,
 };
 
 static const StringID _order_decouple_orders_drowdown[] = {
@@ -3219,6 +3572,27 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 
 		case OT_WAIT_COUPLE:
 			AppendStringInPlace(line, STR_ORDER_WAIT_FOR_COUPLE);
+			if (TraceRestrictSlot::IsValidID(order->GetWaitCoupleSlot())) AppendStringInPlace(line, STR_WAIT_COUPLE_SLOT_SUFFIX, order->GetWaitCoupleSlot().base());
+			if (const uint16_t companies = order->GetWaitCoupleCompanyMask(); companies != 0) {
+				for (uint8_t company = 0; company < MAX_COMPANIES; ++company) {
+					if (!HasBit(companies, company)) continue;
+					const CompanyID id{company};
+					if (Company::IsValidID(id)) AppendStringInPlace(line, STR_WAIT_COUPLE_COMPANY_SUFFIX, id);
+					else AppendStringInPlace(line, STR_WAIT_COUPLE_COMPANY_MISSING);
+				}
+			}
+			if (order->GetWaitCoupleTraction() != 0) {
+				AppendStringInPlace(line, STR_WAIT_COUPLE_TRACTION_SUFFIX, STR_WAIT_COUPLE_TRACTION_ANY + order->GetWaitCoupleTraction());
+			}
+			if (order->HasWaitCouplePartnerSlot()) AppendStringInPlace(line, STR_WAIT_COUPLE_PARTNER_SLOT_SUFFIX, order->GetWaitCouplePartnerSlot().base());
+			if (order->HasWaitCouplePartnerSlotGroup()) {
+				const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(order->GetWaitCouplePartnerSlotGroup());
+				if (sg != nullptr) AppendStringInPlace(line, STR_WAIT_COUPLE_PARTNER_SLOT_GROUP_SUFFIX, sg->index.base());
+			}
+			if (order->HasWaitCouplePartnerGroup()) {
+				const Group *g = Group::GetIfValid(order->GetWaitCouplePartnerGroup());
+				if (g != nullptr) AppendStringInPlace(line, STR_WAIT_COUPLE_PARTNER_GROUP_SUFFIX, STR_GROUP_NAME, g->index);
+			}
 			if (order->HasWaitCoupleStation() && Station::IsValidID(order->GetWaitCoupleStation())) AppendStringInPlace(line, STR_ORDER_WAIT_COUPLE_AT, order->GetWaitCoupleStation());
 			break;
 
@@ -3245,6 +3619,8 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			/* Each split part can independently keep the original direction. */
 			if (order->GetDecoupleFirstSameDirExit()) AppendStringInPlace(line, STR_ORDER_DECOUPLE_SAME_DIR_FIRST);
 			if (order->GetDecoupleSecondSameDirExit()) AppendStringInPlace(line, STR_ORDER_DECOUPLE_SAME_DIR_SECOND);
+			if (order->GetDecoupleKeepLateness(true)) AppendStringInPlace(line, STR_ORDER_DECOUPLE_KEEP_LATENESS_FIRST);
+			if (order->GetDecoupleKeepLateness(false)) AppendStringInPlace(line, STR_ORDER_DECOUPLE_KEEP_LATENESS_SECOND);
 			break;
 		}
 
@@ -4006,13 +4382,6 @@ private:
 		::ShowCoupleDiagnostics(Train::From(this->vehicle)->Primary(), this->OrderAt(this->OrderGetSel()), this->OrderGetSel());
 	}
 
-	/** Build the wait-for-coupling claim report on demand; no claim state is changed. */
-	void ShowWaitCoupleDiagnostics()
-	{
-		if (!this->HasVehicle() || this->vehicle->type != VehicleType::Train) return;
-		::ShowWaitCoupleDiagnostics(Train::From(this->vehicle)->Primary(), this->OrderAt(this->OrderGetSel()), this->OrderGetSel());
-	}
-
 	void OrderClick_OrdersFirst(int index)
 	{
 		this->OrderClick_OrdersType(index, true);
@@ -4702,6 +5071,10 @@ public:
 				return;
 			}
 			this->UpdateButtonState();
+			if (this->GetWidget<NWidgetCore>(WID_O_WAIT_COUPLE_COMPANY) != nullptr && this->IsWidgetLowered(WID_O_WAIT_COUPLE_COMPANY)) {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order != nullptr && order->IsType(OT_WAIT_COUPLE)) ReplaceDropDownList(this, this->BuildWaitCoupleCompanyList(*order), -1);
+			}
 			InvalidateWindowClassesData(WindowClass::VehicleCargoTypeLoadOrders, 0);
 			InvalidateWindowClassesData(WindowClass::VehicleCargoTypeUnloadOrders, 0);
 		}
@@ -5121,10 +5494,6 @@ public:
 					if (this->widget_lookup.find(WID_O_WAIT_COUPLE_STATION) != this->widget_lookup.end()) {
 						this->SetWidgetLoweredState(WID_O_WAIT_COUPLE_STATION, order->HasWaitCoupleStation());
 					}
-					if (this->widget_lookup.find(WID_O_WAIT_COUPLE_DIAGNOSTICS) != this->widget_lookup.end()) {
-						/* Standalone schedules have no train whose claim could be queried. */
-						this->SetWidgetDisabledState(WID_O_WAIT_COUPLE_DIAGNOSTICS, !this->HasVehicle() || this->vehicle->type != VehicleType::Train);
-					}
 					break;
 
 				case OT_GOTO_COUPLE: {
@@ -5442,6 +5811,11 @@ public:
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		switch (widget) {
+			case WID_O_WAIT_COUPLE_SLOT: {
+				const auto *order = OrderAt(this->OrderGetSel());
+				const auto slot = order == nullptr ? TraceRestrictSlotID::Invalid() : order->GetWaitCoupleSlot();
+				return TraceRestrictSlot::IsValidID(slot) ? GetString(STR_WAIT_COUPLE_SLOT_BUTTON, slot.base()) : GetString(STR_WAIT_COUPLE_SLOT_NONE);
+			}
 			case WID_O_COND_VALUE: {
 				VehicleOrderID sel = this->OrderGetSel();
 				const Order *order = OrderAt(sel);
@@ -6501,9 +6875,33 @@ public:
 				break;
 			}
 
-			case WID_O_WAIT_COUPLE_DIAGNOSTICS:
-				this->ShowWaitCoupleDiagnostics();
+			case WID_O_WAIT_COUPLE_MORE: {
+				const Order *sel_order = OrderAt(this->OrderGetSel());
+				if (sel_order == nullptr || !sel_order->IsType(OT_WAIT_COUPLE)) break;
+				ShowWaitCoupleOptionsWindow(this, this->CriteriaTarget(), this->OrderGetSel());
 				break;
+			}
+
+			case WID_O_WAIT_COUPLE_SLOT: {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order == nullptr || !order->IsType(OT_WAIT_COUPLE)) break;
+				const auto selected = order->GetWaitCoupleSlot();
+				DropDownList list;
+				list.push_back(MakeDropDownListStringItem(STR_WAIT_COUPLE_SLOT_NONE, INVALID_TRACE_RESTRICT_SLOT_ID.base()));
+				int slot_selected = selected.base();
+				auto slots = GetSlotDropDownList(this->TargetOwner(), selected, slot_selected, this->RefType(), false);
+				std::erase_if(slots, [](const auto &item) { return item->result == NEW_TRACE_RESTRICT_SLOT_ID.base(); });
+				list.insert(list.end(), std::make_move_iterator(slots.begin()), std::make_move_iterator(slots.end()));
+				ShowDropDownList(this, std::move(list), selected.base(), widget, 0, {DropDownOption::Filterable, DropDownOption::ClickOnly}, DDSF_SHARED);
+				break;
+			}
+
+			case WID_O_WAIT_COUPLE_COMPANY: {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order == nullptr || !order->IsType(OT_WAIT_COUPLE)) break;
+				ShowDropDownList(this, this->BuildWaitCoupleCompanyList(*order), -1, widget, 0, {DropDownOption::Persist, DropDownOption::ClickOnly});
+				break;
+			}
 
 			case WID_O_WAIT_COUPLE_STATION: {
 				const Order *sel_order = OrderAt(this->OrderGetSel());
@@ -6563,6 +6961,7 @@ public:
 					bool checked = first ? order->GetDecoupleFirstSameDirExit() : order->GetDecoupleSecondSameDirExit();
 					list.push_back(MakeDropDownListDividerItem());
 					list.push_back(MakeDropDownListCheckedItem(checked, STR_ORDER_DECOUPLE_SAME_DIR_EXIT, ODDI_DECOUPLE_SAME_DIR, false));
+					list.push_back(MakeDropDownListCheckedItem(order->GetDecoupleKeepLateness(first), STR_ORDER_DECOUPLE_KEEP_LATENESS, ODDI_DECOUPLE_KEEP_LATENESS, false));
 				}
 				ShowDropDownList(this, std::move(list), selected, widget);
 				break;
@@ -6702,9 +7101,28 @@ public:
 		}
 	}
 
+	DropDownList BuildWaitCoupleCompanyList(const Order &order) const
+	{
+		DropDownList list;
+		const uint16_t mask = order.GetWaitCoupleCompanyMask();
+		list.push_back(MakeDropDownListCheckedItem(mask == 0, STR_WAIT_COUPLE_TRACTION_ANY, CompanyID::Invalid().base()));
+		for (const Company *company : Company::Iterate()) {
+			list.push_back(MakeDropDownListCheckedItem(HasBit(mask, company->index.base()), GetString(STR_COMPANY_NAME, company->index), company->index.base()));
+		}
+		return list;
+	}
+
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		switch (widget) {
+			case WID_O_WAIT_COUPLE_SLOT:
+				this->ModifyOrder(this->OrderGetSel(), MOF_WAIT_COUPLE_SLOT, index);
+				break;
+
+			case WID_O_WAIT_COUPLE_COMPANY:
+				this->ModifyOrder(this->OrderGetSel(), MOF_WAIT_COUPLE_COMPANY, index == CompanyID::Invalid().base() ? 0 : 0x8000 + index);
+				break;
+
 			case WID_O_NON_STOP:
 				this->OrderClick_Nonstop(index);
 				break;
@@ -6770,6 +7188,11 @@ public:
 				break;
 
 			case WID_O_ORDERS_FIRST:
+				if (index == ODDI_DECOUPLE_KEEP_LATENESS) {
+					const Order *o = OrderAt(this->OrderGetSel());
+					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_FIRST_KEEP_LATENESS, o->GetDecoupleKeepLateness(true) ? 0 : 1);
+					break;
+				}
 				if (index == ODDI_DECOUPLE_SAME_DIR) {
 					const Order *o = OrderAt(this->OrderGetSel());
 					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_FIRST_SAME_DIR, o->GetDecoupleFirstSameDirExit() ? 0 : 1);
@@ -6779,6 +7202,11 @@ public:
 				break;
 
 			case WID_O_ORDERS_SECOND:
+				if (index == ODDI_DECOUPLE_KEEP_LATENESS) {
+					const Order *o = OrderAt(this->OrderGetSel());
+					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_SECOND_KEEP_LATENESS, o->GetDecoupleKeepLateness(false) ? 0 : 1);
+					break;
+				}
 				if (index == ODDI_DECOUPLE_SAME_DIR) {
 					const Order *o = OrderAt(this->OrderGetSel());
 					if (o != nullptr && o->IsType(OT_DECOUPLE)) this->ModifyOrder(this->OrderGetSel(), MOF_DECOUPLE_SECOND_SAME_DIR, o->GetDecoupleSecondSameDirExit() ? 0 : 1);
@@ -7762,11 +8190,14 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 				EndContainer(),
 			EndContainer(),
 			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
-				NWidget(WWT_PANEL, Colours::Grey), SetResize(1, 0), EndContainer(),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_WAIT_COUPLE_DIAGNOSTICS), SetMinimalSize(124, 12), SetFill(1, 0),
-														SetStringTip(STR_COUPLE_DIAGNOSTIC_BUTTON, STR_WAIT_COUPLE_DIAGNOSTIC_TOOLTIP), SetResize(1, 0),
-				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_WAIT_COUPLE_STATION), SetMinimalSize(124, 12), SetFill(1, 0),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_WAIT_COUPLE_SLOT), SetMinimalSize(112, 12), SetFill(1, 0), SetResize(1, 0),
+													SetStringTip(STR_WAIT_COUPLE_SLOT_NONE, STR_WAIT_COUPLE_SLOT_TOOLTIP),
+				NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_WAIT_COUPLE_COMPANY), SetMinimalSize(112, 12), SetFill(1, 0),
+													SetStringTip(STR_WAIT_COUPLE_COMPANY_BUTTON, STR_WAIT_COUPLE_COMPANY_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_WAIT_COUPLE_STATION), SetMinimalSize(112, 12), SetFill(1, 0),
 														SetStringTip(STR_ORDER_COUPLE_STATION_BUTTON, STR_ORDER_WAIT_COUPLE_STATION_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_WAIT_COUPLE_MORE), SetMinimalSize(112, 12), SetFill(1, 0),
+														SetStringTip(STR_ORDER_WAIT_COUPLE_MORE_BUTTON, STR_ORDER_WAIT_COUPLE_MORE_TOOLTIP), SetResize(1, 0),
 			EndContainer(),
 		EndContainer(),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_SHARED),
@@ -8053,6 +8484,7 @@ static WindowDesc _orderlist_other_desc(__FILE__, __LINE__,
 
 void ShowOrdersWindow(const Vehicle *v)
 {
+	if (v->type == VehicleType::Train) v = v->Primary();
 	CloseWindowById(WindowClass::VehicleDetails, v->index, false);
 	CloseWindowById(WindowClass::VehicleTimetable, v->index, false);
 	if (BringWindowToFrontById(WindowClass::VehicleOrders, v->index) != nullptr) return;

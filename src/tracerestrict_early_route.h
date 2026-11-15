@@ -40,6 +40,8 @@ bool GetAutoYieldRouteArea(const Train *train, uint16_t slot, AutoYieldRouteArea
 bool AutoYieldRouteAreasAvailable();
 void AutoYieldStageNativeRoute(const Train *train, TileIndex detector, Trackdir td, uint16_t slot, bool authoritative = false);
 bool AutoYieldHasNativeRoute(const Train *train);
+/** Re-select an invalid multi-outlet plan from a positively owned PBS endpoint; never reserves tracks. */
+bool AutoYieldRefreshNativeRoute(const Train *train, uint16_t slot);
 bool AutoYieldNativeRouteAllows(const Train *train, TileIndex tile, Trackdir td);
 /** Read-only native search evidence, used only by a subsequent fresh replan. */
 void AutoYieldNativeRouteDenied(const Train *train, TileIndex tile, Trackdir td);

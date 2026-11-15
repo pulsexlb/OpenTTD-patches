@@ -2766,3 +2766,38 @@ STR_ORDER_WAYPOINT_STOP_BUTTON                                 :{BLACK}Stop
 STR_ORDER_WAYPOINT_STOP_TOOLTIP                                :{BLACK}Stop here using the normal station stopping process. Stop and Reverse are mutually exclusive.
 STR_ORDER_WAYPOINT_STOP_SUFFIX                                 : (stop)
 STR_ORDER_COUPLE_ANY_STATION                                   :Any station
+
+STR_ORDER_WAIT_COUPLE_MORE_BUTTON                                  :{BLACK}More options
+STR_ORDER_WAIT_COUPLE_MORE_TOOLTIP                                 :{BLACK}Further wait-for-coupling criteria: locomotive type and diagnostics
+STR_ORDER_WAIT_COUPLE_OPTIONS_CAPTION                              :{WHITE}Wait-for-coupling criteria
+
+STR_WAIT_COUPLE_TRACTION_BUTTON                                    :Locomotive type
+STR_WAIT_COUPLE_TRACTION_TOOLTIP                                   :{BLACK}Choose which locomotive types can couple to this waiting train
+STR_WAIT_COUPLE_TRACTION_ANY                                       :Any type
+STR_WAIT_COUPLE_TRACTION_STEAM                                     :Steam
+STR_WAIT_COUPLE_TRACTION_DIESEL                                    :Diesel
+STR_WAIT_COUPLE_TRACTION_ELECTRIC                                  :Electric
+STR_WAIT_COUPLE_TRACTION_SUFFIX                                    : ({STRING})
+STR_WAIT_COUPLE_TRACTION_MISMATCH                                  :The waiting train requires a different locomotive type
+
+STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_LABEL                           :{BLACK}Coupling train slot
+STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_GROUP_LABEL                     :{BLACK}Coupling train slot group
+STR_ORDER_WAIT_COUPLE_PARTNER_GROUP_LABEL                          :{BLACK}Coupling train vehicle group
+STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_ANY                             :Any slot
+STR_WAIT_COUPLE_PARTNER_SLOT_MISMATCH                              :The waiting train requires the approaching train to hold a different slot
+STR_WAIT_COUPLE_PARTNER_SLOT_GROUP_MISMATCH                        :The waiting train requires the approaching train to hold a slot of a different slot group
+STR_WAIT_COUPLE_PARTNER_GROUP_MISMATCH                             :The waiting train requires the approaching train to belong to a different vehicle group
+STR_WAIT_COUPLE_PARTNER_SLOT_SUFFIX                                : (coupling train slot {TRSLOT})
+STR_WAIT_COUPLE_PARTNER_SLOT_GROUP_SUFFIX                          : (coupling train slot group {TRSLOTGROUP})
+STR_WAIT_COUPLE_PARTNER_GROUP_SUFFIX                               : (coupling train group {STRING})
+
+STR_WAIT_COUPLE_COMPANY_BUTTON                                    :Coupling train company
+STR_WAIT_COUPLE_COMPANY_TOOLTIP                                   :{BLACK}Select companies allowed to send a coupling train; multiple selections are allowed, Any clears the filter
+STR_WAIT_COUPLE_COMPANY_SUFFIX                                    : ({COMPANY})
+STR_WAIT_COUPLE_COMPANY_MISSING                                   : (company unavailable)
+STR_WAIT_COUPLE_COMPANY_MISMATCH                                  :The waiting train requires a locomotive from a different company
+
+STR_WAIT_COUPLE_SLOT_NONE :Automatic slot: off
+STR_WAIT_COUPLE_SLOT_BUTTON :Automatic slot: {TRSLOT}
+STR_WAIT_COUPLE_SLOT_TOOLTIP :{BLACK}Acquire this slot before accepting a coupling train, then return it after coupling. If full, keep waiting. An independently held slot is preserved.
+STR_WAIT_COUPLE_SLOT_SUFFIX : (acquire then return {TRSLOT})

@@ -299,6 +299,30 @@ void AutoYieldNativeRouteScope::PrepareFromContext(TileIndex origin, Trackdir td
 	AutoYieldStageNativeRoute(active->train, origin, td, area.slot, true);
 }
 
+/** A parked dependent must not wait a whole approach for a changed train's next
+ * PBS extension. Refresh only its already registered multi-outlet context, from
+ * the owned reservation end. This is a kind-1 planned choice, never a claim that
+ * tracks were reserved. The ordinary native filter consumes the same choice. */
+bool AutoYieldRefreshNativeRoute(const Train *v, uint16_t slot)
+{
+ if(query_depth != 0 || current != nullptr || v == nullptr || v->early_route.empty()) return false;
+ AutoYieldRouteArea area;
+ if(!GetAutoYieldRouteArea(v,slot,area) || !area.registered) return false;
+ const auto end=FollowTrainReservation(v,nullptr,FollowTrainReservationFlag::OkayUnused);
+ if(!IsValidTile(end.tile)||!IsValidTrackdir(end.trackdir))return false;
+ const Train *owner=GetTrainForReservation(end.tile,TrackdirToTrack(end.trackdir));
+ if(owner==nullptr||owner->Primary()!=v->Primary())return false;
+ AutoYieldNativeRouteScope scope(v,end.tile,end.trackdir);
+ if(current==nullptr||current->staged)return false; // Keep every valid plan unchanged.
+ AutoYieldStageNativeRoute(v,end.tile,end.trackdir,slot,true);
+ auto &s=*current;
+ if(!s.staged||!s.plan.current.complete||!s.plan.selected_clear||!s.OrderStillValid())return false;
+ const_cast<Train*>(v)->early_route=EncodePlan(s,1);
+ const_cast<Train*>(v)->early_route_area=slot;
+ Debug(yapf,6,"EarlyRoute train={} area={} reason=dependent-refresh planned-exit={} owned-end={} nodes-limit={}",v->index,slot,s.plan.selected_clear->first,end.tile,MAX_NATIVE_PLAN_NODES);
+ return true;
+}
+
 bool AutoYieldRouteQuerySuppresses(uint16_t slot) { return query_depth != 0 && slot == query_slot; }
 bool AutoYieldHasNativeRoute(const Train *v) { return query_depth == 0 && current != nullptr && current->train == v && current->staged && current->effective_order; }
 

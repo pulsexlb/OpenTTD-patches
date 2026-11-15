@@ -121,6 +121,9 @@ struct OrderExtraInfo {
 	uint16_t rv_transport_slot_group = 0;    ///< Road vehicle transport (RoRo): trace restrict slot group the candidate must hold a slot of, group id + 1 (0 = any).
 	uint16_t rv_transport_group = 0;         ///< Road vehicle transport (RoRo): vehicle group the candidate must belong to, group id + 1 (0 = any).
 	uint16_t rv_transport_dest_station = 0;   ///< Reserved: a dropped criterion ("the first station the candidate declares for unloading"), kept so that savegames written with feature version 2 still load.
+	uint16_t wait_couple_slot = 0;           ///< Wait-for-couple: trace restrict slot the approaching train must hold, slot id + 1 (0 = any).
+	uint16_t wait_couple_slot_group = 0;     ///< Wait-for-couple: trace restrict slot group the approaching train must hold a slot of, group id + 1 (0 = any).
+	uint16_t wait_couple_group = 0;          ///< Wait-for-couple: vehicle group the approaching train must belong to, group id + 1 (0 = any).
 };
 
 namespace upstream_sl {
@@ -983,6 +986,95 @@ public:
 	inline bool HasWaitCoupleStation() const { return this->IsType(OT_WAIT_COUPLE) && HasBit(this->GetXFlags(), 6); }
 	inline StationID GetWaitCoupleStation() const { return this->HasWaitCoupleStation() ? this->GetDestination().ToStationID() : StationID::Invalid(); }
 	inline void SetWaitCoupleStation(StationID station) { AssignBit(this->GetXFlagsRef(), 6, station != StationID::Invalid()); this->SetDestination(station); }
+	/** Waiting-order traction filter: 0 any, 1 steam, 2 diesel, 3 electric. */
+	inline uint8_t GetWaitCoupleTraction() const { return GB(this->GetXData2(), 30, 2); }
+	inline void SetWaitCoupleTraction(uint8_t traction) { SB(this->GetXData2Ref(), 30, 2, traction); }
+	/** Optional acquire-before-wait/return-after-couple slot. The flag keeps old unused data inert. */
+	inline TraceRestrictSlotID GetWaitCoupleSlot() const { return this->IsType(OT_WAIT_COUPLE) && HasBit(this->GetXFlags(), 7) ? TraceRestrictSlotID{this->GetXData2Low()} : TraceRestrictSlotID::Invalid(); }
+	inline void SetWaitCoupleSlot(TraceRestrictSlotID slot) { AssignBit(this->GetXFlagsRef(), 7, slot != TraceRestrictSlotID::Invalid()); this->SetXData2Low(slot.base()); }
+	/** Zero allows any company; otherwise the stored value is the company ID plus one. */
+	inline uint8_t GetWaitCoupleCompany() const { return GB(this->GetXData2(), 16, 8); }
+	inline void SetWaitCoupleCompany(uint8_t company) { SB(this->GetXData2Ref(), 16, 8, company); this->GetXDataRef() = 0; }
+	/** Bitmask for multi-company restrictions; old single-company orders need no migration. Zero means unrestricted. */
+	inline uint16_t GetWaitCoupleCompanyMask() const
+	{
+		if (HasBit(this->GetXData(), 31)) return GB(this->GetXData(), 0, 15);
+		const uint8_t legacy = this->GetWaitCoupleCompany();
+		return legacy == 0 ? 0 : legacy <= MAX_COMPANIES ? (1U << (legacy - 1)) : 0;
+	}
+	inline void SetWaitCoupleCompanyMask(uint16_t mask) { this->SetWaitCoupleCompany(0); this->GetXDataRef() = (1U << 31) | (mask & 0x7FFF); }
+
+	/** Does the wait-for-couple order require the approaching train to hold a specific trace restrict slot? */
+	inline bool HasWaitCouplePartnerSlot() const { return this->extra != nullptr && this->extra->wait_couple_slot != 0; }
+
+	/**
+	 * Get the trace restrict slot the approaching train must hold.
+	 * @return the slot, or #TraceRestrictSlotID::Invalid() if unrestricted.
+	 */
+	inline TraceRestrictSlotID GetWaitCouplePartnerSlot() const
+	{
+		if (!this->HasWaitCouplePartnerSlot()) return TraceRestrictSlotID::Invalid();
+		return TraceRestrictSlotID{static_cast<uint16_t>(this->extra->wait_couple_slot - 1)};
+	}
+
+	/**
+	 * Require the approaching train to hold a trace restrict slot.
+	 * @param slot the slot, or #TraceRestrictSlotID::Invalid() for any slot.
+	 */
+	inline void SetWaitCouplePartnerSlot(TraceRestrictSlotID slot)
+	{
+		if (slot == TraceRestrictSlotID::Invalid() && !this->extra) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->wait_couple_slot = slot == TraceRestrictSlotID::Invalid() ? 0 : slot.base() + 1;
+	}
+
+	/** Does the wait-for-couple order require the approaching train to hold a slot of a specific slot group? */
+	inline bool HasWaitCouplePartnerSlotGroup() const { return this->extra != nullptr && this->extra->wait_couple_slot_group != 0; }
+
+	/**
+	 * Get the trace restrict slot group the approaching train must hold a slot of.
+	 * @return the slot group, or #TraceRestrictSlotGroupID::Invalid() if unrestricted.
+	 */
+	inline TraceRestrictSlotGroupID GetWaitCouplePartnerSlotGroup() const
+	{
+		if (!this->HasWaitCouplePartnerSlotGroup()) return TraceRestrictSlotGroupID::Invalid();
+		return TraceRestrictSlotGroupID{static_cast<uint16_t>(this->extra->wait_couple_slot_group - 1)};
+	}
+
+	/**
+	 * Require the approaching train to hold a slot of a trace restrict slot group.
+	 * @param group the slot group, or #TraceRestrictSlotGroupID::Invalid() for any slot group.
+	 */
+	inline void SetWaitCouplePartnerSlotGroup(TraceRestrictSlotGroupID group)
+	{
+		if (group == TraceRestrictSlotGroupID::Invalid() && !this->extra) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->wait_couple_slot_group = group == TraceRestrictSlotGroupID::Invalid() ? 0 : group.base() + 1;
+	}
+
+	/** Does the wait-for-couple order require the approaching train to belong to a specific vehicle group? */
+	inline bool HasWaitCouplePartnerGroup() const { return this->extra != nullptr && this->extra->wait_couple_group != 0; }
+
+	/**
+	 * Get the vehicle group the approaching train must belong to.
+	 * @return the group, or #GroupID::Invalid() if unrestricted.
+	 */
+	inline GroupID GetWaitCouplePartnerGroup() const
+	{
+		if (!this->HasWaitCouplePartnerGroup()) return GroupID::Invalid();
+		return GroupID{static_cast<uint16_t>(this->extra->wait_couple_group - 1)};
+	}
+
+	/**
+	 * Require the approaching train to belong to a vehicle group.
+	 * @param group the group, or #GroupID::Invalid() for any group.
+	 */
+	inline void SetWaitCouplePartnerGroup(GroupID group)
+	{
+		if (group == GroupID::Invalid() && !this->extra) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->wait_couple_group = group == GroupID::Invalid() ? 0 : group.base() + 1;
+	}
 	/** Set what orders first part should get */
 	inline void SetDecoupleFirstOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 0, 3, to_underlying(orders_type)); }
 	/** Set what orders second part should get */
@@ -997,6 +1089,9 @@ public:
 	inline bool GetDecoupleSecondSameDirExit() const { return HasBit(this->GetXData(), 17); }
 	/** Set whether the second part may leave the decouple station in the same direction as the other part. */
 	inline void SetDecoupleSecondSameDirExit(bool on) { SB(this->GetXDataRef(), 17, 1, on ? 1 : 0); }
+	/** Opt in to keeping inherited lateness on schedule change (OT_DECOUPLE only); default is reset. */
+	inline bool GetDecoupleKeepLateness(bool first) const { return HasBit(this->GetXData(), first ? 18 : 19); }
+	inline void SetDecoupleKeepLateness(bool first, bool on) { SB(this->GetXDataRef(), first ? 18 : 19, 1, on ? 1 : 0); }
 	/** Get the schedule the first part adopts after decoupling (ODOF_EXECUTE_SCHEDULE and ODOF_LOAD_AND_SCHEDULE only). */
 	inline OrderListID GetDecoupleFirstScheduleID() const { return OrderListID{(uint16_t)this->GetXData()}; }
 	/** Set the schedule the first part adopts after decoupling. */

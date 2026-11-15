@@ -237,8 +237,12 @@ enum SlXvFeatureIndex {
 	 * PXP block: SlXvFeatureIndex values are savegame feature bitmap indices, so
 	 * inserting into the middle would shift every existing PXP feature. */
 	XSLFI_SCRIPT_RANDOMIZER,                      ///< See: SLV_SCRIPT_RANDOMIZER (PR#12063)
-	XSLFI_AIRCRAFT_ROLLING_RESERVATION,           ///< Directed taxi routes, exclusive rolling occupancy and pushback state.
 
+	XSLFI_WAIT_COUPLE_COMPANIES,                  ///< Waiting trains may select multiple coupling companies.
+	XSLFI_WAIT_COUPLE_SLOT,                       ///< Optional acquire/wait/return slot.
+	XSLFI_DECOUPLE_KEEP_LATENESS,                 ///< Independent schedules reset lateness unless opted out.
+	XSLFI_WAIT_COUPLE_CRITERIA,                   ///< Wait-for-couple orders may restrict the approaching train by slot, slot group and vehicle group.
+	XSLFI_AIRCRAFT_ROLLING_RESERVATION,           ///< Directed taxi routes, exclusive rolling occupancy and pushback state.
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
 

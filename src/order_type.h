@@ -384,6 +384,14 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_COUPLE_SPEED_MIN_MODE, ///< Atomically select the waiting-train minimum-speed source.
 	MOF_COUPLE_SPEED_MAX_MODE, ///< Atomically select the waiting-train maximum-speed source.
 	MOF_COUPLE_SERVICE_NUMBER, ///< Change the service number the waiting train must have (text).
+	MOF_DECOUPLE_FIRST_KEEP_LATENESS, ///< Keep this part's inherited early/late offset when adopting an independent schedule.
+	MOF_DECOUPLE_SECOND_KEEP_LATENESS,
+	MOF_WAIT_COUPLE_TRACTION, ///< Select the approaching locomotive's traction class.
+	MOF_WAIT_COUPLE_COMPANY, ///< Select the approaching locomotive's company.
+	MOF_WAIT_COUPLE_SLOT, ///< Acquire before waiting, return after successful coupling.
+	MOF_WAIT_COUPLE_PARTNER_SLOT, ///< Require the approaching train to hold a trace restrict slot.
+	MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP, ///< Require the approaching train to hold a slot of a trace restrict slot group.
+	MOF_WAIT_COUPLE_PARTNER_GROUP, ///< Require the approaching train to belong to a vehicle group.
 	MOF_END
 };
 

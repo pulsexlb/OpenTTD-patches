@@ -86,8 +86,10 @@ enum OrderWidgets : WidgetID {
 	WID_O_COUPLE_USE_WAITING,        ///< Toggle using the waiting train's schedule when coupling.
 	WID_O_ORDERS_FIRST,              ///< Select orders for first part of decoupled train.
 	WID_O_ORDERS_SECOND,             ///< Select orders for second part of decoupled train.
-	WID_O_WAIT_COUPLE_DIAGNOSTICS,   ///< Show whether a waiting train has been claimed.
+	WID_O_WAIT_COUPLE_COMPANY,       ///< Select the approaching locomotive's company.
+	WID_O_WAIT_COUPLE_SLOT,          ///< Acquire before waiting and return after coupling.
 	WID_O_WAIT_COUPLE_STATION,       ///< Select the station a waiting train travels to before holding.
+	WID_O_WAIT_COUPLE_MORE,          ///< Open the window with the remaining wait-for-coupling criteria.
 };
 
 /** Widgets of the #CargoTypeOrdersWindow class. */

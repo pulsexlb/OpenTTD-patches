@@ -267,7 +267,8 @@ private:
 	uint8_t consist_primary = 0;                 ///< SAVE(XSLFI_TRAIN_PRIMARY): temporary flag used to persist which vehicle of the chain is the primary
 	Vehicle *unit_main = nullptr;                ///< NOSAVE: pointer to the main part (base/front engine) of this multi-part unit; nullptr means same as this
 	uint8_t consist_unit_main = 0;               ///< SAVE(XSLFI_TRAIN_UNIT_MAIN): temporary flag used to persist which vehicle is the unit main
-	uint32_t consist_unit_main_id = 0;           ///< SAVE(XSLFI_TRAIN_UNIT_MAIN): v3 truncated legacy ID; v4 full main VehicleID + 1 (0 = null)
+	VehicleID saved_train_unit_main = VehicleID::Invalid(); ///< LOAD ONLY: local v2 exact unit-main reference.
+	uint32_t consist_unit_main_id = 0; ///< SAVE: v4 main VehicleID + 1, with zero for null.
 	Vehicle *last = nullptr;                     ///< NOSAVE: pointer for the last vehicle in the chain
 
 	Vehicle *next_shared = nullptr;              ///< pointer to the next vehicle that shares the order
@@ -278,6 +279,8 @@ public:
 	friend struct ::VehicleCommonStructHandler;                      ///< Saves the common vehicle description (needs #consist_primary)
 	friend void FixOldVehicles(LoadgameState &ls);
 	friend void AfterLoadVehiclesPhase1(bool part_of_load);     ///< So we can set the #previous and #first pointers while loading
+	friend void RebuildTrainUnitMains();                        ///< Restores multipart train ownership from the saved IDs.
+	friend void ConnectMultiheadedTrains();                    ///< Distinguishes local v2 exact refs from legacy orientation flags.
 	friend bool LoadOldVehicle(LoadgameState &ls, int num);     ///< So we can set the proper next pointer while loading
 
 	friend upstream_sl::SlVehicleCommon;
@@ -423,7 +426,7 @@ public:
 
 	CargoTypes GetLastLoadingStationValidCargoMask() const;
 
-	void BeginLoading();
+	void BeginLoading(bool timetable_arrival_booked = false);
 	void CancelReservation(StationID next, Station *st);
 	void LeaveStation();
 	void RemoveFromLoadingQueues();
