@@ -143,6 +143,9 @@ enum class CoupleCandidateResult : uint8_t {
 	SpeedRange,
 	ServiceNumber,
 	Traction,
+	WaitPartnerSlot,
+	WaitPartnerSlotGroup,
+	WaitPartnerGroup,
 	WaitingCompany,
 	Arrangement,
 };

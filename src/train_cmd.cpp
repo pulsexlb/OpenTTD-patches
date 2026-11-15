@@ -7888,6 +7888,32 @@ static bool CoupleGroupOk(const Order &order, const Train *t)
 	return GroupIsInGroup(t->group_id, group);
 }
 
+static bool WaitCouplePartnerSlotOk(const Order &wait_order, const Train *t)
+{
+	TraceRestrictSlotID slot = wait_order.GetWaitCouplePartnerSlot();
+	if (slot == TraceRestrictSlotID::Invalid()) return true;
+	const TraceRestrictSlot *rs = TraceRestrictSlot::GetIfValid(slot);
+	if (rs == nullptr) return false;
+	return rs->IsOccupant(t->index);
+}
+
+static bool WaitCouplePartnerSlotGroupOk(const Order &wait_order, const Train *t)
+{
+	TraceRestrictSlotGroupID group = wait_order.GetWaitCouplePartnerSlotGroup();
+	if (group == TraceRestrictSlotGroupID::Invalid()) return true;
+	const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(group);
+	if (sg == nullptr) return false;
+	return TraceRestrictIsVehicleInSlotGroup(sg, t->owner, t);
+}
+
+static bool WaitCouplePartnerGroupOk(const Order &wait_order, const Train *t)
+{
+	GroupID group = wait_order.GetWaitCouplePartnerGroup();
+	if (group == GroupID::Invalid()) return true;
+	/* Hierarchical: a consist placed in a sub-group of the selected group matches too. */
+	return GroupIsInGroup(t->group_id, group);
+}
+
 /** Check the waiting train's active service number against the couple order's restriction. */
 static bool CoupleServiceNumberOk(const Order &order, const Train *t)
 {
@@ -8109,6 +8135,10 @@ static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *movin
 			to_underlying(RailVehInfo(locomotive->engine_type)->engclass) + 1 != traction)) {
 		return CoupleCandidateResult::Traction;
 	}
+	/* Selection criteria the waiting train imposes on the approaching consist. */
+	if (!WaitCouplePartnerSlotOk(carrier->current_order, moving)) return CoupleCandidateResult::WaitPartnerSlot;
+	if (!WaitCouplePartnerSlotGroupOk(carrier->current_order, moving)) return CoupleCandidateResult::WaitPartnerSlotGroup;
+	if (!WaitCouplePartnerGroupOk(carrier->current_order, moving)) return CoupleCandidateResult::WaitPartnerGroup;
 	/* Compare the consist capability, not temporary shunting, signal or track limits.
 	 * This read-only check is shared by checkpoint claims, routing and contact. */
 	const uint moving_speed = moving->Primary()->GetDisplayMaxSpeed();

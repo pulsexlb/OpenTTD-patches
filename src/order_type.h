@@ -389,6 +389,9 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_WAIT_COUPLE_TRACTION, ///< Select the approaching locomotive's traction class.
 	MOF_WAIT_COUPLE_COMPANY, ///< Select the approaching locomotive's company.
 	MOF_WAIT_COUPLE_SLOT, ///< Acquire before waiting, return after successful coupling.
+	MOF_WAIT_COUPLE_PARTNER_SLOT, ///< Require the approaching train to hold a trace restrict slot.
+	MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP, ///< Require the approaching train to hold a slot of a trace restrict slot group.
+	MOF_WAIT_COUPLE_PARTNER_GROUP, ///< Require the approaching train to belong to a vehicle group.
 	MOF_END
 };
 

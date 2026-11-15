@@ -3221,7 +3221,8 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				break;
 
 			case OT_WAIT_COUPLE:
-				if (mof != MOF_WAIT_COUPLE_STATION && mof != MOF_WAIT_COUPLE_TRACTION && mof != MOF_WAIT_COUPLE_COMPANY && mof != MOF_WAIT_COUPLE_SLOT) return CMD_ERROR;
+				if (mof != MOF_WAIT_COUPLE_STATION && mof != MOF_WAIT_COUPLE_TRACTION && mof != MOF_WAIT_COUPLE_COMPANY && mof != MOF_WAIT_COUPLE_SLOT
+						&& mof != MOF_WAIT_COUPLE_PARTNER_SLOT && mof != MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP && mof != MOF_WAIT_COUPLE_PARTNER_GROUP) return CMD_ERROR;
 				break;
 
 			case OT_DECOUPLE:
@@ -3711,6 +3712,38 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 		case MOF_WAIT_COUPLE_TRACTION:
 			if ((!is_list && v->type != VehicleType::Train) || data > 3) return CMD_ERROR;
+			break;
+
+		case MOF_WAIT_COUPLE_PARTNER_SLOT: {
+			/* Encoded as the raw slot ID; UINT16_MAX clears the restriction. */
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
+			if (data != UINT16_MAX) {
+				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{uint16_t(data)});
+				if (slot == nullptr || slot->vehicle_type != VehicleType::Train) return CMD_ERROR;
+				if (!slot->IsUsableByOwner(target_owner)) return CMD_ERROR;
+			}
+			break;
+		}
+
+		case MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP:
+			/* Encoded as slot group ID + 1; 0 clears the restriction. */
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
+			if (data != 0) {
+				const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(data - 1);
+				if (sg == nullptr || sg->vehicle_type != VehicleType::Train) return CMD_ERROR;
+				if (!sg->CompanyCanReferenceSlotGroup(target_owner)) return CMD_ERROR;
+			}
+			break;
+
+		case MOF_WAIT_COUPLE_PARTNER_GROUP:
+			/* Encoded as group ID + 1; 0 clears the restriction. Only train groups of the
+			 * waiting consist's own company make sense as a coupling criterion. */
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
+			if (data != 0) {
+				const Group *g = Group::GetIfValid(data - 1);
+				if (g == nullptr || g->vehicle_type != VehicleType::Train) return CMD_ERROR;
+				if (g->owner != target_owner) return CMD_ERROR;
+			}
 			break;
 
 		case MOF_WAIT_COUPLE_STATION:
@@ -4237,6 +4270,18 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				order->SetWaitCoupleTraction(data);
 				break;
 
+			case MOF_WAIT_COUPLE_PARTNER_SLOT:
+				order->SetWaitCouplePartnerSlot(data == UINT16_MAX ? TraceRestrictSlotID::Invalid() : TraceRestrictSlotID{uint16_t(data)});
+				break;
+
+			case MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP:
+				order->SetWaitCouplePartnerSlotGroup(data == 0 ? TraceRestrictSlotGroupID::Invalid() : TraceRestrictSlotGroupID{(uint16_t)(data - 1)});
+				break;
+
+			case MOF_WAIT_COUPLE_PARTNER_GROUP:
+				order->SetWaitCouplePartnerGroup(data == 0 ? GroupID::Invalid() : GroupID{(uint16_t)(data - 1)});
+				break;
+
 			case MOF_WAIT_COUPLE_STATION:
 				order->SetWaitCoupleStation(data == 0 ? StationID::Invalid() : StationID{(uint16_t)(data - 1)});
 				break;
@@ -4485,6 +4530,15 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			}
 			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_COMPANY) {
 				u->current_order.SetWaitCoupleCompanyMask(order->GetWaitCoupleCompanyMask());
+			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_PARTNER_SLOT) {
+				u->current_order.SetWaitCouplePartnerSlot(order->GetWaitCouplePartnerSlot());
+			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP) {
+				u->current_order.SetWaitCouplePartnerSlotGroup(order->GetWaitCouplePartnerSlotGroup());
+			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_PARTNER_GROUP) {
+				u->current_order.SetWaitCouplePartnerGroup(order->GetWaitCouplePartnerGroup());
 			}
 
 			/* Unbunching data is no longer valid. */
