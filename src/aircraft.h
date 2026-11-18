@@ -51,7 +51,7 @@ enum AirVehicleFlags : uint8_t {
 	VAF_CAN_T_LAND               = 3, ///< The vehicle cannot land on destination airport.
 
 	VAF_PUSHBACK                 = 4, ///< The vehicle is pushing back from a plane apron (moving tail-first).
-	VAF_TAXI_PHASING             = 5, ///< Temporary escape from prolonged ordinary taxi traffic blockage.
+	VAF_TAXI_PHASING             = 5, ///< Temporary escape from prolonged taxi traffic or protected reservation blockage.
 };
 
 static const int ROTOR_Z_OFFSET         = 5;    ///< Z Offset between helicopter- and rotorsprite.
@@ -236,6 +236,20 @@ struct AircraftVirtualReservation {
 	TrackdirBits trackdirs;
 };
 
+/** One local junction traversal; swept half-tracks are distinct from body tracks. */
+struct AircraftJunctionAction {
+	TileIndex junction = INVALID_TILE;
+	TileIndex entry_tile = INVALID_TILE;
+	TileIndex exit_tile = INVALID_TILE;
+	Trackdir entry_td = INVALID_TRACKDIR;
+	Trackdir exit_td = INVALID_TRACKDIR;
+	bool entered = false;
+	std::vector<TileIndex> tiles;
+	std::vector<TrackBits> tracks;
+	std::vector<TrackBits> swept;
+	bool operator==(const AircraftJunctionAction &) const = default;
+};
+
 /**
  * Aircraft, helicopters, rotors and their shadows belong to this class.
  */
@@ -247,6 +261,17 @@ struct Aircraft final : public SpecializedVehicle<Aircraft, VehicleType::Aircraf
 	TileIndex allocated_terminal = INVALID_TILE; ///< Logical gate claim, independent of taxi reservations.
 	TileIndex reserved_runway = INVALID_TILE; ///< Start of an exclusively reserved runway.
 	std::vector<TileIndex> taxi_runways; ///< Complete runway locks required by the real taxi window, saved.
+	std::vector<AircraftJunctionAction> junction_actions; ///< Near-field traversal grants, independently released, saved.
+	std::vector<AircraftJunctionAction> junction_requests; ///< Only locally conflicting actions compete in FIFO, saved.
+	std::vector<TileIndex> junction_regions; ///< Atomically admitted junction group, saved.
+	std::vector<TileIndex> junction_tiles; ///< Junction swept space and exit clearance, saved.
+	std::vector<TileIndex> junction_runways; ///< Runway dependencies of this traversal, saved.
+	bool junction_entered = false; ///< The physical aircraft has entered its admitted group.
+	std::vector<TileIndex> junction_request_regions; ///< Pending atomic admission request, saved.
+	std::vector<TileIndex> junction_request_tiles; ///< Pending swept space and exit clearance, saved.
+	StateTicks junction_request_tick = INVALID_STATE_TICKS; ///< Original simulation time of the request, saved.
+	bool junction_legacy = false; ///< Finish an already admitted pre-v8 action without re-arbitration.
+	std::vector<TileIndex> junction_legacy_tiles; ///< Pre-v8 action footprint protected from new admissions, saved.
 	uint16_t taxi_blocked_ticks = 0;
 	uint16_t taxi_jam_ticks = 0;
 	AircraftTaxiBlock taxi_block_reason = AircraftTaxiBlock::None;

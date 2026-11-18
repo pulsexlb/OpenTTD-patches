@@ -14,16 +14,20 @@
 #include "tile_type.h"
 
 struct Aircraft;
+struct Station;
+
+void InvalidateAircraftJunctionGeometry(const Station *st);
+bool EnsureAircraftJunctionAdmission(Aircraft *v);
 
 bool IsAircraftVirtualTileAvailable(const Aircraft *v, TileIndex tile, Trackdir td);
-bool IsAircraftVirtualDestinationAvailable(const Aircraft *v, TileIndex tile);
+bool IsAircraftVirtualDestinationAvailable(const Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL);
 bool HasAircraftVirtualTileReservation(const Aircraft *v, TileIndex tile, TrackdirBits travel);
 bool TryReserveAircraftTaxiPath(Aircraft *v);
 void PruneAircraftVirtualReservations(Aircraft *v);
 TrackBits GetAircraftVirtualBookedTracks(TileIndex tile);
 TrackBits GetAircraftAirportEditTracks(TileIndex tile);
 void UpdateAircraftTaxiTraffic(Aircraft *v, bool moved);
-bool IsAircraftTaxiEnvelopeAvailable(Aircraft *v, TileIndex tile);
+bool IsAircraftTaxiEnvelopeAvailable(Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL);
 
 void EnableAircraftIgnoreReservations(Aircraft *v);
 void ResetAircraftIgnoreReservations(Aircraft *v);
@@ -38,12 +42,12 @@ void ReleaseAircraftTerminal(Aircraft *v);
 bool HasAircraftTileReservation(const Aircraft *v, TileIndex tile, TrackBits tracks);
 bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, TrackdirBits travel = TRACKDIR_BIT_NONE);
 void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks);
-void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current);
+void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current, bool keep_request = false);
 bool ExtendAircraftTaxiReservation(Aircraft *v);
 bool EnsureAircraftTaxiRunways(Aircraft *v);
 bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme);
 void ReleaseAircraftRunway(Aircraft *v);
+void ReleaseAircraftStalledReservations(Aircraft *v);
 void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual = false);
 void ClearAircraftReservationIndexes();
-
 #endif /* PBS_AIR_H */

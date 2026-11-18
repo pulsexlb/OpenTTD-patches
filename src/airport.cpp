@@ -18,6 +18,7 @@
 #include "vehicle_gui.h"
 #include "vehiclelist.h"
 #include "window_func.h"
+#include "pbs_air.h"
 
 #include "debug.h"
 
@@ -646,6 +647,7 @@ bool Station::ConvertAirportToCustom(bool verify_tiles)
 /** Update cached variables after loading a game or modifying an airport */
 void Station::UpdateAirportDataStructure()
 {
+	InvalidateAircraftJunctionGeometry(this);
 	this->ClearAirportDataInfrastructure();
 
 	/* Legacy oil rigs were represented by a single StationType::Oilrig tile,
