@@ -53,11 +53,13 @@ TEST_CASE("Aircraft rolling reservations - exclusive current and one tile ahead"
 	auto cleanup = scope_guard([] { ClearAircraftReservationIndexes(); _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
 	MakeReservationAirport();
 	Aircraft *a = MakeReservationAircraft(TileXY(10, 10));
-	Aircraft *b = MakeReservationAircraft(TileXY(12, 10));
 	a->planned_path = {{TileXY(10,10), TRACKDIR_X_SW, false}, {TileXY(11,10), TRACKDIR_X_SW, false}, {TileXY(12,10), TRACKDIR_X_SW, false}};
+	CHECK_FALSE(ExtendAircraftTaxiReservation(a));
+	REQUIRE(TryReserveAircraftTaxiPath(a));
 	REQUIRE(ExtendAircraftTaxiReservation(a));
 	CHECK(a->reserved_path.size() == 2);
 	CHECK(GetReservedAirportTracks(TileXY(12,10)) == TRACK_BIT_NONE);
+	Aircraft *b = MakeReservationAircraft(TileXY(12, 10));
 	CHECK_FALSE(TryReserveAircraftTile(b, TileXY(11,10), TRACK_BIT_X));
 	REQUIRE(TryReserveAircraftTile(b, TileXY(12,10), TRACK_BIT_X));
 	ReleaseAircraftTile(a, TileXY(10,10), TRACK_BIT_ALL);
@@ -99,6 +101,8 @@ TEST_CASE("Aircraft rolling reservations - turns reserve complete tile groups")
 	Aircraft *a = MakeReservationAircraft(TileXY(10,10));
 	a->planned_path = {{TileXY(10,10),TRACKDIR_X_SW,false}, {TileXY(11,10),TRACKDIR_X_SW,false},
 		{TileXY(11,10),TRACKDIR_Y_SE,true}, {TileXY(11,11),TRACKDIR_Y_SE,false}};
+	CHECK_FALSE(ExtendAircraftTaxiReservation(a));
+	REQUIRE(TryReserveAircraftTaxiPath(a));
 	REQUIRE(ExtendAircraftTaxiReservation(a));
 	CHECK(GetReservedAirportTracks(TileXY(11,10)) == TRACK_BIT_CROSS);
 	CHECK(GetReservedAirportTracks(TileXY(11,11)) == TRACK_BIT_NONE);
