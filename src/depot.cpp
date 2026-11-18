@@ -44,15 +44,17 @@ Depot::~Depot()
 	/* Additional external-return references are not main order destinations.
 	 * Clear them before the pool ID can be reused. Active trip snapshots keep
 	 * their expected tile and safely fall back if this entrance disappears. */
-	for (OrderList *list : OrderList::Iterate()) {
-		for (Order &order : list->GetOrderVector()) {
-			if (order.IsExternalTripOrder() && order.GetExternalReturnDepot() == this->index) order.SetExternalReturnDepot(DepotID::Invalid());
+	if (this->is_external_connection) {
+		for (OrderList *list : OrderList::Iterate()) {
+			for (Order &order : list->GetOrderVector()) {
+				if (order.IsExternalTripOrder() && !order.IsExternalFlightOrder() && order.GetExternalReturnDepot() == this->index) order.SetExternalReturnDepot(DepotID::Invalid());
+			}
 		}
+		for (Vehicle *vehicle : Vehicle::Iterate()) {
+			if (vehicle->current_order.IsExternalTripOrder() && !vehicle->current_order.IsExternalFlightOrder() && vehicle->current_order.GetExternalReturnDepot() == this->index) vehicle->current_order.SetExternalReturnDepot(DepotID::Invalid());
+		}
+		SetWindowClassesDirty(WindowClass::VehicleOrders);
 	}
-	for (Vehicle *vehicle : Vehicle::Iterate()) {
-		if (vehicle->current_order.IsExternalTripOrder() && vehicle->current_order.GetExternalReturnDepot() == this->index) vehicle->current_order.SetExternalReturnDepot(DepotID::Invalid());
-	}
-	SetWindowClassesDirty(WindowClass::VehicleOrders);
 
 	/* Clear the depot from all order-lists */
 	RemoveOrderFromAllVehicles(OT_GOTO_DEPOT, this->index);

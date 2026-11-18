@@ -720,8 +720,10 @@ void Station::UpdateAirportDataStructure()
 			RemoveOrderFromAllVehicles(OT_GOTO_DEPOT, DestinationID(this->index), true);
 			TraceRestrictRemoveDestinationID(TROCAF_DEPOT, this->airport.hangar->index);
 			CloseWindowById(WindowClass::VehicleDepot, this->airport.hangar->xy.base());
-			CloseWindowById(GetWindowClassForVehicleType(VehicleType::Aircraft),
-					VehicleListIdentifier(VehicleListType::Depot, VehicleType::Aircraft, this->owner, this->airport.hangar->index).ToWindowNumber());
+			if (this->owner < CompanyID::End() || this->owner == OWNER_NONE) {
+				CloseWindowById(GetWindowClassForVehicleType(VehicleType::Aircraft),
+						VehicleListIdentifier(VehicleListType::Depot, VehicleType::Aircraft, this->owner, this->airport.hangar->index).ToWindowNumber());
+			}
 			delete this->airport.hangar;
 			this->airport.hangar = nullptr;
 		} else {
