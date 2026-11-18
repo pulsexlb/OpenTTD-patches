@@ -21,6 +21,7 @@ bool HasAircraftVirtualTileReservation(const Aircraft *v, TileIndex tile, Trackd
 bool TryReserveAircraftTaxiPath(Aircraft *v);
 void PruneAircraftVirtualReservations(Aircraft *v);
 TrackBits GetAircraftVirtualBookedTracks(TileIndex tile);
+TrackBits GetAircraftAirportEditTracks(TileIndex tile);
 void UpdateAircraftTaxiTraffic(Aircraft *v, bool moved);
 bool IsAircraftTaxiEnvelopeAvailable(Aircraft *v, TileIndex tile);
 
@@ -39,6 +40,7 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks);
 void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current);
 bool ExtendAircraftTaxiReservation(Aircraft *v);
+bool EnsureAircraftTaxiRunways(Aircraft *v);
 bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme);
 void ReleaseAircraftRunway(Aircraft *v);
 void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual = false);

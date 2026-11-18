@@ -1075,11 +1075,9 @@ uint Aircraft::Crash(bool flooded)
 	/* Remove the loading indicators (if any) */
 	HideFillingPercent(&this->fill_percent_te_id);
 
-	// revise: what happens if a falling aircraft falls in an airport?
-	if (!this->IsAircraftFalling() && this->reserved_runway == INVALID_TILE) {
-		/* Lift reserved path except the first tile. Skip reserved runways. */
-		LiftAirportPathReservation(this, true);
-	}
+	/* Wreckage keeps its current occupancy and complete runway lock, but never
+	 * an active taxi route or pushback manoeuvre. */
+	ReleaseAircraftTaxiPath(this, true);
 
 	this->dest_tile = TileIndex{};
 
@@ -1540,6 +1538,12 @@ void UpdateAircraftState(Aircraft *v)
 					v->Next()->Next()->cur_speed = 0;
 					break;
 				}
+				/* A helicopter lands in a terminal state, but a hangar order
+				 * must taxi from that stand, not begin loading and lose the order. */
+				if (v->state != AS_RUNNING) {
+					v->state = AS_IDLE;
+					v->UpdateNextTile(INVALID_TILE);
+				}
 			} else if (v->current_order.IsType(OT_GOTO_DEPOT) && v->current_order.GetDestination() == GetDepotDestinationIndex(v->tile)) {
 				v->UpdateNextTile(v->tile);
 			}
@@ -1726,7 +1730,7 @@ bool RaiseLowerHelicopter(Aircraft *v)
 							Command<Commands::SendVehicleToDepot>::Do(DoCommandFlag::Execute, v->index, DepotCommandFlags{DepotCommandFlag::Service}, INVALID_TILE);
 							cur_company.Restore();
 						}
-						ReleaseAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(v->trackdir)));
+						ReleaseAircraftTaxiPath(v, false);
 						ResetAircraftIgnoreReservations(v);
 						v->state = AS_FLYING;
 						AircraftUpdateNextPos(v);
@@ -3221,6 +3225,7 @@ static bool MoveTaxiAircraft(Aircraft *v)
 				return false;
 			}
 		}
+		BeginOriginRotation(v, next.td);
 		ReleaseAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(current.td)) & ~TrackToTrackBits(TrackdirToTrack(next.td)));
 		v->planned_path.pop_front();
 		PruneAircraftVirtualReservations(v);
@@ -3229,7 +3234,6 @@ static bool MoveTaxiAircraft(Aircraft *v)
 			v->y_pos = gp.y;
 			SetAircraftPosition(v, gp.x, gp.y, v->z_pos);
 		}
-		BeginOriginRotation(v, next.td);
 		return false;
 	}
 
@@ -3476,6 +3480,12 @@ bool HandleAircraftMovement(Aircraft *v)
 	}
 	if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile ||
 			!HasAircraftVirtualTileReservation(v, v->tile, TrackdirToTrackdirBits(v->planned_path.front().td)))) {
+		StopTaxiAircraft(v);
+		return true;
+	}
+
+	if ((v->state <= AS_RUNNING || v->state == AS_START_TAKEOFF || v->state == AS_LANDED) &&
+			!v->vehstatus.Test(VehState::Hidden) && !EnsureAircraftTaxiRunways(v)) {
 		StopTaxiAircraft(v);
 		return true;
 	}

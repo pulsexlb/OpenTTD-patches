@@ -853,7 +853,11 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 				if (t->Primary()->IsPrimaryVehicle() || t->IsFreeWagon()) {
 					t->gcache.last_speed = t->cur_speed; // update displayed train speed
 					Train *head = t->First();
-					const auto saved_acceleration = head->acceleration;
+					const bool restore_acceleration = part_of_load && _networking && !_network_server && SlXvIsFeaturePresent(XSLFI_VENC_CHUNK);
+					std::vector<std::pair<Train *, uint8_t>> saved_accelerations;
+					if (restore_acceleration) {
+						for (Train *part = head; part != nullptr; part = part->Next()) saved_accelerations.emplace_back(part, part->acceleration);
+					}
 					ConsistChangeFlags changes = CCF_SAVELOAD;
 					/* Older PXP saves can retain a stale articulated capacity
 					 * permutation. Never run this migration on a
@@ -862,13 +866,9 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 						changes.Set(ConsistChangeFlag::RecoverLegacyEmptyCapacity);
 					}
 					head->ConsistChanged(changes);
-					/* VENC restores the server's weight and power caches after this
-					 * rebuild. Acceleration is serialized on the vehicle itself;
-					 * keep that value too, rather than mixing the server's caches
-					 * with acceleration calculated from the client's rebuilt caches. */
-					if (part_of_load && _networking && !_network_server && SlXvIsFeaturePresent(XSLFI_VENC_CHUNK)) {
-						head->acceleration = saved_acceleration;
-					}
+					/* ConsistChanged broadcasts acceleration to every part, including
+					 * a mid-chain controller. VENC does not restore this saved field. */
+					for (const auto &[part, acceleration] : saved_accelerations) part->acceleration = acceleration;
 				}
 				break;
 			}
@@ -1831,6 +1831,7 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 
 		NSL("allocated_terminal", SLE_CONDVAR_X(Aircraft, allocated_terminal, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("reserved_runway", SLE_CONDVAR_X(Aircraft, reserved_runway, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
+		NSL("taxi_runways", SLE_CONDVARVEC_X(Aircraft, taxi_runways, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 6))),
 		NSL("taxi_blocked_ticks", SLE_CONDVAR_X(Aircraft, taxi_blocked_ticks, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("taxi_jam_ticks", SLE_CONDVAR_X(Aircraft, taxi_jam_ticks, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2))),
 		NSL("taxi_block_reason", SLE_CONDVAR_X(Aircraft, taxi_block_reason, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2))),

@@ -27,6 +27,7 @@
 #include "../core/geometry_func.hpp"
 #include "../textfile_gui.h"
 #include "../fios.h"
+#include "../settings_type.h"
 #include "network_content_gui.h"
 
 #include "../widgets/network_content_widget.h"
@@ -152,7 +153,8 @@ void BaseNetworkContentDownloadStatusWindow::UpdateWidgetSize(WidgetID widget, D
 		}
 
 		case WID_NCDS_PROGRESS_TEXT:
-			size.height = GetCharacterHeight(FontSize::Normal) * 2 + WidgetDimensions::scaled.vsep_normal;
+			/* Height for the file count plus one line per concurrent download. */
+			size.height = (GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal) * (_settings_client.network.max_concurrent_content_downloads + 1);
 			break;
 	}
 }
@@ -174,9 +176,17 @@ void BaseNetworkContentDownloadStatusWindow::DrawWidget(const Rect &r, WidgetID 
 		case WID_NCDS_PROGRESS_TEXT:
 			if (this->downloaded_bytes == this->total_bytes) {
 				DrawStringMultiLine(r, STR_CONTENT_DOWNLOAD_COMPLETE, TextColour::FromString, {AlignmentH::Centre, AlignmentV::Middle});
-			} else if (!this->name.empty()) {
+			} else if (!this->downloading_files.empty()) {
+				/* Show all files that are currently being downloaded. */
+				std::string names;
+				for (const auto &file : this->downloading_files) {
+					names += file.second;
+					names += '\n';
+				}
+				names.pop_back();
+
 				DrawStringMultiLine(r,
-					GetString(STR_CONTENT_DOWNLOAD_FILE, this->name, this->downloaded_files, this->total_files),
+					GetString(STR_CONTENT_DOWNLOAD_FILE, names, this->downloaded_files, this->total_files),
 					TextColour::FromString, {AlignmentH::Centre, AlignmentV::Middle});
 			} else {
 				DrawStringMultiLine(r, STR_CONTENT_DOWNLOAD_INITIALISE, TextColour::FromString, {AlignmentH::Centre, AlignmentV::Middle});
@@ -187,19 +197,31 @@ void BaseNetworkContentDownloadStatusWindow::DrawWidget(const Rect &r, WidgetID 
 
 void BaseNetworkContentDownloadStatusWindow::OnDownloadProgress(const ContentInfo &ci, int bytes)
 {
-	if (ci.id != this->cur_id) {
-		this->name = ci.filename;
-		this->cur_id = ci.id;
-		this->downloaded_files++;
-	}
-
-	/* A negative value means we are resetting; for example, when retrying or using a fallback. */
+	/* A negative value means we are resetting this file; for example, when it failed and is going to be retried. */
 	if (bytes < 0) {
-		this->downloaded_bytes = 0;
+		auto progress = this->file_downloaded.find(ci.id);
+		if (progress != this->file_downloaded.end()) {
+			this->downloaded_bytes -= progress->second;
+			this->file_downloaded.erase(progress);
+		}
+		this->downloading_files.erase(ci.id);
 	} else {
+		auto [progress, inserted] = this->file_downloaded.emplace(ci.id, 0);
+		progress->second += bytes;
 		this->downloaded_bytes += bytes;
+
+		if (inserted) this->downloading_files.emplace(ci.id, ci.filename);
 	}
 
+	this->SetDirty();
+}
+
+void BaseNetworkContentDownloadStatusWindow::OnDownloadComplete(ContentID cid)
+{
+	/* A file that is retried via the fallback system completes more than once; only count it once. */
+	if (this->completed_files.insert(cid).second) this->downloaded_files++;
+
+	this->downloading_files.erase(cid);
 	this->SetDirty();
 }
 

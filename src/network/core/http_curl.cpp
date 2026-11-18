@@ -59,9 +59,10 @@ public:
 	 * @param callback the callback to send data back on.
 	 * @param data     the data we want to send. When non-empty, this will be a POST request, otherwise a GET request.
 	 */
-	NetworkHTTPRequest(std::string_view uri, HTTPCallback *callback, std::string data) :
+	NetworkHTTPRequest(std::string_view uri, std::shared_ptr<HTTPCallback> callback, std::string data) :
 		uri(uri),
-		callback(callback),
+		callback_owner(std::move(callback)),
+		callback(this->callback_owner),
 		data(std::move(data))
 	{
 		std::lock_guard<std::mutex> lock(_new_http_callback_mutex);
@@ -75,22 +76,26 @@ public:
 	}
 
 	const std::string uri; ///< URI to connect to.
+	std::shared_ptr<HTTPCallback> callback_owner; ///< Keeps the callback alive for as long as the request is running.
 	HTTPThreadSafeCallback callback; ///< Callback to send data back on.
 	const std::string data; ///< Data to send, if any.
 };
 
-static std::thread _http_thread; ///< The thread running the HTTP requests.
-static std::atomic<bool> _http_thread_exit = false; ///< Whether to ask the HTTP request thread to stop.
+static constexpr int HTTP_THREAD_COUNT = 8; ///< The maximum number of HTTP requests that can be performed simultaneously.
+void HttpThread(); ///< Thread entry point for the HTTP request threads.
+static std::vector<std::thread> _http_threads; ///< The threads running the HTTP requests.
+static std::atomic<bool> _http_thread_exit = false; ///< Whether to ask the HTTP request threads to stop.
+static size_t _http_running_threads = 0; ///< Number of worker threads that are currently alive; guarded by #_http_mutex.
+static size_t _http_busy_threads = 0; ///< Number of worker threads that are currently processing a request; guarded by #_http_mutex.
 static ring_buffer_queue<std::unique_ptr<NetworkHTTPRequest>> _http_requests; ///< HTTP requests that are currently running
 static std::mutex _http_mutex; ///< Mutex to prevent concurrent access #_http_requests.
-static std::condition_variable _http_cv; ///< Conditional variable to wake up the HTTP request thread.
+static std::condition_variable _http_cv; ///< Conditional variable to wake up the HTTP request threads.
 #if defined(UNIX)
 static std::string _http_ca_file = ""; ///< File with certificate authority data.
 static std::string _http_ca_path = ""; ///< Folder with certificate authority data.
 #endif /* UNIX */
 
-
-/* static */ void NetworkHTTPSocketHandler::Connect(std::string_view uri, HTTPCallback *callback, std::string &&data)
+/* static */ void NetworkHTTPSocketHandler::Connect(std::string_view uri, std::shared_ptr<HTTPCallback> callback, std::string &&data)
 {
 #if defined(UNIX)
 	if (_http_ca_file.empty() && _http_ca_path.empty()) {
@@ -100,8 +105,27 @@ static std::string _http_ca_path = ""; ///< Folder with certificate authority da
 #endif /* UNIX */
 
 	std::lock_guard<std::mutex> lock(_http_mutex);
-	_http_requests.push(std::make_unique<NetworkHTTPRequest>(uri, callback, std::move(data)));
-	_http_cv.notify_one();
+	_http_requests.push(std::make_unique<NetworkHTTPRequest>(uri, std::move(callback), std::move(data)));
+
+	/* Ensure we have enough threads to process all queued requests. Threads that have
+	 * finished all work retire themselves, so new ones are started on demand here. */
+	size_t wanted = std::min<size_t>(_http_requests.size(), HTTP_THREAD_COUNT);
+	while (_http_running_threads < wanted) {
+		/* Reap the finished threads of a previous batch before starting new ones. */
+		if (_http_running_threads == 0 && !_http_threads.empty()) {
+			for (auto &thread : _http_threads) {
+				if (thread.joinable()) thread.join();
+			}
+			_http_threads.clear();
+		}
+
+		std::thread thread;
+		StartNewThread(&thread, "ottd:http", &HttpThread);
+		_http_threads.push_back(std::move(thread));
+		_http_running_threads++;
+	}
+
+	_http_cv.notify_all();
 }
 
 /* static */ void NetworkHTTPSocketHandler::HTTPReceive()
@@ -147,12 +171,25 @@ void HttpThread()
 
 		/* Wait for a new request. */
 		while (_http_requests.empty() && !_http_thread_exit) {
+			/* When no other thread is processing a request either, this thread is no longer needed. */
+			if (_http_busy_threads == 0) break;
 			_http_cv.wait(lock);
 		}
-		if (_http_thread_exit) break;
+
+		/* Retire this thread when shutting down, or when there is nothing left to do;
+		 * a new thread will be started on demand when a new request arrives. */
+		if (_http_thread_exit || (_http_requests.empty() && _http_busy_threads == 0)) {
+			_http_running_threads--;
+			/* Wake other idle threads, so they can retire too. */
+			_http_cv.notify_all();
+			lock.unlock();
+			curl_easy_cleanup(curl);
+			return;
+		}
 
 		std::unique_ptr<NetworkHTTPRequest> request = std::move(_http_requests.front());
 		_http_requests.pop();
+		_http_busy_threads++;
 
 		/* Release the lock, as we will take a while to process the request. */
 		lock.unlock();
@@ -251,6 +288,15 @@ void HttpThread()
 		request->callback.WaitTillEmptyOrCondition([]() -> bool {
 			return _http_thread_exit;
 		});
+
+		/* The request is completely done. */
+		lock.lock();
+		_http_busy_threads--;
+		if (_http_busy_threads == 0) {
+			/* All requests have finished; wake the idle threads so they can retire too. */
+			_http_cv.notify_all();
+		}
+		lock.unlock();
 	}
 
 	curl_easy_cleanup(curl);
@@ -287,8 +333,8 @@ void NetworkHTTPInitialize()
 	}
 #endif /* UNIX */
 
+	/* Worker threads are started on demand, when the first request is queued. */
 	_http_thread_exit = false;
-	StartNewThread(&_http_thread, "ottd:http", &HttpThread);
 }
 
 void NetworkHTTPUninitialize()
@@ -301,12 +347,16 @@ void NetworkHTTPUninitialize()
 
 	{
 		std::lock_guard<std::mutex> lock(_http_mutex);
-		_http_cv.notify_one();
+		/* Wake all threads; they see _http_thread_exit and retire. */
+		_http_cv.notify_all();
 	}
 
-	if (_http_thread.joinable()) {
-		_http_thread.join();
+	for (auto &thread : _http_threads) {
+		if (thread.joinable()) {
+			thread.join();
+		}
 	}
+	_http_threads.clear();
 
 	curl_global_cleanup();
 }

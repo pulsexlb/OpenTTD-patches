@@ -104,7 +104,7 @@ public:
 	 * Create the thread safe callback.
 	 * @param callback The underlying callback to call.
 	 */
-	HTTPThreadSafeCallback(HTTPCallback *callback) : callback(callback) {}
+	HTTPThreadSafeCallback(std::shared_ptr<HTTPCallback> callback) : callback(std::move(callback)) {}
 
 	~HTTPThreadSafeCallback()
 	{
@@ -117,7 +117,7 @@ public:
 	std::atomic<bool> cancelled = false; ///< Whether this callback has been cancelled, or not.
 
 private:
-	HTTPCallback *callback; ///< The callback to send data back on.
+	std::shared_ptr<HTTPCallback> callback; ///< The callback to send data back on; shared with the caller.
 	std::mutex mutex; ///< Mutex to protect the queue.
 	std::vector<Callback> queue; ///< Queue of data to send back.
 	std::condition_variable queue_cv; ///< Condition variable to wait for the queue to be empty.

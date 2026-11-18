@@ -101,7 +101,8 @@ void NetworkSurveyHandler::Transmit(Reason reason, bool blocking)
 	}
 
 	Debug(net, 1, "Survey: sending survey results");
-	NetworkHTTPSocketHandler::Connect(NetworkSurveyUriString(), this, this->CreatePayload(reason));
+	/* The handler is a singleton that outlives the request; share it without taking ownership. */
+	NetworkHTTPSocketHandler::Connect(NetworkSurveyUriString(), std::shared_ptr<HTTPCallback>(this, [](HTTPCallback *) {}), this->CreatePayload(reason));
 
 	if (blocking) {
 		std::unique_lock<std::mutex> lock(this->mutex);

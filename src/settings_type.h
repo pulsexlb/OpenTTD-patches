@@ -645,6 +645,7 @@ struct NetworkSettings {
 	std::string last_joined;                              ///< Last joined server
 	UseRelayService use_relay_service;                    ///< Use relay service?
 	ParticipateSurvey participate_survey;                 ///< Participate in the automated survey
+	uint8_t       max_concurrent_content_downloads;       ///< maximum number of content files to download simultaneously
 
 	bool AdminAuthenticationConfigured() const { return !this->admin_password.empty() || !this->admin_authorized_keys.empty(); }
 };
