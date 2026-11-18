@@ -8,6 +8,7 @@
 /** @file station_cmd.cpp Handling of station tiles. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "blueprint.h"
 #include "core/flatset_type.hpp"
 #include "aircraft.h"
@@ -578,6 +579,7 @@ void Station::CheckCargoOverflow() const
  */
 void Station::UpdateVirtCoord()
 {
+	if (this->IsExternalMarket()) return;
 	if (IsHeadless()) return;
 	Point pt = RemapCoords2(TileX(this->xy) * TILE_SIZE, TileY(this->xy) * TILE_SIZE);
 
@@ -765,6 +767,7 @@ static std::pair<CargoArray, CargoTypes> GetAcceptanceAroundStation(const Statio
  */
 void UpdateStationAcceptance(Station *st, bool show_msg)
 {
+	if (st->IsExternalMarket()) { UpdateExternalMarketAcceptance(st); return; }
 	/* old accepted goods types */
 	CargoTypes old_acc = GetAcceptanceMask(st);
 
@@ -4243,6 +4246,7 @@ void TriggerWatchedCargoCallbacks(Station *st)
  */
 static bool StationHandleBigTick(BaseStation *st)
 {
+	if (st->IsExternalMarket()) return false;
 	if (!st->IsInUse()) {
 		if (++st->delete_ctr >= 8) delete st;
 		return false;
@@ -4635,11 +4639,12 @@ void DeleteStaleLinks(Station *from)
 						bool found_from = false;
 						bool found_to = false;
 						for (const Order *order : l->Orders()) {
-							if (!order->IsType(OT_GOTO_STATION) && !order->IsType(OT_IMPLICIT)) continue;
-							if (order->GetDestination() == from->index) {
+							if (!order->IsType(OT_GOTO_STATION) && !order->IsType(OT_IMPLICIT) && !order->IsExternalTripOrder()) continue;
+							const StationID endpoint = order->IsExternalTripOrder() ? GetExternalOrderStation(order) : order->GetDestination().ToStationID();
+							if (endpoint == from->index) {
 								found_from = true;
 								if (found_to) break;
-							} else if (order->GetDestination() == to->index) {
+							} else if (endpoint == to->index) {
 								found_to = true;
 								if (found_from) break;
 							}

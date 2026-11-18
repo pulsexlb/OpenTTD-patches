@@ -61,6 +61,7 @@
  */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "clear_map.h"
 #include "rain_overlay.h"
 #include "weather.h"
@@ -224,6 +225,7 @@ enum RouteStepOrderType : uint8_t {
 	RSOT_IMPLICIT,
 	RSOT_WAYPOINT,
 	RSOT_DEPOT,
+	RSOT_EXTERNAL,
 };
 
 typedef std::vector<std::pair<uint16_t, RouteStepOrderType>> RankOrderTypeList;
@@ -1718,6 +1720,7 @@ const TraceRestrictProgram *_viewport_highlight_tracerestrict_program; ///< Curr
  */
 static TileHighlightType GetTileHighlightType(TileIndex t)
 {
+	if (IsExternalReturnHighlighted(t)) return TileHighlightType::LightBlue;
 	if (_viewport_highlight_station != nullptr) {
 		if (IsTileType(t, TileType::Station) && GetStationIndex(t) == _viewport_highlight_station->index) return TileHighlightType::LightBlue;
 		if (_viewport_highlight_station->TileIsInCatchment(t)) return TileHighlightType::Blue;
@@ -2938,6 +2941,9 @@ static void DrawRouteStep(const Viewport * const vp, const TileIndex tile, const
 				case RSOT_DEPOT:
 					str = STR_VIEWPORT_SHOW_VEHICLE_ROUTE_STEP_DEPOT;
 					break;
+				case RSOT_EXTERNAL:
+					str = STR_VIEWPORT_SHOW_VEHICLE_ROUTE_STEP_EXTERNAL;
+					break;
 				case RSOT_WAYPOINT:
 					str = STR_VIEWPORT_SHOW_VEHICLE_ROUTE_STEP_WAYPOINT;
 					break;
@@ -2978,6 +2984,7 @@ void UpdateRouteStepSpriteSize()
 				width = std::max(width, GetStringBoundingBox(GetString(STR_VIEWPORT_SHOW_VEHICLE_ROUTE_STEP, max_value, str), FontSize::Small).width);
 			};
 			process_string(STR_VIEWPORT_SHOW_VEHICLE_ROUTE_STEP_DEPOT);
+			process_string(STR_VIEWPORT_SHOW_VEHICLE_ROUTE_STEP_EXTERNAL);
 			process_string(STR_VIEWPORT_SHOW_VEHICLE_ROUTE_STEP_WAYPOINT);
 			process_string(STR_VIEWPORT_SHOW_VEHICLE_ROUTE_STEP_IMPLICIT);
 			extra = width - base_width;
@@ -3016,7 +3023,7 @@ void ViewportRouteOverlay::PrepareRouteSteps(const Vehicle *veh)
 				break;
 
 			case OT_GOTO_DEPOT:
-				type = RSOT_DEPOT;
+				type = Depot::IsExternalConnection(tile) ? RSOT_EXTERNAL : RSOT_DEPOT;
 				break;
 
 			default:
@@ -4274,6 +4281,7 @@ void ViewportDoDraw(Viewport *vp, int left, int top, int right, int bottom, NWid
 	} else {
 		/* Classic rendering. */
 		ViewportAddLandscape();
+		DrawExternalFlightBeacons();
 		ViewportAddVehicles(&_vdd->dpi, vp->update_vehicles);
 
 		for (const TileSpriteToDraw &ts : _vdd->tile_sprites_to_draw) {
@@ -4438,6 +4446,11 @@ static void ViewportDoDrawPhase3(Viewport *vp)
 		const int pixel_cache_start = _vdd->offset_x + (_vdd->offset_y * vp->width);
 		BlitterFactory::GetCurrentBlitter()->SetRectNoD7(_vdd->dpi.dst_ptr, 0, 0, vp->plan_pixel_cache.data() + pixel_cache_start,
 				dp.height, dp.width, vp->width);
+	}
+
+	{
+		DrawPixelInfo boundary_dpi = _vdd->MakeDPIForText();
+		DrawExternalCityBoundaries(vp, &boundary_dpi);
 	}
 
 	if (_vdd->display_flags.Any({ NWidgetDisplayFlag::ShadeGrey, NWidgetDisplayFlag::ShadeDimmed })) {
@@ -4607,6 +4620,9 @@ static void ClampSmoothScroll(uint32_t delta_ms, int64_t delta_hi, int64_t delta
 void UpdateNextViewportPosition(Window *w, uint32_t delta_ms)
 {
 	const Viewport *vp = w->viewport;
+	/* Defensive recovery for any stale local follow reference. Deletion also
+	 * closes vehicle windows and detaches viewports before the pool ID is freed. */
+	if (w->viewport->follow_vehicle != VehicleID::Invalid() && Vehicle::GetIfValid(w->viewport->follow_vehicle) == nullptr) w->viewport->CancelFollow(*w);
 
 	if (w->viewport->follow_vehicle != VehicleID::Invalid()) {
 		const Vehicle *veh = RVTransportGetFollowVehicle(Vehicle::Get(w->viewport->follow_vehicle))->GetMovingFront();
@@ -5554,6 +5570,7 @@ HandleViewportClickedResult HandleViewportClicked(const Viewport *vp, int x, int
 	if (vp->zoom >= ZoomLevel::DrawMap) return HVCR_SCROLL_ONLY;
 
 	if (CheckClickOnViewportSign(vp, x, y)) return HVCR_DENY;
+	if (v == nullptr && ClickExternalFlightBeacon(vp, {x, y})) return HVCR_DENY;
 	bool result = CheckClickOnLandscape(vp, x, y);
 
 	if (v != nullptr) {

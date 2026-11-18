@@ -552,6 +552,12 @@ CommandCost CmdRefitVehicle(DoCommandFlags flags, VehicleID veh_id, CargoType ne
 	/* Don't allow disasters and sparks and such to be refitted.
 	 * We cannot check for IsPrimaryVehicle as autoreplace also refits in free wagon chains. */
 	if (!IsCompanyBuildableVehicleType(v->type)) return CMD_ERROR;
+	const Vehicle *primary = v->Primary();
+	const bool external_refit = auto_refit && primary->GetExternalTripPhase() == ExternalTripPhase::Stopped &&
+			primary->external_arrival_handled && primary->current_order.HasExternalCargoPolicy() &&
+			primary->current_order.IsRefit() && primary->current_order.GetLoadType() != OrderLoadType::NoLoad &&
+			(primary->current_order.IsAutoRefit() || primary->current_order.GetRefitCargo() == new_cid);
+	if (v->IsInExternalTrip() && !external_refit) return CommandCost(STR_EXTERNAL_TRIP_LOCKED);
 
 	Vehicle *front = v->First();
 
@@ -577,7 +583,7 @@ CommandCost CmdRefitVehicle(DoCommandFlags flags, VehicleID veh_id, CargoType ne
 				 * physical chain head, which is not the primary when the engine is not at the head
 				 * of the consist. Asking the head would report a stale order and reject a refit which
 				 * is perfectly legal here; the physical caches further down do need the head. */
-				(!auto_refit || !front->Primary()->current_order.IsType(OT_LOADING)) && // refit inside stations
+				(!auto_refit || (!front->Primary()->current_order.IsType(OT_LOADING) && !external_refit)) && // refit inside stations
 				!front->IsStoppedInDepot()) { // refit inside depots
 			return CommandCost(STR_ERROR_TRAIN_MUST_BE_STOPPED_INSIDE_DEPOT + to_underlying(front->type));
 		}
@@ -690,6 +696,7 @@ CommandCost CmdStartStopVehicle(DoCommandFlags flags, VehicleID veh_id, bool eva
 
 	Vehicle *v = Vehicle::GetIfValid(veh_id);
 	if (v == nullptr || !IsCompanyBuildableVehicleType(v) || !v->IsPrimaryVehicle()) return CMD_ERROR;
+	if (v->IsInExternalTrip()) return CommandCost(STR_EXTERNAL_TRIP_LOCKED);
 
 	CommandCost ret = CheckVehicleControlAllowed(v);
 	if (ret.Failed()) return ret;

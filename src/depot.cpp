@@ -11,6 +11,8 @@
 #include "depot_base.h"
 #include "order_backup.h"
 #include "order_func.h"
+#include "order_base.h"
+#include "vehicle_base.h"
 #include "window_func.h"
 #include "core/pool_func.hpp"
 #include "vehicle_gui.h"
@@ -39,6 +41,19 @@ Depot::~Depot()
 	/* Clear the order backup. */
 	OrderBackup::Reset(this->xy, false);
 
+	/* Additional external-return references are not main order destinations.
+	 * Clear them before the pool ID can be reused. Active trip snapshots keep
+	 * their expected tile and safely fall back if this entrance disappears. */
+	for (OrderList *list : OrderList::Iterate()) {
+		for (Order &order : list->GetOrderVector()) {
+			if (order.IsExternalTripOrder() && order.GetExternalReturnDepot() == this->index) order.SetExternalReturnDepot(DepotID::Invalid());
+		}
+	}
+	for (Vehicle *vehicle : Vehicle::Iterate()) {
+		if (vehicle->current_order.IsExternalTripOrder() && vehicle->current_order.GetExternalReturnDepot() == this->index) vehicle->current_order.SetExternalReturnDepot(DepotID::Invalid());
+	}
+	SetWindowClassesDirty(WindowClass::VehicleOrders);
+
 	/* Clear the depot from all order-lists */
 	RemoveOrderFromAllVehicles(OT_GOTO_DEPOT, this->index);
 
@@ -46,6 +61,7 @@ Depot::~Depot()
 
 	/* Delete the depot-window */
 	CloseWindowById(WindowClass::VehicleDepot, this->xy.base());
+	CloseWindowById(WindowClass::ExternalEntrance, this->xy.base());
 
 	/* Delete the depot list */
 	VehicleType vt = GetDepotVehicleType(this->xy);

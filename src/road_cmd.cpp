@@ -2370,6 +2370,42 @@ void DrawRoadBitsTunnelBridge(TileInfo *ti)
 	DrawRoadBits(ti, GetCustomBridgeHeadRoadBits(ti->tile, RoadTramType::Road), GetCustomBridgeHeadRoadBits(ti->tile, RoadTramType::Tram), Roadside::Paved, false, true);
 }
 
+/** Only a straight, owned road endpoint on the actual edge can become an entrance. */
+DiagDirection GetExternalRoadConnectionDirection(TileIndex tile, RoadType roadtype)
+{
+ if (!IsValidTile(tile) || !IsNormalRoadTile(tile) || roadtype == INVALID_ROADTYPE ||
+   GetRoadTypeRoad(tile) != roadtype || HasRoadTypeTram(tile) || GetDisallowedRoadDirections(tile).Any()) return DiagDirection::Invalid;
+ const RoadBits bits = GetRoadBits(tile, RoadTramType::Road);
+ for (DiagDirection outward : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
+  const RoadBits inward = DiagDirToRoadBits(ReverseDiagDir(outward));
+  const RoadBits straight = inward | DiagDirToRoadBits(outward);
+  if (bits != straight && bits != inward) continue;
+  const auto delta = TileIndexDiffCByDiagDir(outward);
+  if (IsValidTile(TileAddWrap(tile, delta.x, delta.y))) continue;
+  const auto inside = TileAddWrap(tile, -delta.x, -delta.y);
+  if (!IsValidTile(inside) || !IsNormalRoadTile(inside) || GetRoadTypeRoad(inside) != roadtype ||
+    !GetRoadBits(inside, RoadTramType::Road).Any(DiagDirToRoadBits(outward))) continue;
+  return ReverseDiagDir(outward);
+ }
+ return DiagDirection::Invalid;
+}
+CommandCost CmdBuildExternalRoadConnection(DoCommandFlags flags, TileIndex tile, RoadType roadtype, DiagDirection entrance)
+{
+ if (!_settings_game.vehicle.external_connections || !IsValidDiagDirection(entrance) ||
+   GetExternalRoadConnectionDirection(tile, roadtype) != entrance) return CommandCost(STR_EXTERNAL_ROAD_EDGE_REQUIRED);
+ auto owner = CheckOwnership(GetRoadOwner(tile, RoadTramType::Road));
+ if (owner.Failed()) return owner;
+ const auto native_flags = DoCommandFlags{flags}.Reset(DoCommandFlag::Auto);
+ const auto preview = CmdBuildRoadDepot(DoCommandFlags{native_flags}.Reset(DoCommandFlag::Execute), tile, roadtype, entrance);
+ if (preview.Failed() || !flags.Test(DoCommandFlag::Execute)) return preview;
+ const auto cleared = Command<Commands::LandscapeClear>::Do(native_flags, tile);
+ if (cleared.Failed()) return cleared;
+ auto built = CmdBuildRoadDepot(native_flags, tile, roadtype, entrance);
+ built.AddCost(cleared.GetCost());
+ if (built.Succeeded()) Depot::GetByTile(tile)->is_external_connection = true;
+ return built;
+}
+
 /** @copydoc DrawTileProc */
 static void DrawTile_Road(TileInfo *ti, DrawTileProcParams params)
 {
@@ -2519,6 +2555,16 @@ static void DrawTile_Road(TileInfo *ti, DrawTileProcParams params)
 		case RoadTileType::Depot: {
 			if (ti->tileh != SLOPE_FLAT) DrawFoundation(ti, Foundation::Leveled);
 
+			if (Depot::IsExternalConnection(ti->tile)) {
+    const auto axis = DiagDirToAxis(GetRoadDepotDirection(ti->tile));
+    const RoadBits road = axis == Axis::X ? ROAD_X : ROAD_Y;
+    const auto *rti = GetRoadTypeInfo(GetRoadTypeRoad(ti->tile));
+    const uint offset = GetRoadSpriteOffset(SLOPE_FLAT, road);
+    PaletteID pal = PAL_NONE;
+    DrawGroundSprite(GetRoadGroundSprite(ti, Roadside::Grass, rti, offset, &pal, false), pal);
+    DrawRoadOverlays(ti, pal, rti, nullptr, offset, 0);
+    break;
+   }
 			PaletteID palette = GetCompanyPalette(GetTileOwner(ti->tile));
 
 			RoadType road_rt = GetRoadTypeRoad(ti->tile);
@@ -2964,7 +3010,7 @@ static void GetTileDesc_Road(TileIndex tile, TileDesc &td)
 		}
 
 		case RoadTileType::Depot:
-			td.str = STR_LAI_ROAD_DESCRIPTION_ROAD_VEHICLE_DEPOT;
+			td.str = Depot::IsExternalConnection(tile) ? STR_EXTERNAL_ENTRANCE : STR_LAI_ROAD_DESCRIPTION_ROAD_VEHICLE_DEPOT;
 			td.build_date = Depot::GetByTile(tile)->build_date;
 			break;
 

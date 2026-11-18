@@ -88,6 +88,8 @@ private:
 public:
 	/** Maximum number of items in a single cargo packet. */
 	static const uint16_t MAX_COUNT = UINT16_MAX;
+	uint16_t external_source_city = UINT16_MAX; ///< A real external-market origin, never a map industry ID.
+	uint16_t external_distance = 0; ///< Source city to map entrance; preserved through ordinary transfers.
 
 	CargoPacket(CargoPacketID index);
 	CargoPacket(CargoPacketID index, StationID first_station, uint16_t count, Source source);
@@ -266,7 +268,7 @@ public:
 
 		uint distance_travelled = abs(local_travelled.x) + abs(local_travelled.y);
 		uint distance_source_dest = DistanceManhattan(this->source_xy, current_tile);
-		return std::min(distance_travelled, distance_source_dest);
+		return std::min(distance_travelled, distance_source_dest) + this->external_distance;
 	}
 
 	/**
@@ -537,6 +539,7 @@ public:
 	uint Unload(uint max_move, StationCargoList *dest, CargoType cargo, CargoPayment *payment, TileIndex current_tile);
 	uint Shift(uint max_move, VehicleCargoList *dest);
 	uint Truncate(uint max_move = UINT_MAX);
+	uint DeliverToExternal(uint max_move, CargoType cargo, TileIndex tile, uint16_t city, uint16_t distance, Money &income, StationID destination = StationID::Invalid(), const GoodsEntry *goods = nullptr);
 	uint Reroute(uint max_move, VehicleCargoList *dest, StationID avoid, StationID avoid2, const GoodsEntry *ge);
 	uint RerouteFromSource(uint max_move, VehicleCargoList *dest, StationID source, StationID avoid, StationID avoid2, const GoodsEntry *ge);
 
@@ -550,6 +553,7 @@ public:
 	static bool AreMergable(const CargoPacket *cp1, const CargoPacket *cp2)
 	{
 		return cp1->source_xy           == cp2->source_xy &&
+				cp1->external_source_city == cp2->external_source_city && cp1->external_distance == cp2->external_distance &&
 				cp1->periods_in_transit == cp2->periods_in_transit &&
 				cp1->first_station      == cp2->first_station &&
 				cp1->source             == cp2->source;
@@ -684,6 +688,7 @@ public:
 	static bool AreMergable(const CargoPacket *cp1, const CargoPacket *cp2)
 	{
 		return cp1->source_xy           == cp2->source_xy &&
+				cp1->external_source_city == cp2->external_source_city && cp1->external_distance == cp2->external_distance &&
 				cp1->periods_in_transit == cp2->periods_in_transit &&
 				cp1->first_station      == cp2->first_station &&
 				cp1->source             == cp2->source;

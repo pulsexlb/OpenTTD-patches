@@ -8,6 +8,7 @@
 /** @file order_cmd.cpp Handling of orders. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include <map>
 #include <set>
 #include <tuple>
@@ -219,6 +220,7 @@ void Order::ConvertLegacyTypeLayout()
  */
 void Order::MakeGoToStation(StationID destination)
 {
+	if (this->extra != nullptr) ClrBit(this->extra->external_cargo_flags, 7);
 	this->type = OT_GOTO_STATION;
 	this->flags = 0;
 	this->dest = destination;
@@ -916,7 +918,7 @@ void OrderList::FreeChain(bool keep_orderlist)
  *         \li a non-trivial conditional order
  *         \li nullptr  if the vehicle won't stop anymore.
  */
-const Order *OrderList::GetNextDecisionNode(const Order *next, uint hops, CargoTypes &cargo_mask) const
+const Order *OrderList::GetNextDecisionNode(const Order *next, uint hops, CargoTypes &cargo_mask, bool external_markets) const
 {
 	if (hops > std::min<uint>(64, this->GetNumOrders()) || next == nullptr) return nullptr;
 
@@ -927,16 +929,17 @@ const Order *OrderList::GetNextDecisionNode(const Order *next, uint hops, CargoT
 		 * the same as regular order progression. */
 		return this->GetNextDecisionNode(
 				this->GetOrderAt(next->GetConditionSkipToOrder()),
-				hops + 1, cargo_mask);
+				hops + 1, cargo_mask, external_markets);
 	}
 
+	const bool external_stop = external_markets && next->IsExternalTripOrder() && GetExternalOrderStation(next) != StationID::Invalid();
 	if (next->IsType(OT_GOTO_DEPOT)) {
 		if ((next->GetDepotActionType() & ODATFB_HALT) != 0) return nullptr;
 		if (next->IsRefit()) return next;
 	}
 
 	bool can_load_or_unload = false;
-	if ((next->IsType(OT_GOTO_STATION) || next->IsType(OT_IMPLICIT)) &&
+	if ((next->IsType(OT_GOTO_STATION) || next->IsType(OT_IMPLICIT) || external_stop) &&
 			(next->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) == 0) {
 		if (cargo_mask.None()) {
 			can_load_or_unload = true;
@@ -953,7 +956,7 @@ const Order *OrderList::GetNextDecisionNode(const Order *next, uint hops, CargoT
 	}
 
 	if (!can_load_or_unload) {
-		return this->GetNextDecisionNode(this->GetNext(next), hops + 1, cargo_mask);
+		return this->GetNextDecisionNode(this->GetNext(next), hops + 1, cargo_mask, external_markets);
 	}
 
 	return next;
@@ -1059,7 +1062,7 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 			}
 		}
 
-		const Order *decision_node = this->GetNextDecisionNode(next, ++hops, cargo_mask);
+		const Order *decision_node = this->GetNextDecisionNode(next, ++hops, cargo_mask, true);
 
 		if (decision_node == nullptr || seen_order(decision_node)) return CargoMaskedStationIDVector(cargo_mask); // Invalid or already handled
 
@@ -1072,9 +1075,9 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 		while (next->IsType(OT_CONDITIONAL)) {
 			/* We return both options of conditional orders. */
 			const Order *skip_to = this->GetOrderAt(next->GetConditionSkipToOrder());
-			if (!seen_order(skip_to)) skip_to = this->GetNextDecisionNode(skip_to, hops, cargo_mask);
+			if (!seen_order(skip_to)) skip_to = this->GetNextDecisionNode(skip_to, hops, cargo_mask, true);
 			const Order *advance = this->GetNext(next);
-			if (!seen_order(advance)) advance = this->GetNextDecisionNode(advance, hops, cargo_mask);
+			if (!seen_order(advance)) advance = this->GetNextDecisionNode(advance, hops, cargo_mask, true);
 
 			if (advance == nullptr || advance == first || skip_to == advance || seen_order(advance)) {
 				next = (skip_to == first) ? nullptr : skip_to;
@@ -1108,10 +1111,10 @@ CargoMaskedStationIDVector OrderList::GetNextStoppingStation(const Vehicle *v, C
 
 		/* The next iteration advances from the position we are on now. */
 		prev_index = cur_index;
-	} while (next->IsType(OT_GOTO_DEPOT) || next->IsSlotCounterOrder() || next->IsType(OT_DUMMY) || next->IsType(OT_LABEL) || next->IsExecuteScheduleOrder()
+	} while ((next->IsType(OT_GOTO_DEPOT) && !next->IsExternalTripOrder()) || next->IsSlotCounterOrder() || next->IsType(OT_DUMMY) || next->IsType(OT_LABEL) || next->IsExecuteScheduleOrder()
 			|| (next->IsBaseStationOrder() && next->GetDestination() == v->last_station_visited));
 
-	return CargoMaskedStationIDVector(cargo_mask, { next->GetDestination().ToStationID() });
+	return CargoMaskedStationIDVector(cargo_mask, { next->IsExternalTripOrder() ? GetExternalOrderStation(next) : next->GetDestination().ToStationID() });
 }
 
 /**
@@ -1893,6 +1896,15 @@ CommandCost CmdInsertOrder(DoCommandFlags flags, const InsertOrderCmdData &data)
 {
 	Order new_order{};
 	MemberPtrsTie(new_order, Order::GetCmdRefFields()) = data.new_order;
+	/* The command payload carries the destination, not OrderExtraInfo. Virtual
+	 * city stations unambiguously identify external flights on every peer. */
+	if (!data.is_list && new_order.IsType(OT_GOTO_STATION)) {
+		const Station *station = Station::GetIfValid(new_order.GetDestination().ToStationID());
+		if (station != nullptr && station->external_city != UINT16_MAX) {
+			new_order.MakeExternalFlight(station->index);
+			MemberPtrsTie(new_order, Order::GetCmdRefFields()) = data.new_order;
+		}
+	}
 
 	if (data.is_list) {
 		OrderList *ol = GetStandaloneOrderList(data.list.base());
@@ -1994,9 +2006,13 @@ static CommandCost PreInsertOrderCheck(Vehicle *v, const Order &new_order, CmdIn
 				if (ret.Failed()) return ret;
 			}
 
-			if (!CanVehicleUseStation(v, st)) return CommandCost::DualErrorMessage(STR_ERROR_CAN_T_ADD_ORDER, GetVehicleCannotUseStationReason(v, st));
+			const bool flight = new_order.IsExternalFlightOrder();
+			if (flight && (!_settings_game.vehicle.external_connections || v->type != VehicleType::Aircraft ||
+					!ExternalCity::IsValidID(GetExternalOrderCity(new_order)) || GetExternalFlightBoundary(GetExternalOrderCity(new_order), v->tile) == INVALID_TILE)) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
+			if (st->external_city != UINT16_MAX && !flight) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
+			if (!flight && !CanVehicleUseStation(v, st)) return CommandCost::DualErrorMessage(STR_ERROR_CAN_T_ADD_ORDER, GetVehicleCannotUseStationReason(v, st));
 			for (Vehicle *u = v->FirstShared(); u != nullptr; u = u->NextShared()) {
-				if (!CanVehicleUseStation(u, st)) return CommandCost::DualErrorMessage(STR_ERROR_CAN_T_ADD_ORDER_SHARED, GetVehicleCannotUseStationReason(u, st));
+				if (!flight && !CanVehicleUseStation(u, st)) return CommandCost::DualErrorMessage(STR_ERROR_CAN_T_ADD_ORDER_SHARED, GetVehicleCannotUseStationReason(u, st));
 			}
 
 			/* Non stop only allowed for ground vehicles. */
@@ -2101,6 +2117,12 @@ static CommandCost PreInsertOrderCheck(Vehicle *v, const Order &new_order, CmdIn
 			if (depot_order_type.Any()) return CMD_ERROR;
 
 			if (new_order.GetDepotActionType() & ~(ODATFB_HALT | ODATFB_SELL | ODATFB_NEAREST_DEPOT | ODATFB_UNBUNCH)) return CMD_ERROR;
+			if (new_order.IsExternalTripOrder()) {
+				const Depot *portal = Depot::GetIfValid(new_order.GetDestination().ToDepotID());
+				if (!_settings_game.vehicle.external_connections || (v->type != VehicleType::Train && v->type != VehicleType::Road && v->type != VehicleType::Ship) || portal == nullptr ||
+						!Vehicle::IsExternalPortal(portal->xy) || new_order.GetDepotActionType() != ODATF_SERVICE_ONLY ||
+						new_order.GetDepotOrderType().Test(OrderDepotTypeFlag::Service)) return CommandCost(STR_EXTERNAL_TRIP_INVALID_PORTAL);
+			}
 
 			/* Vehicles cannot have a "service if needed" order that also has a depot action. */
 			if (new_order.GetDepotOrderType().Test(OrderDepotTypeFlag::Service) && (new_order.GetDepotActionType() & (ODATFB_HALT | ODATFB_UNBUNCH))) return CMD_ERROR;
@@ -2705,6 +2727,7 @@ void DeleteOrder(Vehicle *v, VehicleOrderID sel_ord)
 CommandCost CmdSkipToOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderID sel_ord)
 {
 	Vehicle *v = Vehicle::GetIfValid(veh_id);
+	if (v != nullptr && v->IsInExternalTrip()) return CommandCost(STR_EXTERNAL_TRIP_LOCKED);
 
 	if (v != nullptr) {
 		/* Skip decouple orders when skipping to an order. */
@@ -3197,12 +3220,14 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 	} else {
 		switch (order->GetType()) {
 			case OT_GOTO_STATION:
+				if (order->IsExternalFlightOrder() && (mof == MOF_EXTERNAL_RETURN_DEPOT || mof == MOF_EXTERNAL_FLIGHT_CITY)) break;
 				if (mof != MOF_NON_STOP && mof != MOF_STOP_LOCATION && mof != MOF_UNLOAD && mof != MOF_LOAD && mof != MOF_CARGO_TYPE_UNLOAD && mof != MOF_CARGO_TYPE_LOAD && mof != MOF_RV_TRAVEL_DIR && mof != MOF_DECOUPLE
 						&& mof != MOF_RV_TRANSPORT && mof != MOF_RV_LOAD_STATE && mof != MOF_RV_CARGO_MODE && mof != MOF_RV_MIN_WAIT && mof != MOF_RV_SLOT && mof != MOF_RV_SLOT_GROUP && mof != MOF_RV_GROUP && mof != MOF_RV_MAX) return CMD_ERROR;
 				break;
 
 			case OT_GOTO_DEPOT:
-				if (mof != MOF_NON_STOP && mof != MOF_DEPOT_ACTION) return CMD_ERROR;
+				if (mof != MOF_NON_STOP && mof != MOF_DEPOT_ACTION && mof != MOF_EXTERNAL_RETURN_DEPOT &&
+						!(order->IsExternalTripOrder() && (mof == MOF_LOAD || mof == MOF_UNLOAD || mof == MOF_CARGO_TYPE_LOAD || mof == MOF_CARGO_TYPE_UNLOAD))) return CMD_ERROR;
 				break;
 
 			case OT_GOTO_WAYPOINT:
@@ -3285,6 +3310,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			if (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) return CMD_ERROR;
 
 			OrderUnloadType unload_type = static_cast<OrderUnloadType>(data);
+			if (order->IsExternalTripOrder() && (unload_type == OrderUnloadType::Transfer || unload_type == OrderUnloadType::Unload)) return CommandCost(STR_EXTERNAL_NO_TRANSFER);
 			if (unload_type == order->GetUnloadType()) return CMD_ERROR;
 
 			/* Test for invalid types. */
@@ -3378,6 +3404,11 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 		case MOF_DEPOT_ACTION:
 			if (data >= DA_END) return CMD_ERROR;
+			if (data == DA_EXTERNAL) {
+				const Depot *portal = Depot::GetIfValid(order->GetDestination().ToDepotID());
+				if (!_settings_game.vehicle.external_connections || (!is_list && v->type != VehicleType::Train && v->type != VehicleType::Road && v->type != VehicleType::Ship) ||
+						(order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) || portal == nullptr || !Vehicle::IsExternalPortal(portal->xy)) return CommandCost(STR_EXTERNAL_TRIP_INVALID_PORTAL);
+			}
 
 			/* Check if we are allowed to add unbunching. We are always allowed to remove it. */
 			if (data == DA_UNBUNCH) {
@@ -3692,6 +3723,38 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			}
 			break;
 
+		case MOF_EXTERNAL_FLIGHT_CITY: {
+			const auto *city = ExternalCity::GetIfValid(ExternalCityID{data});
+			if (!order->IsExternalFlightOrder() || !_settings_game.vehicle.external_connections || city == nullptr ||
+					!Station::IsValidID(city->market_station) || GetExternalFlightBoundary(city->index, is_list ? TileIndex{} : v->tile) == INVALID_TILE) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
+			for (const Vehicle *u = ol->GetFirstSharedVehicle(); u != nullptr; u = u->NextShared()) {
+				if (u->type != VehicleType::Aircraft) return CMD_ERROR;
+			}
+			break;
+		}
+
+		case MOF_EXTERNAL_RETURN_DEPOT: {
+			if (order->IsExternalFlightOrder()) {
+				if (!is_list && v->type != VehicleType::Aircraft) return CMD_ERROR;
+				if (data != UINT16_MAX) {
+					const Station *airport = Station::GetIfValid(StationID{data});
+					if (airport == nullptr || !airport->facilities.Test(StationFacility::Airport) || airport->owner != target_owner ||
+							(!is_list && !CanVehicleUseStation(v, airport))) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID_AIRPORT);
+				}
+				break;
+			}
+			if (!order->IsExternalTripOrder() || (!is_list && v->type != VehicleType::Train && v->type != VehicleType::Road && v->type != VehicleType::Ship)) return CMD_ERROR;
+			if (data != UINT16_MAX) {
+				const Depot *exit = Depot::GetIfValid(DepotID{data});
+				if (exit == nullptr || !Depot::IsExternalConnection(exit->xy) || GetTileOwner(exit->xy) != target_owner) return CommandCost(STR_EXTERNAL_RETURN_INVALID);
+				const Depot *entry = Depot::GetIfValid(order->GetDestination().ToDepotID());
+                if (entry == nullptr || !entry->IsOfType(exit)) return CommandCost(STR_EXTERNAL_RETURN_INCOMPATIBLE);
+                if (!is_list && v->type == VehicleType::Train && (!IsRailDepotTile(exit->xy) || !Train::From(v)->compatible_railtypes.Test(GetRailType(exit->xy)))) return CommandCost(STR_EXTERNAL_RETURN_INCOMPATIBLE);
+                if (!is_list && v->type == VehicleType::Road && (!IsRoadDepotTile(exit->xy) || (RoadVehicle::From(v)->compatible_roadtypes & GetPresentRoadTypes(exit->xy)).None())) return CommandCost(STR_EXTERNAL_RETURN_INCOMPATIBLE);
+			}
+			break;
+		}
+
 		case MOF_WAIT_COUPLE_SLOT: {
 			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
 			if (data != UINT16_MAX) {
@@ -3921,7 +3984,17 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 			case MOF_DEPOT_ACTION: {
 				OrderDepotActionFlags base_order_action_type = order->GetDepotActionType() & ~(ODATFB_HALT | ODATFB_SELL | ODATFB_UNBUNCH);
+				order->SetDepotExtraFlags(OrderDepotExtraFlags{order->GetDepotExtraFlags()}.Set(OrderDepotExtraFlag::ExternalTrip, data == DA_EXTERNAL));
 				switch (data) {
+					case DA_EXTERNAL:
+						order->SetDepotOrderType(OrderDepotTypeFlags{OrderDepotTypeFlag::PartOfOrders});
+						order->SetDepotActionType(ODATF_SERVICE_ONLY);
+						order->SetRefit(CARGO_NO_REFIT);
+						if (Depot *portal = Depot::GetIfValid(order->GetDestination().ToDepotID()); portal != nullptr && GetTileOwner(portal->xy) == _current_company) {
+							portal->is_external_connection = true;
+							MarkTileDirtyByTile(portal->xy);
+						}
+						break;
 					case DA_ALWAYS_GO:
 						order->SetDepotOrderType(OrderDepotTypeFlags{order->GetDepotOrderType()}.Reset(OrderDepotTypeFlag::Service));
 						order->SetDepotActionType((OrderDepotActionFlags)(base_order_action_type));
@@ -4224,6 +4297,15 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				order->SetCoupleStation(data == 0 ? StationID::Invalid() : StationID{(uint16_t)(data - 1)});
 				break;
 
+			case MOF_EXTERNAL_FLIGHT_CITY:
+				order->SetDestination(ExternalCity::Get(ExternalCityID{data})->market_station);
+				ClearOrderDestinationRefcountMap();
+				break;
+
+			case MOF_EXTERNAL_RETURN_DEPOT:
+				order->SetExternalReturnDepot(DepotID{data});
+				break;
+
 			case MOF_WAIT_COUPLE_SLOT:
 				order->SetWaitCoupleSlot(TraceRestrictSlotID{uint16_t(data)});
 				break;
@@ -4356,6 +4438,28 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			default: NOT_REACHED();
 		}
 
+		for (Vehicle *u = ol->GetFirstSharedVehicle(); u != nullptr; u = u->NextShared()) {
+			if (mof == MOF_EXTERNAL_FLIGHT_CITY && sel_ord == u->cur_real_order_index && u->current_order.IsExternalFlightOrder()) {
+				auto *aircraft = Aircraft::From(u);
+				/* A journey already outside keeps its city, inventory and timing.
+				 * The edited order is used on its next execution. */
+				if (!aircraft->IsInExternalTrip() && !aircraft->external_landing) {
+					aircraft->current_order.SetDestination(order->GetDestination());
+					UpdateOrderDest(aircraft, &aircraft->current_order);
+					if (aircraft->IsAircraftFreelyFlying()) AircraftUpdateNextPos(aircraft);
+				}
+				InvalidateVehicleOrder(u, VIWD_MODIFY_ORDERS);
+			}
+			if (sel_ord == u->cur_real_order_index && order->IsExternalTripOrder() && u->current_order.HasExternalCargoPolicy() &&
+					(mof == MOF_LOAD || mof == MOF_UNLOAD || mof == MOF_CARGO_TYPE_LOAD || mof == MOF_CARGO_TYPE_UNLOAD)) {
+				u->current_order.SetLoadType(order->GetLoadType());
+				u->current_order.SetUnloadType(order->GetUnloadType());
+				for (CargoType cargo : EnumRange(NUM_CARGO)) {
+					u->current_order.SetLoadType(order->GetCargoLoadTypeRaw(cargo), cargo);
+					u->current_order.SetUnloadType(order->GetCargoUnloadTypeRaw(cargo), cargo);
+				}
+			}
+		}
 		if (is_list) {
 			if (mof == MOF_DECOUPLE) {
 				for (Vehicle *u = ol->GetFirstSharedVehicle(); u != nullptr; u = u->NextShared()) {
@@ -4470,6 +4574,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				u->current_order.SetCoupleCheckPoint(order->GetCoupleCheckPoint());
 				u->current_order.SetCoupleServiceNumber(order->GetCoupleServiceNumber());
 			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsExternalTripOrder() && mof == MOF_EXTERNAL_RETURN_DEPOT) u->current_order.SetExternalReturnDepot(order->GetExternalReturnDepot());
 			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_STATION) {
 				u->current_order.SetWaitCoupleStation(order->GetWaitCoupleStation());
 				u->SetDestTile(order->HasWaitCoupleStation() ? u->GetOrderStationLocation(order->GetWaitCoupleStation()) : INVALID_TILE);
@@ -5053,7 +5158,7 @@ CommandCost CmdOrderRefit(DoCommandFlags flags, VehicleID veh, VehicleOrderID or
 	if (!order->IsType(OT_GOTO_DEPOT) && !order->IsType(OT_GOTO_STATION)) return CMD_ERROR;
 
 	/* Automatic refit cargo is only supported for goto station orders. */
-	if (cargo == CARGO_AUTO_REFIT && !order->IsType(OT_GOTO_STATION)) return CMD_ERROR;
+	if (cargo == CARGO_AUTO_REFIT && !order->IsType(OT_GOTO_STATION) && !order->IsExternalTripOrder()) return CMD_ERROR;
 
 	if (order->GetLoadType() == OrderLoadType::NoLoad) return CMD_ERROR;
 
@@ -5061,7 +5166,7 @@ CommandCost CmdOrderRefit(DoCommandFlags flags, VehicleID veh, VehicleOrderID or
 		order->SetRefit(cargo);
 
 		/* Make the depot order an 'always go' order. */
-		if (cargo != CARGO_NO_REFIT && order->IsType(OT_GOTO_DEPOT)) {
+		if (cargo != CARGO_NO_REFIT && order->IsType(OT_GOTO_DEPOT) && !order->IsExternalTripOrder()) {
 			order->SetDepotOrderType(OrderDepotTypeFlags{order->GetDepotOrderType()}.Reset(OrderDepotTypeFlag::Service));
 			order->SetDepotActionType((OrderDepotActionFlags)(order->GetDepotActionType() & ~(ODATFB_HALT | ODATFB_SELL)));
 		}

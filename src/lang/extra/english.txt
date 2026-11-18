@@ -2786,3 +2786,207 @@ STR_WAIT_COUPLE_SLOT_NONE :Automatic slot: off
 STR_WAIT_COUPLE_SLOT_BUTTON :Automatic slot: {TRSLOT}
 STR_WAIT_COUPLE_SLOT_TOOLTIP :{BLACK}Acquire this slot before accepting a coupling train, then return it after coupling. If full, keep waiting. An independently held slot is preserved.
 STR_WAIT_COUPLE_SLOT_SUFFIX : (acquire then return {TRSLOT})
+
+STR_CONFIG_EXTERNAL_CONNECTIONS :External connections (prototype): {STRING}
+STR_CONFIG_EXTERNAL_CONNECTIONS_HELP :Allow vehicles to travel outside the map, with loading, stopping, automatic refitting and return settings. Turning this off does not cancel active journeys. Refitting follows the vehicle's station-refit rules. Decoupling outside the map is not supported. New games generate one city on each map edge using the selected town-name generator. Existing saves are not changed.
+STR_CONFIG_EXTERNAL_TRIP_MINUTES :Default external round trip: {NUM} minutes
+STR_CONFIG_EXTERNAL_TRIP_MINUTES_HELP :Total external journey in timetable minutes. An explicitly timetabled wait on the portal order overrides this duration. Changing this setting does not retime journeys already in progress.
+STR_EXTERNAL_TRIP_ACTION :External round trip
+STR_EXTERNAL_TRIP_ORDER_SUFFIX : (external round trip)
+STR_EXTERNAL_TRIP_STATUS :Outside the map; return in {NUM} minutes
+STR_EXTERNAL_TRIP_LOCKED :Vehicle is outside the map. Wait for its return before changing or splitting the consist.
+STR_EXTERNAL_TRIP_INVALID_PORTAL :Enable map connections and select a valid boundary entrance suitable for this vehicle.
+STR_EXTERNAL_TRIP_NO_REFIT :This vehicle cannot perform the requested automatic refit at the external city.
+STR_EXTERNAL_RAIL_QUERY_TITLE :Open an intercity rail connection
+STR_EXTERNAL_RAIL_QUERY_TEXT :{YELLOW}This line has reached the regional boundary.{}Destination: {RAW_STRING}{}Open a railway connection here?{}{}Once open, arrange intercity journeys in the orders and select an entrance for returning trains.{}Choose No to keep the existing track.
+STR_EXTERNAL_RAIL_EDGE_REQUIRED :An external connection needs an outward-facing straight rail endpoint at the actual map edge.
+STR_EXTERNAL_RAIL_EDGE_BUSY :This endpoint has a reserved train path. Wait until it is clear.
+STR_EXTERNAL_RAIL_BUILD_FAILED :Cannot build external connection here
+STR_EXTERNAL_CITY_TITLE :External cities and boundaries
+STR_EXTERNAL_CITY_UNASSIGNED :Destination: not selected
+STR_EXTERNAL_CITY_LINK :Destination: {RAW_STRING}
+STR_EXTERNAL_CITY_LINK_HELP :{BLACK}Select a city to edit. Entrances use the city assigned to their boundary segment; existing journeys keep their destination and return time.
+STR_EXTERNAL_CITY_TIME :One-way distance: {NUM} tiles
+STR_EXTERNAL_CITY_TIME_HELP :{BLACK}Distance from an entrance to this city (1–65535 tiles). Outbound and return travel use consist speed; stopping time is separate. Active journeys retain their plan.
+STR_EXTERNAL_CITY_NEW :New city
+STR_EXTERNAL_CITY_RENAME :Rename city
+STR_EXTERNAL_CITY_NEW_TITLE :Name the new external city
+STR_EXTERNAL_CITY_TIME_TITLE :One-way distance (tiles)
+STR_EXTERNAL_CITY_ERROR :Cannot change external city
+STR_EXTERNAL_CITY_LIMIT :The external city limit has been reached (64)
+STR_EXTERNAL_CITY_ORDER_SUFFIX : (external destination: {RAW_STRING})
+STR_EXTERNAL_CITY_TRIP_STATUS :Visiting {RAW_STRING}, returning in {NUM} minutes
+STR_EXTERNAL_CITY_TRIP_COUNTDOWN :Visiting {RAW_STRING}, remaining {NUM}m {NUM}s
+STR_EXTERNAL_TRIP_COUNTDOWN :Outside the map, remaining {NUM}m {NUM}s
+
+STR_EXTERNAL_EDGE_NE :Northeast boundary
+STR_EXTERNAL_EDGE_SE :Southeast boundary
+STR_EXTERNAL_EDGE_SW :Southwest boundary
+STR_EXTERNAL_EDGE_NW :Northwest boundary
+STR_EXTERNAL_BOUNDARY_NEW :New boundary segment
+STR_EXTERNAL_BOUNDARY_LABEL :{NUM}–{NUM}: {RAW_STRING}
+STR_EXTERNAL_BOUNDARY_DRAW :Select segment endpoints
+STR_EXTERNAL_BOUNDARY_REMOVE :Remove segment
+STR_EXTERNAL_BOUNDARY_HELP :Select a city, then click both endpoints on the same map edge. The side is detected automatically.
+STR_EXTERNAL_BOUNDARY_FIRST :Click the first tile on any map edge. No direction selection is needed.
+STR_EXTERNAL_BOUNDARY_SECOND :Click the last tile on the same edge. Right-click cancels.
+STR_EXTERNAL_BOUNDARY_OVERLAP :This boundary segment overlaps another segment.
+
+STR_EXTERNAL_BOUNDARY_OVERVIEW :Boundary overview (click a coloured segment)
+STR_EXTERNAL_BOUNDARY_OVERVIEW_HELP :{BLACK}Colours match the map edges. Click a segment to select and locate it. Grey areas have no city assigned.
+STR_EXTERNAL_BOUNDARY_SHOW :Show city names and boundaries
+STR_EXTERNAL_BOUNDARY_LOCATE :Locate selected segment
+STR_EXTERNAL_GO_TO_CITY :Go to external city: {RAW_STRING}
+STR_EXTERNAL_GO_TO_UNASSIGNED :Go outside the map (no city assigned)
+STR_EXTERNAL_CANNOT_REACH_CITY :Cannot reach external city: {RAW_STRING}
+
+STR_EXTERNAL_TRIP_SETTINGS :External journey settings
+STR_EXTERNAL_RETURN_SAME :Return through the original entrance
+STR_EXTERNAL_RETURN_ITEM :Return: {RAW_STRING} entrance ({NUM}, {NUM})
+STR_EXTERNAL_RETURN_SUFFIX : (return via {RAW_STRING} entrance {NUM}, {NUM})
+STR_EXTERNAL_RETURN_INVALID :The selected return entrance is unavailable or belongs to another company.
+STR_EXTERNAL_ENTRANCE :External connection entrance
+STR_EXTERNAL_ENTRANCE_NAME :{RAW_STRING} entrance ({NUM}, {NUM})
+STR_EXTERNAL_ENTRANCE_TOOLTIP :{BLACK}{DEPOT}{}Click to view external vehicles, journey status and time remaining.
+STR_VIEWPORT_SHOW_VEHICLE_ROUTE_STEP_EXTERNAL :{GREEN}Gate
+STR_EXTERNAL_ENTRANCE_CAPTION :External entrance: {RAW_STRING}
+STR_EXTERNAL_ENTRANCE_POSITION :Entrance position: {STRING} ({NUM}, {NUM})
+STR_EXTERNAL_ENTRANCE_COUNT :External vehicles using this entrance: {NUM}
+STR_EXTERNAL_ENTRANCE_LOCATE :Locate entrance
+STR_EXTERNAL_ENTRANCE_HELP :Choose the return entrance in the order's external journey settings.
+STR_EXTERNAL_TRIP_SETTINGS_HELP :{BLACK}Return through the original entrance, or choose a highlighted exit in the same city on the map. The current trip retains its return entrance. Assign a city boundary through the map menu first if needed.
+STR_EXTERNAL_RETURN_INCOMPATIBLE :The return entrance has an incompatible railway type.
+STR_EXTERNAL_UNASSIGNED_CITY :Unassigned city
+STR_EXTERNAL_RETURN_PICK :Choose exit on map...
+STR_EXTERNAL_RETURN_PICK_INVALID :Choose a highlighted exit in the same city, owned by this company, with compatible track.
+STR_EXTERNAL_ENTRANCE_LIST_HELP :{BLACK}Trains leaving or returning through this entrance, sorted by expected return. Click to open a vehicle; service numbers can be changed in its external journey order.
+STR_EXTERNAL_ENTRANCE_LIST_EMPTY :No associated off-map vehicles
+STR_EXTERNAL_LIST_IDENTITY :{RAW_STRING} | {RAW_STRING}
+STR_EXTERNAL_LIST_TIME :Remaining: {NUM} min {NUM} sec
+STR_EXTERNAL_LIST_QUEUED :Arrived; waiting to enter map
+STR_EXTERNAL_LIST_ROUTE :Outbound: {RAW_STRING} -> Return: {RAW_STRING}
+STR_EXTERNAL_LIST_PORTAL :{RAW_STRING} ({NUM}, {NUM})
+STR_EXTERNAL_LIST_CHANGED :Return entrance unavailable; returning through original entrance
+STR_EXTERNAL_LIST_ORDER_HELP :Set service numbers on the external journey order. Click a vehicle row for details.
+STR_EXTERNAL_LIST_NEXT :After return: {RAW_STRING}
+STR_EXTERNAL_LIST_NEXT_UNKNOWN :Follow subsequent orders
+STR_EXTERNAL_ECONOMY_OPEN :Cargo and industries
+STR_EXTERNAL_ECONOMY_CAPTION :{RAW_STRING} - Industries and cargo demand
+STR_EXTERNAL_ECONOMY_INDUSTRIES :Industry supply and demand
+STR_EXTERNAL_ECONOMY_CARGOES :City cargo overview
+STR_EXTERNAL_ECONOMY_RESIDENTS :Residents and local commerce
+STR_EXTERNAL_ECONOMY_OUTPUT :Produces: {RAW_STRING}
+STR_EXTERNAL_ECONOMY_INPUT :Accepts: {RAW_STRING}
+STR_EXTERNAL_ECONOMY_SOURCE :Sources: {RAW_STRING}
+STR_EXTERNAL_ECONOMY_DESTINATION :Destinations: {RAW_STRING}
+STR_EXTERNAL_ECONOMY_NOTE :All entrances to this city share these stocks.{}Loading reduces stocks; deliveries meet demand.
+STR_EXTERNAL_BOUNDARY_EDIT :Edit city boundaries...
+STR_EXTERNAL_BOUNDARY_COLLAPSE :Hide boundary tools
+STR_EXTERNAL_ENTRANCE_JOURNEY :One way: {NUM} tiles  |  City stop: {NUM} min
+STR_EXTERNAL_LIST_SAME_PORT :Return through the same entrance ({NUM}, {NUM})
+STR_EXTERNAL_LIST_PORT_PAIR :Leave via ({NUM}, {NUM}) -> Return via ({NUM}, {NUM})
+STR_EXTERNAL_ECONOMY_DETAILS :Details
+STR_EXTERNAL_ECONOMY_SELECT :Industry: {RAW_STRING}
+STR_EXTERNAL_ECONOMY_REQUIRES :Requires:
+STR_EXTERNAL_ECONOMY_PRODUCTS :Produces:
+STR_CONFIG_EXTERNAL_DISTANCE :Default one-way external distance: {NUM} tiles
+STR_CONFIG_EXTERNAL_DISTANCE_HELP :Travel time uses native rail distance divided by consist speed. Both legs are counted; stop time is separate.
+STR_CONFIG_EXTERNAL_STOP :Default external stop: {NUM} minutes
+STR_CONFIG_EXTERNAL_STOP_HELP :Default city stop in timetable minutes. An explicitly timetabled wait, including zero, overrides it.
+STR_EXTERNAL_CITY_STOP :Stop at city: {NUM} minutes
+STR_EXTERNAL_CITY_STOP_TITLE :City stop (0–1440 minutes)
+STR_EXTERNAL_PHASE_OUTBOUND :Heading off-map to {RAW_STRING}
+STR_EXTERNAL_PHASE_STOP :Stopped at {RAW_STRING}
+STR_EXTERNAL_PHASE_RETURN :Returning from {RAW_STRING}
+STR_EXTERNAL_PHASE_QUEUED :Returning; waiting to enter map
+STR_EXTERNAL_PHASE_LEGACY :External journey
+STR_EXTERNAL_STATUS_SPEED :{RAW_STRING} | {VELOCITY}
+STR_EXTERNAL_STATUS_TIME :{RAW_STRING} | Remaining: {NUM} min {NUM} sec
+STR_EXTERNAL_MARKET_STOCK :Stock: {CARGO_LONG}
+STR_EXTERNAL_MARKET_DEMAND :No reception limit; automatic distribution determines destinations when enabled
+
+STR_EXTERNAL_NO_TRANSFER :External cities accept deliveries, but do not yet support cargo transfer storage.
+
+STR_EXTERNAL_RATING_UNKNOWN :Transport evaluation: no records yet
+
+STR_EXTERNAL_RATING_SUPPLY :Transport evaluation: {NUM}% collected
+STR_EXTERNAL_TRANSPORTED_SUPPLY :Collected this month: {CARGO_LONG}
+
+STR_EXTERNAL_RATING_DEMAND :City service this month: {NUM} units delivered
+
+STR_EXTERNAL_CARGO_LOAD_CAPTION :{WHITE}External city: per-cargo loading
+STR_EXTERNAL_CARGO_UNLOAD_CAPTION :{WHITE}External city: per-cargo unloading
+
+STR_EXTERNAL_PRODUCTION_ABSTRACT :Abstract NewGRF market: fixed monthly supply; special production callbacks are not simulated
+STR_EXTERNAL_PRODUCTION_RECIPE :Fixed industry recipe from active definitions; monthly processing; finished stock is shared across the city
+STR_EXTERNAL_PRODUCTION_AXIS_COKE :AXIS coke oven: 8 coal -> 6 coke + 1 coal tar + 1 sulphur; monthly processing (up to 256 coal); other GRF callbacks are not simulated
+STR_EXTERNAL_PRODUCTION_FULL :Finished-goods store full; production paused, inputs retained
+STR_EXTERNAL_PRODUCTION_READY :Inputs in storage; processing at the next economic month
+STR_EXTERNAL_PRODUCTION_RAW :Raw-material industry: monthly production
+STR_EXTERNAL_PRODUCTION_MISSING :Waiting for raw-material deliveries
+STR_EXTERNAL_PRODUCTION_MONTH :This industry produced this month: {CARGO_LONG}
+STR_EXTERNAL_PRODUCTION_INPUT :Raw materials awaiting processing: {CARGO_LONG}
+STR_EXTERNAL_PRODUCTION_CONSUMED :This industry consumed this month: {CARGO_LONG}
+
+
+STR_EXTERNAL_ROAD_QUERY_TITLE :Connect to a neighbouring city?
+STR_EXTERNAL_ROAD_QUERY_TEXT :{YELLOW}This road has reached the regional boundary.{}Destination: {RAW_STRING}{}Open a road connection here?{}Buses and trucks can return through a compatible road entrance.{}Cancel to keep an ordinary road endpoint.
+STR_EXTERNAL_ROAD_BUILD_FAILED :Cannot establish this road entrance
+STR_EXTERNAL_ROAD_EDGE_REQUIRED :An owned straight two-way road ending at the map boundary is required.
+
+STR_EXTERNAL_SHIP_TOOL :Sea route
+STR_EXTERNAL_SHIP_TOOL_HELP :Connect water at the map edge to an external city. Click a water tile on the boundary; the inward approach is selected automatically.
+STR_EXTERNAL_SHIP_EDGE_REQUIRED :Choose flat water on the map boundary with two clear water tiles leading inward.
+STR_EXTERNAL_SHIP_BUILD_FAILED :Can't establish external sea route
+STR_EXTERNAL_SHIP_QUERY_TITLE :Open a sea route to the neighbouring city?
+STR_EXTERNAL_SHIP_QUERY_TEXT :{YELLOW}This waterway reaches the regional boundary.{}Destination: {RAW_STRING}{}Open a shipping connection here?{}Ships can return through a compatible water entrance.
+
+STR_CONFIG_EXTERNAL_BOUNDARY_EDITING :Allow players to edit external city boundaries: {STRING}
+STR_CONFIG_EXTERNAL_BOUNDARY_EDITING_HELP :Disabled by default. Players cannot create external cities or add, redraw or remove their boundaries. Existing cities and routes keep working. Scenario editors may still create cities and edit boundaries.
+STR_EXTERNAL_BOUNDARY_LOCKED :Creating external cities and editing their boundaries is disabled in game settings
+STR_EXTERNAL_FLIGHT_MENU :Fly to an external city...
+STR_EXTERNAL_FLIGHT_INVALID :Select an external city with a boundary for this flight
+STR_EXTERNAL_FLIGHT_INVALID_AIRPORT :The return airport cannot accommodate this aircraft
+STR_EXTERNAL_FLIGHT_RETURN_HOME :Return to departure airport (default)
+STR_EXTERNAL_FLIGHT_DESTINATION :Destination city
+STR_EXTERNAL_FLIGHT_DESTINATION_HELP :Click to change the destination of the selected external flight. Loading, timetable and return airport settings are preserved. A journey already outside finishes at its original city; the new city applies next time.
+STR_EXTERNAL_FLIGHT_RETURN_PICK :Choose airport on map...
+STR_EXTERNAL_FLIGHT_RETURN_PICK_INVALID :Click an airport belonging to your company that can handle this aircraft.
+STR_EXTERNAL_FLIGHT_RETURN_SUFFIX : [Return: {STATION}]
+
+STR_EXTERNAL_CITY_VEHICLES :Vehicles outside the map
+STR_EXTERNAL_CITY_VEHICLES_CAPTION :{WHITE}{RAW_STRING} · vehicles outside the map
+STR_EXTERNAL_FLIGHT_BEACON :{RAW_STRING} aviation gateway — click to view off-map vehicles
+
+STR_EXTERNAL_REFIT_AVAILABLE :{BLACK}Refit to available cargo at city
+
+STR_EXTERNAL_REFIT_CARGO :{BLACK}Choose city refit cargo...
+
+STR_EXTERNAL_REFIT_NONE :{BLACK}Do not refit at city
+
+STR_ORDER_STOP_REFIT_UNAVAILABLE :{BLACK}Auto-refit: not applicable to this order
+STR_ORDER_STOP_REFIT_NONE :{BLACK}Auto-refit: off
+STR_ORDER_STOP_REFIT_AVAILABLE :{BLACK}Auto-refit: {STRING}
+STR_ORDER_STOP_REFIT_FIXED :{BLACK}Auto-refit: {STRING}
+STR_ORDER_STOP_REFIT_OFF_OPTION :{BLACK}Do not refit
+STR_ORDER_STOP_REFIT_HELP :{BLACK}Choose automatic refitting at this stop: off, available cargo, or a specific cargo. Only cargo types permitted by the vehicle NewGRF and the order's loading rules are used.
+
+STR_EXTERNAL_PRODUCTION_AXIS_COKE_TWO :AXIS coke oven: 8 coal -> 6 coke + 2 sulphur; monthly processing (up to 256 coal); other GRF callbacks are not simulated
+STR_EXTERNAL_PRODUCTION_AXIS_BLAST :AXIS blast furnace: produces on delivery; recent ore, coke and limestone supplies raise the yield; other GRF callbacks are not simulated
+STR_EXTERNAL_PRODUCTION_RECENT :Recent supply: {NUM} industry cycles remaining
+STR_EXTERNAL_PRODUCTION_PENDING :Finished goods awaiting market space: {CARGO_LONG}
+STR_EXTERNAL_CITY_BOUNDARY_UNASSIGNED :No city assigned to this boundary yet
+STR_EXTERNAL_ECONOMY_INBOUND :Deliver here
+STR_EXTERNAL_ECONOMY_OUTBOUND :Collect here
+STR_EXTERNAL_ECONOMY_ALL_INDUSTRIES :All industries (click an industry for details)
+STR_EXTERNAL_ECONOMY_NEEDS_LIST :Deliver here: {RAW_STRING}
+STR_EXTERNAL_ECONOMY_OUTPUT_LIST :Collect here: {RAW_STRING}
+STR_EXTERNAL_TRADE_NAME :Reciprocal trade
+STR_EXTERNAL_TRADE_CREDIT :Shared industrial collection allowance: {NUM} units
+STR_EXTERNAL_TRADE_RULE :Any demanded freight can unlock every supply; passengers/mail are exempt
+STR_EXTERNAL_TRADE_CAP :Stock limit: {NUM} units per supplied cargo; replenished monthly
+STR_CONFIG_EXTERNAL_ECONOMY_MODE :External city economy: {STRING}
+STR_CONFIG_EXTERNAL_ECONOMY_MODE_HELP :Only applies to new external cities. In industry mode, local industries determine imports and exports. In reciprocal trade, each city starts with fixed, randomly chosen imports and exports. Any company can deliver requested freight to earn shared credit or spend it at any entrance on any export in stock. The more requested types supplied last economy month, the more credit each unit earns this month. Even one type earns credit. Supply all types to earn one unit per unit delivered next month. Passengers and mail travel as usual.
+STR_CONFIG_EXTERNAL_ECONOMY_INDUSTRY :Industry supply and demand
+STR_CONFIG_EXTERNAL_ECONOMY_TRADE :Reciprocal trade
+STR_EXTERNAL_TRADE_COVERAGE :Last period: {NUM}/{NUM} types supplied; this period earns {NUM}/{NUM} credit per unit

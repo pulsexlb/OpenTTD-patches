@@ -101,6 +101,7 @@ void ClearOrderDestinationRefcountMap();
  */
 
 struct OrderExtraInfo {
+	uint8_t external_cargo_flags = 0; ///< Independent of depot action bits; retained during external waiting.
 	TinyString station_service_number{};
 	uint8_t station_service_mode = 0; ///< 0: unchanged, 1: manual, 2: dispatch.
 	TinyString couple_service_number{}; ///< Service number the waiting train must have (empty = any).
@@ -173,6 +174,7 @@ private:
 
 public:
 	uint8_t GetServiceNumberMode() const { return this->extra ? this->extra->station_service_mode : 0; }
+	bool IsServiceNumberChangePoint() const { return this->IsExternalTripOrder() || this->IsType(OT_GOTO_WAYPOINT) || (this->IsType(OT_GOTO_STATION) && !(this->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)); }
 	std::string_view GetServiceNumber() const { return this->extra ? std::string_view(this->extra->station_service_number) : std::string_view{}; }
 	void SetServiceNumber(uint8_t mode, std::string_view number)
 	{
@@ -227,6 +229,9 @@ public:
 		this->extra->cargo_type_flags[to] = this->extra->cargo_type_flags[from];
 		this->extra->cargo_type_flags[from] = 0;
 	}
+
+	DepotID GetExternalReturnDepot() const { const uint16_t value = this->GetXData() & 0xFFFF; return value == 0 ? DepotID::Invalid() : DepotID{uint16_t(value - 1)}; }
+	void SetExternalReturnDepot(DepotID id) { this->SetXDataLow(id == DepotID::Invalid() ? 0 : uint16_t(id.base() + 1)); }
 
 	inline uint32_t GetXData() const
 	{
@@ -687,6 +692,7 @@ public:
 	 */
 	inline OrderLoadType GetLoadType() const
 	{
+		if (this->HasExternalCargoPolicy()) return static_cast<OrderLoadType>(GB(this->extra ? this->extra->external_cargo_flags : 0, 4, 3));
 		return static_cast<OrderLoadType>(GB(this->flags, 4, 3));
 	}
 
@@ -722,6 +728,7 @@ public:
 	 */
 	inline OrderUnloadType GetUnloadType() const
 	{
+		if (this->HasExternalCargoPolicy()) return static_cast<OrderUnloadType>(GB(this->extra ? this->extra->external_cargo_flags : 0, 0, 3));
 		return static_cast<OrderUnloadType>(GB(this->flags, 0, 3));
 	}
 
@@ -786,6 +793,18 @@ public:
 	inline OrderDepotActionFlags GetDepotActionType() const { return (OrderDepotActionFlags)GB(this->flags, 3, 4); }
 	/** Extra depot flags. */
 	inline OrderDepotExtraFlags GetDepotExtraFlags() const { return static_cast<OrderDepotExtraFlags>(GB(this->flags, 8, 8)); }
+	bool HasExternalFlightPolicy() const { return this->extra != nullptr && HasBit(this->extra->external_cargo_flags, 7); }
+	bool IsExternalFlightOrder() const { return this->IsType(OT_GOTO_STATION) && this->HasExternalFlightPolicy(); }
+	void MakeExternalFlight(StationID station) { this->MakeGoToStation(station); this->SetStopLocation(OrderStopLocation::FarEnd); this->SetExternalReturnDepot(DepotID::Invalid()); SetBit(this->extra->external_cargo_flags, 7); }
+	StationID GetExternalReturnAirport() const
+	{
+		const StationID airport{this->GetExternalReturnDepot().base()};
+		/* Older flight orders inherited the couple-slot sentinel (xdata 0xFFFF).
+		 * It is outside the station pool and means the original departure airport. */
+		return airport < StationID::End() ? airport : StationID::Invalid();
+	}
+	bool HasExternalCargoPolicy() const { return this->IsExternalFlightOrder() || (this->IsType(OT_WAITING) && this->HasExternalFlightPolicy()) || ((this->IsType(OT_GOTO_DEPOT) || this->IsType(OT_WAITING)) && this->GetDepotExtraFlags().Test(OrderDepotExtraFlag::ExternalTrip)); }
+	bool IsExternalTripOrder() const { return this->IsExternalFlightOrder() || (this->IsType(OT_GOTO_DEPOT) && this->GetDepotExtraFlags().Test(OrderDepotExtraFlag::ExternalTrip)); }
 	/** What waypoint flags? */
 	inline OrderWaypointFlags GetWaypointFlags() const { return static_cast<OrderWaypointFlags>(GB(this->flags, 0, 3)); }
 
@@ -885,6 +904,7 @@ public:
 	 */
 	inline void SetLoadType(OrderLoadType load_type)
 	{
+		if (this->HasExternalCargoPolicy()) { this->CheckExtraInfoAlloced(); SB(this->extra->external_cargo_flags, 4, 3, to_underlying(load_type)); return; }
 		SB(this->flags, 4, 3, to_underlying(load_type));
 	}
 
@@ -907,6 +927,7 @@ public:
 	 */
 	inline void SetUnloadType(OrderUnloadType unload_type)
 	{
+		if (this->HasExternalCargoPolicy()) { this->CheckExtraInfoAlloced(); SB(this->extra->external_cargo_flags, 0, 3, to_underlying(unload_type)); return; }
 		SB(this->flags, 0, 3, to_underlying(unload_type));
 	}
 
@@ -1806,7 +1827,7 @@ public:
 
 	CargoMaskedStationIDVector GetNextStoppingStation(const Vehicle *v, CargoTypes cargo_mask, const Order *first = nullptr, uint hops = 0, bool in_target = false) const;
 	std::vector<const Order *> GetNextStoppingOrder(const Vehicle *v, const Order *first = nullptr, uint hops = 0) const;
-	const Order *GetNextDecisionNode(const Order *next, uint hops, CargoTypes &cargo_mask) const;
+	const Order *GetNextDecisionNode(const Order *next, uint hops, CargoTypes &cargo_mask, bool external_markets = false) const;
 
 	void InsertOrderAt(Order &&new_order, VehicleOrderID index);
 	void DeleteOrderAt(VehicleOrderID index);

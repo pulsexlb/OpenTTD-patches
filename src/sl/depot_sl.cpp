@@ -51,6 +51,8 @@ static void Ptrs_DEPT()
 
 static const ChunkHandler depot_chunk_handlers[] = {
 	MakeSaveUpstreamFeatureConditionalLoadUpstreamChunkHandler<'DEPT', XSLFI_TABLE_MISC_SL, 2>(Load_DEPT, Ptrs_DEPT, nullptr),
+	MakeUpstreamChunkHandler<'EXCT', GeneralUpstreamChunkLoadInfo>(),
+	MakeUpstreamChunkHandler<'EXBR', GeneralUpstreamChunkLoadInfo>(),
 };
 
 extern const ChunkHandlerTable _depot_chunk_handlers(depot_chunk_handlers);

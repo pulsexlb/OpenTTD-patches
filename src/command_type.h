@@ -791,6 +791,9 @@ enum class Commands : uint8_t {
 
 	SetVehicleServiceNumber,                 ///< Select fixed or scheduled-dispatch service numbering.
 	SetOrderServiceNumber,                   ///< Service number on departure from a scheduled stop.
+	BuildExternalRailConnection,             ///< Convert an outward map-edge rail endpoint into an external portal.
+	ManageExternalCity,                      ///< Create, link or edit a shared external destination.
+	BuildExternalRoadConnection,             ///< Confirm a road entrance at the actual map boundary.
 
 	End,                                    ///< Must ALWAYS be on the end of this list!! (period)
 };
@@ -887,6 +890,9 @@ enum class CommandCallback : uint8_t {
 
 	PasteBlueprint, ///< paste a blueprint onto the map
 	UndoBlueprintPaste, ///< remove again what a blueprint paste built
+	ExternalRailSingle,
+	ExternalRailLong,
+	ExternalRoadLong,
 
 	End, ///< Must ALWAYS be on the end of this list
 };

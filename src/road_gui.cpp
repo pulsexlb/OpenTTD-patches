@@ -8,6 +8,7 @@
 /** @file road_gui.cpp GUI for building roads. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "gui.h"
 #include "window_gui.h"
 #include "station_cmd.h"
@@ -45,6 +46,7 @@
 #include "newgrf_station.h"
 #include "core/backup_type.hpp"
 #include "picker_gui.h"
+#include "querystring_gui.h"
 #include "toolbar_gui.h"
 #include "newgrf_extension.h"
 #include "waypoint_cmd.h"
@@ -58,6 +60,37 @@
 
 static void ShowRVStationPicker(Window *parent, RoadStopType rs);
 static void ShowRoadDepotPicker(Window *parent);
+
+struct ExternalRoadConnectionRequest {
+	TileIndex tile;
+	RoadType roadtype;
+	DiagDirection entrance;
+	CompanyID company;
+};
+static std::optional<ExternalRoadConnectionRequest> _external_road_request;
+static void ConfirmExternalRoadConnection(Window *, bool confirmed)
+{
+	const auto request = std::exchange(_external_road_request, std::nullopt);
+	if (!confirmed || !request || request->company != _local_company || !_settings_game.vehicle.external_connections) return;
+	Command<Commands::BuildExternalRoadConnection>::Post(STR_EXTERNAL_ROAD_BUILD_FAILED, CommandCallback::PlaySound_CONSTRUCTION_OTHER,
+		request->tile, request->roadtype, request->entrance);
+}
+static void OfferExternalRoadConnection(TileIndex tile, RoadType roadtype)
+{
+	if (!_settings_game.vehicle.external_connections || _game_mode != GameMode::Normal ||
+		!Company::IsValidID(_local_company) || FindWindowByClass(WindowClass::ConfirmPopupQuery) != nullptr) return;
+	const auto entrance = GetExternalRoadConnectionDirection(tile, roadtype);
+	if (!IsValidDiagDirection(entrance) || GetRoadOwner(tile, RoadTramType::Road) != _local_company) return;
+	ShowQuery(GetEncodedString(STR_EXTERNAL_ROAD_QUERY_TITLE), GetEncodedString(STR_EXTERNAL_ROAD_QUERY_TEXT, GetExternalConnectionCityName(tile, entrance)), nullptr, ConfirmExternalRoadConnection, true);
+	_external_road_request = ExternalRoadConnectionRequest{tile, roadtype, entrance, _local_company};
+}
+void CcExternalRoadLong(const CommandCost &result, TileIndex end, TileIndex start, RoadType roadtype, Axis, DisallowedRoadDirections, bool, bool, bool)
+{
+	if (result.Failed()) return;
+	if (_settings_client.sound.confirm) SndPlayTileFx(SND_1F_CONSTRUCTION_OTHER, end);
+	OfferExternalRoadConnection(end, roadtype);
+	OfferExternalRoadConnection(start, roadtype);
+}
 static void ShowBuildRoadWaypointPicker(Window *parent);
 
 static bool _remove_button_clicked;
@@ -829,7 +862,7 @@ struct BuildRoadToolbarWindow : Window {
 						Command<Commands::RemoveRoadLong>::Post(GetRoadTypeInfo(this->roadtype)->strings.err_remove_road, CommandCallback::PlaySound_CONSTRUCTION_OTHER,
 								end_tile, start_tile, _cur_roadtype, _place_road_dir, start_half, _place_road_end_half);
 					} else {
-						Command<Commands::BuildRoadLong>::Post(GetRoadTypeInfo(this->roadtype)->strings.err_build_road, CommandCallback::PlaySound_CONSTRUCTION_OTHER,
+						Command<Commands::BuildRoadLong>::Post(GetRoadTypeInfo(this->roadtype)->strings.err_build_road, CommandCallback::ExternalRoadLong,
 								end_tile, start_tile, _cur_roadtype, _place_road_dir, _one_way_button_clicked ? DisallowedRoadDirection::Northbound : DisallowedRoadDirections{}, start_half, _place_road_end_half, false);
 					}
 					break;

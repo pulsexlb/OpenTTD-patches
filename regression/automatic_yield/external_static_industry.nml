@@ -1,0 +1,26 @@
+/* SPDX-License-Identifier: GPL-2.0-only
+ * Small generated test resource, not a third-party industry pack.
+ * Static multi-output input conversion, and a raw-material producer.
+ */
+grf {
+ grfid: "PX\E0\01";
+ name: string(STR_GRF_NAME);
+ desc: string(STR_GRF_DESCRIPTION);
+ version: 1;
+ min_compatible_version: 1;
+}
+cargotable { COAL, IORE, STEL, GOOD }
+item(FEAT_INDUSTRIES, processor) {
+ property {
+  substitute: INDUSTRYTYPE_TEMPERATE_FACTORY;
+  override: INDUSTRYTYPE_TEMPERATE_FACTORY;
+  cargo_types: [accept_cargo("COAL", produce_cargo("STEL", 0.5), produce_cargo("GOOD", 0.25)), accept_cargo("IORE", produce_cargo("STEL", 1)), accept_cargo("STEL", produce_cargo("GOOD", 1))];
+ }
+}
+item(FEAT_INDUSTRIES, source) {
+ property {
+  substitute: INDUSTRYTYPE_IRON_ORE_MINE;
+  override: INDUSTRYTYPE_IRON_ORE_MINE;
+  cargo_types: [produce_cargo("IORE", 9)];
+ }
+}

@@ -52,6 +52,8 @@ struct BuildSingleSignalCmdData final : public AutoFmtTupleCmdData<BuildSingleSi
 	static inline constexpr const char fmt_str[] = "t: {}, st: {}, sv: {}, style: {}, sp: {}, bf: {:X}, cycle: ({}, {}), copy: {}";
 };
 
+DiagDirection GetExternalRailConnectionDirection(TileIndex tile);
+
 struct BuildSignalTrackCmdData final : public AutoFmtTupleCmdData<BuildSignalTrackCmdData, TCDF_NONE,
 		TileIndex, Track, SignalType, SignalVariant, uint8_t, bool, SignalDragFlags, uint8_t> {
 	static inline constexpr const char fmt_str[] = "end: {}, t: {}, st: {}, sv: {}, style: {}, mode: {}, df: {:X}, sp: {}";
@@ -62,6 +64,7 @@ DEF_CMD_TUPLE(Commands::RemoveRailLong,     CmdRemoveRailroadTrack,             
 DEF_CMD_TUPLE(Commands::BuildRail,          CmdBuildSingleRail,          CMD_NO_WATER | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<RailType, Track, BuildRailTrackFlags>)
 DEF_CMD_TUPLE(Commands::RemoveRail,         CmdRemoveSingleRail,                        CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<Track>)
 DEF_CMD_TUPLE(Commands::BuildRailDepot,     CmdBuildTrainDepot,          CMD_NO_WATER | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<RailType, DiagDirection>)
+DEF_CMD_TUPLE(Commands::BuildExternalRailConnection, CmdBuildExternalRailConnection, CMD_NO_WATER | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<RailType, DiagDirection>)
 DEF_CMD_TUPLE(Commands::BuildSignal,        CmdBuildSingleSignal,                       CMD_AUTO, CommandType::LandscapeConstruction, BuildSingleSignalCmdData)
 DEF_CMD_TUPLE(Commands::RemoveSignal,       CmdRemoveSingleSignal,                      CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<Track, RemoveSignalFlags>)
 DEF_CMD_TUPLE(Commands::ConvertRail,        CmdConvertRail,                                   {}, CommandType::LandscapeConstruction, CmdDataT<TileIndex, RailType, bool>)

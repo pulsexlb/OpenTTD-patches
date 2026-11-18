@@ -1523,6 +1523,50 @@ CommandCost CmdBuildTrainDepot(DoCommandFlags flags, TileIndex tile, RailType ra
 	return cost;
 }
 
+/** Return the inward depot entrance for a straight rail ending at the actual map boundary. */
+DiagDirection GetExternalRailConnectionDirection(TileIndex tile)
+{
+	if (!IsValidTile(tile) || !IsPlainRailTile(tile) || GetRailTileType(tile) != RailTileType::Normal) return DiagDirection::Invalid;
+	const TrackBits tracks = GetTrackBits(tile);
+	if (tracks != TRACK_BIT_X && tracks != TRACK_BIT_Y) return DiagDirection::Invalid;
+	for (DiagDirection outward : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
+		if (tracks != DiagDirToDiagTrackBits(outward)) continue;
+		const TileIndexDiffC offset = TileIndexDiffCByDiagDir(outward);
+		const TileIndex outside = TileAddWrap(tile, offset.x, offset.y);
+		if (IsValidTile(outside)) continue;
+		const TileIndex inside = TileAddWrap(tile, -offset.x, -offset.y);
+		if (!IsValidTile(inside) || !IsPlainRailTile(inside) ||
+				!(GetTrackBits(inside) & DiagdirReachesTracks(outward))) continue;
+		return ReverseDiagDir(outward);
+	}
+	return DiagDirection::Invalid;
+}
+
+/** Build the prototype portal atomically, using ordinary depot construction and its safety checks. */
+CommandCost CmdBuildExternalRailConnection(DoCommandFlags flags, TileIndex tile, RailType railtype, DiagDirection entrance)
+{
+	if (!_settings_game.vehicle.external_connections || !IsValidDiagDirection(entrance) ||
+			GetExternalRailConnectionDirection(tile) != entrance || GetRailType(tile) != railtype) return CommandCost(STR_EXTERNAL_RAIL_EDGE_REQUIRED);
+	CommandCost owner = CheckTileOwnership(tile);
+	if (owner.Failed()) return owner;
+	/* Refuse an already committed route rather than clearing or rerouting it. */
+	if (GetRailReservationTrackBits(tile) != TRACK_BIT_NONE) return CommandCost(STR_EXTERNAL_RAIL_EDGE_BUSY);
+	/* Only this explicitly confirmed conversion permits native clearing of the
+	 * verified endpoint. Ordinary build/depot commands retain their Auto rules. */
+	const auto native_flags = DoCommandFlags{flags}.Reset(DoCommandFlag::Auto);
+	CommandCost preview = CmdBuildTrainDepot(DoCommandFlags{native_flags}.Reset(DoCommandFlag::Execute), tile, railtype, entrance);
+	if (preview.Failed() || !flags.Test(DoCommandFlag::Execute)) return preview;
+	CommandCost cleared = Command<Commands::LandscapeClear>::Do(native_flags, tile);
+	if (cleared.Failed()) return cleared;
+	/* Rail removal queued directional signal updates for the old track. Drain
+	 * them while the tile is clear, before its type changes to a one-entry depot. */
+	UpdateSignalsInBuffer();
+	CommandCost built = CmdBuildTrainDepot(native_flags, tile, railtype, entrance);
+	built.AddCost(cleared.GetCost());
+	if (built.Succeeded()) Depot::GetByTile(tile)->is_external_connection = true;
+	return built;
+}
+
 static void ClearBridgeTunnelSignalSimulation(TileIndex entrance, TileIndex exit)
 {
 	if (IsBridge(entrance)) ClearBridgeEntranceSimulatedSignals(entrance);
@@ -4177,10 +4221,12 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 	} else {
 		/* draw depot */
 		const DrawTileSprites *dts;
+		const bool external = Depot::GetByTile(ti->tile)->is_external_connection;
+		const bool invisible = external || IsInvisibilitySet(TransparencyOption::Buildings);
 
 		if (ti->tileh != SLOPE_FLAT) DrawFoundation(ti, Foundation::Leveled);
 
-		if (IsInvisibilitySet(TransparencyOption::Buildings)) {
+		if (invisible) {
 			/* Draw rail instead of depot */
 			dts = &_depot_invisible_gfx_table[GetRailDepotDirection(ti->tile)];
 		} else {
@@ -4211,13 +4257,13 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 
 			switch (GetRailDepotDirection(ti->tile)) {
 				case DiagDirection::NE:
-					if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
+					if (!invisible) break;
 					[[fallthrough]];
 				case DiagDirection::SW:
 					DrawGroundSprite(ground + RTO_X, PAL_NONE);
 					break;
 				case DiagDirection::NW:
-					if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
+					if (!invisible) break;
 					[[fallthrough]];
 				case DiagDirection::SE:
 					DrawGroundSprite(ground + RTO_Y, PAL_NONE);
@@ -4231,13 +4277,13 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 
 				switch (GetRailDepotDirection(ti->tile)) {
 					case DiagDirection::NE:
-						if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
+						if (!invisible) break;
 						[[fallthrough]];
 					case DiagDirection::SW:
 						DrawGroundSprite(overlay + RTO_X, PALETTE_CRASH);
 						break;
 					case DiagDirection::NW:
-						if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
+						if (!invisible) break;
 						[[fallthrough]];
 					case DiagDirection::SE:
 						DrawGroundSprite(overlay + RTO_Y, PALETTE_CRASH);
@@ -4251,13 +4297,13 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 			if (_game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation && HasDepotReservation(ti->tile)) {
 				switch (GetRailDepotDirection(ti->tile)) {
 					case DiagDirection::NE:
-						if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
+						if (!invisible) break;
 						[[fallthrough]];
 					case DiagDirection::SW:
 						DrawGroundSprite(rti->base_sprites.single_x, PALETTE_CRASH);
 						break;
 					case DiagDirection::NW:
-						if (!IsInvisibilitySet(TransparencyOption::Buildings)) break;
+						if (!invisible) break;
 						[[fallthrough]];
 					case DiagDirection::SE:
 						DrawGroundSprite(rti->base_sprites.single_y, PALETTE_CRASH);
@@ -4267,12 +4313,13 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 				}
 			}
 		}
-		int depot_sprite = GetCustomRailSprite(rti, ti->tile, RailSpriteType::Depot);
-		int relocation = depot_sprite != 0 ? depot_sprite - SPR_RAIL_DEPOT_SE_1 : rti->GetRailtypeSpriteOffset();
-
 		if (HasRailCatenaryDrawn(GetRailType(ti->tile))) DrawRailCatenary(ti);
 
-		DrawRailTileSeq(ti, dts, TransparencyOption::Buildings, relocation, 0, pal);
+		if (!external) {
+			int depot_sprite = GetCustomRailSprite(rti, ti->tile, RailSpriteType::Depot);
+			int relocation = depot_sprite != 0 ? depot_sprite - SPR_RAIL_DEPOT_SE_1 : rti->GetRailtypeSpriteOffset();
+			DrawRailTileSeq(ti, dts, TransparencyOption::Buildings, relocation, 0, pal);
+		}
 	}
 	DrawBridgeMiddle(ti);
 }
@@ -4707,8 +4754,8 @@ static void GetTileDesc_Rail(TileIndex tile, TileDesc &td)
 		}
 
 		case RailTileType::Depot:
-			td.str = STR_LAI_RAIL_DESCRIPTION_TRAIN_DEPOT;
-			if (_settings_game.vehicle.train_acceleration_model != AccelerationModel::Original) {
+			td.str = Depot::IsExternalConnection(tile) ? STR_EXTERNAL_ENTRANCE : STR_LAI_RAIL_DESCRIPTION_TRAIN_DEPOT;
+			if (!Depot::IsExternalConnection(tile) && _settings_game.vehicle.train_acceleration_model != AccelerationModel::Original) {
 				if (td.rail_speed > 0) {
 					td.rail_speed = std::min<uint16_t>(td.rail_speed, _settings_game.vehicle.rail_depot_speed_limit);
 				} else {

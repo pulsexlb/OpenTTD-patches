@@ -937,6 +937,9 @@ enum class WindowClass : uint16_t {
 	 * Modifier key toggle window.
 	 */
 	ModifierKeyToggle,
+	ExternalEntrance, ///< Map-edge entrance information, with no depot controls.
+	ExternalCity, ///< External destination configuration, keyed by entrance depot ID.
+	ExternalCityEconomy, ///< Read-only industry and cargo planning profile of an external city.
 
 	End,              ///< End sentinel.
 	Invalid = 0xFFFF, ///< Invalid window.

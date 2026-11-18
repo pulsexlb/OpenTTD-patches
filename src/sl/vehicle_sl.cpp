@@ -854,7 +854,14 @@ void AfterLoadVehiclesPhase2(bool part_of_load)
 					t->gcache.last_speed = t->cur_speed; // update displayed train speed
 					Train *head = t->First();
 					const auto saved_acceleration = head->acceleration;
-					head->ConsistChanged(CCF_SAVELOAD);
+					ConsistChangeFlags changes = CCF_SAVELOAD;
+					/* Older PXP saves can retain a stale articulated capacity
+					 * permutation. Never run this migration on a
+					 * live GRF reload, a joining client, or a save written after it. */
+					if (part_of_load && (!_networking || _network_server) && SlXvIsFeaturePresent(XSLFI_TRAIN_UNIT_MAIN, 1, 4)) {
+						changes.Set(ConsistChangeFlag::RecoverLegacyEmptyCapacity);
+					}
+					head->ConsistChanged(changes);
 					/* VENC restores the server's weight and power caches after this
 					 * rebuild. Acceleration is serialized on the vehicle itself;
 					 * keep that value too, rather than mixing the server's caches
@@ -1610,6 +1617,18 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("group_id",                   SLE_CONDVAR(Vehicle, group_id,                  SLE_UINT16,                 SLV_60, SL_MAX_VERSION)),
 
 		NSL("current_order_time",         SLE_CONDVAR(Vehicle, current_order_time,        SLE_UINT32,                 SLV_67, SL_MAX_VERSION)),
+		NSL("external_return_tick", SLE_CONDVAR_X(Vehicle, external_return_tick, SLE_INT64, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS))),
+		NSL("external_arrival_tick", SLE_CONDVAR_X(Vehicle, external_arrival_tick, SLE_INT64, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 8))),
+		NSL("external_departure_tick", SLE_CONDVAR_X(Vehicle, external_departure_tick, SLE_INT64, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 8))),
+		NSL("external_cruise_speed", SLE_CONDVAR_X(Vehicle, external_cruise_speed, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 8))),
+		NSL("external_distance_tiles", SLE_CONDVAR_X(Vehicle, external_distance_tiles, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 8))),
+		NSL("external_arrival_handled", SLE_CONDVAR_X(Vehicle, external_arrival_handled, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 8))),
+		NSL("external_departure_handled", SLE_CONDVAR_X(Vehicle, external_departure_handled, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 8))),
+		NSL("external_exit_depot", SLE_CONDVAR_X(Vehicle, external_exit_depot, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 5))),
+		NSL("external_exit_tile", SLE_CONDVAR_X(Vehicle, external_exit_tile, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 5))),
+		NSL("external_entry_tile", SLE_CONDVAR_X(Vehicle, external_entry_tile, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 6))),
+		NSL("external_return_pending", SLE_CONDVAR_X(Vehicle, external_return_pending, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 6))),
+		NSL("external_trip_city", SLE_CONDVAR_X(Vehicle, external_trip_city, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 3))),
 		NSL("current_loading_time",     SLE_CONDVAR_X(Vehicle, current_loading_time,      SLE_UINT32,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AUTO_TIMETABLE))),
 		NSL("current_loading_time",     SLE_CONDVAR_X(Vehicle, current_loading_time,      SLE_UINT32,                 SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_JOKERPP, SL_JOKER_1_23))),
 		NSL("last_loading_tick",        SLE_CONDVAR_X(Vehicle, last_loading_tick,         SLE_INT64,                  SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_LAST_LOADING_TICK))),
@@ -1725,6 +1744,11 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 
 		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,          SLE_FILE_U8  | SLE_VAR_U16,  SL_MIN_VERSION, SLV_5)),
 		NSL("targetairport",             SLE_CONDVAR(Aircraft, targetairport,          SLE_UINT16,                  SLV_5, SL_MAX_VERSION)),
+		NSL("external_home_airport", SLE_CONDVAR_X(Aircraft, external_home_airport, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 13))),
+		NSL("external_home_tile", SLE_CONDVAR_X(Aircraft, external_home_tile, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 13))),
+		NSL("external_return_airport", SLE_CONDVAR_X(Aircraft, external_return_airport, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 13))),
+		NSL("external_return_airport_tile", SLE_CONDVAR_X(Aircraft, external_return_airport_tile, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 13))),
+		NSL("external_landing", SLE_CONDVAR_X(Aircraft, external_landing, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 13))),
 
 		NSL("old_state",                 SLEG_CONDVAR(_old_state,                      SLE_UINT8,                   SL_MIN_VERSION, SLV_CUSTOM_SUBSIDY_DURATION)),
 		NSL("previous_pos",              SLEG_CONDVAR(_pos,                            SLE_UINT8,                   SLV_2, SLV_CUSTOM_SUBSIDY_DURATION)),

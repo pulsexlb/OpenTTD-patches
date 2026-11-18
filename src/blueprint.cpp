@@ -2138,7 +2138,7 @@ CommandCost CmdPasteBlueprint(DoCommandFlags flags, TileIndex origin, const Blue
 	}
 	for (const BlueprintShipDepot &depot : bp.ship_depots) {
 		if (!tile_valid(depot.offset)) continue;
-		BlueprintDoCommand<CMD_BUILD_SHIP_DEPOT>(state, flags, target_tile(depot.offset), depot.axis);
+		BlueprintDoCommand<CMD_BUILD_SHIP_DEPOT>(state, flags, target_tile(depot.offset), depot.axis, false);
 	}
 
 	for (const BlueprintRailTrack &rt : bp.rail_tracks) {

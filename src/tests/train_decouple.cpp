@@ -41,6 +41,10 @@
 #include "../signal_func.h"
 #include "../bridge_map.h"
 #include "../depot_base.h"
+#include "../external_city.h"
+#include "../external_city_cmd.h"
+#include "../industrytype.h"
+#include "../economy_func.h"
 #include "../roadveh_transport.h"
 #include "../scope.h"
 #include "../gfx_type.h"
@@ -48,6 +52,8 @@
 #include "../sl/saveload_internal.h"
 #include "../sl/saveload_func.h"
 #include "../sl/saveload_filter.h"
+
+extern void AdjustVehicleStateTicksBase(StateTicksDelta delta);
 #include "../sl/saveload_func.h"
 #include "../strings_func.h"
 
@@ -127,6 +133,536 @@ protected:
 		return v;
 	}
 };
+
+TEST_CASE_METHOD(TrainDecoupleFixture, "External connections - opt-in portals and saved game-time deadlines")
+{
+	AllocateMap(64, 64);
+	auto map_cleanup = scope_guard([] { DeallocateMap(); });
+	MakeRailDepot(TileXY(2,20), OWNER_NONE, DepotID{0}, DiagDirection::SW, RAILTYPE_RAIL);
+	MakeRailDepot(TileXY(32,32), OWNER_NONE, DepotID{1}, DiagDirection::SW, RAILTYPE_RAIL);
+	CHECK(Vehicle::IsExternalPortal(TileXY(2,20)));
+	CHECK_FALSE(Vehicle::IsExternalPortal(TileXY(32,32)));
+	CHECK_FALSE(Vehicle::IsExternalPortal(INVALID_TILE));
+	Train *v = MakeTrain();
+	v->SetFrontEngine();v->tile=TileXY(2,20);v->track=TRACK_BIT_DEPOT;v->vehstatus.Set(VehState::Hidden);
+	v->current_order.MakeGoToDepot(DepotID{0}, {OrderDepotTypeFlag::PartOfOrders});
+	v->current_order.SetDepotExtraFlags({OrderDepotExtraFlag::ExternalTrip});
+	v->current_order.SetWaitTime(64);v->current_order.SetWaitTimetabled(true);
+	v->vcache.cached_max_speed = 112;
+	AutoRestoreBackup external_distance(_settings_game.vehicle.external_trip_distance, uint16_t(128));
+	const auto duration = StateTicksDelta{int64_t(2 * Vehicle::ExternalTravelTicks(128, 112) + 64)};
+	const VehicleID identity=v->index;
+	AutoRestoreBackup enabled(_settings_game.vehicle.external_connections, false);
+	CHECK_FALSE(v->BeginExternalTrip());
+	CHECK_FALSE(v->IsInExternalTrip());
+	_settings_game.vehicle.external_connections=true;
+	GameRandomSeedChecker random_checker;
+	/* Neither an unresolved destination nor a different entrance may start a
+	 * trip. The positive fixture must model a resolved native depot order. */
+	v->dest_tile = INVALID_TILE;
+	CHECK_FALSE(v->BeginExternalTrip());
+	CHECK_FALSE(v->IsInExternalTrip());
+	v->dest_tile = TileXY(32,32);
+	CHECK_FALSE(v->BeginExternalTrip());
+	CHECK_FALSE(v->IsInExternalTrip());
+	v->dest_tile = v->tile;
+	REQUIRE(v->BeginExternalTrip());
+	CHECK(v->external_return_tick==_state_ticks+duration);
+	CHECK(v->external_arrival_tick == _state_ticks + StateTicksDelta{int64_t(Vehicle::ExternalTravelTicks(128,112))});
+	CHECK(v->external_departure_tick == v->external_arrival_tick + StateTicksDelta{64});
+	CHECK(v->GetExternalTripPhase() == ExternalTripPhase::Outbound);
+	CHECK(v->GetExternalDisplaySpeed() == 112);
+	CHECK(v->current_order.IsType(OT_GOTO_DEPOT)); // Outbound is travel; waiting starts at the external city.
+	CHECK(v->index==identity);
+	_settings_game.vehicle.external_connections=false;
+	CHECK(v->TickExternalTrip());
+	CHECK(v->IsInExternalTrip());
+	CHECK(v->external_return_tick==_state_ticks+duration);
+	CHECK(CmdReverseTrainDirection({},v->index,false).Failed());
+	CHECK(CmdMoveRailVehicle({},v->index,VehicleID::Invalid(),MoveRailVehicleFlags::None).Failed());
+	AdjustVehicleStateTicksBase(StateTicksDelta{1000});
+	CHECK(v->external_return_tick == _state_ticks + duration + StateTicksDelta{1000});
+	AdjustVehicleStateTicksBase(StateTicksDelta{-1000});
+	CHECK(v->external_return_tick == _state_ticks + duration);
+	CHECK(random_checker.Check());
+}
+
+TEST_CASE("External connections - only outward boundary rail offers a connection")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { DeallocateMap(); });
+	const bool freeform = GENERATE(false, true);
+	AutoRestoreBackup edges(_settings_game.construction.freeform_edges, freeform);
+	const uint low = freeform ? 1 : 0;
+	const auto [x, y, outward] = GENERATE_COPY(
+		std::make_tuple(low, 20U, DiagDirection::NE),
+		std::make_tuple(62U, 20U, DiagDirection::SW),
+		std::make_tuple(20U, low, DiagDirection::NW),
+		std::make_tuple(20U, 62U, DiagDirection::SE));
+	const TileIndex tile = TileXY(x, y);
+	const auto delta = TileIndexDiffCByDiagDir(outward);
+	const TileIndex inside = TileAddWrap(tile, -delta.x, -delta.y);
+	const TrackBits track = DiagDirToDiagTrackBits(outward);
+	MakeRailNormal(tile, OWNER_NONE, track, RAILTYPE_RAIL);
+	MakeRailNormal(inside, OWNER_NONE, track, RAILTYPE_RAIL);
+	CHECK(GetExternalRailConnectionDirection(tile) == ReverseDiagDir(outward));
+	CHECK(GetExternalRailConnectionDirection(inside) == DiagDirection::Invalid);
+	MakeRailNormal(tile, OWNER_NONE, track == TRACK_BIT_X ? TRACK_BIT_Y : TRACK_BIT_X, RAILTYPE_RAIL);
+	CHECK(GetExternalRailConnectionDirection(tile) == DiagDirection::Invalid);
+	MakeRailNormal(tile, OWNER_NONE, TRACK_BIT_X | TRACK_BIT_Y, RAILTYPE_RAIL);
+	CHECK(GetExternalRailConnectionDirection(tile) == DiagDirection::Invalid);
+	CHECK(GetExternalRailConnectionDirection(INVALID_TILE) == DiagDirection::Invalid);
+}
+
+TEST_CASE("External cities - independent cities, boundary regions, ownership and capacity")
+{
+ REQUIRE(Company::GetNumItems() == 0);
+ REQUIRE(Depot::GetNumItems() == 0);
+ REQUIRE(ExternalCity::GetNumItems() == 0);
+ AllocateMap(64, 64);
+ AutoRestoreBackup company(_current_company, AutoRestoreBackupNoNewValueTag{});
+ auto cleanup = scope_guard([] {
+  _external_boundary_pool.CleanPool(); _external_city_pool.CleanPool(); _depot_pool.CleanPool(); _company_pool.CleanPool(); DeallocateMap();
+ });
+ const CompanyID first = Company::Create()->index, second = Company::Create()->index;
+ _current_company = first;
+ GameRandomSeedChecker random;
+ const DepotID none = DepotID::Invalid();
+ AutoRestoreBackup permission(_settings_game.vehicle.external_boundary_editing, false);
+ AutoRestoreBackup mode(_game_mode, GameMode::Normal);
+ CHECK(CmdManageExternalCity({},none,ExternalCityID::Invalid(),ExternalCityOperation::Create,4,"Neighbour").Failed());
+ CHECK(CmdManageExternalCity(DoCommandFlag::Execute,none,ExternalCityID::Invalid(),ExternalCityOperation::Create,4,"Neighbour").Failed());
+ CHECK(ExternalCity::GetNumItems() == 0);
+ CHECK(random.Check());
+ {
+  AutoRestoreBackup editor(_game_mode, GameMode::Editor);
+  CHECK(CmdManageExternalCity({},none,ExternalCityID::Invalid(),ExternalCityOperation::Create,4,"Neighbour").Succeeded());
+ }
+ _settings_game.vehicle.external_boundary_editing = true;
+ CHECK(CmdManageExternalCity({},none,ExternalCityID::Invalid(),ExternalCityOperation::Create,4,"Neighbour").Succeeded());
+ CHECK(ExternalCity::GetNumItems() == 0);
+ CHECK(random.Check());
+ REQUIRE(CmdManageExternalCity(DoCommandFlag::Execute,none,ExternalCityID::Invalid(),ExternalCityOperation::Create,4,"Neighbour").Succeeded());
+ const ExternalCityID neighbour{0};
+ CHECK_FALSE(CmdManageExternalCity({},none,ExternalCityID::Invalid(),ExternalCityOperation::Create,4,"Neighbour").Succeeded());
+ CHECK_FALSE(CmdManageExternalCity({},none,ExternalCityID::Invalid(),ExternalCityOperation::Create,4,"  ").Succeeded());
+ CHECK_FALSE(CmdManageExternalCity({},none,neighbour,ExternalCityOperation::SetTime,0,{}).Succeeded());
+ CHECK_FALSE(CmdManageExternalCity({},none,neighbour,ExternalCityOperation::SetTime,1441,{}).Succeeded());
+ auto region = [&](DoCommandFlags flags, ExternalBoundaryID id, ExternalCityID city, DiagDirection edge, uint16_t start, uint16_t end) {
+  return CmdManageExternalCityRegion(flags, none, city, ExternalCityOperation::SetBoundary, 0, {}, id, edge, start, end);
+ };
+ _settings_game.vehicle.external_boundary_editing = false;
+ CHECK(CmdManageExternalCity(DoCommandFlag::Execute,none,ExternalCityID::Invalid(),ExternalCityOperation::Create,4,"Second city").Failed());
+ CHECK(ExternalCity::GetNumItems() == 1);
+ CHECK(region({}, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::NE, 1, 20).Failed());
+ CHECK(region(DoCommandFlag::Execute, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::NE, 1, 20).Failed());
+ CHECK(ExternalBoundary::GetNumItems() == 0);
+ _settings_game.vehicle.external_boundary_editing = true;
+ REQUIRE(region({}, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::NE, 1, 20).Succeeded());
+ CHECK(ExternalBoundary::GetNumItems() == 0);
+ CHECK(GetExternalCityAtBoundary(DiagDirection::NE, 10) == ExternalCityID::Invalid());
+ CHECK(random.Check());
+ REQUIRE(region(DoCommandFlag::Execute, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::NE, 1, 20).Succeeded());
+ CHECK(GetExternalCityAtBoundary(DiagDirection::NE, 1) == neighbour);
+ CHECK(GetExternalCityAtBoundary(DiagDirection::NE, 20) == neighbour);
+ CHECK(GetExternalFlightGateway(*ExternalBoundary::Get(ExternalBoundaryID{0})) == TileXY(1, 10));
+ CHECK(GetExternalFlightBoundary(neighbour, TileXY(20, 2)) == TileXY(1, 10));
+ CHECK(GetExternalFlightBoundary(neighbour, TileXY(20, 18)) == TileXY(1, 10));
+ _settings_game.vehicle.external_boundary_editing = false;
+ CHECK(region(DoCommandFlag::Execute, ExternalBoundaryID{0}, neighbour, DiagDirection::NE, 1, 19).Failed());
+ CHECK(CmdManageExternalCityRegion(DoCommandFlag::Execute,none,neighbour,ExternalCityOperation::RemoveBoundary,0,{},ExternalBoundaryID{0},DiagDirection::NE,0,0).Failed());
+ CHECK(GetExternalCityAtBoundary(DiagDirection::NE, 20) == neighbour);
+ _settings_game.vehicle.external_boundary_editing = true;
+
+ CHECK(GetExternalCityAtBoundary(DiagDirection::NE, 21) == ExternalCityID::Invalid());
+ CHECK_FALSE(region({}, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::NE, 20, 25).Succeeded());
+ CHECK_FALSE(region({}, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::NE, 25, 20).Succeeded());
+ CHECK_FALSE(region({}, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::Invalid, 0, 20).Succeeded());
+ CHECK_FALSE(region({}, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::SE, 0, 64).Succeeded());
+ REQUIRE(region(DoCommandFlag::Execute, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::NE, 21, 30).Succeeded());
+ CHECK(GetExternalCityAtBoundary(DiagDirection::NE, 21) == neighbour);
+ CHECK(ValidateExternalBoundaries());
+ for (auto edge : {DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
+  REQUIRE(region(DoCommandFlag::Execute, ExternalBoundaryID::Invalid(), neighbour, edge, 0, 63).Succeeded());
+  CHECK(GetExternalCityAtBoundary(edge, 63) == neighbour);
+ }
+ // Entrances inherit a region regardless of their owner or construction date.
+ Depot *a = Depot::Create(TileXY(0,10)), *b = Depot::Create(TileXY(0,15));
+ MakeRailDepot(a->xy, first, a->index, DiagDirection::SW, RAILTYPE_RAIL);
+ MakeRailDepot(b->xy, second, b->index, DiagDirection::SW, RAILTYPE_RAIL);
+ a->is_external_connection = b->is_external_connection = true;
+ CHECK(a->external_city == ExternalCityID::Invalid());
+ CHECK(GetExternalCityForEntrance(a->xy) == neighbour);
+ CHECK(GetExternalCityForEntrance(b->xy) == neighbour);
+ _current_company = second;
+ CHECK_FALSE(CmdManageExternalCity({},none,neighbour,ExternalCityOperation::Rename,0,"Not mine").Succeeded());
+ CHECK_FALSE(CmdManageExternalCity({},none,neighbour,ExternalCityOperation::SetTime,8,{}).Succeeded());
+ CHECK_FALSE(region({}, ExternalBoundaryID{0}, neighbour, DiagDirection::NE, 1, 19).Succeeded());
+ REQUIRE(CmdManageExternalCity(DoCommandFlag::Execute,none,ExternalCityID::Invalid(),ExternalCityOperation::Create,7,"Port").Succeeded());
+ const ExternalCityID port{1};
+ // Shared cities can be used on another free region; city editing stays protected.
+ REQUIRE(region(DoCommandFlag::Execute, ExternalBoundaryID::Invalid(), neighbour, DiagDirection::NE, 31, 40).Succeeded());
+ ChangeExternalCityOwner(first, second);
+ CHECK(ExternalCity::Get(neighbour)->owner == second);
+ CHECK(ExternalBoundary::Get(ExternalBoundaryID{0})->owner == second);
+ REQUIRE(region(DoCommandFlag::Execute, ExternalBoundaryID{0}, port, DiagDirection::NE, 1, 20).Succeeded());
+ CHECK(GetExternalCityForEntrance(a->xy) == port); // cache invalidated immediately
+ REQUIRE(CmdManageExternalCityRegion(DoCommandFlag::Execute,none,port,ExternalCityOperation::RemoveBoundary,0,{},ExternalBoundaryID{0},DiagDirection::NE,0,0).Succeeded());
+ CHECK(GetExternalCityForEntrance(a->xy) == ExternalCityID::Invalid());
+ ChangeExternalCityOwner(second, OWNER_NONE);
+ CHECK(CmdManageExternalCity(DoCommandFlag::Execute,none,port,ExternalCityOperation::SetTime,9,{}).Succeeded());
+ CHECK(ExternalCity::Get(port)->owner == second);
+ for (uint i = 2; i < 64; ++i) REQUIRE(CmdManageExternalCity(DoCommandFlag::Execute,none,ExternalCityID::Invalid(),ExternalCityOperation::Create,10,"City " + std::to_string(i)).Succeeded());
+ CHECK(ExternalCity::GetNumItems() == 64);
+ CHECK_FALSE(CmdManageExternalCity({},none,ExternalCityID::Invalid(),ExternalCityOperation::Create,10,"Overflow").Succeeded());
+ CHECK(random.Check());
+ // Clearing a map must not leave cached region IDs pointing into the next map.
+ _external_boundary_pool.CleanPool();
+ CHECK(GetExternalCityAtBoundary(DiagDirection::NE, 31) == ExternalCityID::Invalid());
+}
+
+TEST_CASE("External return entrance - order copies and waiting preserve the chosen return")
+{
+ Order order;order.MakeGoToDepot(DepotID{1},{OrderDepotTypeFlag::PartOfOrders});
+ order.SetDepotExtraFlags(OrderDepotExtraFlags{}.Set(OrderDepotExtraFlag::ExternalTrip));
+ CHECK(order.GetExternalReturnDepot()==DepotID::Invalid());
+ for(const DepotID id:{DepotID{0},DepotID{17},DepotID{65534},DepotID::Invalid()}){
+  order.SetExternalReturnDepot(id);
+  Order copy=order;
+  order.SetExternalReturnDepot(DepotID::Invalid());
+  CHECK(copy.GetExternalReturnDepot()==id);
+  copy.MakeWaiting();CHECK(copy.GetExternalReturnDepot()==id);
+ }
+}
+
+TEST_CASE("External flights - default return and legacy slot sentinel mean departure airport")
+{
+ Order order;
+ order.MakeExternalFlight(StationID{3});
+ CHECK(order.GetExternalReturnAirport() == StationID::Invalid());
+ order.SetXDataLow(UINT16_MAX); // Old flight orders inherited the couple-slot default.
+ CHECK(order.GetExternalReturnAirport() == StationID::Invalid());
+ for (uint16_t id : {uint16_t{0}, uint16_t{1}, uint16_t{63999}}) {
+  order.SetExternalReturnDepot(DepotID{id});
+  Order copy = order;
+  CHECK(copy.GetExternalReturnAirport() == StationID{id});
+ }
+ order.MakeExternalFlight(StationID{4});
+ CHECK(order.GetExternalReturnAirport() == StationID::Invalid());
+ CHECK(order.IsExternalFlightOrder());
+ CHECK(order.GetDestination().ToStationID() == StationID{4});
+}
+
+TEST_CASE("External cities - legacy entrance links migrate into boundary partitions")
+{
+ AllocateMap(64, 64);
+ auto cleanup = scope_guard([] { _external_boundary_pool.CleanPool(); _external_city_pool.CleanPool(); _depot_pool.CleanPool(); DeallocateMap(); });
+ auto *a = ExternalCity::Create(), *b = ExternalCity::Create();
+ for (uint y : {10U, 30U, 40U}) {
+  Depot *d = Depot::Create(TileXY(62,y)); MakeRailDepot(d->xy, OWNER_NONE, d->index, DiagDirection::NE, RAILTYPE_RAIL);
+  d->is_external_connection = true; d->external_city = y == 10 ? a->index : b->index;
+ }
+ MigrateExternalCityBoundaries();
+ CHECK(ExternalBoundary::GetNumItems() == 2);
+ CHECK(GetExternalCityAtBoundary(DiagDirection::SW, 20) == a->index);
+ CHECK(GetExternalCityAtBoundary(DiagDirection::SW, 21) == b->index);
+ CHECK(GetExternalCityAtBoundary(DiagDirection::SW, 63) == b->index);
+ CHECK(ValidateExternalBoundaries());
+ for (const Depot *d : Depot::Iterate()) CHECK(d->external_city == ExternalCityID::Invalid());
+}
+
+TEST_CASE("External cities - cargo planning is deterministic, read-only and respects active cargo definitions")
+{
+ REQUIRE(ExternalCity::GetNumItems() == 0);
+ std::vector<IndustrySpec> industries;
+ std::vector<CargoSpec> cargoes;
+ for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) industries.push_back(*GetIndustrySpec(type));
+ for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) cargoes.push_back(*CargoSpec::Get(cargo));
+ auto cleanup = scope_guard([&] {
+  _external_city_pool.CleanPool();
+  for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) *const_cast<IndustrySpec *>(GetIndustrySpec(type)) = industries[type];
+  for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) *CargoSpec::Get(cargo) = cargoes[cargo];
+ });
+ for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) *const_cast<IndustrySpec *>(GetIndustrySpec(type)) = IndustrySpec{};
+ for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) *CargoSpec::Get(cargo) = CargoSpec{};
+ const CargoType passengers{100}, mail{101}, goods{102}, coal{103}, steel{104}, invalid{105};
+ for (CargoType cargo : {passengers, mail, goods, coal, steel}) {
+  auto *spec = CargoSpec::Get(cargo); spec->bitnum = 1; spec->town_acceptance_effect = TownAcceptanceEffect::None; spec->town_production_effect = TownProductionEffect::None;
+ }
+ CargoSpec::Get(passengers)->town_production_effect = TownProductionEffect::Passengers;
+ CargoSpec::Get(passengers)->town_acceptance_effect = TownAcceptanceEffect::Passengers;
+ CargoSpec::Get(mail)->town_production_effect = TownProductionEffect::Mail;
+ CargoSpec::Get(mail)->town_acceptance_effect = TownAcceptanceEffect::Mail;
+ CargoSpec::Get(goods)->town_acceptance_effect = TownAcceptanceEffect::Goods;
+ auto setup = [&](IndustryType type, CargoType out, CargoType in) {
+  auto *spec = const_cast<IndustrySpec *>(GetIndustrySpec(type)); spec->enabled = true;
+  spec->produced_cargo.fill(INVALID_CARGO); spec->accepts_cargo.fill(INVALID_CARGO);
+  spec->produced_cargo[0] = out; spec->accepts_cargo[0] = in;
+ };
+ setup(0, coal, INVALID_CARGO); setup(1, steel, coal); setup(2, goods, steel);
+ setup(3, invalid, INVALID_CARGO); // A cargo slot invalidated by a changed cargo set must not leak into the UI.
+ auto *city = ExternalCity::Create(); city->economy_seed = 12345;
+ GameRandomSeedChecker random;
+ const auto profile = GetExternalCityEconomy(city->index);
+ REQUIRE(profile.industries.size() == 3);
+ CHECK(profile.produced == CargoTypes({passengers, mail, goods, coal, steel}));
+ CHECK(profile.accepted == CargoTypes({passengers, mail, goods, coal, steel}));
+ CHECK(profile.town_produced == CargoTypes({passengers, mail}));
+ CHECK(profile.town_accepted == CargoTypes({passengers, mail, goods}));
+ CHECK(GetExternalCityEconomy(ExternalCityID::Invalid()).industries.empty());
+ for (uint i = 0; i < 20; ++i) CHECK(GetExternalCityEconomy(city->index) == profile);
+ city->name = "Renamed"; city->trip_minutes = 99; city->owner = OWNER_NONE;
+ CHECK(GetExternalCityEconomy(city->index) == profile);
+ CHECK(random.Check());
+ const auto *last_spec = GetIndustrySpec(profile.industries.back());
+ const_cast<IndustrySpec *>(last_spec)->enabled = false;
+ const auto reduced = GetExternalCityEconomy(city->index);
+ CHECK(reduced.industries.size() == 2);
+ CHECK(std::ranges::find(reduced.industries, profile.industries.back()) == reduced.industries.end());
+ const_cast<IndustrySpec *>(last_spec)->enabled = true;
+ setup(3, coal, goods);
+ std::vector<std::vector<IndustryType>> variants;
+ for (uint seed = 1; seed < 40; ++seed) {
+  city->economy_seed = seed; auto selected = GetExternalCityEconomy(city->index).industries;
+  CHECK(selected.size() == 3); std::sort(selected.begin(), selected.end());
+  if (std::ranges::find(variants, selected) == variants.end()) variants.push_back(selected);
+ }
+ CHECK(variants.size() > 1);
+ city->economy_seed = 0; const auto legacy = GetExternalCityEconomy(city->index);
+ CHECK(legacy.industries.size() == 3);
+ CHECK(GetExternalCityEconomy(city->index) == legacy);
+ CHECK(city->economy_seed == 0); // Loading old cities never needs a GUI-side state mutation.
+ CHECK(random.Check());
+ for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) const_cast<IndustrySpec *>(GetIndustrySpec(type))->enabled = false;
+ const auto town_only = GetExternalCityEconomy(city->index);
+ CHECK(town_only.industries.empty()); CHECK(town_only.produced == profile.town_produced); CHECK(town_only.accepted == profile.town_accepted);
+}
+
+TEST_CASE("External markets - supply replenishes without creating receipt quotas")
+{
+ REQUIRE(ExternalCity::GetNumItems() == 0);
+ std::vector<IndustrySpec> industries;
+ std::vector<CargoSpec> cargoes;
+ for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) industries.push_back(*GetIndustrySpec(type));
+ for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) cargoes.push_back(*CargoSpec::Get(cargo));
+ auto cleanup = scope_guard([&] {
+  _external_city_pool.CleanPool();
+  for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) *const_cast<IndustrySpec *>(GetIndustrySpec(type)) = industries[type];
+  for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) *CargoSpec::Get(cargo) = cargoes[cargo];
+ });
+ for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) *const_cast<IndustrySpec *>(GetIndustrySpec(type)) = IndustrySpec{};
+ for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) *CargoSpec::Get(cargo) = CargoSpec{};
+ const CargoType passengers{100};
+ auto *spec = CargoSpec::Get(passengers);
+ spec->bitnum = 1;
+ spec->town_production_effect = TownProductionEffect::Passengers;
+ spec->town_acceptance_effect = TownAcceptanceEffect::Passengers;
+ auto *a = ExternalCity::Create(), *b = ExternalCity::Create();
+ GameRandomSeedChecker random;
+ InitializeExternalCityMarket(a); InitializeExternalCityMarket(b);
+ REQUIRE(a->stock[passengers] == 512); REQUIRE(a->demand[passengers] == 0);
+ a->stock[passengers] = 0; a->demand[passengers] = 0;
+ InitializeExternalCityMarket(a); // A read/load must not refill an exhausted market.
+ CHECK(a->stock[passengers] == 0); CHECK(a->demand[passengers] == 0);
+ CHECK(b->stock[passengers] == 512); CHECK(b->demand[passengers] == 0);
+ RefillExternalCityMarkets();
+ CHECK(a->stock[passengers] == 256); CHECK(a->demand[passengers] == 0);
+ CHECK(b->stock[passengers] == 768); CHECK(b->demand[passengers] == 0);
+ for (uint month = 0; month < 20; ++month) RefillExternalCityMarkets();
+ CHECK(a->stock[passengers] == 4096); CHECK(a->demand[passengers] == 0);
+ *spec = CargoSpec{}; // Cargo removed by an active-definition change cannot retain quotas.
+ RefillExternalCityMarkets();
+ CHECK(a->stock[passengers] == 0); CHECK(a->demand[passengers] == 0);
+ CHECK(b->stock[passengers] == 0); CHECK(b->demand[passengers] == 0);
+ CHECK(random.Check());
+}
+
+TEST_CASE("External industry - unlimited incoming stock, original recipes and output backpressure conserve cargo")
+{
+ REQUIRE(ExternalCity::GetNumItems() == 0);
+ std::vector<IndustrySpec> industries;
+ std::vector<CargoSpec> cargoes;
+ for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) industries.push_back(*GetIndustrySpec(type));
+ for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) cargoes.push_back(*CargoSpec::Get(cargo));
+ auto cleanup = scope_guard([&] {
+  _external_city_pool.CleanPool();
+  for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) *const_cast<IndustrySpec *>(GetIndustrySpec(type)) = industries[type];
+  for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) *CargoSpec::Get(cargo) = cargoes[cargo];
+ });
+ for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) *const_cast<IndustrySpec *>(GetIndustrySpec(type)) = IndustrySpec{};
+ for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) *CargoSpec::Get(cargo) = CargoSpec{};
+ const CargoType ore{100}, steel{101}, goods{102};
+ for (CargoType cargo : {ore, steel, goods}) {
+  auto *spec = CargoSpec::Get(cargo); spec->bitnum = 1;
+  spec->town_acceptance_effect = TownAcceptanceEffect::None; spec->town_production_effect = TownProductionEffect::None;
+ }
+ auto setup = [&](IndustryType type, CargoType product, CargoType input, uint rate) {
+  auto *spec = const_cast<IndustrySpec *>(GetIndustrySpec(type)); spec->enabled = true;
+  spec->produced_cargo.fill(INVALID_CARGO); spec->accepts_cargo.fill(INVALID_CARGO);
+  spec->produced_cargo[0] = product; spec->accepts_cargo[0] = input;
+  spec->production_rate[0] = uint8_t(rate); spec->input_cargo_multiplier[0][0] = 256;
+ };
+ setup(0, ore, INVALID_CARGO, 15); setup(1, steel, ore, 0); setup(2, goods, steel, 0);
+ auto *city = ExternalCity::Create(); city->economy_seed = 12345;
+ InitializeExternalCityMarket(city);
+ const size_t ore_input = ExternalIndustryCargoIndex(GetExternalIndustrySlot(city, 1), ore);
+ const size_t steel_output = ExternalIndustryCargoIndex(GetExternalIndustrySlot(city, 1), steel);
+ const size_t steel_input = ExternalIndustryCargoIndex(GetExternalIndustrySlot(city, 2), steel);
+ const size_t goods_output = ExternalIndustryCargoIndex(GetExternalIndustrySlot(city, 2), goods);
+ GameRandomSeedChecker random;
+ SECTION("raw production does not create unfed processed goods") {
+  CHECK(city->stock[ore] == 0); CHECK(city->stock[steel] == 0); CHECK(city->stock[goods] == 0);
+  RefillExternalCityMarkets();
+  CHECK(city->stock[ore] == 120); CHECK(city->stock[steel] == 0); CHECK(city->stock[goods] == 0);
+  StoreExternalCityInputs(city, ore, 100);
+  CHECK(city->industry_inputs[ore_input] == 100); CHECK(city->stock[steel] == 0);
+  RefillExternalCityMarkets();
+  CHECK(city->industry_inputs[ore_input] == 0); CHECK(city->stock[steel] == 100);
+  CHECK(city->industry_month_consumed[ore_input] == 100); CHECK(city->industry_month_produced[steel_output] == 100);
+  CHECK(city->stock[goods] == 0); // No invisible transfer from the shared export store to another factory.
+  StoreExternalCityInputs(city, steel, 47); RefillExternalCityMarkets();
+  CHECK(city->industry_inputs[steel_input] == 0); CHECK(city->stock[goods] == 47);
+ }
+ SECTION("full export store pauses conversion and partial space consumes only fitting inputs") {
+  StoreExternalCityInputs(city, ore, 17); city->stock[steel] = 4096;
+  RefillExternalCityMarkets();
+  CHECK(city->industry_inputs[ore_input] == 17); CHECK(city->industry_month_produced[steel_output] == 0);
+  city->stock[steel] = 4090; RefillExternalCityMarkets();
+  CHECK(city->stock[steel] == 4096); CHECK(city->industry_inputs[ore_input] == 11);
+  CHECK(city->industry_month_consumed[ore_input] == 6); CHECK(city->industry_month_produced[steel_output] == 6);
+ }
+ SECTION("fractional conversion survives small separate deliveries") {
+  const_cast<IndustrySpec *>(GetIndustrySpec(2))->input_cargo_multiplier[0][0] = 64;
+  for (uint i = 1; i <= 8; ++i) {
+   StoreExternalCityInputs(city, steel, 1); RefillExternalCityMarkets();
+   CHECK(city->stock[goods] == i / 4); CHECK(city->industry_remainders[goods_output] == (i % 4) * 64);
+  }
+ }
+ SECTION("full export store retains every incoming unit beyond old quotas") {
+  StoreExternalCityInputs(city, ore, 10000);
+  CHECK(city->industry_inputs[ore_input] == 10000);
+  city->stock[steel] = 4096; RefillExternalCityMarkets();
+  CHECK(city->industry_inputs[ore_input] == 10000);
+  StoreExternalCityInputs(city, ore, 6000);
+  CHECK(city->industry_inputs[ore_input] == 16000);
+  city->stock[steel] = 0; RefillExternalCityMarkets();
+  CHECK(city->industry_inputs[ore_input] == 16000 - 256);
+  CHECK(city->stock[steel] == 256);
+ }
+ SECTION("pending raw materials remain exact beyond the old 32-bit counter") {
+  StoreExternalCityInputs(city, ore, UINT32_MAX);
+  StoreExternalCityInputs(city, ore, 6000);
+  CHECK(city->industry_inputs[ore_input] == uint64_t(UINT32_MAX) + 6000);
+  RefillExternalCityMarkets();
+  CHECK(city->industry_inputs[ore_input] + city->stock[steel] == uint64_t(UINT32_MAX) + 6000);
+ }
+ SECTION("multiple eligible industries share rather than lose incoming materials") {
+  setup(2, goods, ore, 0);
+  const size_t second = ExternalIndustryCargoIndex(GetExternalIndustrySlot(city, 2), ore);
+  StoreExternalCityInputs(city, ore, 10001);
+  CHECK(city->industry_inputs[ore_input] + city->industry_inputs[second] == 10001);
+  CHECK(city->industry_inputs[ore_input] >= 5000);
+  CHECK(city->industry_inputs[second] >= 5000);
+ }
+ SECTION("old city initialization preserves existing finished stock and exhausted quota") {
+  city->industries_initialized = false; city->stock[goods] = 91; city->demand[ore] = 0;
+  InitializeExternalCityMarket(city); InitializeExternalCityMarket(city);
+  CHECK(city->stock[goods] == 91); CHECK(city->demand[ore] == 0);
+  CHECK(city->industry_inputs[ore_input] == 0);
+ }
+ SECTION("consumer industries consume inputs without inventing output") {
+  const_cast<IndustrySpec *>(GetIndustrySpec(1))->produced_cargo.fill(INVALID_CARGO);
+  StoreExternalCityInputs(city, ore, 100); RefillExternalCityMarkets();
+  CHECK(city->industry_inputs[ore_input] == 0); CHECK(city->industry_month_consumed[ore_input] == 100);
+  CHECK(city->stock[steel] == 0);
+ }
+ CHECK(random.Check());
+}
+
+TEST_CASE("External industry - NewGRF fixed definitions use recipes without impersonating production callbacks")
+{
+ REQUIRE(ExternalCity::GetNumItems() == 0);
+ constexpr IndustryType type = NEW_INDUSTRYOFFSET + 5;
+ auto *spec = const_cast<IndustrySpec *>(GetIndustrySpec(type));
+ const IndustrySpec previous = *spec;
+ const CargoType input{100}, product{101};
+ const CargoSpec old_input = *CargoSpec::Get(input), old_product = *CargoSpec::Get(product);
+ GRFFile grf;
+ auto cleanup = scope_guard([&] {
+  _external_city_pool.CleanPool(); *spec = previous;
+  *CargoSpec::Get(input) = old_input; *CargoSpec::Get(product) = old_product;
+ });
+ for (CargoType cargo : {input, product}) {
+  *CargoSpec::Get(cargo) = CargoSpec{}; CargoSpec::Get(cargo)->bitnum = 1;
+ }
+ *spec = IndustrySpec{}; spec->enabled = true; spec->grf_prop.grffile = &grf;
+ spec->produced_cargo.fill(INVALID_CARGO); spec->accepts_cargo.fill(INVALID_CARGO);
+ spec->produced_cargo[0] = product; spec->accepts_cargo[0] = input;
+ spec->input_cargo_multiplier[0][0] = 128; // Two input units per output.
+ spec->callback_mask = {IndustryCallbackMask::WindowMoreText, IndustryCallbackMask::DecideColour};
+ CHECK(ExternalIndustryUsesRecipe(type));
+ auto *city = ExternalCity::Create(); city->industries_initialized = true;
+ city->industry_types = {type, IT_INVALID, IT_INVALID}; InitializeExternalCityMarket(city);
+ const size_t pending = ExternalIndustryCargoIndex(0, input);
+ const size_t remainder = ExternalIndustryCargoIndex(0, product);
+ SECTION("no free processed stock, fractional deliveries and output backpressure") {
+  CHECK(city->stock[product] == 0); RefillExternalCityMarkets(); CHECK(city->stock[product] == 0);
+  StoreExternalCityInputs(city, input, 3); RefillExternalCityMarkets();
+  CHECK(city->stock[product] == 1); CHECK(city->industry_inputs[pending] == 0);
+  CHECK(city->industry_remainders[remainder] == 128);
+  city->stock[product] = 4096; StoreExternalCityInputs(city, input, 1); RefillExternalCityMarkets();
+  CHECK(city->industry_inputs[pending] == 1); CHECK(city->industry_remainders[remainder] == 128);
+  city->stock[product] = 4095; RefillExternalCityMarkets();
+  CHECK(city->stock[product] == 4096); CHECK(city->industry_inputs[pending] == 0);
+  CHECK(city->industry_remainders[remainder] == 0);
+ }
+ SECTION("callbacks requiring industry context retain abstract-market handling") {
+  for (auto callback : {IndustryCallbackMask::Probability, IndustryCallbackMask::ProductionCargoArrival,
+    IndustryCallbackMask::Production256Ticks, IndustryCallbackMask::Location,
+    IndustryCallbackMask::ProductionChange, IndustryCallbackMask::MonthlyProdChange,
+    IndustryCallbackMask::RefuseCargo, IndustryCallbackMask::InputCargoTypes,
+    IndustryCallbackMask::OutputCargoTypes, IndustryCallbackMask::ProdChangeBuild}) {
+   spec->callback_mask.Set(callback); CHECK_FALSE(ExternalIndustryUsesRecipe(type));
+   spec->callback_mask.Reset(callback); CHECK(ExternalIndustryUsesRecipe(type));
+  }
+  spec->enabled = false; CHECK_FALSE(ExternalIndustryUsesRecipe(type));
+  CHECK_FALSE(ExternalIndustryUsesRecipe(IT_INVALID));
+ }
+}
+
+TEST_CASE("External routes - native tile speed conversion and partial cargo sales preserve packet accounting")
+{
+ CHECK(Vehicle::ExternalTravelTicks(100,100)==2048);
+ CHECK(Vehicle::ExternalTravelTicks(100,200)==1024);
+ CHECK(Vehicle::ExternalTravelTicks(100,113)==1829);
+ CHECK(Vehicle::ExternalTravelTicks(65535,1)>Vehicle::ExternalTravelTicks(65535,4));
+ REQUIRE(CargoPacket::GetNumItems()==0);
+ AllocateMap(64,64);
+ const CargoType cargo{0};
+ AutoRestoreBackup spec(*CargoSpec::Get(cargo),*CargoSpec::Get(cargo));
+ CargoSpec::Get(cargo)->current_payment=1000;
+ CargoSpec::Get(cargo)->transit_periods[0]=10;CargoSpec::Get(cargo)->transit_periods[1]=10;
+ VehicleCargoList list;
+ auto cleanup=scope_guard([&]{list.Truncate();_cargopacket_pool.CleanPool();DeallocateMap();});
+ auto*packet=CargoPacket::Create(uint16_t(100),uint16_t(5),StationID::Invalid(),TileXY(10,10),Money(25));
+ packet->external_distance=25;packet->external_source_city=7;packet->UpdateLoadingTile(TileXY(10,10));list.Append(packet);
+ Money income=0;
+ CHECK(list.DeliverToExternal(30,cargo,TileXY(20,10),9,10,income)==30);
+ CHECK(list.StoredCount()==70);
+ CHECK(income==GetTransportedGoodsIncome(30,45,5,cargo)-7);
+ REQUIRE(list.Packets()->size()==1);
+ CHECK(list.Packets()->front()->external_source_city==7);
+ CHECK(list.Packets()->front()->external_distance==25);
+ CHECK(list.Packets()->front()->GetFeederShare()==18);
+ const auto earned=income;
+ CHECK(list.DeliverToExternal(70,cargo,TileXY(20,10),7,10,income)==0);
+ CHECK(list.StoredCount()==70);CHECK(income==earned);
+ CHECK(list.DeliverToExternal(70,cargo,TileXY(20,10),9,10,income)==70);
+ CHECK(list.StoredCount()==0);
+ CHECK(list.DeliverToExternal(100,cargo,TileXY(20,10),9,10,income)==0);
+ CHECK(income==earned+GetTransportedGoodsIncome(70,45,5,cargo)-18);
+ CHECK(CargoPacket::GetNumItems()==0);
+}
 
 TEST_CASE_METHOD(TrainDecoupleFixture, "Decouple - a pending partner is excluded only when its whole body is behind the departing front")
 {
@@ -6300,4 +6836,63 @@ TEST_CASE_METHOD(CouplePowerFixture, "Couple - shared waiting slot command never
  CHECK(low->current_order.GetWaitCoupleSlot()==slot->index);CHECK(strong->current_order.GetWaitCoupleSlot()==slot->index);
  UpdateWaitCoupleSlot(low);UpdateWaitCoupleSlot(strong);
  CHECK(slot->IsOccupant(low->index));CHECK_FALSE(slot->IsOccupant(strong->index));
+}
+
+TEST_CASE("External cargo policy - depot flags, copy, waiting and cargo selection are independent")
+{
+ Order order; order.MakeGoToDepot(DepotID{1}, {OrderDepotTypeFlag::PartOfOrders});
+ order.SetDepotExtraFlags(OrderDepotExtraFlags{}.Set(OrderDepotExtraFlag::ExternalTrip));
+ const auto original_action = order.GetDepotActionType();
+ const auto original_type = order.GetDepotOrderType();
+ order.SetExternalReturnDepot(DepotID{7});
+ order.SetLoadType(OrderLoadType::CargoTypeLoad);
+ order.SetUnloadType(OrderUnloadType::CargoTypeUnload);
+ order.SetLoadType(OrderLoadType::FullLoad, CargoType{0});
+ order.SetLoadType(OrderLoadType::NoLoad, CargoType{1});
+ order.SetUnloadType(OrderUnloadType::NoUnload, CargoType{1});
+ CHECK(order.GetDepotActionType() == original_action);
+ CHECK(order.GetDepotOrderType() == original_type);
+ Order copy = order; copy.MakeWaiting();
+ CHECK(copy.GetCargoLoadType(CargoType{0}) == OrderLoadType::FullLoad);
+ CHECK(copy.GetCargoLoadType(CargoType{1}) == OrderLoadType::NoLoad);
+ CHECK(copy.GetCargoUnloadType(CargoType{1}) == OrderUnloadType::NoUnload);
+ CHECK(copy.GetExternalReturnDepot() == DepotID{7});
+ order.SetLoadType(OrderLoadType::NoLoad);
+ CHECK(copy.GetLoadType() == OrderLoadType::CargoTypeLoad);
+}
+
+
+TEST_CASE("External CargoDist - retain cargo routed elsewhere and sell only the terminal share")
+{
+ const size_t initial_packets = CargoPacket::GetNumItems();
+ AllocateMap(64,64);
+ const CargoType cargo{0};
+ AutoRestoreBackup spec(*CargoSpec::Get(cargo),*CargoSpec::Get(cargo));
+ AutoRestoreBackup distribution(_settings_game.linkgraph.distribution_per_cargo[cargo], DistributionType::Symmetric);
+ *CargoSpec::Get(cargo)=CargoSpec{};
+ CargoSpec::Get(cargo)->current_payment=1048576;
+ CargoSpec::Get(cargo)->bitnum=0;
+ CargoSpec::Get(cargo)->transit_periods[0]=10;CargoSpec::Get(cargo)->transit_periods[1]=10;
+ VehicleCargoList list;
+ auto cleanup=scope_guard([&]{list.Truncate();DeallocateMap();});
+ const StationID source{1}, destination{2}, other{3};
+ auto*packet=CargoPacket::Create(uint16_t(100),uint16_t(5),source,TileXY(10,10),Money(0));
+ packet->UpdateLoadingTile(TileXY(10,10));list.Append(packet);
+ GoodsEntry goods;
+ goods.CreateData().flows.insert(FlowStat(source,other,100));
+ Money income=0;
+ CHECK(list.DeliverToExternal(100,cargo,TileXY(20,10),9,10,income,destination,&goods)==0);
+ CHECK(list.StoredCount()==100);CHECK(income==0);
+ goods.CreateData().flows.erase(source);
+ goods.CreateData().flows.insert(FlowStat(source,destination,100));
+ CHECK(list.DeliverToExternal(30,cargo,TileXY(20,10),9,10,income,destination,&goods)==30);
+ CHECK(list.StoredCount()==70);CHECK(income>0);
+ const auto earned=income;
+ goods.CreateData().flows.erase(source);goods.CreateData().flows.insert(FlowStat(source,other,100));
+ CHECK(list.DeliverToExternal(70,cargo,TileXY(20,10),9,10,income,destination,&goods)==0);
+ CHECK(list.StoredCount()==70);CHECK(income==earned);
+ _settings_game.linkgraph.distribution_per_cargo[cargo]=DistributionType::Manual;
+ CHECK(list.DeliverToExternal(70,cargo,TileXY(20,10),9,10,income,destination,&goods)==70);
+ CHECK(list.StoredCount()==0);CHECK(income>earned);
+ CHECK(CargoPacket::GetNumItems()==initial_packets);
 }

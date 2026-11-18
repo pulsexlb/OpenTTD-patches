@@ -82,7 +82,7 @@
 	EnforcePrecondition(false, ::IsValidTile(front));
 	EnforcePrecondition(false, (::TileX(front) == ::TileX(tile)) != (::TileY(front) == ::TileY(tile)));
 
-	return ScriptObject::Command<Commands::BuildShipDepot>::Do(tile, ::TileX(front) == ::TileX(tile) ? Axis::Y : Axis::X);
+	return ScriptObject::Command<Commands::BuildShipDepot>::Do(tile, ::TileX(front) == ::TileX(tile) ? Axis::Y : Axis::X, false);
 }
 
 /* static */ bool ScriptMarine::BuildDock(TileIndex tile, StationID station_id)

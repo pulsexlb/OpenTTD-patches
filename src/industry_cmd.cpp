@@ -8,6 +8,7 @@
 /** @file industry_cmd.cpp Handling of industry tiles. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "misc/history_type.hpp"
 #include "misc/history_func.hpp"
 #include "clear_map.h"
@@ -1295,6 +1296,7 @@ void OnTick_Industry()
 	if (_game_mode == GameMode::Editor) return;
 
 	_scaled_production_ticks = _industry_inverse_cargo_scaler.Scale(INDUSTRY_PRODUCE_TICKS);
+	TickExternalCityIndustries(_industry_cargo_scaler.HasScaling() ? _scaled_production_ticks : INDUSTRY_PRODUCE_TICKS);
 	for (Industry *i : Industry::Iterate()) {
 		ProduceIndustryGoods(i);
 

@@ -25,6 +25,7 @@
 #include "network/network.h"
 #include "station_base.h"
 #include "depot_base.h"
+#include "external_city.h"
 #include "depot_map.h"
 #include "roadveh_transport.h"
 #include "industry.h"
@@ -196,6 +197,7 @@ public:
 		this->order_id = order_id;
 		this->order_count = v->GetNumOrders();
 		this->order = v->GetOrder(order_id);
+		if (this->order->IsExternalTripOrder() && variant == CTOWV_UNLOAD) this->cargo_type_order_dropdown_hmask |= (1U << to_underlying(OrderUnloadType::Transfer)) | (1U << to_underlying(OrderUnloadType::Unload));
 		this->set_to_all_dropdown_sel = 0;
 
 		this->CreateNestedTree();
@@ -314,6 +316,7 @@ public:
 			return {};
 		}
 		if (widget == WID_CTO_CAPTION) {
+			if (this->vehicle->GetOrder(this->order_id)->IsExternalTripOrder()) return GetString(this->variant == CTOWV_LOAD ? STR_EXTERNAL_CARGO_LOAD_CAPTION : STR_EXTERNAL_CARGO_UNLOAD_CAPTION);
 			return GetString(STR_CARGO_TYPE_ORDERS_LOAD_CAPTION + this->variant,
 					this->vehicle->index, this->order_id + 1, this->vehicle->GetOrder(this->order_id)->GetDestination());
 		}
@@ -2151,6 +2154,7 @@ enum OrderDropDownID {
 	ODDI_GO_TO_COUPLE,
 	ODDI_DECOUPLE_SAME_DIR,
 	ODDI_DECOUPLE_KEEP_LATENESS,
+	ODDI_EXTERNAL_FLIGHT,
 };
 
 static const StringID _order_decouple_orders_drowdown[] = {
@@ -2348,10 +2352,12 @@ static const StringID _order_depot_action_dropdown[] = {
 	STR_ORDER_DROP_HALT_DEPOT,
 	STR_ORDER_DROP_UNBUNCH,
 	STR_ORDER_DROP_SELL_DEPOT,
+	STR_EXTERNAL_TRIP_ACTION,
 };
 
 static int DepotActionStringIndex(const Order *order)
 {
+	if (order->IsExternalTripOrder()) return DA_EXTERNAL;
 	if (order->GetDepotActionType() & ODATFB_SELL) {
 		return DA_SELL;
 	} else if (order->GetDepotActionType() & ODATFB_HALT) {
@@ -2373,7 +2379,15 @@ static bool IsDepotActionFixedToStop(const Vehicle *v, const Order *order)
 {
 	return _settings_game.vehicle.train_no_depot_temporary_stop &&
 			v != nullptr && v->type == VehicleType::Train &&
-			order != nullptr && order->IsType(OT_GOTO_DEPOT);
+			order != nullptr && order->IsType(OT_GOTO_DEPOT) && !order->IsExternalTripOrder();
+}
+
+static bool CanChooseExternalTrip(const Vehicle *v, const Order *order)
+{
+	if (!_settings_game.vehicle.external_connections || (v != nullptr && v->type != VehicleType::Train && v->type != VehicleType::Road && v->type != VehicleType::Ship) ||
+			order == nullptr || !order->IsType(OT_GOTO_DEPOT) || (order->GetDepotActionType() & ODATFB_NEAREST_DEPOT)) return false;
+	const Depot *depot = Depot::GetIfValid(order->GetDestination().ToDepotID());
+	return depot != nullptr && Vehicle::IsExternalPortal(depot->xy);
 }
 
 static const StringID _order_refit_action_dropdown[] = {
@@ -2591,9 +2605,13 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 		case OT_GOTO_STATION: {
 			OrderLoadType load = order->GetLoadType();
 			OrderUnloadType unload = order->GetUnloadType();
-			bool valid_station = (v != nullptr) ? CanVehicleUseStation(v, Station::Get(order->GetDestination().ToStationID())) : true;
+			bool valid_station = order->IsExternalFlightOrder() || ((v != nullptr) ? CanVehicleUseStation(v, Station::Get(order->GetDestination().ToStationID())) : true);
 
-			AppendStringInPlace(line, valid_station ? STR_ORDER_GO_TO_STATION : STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION,
+			if (order->IsExternalFlightOrder()) {
+				const auto *city = ExternalCity::GetIfValid(GetExternalOrderCity(*order));
+				AppendStringInPlace(line, STR_EXTERNAL_GO_TO_CITY, city == nullptr ? GetString(STR_EXTERNAL_UNASSIGNED_CITY) : std::string(city->name));
+				if (Station::IsValidID(order->GetExternalReturnAirport())) AppendStringInPlace(line, STR_EXTERNAL_FLIGHT_RETURN_SUFFIX, order->GetExternalReturnAirport());
+			} else AppendStringInPlace(line, valid_station ? STR_ORDER_GO_TO_STATION : STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION,
 					STR_ORDER_GO_TO + ((v == nullptr || v->IsGroundVehicle()) ? order->GetNonStopType() : 0),
 					order->GetDestination().ToStationID());
 
@@ -2679,7 +2697,23 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 					else                                dvt = VehicleType::Train;
 				}
 			}
-			if (!(order->GetDepotActionType() & ODATFB_NEAREST_DEPOT)) {
+			if (order->IsExternalTripOrder()) {
+				const Depot *portal = Depot::GetIfValid(order->GetDestination().ToDepotID());
+				const ExternalCity *city = portal == nullptr ? nullptr : ExternalCity::GetIfValid(GetExternalCityForEntrance(portal->xy));
+				if (city != nullptr) AppendStringInPlace(line, STR_EXTERNAL_GO_TO_CITY, city->name);
+				else AppendStringInPlace(line, STR_EXTERNAL_GO_TO_UNASSIGNED);
+				if (!timetable) {
+					const StringID policy = _station_load_types[order->IsRefit()][to_underlying(order->GetUnloadType())][to_underlying(order->GetLoadType())];
+					if (policy != INVALID_STRING_ID) {
+						if (order->IsRefit()) AppendStringInPlace(line, policy, order->IsAutoRefit() ? STR_ORDER_AUTO_REFIT_ANY : CargoSpec::Get(order->GetRefitCargo())->name);
+						else AppendStringInPlace(line, policy);
+					}
+				}
+				if (const Depot *exit=Depot::GetIfValid(order->GetExternalReturnDepot());exit!=nullptr&&Depot::IsExternalConnection(exit->xy)) {
+					const ExternalCity *return_city=ExternalCity::GetIfValid(GetExternalCityForEntrance(exit->xy));
+					AppendStringInPlace(line,STR_EXTERNAL_RETURN_SUFFIX,return_city==nullptr?GetString(STR_EXTERNAL_UNASSIGNED_CITY):std::string(return_city->name),TileX(exit->xy),TileY(exit->xy));
+				}
+			} else if (!(order->GetDepotActionType() & ODATFB_NEAREST_DEPOT)) {
 				AppendStringInPlace(line, STR_ORDER_GO_TO_DEPOT_FORMAT, GetDepotOrderGoToString(*order), dvt, order->GetDestination().ToDepotID());
 			} else if (dvt == VehicleType::Aircraft) {
 				/* Going to the nearest hangar. */
@@ -2698,8 +2732,9 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 					AppendStringInPlace(line, STR_ORDER_STOP_ORDER);
 				}
 
-				/* Do not show refitting in the depot in the timetable window. */
-				if (!timetable && order->IsRefit()) {
+				/* External orders already display their refit policy above, including
+				 * CARGO_AUTO_REFIT, which is not an index into CargoSpec. */
+				if (!timetable && order->IsRefit() && !order->IsExternalTripOrder()) {
 					AppendStringInPlace(line, (order->GetDepotActionType() & ODATFB_HALT) ? STR_ORDER_REFIT_STOP_ORDER : STR_ORDER_REFIT_ORDER, CargoSpec::Get(order->GetRefitCargo())->name);
 				}
 			}
@@ -3281,7 +3316,7 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 		AppendStringInPlace(line, STR_TIMETABLE_LEAVE_EARLY_ORDER + order->GetLeaveType() - OLT_LEAVE_EARLY);
 	}
 
-	if (!timetable && (order->IsType(OT_GOTO_WAYPOINT) || (order->IsType(OT_GOTO_STATION) && !(order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)))) {
+	if (!timetable && order->IsServiceNumberChangePoint()) {
 		if (order->GetServiceNumberMode() == 1) AppendStringInPlace(line, STR_ORDER_SERVICE_SUFFIX, order->GetServiceNumber());
 		if (order->GetServiceNumberMode() == 2) AppendStringInPlace(line, STR_ORDER_SERVICE_DISPATCH_SUFFIX);
 	}
@@ -3334,6 +3369,12 @@ static Order GetOrderCmdFromTile(const Vehicle *v, TileIndex tile)
 				((_settings_client.gui.new_nonstop || _settings_game.order.nonstop_only) && v->IsGroundVehicle()) ? ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS : ONSF_STOP_EVERYWHERE);
 
 		if (_ctrl_pressed) order.SetDepotOrderType((order.GetDepotOrderType() ^ OrderDepotTypeFlags{OrderDepotTypeFlag::Service}));
+		if (Depot::IsExternalConnection(tile)) {
+			order.SetDepotOrderType(OrderDepotTypeFlags{OrderDepotTypeFlag::PartOfOrders});
+			order.SetDepotActionType(ODATF_SERVICE_ONLY);
+			order.SetDepotExtraFlags(OrderDepotExtraFlags{}.Set(OrderDepotExtraFlag::ExternalTrip));
+		}
+
 
 		return order;
 	}
@@ -3411,6 +3452,11 @@ static Order GetOrderCmdFromTileStandalone(TileIndex tile)
 				{OrderDepotTypeFlag::PartOfOrders},
 				(_settings_client.gui.new_nonstop || _settings_game.order.nonstop_only) ? ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS : ONSF_STOP_EVERYWHERE);
 		if (_ctrl_pressed) order.SetDepotOrderType((order.GetDepotOrderType() ^ OrderDepotTypeFlags{OrderDepotTypeFlag::Service}));
+		if (Depot::IsExternalConnection(tile)) {
+			order.SetDepotOrderType(OrderDepotTypeFlags{OrderDepotTypeFlag::PartOfOrders});
+			order.SetDepotActionType(ODATF_SERVICE_ONLY);
+			order.SetDepotExtraFlags(OrderDepotExtraFlags{}.Set(OrderDepotExtraFlag::ExternalTrip));
+		}
 		return order;
 	}
 
@@ -3516,6 +3562,7 @@ private:
 		OPOS_DEPARTURE_VIA,
 		OPOS_COUPLE_STATION,
 		OPOS_WAIT_COUPLE_STATION,
+		OPOS_EXTERNAL_RETURN,
 		OPOS_END,
 	};
 
@@ -3542,9 +3589,11 @@ private:
 		DP_MIDDLE_UNLOAD   = 0, ///< Display 'unload' in the middle button of the top row of the train/rv order window.
 		DP_MIDDLE_WAYPOINT_STOP = 2, ///< Stop after the whole train passes the waypoint.
 		DP_MIDDLE_SERVICE  = 1, ///< Display 'service' in the middle button of the top row of the train/rv order window.
+		DP_MIDDLE_EMPTY    = 3, ///< External journeys need only the settings/return control.
 
 		/* WID_O_SEL_TOP_RIGHT */
 		DP_RIGHT_EMPTY     = 0, ///< Display an empty panel in the right button of the top row of the train/rv order window.
+		DP_RIGHT_EXTERNAL  = 2,
 		DP_RIGHT_REFIT     = 1, ///< Display 'refit' in the right button of the top  row of the train/rv order window.
 
 		/* WID_O_SEL_TOP_ROW */
@@ -3607,6 +3656,7 @@ private:
 	int query_text_widget = -1;    ///< widget which most recently called ShowQueryString
 	std::array<int, 4> current_aux_planes{};
 	int current_value_plane = 0;
+	int current_external_city_plane = SZSP_HORIZONTAL;
 	int current_mgmt_plane = 0;
 	OrderListID list_id = OrderListID::Invalid(); ///< Target list id when editing a standalone (player-created) order list.
 
@@ -3631,10 +3681,15 @@ private:
 	VehicleOrderID service_number_query_index = INVALID_VEH_ORDER_ID;
 	const Order *service_number_query_order = nullptr;
 	OrderListID service_number_query_list = OrderListID::Invalid();
+	VehicleOrderID external_pick_index = INVALID_VEH_ORDER_ID;
+	const Order *external_pick_order = nullptr;
+	OrderListID external_pick_list = OrderListID::Invalid();
+	TileIndex external_pick_origin = INVALID_TILE;
+	ExternalCityID external_pick_city = ExternalCityID::Invalid();
 	bool CanSetStationServiceNumber() const
 	{
 		const Order *o = this->selected_order >= 0 ? OrderAt(this->selected_order) : nullptr;
-		return IsLocalTarget() && this->RefType() == VehicleType::Train && o != nullptr && (o->IsType(OT_GOTO_WAYPOINT) || (o->IsType(OT_GOTO_STATION) && !(o->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)));
+		return IsLocalTarget() && this->RefType() == VehicleType::Train && o != nullptr && o->IsServiceNumberChangePoint();
 	}
 
 	/* ---- target mode helpers: order-content access goes through these ---- */
@@ -3901,6 +3956,8 @@ private:
 		const uint count = unload ? lengthof(_order_unload_dropdown) : lengthof(_order_full_load_dropdown);
 		for (uint i = 0; i < count; i++) {
 			if (array[i] == STR_EMPTY) continue;
+			const Order *order = OrderAt(this->OrderGetSel());
+			if (unload && order != nullptr && order->IsExternalTripOrder() && (i == to_underlying(OrderUnloadType::Transfer) || i == to_underlying(OrderUnloadType::Unload))) continue;
 			list.push_back(MakeDropDownListStringItem(array[i], i));
 		}
 		return list;
@@ -3991,6 +4048,7 @@ private:
 			HT_RECT,              // OPOS_DEPARTURE_VIA
 			HT_RECT,              // OPOS_COUPLE_STATION
 			HT_RECT,              // OPOS_WAIT_COUPLE_STATION
+			HT_RECT,              // OPOS_EXTERNAL_RETURN
 		};
 		SetObjectToPlaceWnd(ANIMCURSOR_PICKSTATION, PAL_NONE, goto_place_style[type - 1], this);
 		this->goto_type = type;
@@ -4441,6 +4499,10 @@ private:
 
 	void OrderClick_RefitHotkey()
 	{
+		if (const Order *order = OrderAt(this->OrderGetSel()); order != nullptr && order->IsExternalTripOrder()) {
+			this->OrderClick_Refit(0, true);
+			return;
+		}
 		if (this->IsWidgetActiveInLayout(WID_O_REFIT)) {
 			this->OrderClick_Refit(0, false);
 		} else if (this->IsWidgetActiveInLayout(WID_O_REFIT_DROPDOWN)) {
@@ -4493,6 +4555,12 @@ public:
 	{
 		this->CreateNestedTree();
 		this->vscroll = this->GetScrollbar(WID_O_SCROLLBAR);
+		/* Hide the optional destination row before measuring the window. Its
+		 * cached plane already starts hidden, so the first button update would
+		 * otherwise hide it without recomputing the space it occupied. */
+		if (auto *city = this->GetWidget<NWidgetStacked>(WID_O_SEL_EXTERNAL_CITY); city != nullptr) {
+			city->SetDisplayedPlane(this->current_external_city_plane);
+		}
 		if (auto *preview = this->GetWidget<NWidgetStacked>(WID_O_SEL_DECOUPLE_PREVIEW); preview != nullptr) {
 			preview->SetDisplayedPlane(SZSP_NONE);
 			this->decouple_scroll = this->GetScrollbar(WID_O_DECOUPLE_SCROLLBAR);
@@ -4583,6 +4651,7 @@ public:
 	void Close(int data = 0) override
 	{
 		CloseWindowById(WindowClass::VehicleCargoTypeLoadOrders, this->window_number, false);
+		if (this->goto_type == OPOS_EXTERNAL_RETURN) ResetObjectToPlace();
 		CloseWindowById(WindowClass::VehicleCargoTypeUnloadOrders, this->window_number, false);
 		CloseWindowById(WindowClass::DecoupleSchedulePicker, this->window_number, false);
 		if (this->HasVehicle()) FocusWindowById(WindowClass::VehicleView, this->window_number);
@@ -4782,6 +4851,9 @@ public:
 		VehicleOrderID sel = this->OrderGetSel();
 		const Order *order = OrderAt(sel);
 
+		this->SetWidgetDisabledState(WID_O_AUTO_REFIT_STATE, !this->HasVehicle() || !this->IsStopRefitOrder(order));
+		this->SetWidgetDisabledState(WID_O_EXTERNAL_SETTINGS, order == nullptr || !order->IsExternalTripOrder());
+
 		/* Second row. */
 		/* skip */
 		this->SetWidgetDisabledState(WID_O_SKIP, !this->HasVehicle() || NumOrders() <= 1);
@@ -4822,6 +4894,11 @@ public:
 		NWidgetStacked *right_sel     = this->GetWidget<NWidgetStacked>(WID_O_SEL_TOP_RIGHT);
 		/* Ship or airplane. */
 		NWidgetStacked *row_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_TOP_ROW);
+		if (auto *external_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_EXTERNAL_REFIT); external_sel != nullptr) {
+			external_sel->SetDisplayedPlane(order != nullptr && order->IsExternalTripOrder() ? 1 : 0);
+		}
+		auto *external_city_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_EXTERNAL_CITY);
+		if (external_city_sel != nullptr) external_city_sel->SetDisplayedPlane(order != nullptr && order->IsExternalFlightOrder() ? 0 : SZSP_HORIZONTAL);
 		assert(row_sel != nullptr || (train_row_sel != nullptr && left_sel != nullptr && middle_sel != nullptr && right_sel != nullptr));
 
 		NWidgetStacked *aux_sel = this->GetWidget<NWidgetStacked>(WID_O_SEL_COND_AUX);
@@ -4843,6 +4920,7 @@ public:
 				}
 			};
 			if (preview_sel != nullptr) reinit_on_plane_change(preview_sel, this->current_decouple_plane);
+			if (external_city_sel != nullptr) reinit_on_plane_change(external_city_sel, this->current_external_city_plane);
 			reinit_on_plane_change(aux_sel, this->current_aux_planes[0]);
 			reinit_on_plane_change(aux2_sel, this->current_aux_planes[1]);
 			reinit_on_plane_change(aux3_sel, this->current_aux_planes[2]);
@@ -4952,22 +5030,27 @@ public:
 					break;
 
 				case OT_GOTO_DEPOT:
-					this->SetWidgetDisabledState(WID_O_DEPOT_ACTION, IsDepotActionFixedToStop(this->vehicle, order));
+					if (order->IsExternalTripOrder()) {
+						this->GetWidget<NWidgetCore>(WID_O_UNLOAD)->SetString(STR_ORDER_DROP_NO_UNLOADING);
+						this->SetWidgetLoweredState(WID_O_FULL_LOAD, order->GetLoadType() == OrderLoadType::FullLoadAny);
+						this->SetWidgetLoweredState(WID_O_UNLOAD, order->GetUnloadType() == OrderUnloadType::NoUnload);
+					}
+					this->SetWidgetDisabledState(WID_O_DEPOT_ACTION, IsDepotActionFixedToStop(this->vehicle, order) && !CanChooseExternalTrip(this->vehicle, order));
 					if (row_sel != nullptr) {
-						row_sel->SetDisplayedPlane(DP_ROW_DEPOT);
+						row_sel->SetDisplayedPlane(order->IsExternalTripOrder() ? DP_ROW_LOAD : DP_ROW_DEPOT);
 					} else {
 						train_row_sel->SetDisplayedPlane(DP_GROUNDVEHICLE_ROW_NORMAL);
-						left_sel->SetDisplayedPlane(DP_LEFT_REFIT);
-						middle_sel->SetDisplayedPlane(DP_MIDDLE_SERVICE);
-						right_sel->SetDisplayedPlane(DP_RIGHT_EMPTY);
+						left_sel->SetDisplayedPlane(order->IsExternalTripOrder() ? DP_LEFT_LOAD : DP_LEFT_REFIT);
+						middle_sel->SetDisplayedPlane(order->IsExternalTripOrder() ? DP_MIDDLE_UNLOAD : DP_MIDDLE_SERVICE);
+						right_sel->SetDisplayedPlane(order->IsExternalTripOrder() ? DP_RIGHT_EXTERNAL : DP_RIGHT_EMPTY);
 						this->EnableWidget(WID_O_NON_STOP);
 						this->SetWidgetLoweredState(WID_O_NON_STOP, order->GetNonStopType() & ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);
 					}
 				/* Disable refit button if the order is no 'always go' order.
 				 * However, keep the service button enabled for refit-orders to allow clearing refits (without knowing about ctrl). */
 				this->SetWidgetDisabledState(WID_O_REFIT,
-						order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service) || (order->GetDepotActionType() & ODATFB_HALT) ||
-						(!this->can_do_refit && !order->IsRefit()));
+							!order->IsExternalTripOrder() && (order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service) || (order->GetDepotActionType() & ODATFB_HALT) ||
+							(!this->can_do_refit && !order->IsRefit())));
 					break;
 
 				case OT_CONDITIONAL: {
@@ -5460,10 +5543,23 @@ public:
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		switch (widget) {
+			case WID_O_AUTO_REFIT_STATE: {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (!this->IsStopRefitOrder(order)) return GetString(STR_ORDER_STOP_REFIT_UNAVAILABLE);
+				if (order->IsAutoRefit()) return GetString(STR_ORDER_STOP_REFIT_AVAILABLE, STR_ORDER_DROP_REFIT_AUTO_ANY);
+				const CargoType cargo = order->GetRefitCargo();
+				if (cargo < NUM_CARGO && CargoSpec::Get(cargo)->IsValid()) return GetString(STR_ORDER_STOP_REFIT_FIXED, CargoSpec::Get(cargo)->name);
+				return GetString(STR_ORDER_STOP_REFIT_NONE);
+			}
 			case WID_O_WAIT_COUPLE_SLOT: {
 				const auto *order = OrderAt(this->OrderGetSel());
 				const auto slot = order == nullptr ? TraceRestrictSlotID::Invalid() : order->GetWaitCoupleSlot();
 				return TraceRestrictSlot::IsValidID(slot) ? GetString(STR_WAIT_COUPLE_SLOT_BUTTON, slot.base()) : GetString(STR_WAIT_COUPLE_SLOT_NONE);
+			}
+			case WID_O_REFIT: {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order != nullptr && order->IsExternalTripOrder()) return GetString(STR_EXTERNAL_TRIP_SETTINGS);
+				return this->Window::GetWidgetString(widget, stringid);
 			}
 			case WID_O_COND_VALUE: {
 				VehicleOrderID sel = this->OrderGetSel();
@@ -5597,6 +5693,7 @@ public:
 				VehicleOrderID sel = this->OrderGetSel();
 				const Order *order = OrderAt(sel);
 				if (order == nullptr || !order->IsType(OT_GOTO_DEPOT)) return {};
+				if (order->IsExternalTripOrder()) return GetString(STR_EXTERNAL_TRIP_ACTION);
 				if (IsDepotActionFixedToStop(this->vehicle, order)) return GetString(STR_ORDER_DROP_HALT_DEPOT);
 
 				/* Select the current action selected in the dropdown. The flags don't match the dropdown so we can't just use an index. */
@@ -5952,7 +6049,7 @@ public:
 						this->OrderClick_Goto(OPOS_GOTO);
 					}
 				} else {
-					if (this->goto_type == OPOS_COND_VIA || this->goto_type == OPOS_COND_STATION) ResetObjectToPlace();
+					if (this->goto_type == OPOS_COND_VIA || this->goto_type == OPOS_COND_STATION || this->goto_type == OPOS_EXTERNAL_RETURN) ResetObjectToPlace();
 					int sel;
 					switch (this->goto_type) {
 						case OPOS_NONE:                 sel = -1; break;
@@ -5968,6 +6065,7 @@ public:
 					}
 					DropDownList list;
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_GO_TO, ODDI_GO_TO, false));
+					if (this->RefType() == VehicleType::Aircraft && _settings_game.vehicle.external_connections) list.push_back(MakeDropDownListStringItem(STR_EXTERNAL_FLIGHT_MENU, ODDI_EXTERNAL_FLIGHT));
 					list.push_back(MakeDropDownListStringItem((this->RefType() == VehicleType::Aircraft) ? STR_ORDER_GO_TO_NEAREST_HANGAR : STR_ORDER_GO_TO_NEAREST_DEPOT, ODDI_GO_TO_NEAREST_DEPOT, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_CONDITIONAL, ODDI_CONDITIONAL, false));
 					list.push_back(MakeDropDownListStringItem(STR_ORDER_SHARE, ODDI_SHARE, false));
@@ -5989,7 +6087,7 @@ public:
 						list.push_back(MakeDropDownListStringItem(STR_ORDERS_GO_TO_COUPLE, ODDI_GO_TO_COUPLE, false));
 					}
 
-					ShowDropDownList(this, std::move(list), sel, WID_O_GOTO, 0, DropDownOptions{}, DDSF_SHARED);
+					ShowDropDownList(this, std::move(list), sel, WID_O_GOTO, 0, this->RefType() == VehicleType::Aircraft ? DropDownOptions{DropDownOption::ClickOnly} : DropDownOptions{}, DDSF_SHARED);
 				}
 				break;
 
@@ -6017,7 +6115,8 @@ public:
 					if (this->IsVehicleOnlyCarrier()) {
 						this->OrderClick_RVUnloadToggle();
 					} else {
-						this->OrderClick_Unload(OrderUnloadType::Unload, true);
+						const Order *order = OrderAt(this->OrderGetSel());
+						this->OrderClick_Unload(order != nullptr && order->IsExternalTripOrder() ? OrderUnloadType::NoUnload : OrderUnloadType::Unload, true);
 					}
 				} else {
 					/* RoRo: both the normal-cargo and the road vehicle transport options are listed; the
@@ -6031,14 +6130,39 @@ public:
 				}
 				break;
 
+			case WID_O_AUTO_REFIT_STATE:
+				this->ShowStopRefitOptions();
+				break;
+
+			case WID_O_EXTERNAL_CITY:
+				if (const Order *order = OrderAt(this->OrderGetSel()); order != nullptr && order->IsExternalFlightOrder()) {
+					ResetObjectToPlace();
+					this->external_pick_index = this->selected_order;
+					this->external_pick_order = order;
+					this->external_pick_list = this->Target()->index;
+					this->external_pick_city = GetExternalOrderCity(*order);
+					this->ShowExternalFlightCities(widget);
+				}
+				break;
+
+			case WID_O_EXTERNAL_SETTINGS:
 			case WID_O_REFIT:
+				if (const Order *order = OrderAt(this->OrderGetSel()); order != nullptr && order->IsExternalTripOrder()) {
+					this->ShowExternalTripOptions(*order);
+					break;
+				}
 				this->OrderClick_Refit(0, false);
 				break;
 
-			case WID_O_DEPOT_ACTION:
-				ShowDropDownMenu(this, _order_depot_action_dropdown, DepotActionStringIndex(OrderAt(this->OrderGetSel())),
-						WID_O_DEPOT_ACTION, 0, _settings_client.gui.show_depot_sell_gui ? 0 : (1 << DA_SELL), 0, DDSF_SHARED);
+			case WID_O_DEPOT_ACTION: {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (order != nullptr && order->IsExternalTripOrder()) break;
+				uint disabled = CanChooseExternalTrip(this->vehicle, order) ? 0 : 1 << DA_EXTERNAL;
+				if (IsDepotActionFixedToStop(this->vehicle, order)) disabled |= ((1 << DA_END) - 1) & ~((1 << DA_STOP) | (1 << DA_EXTERNAL));
+				ShowDropDownMenu(this, _order_depot_action_dropdown, DepotActionStringIndex(order),
+						WID_O_DEPOT_ACTION, disabled, _settings_client.gui.show_depot_sell_gui ? 0 : (1 << DA_SELL), 0, DDSF_SHARED);
 				break;
+			}
 
 			case WID_O_REFIT_DROPDOWN:
 				if (this->GetWidget<NWidgetLeaf>(widget)->ButtonHit(pt)) {
@@ -6770,9 +6894,139 @@ public:
 		return list;
 	}
 
+	void ShowExternalFlightCities(WidgetID widget)
+	{
+		DropDownList list;
+		for (const auto *city : ExternalCity::Iterate()) {
+			if (Station::IsValidID(city->market_station) && GetExternalFlightBoundary(city->index, this->CmdTile()) != INVALID_TILE) {
+				list.push_back(MakeDropDownListStringItem(std::string(city->name), 10000 + city->index.base()));
+			}
+		}
+		if (list.empty()) {
+			ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_MODIFY_THIS_ORDER), GetEncodedString(STR_EXTERNAL_FLIGHT_INVALID), WarningLevel::Info);
+		} else {
+			ShowDropDownList(this, std::move(list), widget == WID_O_EXTERNAL_CITY ? 10000 + this->external_pick_city.base() : -1, widget, 0, {DropDownOption::ClickOnly});
+		}
+	}
+
+	static bool IsStopRefitOrder(const Order *order)
+	{
+		return order != nullptr && (order->IsType(OT_GOTO_STATION) || order->IsExternalTripOrder());
+	}
+
+	bool CanSetStopRefit(const Order &order) const
+	{
+		return this->HasVehicle() && this->can_do_autorefit && this->can_do_refit &&
+			order.GetLoadType() != OrderLoadType::NoLoad &&
+			(order.IsExternalTripOrder() || !(order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION));
+	}
+
+	void ShowStopRefitOptions()
+	{
+		const Order *order = OrderAt(this->OrderGetSel());
+		if (!this->IsLocalTarget() || !this->HasVehicle() || !this->IsStopRefitOrder(order)) return;
+		const bool unavailable = !this->CanSetStopRefit(*order);
+		DropDownList list;
+		list.push_back(MakeDropDownListCheckedItem(!order->IsRefit(), STR_ORDER_STOP_REFIT_OFF_OPTION, 0));
+		list.push_back(MakeDropDownListCheckedItem(order->IsAutoRefit(), STR_ORDER_DROP_REFIT_AUTO_ANY, 1, unavailable));
+		list.push_back(MakeDropDownListCheckedItem(order->IsRefit() && !order->IsAutoRefit(), STR_ORDER_DROP_REFIT_AUTO, 2, unavailable));
+		ShowDropDownList(this, std::move(list), order->IsAutoRefit() ? 1 : order->IsRefit() ? 2 : 0, WID_O_AUTO_REFIT_STATE, 0, {DropDownOption::ClickOnly});
+	}
+
+	void ShowExternalTripOptions(const Order &order)
+	{
+
+		if (order.IsExternalFlightOrder()) {
+			DropDownList list;
+			list.push_back(MakeDropDownListCheckedItem(order.GetExternalReturnAirport() == StationID::Invalid(), STR_EXTERNAL_FLIGHT_RETURN_HOME, -1));
+			list.push_back(MakeDropDownListCheckedItem(order.GetExternalReturnAirport() != StationID::Invalid(), STR_EXTERNAL_FLIGHT_RETURN_PICK, -2));
+			ShowDropDownList(this, std::move(list), order.GetExternalReturnAirport() == StationID::Invalid() ? -1 : -2, this->IsWidgetActiveInLayout(WID_O_EXTERNAL_SETTINGS) ? WID_O_EXTERNAL_SETTINGS : WID_O_REFIT, 0, {DropDownOption::ClickOnly});
+			return;
+		}
+		DropDownList list;
+		list.push_back(MakeDropDownListCheckedItem(order.GetExternalReturnDepot() == DepotID::Invalid(), STR_EXTERNAL_RETURN_SAME, -1));
+		const Depot *origin = Depot::GetIfValid(order.GetDestination().ToDepotID());
+		const bool no_city = origin == nullptr || GetExternalCityForEntrance(origin->xy) == ExternalCityID::Invalid();
+		list.push_back(MakeDropDownListCheckedItem(order.GetExternalReturnDepot() != DepotID::Invalid(), STR_EXTERNAL_RETURN_PICK, -2, no_city));
+		ShowDropDownList(this, std::move(list), order.GetExternalReturnDepot() == DepotID::Invalid() ? -1 : -2, this->IsWidgetActiveInLayout(WID_O_EXTERNAL_SETTINGS) ? WID_O_EXTERNAL_SETTINGS : WID_O_REFIT, 0, {DropDownOption::ClickOnly});
+	}
+
+	bool ExternalPickValid() const
+	{
+		const Order *order = OrderAt(this->external_pick_index);
+		if (!IsLocalTarget() || this->selected_order != this->external_pick_index || this->Target() == nullptr ||
+				this->Target()->index != this->external_pick_list || order == nullptr || order != this->external_pick_order) return false;
+		if (order->IsExternalFlightOrder()) {
+			return this->external_pick_city != ExternalCityID::Invalid() && GetExternalOrderCity(*order) == this->external_pick_city;
+		}
+		const Depot *origin = order != nullptr && order->IsExternalTripOrder() ? Depot::GetIfValid(order->GetDestination().ToDepotID()) : nullptr;
+		return origin != nullptr && origin->xy == this->external_pick_origin;
+	}
+
+	void OnGameTick() override
+	{
+		if (this->goto_type == OPOS_EXTERNAL_RETURN && !this->ExternalPickValid()) ResetObjectToPlace();
+	}
+
 	void OnDropdownSelect(WidgetID widget, int index, int) override
 	{
 		switch (widget) {
+			case WID_O_AUTO_REFIT_STATE: {
+				const Order *order = OrderAt(this->OrderGetSel());
+				if (!this->IsLocalTarget() || !this->HasVehicle() || !this->IsStopRefitOrder(order)) break;
+				if (index == 0) {
+					Command<Commands::OrderRefit>::Post(this->vehicle->tile, this->vehicle->index, this->OrderGetSel(), CARGO_NO_REFIT);
+				} else if (this->CanSetStopRefit(*order)) {
+					if (index == 1) Command<Commands::OrderRefit>::Post(this->vehicle->tile, this->vehicle->index, this->OrderGetSel(), CARGO_AUTO_REFIT);
+					if (index == 2) ShowVehicleRefitWindow(this->vehicle, this->OrderGetSel(), this, true);
+				}
+				break;
+			}
+			case WID_O_EXTERNAL_CITY:
+				if (index >= 10000 && index < 10064 && this->ExternalPickValid()) this->ModifyOrder(this->external_pick_index, MOF_EXTERNAL_FLIGHT_CITY, index - 10000);
+				break;
+			case WID_O_EXTERNAL_SETTINGS:
+			case WID_O_REFIT:
+				if (const Order *order=OrderAt(this->OrderGetSel());order!=nullptr&&order->IsExternalTripOrder()) {
+					if (index == -3) { this->OrderClick_Refit(1, true); break; }
+					if (index == -4) { this->OrderClick_Refit(0, true); break; }
+					if (index == -5) {
+						if (this->HasVehicle()) Command<Commands::OrderRefit>::Post(this->vehicle->tile, this->vehicle->index, this->OrderGetSel(), CARGO_NO_REFIT);
+						break;
+					}
+					if (order->IsExternalFlightOrder()) {
+						if (index == -1) {
+							this->ModifyOrder(this->OrderGetSel(), MOF_EXTERNAL_RETURN_DEPOT, UINT16_MAX);
+						} else if (index == -2 && IsLocalTarget()) {
+							const auto city = GetExternalOrderCity(*order);
+							if (city == ExternalCityID::Invalid()) break;
+							this->OrderClick_Goto(OPOS_EXTERNAL_RETURN);
+							this->external_pick_index = this->selected_order;
+							this->external_pick_order = order;
+							this->external_pick_list = this->Target()->index;
+							this->external_pick_origin = INVALID_TILE;
+							this->external_pick_city = city;
+						}
+						break;
+					}
+					if (index == -1) {
+						this->ModifyOrder(this->OrderGetSel(), MOF_EXTERNAL_RETURN_DEPOT, UINT16_MAX);
+					} else if (index == -2 && IsLocalTarget()) {
+						const Depot *origin = Depot::GetIfValid(order->GetDestination().ToDepotID());
+						if (origin == nullptr || GetExternalCityForEntrance(origin->xy) == ExternalCityID::Invalid()) break;
+						this->OrderClick_Goto(OPOS_EXTERNAL_RETURN);
+						this->external_pick_index = this->selected_order;
+						this->external_pick_order = order;
+						this->external_pick_list = this->Target()->index;
+						this->external_pick_origin = origin->xy;
+						this->external_pick_city = ExternalCityID::Invalid();
+						SetExternalReturnHighlight(origin->xy, this->TargetOwner(), this->HasVehicle() && this->vehicle->type == VehicleType::Train ? Train::From(this->vehicle)->compatible_railtypes : RailTypes{UINT64_MAX},
+                            this->HasVehicle() && this->vehicle->type == VehicleType::Road ? RoadVehicle::From(this->vehicle)->compatible_roadtypes : RoadTypes{UINT64_MAX});
+						ScrollMainWindowToTile(origin->xy, true);
+					}
+				}
+				break;
+
 			case WID_O_WAIT_COUPLE_SLOT:
 				this->ModifyOrder(this->OrderGetSel(), MOF_WAIT_COUPLE_SLOT, index);
 				break;
@@ -6830,7 +7084,19 @@ public:
 				break;
 
 			case WID_O_GOTO:
+				if (index >= 10000) {
+					const auto *city = ExternalCity::GetIfValid(ExternalCityID{uint16_t(index - 10000)});
+					if (city != nullptr && Station::IsValidID(city->market_station)) {
+						Order order; order.MakeExternalFlight(city->market_station);
+						this->PostInsert(order, this->OrderGetSel());
+					}
+					break;
+				}
 				switch (index) {
+					case ODDI_EXTERNAL_FLIGHT: {
+						this->ShowExternalFlightCities(WID_O_GOTO);
+						break;
+					}
 					case ODDI_GO_TO:                this->OrderClick_Goto(OPOS_GOTO); break;
 					case ODDI_GO_TO_NEAREST_DEPOT:  this->OrderClick_NearestDepot(); break;
 					case ODDI_CONDITIONAL:          this->OrderClick_Goto(OPOS_CONDITIONAL); break;
@@ -7222,7 +7488,8 @@ public:
 			case OHK_NONSTOP:        this->OrderClick_Nonstop(-1); break;
 			case OHK_VIA:            this->OrderClick_Nonstop(-2); break;
 			case OHK_FULLLOAD:       this->OrderClick_FullLoad(OrderLoadType::FullLoadAny, true); break;
-			case OHK_UNLOAD:         this->OrderClick_Unload(OrderUnloadType::Unload, true); break;
+			case OHK_UNLOAD: {       const Order *order = OrderAt(this->OrderGetSel());
+						this->OrderClick_Unload(order != nullptr && order->IsExternalTripOrder() ? OrderUnloadType::NoUnload : OrderUnloadType::Unload, true); break; }
 			case OHK_NEAREST_DEPOT:  this->OrderClick_NearestDepot(); break;
 			case OHK_ALWAYS_SERVICE: this->OrderClick_Service(-1); break;
 			case OHK_TRANSFER:       this->OrderClick_Unload(OrderUnloadType::Transfer, true); break;
@@ -7239,6 +7506,25 @@ public:
 
 	void OnPlaceObject([[maybe_unused]] Point pt, TileIndex tile) override
 	{
+		if (this->goto_type == OPOS_EXTERNAL_RETURN) {
+			if (!this->ExternalPickValid()) { ResetObjectToPlace(); return; }
+			if (this->OrderAt(this->external_pick_index)->IsExternalFlightOrder()) {
+				const Station *airport = IsAirportTile(tile) ? Station::GetByTile(tile) : nullptr;
+				if (airport == nullptr || airport->owner != this->TargetOwner() ||
+						(this->HasVehicle() && !CanVehicleUseStation(this->vehicle, airport))) {
+					ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_MODIFY_THIS_ORDER), GetEncodedString(STR_EXTERNAL_FLIGHT_RETURN_PICK_INVALID), WarningLevel::Info);
+					return;
+				}
+				if (this->ModifyOrder(this->external_pick_index, MOF_EXTERNAL_RETURN_DEPOT, airport->index.base())) ResetObjectToPlace();
+				return;
+			}
+			if (!IsExternalReturnHighlighted(tile)) {
+				ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_MODIFY_THIS_ORDER), GetEncodedString(STR_EXTERNAL_RETURN_PICK_INVALID), WarningLevel::Info);
+				return;
+			}
+			if (this->ModifyOrder(this->external_pick_index, MOF_EXTERNAL_RETURN_DEPOT, GetDepotIndex(tile).base())) ResetObjectToPlace();
+			return;
+		}
 		if (this->goto_type == OPOS_GOTO) {
 			const Order cmd = this->HasVehicle() ? GetOrderCmdFromTile(this->vehicle, tile) : GetOrderCmdFromTileStandalone(tile);
 			if (cmd.IsType(OT_NOTHING)) return;
@@ -7375,6 +7661,7 @@ public:
 
 	void OnPlaceObjectAbort() override
 	{
+		if (this->goto_type == OPOS_EXTERNAL_RETURN) ClearExternalReturnHighlight();
 		this->goto_type = OPOS_NONE;
 		this->SetWidgetDirty(WID_O_GOTO);
 		this->SetWidgetDirty(WID_O_COND_AUX_VIA);
@@ -7421,6 +7708,10 @@ public:
 
 	bool OnTooltip(Point pt, WidgetID widget, TooltipCloseCondition close_cond) override
 	{
+		if (const Order *order=OrderAt(this->OrderGetSel());order!=nullptr&&order->IsExternalTripOrder()&&(widget==WID_O_EXTERNAL_SETTINGS||widget==WID_O_REFIT||widget==WID_O_DEPOT_ACTION)) {
+			GuiShowTooltips(this,GetEncodedString(STR_EXTERNAL_TRIP_SETTINGS_HELP),close_cond);return true;
+		}
+
 		switch (widget) {
 			case WID_O_SHARED_ORDER_LIST: {
 				if (IsLocalTarget()) {
@@ -7716,6 +8007,8 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_O_SCROLLBAR),
 	EndContainer(),
 
+	NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_EXTERNAL_SETTINGS), SetMinimalSize(372, 12), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_EXTERNAL_TRIP_SETTINGS, STR_EXTERNAL_TRIP_SETTINGS_HELP),
+
 	/* First button row. */
 	NWidget(NWID_HORIZONTAL),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_TOP_ROW_GROUNDVEHICLE),
@@ -7737,11 +8030,13 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_train_widgets
 															SetResize(1, 0),
 					NWidget(WWT_TEXTBTN, Colours::Grey, WID_O_WAYPOINT_STOP), SetMinimalSize(93, 12), SetFill(1, 0),
 						SetStringTip(STR_ORDER_WAYPOINT_STOP_BUTTON, STR_ORDER_WAYPOINT_STOP_TOOLTIP), SetResize(1, 0),
+					NWidget(WWT_PANEL, Colours::Grey), SetMinimalSize(93, 12), SetFill(1, 0), SetResize(1, 0), EndContainer(),
 				EndContainer(),
 				NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_TOP_RIGHT),
 					NWidget(WWT_PANEL, Colours::Grey), SetMinimalSize(93, 12), SetFill(1, 0), SetResize(1, 0), EndContainer(),
 					NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_REFIT_DROPDOWN), SetMinimalSize(93, 12), SetFill(1, 0),
 															SetStringTip(STR_ORDER_REFIT_AUTO, STR_ORDER_REFIT_AUTO_TOOLTIP), SetResize(1, 0),
+					NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_AUTO_REFIT_STATE), SetMinimalSize(93, 12), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_STOP_REFIT_NONE, STR_ORDER_STOP_REFIT_HELP),
 				EndContainer(),
 			EndContainer(),
 			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
@@ -7924,6 +8219,12 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_widgets = {
 		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_O_SCROLLBAR),
 	EndContainer(),
 
+	NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_EXTERNAL_CITY),
+		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_O_EXTERNAL_CITY), SetMinimalSize(372, 12), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_EXTERNAL_FLIGHT_DESTINATION, STR_EXTERNAL_FLIGHT_DESTINATION_HELP),
+	EndContainer(),
+
+	NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_EXTERNAL_SETTINGS), SetMinimalSize(372, 12), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_EXTERNAL_TRIP_SETTINGS, STR_EXTERNAL_TRIP_SETTINGS_HELP),
+
 	/* First button row. */
 	NWidget(NWID_HORIZONTAL),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_TOP_ROW),
@@ -7933,8 +8234,11 @@ static constexpr std::initializer_list<NWidgetPart> _nested_orders_widgets = {
 													SetStringTip(STR_ORDER_TOGGLE_FULL_LOAD, STR_ORDER_TOOLTIP_FULL_LOAD), SetResize(1, 0),
 				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_UNLOAD), SetMinimalSize(124, 12), SetFill(1, 0),
 													SetStringTip(STR_ORDER_TOGGLE_UNLOAD, STR_ORDER_TOOLTIP_UNLOAD), SetResize(1, 0),
+				NWidget(NWID_SELECTION, Colours::Invalid, WID_O_SEL_EXTERNAL_REFIT),
 				NWidget(NWID_BUTTON_DROPDOWN, Colours::Grey, WID_O_REFIT_DROPDOWN), SetMinimalSize(124, 12), SetFill(1, 0),
 													SetStringTip(STR_ORDER_REFIT_AUTO, STR_ORDER_REFIT_AUTO_TOOLTIP), SetResize(1, 0),
+					NWidget(WWT_DROPDOWN, Colours::Grey, WID_O_AUTO_REFIT_STATE), SetMinimalSize(124, 12), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_STOP_REFIT_NONE, STR_ORDER_STOP_REFIT_HELP),
+				EndContainer(),
 			EndContainer(),
 			/* Refit + service buttons. */
 			NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),

@@ -11,6 +11,7 @@
 #define YAPF_DESTRAIL_HPP
 
 #include "../../train.h"
+#include "../../depot_base.h"
 #include "../../pbs.h"
 #include "../../tracerestrict.h"
 #include "../../vehicle_func.h"
@@ -62,7 +63,8 @@ public:
 	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
 	inline bool PfDetectDestination(TileIndex tile, [[maybe_unused]] Trackdir td)
 	{
-		return IsRailDepotTile(tile);
+		/* External entrances are journey targets, never automatic workshops. */
+		return IsRailDepotTile(tile) && !Depot::IsExternalConnection(tile);
 	}
 
 	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */

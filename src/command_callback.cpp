@@ -173,6 +173,9 @@ DEF_CB_RES(CreateTraceRestrictSlot)
 DEF_CB_RES(CreateTraceRestrictCounter)
 DEF_CB_RES_TILE(PasteBlueprint)
 DEF_CB_RES_TILE(UndoBlueprintPaste)
+DEF_CB_RES_TILE_TUPLE(ExternalRailSingle, Commands::BuildRail)
+DEF_CB_RES_TILE_TUPLE(ExternalRailLong, Commands::BuildRailLong)
+DEF_CB_RES_TILE_TUPLE(ExternalRoadLong, Commands::BuildRoadLong)
 
 template <size_t... i>
 inline constexpr auto MakeCommandCallbackTable(std::index_sequence<i...>) noexcept {

@@ -17,6 +17,7 @@
 #include "viewport_func.h"
 #include "command_func.h"
 #include "depot_base.h"
+#include "external_city.h"
 #include "depot_cmd.h"
 #include "spritecache.h"
 #include "strings_func.h"
@@ -512,6 +513,7 @@ struct DepotWindow : Window {
 
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
+		if (widget == WID_D_RENAME && this->type == VehicleType::Train && Depot::GetByTile(TileIndex(this->window_number))->is_external_connection) return GetString(STR_EXTERNAL_CITY_TITLE);
 		if (widget == WID_D_CAPTION) return GetString(STR_DEPOT_CAPTION, this->type, this->GetDestinationIndex());
 
 		return this->Window::GetWidgetString(widget, stringid);
@@ -899,6 +901,10 @@ struct DepotWindow : Window {
 				break;
 
 			case WID_D_RENAME: // Rename button
+				if (this->type == VehicleType::Train && Depot::GetByTile(TileIndex(this->window_number))->is_external_connection) {
+					ShowExternalCityWindow(Depot::GetByTile(TileIndex(this->window_number))->index);
+					break;
+				}
 				ShowQueryString(GetString(STR_DEPOT_NAME, this->type, Depot::GetByTile(TileIndex(this->window_number))->index), STR_DEPOT_RENAME_DEPOT_CAPTION,
 					MAX_LENGTH_DEPOT_NAME_CHARS, this, CS_ALPHANUMERAL, {QueryStringFlag::EnableDefault, QueryStringFlag::LengthIsInChars});
 				break;
@@ -1303,6 +1309,7 @@ static void DepotSellAllConfirmationCallback(Window *win, bool confirmed)
  */
 void ShowDepotWindow(TileIndex tile, VehicleType type)
 {
+	if (Depot::IsExternalConnection(tile)) { ShowExternalEntranceWindow(tile); return; }
 	if (BringWindowToFrontById(WindowClass::VehicleDepot, tile.base()) != nullptr) return;
 
 	switch (type) {
@@ -1342,6 +1349,10 @@ enum DepotTooltipMode : uint8_t {
 void ShowDepotTooltip(Window *w, const TileIndex tile)
 {
 	if (_settings_client.gui.depot_tooltip_mode == DTM_OFF) {
+		return;
+	}
+	if (Depot::IsExternalConnection(tile)) {
+		GuiShowTooltips(w, GetEncodedString(STR_EXTERNAL_ENTRANCE_TOOLTIP, GetDepotVehicleType(tile), GetDepotIndex(tile)), TooltipCloseCondition::HoverViewport);
 		return;
 	}
 

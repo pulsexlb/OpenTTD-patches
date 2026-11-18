@@ -35,6 +35,8 @@ Viewport *IsPtInWindowViewport(const Window *w, int x, int y);
 Point TranslateXYToTileCoord(const Viewport *vp, int x, int y, bool clamp_to_map = true);
 Point GetTileBelowCursor();
 void UpdateNextViewportPosition(Window *w, uint32_t delta_ms);
+/** Retarget or detach every viewport following this pool ID. */
+void ChangeVehicleViewports(VehicleID from_index, VehicleID to_index);
 void ApplyNextViewportPosition(Window *w);
 void UpdateViewportSizeZoom(Viewport *vp);
 

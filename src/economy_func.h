@@ -40,6 +40,7 @@ uint MoveGoodsToStation(CargoType cargo, uint amount, Source source, const Stati
 
 void PrepareUnload(Vehicle *front_v);
 void LoadUnloadStation(Station *st);
+void RefitExternalCityVehicle(Vehicle *front, Station *st, const struct CargoStationIDVectorSet &next_station);
 
 Money GetPrice(Price index, uint cost_factor, const struct GRFFile *grf_file, int shift = 0);
 

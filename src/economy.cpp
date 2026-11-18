@@ -8,6 +8,7 @@
 /** @file economy.cpp Handling of the economy. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "company_cmd.h"
 #include "company_func.h"
 #include "command_func.h"
@@ -379,6 +380,7 @@ void ChangeOwnershipOfCompanyItems(Owner old_owner, Owner new_owner)
 	ClearOrderDestinationRefcountMap();
 
 	assert(old_owner != new_owner);
+	ChangeExternalCityOwner(old_owner, new_owner);
 
 	{
 		uint i;
@@ -1803,19 +1805,36 @@ struct FinalizeRefitAction
  * @param next_station Possible next stations the vehicle can travel to.
  * @param new_cargo_type Target cargo for refit.
  */
-static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist_capleft, Station *st, CargoStationIDVectorSet next_station, CargoType new_cid)
+static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist_capleft, Station *st, CargoStationIDVectorSet next_station, CargoType new_cid, bool external_terminal = false)
 {
-	if (!IterateVehicleParts(v_start, IsEmptyAction())) return;
-	if (v->type == VehicleType::Train && !IterateVehicleParts(v_start, ThroughLoadTrainInPlatformAction())) return;
+	/* Ship holds are virtual parts, not ground-vehicle articulated parts. */
+	auto for_parts = [&](auto action) {
+		if (external_terminal && v_start->type == VehicleType::Ship) {
+			for (Vehicle *hold = v_start; hold != nullptr; hold = hold->Next()) if (!action(hold)) return false;
+			return true;
+		}
+		return IterateVehicleParts(v_start, action);
+	};
+	if (!for_parts(IsEmptyAction())) return;
+	if (external_terminal && !for_parts([](const Vehicle *part) { return part->cargo.ReservedCount() == 0; })) return;
+	if (!external_terminal && v->type == VehicleType::Train && !for_parts(ThroughLoadTrainInPlatformAction())) return;
 
 	AutoRestoreBackup cur_company(_current_company, v->owner);
 
 	CargoTypes refit_mask = v->GetEngine()->info.refit_mask;
 
 	/* Remove old capacity from consist capacity and collect refit mask. */
-	IterateVehicleParts(v_start, PrepareRefitAction(consist_capleft, refit_mask));
+	for_parts(PrepareRefitAction(consist_capleft, refit_mask));
 
 	bool is_auto_refit = new_cid == CARGO_AUTO_REFIT;
+	const ExternalCity *external_city = external_terminal ? ExternalCity::GetIfValid(v->Primary()->external_trip_city) : nullptr;
+	auto credit_blocked = [&](CargoType cargo) {
+		return external_city != nullptr && external_city->exchange_market && external_city->trade_credit == 0 && !IsExternalCityPassengerOrMail(cargo);
+	};
+	/* A multipart ship is one physical vehicle with several logical holds.
+	 * Refit its whole group; the native one-vehicle ship command selects only
+	 * the main hold. Ground vehicles keep the usual one-unit operation. */
+	const uint8_t refit_units = external_terminal && v->type == VehicleType::Ship ? 0 : 1;
 	bool check_order = (v->Primary()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad);
 	/* Road vehicle transport: refitting to or from the dedicated vehicle transport cargoes is only
 	 * done manually in a depot, never automatically at a station. */
@@ -1825,19 +1844,25 @@ static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist
 		/* Get a refittable cargo type with waiting cargo for next_station or StationID::Invalid(). */
 		new_cid = v_start->cargo_type;
 		for (CargoType cid : refit_mask) {
+			if (credit_blocked(cid)) continue;
 			if (check_order && v->Primary()->current_order.GetCargoLoadType(cid) == OrderLoadType::NoLoad) continue;
 			if (cid == vehicles_cargo || cid == rail_cargo) continue;
 			if (st->goods[cid].data != nullptr && st->goods[cid].data->cargo.HasCargoFor(next_station.Get(cid))) {
 				/* Try to find out if auto-refitting would succeed. In case the refit is allowed,
 				 * the returned refit capacity will be greater than zero. */
-				Command<Commands::RefitVehicle>::Do(DoCommandFlag::QueryCost, v_start->index, cid, 0xFF, true, false, 1); // Auto-refit and only this vehicle including artic parts.
+				Command<Commands::RefitVehicle>::Do(DoCommandFlag::QueryCost, v_start->index, cid, 0xFF, true, false, refit_units); // Auto-refit this complete unit.
 				/* Try to balance different loadable cargoes between parts of the consist, so that
 				 * all of them can be loaded. Avoid a situation where all vehicles suddenly switch
 				 * to the first loadable cargo for which there is only one packet. If the capacities
 				 * are equal refit to the cargo of which most is available. This is important for
 				 * consists of only a single vehicle as those will generally have a consist_capleft
 				 * of 0 for all cargoes. */
-				if (_returned_refit_capacity > 0 && (consist_capleft[cid] < consist_capleft[new_cid] ||
+				/* At a city, a cargo excluded by the stop's policy is not a
+				 * candidate. Its unrelated stock must not defeat a legal refit
+				 * merely because the vehicle arrived carrying that cargo type. */
+				const bool excluded_current_cargo = credit_blocked(new_cid) || (external_terminal && check_order &&
+						v->Primary()->current_order.GetCargoLoadType(new_cid) == OrderLoadType::NoLoad);
+				if (_returned_refit_capacity > 0 && (excluded_current_cargo || consist_capleft[cid] < consist_capleft[new_cid] ||
 						(consist_capleft[cid] == consist_capleft[new_cid] &&
 						st->goods[cid].CargoAvailableCount() > st->goods[new_cid].CargoAvailableCount()))) {
 					new_cid = cid;
@@ -1855,15 +1880,46 @@ static void HandleStationRefit(Vehicle *v, Vehicle *v_start, CargoArray &consist
 		 * cases the next hop of the vehicle doesn't really tell us anything if the cargo had been
 		 * "via any station" before reserving. We rather produce some more "any station" cargo than
 		 * misrouting it. */
-		IterateVehicleParts(v_start, ReturnCargoAction(st, StationID::Invalid()));
-		CommandCost cost = Command<Commands::RefitVehicle>::Do(DoCommandFlag::Execute, v_start->index, new_cid, 0xFF, true, false, 1); // Auto-refit and only this vehicle including artic parts.
+		for_parts(ReturnCargoAction(st, StationID::Invalid()));
+		CommandCost cost = Command<Commands::RefitVehicle>::Do(DoCommandFlag::Execute, v_start->index, new_cid, 0xFF, true, false, refit_units); // Auto-refit this complete unit.
 		if (cost.Succeeded()) v->Primary()->profit_this_year -= cost.GetCost() << 8;
 	}
 
 	/* Add new capacity to consist capacity and reserve cargo */
-	IterateVehicleParts(v_start, FinalizeRefitAction(consist_capleft, st, next_station,
+	if (external_terminal) {
+		/* The city loads directly from this terminal in the same tick. Do not
+		 * create native platform reservations, which would outlive the visit. */
+		for_parts([&](const Vehicle *part) {
+			consist_capleft[part->cargo_type] += part->cargo_cap - part->cargo.RemainingCount();
+			return true;
+		});
+		return;
+	}
+	for_parts(FinalizeRefitAction(consist_capleft, st, next_station,
 			is_auto_refit || v->Primary()->current_order.IsFullLoadOrder(),
 			(v->Primary()->current_order.GetLoadType() == OrderLoadType::CargoTypeLoad) ? v->Primary() : nullptr));
+}
+
+/** Use native station refitting for complete, empty units stopped in a city. */
+void RefitExternalCityVehicle(Vehicle *front, Station *st, const CargoStationIDVectorSet &next_station)
+{
+	if (front->GetExternalTripPhase() != ExternalTripPhase::Stopped || !front->external_arrival_handled ||
+			!front->current_order.HasExternalCargoPolicy() || !front->current_order.IsRefit() ||
+			front->current_order.GetLoadType() == OrderLoadType::NoLoad) return;
+	CargoArray capleft{};
+	for (const Vehicle *part = front->First(); part != nullptr; part = part->Next()) {
+		if (part->cargo_type < NUM_CARGO) capleft[part->cargo_type] += part->cargo_cap - part->cargo.RemainingCount();
+	}
+	std::vector<Vehicle *> visited;
+	for (Vehicle *part = front->GetMovingFront(); part != nullptr; part = part->GetMovingNext()) {
+		if (part->cargo_cap == 0 || part->cargo_type >= NUM_CARGO) continue;
+		Vehicle *unit = part->GetFirstEnginePart();
+		if (part->type == VehicleType::Train && Train::From(part)->IsRearDualheaded()) unit = Train::From(part)->other_multiheaded_part;
+		if (std::ranges::find(visited, unit) != visited.end()) continue;
+		visited.push_back(unit);
+		HandleStationRefit(part, unit, capleft, st, next_station, front->current_order.GetRefitCargo(), true);
+		if (front->type == VehicleType::Aircraft || front->type == VehicleType::Ship) break;
+	}
 }
 
 /**

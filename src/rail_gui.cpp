@@ -8,6 +8,7 @@
 /** @file rail_gui.cpp %File for dealing with rail construction user interface. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "gui.h"
 #include "station_base.h"
 #include "waypoint_base.h"
@@ -48,6 +49,7 @@
 #include "toolbar_gui.h"
 #include "scope.h"
 #include "tile_track_func.h"
+#include "rail_map.h"
 
 #include "station_map.h"
 #include "tunnelbridge_map.h"
@@ -126,6 +128,47 @@ void CcPlaySound_CONSTRUCTION_RAIL(const CommandCost &result, TileIndex tile)
 	if (result.Succeeded() && _settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, tile);
 }
 
+struct ExternalRailConnectionRequest {
+	TileIndex tile;
+	RailType railtype;
+	DiagDirection entrance;
+	CompanyID company;
+};
+static std::optional<ExternalRailConnectionRequest> _external_rail_request;
+
+static void ConfirmExternalRailConnection(Window *, bool confirmed)
+{
+	const auto request = std::exchange(_external_rail_request, std::nullopt);
+	if (!confirmed || !request || request->company != _local_company || !_settings_game.vehicle.external_connections) return;
+	Command<Commands::BuildExternalRailConnection>::Post(STR_EXTERNAL_RAIL_BUILD_FAILED, CommandCallback::PlaySound_CONSTRUCTION_RAIL,
+			request->tile, request->railtype, request->entrance);
+}
+
+static void OfferExternalRailConnection(TileIndex tile)
+{
+	if (!_settings_game.vehicle.external_connections || _game_mode != GameMode::Normal ||
+			!Company::IsValidID(_local_company) || FindWindowByClass(WindowClass::ConfirmPopupQuery) != nullptr) return;
+	const DiagDirection entrance = GetExternalRailConnectionDirection(tile);
+	if (!IsValidDiagDirection(entrance) || GetTileOwner(tile) != _local_company) return;
+	ShowQuery(GetEncodedString(STR_EXTERNAL_RAIL_QUERY_TITLE), GetEncodedString(STR_EXTERNAL_RAIL_QUERY_TEXT, GetExternalConnectionCityName(tile, entrance)),
+			nullptr, ConfirmExternalRailConnection, true);
+	_external_rail_request = ExternalRailConnectionRequest{tile, GetRailType(tile), entrance, _local_company};
+}
+
+void CcExternalRailSingle(const CommandCost &result, TileIndex tile, RailType, Track, BuildRailTrackFlags)
+{
+	CcPlaySound_CONSTRUCTION_RAIL(result, tile);
+	if (result.Succeeded()) OfferExternalRailConnection(tile);
+}
+
+void CcExternalRailLong(const CommandCost &result, TileIndex end, TileIndex start, RailType, Track, BuildRailTrackFlags, bool)
+{
+	CcPlaySound_CONSTRUCTION_RAIL(result, end);
+	if (result.Failed()) return;
+	OfferExternalRailConnection(end);
+	OfferExternalRailConnection(start);
+}
+
 using RailTrackCommandContainer = std::variant<CommandContainer<Commands::BuildRailLong>, CommandContainer<Commands::RemoveRailLong>, CommandContainer<Commands::BuildRail>, CommandContainer<Commands::RemoveRail>>;
 
 static BuildRailTrackFlags GetBaseBuildRailTrackFlags()
@@ -140,7 +183,7 @@ static RailTrackCommandContainer GenericPlaceRailCmd(TileIndex tile, Track track
 				CmdPayload<Commands::RemoveRail>::Make(track), CommandCallback::PlaySound_CONSTRUCTION_RAIL);
 	} else {
 		return CommandContainer<Commands::BuildRail>(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, tile,
-				CmdPayload<Commands::BuildRail>::Make(_cur_railtype, track, GetBaseBuildRailTrackFlags()), CommandCallback::PlaySound_CONSTRUCTION_RAIL);
+				CmdPayload<Commands::BuildRail>::Make(_cur_railtype, track, GetBaseBuildRailTrackFlags()), CommandCallback::ExternalRailSingle);
 	}
 }
 
@@ -468,7 +511,7 @@ static RailTrackCommandContainer DoRailroadTrackCmd(TileIndex start_tile, TileIn
 	} else {
 		return CommandContainer<Commands::BuildRailLong>(STR_ERROR_CAN_T_BUILD_RAILROAD_TRACK, end_tile,
 				CmdPayload<Commands::BuildRailLong>::Make(start_tile, _cur_railtype, track, GetBaseBuildRailTrackFlags(), false),
-				CommandCallback::PlaySound_CONSTRUCTION_RAIL);
+				CommandCallback::ExternalRailLong);
 	}
 }
 

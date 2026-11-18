@@ -63,6 +63,8 @@ struct StationRect : public Rect {
 
 /** Base class for all station-ish types */
 struct BaseStation : StationPool::PoolItem<&_station_pool> {
+	uint16_t external_city = UINT16_MAX; ///< Off-map CargoDist terminal, with no map facilities.
+	bool IsExternalMarket() const { return this->external_city != UINT16_MAX; }
 	Owner owner = INVALID_OWNER;            ///< The owner of this station
 	StationFacilities facilities{};         ///< The facilities that this station has
 	TileIndex xy = INVALID_TILE;            ///< Base tile of the station

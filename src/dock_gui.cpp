@@ -8,6 +8,7 @@
 /** @file dock_gui.cpp GUI to create amazing water objects. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "terraform_gui.h"
 #include "window_gui.h"
 #include "station_cmd.h"
@@ -38,6 +39,9 @@
 #include "table/sprites.h"
 #include "table/strings.h"
 
+#include "querystring_gui.h"
+#include "error.h"
+#include "strings_func.h"
 #include "safeguards.h"
 
 static void ShowBuildDockStationPicker(Window *parent);
@@ -46,6 +50,15 @@ Window *ShowBuildDocksToolbar();
 Window *ShowBuildDocksScenToolbar();
 
 static Axis _ship_depot_direction;
+struct ExternalShipRequest { TileIndex tile; DiagDirection inward; CompanyID company; };
+static std::optional<ExternalShipRequest> external_ship_request;
+static void ConfirmExternalShipConnection(Window *, bool confirmed)
+{
+	const auto request = std::exchange(external_ship_request, std::nullopt);
+	if (!confirmed || !request || request->company != _local_company || !_settings_game.vehicle.external_connections) return;
+	Command<Commands::BuildShipDepot>::Post(STR_EXTERNAL_SHIP_BUILD_FAILED, CommandCallback::BuildDocks, request->tile, DiagDirToAxis(request->inward), true);
+}
+
 
 void CcBuildDocks(const CommandCost &result, TileIndex tile)
 {
@@ -131,6 +144,7 @@ struct BuildDocksToolbarWindow : Window {
 		if (!gui_scope) return;
 
 		bool can_build = CanBuildVehicleInfrastructure(VehicleType::Ship);
+		if (_game_mode != GameMode::Editor) this->SetWidgetDisabledState(WID_DT_EXTERNAL, !can_build || !_settings_game.vehicle.external_connections);
 		this->SetWidgetsDisabledState(!can_build,
 			WID_DT_DEPOT,
 			WID_DT_STATION,
@@ -163,6 +177,11 @@ struct BuildDocksToolbarWindow : Window {
 				} else {
 					HandlePlacePushButton(this, WID_DT_CANAL, SPR_CURSOR_CANAL, HT_RECT | HT_DIAGONAL);
 				}
+				break;
+
+			case WID_DT_EXTERNAL:
+				HandlePlacePushButton(this, WID_DT_EXTERNAL, SPR_CURSOR_BUOY, HT_RECT);
+				SetTileSelectSize(1, 1);
 				break;
 
 			case WID_DT_LOCK: // Build lock button
@@ -206,6 +225,17 @@ struct BuildDocksToolbarWindow : Window {
 				VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_CREATE_WATER);
 				break;
 
+			case WID_DT_EXTERNAL: {
+				const auto inward = GetExternalShipConnectionDirection(tile);
+				if (!IsValidDiagDirection(inward)) {
+					ShowErrorMessage(GetEncodedString(STR_EXTERNAL_SHIP_BUILD_FAILED), GetEncodedString(STR_EXTERNAL_SHIP_EDGE_REQUIRED), WarningLevel::Info);
+					break;
+				}
+				if (FindWindowByClass(WindowClass::ConfirmPopupQuery) != nullptr) break;
+				ShowQuery(GetEncodedString(STR_EXTERNAL_SHIP_QUERY_TITLE), GetEncodedString(STR_EXTERNAL_SHIP_QUERY_TEXT, GetExternalConnectionCityName(tile, inward)), nullptr, ConfirmExternalShipConnection, true);
+				external_ship_request = ExternalShipRequest{tile, inward, _local_company};
+				break;
+			}
 			case WID_DT_LOCK: // Build lock button
 				Command<Commands::BuildLock>::Post(STR_ERROR_CAN_T_BUILD_LOCKS, CommandCallback::BuildDocks, tile);
 				break;
@@ -215,7 +245,7 @@ struct BuildDocksToolbarWindow : Window {
 				break;
 
 			case WID_DT_DEPOT: // Build depot button
-				Command<Commands::BuildShipDepot>::Post(STR_ERROR_CAN_T_BUILD_SHIP_DEPOT, CommandCallback::BuildDocks, tile, _ship_depot_direction);
+				Command<Commands::BuildShipDepot>::Post(STR_ERROR_CAN_T_BUILD_SHIP_DEPOT, CommandCallback::BuildDocks, tile, _ship_depot_direction, false);
 				break;
 
 			case WID_DT_STATION: { // Build station button
@@ -359,6 +389,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_build_docks_toolbar_
 		NWidget(WWT_IMGBTN, Colours::DarkGreen, WID_DT_DEPOT), SetToolbarMinimalSize(1), SetFill(0, 1), SetSpriteTip(SPR_IMG_SHIP_DEPOT, STR_WATERWAYS_TOOLBAR_BUILD_DEPOT_TOOLTIP),
 		NWidget(WWT_IMGBTN, Colours::DarkGreen, WID_DT_STATION), SetToolbarMinimalSize(1), SetFill(0, 1), SetSpriteTip(SPR_IMG_SHIP_DOCK, STR_WATERWAYS_TOOLBAR_BUILD_DOCK_TOOLTIP),
 		NWidget(WWT_IMGBTN, Colours::DarkGreen, WID_DT_BUOY), SetToolbarMinimalSize(1), SetFill(0, 1), SetSpriteTip(SPR_IMG_BUOY, STR_WATERWAYS_TOOLBAR_BUOY_TOOLTIP),
+		NWidget(WWT_TEXTBTN, Colours::DarkGreen, WID_DT_EXTERNAL), SetToolbarMinimalSize(2), SetFill(0, 1), SetStringTip(STR_EXTERNAL_SHIP_TOOL, STR_EXTERNAL_SHIP_TOOL_HELP),
 		NWidget(NWID_SELECTION, Colours::Invalid, WID_DT_RIVER_SEL),
 			NWidget(WWT_IMGBTN, Colours::DarkGreen, WID_DT_RIVER), SetToolbarMinimalSize(1), SetFill(0, 1), SetSpriteTip(SPR_IMG_BUILD_RIVER, STR_WATERWAYS_TOOLBAR_CREATE_RIVER_IN_GAME_TOOLTIP),
 		EndContainer(),

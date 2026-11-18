@@ -205,7 +205,7 @@ static const Depot *FindClosestShipDepot(const Vehicle *v, uint max_distance)
 	uint best_dist_sq = std::numeric_limits<uint>::max();
 	for (const Depot *depot : Depot::Iterate()) {
 		const TileIndex tile = depot->xy;
-		if (IsShipDepotTile(tile) && IsInfraTileUsageAllowed(VehicleType::Ship, v->owner, tile)) {
+		if (IsShipDepotTile(tile) && !depot->is_external_connection && IsInfraTileUsageAllowed(VehicleType::Ship, v->owner, tile)) {
 			const uint dist_sq = DistanceSquare(tile, v->tile);
 			if (dist_sq < best_dist_sq && dist_sq <= max_distance_sq &&
 					visited_patch_hashes.count(CalculateWaterRegionPatchHash(GetWaterRegionPatchInfo(tile))) > 0) {
@@ -220,6 +220,7 @@ static const Depot *FindClosestShipDepot(const Vehicle *v, uint max_distance)
 
 static void CheckIfShipNeedsService(Vehicle *v)
 {
+	if (v->IsInExternalTrip() || v->external_return_pending || Depot::IsExternalConnection(v->tile)) return;
 	if (Company::Get(v->owner)->settings.vehicle.servint_ships == 0 || !v->NeedsAutomaticServicing()) return;
 	if (v->IsChainInDepot()) {
 		VehicleServiceInDepot(v);
@@ -451,6 +452,16 @@ static bool CheckShipStayInDepot(Ship *v)
 	/* Don't leave depot if no destination set */
 	if (v->dest_tile == INVALID_TILE) return true;
 
+	/* A water entrance has one inward mouth. Keep a returning ship hidden
+	 * when that approach was removed while it was outside the map. Normal
+	 * shipyards retain their native two-ended departure behaviour. */
+	if (v->external_return_pending && Depot::IsExternalConnection(v->tile)) {
+		const DiagDirection inward = Depot::GetExternalDirection(v->tile);
+		const TileIndex mouth = GetShipDepotDirection(v->tile) == inward ? v->tile : GetOtherShipDepotTile(v->tile);
+		const TileIndex approach = TileAddByDiagDir(mouth, inward);
+		if (!IsValidTile(approach) || GetTileTrackdirBits(approach, TransportType::Water, 0, inward) == TRACKDIR_BIT_NONE) return true;
+	}
+
 	/* Don't leave depot if another vehicle is already entering/leaving */
 	/* This helps avoid CPU load if many ships are set to start at the same time */
 	if (HasVehicleOnTile<VehicleType::Ship>(v->tile, [](const Ship *u) { return u->cur_speed != 0; })) {
@@ -471,10 +482,16 @@ static bool CheckShipStayInDepot(Ship *v)
 	v->UpdateIsDrawn();
 
 	v->cur_speed = 0;
+	if (v->external_return_pending) {
+		v->cur_speed = std::min<int>(2 * v->external_cruise_speed, v->GetCurrentMaxSpeed());
+		v->external_return_pending = false;
+		v->external_entry_tile = INVALID_TILE;
+		InvalidateWindowClassesData(WindowClass::ExternalEntrance);
+	}
 	v->UpdateViewport(true, true);
 	SetWindowDirty(WindowClass::VehicleDepot, v->tile.base());
 
-	VehicleServiceInDepot(v);
+	if (!Depot::IsExternalConnection(v->tile)) VehicleServiceInDepot(v);
 	v->LeaveUnbunchingDepot();
 	v->PlayLeaveStationSound();
 	InvalidateWindowData(WindowClass::VehicleDepot, v->tile.base());
@@ -873,6 +890,7 @@ static void ShipController(Ship *v)
 {
 	v->tick_counter++;
 	v->current_order_time++;
+	if (v->TickExternalTrip()) return;
 
 	if (v->HandleBreakdown()) return;
 
@@ -1064,7 +1082,7 @@ bool Ship::Tick()
 {
 	DEBUG_UPDATESTATECHECKSUM("Ship::Tick: v: {}, x: {}, y: {}", this->index, this->x_pos, this->y_pos);
 	UpdateStateChecksum((((uint64_t) this->x_pos) << 32) | this->y_pos);
-	if (!(this->vehstatus.Test(VehState::Stopped) || this->IsWaitingInDepot())) this->running_ticks++;
+	if (this->IsInExternalTrip() || !(this->vehstatus.Test(VehState::Stopped) || this->IsWaitingInDepot())) this->running_ticks++;
 
 	ShipController(this);
 
@@ -1166,4 +1184,30 @@ ClosestDepot Ship::FindClosestDepot() const
 	if (depot == nullptr) return ClosestDepot();
 
 	return ClosestDepot(depot->xy, depot->index);
+}
+
+/** Transfer a fully hidden ship; native departure still chooses and follows a legal water path. */
+bool TransferExternalShipToEntrance(Ship *ship, DepotID exit_id, TileIndex expected_tile)
+{
+	const Depot *exit = Depot::GetIfValid(exit_id);
+	if (ship == nullptr || !ship->IsInExternalTrip() || !ship->IsInDepot() || !ship->vehstatus.Test(VehState::Hidden) ||
+			exit == nullptr || exit->xy != expected_tile || !IsShipDepotTile(exit->xy) ||
+			!Depot::IsExternalConnection(exit->xy) || GetTileOwner(exit->xy) != ship->owner ||
+			!Depot::IsExternalConnection(ship->tile)) return false;
+	const TileIndex origin = ship->tile;
+	if (origin == exit->xy) return true;
+	ship->tile = exit->xy;
+	ship->x_pos = TileX(exit->xy) * TILE_SIZE + 8;
+	ship->y_pos = TileY(exit->xy) * TILE_SIZE + 8;
+	ship->z_pos = GetSlopePixelZ(ship->x_pos, ship->y_pos);
+	ship->direction = ship->rotation = DiagDirToDir(Depot::GetExternalDirection(exit->xy));
+	ship->cached_path.clear();
+	ship->UpdateCache();
+	ship->UpdatePosition();
+	ship->Vehicle::UpdateViewport(false);
+	InvalidateWindowData(WindowClass::VehicleDepot, origin.base());
+	InvalidateWindowData(WindowClass::VehicleDepot, exit->xy.base());
+	InvalidateWindowClassesData(WindowClass::ExternalEntrance);
+	DirtyVehicleListWindowForVehicle(ship);
+	return true;
 }

@@ -244,6 +244,7 @@ DECLARE_ENUM_AS_BIT_SET(OrderDepotActionFlags)
  */
 enum class OrderDepotExtraFlag : uint8_t {
 	Specific            = 0, ///< This order is for a specific depot.
+	ExternalTrip        = 1, ///< Timed map-edge connection retaining the original consist.
 };
 using OrderDepotExtraFlags = EnumBitSet<OrderDepotExtraFlag, uint8_t>;
 
@@ -389,6 +390,8 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_WAIT_COUPLE_TRACTION, ///< Select the approaching locomotive's traction class.
 	MOF_WAIT_COUPLE_COMPANY, ///< Select the approaching locomotive's company.
 	MOF_WAIT_COUPLE_SLOT, ///< Acquire before waiting, return after successful coupling.
+	MOF_EXTERNAL_RETURN_DEPOT, ///< External trip return entrance, invalid = same entrance.
+	MOF_EXTERNAL_FLIGHT_CITY, ///< Change an existing external flight's destination city.
 	MOF_END
 };
 
@@ -401,6 +404,7 @@ enum OrderDepotAction : uint8_t {
 	DA_STOP,      ///< Go to the depot and stop there
 	DA_UNBUNCH,   ///< Go to the depot and unbunch
 	DA_SELL,      ///< Go to the depot and sell vehicle
+	DA_EXTERNAL,  ///< Timed external journey through a map-edge rail depot.
 	DA_END
 };
 

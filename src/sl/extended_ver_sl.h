@@ -241,6 +241,7 @@ enum SlXvFeatureIndex {
 	XSLFI_WAIT_COUPLE_COMPANIES,                  ///< Waiting trains may select multiple coupling companies.
 	XSLFI_WAIT_COUPLE_SLOT,                       ///< Optional acquire/wait/return slot.
 	XSLFI_DECOUPLE_KEEP_LATENESS,                 ///< Independent schedules reset lateness unless opted out.
+	XSLFI_EXTERNAL_CONNECTIONS,                   ///< Timed external journeys and order action.
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
 

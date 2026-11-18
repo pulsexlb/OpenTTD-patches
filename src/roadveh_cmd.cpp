@@ -25,6 +25,7 @@
 #include "ai/ai.hpp"
 #include "game/game.hpp"
 #include "depot_map.h"
+#include "depot_base.h"
 #include "effectvehicle_func.h"
 #include "roadstop_base.h"
 #include "roadveh_transport.h"
@@ -1341,13 +1342,19 @@ static bool RoadVehLeaveDepot(RoadVehicle *v, bool first)
 
 		if (RoadVehFindCloseTo(v, x, y, v->direction, false) != nullptr) return true;
 
-		VehicleServiceInDepot(v);
+		if (!Depot::IsExternalConnection(v->tile)) VehicleServiceInDepot(v);
 		v->LeaveUnbunchingDepot();
 
 		StartRoadVehSound(v);
 
-		/* Vehicle is about to leave a depot */
-		v->cur_speed = 0;
+		/* Resume external cruising only after the native spacing check above.
+         * Normal movement still checks every step for vehicles and crossings. */
+        v->cur_speed = v->external_return_pending ? std::min<int>(2 * v->external_cruise_speed, v->GetCurrentMaxSpeed()) : 0;
+        if (v->external_return_pending) {
+            v->external_return_pending = false;
+            v->external_entry_tile = INVALID_TILE;
+            InvalidateWindowClassesData(WindowClass::ExternalEntrance);
+        }
 	}
 
 	v->vehstatus.Reset(VehState::Hidden);
@@ -2185,6 +2192,7 @@ static bool RoadVehController(RoadVehicle *v)
 {
 	/* decrease counters */
 	v->current_order_time++;
+	if (v->IsInExternalTrip()) { v->TickExternalTrip(); return true; }
 	if (v->reverse_ctr != 0) v->reverse_ctr--;
 
 	/* handle crashed */
@@ -2295,7 +2303,7 @@ bool RoadVehicle::Tick()
 	DEBUG_UPDATESTATECHECKSUM("RoadVehicle::Tick 2: v: {}, state: {}, frame: {}", this->index, this->state, this->frame);
 	UpdateStateChecksum((((uint64_t) this->state) << 32) | this->frame);
 	if (this->IsFrontEngine()) {
-		if (!(this->IsRoadVehicleStopped() || this->IsWaitingInDepot())) this->running_ticks++;
+		if (this->IsInExternalTrip() || !(this->IsRoadVehicleStopped() || this->IsWaitingInDepot())) this->running_ticks++;
 		return RoadVehController(this);
 	}
 
@@ -2323,6 +2331,7 @@ void RoadVehicle::SetRoadVehicleOvertaking(uint8_t overtaking)
 
 static void CheckIfRoadVehNeedsService(RoadVehicle *v)
 {
+	if (v->IsInExternalTrip() || v->external_return_pending) return;
 	/* If we already got a slot at a stop, use that FIRST, and go to a depot later */
 	if (Company::Get(v->owner)->settings.vehicle.servint_roadveh == 0 || !v->NeedsAutomaticServicing()) return;
 	if (v->IsChainInDepot()) {
@@ -2425,4 +2434,32 @@ uint16_t RoadVehicle::GetMaxWeight() const
 	}
 
 	return weight;
+}
+
+/** Move only a complete hidden road consist. Native depot exit remains responsible for safety. */
+bool TransferExternalRoadVehicleToEntrance(RoadVehicle *v, DepotID exit_id, TileIndex expected_tile)
+{
+ const Depot *exit = Depot::GetIfValid(exit_id);
+ if (v == nullptr || !v->IsInExternalTrip() || exit == nullptr || exit->xy != expected_tile ||
+   !Depot::IsExternalConnection(exit->xy) || !IsRoadDepotTile(exit->xy) || GetTileOwner(exit->xy) != v->owner ||
+   (GetPresentRoadTypes(exit->xy) & v->compatible_roadtypes).None()) return false;
+ const TileIndex origin = v->tile;
+ if (!Depot::IsExternalConnection(origin)) return false;
+ for (const RoadVehicle *p = v->First(); p != nullptr; p = p->Next()) {
+  if (p->tile != origin || p->state != RVSB_IN_DEPOT || !p->vehstatus.Test(VehState::Hidden)) return false;
+ }
+ if (origin == exit->xy) return true;
+ const auto direction = GetRoadDepotDirection(exit->xy);
+ for (RoadVehicle *p = v->First(); p != nullptr; p = p->Next()) {
+  p->tile = exit->xy; p->x_pos = TileX(exit->xy) * TILE_SIZE + 8; p->y_pos = TileY(exit->xy) * TILE_SIZE + 8;
+  p->z_pos = GetSlopePixelZ(p->x_pos, p->y_pos, true); p->direction = DiagDirToDir(direction);
+  p->overtaking = 0; p->reverse_ctr = 0; p->blocked_ctr = 0;
+  if (p->cached_path != nullptr) p->cached_path->clear();
+  p->UpdatePosition(); p->Vehicle::UpdateViewport(false);
+ }
+ InvalidateWindowData(WindowClass::VehicleDepot, origin.base());
+ InvalidateWindowData(WindowClass::VehicleDepot, exit->xy.base());
+ InvalidateWindowClassesData(WindowClass::ExternalEntrance);
+ DirtyVehicleListWindowForVehicle(v);
+ return true;
 }

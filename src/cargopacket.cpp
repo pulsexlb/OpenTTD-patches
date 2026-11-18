@@ -14,6 +14,7 @@
 #include "core/pool_func.hpp"
 #include "core/random_func.hpp"
 #include "economy_base.h"
+#include "economy_func.h"
 #include "cargoaction.h"
 #include "order_type.h"
 #include "company_func.h"
@@ -169,6 +170,8 @@ CargoPacket::CargoPacket(CargoPacketID index, uint16_t count, Money feeder_share
 		first_station(original.first_station),
 		next_hop(original.next_hop)
 {
+	this->external_source_city = original.external_source_city;
+	this->external_distance = original.external_distance;
 	dbg_assert(count != 0);
 #ifdef WITH_FULL_ASSERTS
 	this->flags |= (original.flags & CPF_IN_VEHICLE);
@@ -877,6 +880,36 @@ uint VehicleCargoList::Truncate(uint max_move)
 	if (max_move > this->ActionCount(MoveToAction::Keep)) this->KeepAll();
 	this->PopCargo(CargoRemoval<VehicleCargoList>(this, max_move));
 	return max_move;
+}
+
+uint VehicleCargoList::DeliverToExternal(uint max_move, CargoType cargo, TileIndex tile, uint16_t city, uint16_t distance, Money &income, StationID destination, const GoodsEntry *goods)
+{
+	if (this->ReservedCount() != 0) return 0;
+	this->KeepAll();
+	uint delivered = 0;
+	for (auto it = this->packets.begin(); it != this->packets.end() && delivered < max_move;) {
+		CargoPacket *original = *it;
+		if (original->external_source_city == city) { ++it; continue; }
+		if (goods != nullptr && _settings_game.linkgraph.GetDistributionType(cargo) != DistributionType::Manual) {
+			const auto &flows = goods->ConstFlows();
+			auto flow = flows.find(original->GetFirstStation());
+			if (flow != flows.end()) {
+				const StationID via = flow->GetVia();
+				if (via != StationID::Invalid() && via != destination) { ++it; continue; }
+			}
+		}
+		const uint amount = std::min<uint>(original->Count(), max_move - delivered);
+		const bool whole = amount == original->Count();
+		CargoPacket *piece = whole ? original : original->Split(amount);
+		if (piece == nullptr) { ++it; continue; }
+		income += GetTransportedGoodsIncome(amount, piece->GetDistance(tile) + distance, piece->GetPeriodsInTransit(), cargo) - piece->GetFeederShare();
+		this->RemoveFromMeta(piece, MoveToAction::Keep, amount);
+		piece->PayDeferredPayments();
+		delete piece;
+		if (whole) it = this->packets.erase(it); else ++it;
+		delivered += amount;
+	}
+	return delivered;
 }
 
 /**

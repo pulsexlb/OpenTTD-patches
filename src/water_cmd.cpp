@@ -56,6 +56,8 @@
 
 #include "table/strings.h"
 
+#include "external_city.h"
+#include "window_func.h"
 #include "safeguards.h"
 
 /**
@@ -118,8 +120,9 @@ void ClearNeighbourNonFloodingStates(TileIndex tile)
  * @param axis depot orientation (Axis)
  * @return the cost of this operation or an error
  */
-CommandCost CmdBuildShipDepot(DoCommandFlags flags, TileIndex tile, Axis axis)
+CommandCost CmdBuildShipDepot(DoCommandFlags flags, TileIndex tile, Axis axis, bool external)
 {
+	if (external) return CmdBuildExternalShipConnection(flags, tile, GetExternalShipConnectionDirection(tile));
 	if (!IsValidAxis(axis)) return CMD_ERROR;
 	TileIndex tile2 = tile + TileOffsByAxis(axis);
 
@@ -187,6 +190,39 @@ CommandCost CmdBuildShipDepot(DoCommandFlags flags, TileIndex tile, Axis axis)
 	}
 
 	return cost;
+}
+
+
+/** Find a two-tile, straight water approach at the actual boundary. */
+DiagDirection GetExternalShipConnectionDirection(TileIndex edge)
+{
+	if (!IsValidTile(edge) || !IsWaterTile(edge)) return DiagDirection::Invalid;
+	for (DiagDirection outward : {DiagDirection::NE, DiagDirection::SE, DiagDirection::SW, DiagDirection::NW}) {
+		uint coordinate;
+		if (!GetExternalBoundaryCoordinate(edge, outward, coordinate)) continue;
+		const DiagDirection inward = ReverseDiagDir(outward);
+		const TileIndex inner = TileAddByDiagDir(edge, inward);
+		const TileIndex approach = TileAddByDiagDir(inner, inward);
+		if (!IsValidTile(inner) || !IsValidTile(approach) || !IsWaterTile(inner) || !HasTileWaterGround(approach)) continue;
+		if (!IsTileFlat(edge) || !IsTileFlat(inner) || GetTileZ(edge) != GetTileZ(inner)) continue;
+		return inward;
+	}
+	return DiagDirection::Invalid;
+}
+
+CommandCost CmdBuildExternalShipConnection(DoCommandFlags flags, TileIndex edge, DiagDirection inward)
+{
+	if (!_settings_game.vehicle.external_connections || !IsValidDiagDirection(inward) ||
+			GetExternalShipConnectionDirection(edge) != inward) return CommandCost(STR_EXTERNAL_SHIP_EDGE_REQUIRED);
+	const TileIndex inner = TileAddByDiagDir(edge, inward);
+	const TileIndex north = std::min(edge, inner);
+	const CommandCost result = CmdBuildShipDepot(flags, north, DiagDirToAxis(inward), false);
+	if (result.Succeeded() && flags.Test(DoCommandFlag::Execute)) {
+		Depot::GetByTile(north)->is_external_connection = true;
+		MarkTileDirtyByTile(edge); MarkTileDirtyByTile(inner);
+		InvalidateWindowClassesData(WindowClass::ExternalCity);
+	}
+	return result;
 }
 
 /**
@@ -1085,7 +1121,18 @@ static void DrawTile_Water(TileInfo *ti, DrawTileProcParams params)
 			break;
 
 		case WaterTileType::Depot:
-			DrawWaterDepot(ti);
+			if (Depot::IsExternalConnection(ti->tile)) {
+				if (!params.no_ground_tiles) {
+					DrawWaterClassGround(ti);
+					/* One native buoy marks the inward mouth. Like ordinary buoys,
+					 * it is drawn below ships and does not change navigable water. */
+					if (GetShipDepotDirection(ti->tile) == Depot::GetExternalDirection(ti->tile)) {
+						DrawGroundSprite(SPR_IMG_BUOY, PAL_NONE, nullptr, 4, -1);
+					}
+				}
+			} else {
+				DrawWaterDepot(ti);
+			}
 			DrawBridgeMiddle(ti);
 			break;
 
@@ -1139,7 +1186,7 @@ static void GetTileDesc_Water(TileIndex tile, TileDesc &td)
 		case WaterTileType::Coast: td.str = STR_LAI_WATER_DESCRIPTION_COAST_OR_RIVERBANK; break;
 		case WaterTileType::Lock : td.str = STR_LAI_WATER_DESCRIPTION_LOCK;               break;
 		case WaterTileType::Depot:
-			td.str = STR_LAI_WATER_DESCRIPTION_SHIP_DEPOT;
+			td.str = Depot::IsExternalConnection(tile) ? STR_EXTERNAL_ENTRANCE : STR_LAI_WATER_DESCRIPTION_SHIP_DEPOT;
 			td.build_date = Depot::GetByTile(tile)->build_date;
 			break;
 		case WaterTileType::ClearRocks: td.str = STR_LAI_WATER_DESCRIPTION_WATER_ROCKS; break;

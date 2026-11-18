@@ -59,14 +59,17 @@ CommandCost CmdSetOrderServiceNumber(DoCommandFlags flags, OrderTargetType targe
 	CommandCost ret = CheckOwnership(owner);
 	if (ret.Failed()) return ret;
 	Order *order = ol != nullptr ? ol->GetOrderAt(index) : nullptr;
-	if (order == nullptr || (!order->IsType(OT_GOTO_WAYPOINT) && (!order->IsType(OT_GOTO_STATION) || (order->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)))) return CMD_ERROR;
+	if (order == nullptr || !order->IsServiceNumberChangePoint()) return CMD_ERROR;
 	if (flags.Test(DoCommandFlag::Execute)) {
 		order->SetServiceNumber(mode, number);
 		/* Editing the instruction is not executing it: inbound trains keep their number. */
 		for (Vehicle *v = ol->GetFirstSharedVehicle(); v != nullptr; v = v->NextShared()) {
-			if (v->cur_real_order_index == index && v->current_order.IsDerivedFrom(*order)) {
+			const bool external_here = order->IsExternalTripOrder() && v->current_order.GetDestination() == order->GetDestination() &&
+					(v->IsInExternalTrip() || v->current_order.IsExternalTripOrder());
+			if (v->cur_real_order_index == index && (external_here || v->current_order.IsDerivedFrom(*order))) {
 				v->current_order.SetServiceNumber(mode, number);
 				if (v->current_order.IsAnyLoadingType() && v->last_station_visited == order->GetDestination()) v->ApplyStationServiceNumber(*order);
+				if (external_here && v->IsInExternalTrip()) v->ApplyStationServiceNumber(*order);
 			}
 		}
 		InvalidateWindowClassesData(WindowClass::VehicleOrders);

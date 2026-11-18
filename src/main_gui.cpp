@@ -8,6 +8,7 @@
 /** @file main_gui.cpp Handling of the main viewport. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "currency_type.h"
 #include "spritecache.h"
 #include "window_gui.h"
@@ -536,6 +537,7 @@ struct MainWindow : Window
 	bool OnTooltip([[maybe_unused]] Point pt, WidgetID widget, TooltipCloseCondition close_cond) override
 	{
 		if (widget != WID_M_VIEWPORT) return false;
+		if (auto text = GetExternalCityTooltipAt(this->viewport, pt); !text.empty()) { GuiShowTooltips(this, GetEncodedRawString(text), close_cond); return true; }
 		return this->viewport->overlay->ShowTooltip(pt, close_cond);
 	}
 
@@ -554,6 +556,7 @@ struct MainWindow : Window
 	virtual void OnMouseOver(Point pt, WidgetID widget) override
 	{
 		if (pt.x != -1 && _game_mode != GameMode::Menu && IsViewportMouseHoverActive()) {
+			if (auto text = GetExternalCityTooltipAt(this->viewport, pt); !text.empty()) { GuiShowTooltips(this, GetEncodedRawString(text), TooltipCloseCondition::HoverViewport); return; }
 			/* Show tooltip with last month production or town name */
 			const Point p = GetTileBelowCursor();
 			const TileIndex tile = TileVirtXY(p.x, p.y);

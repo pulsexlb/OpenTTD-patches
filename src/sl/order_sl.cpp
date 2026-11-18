@@ -138,6 +138,7 @@ Order UnpackOldOrder(uint16_t packed)
 NamedSaveLoadTable GetOrderExtraInfoDescription()
 {
 	static const NamedSaveLoad _order_extra_info_desc[] = {
+		NSL("external_cargo_flags", SLE_CONDVAR_X(OrderExtraInfo, external_cargo_flags, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 9))),
 		NSL("station_service_mode", SLE_CONDVAR_X(OrderExtraInfo, station_service_mode, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER, 2))),
 		NSL("station_service_number", SLE_CONDSTR_X(OrderExtraInfo, station_service_number, SLE_STR, 0, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_FIXED_SERVICE_NUMBER, 2))),
 		NSL("couple_service_number", SLE_CONDSTR_X(OrderExtraInfo, couple_service_number, SLE_STR, 0, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_COUPLE_SERVICE_NUMBER))),

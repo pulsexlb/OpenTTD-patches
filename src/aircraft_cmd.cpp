@@ -13,6 +13,7 @@
 #include "stdafx.h"
 #include "air.h"
 #include "aircraft.h"
+#include "external_city.h"
 #include "news_func.h"
 #include "newgrf_sound.h"
 #include "spritecache.h"
@@ -290,6 +291,7 @@ static bool CanAircraftUseAirport(const Aircraft *v, const Station *st)
 
 TileIndex Aircraft::GetOrderStationLocation(StationID station)
 {
+	if (this->current_order.IsExternalFlightOrder()) return GetExternalFlightBoundary(GetExternalOrderCity(this->current_order), this->tile);
 	if (station == this->last_station_visited) this->last_station_visited = StationID::Invalid();
 
 	assert(Station::IsValidID(station));
@@ -567,6 +569,7 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
  */
 static void CheckIfAircraftNeedsService(Aircraft *v)
 {
+	if (v->IsInExternalTrip() || v->external_landing || v->current_order.IsExternalFlightOrder()) return;
 	if (!v->IsNormalAircraft()) return;
 	if (v->IsAircraftFlying() && !v->IsAircraftFreelyFlying()) return;
 
@@ -1376,6 +1379,11 @@ static bool IsAircraftOnNextPosition(const Aircraft *v)
  */
 void UpdateAircraftState(Aircraft *v)
 {
+	if (v->IsInExternalTrip()) return;
+	if (v->IsAircraftFreelyFlying() && v->current_order.IsExternalFlightOrder()) {
+		AircraftUpdateNextPos(v);
+		return;
+	}
 	if (!v->IsNormalAircraft()) return;
 	// revise: check conditions
 	// revise: is IsAircraftOnNextPosition always true here?
@@ -1389,6 +1397,12 @@ void UpdateAircraftState(Aircraft *v)
 
 	switch (v->current_order.GetType()) {
 		case OT_GOTO_STATION: {
+			if (v->current_order.IsExternalFlightOrder()) {
+				dest_tile = GetExternalFlightBoundary(GetExternalOrderCity(v->current_order), v->tile);
+				v->HandlePathfindingResult(IsValidTile(dest_tile));
+				next_state = AS_START_TAKEOFF;
+				break;
+			}
 			Station *st = Station::GetIfValid(v->current_order.GetDestination().ToStationID());
 			if (st == nullptr || !CanAircraftUseAirport(v, st)) {
 				/* The target airport cannot be used by this aircraft: keep the order
@@ -1589,6 +1603,15 @@ static void AircraftEntersTerminal(Aircraft *v)
 		SetWindowDirty(WindowClass::VehicleDetails, v->index);
 	}
 
+	if (v->external_landing) {
+		v->external_landing = false;
+		v->current_order.MakeDummy();
+		ProcessOrders(v);
+		if (!v->current_order.IsType(OT_GOTO_STATION) || v->current_order.GetDestination().ToStationID() != st->index) return;
+		/* Resolving the real stop clears last_station_visited. Arrival at this
+		 * terminal has already occurred; restore it before native unloading. */
+		v->last_station_visited = st->index;
+	}
 	v->BeginLoading();
 }
 
@@ -1771,6 +1794,11 @@ void HandleAircraftTakingoff(Aircraft *v)
 			break;
 
 		case AS_FLYING_LEAVING_AIRPORT: {
+			if (v->current_order.IsExternalFlightOrder()) {
+				v->state = AS_FLYING;
+				AircraftUpdateNextPos(v);
+				break;
+			}
 			TileIndex landing_tile = FindClosestLandingTile(v);
 			if (landing_tile != TileIndex{} && IsValidTile(landing_tile)) {
 				v->state = AS_FLYING;
@@ -2172,6 +2200,10 @@ bool HandleAircraftState(Aircraft *v)
 	UpdateAircraftState(v);
 
 	switch (v->state) {
+		case AS_FLYING_EXTERNAL:
+			if (!IsAircraftOnNextPosition(v)) return false;
+			v->BeginExternalFlight();
+			return true;
 		case AS_APRON:
 		case AS_HELIPAD:
 		case AS_HELIPORT:
@@ -2409,6 +2441,7 @@ AircraftPosition GetAircraftPositionByTile(TileIndex tile, AircraftPos next_pos)
  */
 void SetNextAircraftPosition(Aircraft &v)
 {
+	if (v.state == AS_FLYING_EXTERNAL) { v.next_pos = {AP_DEFAULT, TILE_SIZE / 2, TILE_SIZE / 2}; return; }
 	TileIndex tile = v.GetNextTile();
 	AircraftPos next_pos = v.next_pos.pos;
 	DiagDirection diagdir = DiagDirection::NE;
@@ -2551,6 +2584,14 @@ void Aircraft::UpdateNextTile(TileIndex tile)
 void AircraftUpdateNextPos(Aircraft *v)
 {
 	assert(v->IsAircraftFreelyFlying());
+	if (v->current_order.IsExternalFlightOrder()) {
+		TileIndex boundary = GetExternalFlightBoundary(GetExternalOrderCity(v->current_order), v->tile);
+		if (IsValidTile(boundary)) {
+			v->state = AS_FLYING_EXTERNAL;
+			v->UpdateNextTile(boundary);
+			return;
+		}
+	}
 
 	TileIndex tile = v->GetNextTile();
 	if (IsValidTile(tile) && IsAirportTile(tile) &&
@@ -2710,6 +2751,18 @@ bool IsReachableDest(Aircraft *v)
 {
 	assert(IsAirportTile(v->tile));
 	assert(!v->IsAircraftFlying());
+	if (v->current_order.IsExternalFlightOrder()) {
+		const auto *city = ExternalCity::GetIfValid(GetExternalOrderCity(v->current_order));
+		TileIndex boundary = GetExternalFlightBoundary(GetExternalOrderCity(v->current_order), v->tile);
+		const uint64_t distance = IsValidTile(boundary) ? DistanceManhattan(v->tile, boundary) + (city == nullptr ? 0 : city->distance_tiles) : UINT32_MAX;
+		const bool reachable = city != nullptr && IsValidTile(boundary) && (v->acache.cached_max_range_sqr == 0 || distance * distance <= v->acache.cached_max_range_sqr);
+		v->HandlePathfindingResult(reachable);
+		if (reachable) {
+			v->external_home_airport = GetStationIndex(v->tile);
+			v->external_home_tile = Station::Get(v->external_home_airport)->airport.tile;
+		}
+		return reachable;
+	}
 	if (v->targetairport == GetStationIndex(v->tile)) return true;
 	if (v->targetairport == StationID::Invalid()) return false;
 
@@ -2830,7 +2883,7 @@ void HandleMissingAircraftOrders(Aircraft *v)
  */
 void Aircraft::SetDestTile(TileIndex tile)
 {
-	if (tile != TileIndex{} && tile != INVALID_TILE) {
+	if (!this->current_order.IsExternalFlightOrder() && tile != TileIndex{} && tile != INVALID_TILE) {
 		assert(IsValidTile(tile));
 		assert(IsAirportTile(tile));
 		assert(IsHangar(tile) || IsApron(tile));
@@ -3209,6 +3262,7 @@ bool HandleAircraftMovement(Aircraft *v)
  */
 static bool AircraftController(Aircraft *v, bool mode)
 {
+	if (v->IsInExternalTrip()) return true;
 	/* Aircraft crashed? */
 	if (v->vehstatus.Test(VehState::Crashed)) {
 		return mode ? true : HandleCrashedAircraft(v); // 'v' can be deleted here
@@ -3225,7 +3279,7 @@ static bool AircraftController(Aircraft *v, bool mode)
 		return true;
 	}
 
-	ProcessOrders(v);
+	if (!v->external_landing) ProcessOrders(v);
 
 	v->HandleLoading(mode);
 	if (v->current_order.IsType(OT_LOADING)) return true;
@@ -3254,6 +3308,60 @@ static bool AircraftController(Aircraft *v, bool mode)
  * Update aircraft vehicle data for a tick.
  * @return True if the vehicle still exists, false if it has ceased to exist (normal aircraft only).
  */
+void Aircraft::BeginExternalFlight()
+{
+	if (!this->current_order.IsExternalFlightOrder() || this->IsInExternalTrip() || !IsAircraftOnNextPosition(this)) return;
+	const auto *city = ExternalCity::GetIfValid(GetExternalOrderCity(this->current_order));
+	if (city == nullptr) return;
+	this->external_trip_city = city->index;
+	this->external_entry_tile = this->tile;
+	this->external_return_pending = false;
+	this->external_return_airport = this->current_order.GetExternalReturnAirport();
+	const auto *airport = Station::GetIfValid(this->external_return_airport);
+	this->external_return_airport_tile = airport == nullptr ? INVALID_TILE : airport->airport.tile;
+	this->StartExternalJourney(city);
+	for (Aircraft *part = this; part != nullptr; part = part->Next()) {
+		part->vehstatus.Set(VehState::Hidden);
+		part->UpdateIsDrawn();
+	}
+	SetAircraftPosition(this, this->x_pos, this->y_pos, this->z_pos);
+}
+
+bool Aircraft::ResumeExternalFlight()
+{
+	auto usable = [this](const Station *station) {
+		return station != nullptr && station->owner == this->owner && CanAircraftUseAirport(this, station);
+	};
+	const Station *airport = Station::GetIfValid(this->external_return_airport);
+	if (!usable(airport) || airport->airport.tile != this->external_return_airport_tile) airport = nullptr;
+	if (airport == nullptr) {
+		airport = Station::GetIfValid(this->external_home_airport);
+		if (!usable(airport) || airport->airport.tile != this->external_home_tile) airport = nullptr;
+	}
+	if (airport == nullptr) {
+		uint best = UINT_MAX;
+		for (const Station *candidate : Station::Iterate()) {
+			if (!usable(candidate)) continue;
+			const uint distance = DistanceSquare(this->tile, candidate->airport.tile);
+			if (distance < best) { best = distance; airport = candidate; }
+		}
+	}
+	if (airport == nullptr) return false;
+	this->current_order.Free();
+	this->current_order.MakeGoToStation(airport->index);
+	this->targetairport = airport->index;
+	this->state = AS_FLYING;
+	AssignLandingTile(this, FindClosestLandingTile(this));
+	this->external_landing = true;
+	this->cur_speed = std::min<uint>(this->external_cruise_speed, this->vcache.cached_max_speed);
+	for (Aircraft *part = this; part != nullptr; part = part->Next()) {
+		part->vehstatus.Reset(VehState::Hidden);
+		part->UpdateIsDrawn();
+	}
+	SetAircraftPosition(this, this->x_pos, this->y_pos, this->z_pos);
+	return true;
+}
+
 bool Aircraft::Tick()
 {
 	if (!this->IsNormalAircraft()) return true;
@@ -3267,6 +3375,7 @@ bool Aircraft::Tick()
 	if (this->IsHelicopter()) HandleHelicopterRotor(this);
 
 	this->current_order_time++;
+	if (this->IsInExternalTrip()) { this->TickExternalTrip(); return true; }
 
 	for (uint i = 0; i != 2; i++) {
 		if (this->state != this->last_cached_state) UpdateAircraftCache(this);

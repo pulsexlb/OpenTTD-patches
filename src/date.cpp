@@ -8,6 +8,7 @@
 /** @file date.cpp Handling of dates in our native format and transforming them to something human readable. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "network/network.h"
 #include "network/network_func.h"
 #include "network/network_sync.h"
@@ -424,6 +425,7 @@ static void OnNewCalendarMonth()
  */
 static void OnNewEconomyMonth()
 {
+	RefillExternalCityMarkets();
 	CompaniesEconomyMonthlyLoop();
 	TownsMonthlyLoop();
 	IndustryMonthlyLoop();

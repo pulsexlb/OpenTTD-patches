@@ -71,6 +71,7 @@ enum class ConsistChangeFlag : uint8_t {
 	DepotDirection, ///< Normalise depot direction.
 	CheckOnly, ///< Only check whether the changes are possible, do not apply them.
 	Immutable, ///< Allow changes to immutable properties (e.g. parent properties).
+	RecoverLegacyEmptyCapacity, ///< Load-only repair of a known empty articulated capacity permutation.
 };
 /** Bitset of the %ConsistChangeFlag elements. */
 using ConsistChangeFlags = EnumBitSet<ConsistChangeFlag, uint8_t>;

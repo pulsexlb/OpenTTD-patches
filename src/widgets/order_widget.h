@@ -29,6 +29,11 @@ enum OrderWidgets : WidgetID {
 	WID_O_GOTO,                      ///< Goto destination.
 	WID_O_FULL_LOAD,                 ///< Select full load.
 	WID_O_UNLOAD,                    ///< Select unload.
+	WID_O_EXTERNAL_SETTINGS,        ///< External city settings / return entrance.
+	WID_O_SEL_EXTERNAL_REFIT,       ///< Ship/aircraft load-row refit or external settings.
+	WID_O_SEL_EXTERNAL_CITY,        ///< Destination selector for external flight orders only.
+	WID_O_EXTERNAL_CITY,            ///< Change the destination of an existing external flight.
+	WID_O_AUTO_REFIT_STATE,         ///< Dedicated stop auto-refit mode and status.
 	WID_O_REFIT,                     ///< Select refit.
 	WID_O_DEPOT_ACTION,              ///< Dropdown to select the depot action (stop, service if needed, unbunch).
 	WID_O_REFIT_DROPDOWN,            ///< Open refit options.

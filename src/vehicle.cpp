@@ -37,6 +37,8 @@
 #include "roadveh_transport.h"
 #include "ai/ai.hpp"
 #include "depot_func.h"
+#include "depot_base.h"
+#include "external_city.h"
 #include "network/network.h"
 #include "core/pool_func.hpp"
 #include "economy_base.h"
@@ -1278,7 +1280,10 @@ void Vehicle::PreDestructor()
 		InvalidateWindowData(WindowClass::VehicleDepot, this->tile.base());
 	}
 
-	if (this->IsPrimaryVehicle()) {
+	/* A train sale can clear its primary subtype before destruction. Windows
+	 * are keyed by the actual pool ID, so their lifetime must not depend on
+	 * that subtype. Surviving identities have already had their windows rekeyed. */
+	{
 		CloseWindowById(WindowClass::VehicleView, this->index);
 		CloseWindowById(WindowClass::VehicleOrders, this->index);
 		CloseWindowById(WindowClass::VehicleRefit, this->index);
@@ -1289,6 +1294,8 @@ void Vehicle::PreDestructor()
 		CloseWindowById(WindowClass::VehicleCargoTypeUnloadOrders, this->index);
 		CloseWindowById(WindowClass::VehicleRVTransportCriteria, this->index);
 		CloseWindowById(WindowClass::VehicleOrderImportErrors, this->index);
+	}
+	if (this->IsPrimaryVehicle()) {
 		SetWindowDirty(WindowClass::Company, this->owner);
 		OrderBackup::ClearVehicle(this);
 	}
@@ -1299,6 +1306,7 @@ void Vehicle::PreDestructor()
 	DeleteDepotHighlightOfVehicle(this);
 
 	StopGlobalFollowVehicle(this);
+	ChangeVehicleViewports(this->index, VehicleID::Invalid());
 
 	/* sometimes, eg. for disaster vehicles, when company bankrupts, when removing crashed/flooded vehicles,
 	 * it may happen that vehicle chain is deleted when visible */
@@ -2777,9 +2785,166 @@ uint8_t CalcPercentVehicleFilledOfCargo(const Vehicle *front, CargoType cargo)
 }
 
 /**
- * Vehicle entirely entered the depot, update its status, orders, vehicle windows, service it, etc.
- * @param v Vehicle that entered a depot.
+ * A first-stage external portal is a native rail depot near the map edge.
  */
+bool Vehicle::IsExternalPortal(TileIndex tile)
+{
+	if (!IsValidTile(tile)) return false;
+	if (IsRoadDepotTile(tile) || IsShipDepotTile(tile)) return Depot::IsExternalConnection(tile);
+	if (!IsRailDepotTile(tile)) return false;
+	return std::min({TileX(tile), TileY(tile), Map::SizeX() - 1 - TileX(tile), Map::SizeY() - 1 - TileY(tile)}) < 16;
+}
+
+bool Vehicle::BeginExternalTrip()
+{
+	if (!_settings_game.vehicle.external_connections || (this->type != VehicleType::Train && this->type != VehicleType::Road && this->type != VehicleType::Ship) ||
+			!this->current_order.IsExternalTripOrder() || !this->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders) ||
+			!IsExternalPortal(this->tile)) return false;
+	/* A vehicle may turn through another entrance at a dead end. Only the
+	 * explicitly ordered entrance starts the off-map journey, including trains. */
+	if (this->dest_tile != this->tile) return false;
+	/* Ground vehicle parts occupy real tiles and must all have cleared the
+	 * entrance. Multipart ships instead have abstract cargo holds without a
+	 * tile or depot state; the physical ship represents their location. */
+ for (const Vehicle *part = this->First(); part != nullptr; part = this->type == VehicleType::Ship ? nullptr : part->Next()) {
+  if (!part->IsInDepot() || part->tile != this->tile) return false;
+ }
+ if (this->type == VehicleType::Train) {
+  Train *train = Train::From(this);
+	CancelTrainCoupleCheckpoint(train);
+	/* The whole physical train has left the map. Release only the active
+	 * automatic-yield detector and its dependent claims, retaining manual slots. */
+	if (train->early_route_area != UINT16_MAX) {
+		if (TraceRestrictSlot *slot=TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{train->early_route_area});slot!=nullptr) slot->VacateByID(train->index);
+	}
+	train->early_route.clear();
+
+ }
+
+	const Depot *portal = Depot::GetIfValid(GetDepotIndex(this->tile));
+	const ExternalCity *city = portal == nullptr ? nullptr : ExternalCity::GetIfValid(GetExternalCityForEntrance(portal->xy));
+	this->external_trip_city = city == nullptr ? ExternalCityID::Invalid() : city->index;
+	this->external_entry_tile = this->tile;
+	this->external_return_pending = false;
+	this->external_exit_depot = this->current_order.GetExternalReturnDepot();
+	const Depot *exit = Depot::GetIfValid(this->external_exit_depot);
+	this->external_exit_tile = exit == nullptr ? INVALID_TILE : exit->xy;
+	this->StartExternalJourney(city);
+	return true;
+}
+
+void Vehicle::StartExternalJourney(const ExternalCity *city)
+{
+	this->external_distance_tiles = city == nullptr ? std::max<uint>(1, _settings_game.vehicle.external_trip_distance) : city->distance_tiles;
+	this->external_cruise_speed = std::max(1, std::min(this->GetDisplayMaxSpeed(), int(this->current_order.GetMaxSpeed())));
+	const uint64_t leg = ExternalTravelTicks(this->external_distance_tiles, this->external_cruise_speed, this->type);
+	const uint64_t stop = this->current_order.IsWaitTimetabled() ? this->current_order.GetTimetabledWait() :
+		uint64_t(city == nullptr ? _settings_game.vehicle.external_stop_minutes : city->stop_minutes) * std::max<uint>(1, _settings_time.ticks_per_minute);
+	this->external_arrival_tick = _state_ticks + StateTicksDelta{int64_t(leg)};
+	this->external_departure_tick = this->external_arrival_tick + StateTicksDelta{int64_t(stop)};
+	this->external_return_tick = this->external_departure_tick + StateTicksDelta{int64_t(leg)};
+	this->external_arrival_handled = this->external_departure_handled = false;
+	this->cur_speed = 0; // Native arrival has put the complete consist inside the depot.
+	this->UpdateIsDrawn();
+	this->ApplyStationServiceNumber(this->current_order);
+	InvalidateWindowClassesData(WindowClass::ExternalEntrance);
+	InvalidateWindowData(WindowClass::VehicleView, this->index);
+}
+
+uint64_t Vehicle::ExternalTravelTicks(uint16_t distance, uint16_t speed, VehicleType type)
+{
+	/* A straight native rail tile is 16 diagonal steps of 192 progress units.
+	 * Trains advance twice per state tick. Do not equate tiles with kilometres. */
+	if (type == VehicleType::Aircraft) return CeilDiv(uint64_t(distance) * TILE_SIZE * 256 * std::max<uint>(1, _settings_game.vehicle.plane_speed), uint64_t(2) * std::max<uint>(1, speed));
+	const uint advance = (type == VehicleType::Road || type == VehicleType::Ship) ? GetAdvanceSpeed(2 * uint(speed)) : 2 * GetAdvanceSpeed(speed);
+	return CeilDiv(uint64_t(distance) * TILE_SIZE * 192, uint64_t(std::max(1U, advance)));
+}
+ExternalTripPhase Vehicle::GetExternalTripPhase() const
+{
+	const auto *v = this->Primary();
+	if (v->external_return_pending) return ExternalTripPhase::Queued;
+	if (!v->IsInExternalTrip()) return ExternalTripPhase::None;
+	if (v->external_arrival_tick == INVALID_STATE_TICKS) return ExternalTripPhase::Legacy;
+	if (_state_ticks < v->external_arrival_tick) return ExternalTripPhase::Outbound;
+	if (!v->external_departure_handled) return ExternalTripPhase::Stopped;
+	return ExternalTripPhase::Returning;
+}
+uint16_t Vehicle::GetExternalDisplaySpeed() const
+{
+	const auto phase = GetExternalTripPhase();
+	return phase == ExternalTripPhase::Outbound || phase == ExternalTripPhase::Returning ? this->Primary()->external_cruise_speed : 0;
+}
+
+static bool ShouldVehicleContinueWaiting(Vehicle *v);
+bool Vehicle::TickExternalTrip()
+{
+	if (!this->IsInExternalTrip()) return false;
+	if (this->external_arrival_tick != INVALID_STATE_TICKS) {
+		if (!this->external_arrival_handled && _state_ticks >= this->external_arrival_tick) {
+			UpdateVehicleTimetable(this, true);
+			this->current_order.MakeWaiting();
+			this->current_order.SetNonStopType(ONSF_NO_STOP_AT_ANY_STATION);
+			this->external_arrival_handled = true;
+			ServiceExternalCityVehicle(this, true);
+			this->ResetRefitCaps();
+			LinkRefresher::Run(this, true, false);
+			if (this->current_order.IsWaitTimetabled()) {
+				const int64_t wait = std::max<int64_t>(0, int64_t(this->current_order.GetTimetabledWait()) - this->lateness_counter);
+				this->external_departure_tick = _state_ticks + StateTicksDelta{wait};
+				this->external_return_tick = this->external_departure_tick + StateTicksDelta{int64_t(ExternalTravelTicks(this->external_distance_tiles, this->external_cruise_speed, this->type))};
+			}
+			InvalidateWindowData(WindowClass::VehicleView, this->index);
+			InvalidateWindowClassesData(WindowClass::ExternalEntrance);
+		}
+		if (this->external_arrival_handled && !this->external_departure_handled) {
+			this->current_loading_time++;
+			if (_state_ticks >= this->external_departure_tick) {
+				ServiceExternalCityVehicle(this, false);
+				if (ExternalCityVehicleNeedsFullLoad(this) || ShouldVehicleContinueWaiting(this)) {
+					this->external_departure_tick += StateTicksDelta{1};
+					this->external_return_tick += StateTicksDelta{1};
+					return true;
+				}
+				this->HandleWaiting(true, false);
+				this->external_departure_handled = true;
+				InvalidateWindowData(WindowClass::VehicleView, this->index);
+				InvalidateWindowClassesData(WindowClass::ExternalEntrance);
+			}
+		}
+	}
+	if (_state_ticks < this->external_return_tick) return true;
+	if (this->type == VehicleType::Aircraft) {
+		/* No usable airport: retry at a bounded, deterministic interval. */
+		if (this->external_return_pending && (this->tick_counter & 31) != 0) return true;
+		if (!Aircraft::From(this)->ResumeExternalFlight()) { this->external_return_pending = true; return true; }
+		this->external_return_tick = this->external_arrival_tick = this->external_departure_tick = INVALID_STATE_TICKS;
+		this->external_return_pending = false;
+		this->external_trip_city = ExternalCityID::Invalid();
+		return true;
+	}
+	if (this->external_entry_tile == INVALID_TILE) this->external_entry_tile = this->tile;
+	/* The complete hidden consist can change entrances while outside the map.
+	 * A removed or incompatible return entrance falls back to the original one.
+	 * Neither branch reserves track or exposes a vehicle on occupied rail. */
+	if (this->type == VehicleType::Train && this->external_exit_depot != DepotID::Invalid()) TransferExternalTrainToEntrance(Train::From(this), this->external_exit_depot, this->external_exit_tile);
+	if (this->type == VehicleType::Road && this->external_exit_depot != DepotID::Invalid()) TransferExternalRoadVehicleToEntrance(RoadVehicle::From(this), this->external_exit_depot, this->external_exit_tile);
+	if (this->type == VehicleType::Ship && this->external_exit_depot != DepotID::Invalid()) TransferExternalShipToEntrance(Ship::From(this), this->external_exit_depot, this->external_exit_tile);
+	this->external_return_pending = true;
+	this->external_exit_depot = DepotID::Invalid();
+	this->external_exit_tile = INVALID_TILE;
+	/* A completed journey does not reserve a vehicle path. The following
+	 * normal depot exit obtains its own native signal/PBS permission. */
+	this->external_return_tick = INVALID_STATE_TICKS;
+	this->external_arrival_tick = this->external_departure_tick = INVALID_STATE_TICKS;
+	this->external_trip_city = ExternalCityID::Invalid();
+	if (!this->external_departure_handled && this->current_order.IsType(OT_WAITING) && this->current_order.GetDepotExtraFlags().Test(OrderDepotExtraFlag::ExternalTrip)) {
+		this->HandleWaiting(true, false);
+	}
+	InvalidateWindowData(WindowClass::VehicleView, this->index);
+	return true;
+}
+
+/** Vehicle entirely entered a depot; update state, orders and servicing. */
 void VehicleEnterDepot(Vehicle *v)
 {
 	/* Always work with the primary (consist info carrier) of the vehicle */
@@ -2834,6 +2999,18 @@ void VehicleEnterDepot(Vehicle *v)
 	SetWindowDirty(WindowClass::VehicleDepot, v->tile.base());
 
 	v->vehstatus.Set(VehState::Hidden);
+	/* Retain native whole-consist entry/exit without servicing or replacing
+	 * a train which is still making its external journey. */
+	if (v->BeginExternalTrip()) return;
+    if (v->type == VehicleType::Road && Depot::IsExternalConnection(v->tile) &&
+            v->current_order.IsType(OT_GOTO_DEPOT) && v->dest_tile != v->tile) {
+        v->cur_speed = 0;
+        return; // A turning entrance is not a workshop or an arrival at the ordered city.
+    }
+	if (v->current_order.IsExternalTripOrder() && Vehicle::IsExternalPortal(v->tile) && v->dest_tile != v->tile) {
+		v->cur_speed = 0;
+		return; // Keep the scheduled destination; no refit, service or timetable arrival here.
+	}
 	/* When trains are not allowed to temporarily stop in depots, keep them stopped in the depot
 	 * until the player starts them manually. The train is only allowed to drive on if it is passing
 	 * through this depot on its way to another one (handled below). */
@@ -3536,7 +3713,7 @@ std::string Vehicle::GetServiceNumberForDeparture(const Order *target, std::stri
 {
 	if (this->service_number_suppressed && target != nullptr && target->GetDestination() == this->last_station_visited && (this->current_order.IsAnyLoadingType() || this->current_order.IsType(OT_WAIT_COUPLE))) return {};
 	/* An explicit stop setting describes its outbound service, including a future stop. */
-	if (target != nullptr && (target->IsType(OT_GOTO_WAYPOINT) || (target->IsType(OT_GOTO_STATION) && !(target->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)))) {
+	if (target != nullptr && target->IsServiceNumberChangePoint()) {
 		if (target->GetServiceNumberMode() == 1) return std::string(target->GetServiceNumber());
 		if (target->GetServiceNumberMode() == 2) return std::string(dispatched_number);
 	}
@@ -3573,7 +3750,7 @@ std::string Vehicle::GetServiceNumberForDeparture(const Order *target, std::stri
 				o = walk_list->GetFirstOrder();
 				continue;
 			}
-			if ((o->IsType(OT_GOTO_WAYPOINT) || (o->IsType(OT_GOTO_STATION) && !(o->GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION))) && !(this->service_number_suppressed && o == skip)) {
+			if (o->IsServiceNumberChangePoint() && !(this->service_number_suppressed && o == skip)) {
 				if (o->GetServiceNumberMode() == 1) result = o->GetServiceNumber();
 				if (o->GetServiceNumberMode() == 2) result = dispatched_number;
 			}
@@ -3593,11 +3770,12 @@ std::string Vehicle::GetServiceNumberForDeparture(const Order *target, std::stri
 
 void Vehicle::ApplyStationServiceNumber(const Order &order)
 {
-	if (this->type != VehicleType::Train || (!order.IsType(OT_GOTO_STATION) && !order.IsType(OT_GOTO_WAYPOINT)) || order.GetServiceNumberMode() == 0) return;
+	if (this->type != VehicleType::Train || !order.IsServiceNumberChangePoint() || order.GetServiceNumberMode() == 0) return;
 	const std::string_view number = order.GetServiceNumberMode() == 1 ? order.GetServiceNumber() : std::string_view{};
 	if (!this->service_number_suppressed && std::string_view(this->fixed_service_number) == number) return;
 	this->fixed_service_number = number;
 	this->service_number_suppressed = false;
+	InvalidateWindowClassesData(WindowClass::ExternalEntrance);
 	SetWindowDirty(WindowClass::VehicleView, this->index);
 	InvalidateWindowClassesData(WindowClass::DepartureBoard);
 }
@@ -4280,6 +4458,7 @@ bool Vehicle::IsWaitingForUnbunching() const
  */
 CommandCost Vehicle::SendToDepot(DoCommandFlags flags, DepotCommandFlags command, TileIndex specific_depot)
 {
+	if (this->IsInExternalTrip()) return CommandCost(STR_EXTERNAL_TRIP_LOCKED);
 	CommandCost ret = CheckOwnership(this->owner);
 	if (ret.Failed()) return ret;
 
@@ -5303,6 +5482,9 @@ void AdjustVehicleStateTicksBase(StateTicksDelta delta)
 	for (Vehicle *v : Vehicle::Iterate()) {
 		if (v->timetable_start != 0) v->timetable_start += delta;
 		if (v->last_loading_tick != 0) v->last_loading_tick += delta;
+		if (v->external_return_tick != INVALID_STATE_TICKS) v->external_return_tick += delta;
+		if (v->external_arrival_tick != INVALID_STATE_TICKS) v->external_arrival_tick += delta;
+		if (v->external_departure_tick != INVALID_STATE_TICKS) v->external_departure_tick += delta;
 		if (v->unbunch_state != nullptr) {
 			if (v->unbunch_state->depot_unbunching_last_departure != INVALID_STATE_TICKS) v->unbunch_state->depot_unbunching_last_departure += delta;
 			if (v->unbunch_state->depot_unbunching_next_departure != INVALID_STATE_TICKS) v->unbunch_state->depot_unbunching_next_departure += delta;

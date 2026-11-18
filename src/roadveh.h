@@ -413,4 +413,6 @@ protected: // These functions should not be called outside acceleration code.
 	}
 };
 
+bool TransferExternalRoadVehicleToEntrance(RoadVehicle *vehicle, DepotID exit_id, TileIndex expected_tile);
+
 #endif /* ROADVEH_H */

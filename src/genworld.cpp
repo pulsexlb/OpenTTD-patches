@@ -14,6 +14,7 @@
 #include "3rdparty/nlohmann/json.hpp"
 #include "strings_func.h"
 #include "genworld.h"
+#include "external_city.h"
 #include "gfxinit.h"
 #include "window_func.h"
 #include "network/network.h"
@@ -185,6 +186,7 @@ static void _GenerateWorld()
 		StartupEngines();
 		IncreaseGeneratingWorldProgress(GenWorldProgress::GameInit);
 		StartupDisasters();
+		if (GenWorldInfo::mode != GWM_EMPTY) GenerateExternalCities();
 		_generating_world = false;
 		_town_noise_no_update = false;
 		UpdateAirportsNoise();

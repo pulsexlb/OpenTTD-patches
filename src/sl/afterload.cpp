@@ -11,6 +11,7 @@
 #include "../void_map.h"
 #include "../signs_base.h"
 #include "../depot_base.h"
+#include "../external_city.h"
 #include "../tunnel_base.h"
 #include "../fios.h"
 #include "../gamelog_internal.h"
@@ -4948,7 +4949,28 @@ bool AfterLoadGame()
 	AfterLoadStoryBook();
 
 	InitializeRailGUI(); // Needs to be after AfterLoadCompanyStats
+	/* The first portal prototype did not save a depot role. Migrate only
+	 * depots actually used by external orders, never ordinary edge depots. */
+	if (SlXvIsFeaturePresent(XSLFI_EXTERNAL_CONNECTIONS, 1, 1)) {
+		for (const OrderList *list : OrderList::Iterate()) {
+			for (const Order &order : list->GetOrderVector()) {
+				if (!order.IsExternalTripOrder()) continue;
+				Depot *portal = Depot::GetIfValid(order.GetDestination().ToDepotID());
+				if (portal != nullptr && Vehicle::IsExternalPortal(portal->xy)) portal->is_external_connection = true;
+			}
+		}
+		for (const Vehicle *vehicle : Vehicle::Iterate()) {
+			if (!vehicle->IsPrimaryVehicle() || !vehicle->IsInExternalTrip() || !Vehicle::IsExternalPortal(vehicle->tile)) continue;
+			if (Depot *portal = Depot::GetIfValid(GetDepotIndex(vehicle->tile)); portal != nullptr) portal->is_external_connection = true;
+		}
+	}
 	InitializeRoadGUI(); // "
+	if (SlXvIsFeaturePresent(XSLFI_EXTERNAL_CONNECTIONS, 3, 3)) MigrateExternalCityBoundaries();
+	for (Depot *portal : Depot::Iterate()) portal->external_city = ExternalCityID::Invalid();
+	if (!ValidateExternalBoundaries()) SlErrorCorrupt("Invalid external city boundary regions");
+	for (auto *city : ExternalCity::Iterate()) InitializeExternalCityMarket(city);
+	EnsureExternalCityMarkets();
+	for (Vehicle *vehicle : Vehicle::Iterate()) if (ExternalCity::GetIfValid(vehicle->external_trip_city) == nullptr) vehicle->external_trip_city = ExternalCityID::Invalid();
 
 	AfterLoadVehiclesRemoveAnyFoundInvalid();
 

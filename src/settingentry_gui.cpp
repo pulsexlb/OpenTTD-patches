@@ -997,6 +997,11 @@ SettingsContainer &GetSettingsTree()
 				routing->Add(new SettingEntry("difficulty.train_flip_reverse_allowed"));
 				routing->Add(new SettingEntry("pf.reverse_at_signals"));
 				routing->Add(new SettingEntry("vehicle.automatic_yield"));
+				routing->Add(new SettingEntry("vehicle.external_connections"));
+				routing->Add(new SettingEntry("vehicle.external_economy_mode"));
+				routing->Add(new SettingEntry("vehicle.external_boundary_editing"));
+				routing->Add(new SettingEntry("vehicle.external_trip_distance"));
+				routing->Add(new SettingEntry("vehicle.external_stop_minutes"));
 				routing->Add(new SettingEntry("pf.back_of_one_way_pbs_waiting_point"));
 				routing->Add(new SettingEntry("pf.forbid_90_deg"));
 				routing->Add(new SettingEntry("pf.reroute_rv_on_layout_change"));

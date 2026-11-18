@@ -860,6 +860,12 @@ struct VehicleSettings {
 	bool                   wagon_speed_limits;                    ///< enable wagon speed limits
 	bool                   train_speed_adaptation;                ///< Faster trains slow down when behind slower trains
 	bool                   automatic_yield;                       ///< Enable slot-associated automatic yielding in trace restriction programs
+	bool                   external_boundary_editing;             ///< Allow players to edit external city boundary regions.
+	bool                   external_connections;                  ///< Enable the map-edge connection prototype.
+	uint8_t                external_economy_mode;                 ///< Economy for newly created external cities: industry or reciprocal trade.
+	uint16_t               external_trip_minutes;                 ///< Default external round-trip duration in timetable minutes.
+	uint16_t               external_trip_distance;
+	uint16_t               external_stop_minutes;
 	uint8_t                rv_transport_carrier_parts;            ///< Carrying road vehicles (RoRo): which carrier parts may take them (RVTransportCarrierParts)
 	uint16_t               rv_transport_unload_warn_days;         ///< Carrying road vehicles (RoRo): warn when a carried road vehicle was not unloaded for this many days (0 = no warning)
 	bool                   rv_transport_enabled;                  ///< Carrying road vehicles (RoRo): may road vehicles be loaded onto carriers at all (unloading always works)

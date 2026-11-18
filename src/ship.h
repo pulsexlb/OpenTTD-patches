@@ -79,4 +79,6 @@ struct Ship final : public SpecializedVehicle<Ship, VehicleType::Ship, Vehicle> 
 
 bool IsShipDestinationTile(TileIndex tile, StationID station);
 
+bool TransferExternalShipToEntrance(Ship *ship, DepotID exit, TileIndex expected_tile);
+
 #endif /* SHIP_H */

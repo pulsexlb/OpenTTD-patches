@@ -600,6 +600,7 @@ static const NamedSaveLoad _base_station_desc[] = {
 	NSL("delete_ctr",                       SLE_CONDVAR_X(Station,     delete_ctr,                SLE_UINT8,                   SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP, 0, 3))),
 	NSL("delete_ctr",                       SLE_CONDVAR_X(Station,     delete_ctr,                SLE_FILE_U16  | SLE_VAR_U8,  SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP, 4))),
 	NSL("owner",                                  SLE_VAR(BaseStation, owner,                     SLE_UINT8)),
+	NSL("external_city", SLE_CONDVAR_X(BaseStation, external_city, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_EXTERNAL_CONNECTIONS, 9))),
 	NSL("facilities",                             SLE_VAR(BaseStation, facilities,                SLE_UINT8)),
 	NSL("build_date",                             SLE_VAR(BaseStation, build_date,                SLE_INT32)),
 

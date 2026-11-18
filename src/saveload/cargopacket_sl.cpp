@@ -36,6 +36,8 @@ SaveLoadTable GetCargoPacketDesc()
 		SLE_CONDVARNAME(CargoPacket, periods_in_transit, "days_in_transit", VarTypes::U16, SaveLoadVersion::MoreCargoAge, SaveLoadVersion::PeriodsInTransitRename),
 		SLE_CONDVAR(CargoPacket, periods_in_transit, VarTypes::U16, SaveLoadVersion::PeriodsInTransitRename, SaveLoadVersion::MaxVersion),
 		SLE_VAR(CargoPacket, feeder_share,    VarTypes::I64),
+		SLE_VAR(CargoPacket, external_source_city, VarTypes::U16),
+		SLE_VAR(CargoPacket, external_distance, VarTypes::U16),
 		SLE_CONDVARNAME(CargoPacket, source.type, "source_type", VarTypes::U8, SaveLoadVersion::RemoveSubsidyStationBinding, SaveLoadVersion::MaxVersion),
 		SLE_CONDVARNAME(CargoPacket, source.id,   "source_id",   VarTypes::U16, SaveLoadVersion::RemoveSubsidyStationBinding, SaveLoadVersion::MaxVersion),
 		SLE_CONDVAR(CargoPacket, travelled.x, VarFileType::I16 | VarMemType::I32, SaveLoadVersion::CargoTravelled, SaveLoadVersion::MaxVersion),

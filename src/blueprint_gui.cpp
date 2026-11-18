@@ -885,7 +885,7 @@ static void RecomputePasteBlocked(TileIndex origin)
 	if (bp.canals.empty() && bp.locks.empty()) {
 		/* Only meaningful when the depot does not sit on water built by the same paste. */
 		for (const BlueprintShipDepot &depot : bp.ship_depots) {
-			if (tile_valid(depot.offset) && PreviewTest<CMD_BUILD_SHIP_DEPOT>(target(depot.offset), depot.axis)) continue;
+			if (tile_valid(depot.offset) && PreviewTest<CMD_BUILD_SHIP_DEPOT>(target(depot.offset), depot.axis, false)) continue;
 			block(depot.offset.x, depot.offset.y);
 			block(depot.offset.x + (depot.axis == Axis::X ? 1 : 0), depot.offset.y + (depot.axis == Axis::Y ? 1 : 0));
 		}

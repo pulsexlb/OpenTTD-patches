@@ -12,6 +12,7 @@
 #include "yapf_node_road.hpp"
 #include "../../roadstop_base.h"
 #include "../../vehicle_func.h"
+#include "../../depot_base.h"
 
 #include "../../safeguards.h"
 
@@ -242,13 +243,13 @@ public:
 	/** @copydoc CYapfBaseT::PfDetectDestinationFunc */
 	inline bool PfDetectDestination(Node &n)
 	{
-		return IsRoadDepotTile(n.segment_last_tile);
+		return IsRoadDepotTile(n.segment_last_tile) && !Depot::IsExternalConnection(n.segment_last_tile);
 	}
 
 	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
 	inline bool PfDetectDestinationTile(TileIndex tile, [[maybe_unused]] Trackdir td)
 	{
-		return IsRoadDepotTile(tile);
+		return IsRoadDepotTile(tile) && !Depot::IsExternalConnection(tile);
 	}
 
 	/** @copydoc CYapfBaseT::PfCalcEstimateFunc */

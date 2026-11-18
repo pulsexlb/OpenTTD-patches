@@ -11,6 +11,7 @@
 #define VEHICLE_BASE_H
 
 #include "sprite.h"
+#include "external_city_type.h"
 #include "track_type.h"
 #include "command_type_fwd_declare.h"
 #include "economy_type.h"
@@ -218,6 +219,7 @@ extern VehiclePool _vehicle_pool;
 /* Some declarations of functions, so we can make them friendly */
 struct GroundVehicleCache;
 extern NamedSaveLoadTable GetVehicleDescription(VehicleType vt);
+struct ExternalCity;
 struct LoadgameState;
 struct GRFFile;
 struct VehicleCommonStructHandler;
@@ -395,6 +397,18 @@ public:
 	GroupID group_id = GroupID::Invalid();       ///< Index of group Pool array
 
 	Order current_order{};                       ///< The current order (+ status, like: loading)
+	StateTicks external_return_tick = INVALID_STATE_TICKS; ///< Saved due time; native depot tiles retain every original vehicle.
+	StateTicks external_arrival_tick = INVALID_STATE_TICKS;
+	StateTicks external_departure_tick = INVALID_STATE_TICKS;
+	uint16_t external_cruise_speed = 0;
+	uint16_t external_distance_tiles = 0;
+	bool external_arrival_handled = false;
+	bool external_departure_handled = false;
+	DepotID external_exit_depot = DepotID::Invalid(); ///< Immutable return entrance for an active trip.
+	TileIndex external_exit_tile = INVALID_TILE; ///< Prevent reuse of a deleted depot ID at another location.
+	TileIndex external_entry_tile = INVALID_TILE; ///< Origin for the active/queued-return journey display.
+	bool external_return_pending = false; ///< Finished off-map travel, still awaiting native exit permission.
+	ExternalCityID external_trip_city = ExternalCityID::Invalid(); ///< Destination snapshot for the active trip.
 
 	OrderList *orders = nullptr;                 ///< Pointer to the order list for this vehicle
 	OrderListID primary_order = OrderListID::Invalid();        ///< The order list this vehicle belongs to; equals #orders->index unless it is currently away on an execute-schedule detour
@@ -443,6 +457,14 @@ public:
 	void HandleLoading(bool mode = false);
 
 	void HandleWaiting(bool stop_waiting, bool process_orders = false);
+	bool IsInExternalTrip() const { return this->Primary()->external_return_tick != INVALID_STATE_TICKS; }
+	ExternalTripPhase GetExternalTripPhase() const;
+	uint16_t GetExternalDisplaySpeed() const;
+	static uint64_t ExternalTravelTicks(uint16_t distance, uint16_t speed, VehicleType type = VehicleType::Train);
+	static bool IsExternalPortal(TileIndex tile);
+	bool BeginExternalTrip();
+	void StartExternalJourney(const ExternalCity *city);
+	bool TickExternalTrip();
 
 	/**
 	 * Marks the vehicles to be redrawn and updates cached variables

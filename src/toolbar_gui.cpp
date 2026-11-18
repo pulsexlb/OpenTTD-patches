@@ -8,6 +8,7 @@
 /** @file toolbar_gui.cpp Code related to the (main) toolbar. */
 
 #include "stdafx.h"
+#include "external_city.h"
 #include "core/geometry_func.hpp"
 #include "gui.h"
 #include "spritecache.h"
@@ -478,6 +479,7 @@ enum class MapMenuEntries : uint8_t {
 	ShowIndustryDirectory, ///< Open window with list of industries.
 	ShowPlans, ///< Open plan window.
 	ShowOrderListManager, ///< Open order list manager window.
+	ShowExternalCities, ///< Edit cities and map boundary regions.
 };
 
 static CallBackFunction ToolbarMapClick(Window *w)
@@ -489,6 +491,7 @@ static CallBackFunction ToolbarMapClick(Window *w)
 	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_SIGN_LIST,               MapMenuEntries::ShowSignList,          false));
 	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_PLAN_LIST,               MapMenuEntries::ShowPlans,             false));
 	list.push_back(MakeDropDownListStringItem(STR_MAP_MENU_ORDER_LIST_MANAGER,     MapMenuEntries::ShowOrderListManager,  false));
+	list.push_back(MakeDropDownListStringItem(STR_EXTERNAL_CITY_TITLE, MapMenuEntries::ShowExternalCities, false));
 	PopupMainToolbarMenu(w, WID_TN_SMALL_MAP, std::move(list), 0);
 	return CallBackFunction::None;
 }
@@ -515,6 +518,7 @@ static CallBackFunction ToolbarScenMapTownDir(Window *w)
 static CallBackFunction MenuClickMap(int index)
 {
 	switch (MapMenuEntries(index)) {
+		case MapMenuEntries::ShowExternalCities: ShowExternalCityWindow(); break;
 		case MapMenuEntries::ShowSmallMap:          ShowSmallMap(); break;
 		case MapMenuEntries::ShowExtraViewport:     ShowExtraViewportWindow(); break;
 		case MapMenuEntries::ShowLinkGraph:         ShowLinkGraphLegend(); break;

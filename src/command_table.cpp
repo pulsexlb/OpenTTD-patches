@@ -19,6 +19,7 @@
 #include "blueprint_cmd.h"
 #include "company_cmd.h"
 #include "depot_cmd.h"
+#include "external_city_cmd.h"
 #include "engine_cmd.h"
 #include "goal_cmd.h"
 #include "group_cmd.h"

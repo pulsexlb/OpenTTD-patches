@@ -8,6 +8,7 @@
 /** @file refresh.cpp Definition of link refreshing utility. */
 
 #include "../stdafx.h"
+#include "../external_city.h"
 #include "../core/bitmath_func.hpp"
 #include "../station_func.h"
 #include "../engine_base.h"
@@ -45,7 +46,7 @@ static uint32_t ScheduleHopLists(const OrderList *from, const OrderList *to)
 	while (cargo_mask.Any()) {
 		CargoTypes iter_cargo_mask = cargo_mask;
 		for (const Order *o : v->Orders()) {
-			if (o->IsType(OT_GOTO_STATION) || o->IsType(OT_IMPLICIT)) {
+			if (o->IsType(OT_GOTO_STATION) || o->IsType(OT_IMPLICIT) || o->IsExternalTripOrder()) {
 				if (o->GetUnloadType() == OrderUnloadType::CargoTypeUnload) {
 					CargoMaskValueFilter<OrderUnloadType>(iter_cargo_mask, [&](CargoType cargo) -> OrderUnloadType {
 						return o->GetCargoUnloadType(cargo);
@@ -60,7 +61,7 @@ static uint32_t ScheduleHopLists(const OrderList *from, const OrderList *to)
 		}
 
 		/* Make sure the first order is a useful order. */
-		const Order *first = v->orders->GetNextDecisionNode(v->GetOrder(v->cur_implicit_order_index), 0, iter_cargo_mask);
+		const Order *first = v->orders->GetNextDecisionNode(v->GetOrder(v->cur_implicit_order_index), 0, iter_cargo_mask, true);
 		if (first != nullptr) {
 			HopSet seen_hops;
 			LinkRefresher refresher(v, &seen_hops, allow_merge, is_full_loading, iter_cargo_mask);
@@ -275,14 +276,14 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 				CargoTypes this_cargo_mask = this->cargo_mask;
 				next = this->walk_orders->GetNextDecisionNode(
 						this->walk_orders->GetOrderAt(next->GetConditionSkipToOrder()),
-						num_hops++, this_cargo_mask);
+						num_hops++, this_cargo_mask, true);
 				assert(this_cargo_mask == this->cargo_mask);
 				travel = this->UpdateTimetableTravelSoFar(current, next, travel);
 				continue;
 			}
 			CargoTypes this_cargo_mask = this->cargo_mask;
 			const Order *target = this->walk_orders->GetOrderAt(next->GetConditionSkipToOrder());
-			const Order *skip_to = this->walk_orders->GetNextDecisionNode(target, num_hops, this_cargo_mask);
+			const Order *skip_to = this->walk_orders->GetNextDecisionNode(target, num_hops, this_cargo_mask, true);
 			assert(this_cargo_mask == this->cargo_mask);
 			if (skip_to != nullptr && num_hops < std::min<uint>(64, this->walk_orders->GetNumOrders()) && skip_to != next) {
 				/* Make copies of capacity tracking lists. There is potential
@@ -372,7 +373,7 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 				}
 
 				CargoTypes sched_cargo_mask = this->cargo_mask;
-				const Order *first_target = target->GetNextDecisionNode(start, num_hops, sched_cargo_mask);
+				const Order *first_target = target->GetNextDecisionNode(start, num_hops, sched_cargo_mask, true);
 				if (first_target == nullptr) continue;
 
 				LinkRefresher branch(*this);
@@ -380,7 +381,7 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 				branch.RefreshLinks(cur, first_target, { 0, TimetableTravelTimeFlag::NoWaitTime }, flags, num_hops + 1);
 			}
 		}
-		next = this->walk_orders->GetNextDecisionNode(following, num_hops++, this_cargo_mask);
+		next = this->walk_orders->GetNextDecisionNode(following, num_hops++, this_cargo_mask, true);
 		assert(this_cargo_mask == this->cargo_mask);
 
 		if (list_changed) {
@@ -404,8 +405,8 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
  */
 void LinkRefresher::RefreshStats(const Order *cur, const Order *next, uint32_t travel_estimate, RefreshFlags flags)
 {
-	StationID next_station = next->GetDestination().ToStationID();
-	Station *st = Station::GetIfValid(cur->GetDestination().ToStationID());
+	StationID next_station = next->IsExternalTripOrder() ? GetExternalOrderStation(next) : next->GetDestination().ToStationID();
+	Station *st = Station::GetIfValid(cur->IsExternalTripOrder() ? GetExternalOrderStation(cur) : cur->GetDestination().ToStationID());
 	if (st != nullptr && next_station != StationID::Invalid() && next_station != st->index) {
 		Station *st_to = Station::Get(next_station);
 		for (CargoType cargo : EnumRange(NUM_CARGO)) {
@@ -535,14 +536,14 @@ void LinkRefresher::RefreshLinks(const Order *cur, const Order *next, TimetableT
 		flags.Reset(RefreshFlag::UseNext);
 
 		/* Skip resetting and link refreshing if next order won't do anything with cargo. */
-		if (!next->IsType(OT_GOTO_STATION) && !next->IsType(OT_IMPLICIT)) continue;
+		if (!next->IsType(OT_GOTO_STATION) && !next->IsType(OT_IMPLICIT) && !next->IsExternalTripOrder()) continue;
 
 		if (flags.Test(RefreshFlag::ResetRefit)) {
 			this->ResetRefit();
 			flags.Reset({RefreshFlag::ResetRefit, RefreshFlag::WasRefit});
 		}
 
-		if (cur->IsType(OT_GOTO_STATION) || cur->IsType(OT_IMPLICIT)) {
+		if (cur->IsType(OT_GOTO_STATION) || cur->IsType(OT_IMPLICIT) || cur->IsExternalTripOrder()) {
 			if (cur->CanLeaveWithCargo(flags.Test(RefreshFlag::HasCargo), this->cargo_mask.FindFirstBit())) {
 				flags.Set(RefreshFlag::HasCargo);
 				this->RefreshStats(cur, next, (!travel.flags.Test(TimetableTravelTimeFlag::Invalid) && travel.time_so_far > 0) ? (uint32_t)travel.time_so_far : 0, flags);

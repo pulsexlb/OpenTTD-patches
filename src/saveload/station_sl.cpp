@@ -352,6 +352,7 @@ public:
 		    SLE_STR(BaseStation, name,                   VarTypes::STR | StringValidationSetting::AllowControlCode, 0),
 		    SLE_VAR(BaseStation, delete_ctr,             VarTypes::U8),
 		    SLE_VAR(BaseStation, owner,                  VarTypes::U8),
+		    SLE_VAR(BaseStation, external_city,          VarTypes::U16),
 		    SLE_VAR(BaseStation, facilities,             VarTypes::U8),
 		    SLE_VAR(BaseStation, build_date,             VarTypes::I32),
 

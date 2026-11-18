@@ -13,6 +13,7 @@
 #include "town.h"
 #include "waypoint_base.h"
 #include "depot_base.h"
+#include "external_city.h"
 #include "industry.h"
 #include "newgrf_text.h"
 #include "fileio_func.h"
@@ -2213,7 +2214,12 @@ static void FormatString(StringBuilder builder, std::string_view str_arg, String
 					}
 
 					const Depot *d = Depot::Get(args.GetNextParameter<DepotID>());
-					if (!d->name.empty()) {
+					if (Depot::IsExternalConnection(d->xy)) {
+						const ExternalCity *city = ExternalCity::GetIfValid(GetExternalCityForEntrance(d->xy));
+						const std::string name = city != nullptr ? std::string(city->name) : GetString(STR_EXTERNAL_UNASSIGNED_CITY);
+						auto tmp_params = MakeParameters(name, TileX(d->xy), TileY(d->xy));
+						GetStringWithArgs(builder, STR_EXTERNAL_ENTRANCE_NAME, tmp_params);
+					} else if (!d->name.empty()) {
 						FormatRawString(builder, d->name);
 					} else {
 						auto tmp_params = MakeParameters(d->town->index, d->town_cn + 1);

@@ -49,6 +49,7 @@
 #include "tracerestrict.h"
 #include "tracerestrict_cmd.h"
 #include "depot_base.h"
+#include "external_city.h"
 #include "hotkeys.h"
 #include "schdispatch.h"
 #include "order_cmd.h"
@@ -4387,6 +4388,8 @@ static StringID AdjustVehicleViewVelocityStringID(StringID str)
 /** Window manager class for viewing a vehicle. */
 struct VehicleViewWindow : Window {
 private:
+	int64_t external_seconds_shown = -1;
+	ExternalTripPhase external_phase_shown = ExternalTripPhase::None;
 	bool depot_select_active = false;
 	bool depot_select_ctrl_pressed = false;
 	bool fixed_route_overlay_active = false;
@@ -4643,6 +4646,11 @@ public:
 	std::string GetVehicleStatusString(const Vehicle *v, ExtendedTextColour &text_colour) const
 	{
 		text_colour = TextColour::FromString;
+		if (v->IsInExternalTrip() || v->Primary()->external_return_pending) {
+			const auto remaining = std::max<int64_t>(0, (v->Primary()->external_return_tick - _state_ticks).base());
+			const int64_t seconds = CeilDiv(remaining * 60, int64_t(std::max<uint>(1, _settings_time.ticks_per_minute)));
+			return GetString(STR_EXTERNAL_STATUS_TIME, GetExternalTripStatus(v), seconds / 60, seconds % 60);
+		}
 
 		format_buffer buffer;
 
@@ -4762,6 +4770,11 @@ public:
 						 * depot with index 0, which would be used as fallback for
 						 * evaluating the string in the status bar. */
 						/* empty */
+					} else if (v->current_order.IsExternalTripOrder()) {
+						const Depot *portal = Depot::GetIfValid(v->current_order.GetDestination().ToDepotID());
+						const ExternalCity *city = portal == nullptr ? nullptr : ExternalCity::GetIfValid(GetExternalCityForEntrance(portal->xy));
+						if (city != nullptr) append(v->vehicle_flags.Test(VehicleFlag::PathfinderLost) ? STR_EXTERNAL_CANNOT_REACH_CITY : STR_EXTERNAL_GO_TO_CITY, city->name);
+						else append(STR_EXTERNAL_GO_TO_UNASSIGNED);
 					} else if (v->current_order.GetDepotActionType() & ODATFB_SELL) {
 						append_args(STR_VEHICLE_STATUS_HEADING_FOR_DEPOT_SELL_VEL, params);
 					} else if (v->current_order.GetDepotActionType() & ODATFB_HALT) {
@@ -5169,6 +5182,22 @@ public:
 			if (nwi->shown_plane + SEL_RT_BASEPLANE != plane) {
 				this->SelectPlane(plane);
 			}
+		}
+	}
+
+	void OnGameTick() override
+	{
+		const Vehicle *v = Vehicle::GetIfValid(VehicleID{this->window_number});
+		if (v == nullptr) return;
+		int64_t seconds = -1;
+		if (v->IsInExternalTrip()) {
+			const auto remaining = std::max<int64_t>(0, (v->Primary()->external_return_tick - _state_ticks).base());
+			seconds = CeilDiv(remaining * 60, int64_t(std::max<uint>(1, _settings_time.ticks_per_minute)));
+		}
+		if (seconds != this->external_seconds_shown || v->GetExternalTripPhase() != this->external_phase_shown) {
+			this->external_seconds_shown = seconds;
+			this->external_phase_shown = v->GetExternalTripPhase();
+			this->SetWidgetDirty(WID_VV_START_STOP);
 		}
 	}
 

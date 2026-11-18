@@ -117,6 +117,7 @@ enum AircraftState : uint8_t {
 	AS_FLYING_FALLING,
 	AS_FLYING_NO_DEST,
 	AS_FLYING_LEAVING_AIRPORT,
+	AS_FLYING_EXTERNAL, ///< Native free flight to a city boundary; no airport reservation.
 	AS_ON_HOLD_WAITING = AS_FLYING_FREE_FLIGHT | AS_FLYING_ON_AIRPORT | AS_NO_HARD_LIMIT_SPEED | AS_ON_HOLD,
 
 	AS_FLYING_MASK = AS_FLYING_FREE_FLIGHT | AS_FLYING_ON_AIRPORT,
@@ -216,6 +217,13 @@ struct Aircraft final : public SpecializedVehicle<Aircraft, VehicleType::Aircraf
 	AircraftState state = AS_HANGAR; ///< Current aircraft state. @see AircraftState
 	AircraftState last_cached_state = AS_HANGAR; ///< State at which vcache was last refreshed; cb 36 properties must be re-evaluated on every state change.
 	StationID targetairport;       ///< Airport to go to next.
+	StationID external_home_airport = StationID::Invalid();
+	TileIndex external_home_tile = INVALID_TILE;
+	StationID external_return_airport = StationID::Invalid();
+	TileIndex external_return_airport_tile = INVALID_TILE;
+	bool external_landing = false; ///< Finish the selected return airport before processing the next order.
+	bool ResumeExternalFlight();
+	void BeginExternalFlight();
 
 	Trackdir next_trackdir;        ///< Desired trackdir when rotating at airport, or entry trackdir to an airport while flying.
 	AircraftPosition next_pos;     ///< next x_pos and y_pos coordinate.

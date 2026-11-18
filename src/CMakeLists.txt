@@ -171,6 +171,11 @@ add_files(
     departures_gui.h
     departures_type.h
     depot.cpp
+    external_city_type.h
+    external_city.h
+    external_city_cmd.h
+    external_city.cpp
+    external_city_gui.cpp
     depot_base.h
     depot_bridge.h
     depot_cmd.cpp

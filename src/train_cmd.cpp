@@ -8,6 +8,7 @@
 /** @file train_cmd.cpp Handling of trains. */
 
 #include "stdafx.h"
+#include "depot_base.h"
 #include <map>
 #include <set>
 #include "error.h"
@@ -362,6 +363,41 @@ uint16_t GetTrainVehicleMaxSpeed(const Train *u, const RailVehicleInfo &rvi_u, c
 	return true;
 }
 
+static void RecoverLegacyEmptyArticulatedCapacity(Train *head)
+{
+	/* PXP unit-main saves through v4 can contain an empty three-part wagon
+	 * with a stale capacity on its end spacer instead of its middle part. The
+	 * unit references themselves are valid. Recover only the exact 0,0,C ->
+	 * 0,C,0 permutation, using the unchanged GRF, after callback caches have
+	 * been rebuilt. Do not generalise this into permission to change capacity
+	 * on load: occupied units, changed totals and other layouts must still
+	 * report the native NewGRF error. No cargo is moved or discarded here. */
+	for (Train *base = head; base != nullptr; base = base->Next()) {
+		if (!base->IsWagon() || base->IsArticulatedPart() || base->IsMultiheaded() ||
+				!base->HasUnitMain() || base->GetUnitMain() != base || !base->IsDrivingBackwards()) continue;
+		Train *middle = base->Next();
+		Train *end = middle == nullptr ? nullptr : middle->Next();
+		if (middle == nullptr || end == nullptr || base->GetUnitChainFront() != base || base->GetUnitChainLast() != end) continue;
+		if (!middle->IsArticulatedPart() || !end->IsArticulatedPart()) continue;
+		bool uniform_empty = true;
+		for (const Train *part : {base, middle, end}) {
+			if (part->GetUnitMain() != base || part->engine_type != base->engine_type ||
+					part->cargo_type != base->cargo_type || part->cargo_subtype != base->cargo_subtype ||
+					part->cargo.TotalCount() != 0) uniform_empty = false;
+		}
+		if (!uniform_empty || base->cargo_cap != 0 || middle->cargo_cap != 0 || end->cargo_cap == 0) continue;
+		const GRFConfig *config = GetGRFConfig(base->GetGRFID());
+		if (config == nullptr || config->status != GRFStatus::Activated || config->flags.Test(GRFConfigFlag::Compatible)) continue;
+		const Engine *engine = base->GetEngine();
+		const uint16_t expected_middle = engine->DetermineCapacity(middle);
+		if (engine->DetermineCapacity(base) != 0 || engine->DetermineCapacity(end) != 0 || expected_middle != end->cargo_cap) continue;
+		middle->cargo_cap = expected_middle;
+		end->cargo_cap = 0;
+		std::swap(middle->refit_cap, end->refit_cap);
+		Debug(sl, 1, "Recovered empty articulated capacity permutation for unit {} ({} passengers/cargo units)", base->index, expected_middle);
+	}
+}
+
 void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 {
 	/* Formation changes invalidate only the plan, never the owned PBS path.
@@ -494,6 +530,8 @@ void Train::ConsistChanged(ConsistChangeFlags allowed_changes)
 			}
 		}
 	}
+
+	if (allowed_changes.Test(ConsistChangeFlag::RecoverLegacyEmptyCapacity)) RecoverLegacyEmptyArticulatedCapacity(this);
 
 	Vehicle *last_vis_effect = this;
 	for (Train *u = this; u != nullptr; u = u->Next()) {
@@ -1452,6 +1490,7 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 		bool has_speed_reduction = false;
 		for (const Train *u = this->First(); u != nullptr; u = u->Next()) {
 			if (u->track == TRACK_BIT_DEPOT) {
+				if (Depot::IsExternalConnection(u->tile)) continue;
 				has_speed_reduction = true;
 				if (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Realistic) {
 					max_speed = std::min<int>(max_speed, _settings_game.vehicle.rail_depot_speed_limit);
@@ -1490,8 +1529,10 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 			}
 			TrainDecelerationStats stats(this, this->lookahead->cached_zpos);
 			if (this->lookahead->flags.Test(TrainReservationLookAheadFlag::DepotEnd)) {
-				LimitSpeedFromLookAhead(max_speed, stats, this->lookahead->current_position, this->lookahead->reservation_end_position - TILE_SIZE,
-						_settings_game.vehicle.rail_depot_speed_limit, this->lookahead->reservation_end_z - stats.z_pos);
+				if (!Depot::IsExternalConnection(this->lookahead->reservation_end_tile)) {
+					LimitSpeedFromLookAhead(max_speed, stats, this->lookahead->current_position, this->lookahead->reservation_end_position - TILE_SIZE,
+							_settings_game.vehicle.rail_depot_speed_limit, this->lookahead->reservation_end_z - stats.z_pos);
+				}
 			} else {
 				LimitSpeedFromLookAhead(max_speed, stats, this->lookahead->current_position, this->lookahead->reservation_end_position,
 						0, this->lookahead->reservation_end_z - stats.z_pos);
@@ -3176,6 +3217,7 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 
 	Train *src = Train::GetIfValid(src_veh);
 	if (src == nullptr) return CMD_ERROR;
+	if (src->IsInExternalTrip()) return CommandCost(STR_EXTERNAL_TRIP_LOCKED);
 
 	CommandCost ret = CheckOwnership(src->owner);
 	if (ret.Failed()) return ret;
@@ -3200,6 +3242,7 @@ CommandCost CmdMoveRailVehicle(DoCommandFlags flags, VehicleID src_veh, VehicleI
 	} else {
 		dst = Train::GetIfValid(dest_veh);
 		if (dst == nullptr) return CMD_ERROR;
+		if (dst->IsInExternalTrip()) return CommandCost(STR_EXTERNAL_TRIP_LOCKED);
 
 		CommandCost ret = CheckOwnership(dst->owner);
 		if (ret.Failed()) return ret;
@@ -3479,6 +3522,7 @@ static CommandCost CheckSaleChainOwnership(const Train *sold)
  */
 CommandCost CmdSellRailWagon(DoCommandFlags flags, Vehicle *t, bool sell_chain, bool backup_order, ClientID user)
 {
+	if (t->IsInExternalTrip()) return CommandCost(STR_EXTERNAL_TRIP_LOCKED);
 	/* Reject selling a rear dual-headed half before resolving the unit main. */
 	if (Train::From(t)->IsRearDualheaded()) return CommandCost(STR_ERROR_REAR_ENGINE_FOLLOW_FRONT);
 	Train *v = Train::From(t)->GetUnitChainFront();
@@ -4494,6 +4538,7 @@ CommandCost CmdReverseTrainDirection(DoCommandFlags flags, VehicleID veh_id, boo
 {
 	Train *v = Train::GetIfValid(veh_id);
 	if (v == nullptr) return CMD_ERROR;
+	if (v->IsInExternalTrip()) return CommandCost(STR_EXTERNAL_TRIP_LOCKED);
 
 	CommandCost ret = CheckOwnership(v->owner);
 	if (ret.Failed()) return ret;
@@ -4890,6 +4935,18 @@ static bool CheckTrainStayInDepot(Train *v)
 	Train *head = v->First();
 	head->UpdateAcceleration();
 	head->BroadcastConsistCaches();
+	if (v->external_return_pending) {
+		/* An off-map train is already travelling, rather than starting from a
+		 * workshop. Restore running speed only after native signals approve
+		 * the exit: either a free block or an acquired PBS path. The limit includes braking lookahead, curves, orders
+		 * and restrictions; force-proceed never grants this fast return. */
+		if (Depot::IsExternalConnection(v->tile) && seg_state != SigSegState::Full && v->force_proceed == TFP_NONE) {
+			v->cur_speed = std::max(0, v->GetCurrentMaxSpeed());
+			v->SetLastSpeed();
+		}
+		v->external_return_pending = false;
+		v->external_entry_tile = INVALID_TILE;
+	}
 	InvalidateWindowData(WindowClass::VehicleDepot, v->tile.base());
 
 	return false;
@@ -9350,6 +9407,8 @@ static bool HandlePossibleBreakdowns(Train *v)
  */
 static void TrainEnterStation(Train *consist, StationID station)
 {
+	/* External stations cannot execute loading or decoupling. */
+	if (consist->IsInExternalTrip()) return;
 	/* Everything below (orders, loading state, decouple handling) is
 	 * primary-hosted consist information; the caller only passes the physical
 	 * chain head because that is what movement code has at hand. */
@@ -11929,7 +11988,7 @@ Money Train::GetRunningCost() const
 		cost += GetPrice(e->VehInfo<RailVehicleInfo>().running_cost_class, cost_factor, e->GetGRF());
 	}
 
-	if (this->cur_speed == 0) {
+	if (this->cur_speed == 0 && !this->IsInExternalTrip()) {
 		if (this->IsInDepot()) {
 			/* running costs if in depot */
 			cost = CeilDivT<Money>(cost, _settings_game.difficulty.vehicle_costs_in_depot);
@@ -11977,9 +12036,13 @@ bool Train::Tick()
 		return true;
 	}
 
-	if (!(prim->vehstatus.Test(VehState::Stopped) || prim->IsWaitingInDepot()) || prim->cur_speed > 0) prim->running_ticks++;
+	if (prim->IsInExternalTrip() || !(prim->vehstatus.Test(VehState::Stopped) || prim->IsWaitingInDepot()) || prim->cur_speed > 0) prim->running_ticks++;
 
 	prim->current_order_time++;
+	if (prim->IsInExternalTrip()) {
+		prim->TickExternalTrip();
+		return true;
+	}
 
 	if (!TrainLocoHandler(prim, false)) return false;
 
@@ -11995,6 +12058,7 @@ bool Train::Tick()
  */
 static void CheckIfTrainNeedsService(Train *v)
 {
+	if (v->IsInExternalTrip()) return;
 	if (Company::Get(v->owner)->settings.vehicle.servint_trains == 0 || !v->NeedsAutomaticServicing()) return;
 	if (v->IsChainInDepot()) {
 		VehicleServiceInDepot(v);
@@ -13091,4 +13155,37 @@ bool Train::CanLeadTrain() const
 	}
 
 	return this->IsEngine() || this->IsRearDualheaded();
+}
+/* Transfer only an entirely hidden external consist. Native depot exit performs
+ * occupancy, signal and PBS checks on the following tick; no reservation is freed
+ * or created here. Rotate every part equally without changing chain/group order. */
+bool TransferExternalTrainToEntrance(Train *train, DepotID exit_id, TileIndex expected_tile)
+{
+ const Depot *exit = Depot::GetIfValid(exit_id);
+ if (train == nullptr || !train->IsInExternalTrip() || exit == nullptr || exit->xy != expected_tile ||
+   !Depot::IsExternalConnection(exit->xy) || !IsRailDepotTile(exit->xy) || GetTileOwner(exit->xy) != train->owner ||
+   !train->compatible_railtypes.Test(GetRailType(exit->xy))) return false;
+ Train *head=train->First();const TileIndex origin=train->tile;
+ if (!Depot::IsExternalConnection(origin)) return false;
+ for(const Train *part=head;part!=nullptr;part=part->Next()) {
+  if(part->tile!=origin || part->track!=TRACK_BIT_DEPOT || !part->vehstatus.Test(VehState::Hidden)) return false;
+ }
+ if(origin==exit->xy)return true;
+ const auto entrance=GetRailDepotDirection(exit->xy);
+ const uint rotation=(uint(DiagDirToDir(entrance))+8-uint(DiagDirToDir(GetRailDepotDirection(origin))))&7;
+ const int x=TileX(exit->xy)*TILE_SIZE+_vehicle_initial_x_fract[entrance];
+ const int y=TileY(exit->xy)*TILE_SIZE+_vehicle_initial_y_fract[entrance];
+ for(Train *part=head;part!=nullptr;part=part->Next()) {
+  part->early_route.clear();
+  part->tile=exit->xy;part->x_pos=x;part->y_pos=y;part->z_pos=GetSlopePixelZ(x,y,true);
+  part->direction=Direction((uint(part->direction)+rotation)&7);
+  part->UpdatePosition();part->Vehicle::UpdateViewport(false);
+ }
+ head->ConsistChanged(CCF_TRACK);
+ InvalidateWindowData(WindowClass::VehicleDepot,origin.base());
+ InvalidateWindowData(WindowClass::VehicleDepot,exit->xy.base());
+ InvalidateWindowData(WindowClass::ExternalEntrance,origin.base());
+ InvalidateWindowData(WindowClass::ExternalEntrance,exit->xy.base());
+ DirtyVehicleListWindowForVehicle(train);
+ return true;
 }

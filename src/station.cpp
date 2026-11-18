@@ -55,7 +55,7 @@ void RebuildStationKdtree()
 {
 	std::vector<StationID> stids;
 	for (const Station *st : Station::Iterate()) {
-		stids.push_back(st->index);
+		if (!st->IsExternalMarket()) stids.push_back(st->index);
 	}
 	_station_kdtree.Build(stids.begin(), stids.end());
 }
@@ -187,7 +187,7 @@ Station::~Station()
 
 	CargoPacket::InvalidateAllFrom(this->index);
 
-	_station_kdtree.Remove(this->index);
+	if (!this->IsExternalMarket()) _station_kdtree.Remove(this->index);
 	if (_viewport_sign_kdtree_valid && this->sign.kdtree_valid()) _viewport_sign_kdtree.Remove(ViewportSignKdtreeItem::MakeStation(this->index));
 
 	if (ShouldShowBaseStationViewportLabel(this)) this->sign.MarkDirty(ZoomLevel::SpriteMax);

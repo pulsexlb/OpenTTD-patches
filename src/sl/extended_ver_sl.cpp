@@ -278,11 +278,12 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_FIXED_SERVICE_NUMBER, XSCF_NULL, 2, 2, "pxp_fixed_service_number", nullptr, nullptr, nullptr },
 	{ XSLFI_AUTO_YIELD_ROUTE_PLAN,           XSCF_NULL,                1,   1, "pxp_auto_yield_route_plan",         nullptr, nullptr, nullptr          },
 	{ XSLFI_TRAIN_DECOUPLE_PART,              XSCF_NULL,                1,   1, "train_decouple_part",              nullptr, nullptr, nullptr          },
-	{ XSLFI_TRAIN_UNIT_MAIN,                  XSCF_NULL,                4,   4, "train_unit_main",                  nullptr, nullptr, nullptr          },
+	{ XSLFI_TRAIN_UNIT_MAIN,                  XSCF_NULL,                5,   5, "train_unit_main",                  nullptr, nullptr, nullptr          },
 	{ XSLFI_COUPLE_SERVICE_NUMBER,           XSCF_NULL,                1,   1, "couple_service_number",           nullptr, nullptr, nullptr          },
 	{ XSLFI_WAIT_COUPLE_COMPANIES,          XSCF_NULL,                1,   1, "wait_couple_companies",            nullptr, nullptr, nullptr          },
 	{ XSLFI_WAIT_COUPLE_SLOT, XSCF_NULL, 1, 1, "wait_couple_slot", nullptr, nullptr, nullptr },
 	{ XSLFI_DECOUPLE_KEEP_LATENESS, XSCF_NULL, 1, 1, "decouple_keep_lateness", nullptr, nullptr, nullptr },
+	{ XSLFI_EXTERNAL_CONNECTIONS, XSCF_NULL, 17, 17, "external_connections", nullptr, nullptr, "EXCT,EXBR" },
 };
 
 /**
