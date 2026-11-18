@@ -164,6 +164,10 @@ NamedSaveLoadTable GetOrderExtraInfoDescription()
 		/* Selection criteria added with feature version 4. */
 		NSL("rv_transport_slot_group", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_slot_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 4))),
 		NSL("rv_transport_group", SLE_CONDVAR_X(OrderExtraInfo, rv_transport_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_ROAD_VEH_TRANSPORT, 4))),
+		/* Wait-for-couple criteria restricting the approaching train, added with feature version 1. */
+		NSL("wait_couple_slot", SLE_CONDVAR_X(OrderExtraInfo, wait_couple_slot, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_WAIT_COUPLE_CRITERIA))),
+		NSL("wait_couple_slot_group", SLE_CONDVAR_X(OrderExtraInfo, wait_couple_slot_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_WAIT_COUPLE_CRITERIA))),
+		NSL("wait_couple_group", SLE_CONDVAR_X(OrderExtraInfo, wait_couple_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_WAIT_COUPLE_CRITERIA))),
 	};
 
 	return _order_extra_info_desc;

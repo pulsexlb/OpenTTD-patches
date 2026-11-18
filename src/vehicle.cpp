@@ -1244,16 +1244,10 @@ void Vehicle::PreDestructor()
 
 	Company::Get(this->owner)->freeunits[this->type].ReleaseID(this->unitnumber);
 
-	if (this->type == VehicleType::Aircraft && this->IsPrimaryVehicle() && !this->vehstatus.Test(VehState::Crashed)) {
+	if (this->type == VehicleType::Aircraft && this->IsPrimaryVehicle()) {
 		Aircraft *a = Aircraft::From(this);
-		Station *st = GetTargetAirportIfValid(a);
-		if (st != nullptr) {
-			/* Reserved airport tracks are released when the aircraft is removed.
-			 * Crashed aircraft have already had all their reservations released by
-			 * Aircraft::Crash/HandleCrashedAircraft, so a second lift here would walk
-			 * an already-released (non-reserved) path and fail its assertion. */
-			LiftAirportPathReservation(a, false);
-		}
+		ReleaseAircraftTaxiPath(a, false);
+		ReleaseAircraftRunway(a);
 	}
 
 
@@ -1280,10 +1274,9 @@ void Vehicle::PreDestructor()
 		InvalidateWindowData(WindowClass::VehicleDepot, this->tile.base());
 	}
 
-	/* A train sale can clear its primary subtype before destruction. Windows
-	 * are keyed by the actual pool ID, so their lifetime must not depend on
-	 * that subtype. Surviving identities have already had their windows rekeyed. */
-	{
+	/* Train formation markers may already be cleared by sale or replacement.
+	 * Windows are keyed by vehicle ID, not by its current primary role. */
+	if (this->type == VehicleType::Train || this->IsPrimaryVehicle()) {
 		CloseWindowById(WindowClass::VehicleView, this->index);
 		CloseWindowById(WindowClass::VehicleOrders, this->index);
 		CloseWindowById(WindowClass::VehicleRefit, this->index);
@@ -1297,8 +1290,9 @@ void Vehicle::PreDestructor()
 	}
 	if (this->IsPrimaryVehicle()) {
 		SetWindowDirty(WindowClass::Company, this->owner);
-		OrderBackup::ClearVehicle(this);
 	}
+	/* A backup can still reference a vehicle whose identity was retired. */
+	OrderBackup::ClearVehicle(this);
 	InvalidateVehicleListWindows(this->type);
 
 	this->cargo.Truncate();
@@ -1353,6 +1347,7 @@ Vehicle::~Vehicle()
  */
 void Vehicle::PreCleanPool()
 {
+	ClearAircraftReservationIndexes();
 	_pending_speed_restriction_change_map.clear();
 }
 
@@ -5001,6 +4996,20 @@ void Vehicle::StopSeparation()
 	}
 }
 
+/** Find a logical shared-order member without relying on the active list's shared chain. */
+const Vehicle *Vehicle::GetOtherPrimarySharedVehicle() const
+{
+	const OrderList *home = this->GetPrimaryOrderList();
+	if (home == nullptr) return nullptr;
+	for (const Vehicle *v = home->GetFirstSharedVehicle(); v != nullptr; v = v->NextShared()) {
+		if (v != this && v->type == this->type && v->owner == this->owner && v->IsPrimaryVehicle() && v->GetPrimaryOrderList() == home) return v;
+	}
+	for (const Vehicle *v : Vehicle::Iterate()) {
+		if (v != this && v->type == this->type && v->owner == this->owner && v->IsPrimaryVehicle() && v->primary_order == home->index) return v;
+	}
+	return nullptr;
+}
+
 /**
  * Adds this vehicle to a shared vehicle chain.
  * @param shared_chain a vehicle of the chain with shared vehicles.
@@ -5563,18 +5572,21 @@ bool VehiclesHaveSameEngineList(const Vehicle *v1, const Vehicle *v2)
  * Checks if two vehicles have the same list of orders.
  * @param v1 First vehicles.
  * @param v2 Second vehicles.
+ * @param primary Compare home lists instead of active schedules.
  * @return True if same, false if different.
  */
-bool VehiclesHaveSameOrderList(const Vehicle *v1, const Vehicle *v2)
+bool VehiclesHaveSameOrderList(const Vehicle *v1, const Vehicle *v2, bool primary)
 {
-	const Order *o1 = v1->GetFirstOrder();
-	const Order *o2 = v2->GetFirstOrder();
+	const OrderList *orders1 = primary ? v1->GetPrimaryOrderList() : v1->orders;
+	const OrderList *orders2 = primary ? v2->GetPrimaryOrderList() : v2->orders;
+	const Order *o1 = orders1 == nullptr ? nullptr : orders1->GetOrderAt(0);
+	const Order *o2 = orders2 == nullptr ? nullptr : orders2->GetOrderAt(0);
 	while (true) {
 		if (o1 == nullptr && o2 == nullptr) return true;
 		if (o1 == nullptr || o2 == nullptr) return false;
 		if (!o1->Equals(*o2)) return false;
-		o1 = v1->orders->GetNextNoWrap(o1);
-		o2 = v2->orders->GetNextNoWrap(o2);
+		o1 = orders1->GetNextNoWrap(o1);
+		o2 = orders2->GetNextNoWrap(o2);
 	}
 }
 

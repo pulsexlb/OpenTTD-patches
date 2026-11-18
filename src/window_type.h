@@ -308,6 +308,12 @@ enum class WindowClass : uint16_t {
 	VehicleCoupleCriteria,
 
 	/**
+	 * Wait-for-coupling criteria of an order; %Window numbers:
+	 *   - #VehicleID = #WaitCoupleCriteriaWidgets
+	 */
+	VehicleWaitCoupleCriteria,
+
+	/**
 	 * Vehicle order import errors; %Window numbers:
 	 *   - #VehicleID = #OrderWidgets
 	 */

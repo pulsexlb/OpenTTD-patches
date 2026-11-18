@@ -43,6 +43,7 @@
 #include "station_cmd.h"
 #include "airport_cmd.h"
 #include "air_map.h"
+#include "pbs_air.h"
 extern CommandCost RemoveAirport(TileIndex tile, DoCommandFlags flags);
 #include "depot_base.h"
 #include "station_container.h"
@@ -3232,25 +3233,34 @@ void DrawAirportTracks(const TileInfo *ti)
 	TrackBits reserved = GetReservedAirportTracks(ti->tile);
 	TrackBits runway_tracks = (IsRunway(ti->tile) && GetReservationAsRunway(ti->tile)) ?
 			GetRunwayTracks(ti->tile) : TRACK_BIT_NONE;
+	/* 虚占用: directions booked along planned routes, drawn blue wherever the
+	 * real (yellow/red) occupancy does not already cover the track. */
+	TrackBits booked = GetAircraftVirtualBookedTracks(ti->tile);
 	Slope autorail_tileh = RemoveHalftileSlope(ti->tileh);
 
 	/* No tracks: return */
-	if ((trackbits | runway_tracks) == TRACK_BIT_NONE) return;
+	if ((trackbits | runway_tracks | booked) == TRACK_BIT_NONE) return;
 
 	/* Draw unreserved normal tracks. */
 	for (Track track : SetTrackBitIterator(trackbits)) {
 		TrackBits tracks = TrackToTrackBits(track);
-		if (((reserved | runway_tracks) & tracks) != 0) continue;
+		if (((reserved | runway_tracks | booked) & tracks) != 0) continue;
 
 		int offset = abs(_AutorailTilehSprite[autorail_tileh][track]);
 		DrawGroundSpriteAt(SPR_AUTORAIL_BASE + offset, PALETTE_CRASH, 0, 0, TILE_HEIGHT);
 	}
 
-	/* Draw reserved tracks and runways. */
+	/* Draw virtual bookings. */
+	for (Track track : SetTrackBitIterator(booked & ~(reserved | runway_tracks))) {
+		int offset = abs(_AutorailTilehSprite[autorail_tileh][track]);
+		DrawGroundSpriteAt(SPR_AUTORAIL_BASE + offset, PALETTE_SEL_TILE_BLUE, 0, 0, TILE_HEIGHT);
+	}
+
+	/* Draw real taxi reservations (yellow) and runways (red). */
 	for (Track track : SetTrackBitIterator(reserved | runway_tracks)) {
 		TrackBits tracks = TrackToTrackBits(track);
 		int offset = abs(_AutorailTilehSprite[autorail_tileh][track]);
-		PaletteID palette = (runway_tracks & tracks) != 0 ? PALETTE_SEL_TILE_RED : PALETTE_SEL_TILE_BLUE;
+		PaletteID palette = (runway_tracks & tracks) != 0 ? PALETTE_SEL_TILE_RED : PALETTE_SEL_TILE_YELLOW;
 		DrawGroundSpriteAt(SPR_AUTORAIL_BASE + offset, palette, 0, 0, TILE_HEIGHT);
 	}
 }

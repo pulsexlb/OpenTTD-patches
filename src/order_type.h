@@ -390,6 +390,9 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_WAIT_COUPLE_TRACTION, ///< Select the approaching locomotive's traction class.
 	MOF_WAIT_COUPLE_COMPANY, ///< Select the approaching locomotive's company.
 	MOF_WAIT_COUPLE_SLOT, ///< Acquire before waiting, return after successful coupling.
+	MOF_WAIT_COUPLE_PARTNER_SLOT, ///< Require the approaching train to hold a trace restrict slot.
+	MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP, ///< Require the approaching train to hold a slot of a trace restrict slot group.
+	MOF_WAIT_COUPLE_PARTNER_GROUP, ///< Require the approaching train to belong to a vehicle group.
 	MOF_EXTERNAL_RETURN_DEPOT, ///< External trip return entrance, invalid = same entrance.
 	MOF_EXTERNAL_FLIGHT_CITY, ///< Change an existing external flight's destination city.
 	MOF_END
@@ -490,9 +493,11 @@ enum OrderDispatchTagConditionBits {
 
 /** Clone actions. */
 enum CloneOptions : uint8_t {
-	CO_SHARE   = 0,
-	CO_COPY    = 1,
-	CO_UNSHARE = 2
+	CO_SHARE         = 0,
+	CO_COPY          = 1,
+	CO_UNSHARE       = 2,
+	CO_SHARE_PRIMARY = 3, ///< Share the home list, not an executing schedule.
+	CO_COPY_PRIMARY  = 4, ///< Copy the home list, not an executing schedule.
 };
 
 struct Order;

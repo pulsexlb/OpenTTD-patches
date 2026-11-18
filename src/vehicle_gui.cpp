@@ -22,6 +22,7 @@
 #include "train.h"
 #include "train_cmd.h"
 #include "aircraft.h"
+#include "aircraft_cmd.h"
 #include "depot_map.h"
 #include "group_cmd.h"
 #include "group_gui.h"
@@ -4239,6 +4240,10 @@ static constexpr std::initializer_list<NWidgetPart> _nested_vehicle_view_widgets
 			EndContainer(),
 			NWidget(WWT_PUSHIMGBTN, Colours::Grey, WID_VV_SHOW_ORDERS), SetMinimalSize(18, 18), SetSpriteTip(SPR_SHOW_ORDERS),
 			NWidget(WWT_PUSHIMGBTN, Colours::Grey, WID_VV_SHOW_DETAILS), SetMinimalSize(18, 18), SetSpriteTip(SPR_SHOW_VEHICLE_DETAILS),
+			NWidget(NWID_SELECTION, Colours::Invalid, WID_VV_IGNORE_AIRPORT_RESERVATIONS_SEL),
+				NWidget(WWT_IMGBTN, Colours::Grey, WID_VV_IGNORE_AIRPORT_RESERVATIONS), SetMinimalSize(18, 18),
+					SetSpriteTip(SPR_IGNORE_SIGNALS, STR_VEHICLE_VIEW_AIRCRAFT_IGNORE_RESERVATIONS_TOOLTIP),
+			EndContainer(),
 			NWidget(WWT_PANEL, Colours::Grey), SetMinimalSize(18, 0), SetResize(0, 1), EndContainer(),
 		EndContainer(),
 	EndContainer(),
@@ -4489,6 +4494,7 @@ public:
 
 			default: NOT_REACHED();
 		}
+		this->GetWidget<NWidgetStacked>(WID_VV_IGNORE_AIRPORT_RESERVATIONS_SEL)->SetDisplayedPlane(v->type == VehicleType::Aircraft ? 0 : SZSP_NONE);
 		this->FinishInitNested(window_number);
 		this->owner = v->owner;
 		this->GetWidget<NWidgetViewport>(WID_VV_VIEWPORT)->InitializeViewport(this, this->window_number | (1 << 31), ScaleZoomGUI(_vehicle_view_zoom_levels[v->type]));
@@ -4553,6 +4559,21 @@ public:
 		this->SetWidgetLoweredState(WID_VV_GOTO_DEPOT, this->depot_select_active || (v->current_order.IsType(OT_GOTO_DEPOT) && (v->current_order.GetDepotActionType() & ODATFB_HALT)));
 	}
 
+	/** Refresh flight-dependent controls independently of window invalidation. */
+	void UpdateAircraftReservationButton()
+	{
+		const Vehicle *v = Vehicle::Get(this->window_number);
+		if (v->type != VehicleType::Aircraft) return;
+		const Aircraft *aircraft = Aircraft::From(v);
+		bool disabled = !IsVehicleControlAllowed(v, _local_company) || aircraft->IsAircraftFlying() || v->vehstatus.Test(VehState::Crashed);
+		bool lowered = aircraft->ignore_airport_reservations;
+		if (this->IsWidgetDisabled(WID_VV_IGNORE_AIRPORT_RESERVATIONS) == disabled &&
+				this->IsWidgetLowered(WID_VV_IGNORE_AIRPORT_RESERVATIONS) == lowered) return;
+		this->SetWidgetDisabledState(WID_VV_IGNORE_AIRPORT_RESERVATIONS, disabled);
+		this->SetWidgetLoweredState(WID_VV_IGNORE_AIRPORT_RESERVATIONS, lowered);
+		this->SetWidgetDirty(WID_VV_IGNORE_AIRPORT_RESERVATIONS);
+	}
+
 	/** Update buttons state to match shown vehicle. */
 	void UpdateButtons()
 	{
@@ -4573,6 +4594,8 @@ public:
 			this->SetWidgetDisabledState(WID_VV_FORCE_PROCEED, !can_control);
 		}
 
+		this->UpdateAircraftReservationButton();
+
 		if (v->type == VehicleType::Train || v->type == VehicleType::Road) {
 			this->SetWidgetDisabledState(WID_VV_TURN_AROUND, !can_control);
 		}
@@ -4588,6 +4611,7 @@ public:
 			this->UpdateButtons();
 		}
 
+		this->UpdateAircraftReservationButton();
 		const Vehicle *v = Vehicle::Get(this->window_number);
 
 		const Window *mainwindow = GetMainWindow();
@@ -5009,6 +5033,10 @@ public:
 					Command<Commands::ReverseTrainDirection>::Post(_vehicle_msg_translation_table[VCT_CMD_TURN_AROUND][v->type], v->tile, v->index, false);
 				}
 				break;
+			case WID_VV_IGNORE_AIRPORT_RESERVATIONS:
+				assert(v->type == VehicleType::Aircraft);
+				Command<Commands::IgnoreAircraftReservations>::Post(STR_ERROR_CAN_T_IGNORE_AIRCRAFT_RESERVATIONS, v->tile, v->index);
+				break;
 			case WID_VV_FORCE_PROCEED: // force proceed
 				assert(v->type == VehicleType::Train);
 				Command<Commands::ForceTrainProceed>::Post(STR_ERROR_CAN_T_MAKE_TRAIN_PASS_SIGNAL, v->tile, v->index);
@@ -5203,6 +5231,7 @@ public:
 
 	virtual void OnRealtimeTick(uint delta_ms) override
 	{
+		this->UpdateAircraftReservationButton();
 		if (_pause_mode.Any()) this->OnGameTick();
 	}
 
@@ -5332,11 +5361,15 @@ bool VehicleClicked(const GUIVehicleGroup &vehgroup)
 
 void StopGlobalFollowVehicle(const Vehicle *v)
 {
-	Window *w = FindWindowById(WindowClass::MainWindow, 0);
-	if (w != nullptr && w->viewport->follow_vehicle == v->index) {
-		const Vehicle *moving_front = RVTransportGetFollowVehicle(v)->GetMovingFront();
-		ScrollMainWindowTo(moving_front->x_pos, moving_front->y_pos, moving_front->z_pos, true); // lock the main view on the vehicle's last position
-		w->viewport->CancelFollow(*w);
+	const Vehicle *shown = RVTransportGetFollowVehicle(v);
+	const Vehicle *moving_front = shown != nullptr ? shown->GetMovingFront() : nullptr;
+	Window *main = FindWindowById(WindowClass::MainWindow, 0);
+	if (main != nullptr && main->viewport->follow_vehicle == v->index && moving_front != nullptr) {
+		ScrollMainWindowTo(moving_front->x_pos, moving_front->y_pos, moving_front->z_pos, true);
+	}
+	/* Vehicle IDs can be followed by auxiliary viewports too. */
+	for (Window *w : Window::Iterate()) {
+		if (w->viewport != nullptr && w->viewport->follow_vehicle == v->index) w->viewport->CancelFollow(*w);
 	}
 }
 

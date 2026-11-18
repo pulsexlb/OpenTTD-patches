@@ -11,7 +11,12 @@
 #include "station_base.h"
 #include "depot_base.h"
 #include "air_map.h"
+#include "order_backup.h"
+#include "order_func.h"
 #include "settings_type.h"
+#include "tracerestrict.h"
+#include "vehicle_gui.h"
+#include "vehiclelist.h"
 #include "window_func.h"
 
 #include "debug.h"
@@ -707,6 +712,16 @@ void Station::UpdateAirportDataStructure()
 	} else if (this->airport.hangar != nullptr) {
 		if (first_hangar == INVALID_TILE) {
 			ClrBit(this->airport.flags, AFB_HANGAR);
+			/* The hangar tile is already gone from the map, so the tile based
+			 * guard in ~Depot() would silently skip its cleanup and leave
+			 * dangling aircraft hangar orders pointing at this airport. Repeat
+			 * the relevant parts of ~Depot() explicitly before deleting. */
+			OrderBackup::Reset(this->airport.hangar->xy, false);
+			RemoveOrderFromAllVehicles(OT_GOTO_DEPOT, DestinationID(this->index), true);
+			TraceRestrictRemoveDestinationID(TROCAF_DEPOT, this->airport.hangar->index);
+			CloseWindowById(WindowClass::VehicleDepot, this->airport.hangar->xy.base());
+			CloseWindowById(GetWindowClassForVehicleType(VehicleType::Aircraft),
+					VehicleListIdentifier(VehicleListType::Depot, VehicleType::Aircraft, this->owner, this->airport.hangar->index).ToWindowNumber());
 			delete this->airport.hangar;
 			this->airport.hangar = nullptr;
 		} else {

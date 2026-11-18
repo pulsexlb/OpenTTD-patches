@@ -2692,6 +2692,10 @@ STR_SCHDISPATCH_SET_LAST_DISPATCH                              :{BLACK}设置上
 
 STR_SCHDISPATCH_SET_LAST_DISPATCH_TOOLTIP                      :{BLACK}手动设置此计时调度最近一次发车的时间。
 
+STR_ORDER_WAIT_COUPLE_MORE_BUTTON                                  :{BLACK}更多选项
+STR_ORDER_WAIT_COUPLE_MORE_TOOLTIP                                 :{BLACK}更多等待连接条件：车头类型和诊断
+STR_ORDER_WAIT_COUPLE_OPTIONS_CAPTION                              :{WHITE}等待连接条件
+
 STR_WAIT_COUPLE_TRACTION_BUTTON                                    :车头类型
 STR_WAIT_COUPLE_TRACTION_TOOLTIP                                   :{BLACK}选择哪种车头可以与这组等待中的车辆连挂
 STR_WAIT_COUPLE_TRACTION_ANY                                       :不限
@@ -2700,6 +2704,17 @@ STR_WAIT_COUPLE_TRACTION_DIESEL                                    :内燃机车
 STR_WAIT_COUPLE_TRACTION_ELECTRIC                                  :电力机车
 STR_WAIT_COUPLE_TRACTION_SUFFIX                                    :（{STRING}）
 STR_WAIT_COUPLE_TRACTION_MISMATCH                                  :等待中的车辆要求另一种车头类型
+
+STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_LABEL                           :{BLACK}对接列车路签
+STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_GROUP_LABEL                     :{BLACK}对接列车路签组
+STR_ORDER_WAIT_COUPLE_PARTNER_GROUP_LABEL                          :{BLACK}对接列车载具组
+STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_ANY                             :任意路签
+STR_WAIT_COUPLE_PARTNER_SLOT_MISMATCH                              :等待中的车辆要求对接列车持有其他路签
+STR_WAIT_COUPLE_PARTNER_SLOT_GROUP_MISMATCH                        :等待中的车辆要求对接列车持有其他路签组的路签
+STR_WAIT_COUPLE_PARTNER_GROUP_MISMATCH                             :等待中的车辆要求对接列车属于其他载具组
+STR_WAIT_COUPLE_PARTNER_SLOT_SUFFIX                                :（对接列车路签：{TRSLOT}）
+STR_WAIT_COUPLE_PARTNER_SLOT_GROUP_SUFFIX                          :（对接列车路签组：{TRSLOTGROUP}）
+STR_WAIT_COUPLE_PARTNER_GROUP_SUFFIX                               :（对接列车载具组：{STRING}）
 
 STR_WAIT_COUPLE_COMPANY_BUTTON                                    :对接列车公司
 STR_WAIT_COUPLE_COMPANY_TOOLTIP                                   :{BLACK}勾选允许前往对接的列车公司；可多选，选择“不限”取消公司限制

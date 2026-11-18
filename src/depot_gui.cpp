@@ -1053,7 +1053,7 @@ struct DepotWindow : Window {
 				return VehiclesHaveSameEngineList(v1, v2);
 			})) {
 				if (AllEqual(begin, end, [](const Vehicle *v1, const Vehicle *v2) {
-					return VehiclesHaveSameOrderList(v1, v2);
+					return VehiclesHaveSameOrderList(v1, v2, true);
 				})) {
 					OnVehicleSelect(*begin);
 				} else {
@@ -1070,7 +1070,8 @@ struct DepotWindow : Window {
 				return VehiclesHaveSameEngineList(v1, v2);
 			})) {
 				if (AllEqual(begin, end, [](const Vehicle *v1, const Vehicle *v2) {
-					return v1->FirstShared() == v2->FirstShared();
+					const OrderList *orders = v1->GetPrimaryOrderList();
+					return orders != nullptr && orders == v2->GetPrimaryOrderList();
 				})) {
 					OnVehicleSelect(*begin);
 				} else {

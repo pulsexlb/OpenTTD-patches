@@ -122,6 +122,9 @@ struct OrderExtraInfo {
 	uint16_t rv_transport_slot_group = 0;    ///< Road vehicle transport (RoRo): trace restrict slot group the candidate must hold a slot of, group id + 1 (0 = any).
 	uint16_t rv_transport_group = 0;         ///< Road vehicle transport (RoRo): vehicle group the candidate must belong to, group id + 1 (0 = any).
 	uint16_t rv_transport_dest_station = 0;   ///< Reserved: a dropped criterion ("the first station the candidate declares for unloading"), kept so that savegames written with feature version 2 still load.
+	uint16_t wait_couple_slot = 0;           ///< Wait-for-couple: trace restrict slot the approaching train must hold, slot id + 1 (0 = any).
+	uint16_t wait_couple_slot_group = 0;     ///< Wait-for-couple: trace restrict slot group the approaching train must hold a slot of, group id + 1 (0 = any).
+	uint16_t wait_couple_group = 0;          ///< Wait-for-couple: vehicle group the approaching train must belong to, group id + 1 (0 = any).
 };
 
 namespace upstream_sl {
@@ -1021,6 +1024,78 @@ public:
 		return legacy == 0 ? 0 : legacy <= MAX_COMPANIES ? (1U << (legacy - 1)) : 0;
 	}
 	inline void SetWaitCoupleCompanyMask(uint16_t mask) { this->SetWaitCoupleCompany(0); this->GetXDataRef() = (1U << 31) | (mask & 0x7FFF); }
+
+	/** Does the wait-for-couple order require the approaching train to hold a specific trace restrict slot? */
+	inline bool HasWaitCouplePartnerSlot() const { return this->extra != nullptr && this->extra->wait_couple_slot != 0; }
+
+	/**
+	 * Get the trace restrict slot the approaching train must hold.
+	 * @return the slot, or #TraceRestrictSlotID::Invalid() if unrestricted.
+	 */
+	inline TraceRestrictSlotID GetWaitCouplePartnerSlot() const
+	{
+		if (!this->HasWaitCouplePartnerSlot()) return TraceRestrictSlotID::Invalid();
+		return TraceRestrictSlotID{static_cast<uint16_t>(this->extra->wait_couple_slot - 1)};
+	}
+
+	/**
+	 * Require the approaching train to hold a trace restrict slot.
+	 * @param slot the slot, or #TraceRestrictSlotID::Invalid() for any slot.
+	 */
+	inline void SetWaitCouplePartnerSlot(TraceRestrictSlotID slot)
+	{
+		if (slot == TraceRestrictSlotID::Invalid() && !this->extra) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->wait_couple_slot = slot == TraceRestrictSlotID::Invalid() ? 0 : slot.base() + 1;
+	}
+
+	/** Does the wait-for-couple order require the approaching train to hold a slot of a specific slot group? */
+	inline bool HasWaitCouplePartnerSlotGroup() const { return this->extra != nullptr && this->extra->wait_couple_slot_group != 0; }
+
+	/**
+	 * Get the trace restrict slot group the approaching train must hold a slot of.
+	 * @return the slot group, or #TraceRestrictSlotGroupID::Invalid() if unrestricted.
+	 */
+	inline TraceRestrictSlotGroupID GetWaitCouplePartnerSlotGroup() const
+	{
+		if (!this->HasWaitCouplePartnerSlotGroup()) return TraceRestrictSlotGroupID::Invalid();
+		return TraceRestrictSlotGroupID{static_cast<uint16_t>(this->extra->wait_couple_slot_group - 1)};
+	}
+
+	/**
+	 * Require the approaching train to hold a slot of a trace restrict slot group.
+	 * @param group the slot group, or #TraceRestrictSlotGroupID::Invalid() for any slot group.
+	 */
+	inline void SetWaitCouplePartnerSlotGroup(TraceRestrictSlotGroupID group)
+	{
+		if (group == TraceRestrictSlotGroupID::Invalid() && !this->extra) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->wait_couple_slot_group = group == TraceRestrictSlotGroupID::Invalid() ? 0 : group.base() + 1;
+	}
+
+	/** Does the wait-for-couple order require the approaching train to belong to a specific vehicle group? */
+	inline bool HasWaitCouplePartnerGroup() const { return this->extra != nullptr && this->extra->wait_couple_group != 0; }
+
+	/**
+	 * Get the vehicle group the approaching train must belong to.
+	 * @return the group, or #GroupID::Invalid() if unrestricted.
+	 */
+	inline GroupID GetWaitCouplePartnerGroup() const
+	{
+		if (!this->HasWaitCouplePartnerGroup()) return GroupID::Invalid();
+		return GroupID{static_cast<uint16_t>(this->extra->wait_couple_group - 1)};
+	}
+
+	/**
+	 * Require the approaching train to belong to a vehicle group.
+	 * @param group the group, or #GroupID::Invalid() for any group.
+	 */
+	inline void SetWaitCouplePartnerGroup(GroupID group)
+	{
+		if (group == GroupID::Invalid() && !this->extra) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->wait_couple_group = group == GroupID::Invalid() ? 0 : group.base() + 1;
+	}
 	/** Set what orders first part should get */
 	inline void SetDecoupleFirstOrdersType(OrderDecoupleOrdersFlags orders_type) { SB(this->flags, 0, 3, to_underlying(orders_type)); }
 	/** Set what orders second part should get */

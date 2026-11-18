@@ -15,5 +15,8 @@
 #include "vehicle_type.h"
 
 CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine *e, Vehicle **v);
+CommandCost CmdIgnoreAircraftReservations(DoCommandFlags flags, VehicleID veh_id);
+
+DEF_CMD_TUPLE_LT(Commands::IgnoreAircraftReservations, CmdIgnoreAircraftReservations, {}, CommandType::VehicleManagement, CmdDataT<VehicleID>)
 
 #endif /* AIRCRAFT_CMD_H */

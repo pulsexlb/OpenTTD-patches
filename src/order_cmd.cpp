@@ -1522,17 +1522,19 @@ TileIndex Order::GetAuxiliaryLocation(bool secondary) const
  * @param cur Destination order.
  * @param v The vehicle to get the distance for.
  * @param conditional_depth Internal param for resolving conditional orders.
+ * @param orders Order list to resolve conditional branches in; nullptr uses the vehicle's active list.
  * @return Maximum distance between the two orders.
  */
-uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int conditional_depth)
+uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int conditional_depth, const OrderList *orders)
 {
+	if (orders == nullptr) orders = v->orders;
 	if (cur->IsType(OT_CONDITIONAL)) {
-		if (conditional_depth > std::min<int>(64, v->GetNumOrders())) return 0;
+		if (conditional_depth > std::min<int>(64, orders->GetNumOrders())) return 0;
 
 		conditional_depth++;
 
-		int dist1 = GetOrderDistance(prev, v->GetOrder(cur->GetConditionSkipToOrder()), v, conditional_depth);
-		int dist2 = GetOrderDistance(prev, v->orders->GetNext(cur), v, conditional_depth);
+		int dist1 = GetOrderDistance(prev, orders->GetOrderAt(cur->GetConditionSkipToOrder()), v, conditional_depth, orders);
+		int dist2 = GetOrderDistance(prev, orders->GetNext(cur), v, conditional_depth, orders);
 		return std::max(dist1, dist2);
 	}
 
@@ -3246,7 +3248,8 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				break;
 
 			case OT_WAIT_COUPLE:
-				if (mof != MOF_WAIT_COUPLE_STATION && mof != MOF_WAIT_COUPLE_TRACTION && mof != MOF_WAIT_COUPLE_COMPANY && mof != MOF_WAIT_COUPLE_SLOT) return CMD_ERROR;
+				if (mof != MOF_WAIT_COUPLE_STATION && mof != MOF_WAIT_COUPLE_TRACTION && mof != MOF_WAIT_COUPLE_COMPANY && mof != MOF_WAIT_COUPLE_SLOT
+						&& mof != MOF_WAIT_COUPLE_PARTNER_SLOT && mof != MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP && mof != MOF_WAIT_COUPLE_PARTNER_GROUP) return CMD_ERROR;
 				break;
 
 			case OT_DECOUPLE:
@@ -3774,6 +3777,38 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 		case MOF_WAIT_COUPLE_TRACTION:
 			if ((!is_list && v->type != VehicleType::Train) || data > 3) return CMD_ERROR;
+			break;
+
+		case MOF_WAIT_COUPLE_PARTNER_SLOT: {
+			/* Encoded as the raw slot ID; UINT16_MAX clears the restriction. */
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
+			if (data != UINT16_MAX) {
+				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(TraceRestrictSlotID{uint16_t(data)});
+				if (slot == nullptr || slot->vehicle_type != VehicleType::Train) return CMD_ERROR;
+				if (!slot->IsUsableByOwner(target_owner)) return CMD_ERROR;
+			}
+			break;
+		}
+
+		case MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP:
+			/* Encoded as slot group ID + 1; 0 clears the restriction. */
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
+			if (data != 0) {
+				const TraceRestrictSlotGroup *sg = TraceRestrictSlotGroup::GetIfValid(data - 1);
+				if (sg == nullptr || sg->vehicle_type != VehicleType::Train) return CMD_ERROR;
+				if (!sg->CompanyCanReferenceSlotGroup(target_owner)) return CMD_ERROR;
+			}
+			break;
+
+		case MOF_WAIT_COUPLE_PARTNER_GROUP:
+			/* Encoded as group ID + 1; 0 clears the restriction. Only train groups of the
+			 * waiting consist's own company make sense as a coupling criterion. */
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
+			if (data != 0) {
+				const Group *g = Group::GetIfValid(data - 1);
+				if (g == nullptr || g->vehicle_type != VehicleType::Train) return CMD_ERROR;
+				if (g->owner != target_owner) return CMD_ERROR;
+			}
 			break;
 
 		case MOF_WAIT_COUPLE_STATION:
@@ -4319,6 +4354,18 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				order->SetWaitCoupleTraction(data);
 				break;
 
+			case MOF_WAIT_COUPLE_PARTNER_SLOT:
+				order->SetWaitCouplePartnerSlot(data == UINT16_MAX ? TraceRestrictSlotID::Invalid() : TraceRestrictSlotID{uint16_t(data)});
+				break;
+
+			case MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP:
+				order->SetWaitCouplePartnerSlotGroup(data == 0 ? TraceRestrictSlotGroupID::Invalid() : TraceRestrictSlotGroupID{(uint16_t)(data - 1)});
+				break;
+
+			case MOF_WAIT_COUPLE_PARTNER_GROUP:
+				order->SetWaitCouplePartnerGroup(data == 0 ? GroupID::Invalid() : GroupID{(uint16_t)(data - 1)});
+				break;
+
 			case MOF_WAIT_COUPLE_STATION:
 				order->SetWaitCoupleStation(data == 0 ? StationID::Invalid() : StationID{(uint16_t)(data - 1)});
 				break;
@@ -4591,6 +4638,15 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_COMPANY) {
 				u->current_order.SetWaitCoupleCompanyMask(order->GetWaitCoupleCompanyMask());
 			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_PARTNER_SLOT) {
+				u->current_order.SetWaitCouplePartnerSlot(order->GetWaitCouplePartnerSlot());
+			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP) {
+				u->current_order.SetWaitCouplePartnerSlotGroup(order->GetWaitCouplePartnerSlotGroup());
+			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_PARTNER_GROUP) {
+				u->current_order.SetWaitCouplePartnerGroup(order->GetWaitCouplePartnerGroup());
+			}
 
 			/* Unbunching data is no longer valid. */
 			u->ResetDepotUnbunching();
@@ -4606,22 +4662,23 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 /**
  * Check if an aircraft has enough range for an order list.
  * @param v_new Aircraft to check.
- * @param v_order Vehicle currently holding the order list.
+ * @param v_order Vehicle whose orders are being checked.
+ * @param orders Order list to check.
  * @return True if the aircraft has enough range for the orders, false otherwise.
  */
-static bool CheckAircraftOrderDistance(const Aircraft *v_new, const Vehicle *v_order)
+static bool CheckAircraftOrderDistance(const Aircraft *v_new, const Vehicle *v_order, const OrderList *orders)
 {
-	if (v_order->orders == nullptr || v_new->acache.cached_max_range == 0) return true;
+	if (orders == nullptr || v_new->acache.cached_max_range == 0) return true;
 
 	/* Iterate over all orders to check the distance between all
 	 * 'goto' orders and their respective next order (of any type). */
-	for (const Order *o : v_order->orders->Orders()) {
+	for (const Order *o : orders->Orders()) {
 		switch (o->GetType()) {
 			case OT_GOTO_STATION:
 			case OT_GOTO_DEPOT:
 			case OT_GOTO_WAYPOINT:
 				/* If we don't have a next order, we've reached the end and must check the first order instead. */
-				if (GetOrderDistance(o, v_order->orders->GetNext(o), v_order) > v_new->acache.cached_max_range_sqr) return false;
+				if (GetOrderDistance(o, orders->GetNext(o), v_order, 0, orders) > v_new->acache.cached_max_range_sqr) return false;
 				break;
 
 			default: break;
@@ -4660,13 +4717,13 @@ static void CheckAdvanceVehicleOrdersAfterClone(Vehicle *v, DoCommandFlags flags
 	Command<Commands::SkipToOrder>::Do(flags, v->index, skip_to);
 }
 
-static bool ShouldResetOrderIndicesOnOrderCopy(const Vehicle *src, const Vehicle *dst)
+static bool ShouldResetOrderIndicesOnOrderCopy(const OrderList *src, const Vehicle *dst)
 {
-	const int num_orders = src->GetNumOrders();
+	const int num_orders = src == nullptr ? 0 : src->GetNumOrders();
 	if (dst->GetNumOrders() != num_orders) return true;
 
 	for (int i = 0; i < num_orders; i++) {
-		if (!src->GetOrder(i)->Equals(*dst->GetOrder(i))) return true;
+		if (!src->GetOrderAt(i)->Equals(*dst->GetOrder(i))) return true;
 	}
 	return false;
 }
@@ -4826,6 +4883,7 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 	if (ret.Failed()) return ret;
 
 	switch (action) {
+		case CO_SHARE_PRIMARY:
 		case CO_SHARE: {
 			Vehicle *src = Vehicle::GetIfValid(veh_src);
 
@@ -4840,10 +4898,18 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 				return CMD_ERROR;
 			}
 
-			/* Is the vehicle already in the shared list? */
-			if (src->FirstShared() == dst->FirstShared()) return CMD_ERROR;
+			const bool primary = action == CO_SHARE_PRIMARY;
+			OrderList *src_orders = primary ? src->GetPrimaryOrderList() : src->orders;
+			VehicleFlags src_flags = src->vehicle_flags;
+			if (src_orders != nullptr && src_orders != src->orders) {
+				src_flags.Set(VehicleFlag::ScheduledDispatch, src_orders->IsDispatchEnabled());
+				src_flags.Set(VehicleFlag::TimetableSeparation, src_orders->IsSeparationEnabled());
+			}
 
-			for (const Order *order : src->Orders()) {
+			/* Is the vehicle already in the shared list? */
+			if (primary ? (src_orders != nullptr && src_orders == dst->orders) : src->FirstShared() == dst->FirstShared()) return CMD_ERROR;
+
+			for (const Order *order : src_orders == nullptr ? OrderIterateWrapper<const Order>(nullptr, nullptr) : std::as_const(*src_orders).Orders()) {
 				if (OrderGoesToStation(dst, order)) {
 					/* Allow copying unreachable destinations if they were already unreachable for the source.
 					 * This is basically to allow cloning / autorenewing / autoreplacing vehicles, while the stations
@@ -4862,11 +4928,11 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 			}
 
 			/* Check for aircraft range limits. */
-			if (dst->type == VehicleType::Aircraft && !CheckAircraftOrderDistance(Aircraft::From(dst), src)) {
+			if (dst->type == VehicleType::Aircraft && !CheckAircraftOrderDistance(Aircraft::From(dst), src, src_orders)) {
 				return CommandCost(STR_ERROR_AIRCRAFT_NOT_ENOUGH_RANGE);
 			}
 
-			if (src->orders == nullptr && !OrderList::CanAllocateItem()) {
+			if (src_orders == nullptr && !OrderList::CanAllocateItem()) {
 				return CommandCost(STR_ERROR_NO_MORE_SPACE_FOR_ORDERS);
 			}
 
@@ -4874,31 +4940,36 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 				/* If the destination vehicle had a OrderList, destroy it.
 				 * We reset the order indices, if the new orders are different.
 				 * (We mainly do this to keep the order indices valid and in range.) */
-				DeleteVehicleOrders(dst, false, ShouldResetOrderIndicesOnOrderCopy(src, dst));
+				DeleteVehicleOrders(dst, false, ShouldResetOrderIndicesOnOrderCopy(src_orders, dst));
 				dst->dispatch_records.clear();
 
-				dst->orders = src->orders;
+				dst->orders = src_orders;
 
-				/* Link this vehicle in the shared-list */
-				dst->AddToShared(src);
+				/* A source executing a schedule is not in its home list's shared chain. */
+				if (src_orders != nullptr && src_orders != src->orders) {
+					src_orders->AssignVehicle(dst);
+				} else {
+					dst->AddToShared(src);
+				}
 				/* AddToShared may have created a new list when src had none. */
 				dst->primary_order = dst->orders->index;
-
+				dst->primary_order_index = INVALID_VEH_ORDER_ID;
+				InvalidatePrimaryOrderSharingWindows(dst->primary_order);
 
 				/* Set automation bit if target has it. */
-				if (src->vehicle_flags.Test(VehicleFlag::AutomateTimetable)) {
+				if (src_flags.Test(VehicleFlag::AutomateTimetable)) {
 					dst->vehicle_flags.Set(VehicleFlag::AutomateTimetable);
 				} else {
 					dst->vehicle_flags.Reset(VehicleFlag::AutomateTimetable);
 				}
 				/* Set auto separation bit if target has it. */
-				if (src->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) {
+				if (src_flags.Test(VehicleFlag::TimetableSeparation)) {
 					dst->vehicle_flags.Set(VehicleFlag::TimetableSeparation);
 				} else {
 					dst->vehicle_flags.Reset(VehicleFlag::TimetableSeparation);
 				}
 				/* Set manual dispatch bit if target has it. */
-				if (src->vehicle_flags.Test(VehicleFlag::ScheduledDispatch)) {
+				if (src_flags.Test(VehicleFlag::ScheduledDispatch)) {
 					dst->vehicle_flags.Set(VehicleFlag::ScheduledDispatch);
 				} else {
 					dst->vehicle_flags.Reset(VehicleFlag::ScheduledDispatch);
@@ -4919,6 +4990,7 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 			break;
 		}
 
+		case CO_COPY_PRIMARY:
 		case CO_COPY: {
 			Vehicle *src = Vehicle::GetIfValid(veh_src);
 
@@ -4930,9 +5002,17 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 				if (ret.Failed()) return ret;
 			}
 
+			const bool primary = action == CO_COPY_PRIMARY;
+			OrderList *src_orders = primary ? src->GetPrimaryOrderList() : src->orders;
+			VehicleFlags src_flags = src->vehicle_flags;
+			if (src_orders != nullptr && src_orders != src->orders) {
+				src_flags.Set(VehicleFlag::ScheduledDispatch, src_orders->IsDispatchEnabled());
+				src_flags.Set(VehicleFlag::TimetableSeparation, src_orders->IsSeparationEnabled());
+			}
+
 			/* Trucks can't copy all the orders from busses (and visa versa),
 			 * and neither can helicopters and aircraft. */
-			for (const Order *order : src->Orders()) {
+			for (const Order *order : src_orders == nullptr ? OrderIterateWrapper<const Order>(nullptr, nullptr) : std::as_const(*src_orders).Orders()) {
 				if (OrderGoesToStation(dst, order)) {
 					const Station *st = Station::Get(order->GetDestination().ToStationID());
 					if (!CanVehicleUseStation(dst, st)) {
@@ -4948,7 +5028,7 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 			}
 
 			/* Check for aircraft range limits. */
-			if (dst->type == VehicleType::Aircraft && !CheckAircraftOrderDistance(Aircraft::From(dst), src)) {
+			if (dst->type == VehicleType::Aircraft && !CheckAircraftOrderDistance(Aircraft::From(dst), src, src_orders)) {
 				return CommandCost(STR_ERROR_AIRCRAFT_NOT_ENOUGH_RANGE);
 			}
 
@@ -4958,17 +5038,22 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 			}
 
 			if (flags.Test(DoCommandFlag::Execute)) {
-				/* If the destination vehicle had an order list, destroy the chain but keep the OrderList.
-				 * We only the order indices, if the new orders are different.
-				 * (We mainly do this to keep the order indices valid and in range.) */
-				DeleteVehicleOrders(dst, true, ShouldResetOrderIndicesOnOrderCopy(src, dst));
-				dst->dispatch_records.clear();
-
+				/* Snapshot before deleting destination orders: its old list may be the source's home. */
+				const bool reset_order_indices = ShouldResetOrderIndicesOnOrderCopy(src_orders, dst);
 				std::vector<Order> dst_orders;
-				for (const Order *order : src->Orders()) {
-					dst_orders.emplace_back(*order); // clone order
-					TraceRestrictRemoveNonOwnedReferencesFromOrder(&dst_orders.back(), dst->owner);
+				std::vector<DispatchSchedule> dispatch_schedules;
+				if (src_orders != nullptr) {
+					for (const Order *order : src_orders->Orders()) {
+						dst_orders.emplace_back(*order); // clone order
+						TraceRestrictRemoveNonOwnedReferencesFromOrder(&dst_orders.back(), dst->owner);
+					}
+					dispatch_schedules = src_orders->GetScheduledDispatchScheduleSet();
 				}
+
+				/* Detach instead of clearing a list still needed by a vehicle executing a schedule. */
+				const bool keep_orderlist = dst->orders == nullptr || !OrderListIsSomeonesHome(dst->orders);
+				DeleteVehicleOrders(dst, keep_orderlist, reset_order_indices);
+				dst->dispatch_records.clear();
 				if (dst->orders != nullptr) {
 					assert(dst->orders->GetNumOrders() == 0);
 					assert(!dst->orders->IsShared());
@@ -4978,18 +5063,19 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 				assert(OrderList::CanAllocateItem());
 				dst->orders = OrderList::Create(std::move(dst_orders), dst);
 				dst->primary_order = dst->orders->index;
+				dst->primary_order_index = INVALID_VEH_ORDER_ID;
 
 				/* Copy over scheduled dispatch data */
-				assert(dst->orders != nullptr);
-				if (src->orders != nullptr) {
-					dst->orders->GetScheduledDispatchScheduleSet() = src->orders->GetScheduledDispatchScheduleSet();
-					for (DispatchSchedule &ds : dst->orders->GetScheduledDispatchScheduleSet()) {
-						ds.ResetStateAfterClone();
-					}
+				dst->orders->GetScheduledDispatchScheduleSet() = std::move(dispatch_schedules);
+				for (DispatchSchedule &ds : dst->orders->GetScheduledDispatchScheduleSet()) {
+					ds.ResetStateAfterClone();
 				}
 
+				dst->orders->SetDispatchEnabled(src_flags.Test(VehicleFlag::ScheduledDispatch));
+				dst->orders->SetSeparationEnabled(src_flags.Test(VehicleFlag::TimetableSeparation));
+
 				/* Set automation bit if target has it. */
-				if (src->vehicle_flags.Test(VehicleFlag::AutomateTimetable)) {
+				if (src_flags.Test(VehicleFlag::AutomateTimetable)) {
 					dst->vehicle_flags.Set(VehicleFlag::AutomateTimetable);
 					dst->vehicle_flags.Reset(VehicleFlag::AutofillTimetable);
 					dst->vehicle_flags.Reset(VehicleFlag::AutofillPreserveWaitTime);
@@ -4997,13 +5083,13 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 					dst->vehicle_flags.Reset(VehicleFlag::AutomateTimetable);
 				}
 				/* Set auto separation bit if target has it. */
-				if (src->vehicle_flags.Test(VehicleFlag::TimetableSeparation)) {
+				if (src_flags.Test(VehicleFlag::TimetableSeparation)) {
 					dst->vehicle_flags.Set(VehicleFlag::TimetableSeparation);
 				} else {
 					dst->vehicle_flags.Reset(VehicleFlag::TimetableSeparation);
 				}
 				/* Set manual dispatch bit if target has it. */
-				if (src->vehicle_flags.Test(VehicleFlag::ScheduledDispatch)) {
+				if (src_flags.Test(VehicleFlag::ScheduledDispatch)) {
 					dst->vehicle_flags.Set(VehicleFlag::ScheduledDispatch);
 				} else {
 					dst->vehicle_flags.Reset(VehicleFlag::ScheduledDispatch);
@@ -5443,6 +5529,8 @@ void SetDecoupleWaitOrderList(Vehicle *v, OrderList *orders)
 
 void DeleteVehicleOrders(Vehicle *v, bool keep_orderlist, bool reset_order_indices)
 {
+	const OrderList *home = v->GetPrimaryOrderList();
+	const OrderListID home_id = home == nullptr ? OrderListID::Invalid() : home->index;
 	v->execute_schedule_stack.clear();
 	DeleteOrderWarnings(v);
 	InvalidateWindowClassesData(WindowClass::DepartureBoard);
@@ -5512,6 +5600,7 @@ void DeleteVehicleOrders(Vehicle *v, bool keep_orderlist, bool reset_order_indic
 			CancelLoadingDueToDeletedOrder(v);
 		}
 	}
+	InvalidatePrimaryOrderSharingWindows(home_id);
 }
 
 /**
@@ -6225,6 +6314,7 @@ void Vehicle::ReturnFromExecuteSchedule()
 	}
 	ClearOrderDestinationRefcountMap();
 	InvalidateVehicleOrder(this, VIWD_MODIFY_ORDERS);
+	InvalidatePrimaryOrderSharingWindows(this->primary_order);
 }
 
 /**
@@ -6468,6 +6558,7 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 					v->current_order.Free();
 					v->SetDestTile(INVALID_TILE);
 					InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);
+					InvalidatePrimaryOrderSharingWindows(v->primary_order);
 				} else {
 					UpdateVehicleTimetable(v, true);
 					v->IncrementRealOrderIndex();

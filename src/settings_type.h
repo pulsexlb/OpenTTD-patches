@@ -947,6 +947,7 @@ struct EconomySettings {
 	TownFounding found_town;                 ///< town founding.
 	PlaceHouses place_houses;                ///< players are allowed to place town houses.
 	bool     station_noise_level;            ///< build new airports when the town noise level is still within accepted limits
+	uint8_t  custom_airport_noise_divisor;   ///< denominator of the noise multiplier applied to custom airports (1..6)
 	uint16_t town_noise_population[3];       ///< population to base decision on noise evaluation (@see town_council_tolerance)
 	bool     infrastructure_sharing[4];      ///< enable infrastructure sharing for rail/road/water/air
 	bool     allow_coupling_other_company_trains; ///< allow coupling with trains owned by other companies
@@ -1013,6 +1014,8 @@ struct StationSettings {
 	bool     distant_join_stations;            ///< allow to join non-adjacent stations
 	bool     never_expire_airports;            ///< never expire airports
 	bool     allow_modify_airports;            ///< allow change the layout of airports
+	uint16_t air_rotation_step_ticks;          ///< ticks between each 45 degree rotation step of taxiing aircraft
+	bool     air_pushback;                     ///< aircraft push back from plane aprons before taxiing
 	uint8_t  station_spread;                   ///< amount a station may spread
 	uint8_t  catchment_increase;               ///< amount by which station catchment is increased
 	bool     cargo_class_rating_wait_time;     ///< station rating tolerance to time since last cargo pickup depends on cargo class
