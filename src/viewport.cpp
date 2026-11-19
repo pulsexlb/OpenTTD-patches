@@ -949,6 +949,9 @@ static void SetViewportPosition(Window *w, int x, int y, bool force_update_overl
 	vp->virtual_left = x;
 	vp->virtual_top = y;
 	UpdateViewportDirtyBlockLeftMargin(vp);
+	/* City-name labels are drawn late in the viewport pass. Clear their previous
+	 * screen positions before the scroll blit, otherwise they survive as ghosts. */
+	MarkExternalCityLabelsDirty(vp);
 
 	bool have_overlay = w->viewport->overlay != nullptr &&
 			w->viewport->overlay->GetCompanyMask().Any() &&

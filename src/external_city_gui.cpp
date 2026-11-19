@@ -427,7 +427,38 @@ void ShowExternalCityWindow(DepotID portal)
 {
  if (BringWindowToFrontById(WindowClass::ExternalCity, 0) == nullptr) new ExternalCityWindow(portal);
 }
-struct ExternalCityLabel { Rect rect; std::string text; bool selected; };
+struct ExternalCityLabel { Rect rect; std::string text; bool selected; PixelColour colour; };
+struct ExternalCityLabelMark {
+	Viewport *vp;
+	int left, top, right, bottom;
+};
+static std::vector<ExternalCityLabelMark> _external_city_label_marks;
+
+void MarkExternalCityLabelsDirty(Viewport *vp)
+{
+	if (vp == nullptr) return;
+	for (const auto &mark : _external_city_label_marks) {
+		if (mark.vp != vp) continue;
+		MarkViewportDirty(vp, mark.left, mark.top, mark.right, mark.bottom, VMDF_NOT_LANDSCAPE);
+	}
+}
+
+static void ClearExternalCityLabelMarks(const Viewport *vp)
+{
+	std::erase_if(_external_city_label_marks, [vp](const auto &mark) { return mark.vp == vp; });
+}
+
+static void AddExternalCityLabelMark(const Viewport *vp, const Rect &rect)
+{
+	const int view_left = UnScaleByZoom(vp->virtual_left, vp->zoom);
+	const int view_top = UnScaleByZoom(vp->virtual_top, vp->zoom);
+	const int pad = ScaleByZoom(4, vp->zoom) + 1;
+	const int left = ScaleByZoom(rect.left - view_left, vp->zoom) + vp->virtual_left - pad;
+	const int top = ScaleByZoom(rect.top - view_top, vp->zoom) + vp->virtual_top - pad;
+	const int right = ScaleByZoom(rect.right - view_left, vp->zoom) + vp->virtual_left + pad;
+	const int bottom = ScaleByZoom(rect.bottom - view_top, vp->zoom) + vp->virtual_top + pad;
+	_external_city_label_marks.push_back({const_cast<Viewport *>(vp), left, top, right, bottom});
+}
 static std::optional<ExternalCityLabel> GetExternalCityLabel(const Viewport *vp, const ExternalBoundary *region)
 {
  if (IsInvisibilitySet(TransparencyOption::Signs)) return std::nullopt;
@@ -472,7 +503,7 @@ static std::optional<ExternalCityLabel> GetExternalCityLabel(const Viewport *vp,
    if (beacon_x >= x - 20 && beacon_x <= x + width + 20) label_y = std::min(label_y, UnScaleByZoom(top.y, vp->zoom) - int(size.height) - 7);
   }
   const int y=std::clamp(label_y,view_top+3,std::max(view_top+3,view_bottom-int(size.height)-7));
-  return ExternalCityLabel{{x-1,y-1,x+width,y+int(size.height)+4},text,selected};
+  return ExternalCityLabel{{x-1,y-1,x+width,y+int(size.height)+4},text,selected,PC_BLACK};
 }
 std::string GetExternalConnectionCityName(TileIndex tile, DiagDirection inward)
 {
@@ -514,91 +545,120 @@ std::string GetExternalCityTooltipAt(const Viewport *vp, Point point)
 
 void DrawExternalCityBoundaries(const Viewport *vp, DrawPixelInfo *dpi)
 {
- /* A map pick remains visible even if the city's name overlay is hidden. */
- if (external_pick_origin != INVALID_TILE) {
-  AutoRestoreBackup current_dpi(_cur_dpi, dpi);
-  for (const Depot *portal : Depot::Iterate()) {
-   if (!IsExternalReturnHighlighted(portal->xy)) continue;
-   Point point=RemapCoords2(TileX(portal->xy)*TILE_SIZE+TILE_SIZE/2,TileY(portal->xy)*TILE_SIZE+TILE_SIZE/2);
-   point.x=UnScaleByZoom(point.x,vp->zoom); point.y=UnScaleByZoom(point.y,vp->zoom);
-   if(point.x<UnScaleByZoom(vp->virtual_left,vp->zoom)||point.x>UnScaleByZoom(vp->virtual_left,vp->zoom)+vp->width ||
-      point.y<UnScaleByZoom(vp->virtual_top,vp->zoom)||point.y>UnScaleByZoom(vp->virtual_top,vp->zoom)+vp->height)continue;
-   const auto *city=ExternalCity::GetIfValid(GetExternalCityForEntrance(portal->xy));
-   const auto text=GetString(STR_EXTERNAL_RETURN_ITEM,city==nullptr?std::string{}:std::string(city->name),TileX(portal->xy),TileY(portal->xy));
-   const Dimension size=GetStringBoundingBox(text,FontSize::Small);
-   const int x=point.x-int(size.width)/2,y=point.y-20;
-   GfxFillRect(x-4,y-3,x+size.width+4,y+size.height+3,PC_WHITE);
-   GfxFillRect(x-2,y-1,x+size.width+2,y+size.height+1,PC_BLACK);
-   DrawString(x,x+size.width,y,text,TextColour::White,AlignmentH::Centre,false,FontSize::Small);
-  }
- }
- auto *window = dynamic_cast<ExternalCityWindow *>(FindWindowById(WindowClass::ExternalCity, 0));
- if (!external_city_names_visible || ExternalBoundary::GetNumItems()==0) return;
- const bool detailed = window != nullptr && window->show_boundaries;
- /* This hook runs in the viewport's main-thread finishing phase. Selection is
-  * client-local and never writes the shared boundary registry or route state. */
- Blitter *blitter = BlitterFactory::GetCurrentBlitter();
- AutoRestoreBackup current_dpi(_cur_dpi, dpi);
- const int view_left = UnScaleByZoom(vp->virtual_left, vp->zoom);
- const int view_right = view_left + vp->width;
- const int view_top = UnScaleByZoom(vp->virtual_top, vp->zoom);
- const int view_bottom = view_top + vp->height;
- auto project = [&](DiagDirection edge, uint coordinate) {
-  const TileIndex tile = BoundaryTile(edge, coordinate);
-  Point point = RemapCoords2(TileX(tile)*TILE_SIZE+TILE_SIZE/2, TileY(tile)*TILE_SIZE+TILE_SIZE/2);
-  return Point{UnScaleByZoom(point.x, vp->zoom), UnScaleByZoom(point.y, vp->zoom)};
- };
- auto draw = [&](const ExternalBoundary *region) {
-  const auto *city = ExternalCity::GetIfValid(region->city);
-  if (city == nullptr || region->edge >= DiagDirection::End) return;
-  const uint low = _settings_game.construction.freeform_edges ? 1 : 0;
-  const uint limit = GetExternalBoundaryLength(region->edge)-2;
-  uint first=std::max<uint>(region->first,low), last=std::min<uint>(region->last,limit);
-  if (first>last) return;
-  const TileIndex origin = BoundaryTile(region->edge,low);
-  const int origin_x=RemapCoords(TileX(origin)*TILE_SIZE+TILE_SIZE/2,TileY(origin)*TILE_SIZE+TILE_SIZE/2,0).x;
-  const int step=(region->edge==DiagDirection::NE||region->edge==DiagDirection::SW?1:-1)*2*TILE_SIZE*ZOOM_BASE;
-  const int a=(vp->virtual_left-origin_x)/step+int(low), b=(vp->virtual_left+vp->virtual_width-origin_x)/step+int(low);
-  if (std::max(a,b)+2<int(first) || std::min(a,b)-2>int(last)) return;
-  const uint visible_first=uint(std::max<int>(first,std::min(a,b)-2));
-  const uint visible_last=uint(std::max(0,std::min<int>(last,std::max(a,b)+2)));
-  if (visible_first>visible_last) return;
-  const bool selected=detailed && region->index==window->region_id;
-  const PixelColour colour=_colour_value[BoundaryColour(region->city)];
-  if (detailed) {
-  Point previous=project(region->edge,visible_first);
-  if (visible_first==visible_last) GfxFillRect(blitter,dpi,previous.x-2,previous.y-2,previous.x+2,previous.y+2,colour);
-  for (uint coordinate=visible_first+1;coordinate<=visible_last;++coordinate) {
-   const Point next=project(region->edge,coordinate);
-   GfxDrawLine(blitter,dpi,previous.x,previous.y,next.x,next.y,selected?PC_WHITE:PC_BLACK,selected?7:5);
-   GfxDrawLine(blitter,dpi,previous.x,previous.y,next.x,next.y,colour,3);
-   previous=next;
-  }
-  for (uint coordinate:{first,last}) {
-   const Point point=project(region->edge,coordinate);
-   GfxFillRect(blitter,dpi,point.x-4,point.y-4,point.x+4,point.y+4,selected?PC_WHITE:PC_BLACK);
-   GfxFillRect(blitter,dpi,point.x-2,point.y-2,point.x+2,point.y+2,colour);
-  }
-  }
-  const auto label = GetExternalCityLabel(vp, region);
-  if (!label) return;
-  const int x = label->rect.left + 1, y = label->rect.top + 1;
-  const int width = label->rect.right - x;
-  const auto &text = label->text;
-  const Dimension size = GetStringBoundingBox(text, FontSize::Small);
-  if (!IsTransparencySet(TransparencyOption::Signs)) {
-   GfxFillRect(blitter,dpi,x-1,y-1,x+width,y+size.height+4,selected?PC_WHITE:colour);
-   GfxFillRect(blitter,dpi,x,y,x+width-1,y+size.height+3,PC_BLACK);
-  }
-  DrawString(x+4,x+width-4,y+2,text,TextColour::White,AlignmentH::Centre,false,FontSize::Small);
- };
- for (const auto *region:ExternalBoundary::Iterate()) if (window==nullptr || region->index!=window->region_id) draw(region);
- if (window!=nullptr) if (const auto *region=ExternalBoundary::GetIfValid(window->region_id)) draw(region);
- if (window!=nullptr && window->placing&&window->first.has_value()) {
-  const Point point=project(window->draw_edge,*window->first);
-  GfxFillRect(blitter,dpi,point.x-6,point.y-6,point.x+6,point.y+6,PC_WHITE);
-  GfxFillRect(blitter,dpi,point.x-3,point.y-3,point.x+3,point.y+3,_colour_value[BoundaryColour(window->draw_city)]);
- }
+	ClearExternalCityLabelMarks(vp);
+	/* A map pick remains visible even if the city's name overlay is hidden. */
+	if (external_pick_origin != INVALID_TILE) {
+		AutoRestoreBackup current_dpi(_cur_dpi, dpi);
+		for (const Depot *portal : Depot::Iterate()) {
+			if (!IsExternalReturnHighlighted(portal->xy)) continue;
+			Point point=RemapCoords2(TileX(portal->xy)*TILE_SIZE+TILE_SIZE/2,TileY(portal->xy)*TILE_SIZE+TILE_SIZE/2);
+			point.x=UnScaleByZoom(point.x,vp->zoom); point.y=UnScaleByZoom(point.y,vp->zoom);
+			if(point.x<UnScaleByZoom(vp->virtual_left,vp->zoom)||point.x>UnScaleByZoom(vp->virtual_left,vp->zoom)+vp->width ||
+			   point.y<UnScaleByZoom(vp->virtual_top,vp->zoom)||point.y>UnScaleByZoom(vp->virtual_top,vp->zoom)+vp->height)continue;
+			const auto *city=ExternalCity::GetIfValid(GetExternalCityForEntrance(portal->xy));
+			const auto text=GetString(STR_EXTERNAL_RETURN_ITEM,city==nullptr?std::string{}:std::string(city->name),TileX(portal->xy),TileY(portal->xy));
+			const Dimension size=GetStringBoundingBox(text,FontSize::Small);
+			const int x=point.x-int(size.width)/2,y=point.y-20;
+			GfxFillRect(x-4,y-3,x+size.width+4,y+size.height+3,PC_WHITE);
+			GfxFillRect(x-2,y-1,x+size.width+2,y+size.height+1,PC_BLACK);
+			DrawString(x,x+size.width,y,text,TextColour::White,AlignmentH::Centre,false,FontSize::Small);
+			AddExternalCityLabelMark(vp, {x-4,y-3,x+int(size.width)+4,y+int(size.height)+3});
+		}
+	}
+	auto *window = dynamic_cast<ExternalCityWindow *>(FindWindowById(WindowClass::ExternalCity, 0));
+	if (!external_city_names_visible || ExternalBoundary::GetNumItems()==0) return;
+	const bool detailed = window != nullptr && window->show_boundaries;
+	/* This hook runs in the viewport's main-thread finishing phase. Selection is
+	 * client-local and never writes the shared boundary registry or route state. */
+	Blitter *blitter = BlitterFactory::GetCurrentBlitter();
+	AutoRestoreBackup current_dpi(_cur_dpi, dpi);
+	const int view_top = UnScaleByZoom(vp->virtual_top, vp->zoom);
+	const int view_bottom = view_top + vp->height;
+	auto project = [&](DiagDirection edge, uint coordinate) {
+		const TileIndex tile = BoundaryTile(edge, coordinate);
+		Point point = RemapCoords2(TileX(tile)*TILE_SIZE+TILE_SIZE/2, TileY(tile)*TILE_SIZE+TILE_SIZE/2);
+		return Point{UnScaleByZoom(point.x, vp->zoom), UnScaleByZoom(point.y, vp->zoom)};
+	};
+	std::vector<ExternalCityLabel> labels;
+	auto collect = [&](const ExternalBoundary *region) {
+		const auto *city = ExternalCity::GetIfValid(region->city);
+		if (city == nullptr || region->edge >= DiagDirection::End) return;
+		const uint low = _settings_game.construction.freeform_edges ? 1 : 0;
+		const uint limit = GetExternalBoundaryLength(region->edge)-2;
+		uint first=std::max<uint>(region->first,low), last=std::min<uint>(region->last,limit);
+		if (first>last) return;
+		const TileIndex origin = BoundaryTile(region->edge,low);
+		const int origin_x=RemapCoords(TileX(origin)*TILE_SIZE+TILE_SIZE/2,TileY(origin)*TILE_SIZE+TILE_SIZE/2,0).x;
+		const int step=(region->edge==DiagDirection::NE||region->edge==DiagDirection::SW?1:-1)*2*TILE_SIZE*ZOOM_BASE;
+		const int a=(vp->virtual_left-origin_x)/step+int(low), b=(vp->virtual_left+vp->virtual_width-origin_x)/step+int(low);
+		if (std::max(a,b)+2<int(first) || std::min(a,b)-2>int(last)) return;
+		const uint visible_first=uint(std::max<int>(first,std::min(a,b)-2));
+		const uint visible_last=uint(std::max(0,std::min<int>(last,std::max(a,b)+2)));
+		if (visible_first>visible_last) return;
+		const bool selected=detailed && region->index==window->region_id;
+		const PixelColour colour=_colour_value[BoundaryColour(region->city)];
+		if (detailed) {
+			Point previous=project(region->edge,visible_first);
+			if (visible_first==visible_last) GfxFillRect(blitter,dpi,previous.x-2,previous.y-2,previous.x+2,previous.y+2,colour);
+			for (uint coordinate=visible_first+1;coordinate<=visible_last;++coordinate) {
+				const Point next=project(region->edge,coordinate);
+				GfxDrawLine(blitter,dpi,previous.x,previous.y,next.x,next.y,selected?PC_WHITE:PC_BLACK,selected?7:5);
+				GfxDrawLine(blitter,dpi,previous.x,previous.y,next.x,next.y,colour,3);
+				previous=next;
+			}
+			for (uint coordinate:{first,last}) {
+				const Point point=project(region->edge,coordinate);
+				GfxFillRect(blitter,dpi,point.x-4,point.y-4,point.x+4,point.y+4,selected?PC_WHITE:PC_BLACK);
+				GfxFillRect(blitter,dpi,point.x-2,point.y-2,point.x+2,point.y+2,colour);
+			}
+		}
+		if (auto label = GetExternalCityLabel(vp, region)) {
+			label->colour = colour;
+			labels.push_back(*label);
+		}
+	};
+	for (const auto *region : ExternalBoundary::Iterate()) collect(region);
+	/* Keep the selected boundary's label on top of the others. */
+	std::stable_sort(labels.begin(), labels.end(), [](const ExternalCityLabel &a, const ExternalCityLabel &b) { return a.selected < b.selected; });
+	/* Label rectangles can meet at a map corner. Nudge later labels down instead
+	 * of drawing them on top of each other. */
+	std::vector<Rect> placed;
+	for (auto &label : labels) {
+		const int height = label.rect.bottom - label.rect.top;
+		for (uint attempt = 0; attempt < 4; ++attempt) {
+			bool clash = false;
+			for (const Rect &other : placed) {
+				if (label.rect.left < other.right + 2 && other.left < label.rect.right + 2 &&
+						label.rect.top < other.bottom + 2 && other.top < label.rect.bottom + 2) {
+					clash = true;
+					break;
+				}
+			}
+			if (!clash) break;
+			int top = label.rect.bottom + 2;
+			if (top + height > view_bottom - 3) top = view_top + 3;
+			label.rect.top = top;
+			label.rect.bottom = top + height;
+		}
+		placed.push_back(label.rect);
+	}
+	for (const auto &label : labels) {
+		const int x = label.rect.left + 1, y = label.rect.top + 1;
+		const int width = label.rect.right - x;
+		const auto &text = label.text;
+		const Dimension size = GetStringBoundingBox(text, FontSize::Small);
+		if (!IsTransparencySet(TransparencyOption::Signs)) {
+			GfxFillRect(blitter,dpi,x-1,y-1,x+width,y+size.height+4,label.selected?PC_WHITE:label.colour);
+			GfxFillRect(blitter,dpi,x,y,x+width-1,y+size.height+3,PC_BLACK);
+		}
+		DrawString(x+4,x+width-4,y+2,text,TextColour::White,AlignmentH::Centre,false,FontSize::Small);
+		AddExternalCityLabelMark(vp, label.rect);
+	}
+	if (window!=nullptr && window->placing&&window->first.has_value()) {
+		const Point point=project(window->draw_edge,*window->first);
+		GfxFillRect(blitter,dpi,point.x-6,point.y-6,point.x+6,point.y+6,PC_WHITE);
+		GfxFillRect(blitter,dpi,point.x-3,point.y-3,point.x+3,point.y+3,_colour_value[BoundaryColour(window->draw_city)]);
+	}
 }
 
 
