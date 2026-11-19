@@ -8162,6 +8162,7 @@ static CoupleCandidateResult GetCoupleVolatileConditionResult(const Train *movin
 	/* Selection criteria the waiting train imposes on the approaching consist. */
 	if (!WaitCouplePartnerSlotOk(carrier->current_order, moving)) return CoupleCandidateResult::WaitPartnerSlot;
 	if (!WaitCouplePartnerSlotGroupOk(carrier->current_order, moving)) return CoupleCandidateResult::WaitPartnerSlotGroup;
+	if (!carrier->current_order.MatchesWaitCouplePower(moving->gcache.cached_power)) return CoupleCandidateResult::WaitPartnerPower;
 	if (!WaitCouplePartnerGroupOk(carrier->current_order, moving)) return CoupleCandidateResult::WaitPartnerGroup;
 	/* Compare the consist capability, not temporary shunting, signal or track limits.
 	 * This read-only check is shared by checkpoint claims, routing and contact. */
@@ -13160,7 +13161,7 @@ bool TransferExternalTrainToEntrance(Train *train, DepotID exit_id, TileIndex ex
 {
  const Depot *exit = Depot::GetIfValid(exit_id);
  if (train == nullptr || !train->IsInExternalTrip() || exit == nullptr || exit->xy != expected_tile ||
-   !Depot::IsExternalConnection(exit->xy) || !IsRailDepotTile(exit->xy) || GetTileOwner(exit->xy) != train->owner ||
+   !Depot::IsExternalConnection(exit->xy) || !IsRailDepotTile(exit->xy) || !IsInfraTileUsageAllowed(train->type, train->owner, exit->xy) ||
    !train->compatible_railtypes.Test(GetRailType(exit->xy))) return false;
  Train *head=train->First();const TileIndex origin=train->tile;
  if (!Depot::IsExternalConnection(origin)) return false;

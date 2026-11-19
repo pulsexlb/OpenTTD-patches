@@ -21,7 +21,7 @@ void AxisMarketBefore(Vehicle*v,bool arrival){if(!arrival){auto*c=ExternalCity::
 void AxisMarketAfter(Vehicle*v,bool arrival){if(!arrival){auto*c=ExternalCity::GetIfValid(v->external_trip_city);if(c){const uint after=AxisRoutedStock(c);if(after<axis_before_routed)axis_routed_loaded+=axis_before_routed-after;}}}
 static void Require(CommandCost r,const char*n){if(r.Failed()){fprintf(axis_log,"ERROR %s: %s\n",n,GetString(r.GetErrorMessage()).c_str());fflush(axis_log);exit(2);}}
 static void AxisSave(const char*n){AutoRestoreBackup pause(_pause_mode,_pause_mode);_pause_mode.Set(PauseMode::Normal);ScrollMainWindowToTile(TileXY(235,45),true);assert(SaveOrLoad(std::string(std::getenv("PXP_DEMO_OUTPUT"))+"/"+n+".sav",SaveLoadOperation::Save,DetailedFileType::GameFile,Subdirectory::None,false)==SaveLoadResult::Ok);}
-static uint64_t AxisHash(){uint64_t h=1469598103934665603ULL;auto mix=[&](uint64_t x){h=(h^x)*1099511628211ULL;};for(const auto*c:ExternalCity::Iterate()){mix(c->index.base());mix(c->loaded_units);mix(c->delivered_units);for(auto x:c->industry_types)mix(x);for(auto x:c->industry_inputs)mix(x);for(auto x:c->industry_remainders)mix(x);for(auto x:c->industry_month_produced)mix(x);for(auto x:c->industry_month_consumed)mix(x);for(CargoType ct:EnumRange(NUM_CARGO))mix(c->stock[ct]);}for(const Train*t:Train::Iterate()){mix(t->index.base());mix(t->cargo.StoredCount());mix(t->profit_this_year);}return h;}
+static uint64_t AxisHash(){uint64_t h=1469598103934665603ULL;auto mix=[&](uint64_t x){h=(h^x)*1099511628211ULL;};for(const auto*c:ExternalCity::Iterate()){mix(c->index.base());mix(c->loaded_units);mix(c->delivered_units);for(auto x:c->industry_types)mix(x);for(auto x:c->industry_inputs)mix(x);for(auto x:c->industry_remainders)mix(x);for(auto x:c->industry_storage)mix(x);for(auto x:c->industry_pending_output)mix(x);mix(c->industry_counter);for(auto x:c->industry_month_produced)mix(x);for(auto x:c->industry_month_consumed)mix(x);for(CargoType ct:EnumRange(NUM_CARGO))mix(c->stock[ct]);}for(const Train*t:Train::Iterate()){mix(t->index.base());mix(t->cargo.StoredCount());mix(t->profit_this_year);}return h;}
 static IndustryType AxisType(const char*name){for(IndustryType i=0;i<NUM_INDUSTRYTYPES;++i){const auto*s=GetIndustrySpec(i);if(s->enabled&&s->grf_prop.grffile&&GetString(s->name)==name)return i;}assert(false);return IT_INVALID;}
 static void CargoLabels(){axis_coal=GetCargoTypeByLabel(CT_COAL);axis_coke=GetCargoTypeByLabel(CargoLabel{"COKE"});axis_tar=GetCargoTypeByLabel(CargoLabel{"CTAR"});axis_sulphur=GetCargoTypeByLabel(CargoLabel{"SULP"});assert(axis_coal<NUM_CARGO&&axis_coke<NUM_CARGO&&axis_tar<NUM_CARGO&&axis_sulphur<NUM_CARGO);}
 static void RecipeProbe(IndustryType oven,Industry* native){
@@ -33,18 +33,24 @@ static void RecipeProbe(IndustryType oven,Industry* native){
  {AutoRestoreBackup b(cfg->flags,cfg->flags);cfg->flags.Set(GRFConfigFlag::Compatible);assert(!ExternalIndustryUsesAxisCokeRecipe(oven));}
  auto*c=ExternalCity::Create();c->industry_types={oven,IT_INVALID,IT_INVALID};c->industries_initialized=true;InitializeExternalCityMarket(c);
  assert(c->stock[axis_coke]==0&&c->stock[axis_tar]==0&&c->stock[axis_sulphur]==0);
- RefillExternalCityMarkets();assert(c->stock[axis_coke]==0);
- StoreExternalCityInputs(c,axis_coal,7);RefillExternalCityMarkets();assert(c->stock[axis_coke]==0&&c->industry_inputs[ExternalIndustryCargoIndex(0,axis_coal)]==7);
- StoreExternalCityInputs(c,axis_coal,1);RefillExternalCityMarkets();assert(c->stock[axis_coke]==6&&c->stock[axis_tar]==1&&c->stock[axis_sulphur]==1);
- // Compare complete batches with actual production callback of the loaded GRF.
- for(uint n:{8U,16U,256U}){
-  for(auto&a:native->Accepted())a.waiting=a.cargo==axis_coal?n:0;
-  for(auto&o:native->Produced())o.waiting=0;
+ auto *st=Station::Create(native->location.tile);
+ st->owner=CompanyID{0};st->town=native->town;st->external_city=c->index.base();c->market_station=st->index;
+ // Compare every delivery, including incomplete batches, against the actual map industry.
+ for(uint n:{7U,1U,16U,256U}){
+  for(auto &a:native->Accepted())if(a.cargo==axis_coal)a.waiting+=n;
+  for(auto &o:native->Produced())o.waiting=0;
   IndustryProductionCallback(native,0);
-  for(const auto&o:native->Produced()){const uint ratio=o.cargo==axis_coke?6:1;assert(o.waiting==n/8*ratio);}
+  const auto before=c->stock;
+  StoreExternalCityInputs(c,axis_coal,n);
+  for(const auto &a:native->Accepted())if(a.cargo==axis_coal)assert(c->industry_inputs[ExternalIndustryCargoIndex(0,axis_coal)]==a.waiting);
+  for(const auto &o:native->Produced())if(o.cargo<NUM_CARGO)assert(c->stock[o.cargo]-before[o.cargo]==o.waiting);
  }
- c->stock[axis_tar]=4096;StoreExternalCityInputs(c,axis_coal,9);RefillExternalCityMarkets();assert(c->industry_inputs[ExternalIndustryCargoIndex(0,axis_coal)]==9&&c->stock[axis_coke]==6);
- c->stock[axis_tar]=1;RefillExternalCityMarkets();assert(c->industry_inputs[ExternalIndustryCargoIndex(0,axis_coal)]==1&&c->stock[axis_coke]==12);
+ // Overflow stays in the factory until the shared export store has room.
+ c->stock[axis_tar]=4096;StoreExternalCityInputs(c,axis_coal,8);
+ const auto tar_output=ExternalIndustryCargoIndex(0,axis_tar);
+ assert(c->industry_pending_output[tar_output]==1);
+ c->stock[axis_tar]=4095;c->industry_counter=1;TickExternalCityIndustries(256);
+ assert(c->stock[axis_tar]==4096&&c->industry_pending_output[tar_output]==0);
  // Existing initialized stock is preserved; the adapter must not rewrite history.
  c->stock[axis_coke]=123;InitializeExternalCityMarket(c);assert(c->stock[axis_coke]==123);
  delete c;
@@ -91,14 +97,35 @@ void AxisTick(){
  }else if(!ready&&reload&&_game_mode==GameMode::Normal){CargoLabels();for(auto*t:Train::Iterate()){if(t->name=="AXIS coal input")coal=t;if(t->name=="AXIS coke output")coke=t;}assert(coal&&coke);SetLocalCompany(coal->owner);_current_company=coal->owner;_pause_mode={};ready=true;fprintf(axis_log,"LOADED hash=%llu\n",(unsigned long long)AxisHash());}
  if(!ready||_game_mode!=GameMode::Normal)return;++ticks;
  auto*a=ExternalCity::Get(ExternalCityID{0});auto*b=ExternalCity::Get(ExternalCityID{1});
- const uint64_t pending=a->industry_inputs[ExternalIndustryCargoIndex(0,axis_coal)],processed=a->delivered_units-pending;
- assert(pending<=a->delivered_units&&processed%8==0);
- assert(uint64_t(a->stock[axis_coke])+a->loaded_units==processed/8*6);
- assert(a->stock[axis_tar]==processed/8&&a->stock[axis_sulphur]==processed/8);
+ const uint64_t pending=a->industry_inputs[ExternalIndustryCargoIndex(0,axis_coal)];
+ const std::array<CargoType,3> products={axis_coke,axis_tar,axis_sulphur};
+ static bool baseline=false;
+ static uint64_t delivered=0;
+ static std::array<uint64_t,3> expected{};
+ std::array<uint64_t,3> actual{};
+ for(size_t i=0;i<products.size();++i){
+  actual[i]=a->stock[products[i]]+a->industry_pending_output[ExternalIndustryCargoIndex(0,products[i])];
+ }
+ actual[0]+=a->loaded_units;
+ if(!baseline){baseline=true;delivered=a->delivered_units;expected=actual;}
+ if(delivered!=a->delivered_units){
+  Industry *reference=nullptr;for(auto *industry:Industry::Iterate())if(industry->type==a->industry_types[0])reference=industry;
+  assert(reference!=nullptr);
+  for(auto &input:reference->Accepted())if(input.cargo==axis_coal)input.waiting+=a->delivered_units-delivered;
+  for(auto &output:reference->Produced())output.waiting=0;
+  IndustryProductionCallback(reference,0);
+  for(const auto &output:reference->Produced()){
+   const auto it=std::ranges::find(products,output.cargo);
+   if(it!=products.end())expected[it-products.begin()]+=output.waiting;
+  }
+  for(const auto &input:reference->Accepted())if(input.cargo==axis_coal)assert(pending==input.waiting);
+  delivered=a->delivered_units;
+ }
+ assert(actual==expected);
  uint onboard=0;for(auto*t=coke;t;t=t->Next())onboard+=t->cargo.StoredCount();if(onboard)seen_coke=true;
- if(pending&&!saved_input){saved_input=true;AxisSave("axis-input");fprintf(axis_log,"SAVED input hash=%llu\n",(unsigned long long)AxisHash());}
+ if(a->delivered_units!=0&&!saved_input){saved_input=true;AxisSave("axis-input");fprintf(axis_log,"SAVED input hash=%llu\n",(unsigned long long)AxisHash());}
  if(onboard&&!saved_output){saved_output=true;AxisSave("axis-output");fprintf(axis_log,"SAVED output hash=%llu\n",(unsigned long long)AxisHash());}
  if(ticks%1000==0){fprintf(axis_log,"TICK %u input=%llu pending=%llu coke=%u sold=%llu onboard=%u pos=%u,%u orders=%u,%u income=%lld,%lld\n",ticks,(unsigned long long)a->delivered_units,(unsigned long long)pending,a->stock[axis_coke],(unsigned long long)b->delivered_units,onboard,TileX(coal->tile),TileX(coke->tile),uint(coal->current_order.GetType()),uint(coke->current_order.GetType()),(long long)(coal->profit_this_year>>8),(long long)(coke->profit_this_year>>8));fflush(axis_log);}
- if(b->delivered_units>=420&&coal->profit_this_year>0&&coke->profit_this_year>0&&seen_coke&&(_settings_game.linkgraph.GetDistributionType(axis_coal)==DistributionType::Manual||axis_routed_loaded>0)){if(!reload)assert(axis_wrong_entrances>0);fprintf(axis_log,"STRICT PASS actual AXIS off-map recipe coal=%llu coke_sold=%llu routed_loaded=%llu conservation=1 native_reference=8:6:1:1\n",(unsigned long long)a->delivered_units,(unsigned long long)b->delivered_units,(unsigned long long)axis_routed_loaded);fflush(axis_log);AxisSave("axis-complete");exit(0);}
+ if(b->delivered_units>=420&&coal->profit_this_year>0&&coke->profit_this_year>0&&seen_coke&&(_settings_game.linkgraph.GetDistributionType(axis_coal)==DistributionType::Manual||axis_routed_loaded>0)){if(!reload)assert(axis_wrong_entrances>0);fprintf(axis_log,"STRICT PASS actual AXIS off-map recipe coal=%llu coke_sold=%llu routed_loaded=%llu conservation=1 native_per_delivery=1\n",(unsigned long long)a->delivered_units,(unsigned long long)b->delivered_units,(unsigned long long)axis_routed_loaded);fflush(axis_log);AxisSave("axis-complete");exit(0);}
  if(ticks>90000){fprintf(axis_log,"FAIL timeout\n");fflush(axis_log);exit(3);}
 }

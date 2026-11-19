@@ -4,6 +4,8 @@
 #include "external_city.h"
 #include "external_city_cmd.h"
 #include "depot_base.h"
+#include "depot_map.h"
+#include "infrastructure_func.h"
 #include "company_base.h"
 #include "company_func.h"
 #include "command_func.h"
@@ -54,7 +56,7 @@ void ClearExternalReturnHighlight()
 }
 bool IsExternalReturnHighlighted(TileIndex tile)
 {
- if (external_pick_origin == INVALID_TILE || !Depot::IsExternalConnection(tile) || GetTileOwner(tile) != external_pick_owner ||
+ if (external_pick_origin == INVALID_TILE || !Depot::IsExternalConnection(tile) || !IsInfraTileUsageAllowed(GetDepotVehicleType(tile), external_pick_owner, tile) ||
      GetTileType(tile) != GetTileType(external_pick_origin)) return false;
  if (IsRailDepotTile(tile) && !external_pick_railtypes.Test(GetRailType(tile))) return false;
  if (IsRoadDepotTile(tile) && (GetPresentRoadTypes(tile) & external_pick_roadtypes).None()) return false;
@@ -265,7 +267,7 @@ struct ExternalCityWindow : Window {
  }
  std::string RegionText(const ExternalBoundary *region) const {
   const auto *city = ExternalCity::GetIfValid(region->city);
-  return GetString(edge_names[uint(region->edge)]) + " · " + GetString(STR_EXTERNAL_BOUNDARY_LABEL, region->first, region->last, city == nullptr ? std::string{} : std::string(city->name));
+  return GetString(edge_names[uint(region->edge)]) + " 路 " + GetString(STR_EXTERNAL_BOUNDARY_LABEL, region->first, region->last, city == nullptr ? std::string{} : std::string(city->name));
  }
  std::string GetWidgetString(WidgetID widget, StringID stringid) const override {
   const auto *city = City();
@@ -634,7 +636,7 @@ static TileIndex ExternalEffectiveReturn(const Vehicle *train)
  if (!train->IsInExternalTrip()) return train->tile;
  const Depot *exit=Depot::GetIfValid(train->external_exit_depot);
  if (exit != nullptr && exit->xy==train->external_exit_tile && Depot::IsExternalConnection(exit->xy) &&
-     GetTileOwner(exit->xy)==train->owner && ((train->type == VehicleType::Train && IsRailDepotTile(exit->xy) && Train::From(train)->compatible_railtypes.Test(GetRailType(exit->xy))) ||
+     IsInfraTileUsageAllowed(train->type, train->owner, exit->xy) && ((train->type == VehicleType::Train && IsRailDepotTile(exit->xy) && Train::From(train)->compatible_railtypes.Test(GetRailType(exit->xy))) ||
      (train->type == VehicleType::Road && IsRoadDepotTile(exit->xy) && (RoadVehicle::From(train)->compatible_roadtypes & GetPresentRoadTypes(exit->xy)).Any()) ||
      (train->type == VehicleType::Ship && IsShipDepotTile(exit->xy)))) return exit->xy;
  return train->tile;
@@ -674,11 +676,12 @@ struct ExternalEntranceWindow : Window {
   trains.clear();
   int image_width=0;
   for(const Vehicle *train:Vehicle::Iterate()) {
-   if(!train->IsPrimaryVehicle() || (!train->IsInExternalTrip()&&!train->external_return_pending)) continue;
-   const TileIndex entry=train->external_entry_tile==INVALID_TILE?train->tile:train->external_entry_tile;
+   /* The physical chain head can also carry a primary subtype. Only its
+    * schedule owner has an independent journey and a return deadline. */
+   if(!train->IsPrimaryVehicle() || train->Primary() != train || (!train->IsInExternalTrip()&&!train->external_return_pending)) continue;
    if(Matches(train)){
     trains.push_back(train->index);
-    image_width=std::max(image_width,GetVehicleWidth(train,EngineImageType::InDetails));
+    image_width=std::max(image_width,GetVehicleWidth(train->First(),EngineImageType::InDetails));
    }
   }
   std::sort(trains.begin(),trains.end(),[](VehicleID a,VehicleID b){
@@ -691,7 +694,7 @@ struct ExternalEntranceWindow : Window {
  }
  void OnGameTick() override {
   if(counted_at!=_state_ticks.base()/32)this->RefreshCount();
-  const int64_t second=_state_ticks.base()*60/std::max<uint>(1,_settings_time.ticks_per_minute);
+  const int64_t second=_state_ticks.base()*60/std::max<uint>(1,_settings_game.game_time.ticks_per_minute);
   if(shown_second!=second){shown_second=second;this->SetWidgetDirty(EE_LIST);}
  }
  void OnInvalidateData(int=0,bool gui_scope=true) override { if(gui_scope&&scroll!=nullptr)this->RefreshCount(); }
@@ -731,7 +734,7 @@ struct ExternalEntranceWindow : Window {
    const auto number=train->GetActiveServiceNumber();
    const auto name=number.empty()?GetString(STR_VEHICLE_NAME,train->index):number;
    const uint64_t ticks=train->IsInExternalTrip()?std::max<int64_t>(0,(train->external_return_tick-_state_ticks).base()):0;
-   const uint64_t seconds=CeilDiv(ticks*60,uint64_t(std::max<uint>(1,_settings_time.ticks_per_minute)));
+   const uint64_t seconds=CeilDiv(ticks*60,uint64_t(std::max<uint>(1,_settings_game.game_time.ticks_per_minute)));
    const std::string time=train->external_return_pending?GetString(STR_EXTERNAL_LIST_QUEUED):GetString(STR_EXTERNAL_LIST_TIME,seconds/60,seconds%60);
    const int time_width=GetStringBoundingBox(time).width+12;
    DrawString(row.left,row.right-time_width,row.top,GetString(STR_EXTERNAL_LIST_IDENTITY,name,GetString(STR_COMPANY_NAME,train->owner)),TextColour::Black);
@@ -765,7 +768,6 @@ struct ExternalEntranceWindow : Window {
   if(widget==EE_LIST){
    const auto row=scroll->GetScrolledRowFromWidget(point.y,this,EE_LIST);
    if(row>=0&&size_t(row)<trains.size())if(const Vehicle *train=Vehicle::GetIfValid(trains[row])) {
-    const TileIndex entry=train->external_entry_tile==INVALID_TILE?train->tile:train->external_entry_tile;
     if((train->IsInExternalTrip()||train->external_return_pending)&&Matches(train))ShowVehicleViewWindow(train);
    }
   }
@@ -880,7 +882,7 @@ struct ExternalEconomyWindow : Window {
    if (ExternalCity::Get(city_id)->exchange_market) card(1, GetString(STR_EXTERNAL_TRADE_NAME), economy.accepted & ~economy.town_accepted, economy.produced & ~economy.town_produced);
    for (size_t i = 0; i < economy.industries.size(); ++i) {
     const auto *spec = GetIndustrySpec(economy.industries[i]);
-    card(i + 1, GetString(spec->name), ExternalIndustryCargoes(spec->accepts_cargo), ExternalIndustryCargoes(spec->produced_cargo));
+    card(i + 1, GetString(spec->name), ExternalIndustryCargoes(GetExternalFactoryCargoes(ExternalCity::Get(city_id), economy.industries[i], false)), ExternalIndustryCargoes(GetExternalFactoryCargoes(ExternalCity::Get(city_id), economy.industries[i], true)));
    }
    if (ExternalCity::Get(city_id)->exchange_market) {
     lines.push_back({GetString(STR_EXTERNAL_TRADE_CREDIT, ExternalCity::Get(city_id)->trade_credit)});
@@ -895,14 +897,14 @@ struct ExternalEconomyWindow : Window {
     produced = economy.produced & ~economy.town_produced; accepted = economy.accepted & ~economy.town_accepted;
    } else if (selected_industry != 0) {
     const auto *spec = GetIndustrySpec(economy.industries[selected_industry - 1]);
-    produced = ExternalIndustryCargoes(spec->produced_cargo); accepted = ExternalIndustryCargoes(spec->accepts_cargo);
+    produced = ExternalIndustryCargoes(GetExternalFactoryCargoes(ExternalCity::Get(city_id), economy.industries[selected_industry - 1], true)); accepted = ExternalIndustryCargoes(GetExternalFactoryCargoes(ExternalCity::Get(city_id), economy.industries[selected_industry - 1], false));
     const auto *city = ExternalCity::Get(city_id);
     const IndustryType type = economy.industries[selected_industry - 1];
     if (show_details && !ExternalIndustryUsesRecipe(type)) {
      lines.push_back({GetString(STR_EXTERNAL_PRODUCTION_ABSTRACT)});
     } else if (show_details) {
      const size_t slot = GetExternalIndustrySlot(city, type);
-     bool has_input = false, full = produced.Any(), raw = spec->behaviour.Test(IndustryBehaviour::CutTrees);
+     bool has_input = false, full = produced.Any(), raw = spec->behaviour.Test(IndustryBehaviour::CutTrees) || spec->life_type.Any({IndustryLifeType::Extractive, IndustryLifeType::Organic});
      for (uint rate : spec->production_rate) raw |= rate != 0;
      for (CargoType cargo : accepted) has_input |= city->industry_inputs[ExternalIndustryCargoIndex(slot, cargo)] != 0;
      for (CargoType cargo : produced) full &= city->stock[cargo] >= 4096;
@@ -930,7 +932,7 @@ struct ExternalEconomyWindow : Window {
       const size_t index = ExternalIndustryCargoIndex(slot, cargo);
       if (title == STR_EXTERNAL_ECONOMY_PRODUCTS) {
        lines.push_back({GetString(STR_EXTERNAL_PRODUCTION_MONTH, cargo, city->industry_month_produced[index])});
-       if (ExternalIndustryUsesAxisBlastRecipe(economy.industries[selected_industry - 1])) lines.push_back({GetString(STR_EXTERNAL_PRODUCTION_PENDING, cargo, city->industry_pending_output[index])});
+       if (city->industry_pending_output[index] != 0) lines.push_back({GetString(STR_EXTERNAL_PRODUCTION_PENDING, cargo, city->industry_pending_output[index])});
       } else {
        if (ExternalIndustryUsesAxisBlastRecipe(economy.industries[selected_industry - 1])) lines.push_back({GetString(STR_EXTERNAL_PRODUCTION_RECENT, city->industry_recent_supply[index])});
        else lines.push_back({GetString(STR_EXTERNAL_PRODUCTION_INPUT, cargo, city->industry_inputs[index])});
@@ -987,7 +989,7 @@ struct ExternalEconomyWindow : Window {
   if (ExternalCity::Get(city_id)->exchange_market && !IsExternalCityPassengerOrMail(cargo)) text = GetString(STR_EXTERNAL_TRADE_NAME);
   for (IndustryType type : economy.industries) {
    const auto *spec = GetIndustrySpec(type);
-   if (!(produced ? ExternalIndustryCargoes(spec->produced_cargo) : ExternalIndustryCargoes(spec->accepts_cargo)).Test(cargo)) continue;
+   if (!ExternalIndustryCargoes(GetExternalFactoryCargoes(ExternalCity::Get(city_id), type, produced)).Test(cargo)) continue;
    if (!text.empty()) text += GetListSeparator();
    text += GetString(spec->name);
   }

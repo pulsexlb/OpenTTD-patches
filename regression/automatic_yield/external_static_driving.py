@@ -27,7 +27,7 @@ static void StaticProbe(){
  StoreExternalCityInputs(c,coal,1);RefillExternalCityMarkets();assert(c->stock[steel]==4&&c->stock[goods]==2);
  c->stock[goods]=4096;StoreExternalCityInputs(c,coal,8);RefillExternalCityMarkets();
  assert(c->stock[steel]==5&&c->industry_inputs[ExternalIndustryCargoIndex(0,coal)]==5); // Three units fit fractional output space.
- c->stock[goods]=2;RefillExternalCityMarkets();assert(c->stock[steel]==8&&c->stock[goods]==4);delete c;
+ c->stock[goods]=2;c->industry_counter=1;TickExternalCityIndustries(256);assert(c->stock[steel]==8&&c->stock[goods]==4);delete c;
 }
 static FILE* chain_log;
 """)

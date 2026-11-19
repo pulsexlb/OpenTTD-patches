@@ -452,28 +452,45 @@ TEST_CASE("External markets - supply replenishes without creating receipt quotas
  });
  for (IndustryType type = 0; type < NUM_INDUSTRYTYPES; ++type) *const_cast<IndustrySpec *>(GetIndustrySpec(type)) = IndustrySpec{};
  for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) *CargoSpec::Get(cargo) = CargoSpec{};
- const CargoType passengers{100};
- auto *spec = CargoSpec::Get(passengers);
- spec->bitnum = 1;
- spec->town_production_effect = TownProductionEffect::Passengers;
- spec->town_acceptance_effect = TownAcceptanceEffect::Passengers;
+ const CargoType passengers{100}, mail{101};
+ for (const auto cargo : {passengers, mail}) {
+  auto *spec = CargoSpec::Get(cargo);
+  spec->bitnum = 1;
+  spec->town_production_effect = cargo == passengers ? TownProductionEffect::Passengers : TownProductionEffect::Mail;
+  spec->town_acceptance_effect = cargo == passengers ? TownAcceptanceEffect::Passengers : TownAcceptanceEffect::Mail;
+ }
  auto *a = ExternalCity::Create(), *b = ExternalCity::Create();
+ const CargoType export_cargo{102};
+ CargoSpec::Get(export_cargo)->bitnum = 1;
+ b->trade_cargo_roles[export_cargo] = 1;
+ b->exchange_market = true; b->trade_credit = 37;
  GameRandomSeedChecker random;
  InitializeExternalCityMarket(a); InitializeExternalCityMarket(b);
- REQUIRE(a->stock[passengers] == 512); REQUIRE(a->demand[passengers] == 0);
- a->stock[passengers] = 0; a->demand[passengers] = 0;
- InitializeExternalCityMarket(a); // A read/load must not refill an exhausted market.
- CHECK(a->stock[passengers] == 0); CHECK(a->demand[passengers] == 0);
- CHECK(b->stock[passengers] == 512); CHECK(b->demand[passengers] == 0);
- RefillExternalCityMarkets();
- CHECK(a->stock[passengers] == 256); CHECK(a->demand[passengers] == 0);
- CHECK(b->stock[passengers] == 768); CHECK(b->demand[passengers] == 0);
- for (uint month = 0; month < 20; ++month) RefillExternalCityMarkets();
- CHECK(a->stock[passengers] == 4096); CHECK(a->demand[passengers] == 0);
- *spec = CargoSpec{}; // Cargo removed by an active-definition change cannot retain quotas.
- RefillExternalCityMarkets();
- CHECK(a->stock[passengers] == 0); CHECK(a->demand[passengers] == 0);
- CHECK(b->stock[passengers] == 0); CHECK(b->demand[passengers] == 0);
+ for (auto cargo : {passengers, mail}) {
+  REQUIRE(a->stock[cargo] == 512); REQUIRE(b->stock[cargo] == 512); CHECK(a->demand[cargo] == 0);
+  a->stock[cargo] = b->stock[cargo] = 0;
+ }
+ InitializeExternalCityMarket(a); RefillExternalCityMarkets();
+ CHECK(a->stock[passengers] == 0); CHECK(b->stock[mail] == 0);
+ REQUIRE(b->stock[export_cargo] == 512); b->stock[export_cargo] = 0;
+ uint total = 0;
+ for (uint days : {28U, 29U, 30U, 31U}) {
+  for (uint day = 1; day <= days; ++day) {
+   for (uint tick = 0; tick < DAY_TICKS; ++tick) TickExternalCityMarketSupply(day, tick, days);
+   for (auto cargo : {passengers, mail}) {
+    CHECK(a->stock[cargo] == total + day * 256 / days);
+    CHECK(b->stock[cargo] == a->stock[cargo]);
+   }
+  }
+  total += 256;
+  CHECK(b->stock[export_cargo] == total); CHECK(a->stock[export_cargo] == 0);
+  RefillExternalCityMarkets();
+  CHECK(b->stock[export_cargo] == total);
+  CHECK(a->stock[mail] == total); CHECK(b->stock[passengers] == total); CHECK(b->trade_credit == 37);
+ }
+ a->stock[mail] = 4096; TickExternalCityMarketSupply(30, DAY_TICKS - 1, 30); CHECK(a->stock[mail] == 4096);
+ *CargoSpec::Get(passengers) = CargoSpec{};
+ RefillExternalCityMarkets(); CHECK(a->stock[passengers] == 0); CHECK(b->stock[passengers] == 0);
  CHECK(random.Check());
 }
 
@@ -510,13 +527,16 @@ TEST_CASE("External industry - unlimited incoming stock, original recipes and ou
  const size_t steel_input = ExternalIndustryCargoIndex(GetExternalIndustrySlot(city, 2), steel);
  const size_t goods_output = ExternalIndustryCargoIndex(GetExternalIndustrySlot(city, 2), goods);
  GameRandomSeedChecker random;
+ auto cycle = [&] { city->industry_counter = 1; TickExternalCityIndustries(256); };
  SECTION("raw production does not create unfed processed goods") {
   CHECK(city->stock[ore] == 0); CHECK(city->stock[steel] == 0); CHECK(city->stock[goods] == 0);
   RefillExternalCityMarkets();
-  CHECK(city->stock[ore] == 120); CHECK(city->stock[steel] == 0); CHECK(city->stock[goods] == 0);
+  CHECK(city->stock[ore] == 0);
+  city->industry_counter = 2; TickExternalCityIndustries(256); CHECK(city->stock[ore] == 0);
+  TickExternalCityIndustries(256);
+  CHECK(city->stock[ore] == 15); CHECK(city->stock[steel] == 0); CHECK(city->stock[goods] == 0);
   StoreExternalCityInputs(city, ore, 100);
-  CHECK(city->industry_inputs[ore_input] == 100); CHECK(city->stock[steel] == 0);
-  RefillExternalCityMarkets();
+  CHECK(city->industry_inputs[ore_input] == 0); CHECK(city->stock[steel] == 100);
   CHECK(city->industry_inputs[ore_input] == 0); CHECK(city->stock[steel] == 100);
   CHECK(city->industry_month_consumed[ore_input] == 100); CHECK(city->industry_month_produced[steel_output] == 100);
   CHECK(city->stock[goods] == 0); // No invisible transfer from the shared export store to another factory.
@@ -524,10 +544,10 @@ TEST_CASE("External industry - unlimited incoming stock, original recipes and ou
   CHECK(city->industry_inputs[steel_input] == 0); CHECK(city->stock[goods] == 47);
  }
  SECTION("full export store pauses conversion and partial space consumes only fitting inputs") {
-  StoreExternalCityInputs(city, ore, 17); city->stock[steel] = 4096;
+  city->stock[steel] = 4096; StoreExternalCityInputs(city, ore, 17);
   RefillExternalCityMarkets();
   CHECK(city->industry_inputs[ore_input] == 17); CHECK(city->industry_month_produced[steel_output] == 0);
-  city->stock[steel] = 4090; RefillExternalCityMarkets();
+  city->stock[steel] = 4090; cycle();
   CHECK(city->stock[steel] == 4096); CHECK(city->industry_inputs[ore_input] == 11);
   CHECK(city->industry_month_consumed[ore_input] == 6); CHECK(city->industry_month_produced[steel_output] == 6);
  }
@@ -539,27 +559,27 @@ TEST_CASE("External industry - unlimited incoming stock, original recipes and ou
   }
  }
  SECTION("full export store retains every incoming unit beyond old quotas") {
-  StoreExternalCityInputs(city, ore, 10000);
+  city->stock[steel] = 4096; StoreExternalCityInputs(city, ore, 10000);
   CHECK(city->industry_inputs[ore_input] == 10000);
   city->stock[steel] = 4096; RefillExternalCityMarkets();
   CHECK(city->industry_inputs[ore_input] == 10000);
   StoreExternalCityInputs(city, ore, 6000);
   CHECK(city->industry_inputs[ore_input] == 16000);
-  city->stock[steel] = 0; RefillExternalCityMarkets();
-  CHECK(city->industry_inputs[ore_input] == 16000 - 256);
-  CHECK(city->stock[steel] == 256);
+  city->stock[steel] = 0; cycle();
+  CHECK(city->industry_inputs[ore_input] == 16000 - 4096);
+  CHECK(city->stock[steel] == 4096);
  }
  SECTION("pending raw materials remain exact beyond the old 32-bit counter") {
-  StoreExternalCityInputs(city, ore, UINT32_MAX);
+  city->stock[steel] = 4096; StoreExternalCityInputs(city, ore, UINT32_MAX);
   StoreExternalCityInputs(city, ore, 6000);
   CHECK(city->industry_inputs[ore_input] == uint64_t(UINT32_MAX) + 6000);
-  RefillExternalCityMarkets();
+  city->stock[steel] = 0; cycle();
   CHECK(city->industry_inputs[ore_input] + city->stock[steel] == uint64_t(UINT32_MAX) + 6000);
  }
  SECTION("multiple eligible industries share rather than lose incoming materials") {
   setup(2, goods, ore, 0);
   const size_t second = ExternalIndustryCargoIndex(GetExternalIndustrySlot(city, 2), ore);
-  StoreExternalCityInputs(city, ore, 10001);
+  city->stock[steel] = city->stock[goods] = 4096; StoreExternalCityInputs(city, ore, 10001);
   CHECK(city->industry_inputs[ore_input] + city->industry_inputs[second] == 10001);
   CHECK(city->industry_inputs[ore_input] >= 5000);
   CHECK(city->industry_inputs[second] >= 5000);
@@ -572,7 +592,7 @@ TEST_CASE("External industry - unlimited incoming stock, original recipes and ou
  }
  SECTION("consumer industries consume inputs without inventing output") {
   const_cast<IndustrySpec *>(GetIndustrySpec(1))->produced_cargo.fill(INVALID_CARGO);
-  StoreExternalCityInputs(city, ore, 100); RefillExternalCityMarkets();
+  StoreExternalCityInputs(city, ore, 100);
   CHECK(city->industry_inputs[ore_input] == 0); CHECK(city->industry_month_consumed[ore_input] == 100);
   CHECK(city->stock[steel] == 0);
  }
@@ -612,22 +632,36 @@ TEST_CASE("External industry - NewGRF fixed definitions use recipes without impe
   CHECK(city->industry_remainders[remainder] == 128);
   city->stock[product] = 4096; StoreExternalCityInputs(city, input, 1); RefillExternalCityMarkets();
   CHECK(city->industry_inputs[pending] == 1); CHECK(city->industry_remainders[remainder] == 128);
-  city->stock[product] = 4095; RefillExternalCityMarkets();
+  city->stock[product] = 4095; city->industry_counter = 1; TickExternalCityIndustries(256);
   CHECK(city->stock[product] == 4096); CHECK(city->industry_inputs[pending] == 0);
   CHECK(city->industry_remainders[remainder] == 0);
  }
- SECTION("callbacks requiring industry context retain abstract-market handling") {
+ SECTION("active callback industries use factory processing") {
   for (auto callback : {IndustryCallbackMask::Probability, IndustryCallbackMask::ProductionCargoArrival,
     IndustryCallbackMask::Production256Ticks, IndustryCallbackMask::Location,
     IndustryCallbackMask::ProductionChange, IndustryCallbackMask::MonthlyProdChange,
     IndustryCallbackMask::RefuseCargo, IndustryCallbackMask::InputCargoTypes,
     IndustryCallbackMask::OutputCargoTypes, IndustryCallbackMask::ProdChangeBuild}) {
-   spec->callback_mask.Set(callback); CHECK_FALSE(ExternalIndustryUsesRecipe(type));
+   spec->callback_mask.Set(callback); CHECK(ExternalIndustryUsesRecipe(type));
    spec->callback_mask.Reset(callback); CHECK(ExternalIndustryUsesRecipe(type));
   }
   spec->enabled = false; CHECK_FALSE(ExternalIndustryUsesRecipe(type));
   CHECK_FALSE(ExternalIndustryUsesRecipe(IT_INVALID));
  }
+}
+
+TEST_CASE("External rail travel uses the shared clock rate even when clients override the display")
+{
+	AutoRestoreBackup clock(_settings_game.game_time.time_in_minutes, true);
+	AutoRestoreBackup rate(_settings_game.game_time.ticks_per_minute, uint16_t{74});
+	AutoRestoreBackup display(_settings_time.ticks_per_minute, uint16_t{1});
+	CHECK(Vehicle::ExternalTravelTicks(100, 100) == 2048);
+	_settings_game.game_time.ticks_per_minute = 148;
+	CHECK(Vehicle::ExternalTravelTicks(100, 100) == 4096);
+	_settings_game.game_time.ticks_per_minute = 160;
+	CHECK(Vehicle::ExternalTravelTicks(100, 100) == 4429);
+	_settings_game.game_time.time_in_minutes = false;
+	CHECK(Vehicle::ExternalTravelTicks(100, 100) == 2048);
 }
 
 TEST_CASE("External routes - native tile speed conversion and partial cargo sales preserve packet accounting")
@@ -6754,6 +6788,24 @@ TEST_CASE_METHOD(CouplePowerFixture, "Couple - waiting company mask allows sever
  Order copy = waiting->current_order;
  CHECK(copy.GetWaitCoupleCompanyMask() == owner);
  CHECK(copy.GetWaitCoupleTraction() == 3);
+}
+
+TEST_CASE_METHOD(CouplePowerFixture, "Couple - waiting wagons filter approaching consist horsepower before ranking")
+{
+	const auto mode = GENERATE(WaitCouplePowerMode::Any, WaitCouplePowerMode::Greater, WaitCouplePowerMode::Less, WaitCouplePowerMode::Equal);
+	const uint32_t actual = GENERATE(3999, 4000, 4001, 90000);
+	low->gcache.cached_power = actual;
+	waiting->current_order.SetWaitCouplePowerMode(mode);
+	waiting->current_order.SetWaitCouplePowerValue(4000);
+	const Order copy = waiting->current_order;
+	REQUIRE(copy.GetWaitCouplePowerMode() == mode);
+	REQUIRE(copy.GetWaitCouplePowerValue() == 4000);
+	const bool matches = mode == WaitCouplePowerMode::Any ||
+			(mode == WaitCouplePowerMode::Greater && actual > 4000) ||
+			(mode == WaitCouplePowerMode::Less && actual < 4000) ||
+			(mode == WaitCouplePowerMode::Equal && actual == 4000);
+	const auto result = GetCoupleCandidateResult(low, low->current_order, waiting, waiting->tile, false);
+	CHECK((result != CoupleCandidateResult::WaitPartnerPower) == matches);
 }
 
 TEST_CASE_METHOD(CouplePowerFixture, "Couple - waiting slot gates targets and returns only acquired membership")

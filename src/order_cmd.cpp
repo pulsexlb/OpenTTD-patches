@@ -3249,7 +3249,8 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 			case OT_WAIT_COUPLE:
 				if (mof != MOF_WAIT_COUPLE_STATION && mof != MOF_WAIT_COUPLE_TRACTION && mof != MOF_WAIT_COUPLE_COMPANY && mof != MOF_WAIT_COUPLE_SLOT
-						&& mof != MOF_WAIT_COUPLE_PARTNER_SLOT && mof != MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP && mof != MOF_WAIT_COUPLE_PARTNER_GROUP) return CMD_ERROR;
+						&& mof != MOF_WAIT_COUPLE_PARTNER_SLOT && mof != MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP && mof != MOF_WAIT_COUPLE_PARTNER_GROUP
+						&& mof != MOF_WAIT_COUPLE_POWER_MODE && mof != MOF_WAIT_COUPLE_POWER_VALUE) return CMD_ERROR;
 				break;
 
 			case OT_DECOUPLE:
@@ -3741,7 +3742,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				if (!is_list && v->type != VehicleType::Aircraft) return CMD_ERROR;
 				if (data != UINT16_MAX) {
 					const Station *airport = Station::GetIfValid(StationID{data});
-					if (airport == nullptr || !airport->facilities.Test(StationFacility::Airport) || airport->owner != target_owner ||
+					if (airport == nullptr || !airport->facilities.Test(StationFacility::Airport) || !IsInfraUsageAllowed(VehicleType::Aircraft, target_owner, airport->owner) ||
 							(!is_list && !CanVehicleUseStation(v, airport))) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID_AIRPORT);
 				}
 				break;
@@ -3749,7 +3750,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			if (!order->IsExternalTripOrder() || (!is_list && v->type != VehicleType::Train && v->type != VehicleType::Road && v->type != VehicleType::Ship)) return CMD_ERROR;
 			if (data != UINT16_MAX) {
 				const Depot *exit = Depot::GetIfValid(DepotID{data});
-				if (exit == nullptr || !Depot::IsExternalConnection(exit->xy) || GetTileOwner(exit->xy) != target_owner) return CommandCost(STR_EXTERNAL_RETURN_INVALID);
+				if (exit == nullptr || !Depot::IsExternalConnection(exit->xy) || !IsInfraTileUsageAllowed(GetDepotVehicleType(exit->xy), target_owner, exit->xy)) return CommandCost(STR_EXTERNAL_RETURN_INVALID);
 				const Depot *entry = Depot::GetIfValid(order->GetDestination().ToDepotID());
                 if (entry == nullptr || !entry->IsOfType(exit)) return CommandCost(STR_EXTERNAL_RETURN_INCOMPATIBLE);
                 if (!is_list && v->type == VehicleType::Train && (!IsRailDepotTile(exit->xy) || !Train::From(v)->compatible_railtypes.Test(GetRailType(exit->xy)))) return CommandCost(STR_EXTERNAL_RETURN_INCOMPATIBLE);
@@ -3798,6 +3799,13 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				if (sg == nullptr || sg->vehicle_type != VehicleType::Train) return CMD_ERROR;
 				if (!sg->CompanyCanReferenceSlotGroup(target_owner)) return CMD_ERROR;
 			}
+			break;
+
+		case MOF_WAIT_COUPLE_POWER_MODE:
+			if (data > to_underlying(WaitCouplePowerMode::Equal)) return CMD_ERROR;
+			[[fallthrough]];
+		case MOF_WAIT_COUPLE_POWER_VALUE:
+			if (!is_list && v->type != VehicleType::Train) return CMD_ERROR;
 			break;
 
 		case MOF_WAIT_COUPLE_PARTNER_GROUP:
@@ -4362,6 +4370,13 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				order->SetWaitCouplePartnerSlotGroup(data == 0 ? TraceRestrictSlotGroupID::Invalid() : TraceRestrictSlotGroupID{(uint16_t)(data - 1)});
 				break;
 
+			case MOF_WAIT_COUPLE_POWER_MODE:
+				order->SetWaitCouplePowerMode(static_cast<WaitCouplePowerMode>(data));
+				break;
+			case MOF_WAIT_COUPLE_POWER_VALUE:
+				order->SetWaitCouplePowerValue(data);
+				break;
+
 			case MOF_WAIT_COUPLE_PARTNER_GROUP:
 				order->SetWaitCouplePartnerGroup(data == 0 ? GroupID::Invalid() : GroupID{(uint16_t)(data - 1)});
 				break;
@@ -4643,6 +4658,11 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			}
 			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_PARTNER_SLOT_GROUP) {
 				u->current_order.SetWaitCouplePartnerSlotGroup(order->GetWaitCouplePartnerSlotGroup());
+			}
+			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) &&
+					(mof == MOF_WAIT_COUPLE_POWER_MODE || mof == MOF_WAIT_COUPLE_POWER_VALUE)) {
+				u->current_order.SetWaitCouplePowerMode(order->GetWaitCouplePowerMode());
+				u->current_order.SetWaitCouplePowerValue(order->GetWaitCouplePowerValue());
 			}
 			if (sel_ord == u->cur_real_order_index && u->current_order.IsType(OT_WAIT_COUPLE) && mof == MOF_WAIT_COUPLE_PARTNER_GROUP) {
 				u->current_order.SetWaitCouplePartnerGroup(order->GetWaitCouplePartnerGroup());

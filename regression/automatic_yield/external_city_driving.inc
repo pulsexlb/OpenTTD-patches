@@ -18,7 +18,7 @@ void ExternalConnectionDrivingTick()
  const char*reload=std::getenv("PXP_EXTERNAL_RELOAD");
  static bool setup=false,inside=false,first_done=false,second_done=false,changed=false,approach=false;
  const bool cross=mode.rfind("cross-",0)==0;
- const bool same_city=mode=="city-shared"||mode=="cross-same-city";
+ const bool same_city=mode=="city-shared"||mode=="cross-same-city"||mode=="cross-company";
  static bool first_visible=false,queued_saved=false;
  static TileIndex expected_return=INVALID_TILE;
  static std::vector<Direction> before_directions;
@@ -77,6 +77,7 @@ void ExternalConnectionDrivingTick()
   if(mode=="cross-turn")DemoRequire(CmdManageExternalCityRegion(DoCommandFlag::Execute,DepotID::Invalid(),city_b,ExternalCityOperation::SetBoundary,0,{},ExternalBoundaryID::Invalid(),DiagDirection::SE,0,uint16_t(Map::SizeX()-1)),"assign rotated return boundary");
   assert(GetExternalCityForEntrance(a)==city_a&&GetExternalCityForEntrance(b)==(same_city?city_a:city_b));
   assert(Depot::GetByTile(a)->external_city==ExternalCityID::Invalid());
+  if(mode=="cross-company") SetupSharedExternalPortals(demo_slow, a, b);
   for(uint index=0;index<4;index++){
    Order order;
    if(index%2==0)order.MakeGoToDepot(index==0?da:db,{OrderDepotTypeFlag::PartOfOrders});
@@ -86,6 +87,7 @@ void ExternalConnectionDrivingTick()
   }
   if(cross){
    for(const auto &[index,target]:{std::pair{VehicleOrderID{0},db},std::pair{VehicleOrderID{2},da}}){
+    if(mode=="cross-company") CheckExternalReturnSharing(demo_slow, index, target);
     GameRandomSeedChecker check;
     assert(CmdModifyOrder({},OrderTargetType::Vehicle,demo_slow->index.base(),index,MOF_EXTERNAL_RETURN_DEPOT,target.base(),INVALID_CARGO,{}).Succeeded());
     assert(demo_slow->GetOrder(index)->GetExternalReturnDepot()==DepotID::Invalid()&&check.Check());

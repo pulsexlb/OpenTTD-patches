@@ -43,6 +43,15 @@ struct ExternalCity : ExternalCityPool::PoolItem<&_external_city_pool> {
 	std::array<uint64_t, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO> industry_inputs{}; ///< Accepted raw materials waiting for processing, without a gameplay capacity limit.
 	std::array<uint32_t, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO> industry_month_consumed{}, industry_month_produced{};
 	std::array<uint16_t, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO> industry_remainders{}; ///< Fractional output in units of 1/256.
+	std::array<int32_t, EXTERNAL_CITY_INDUSTRIES * 256> industry_storage{}; ///< Native NewGRF persistent registers, separately owned by each factory.
+	std::array<int32_t, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO> industry_last_delivery{};
+	std::array<uint32_t, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO> industry_previous_produced{};
+	std::array<uint32_t, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO> industry_transported{}, industry_previous_transported{}; ///< Output passed to the external market station this and last month.
+	std::array<uint8_t, EXTERNAL_CITY_INDUSTRIES * INDUSTRY_NUM_OUTPUTS> industry_rates{};
+	std::array<uint8_t, EXTERNAL_CITY_INDUSTRIES> industry_level{}; ///< Zero until the native build callback has run.
+	std::array<int32_t, EXTERNAL_CITY_INDUSTRIES> industry_built{};
+	std::array<CargoType, EXTERNAL_CITY_INDUSTRIES * INDUSTRY_NUM_INPUTS> industry_accepts{};
+	std::array<CargoType, EXTERNAL_CITY_INDUSTRIES * INDUSTRY_NUM_OUTPUTS> industry_products{};
 	uint16_t industry_counter = 0; ///< Native industry-tick phase, preserved across saves and client joins.
 	std::array<uint8_t, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO> industry_recent_supply{}; ///< Remaining AXIS supply cycles, 0..28.
 	std::array<uint8_t, EXTERNAL_CITY_INDUSTRIES> industry_intermediate{}; ///< Undistributed AXIS intermediate output, 0..7.
@@ -83,10 +92,13 @@ bool IsExternalCityPassengerOrMail(CargoType cargo);
 std::pair<uint, uint> GetExternalCityTradeCoverage(const ExternalCity *city);
 void ShowExternalCityEconomyWindow(ExternalCityID city);
 void InitializeExternalCityMarket(ExternalCity *city);
+void TickExternalCityMarketSupply(uint day, uint day_tick, uint month_days);
 void RefillExternalCityMarkets();
 bool ExternalIndustryUsesRecipe(IndustryType type);
 bool ExternalIndustryUsesAxisCokeRecipe(IndustryType type);
 bool ExternalIndustryUsesAxisBlastRecipe(IndustryType type);
+std::span<const CargoType> GetExternalFactoryCargoes(const ExternalCity *city, IndustryType type, bool produced);
+void RandomiseExternalCityProduction();
 void TickExternalCityIndustries(uint production_ticks);
 size_t GetExternalIndustrySlot(const ExternalCity *city, IndustryType type);
 void StoreExternalCityInputs(ExternalCity *city, CargoType cargo, uint amount);

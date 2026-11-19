@@ -395,7 +395,9 @@ uint32_t IndustriesScopeResolver::GetCountAndDistanceOfClosestInstance(uint8_t p
 		case 0x7A: return GetBadgeVariableResult(*this->ro.grffile, GetIndustrySpec(this->type)->badges, parameter);
 
 		/* Get a variable from the persistent storage */
-		case 0x7C: return (this->industry->psa != nullptr) ? this->industry->psa->GetValue(parameter) : 0;
+		case 0x7C:
+			if (!this->external_storage.empty()) return parameter < this->external_storage.size() ? this->external_storage[parameter] : 0;
+			return (this->industry->psa != nullptr) ? this->industry->psa->GetValue(parameter) : 0;
 
 		/* Industry structure access*/
 		case 0x80: return this->industry->location.tile.base();
@@ -481,6 +483,10 @@ uint32_t IndustriesScopeResolver::GetCountAndDistanceOfClosestInstance(uint8_t p
 
 /* virtual */ void IndustriesScopeResolver::StorePSA(uint pos, int32_t value)
 {
+	if (!this->external_storage.empty()) {
+		if (pos < this->external_storage.size()) this->external_storage[pos] = value;
+		return;
+	}
 	if (this->industry->index == IndustryID::Invalid()) return;
 
 	if (this->industry->psa == nullptr) {
@@ -566,9 +572,13 @@ uint32_t IndustriesResolverObject::GetDebugID() const
  * @param tile The tile associated with the callback.
  * @return The callback result.
  */
-uint16_t GetIndustryCallback(CallbackID callback, uint32_t param1, uint32_t param2, Industry *industry, IndustryType type, TileIndex tile)
+uint16_t GetIndustryCallback(CallbackID callback, uint32_t param1, uint32_t param2, Industry *industry, IndustryType type, TileIndex tile, std::span<int32_t> external_storage)
 {
 	IndustriesResolverObject object(tile, industry, type, 0, callback, param1, param2);
+	if (!external_storage.empty()) {
+		object.industries_scope.external_storage = external_storage;
+		object.root_spritegroup = GetIndustrySpec(type)->grf_prop.GetSpriteGroup(true);
+	}
 	return object.ResolveCallback();
 }
 
@@ -647,10 +657,14 @@ static int32_t DerefIndProd(int field, bool use_register)
  * @param ind    the industry this callback has to be called for
  * @param reason the reason it is called (0 = incoming cargo, 1 = periodic tick callback)
  */
-void IndustryProductionCallback(Industry *ind, int reason)
+void IndustryProductionCallback(Industry *ind, int reason, std::span<int32_t> external_storage)
 {
 	const IndustrySpec *spec = GetIndustrySpec(ind->type);
 	IndustriesResolverObject object(ind->location.tile, ind, ind->type);
+	if (!external_storage.empty()) {
+		object.industries_scope.external_storage = external_storage;
+		object.root_spritegroup = spec->grf_prop.GetSpriteGroup(true);
+	}
 	if (spec->behaviour.Test(IndustryBehaviour::ProdCallbackRandom)) object.callback_param1 = Random();
 	int multiplier = 1;
 	if (spec->behaviour.Test(IndustryBehaviour::ProdMultiHandling)) multiplier = ind->prod_level;
@@ -716,7 +730,7 @@ void IndustryProductionCallback(Industry *ind, int reason)
 		SB(object.callback_param2, 24, 8, again);
 	}
 
-	SetWindowDirty(WindowClass::IndustryView, ind->index);
+	if (external_storage.empty()) SetWindowDirty(WindowClass::IndustryView, ind->index);
 }
 
 /**

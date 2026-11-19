@@ -6,7 +6,7 @@ parser=argparse.ArgumentParser(description='Actual external aircraft flights, ca
 parser.add_argument('--build-dir',type=Path,required=True)
 parser.add_argument('--baseset',type=Path,required=True)
 parser.add_argument('--output',type=Path,required=True)
-parser.add_argument('--modes',default='same,cross,heli')
+parser.add_argument('--modes',default='same,cross,shared,heli')
 parser.add_argument('--newgrf-config',type=Path)
 args=parser.parse_args()
 here=Path(__file__).resolve().parent;root=here.parents[1];build=args.build_dir.resolve();out=args.output.resolve();out.mkdir(parents=True,exist_ok=True)

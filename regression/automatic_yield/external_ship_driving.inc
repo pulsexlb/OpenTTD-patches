@@ -56,8 +56,10 @@ void SeaTick(){
   }
   auto result=CmdBuildVehicle(DoCommandFlag::Execute,TileXY(216,41),engine,false,cargo?GetCargoTypeByLabel(CT_COAL):INVALID_CARGO,ClientID::Invalid);SeaRequire(result,"buy native ship");v=Ship::Get(result.GetResultDataWithType().GetOrDefault<VehicleID>(VehicleID::Invalid()));
   SeaRequire(CmdRenameVehicle(DoCommandFlag::Execute,v->index,"Sea subject"),"ship name");assert(v->cargo_type==(cargo?GetCargoTypeByLabel(CT_COAL):GetCargoTypeByLabel(CT_PASSENGERS)));
+  if(mode=="shared") SetupSharedExternalPortals(v, edge, other);
   Order o;o.MakeGoToDepot(Depot::GetByTile(edge)->index,{OrderDepotTypeFlag::PartOfOrders},ONSF_STOP_EVERYWHERE);SeaRequire(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(v->index,VehicleOrderID{0},o)),"external destination");
   SeaRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,v->index.base(),VehicleOrderID{0},MOF_DEPOT_ACTION,DA_EXTERNAL,INVALID_CARGO,{}),"external voyage");
+  if(mode=="shared") CheckExternalReturnSharing(v, VehicleOrderID{0}, Depot::GetByTile(other)->index);
   if(!same)SeaRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,v->index.base(),VehicleOrderID{0},MOF_EXTERNAL_RETURN_DEPOT,Depot::GetByTile(other)->index.base(),INVALID_CARGO,{}),"chosen water return");
   SeaRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,v->index.base(),VehicleOrderID{0},MOF_LOAD,to_underlying(none?OrderLoadType::NoLoad:OrderLoadType::FullLoad),INVALID_CARGO,{}),"loading rule");
   SeaRequire(CmdChangeTimetable(DoCommandFlag::Execute,OrderTargetType::Vehicle,v->index.base(),VehicleOrderID{0},MTF_WAIT_TIME,160,{}),"timetabled city stop");

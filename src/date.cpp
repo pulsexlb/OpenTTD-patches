@@ -531,6 +531,11 @@ void IncreaseCalendarDate()
 
 static void IncreaseEconomyDate()
 {
+ if (!ExternalCity::Iterate().empty() && EconTime::CurDay() != 0) {
+  const uint days = EconTime::UsingWallclockUnits() ? EconTime::DAYS_IN_ECONOMY_WALLCLOCK_MONTH :
+    CalTime::NumberOfDaysInMonth(CalTime::Year{EconTime::CurYear().base()}, EconTime::CurMonth());
+  TickExternalCityMarketSupply(EconTime::CurDay(), EconTime::CurDateFract(), days);
+ }
 	EconTime::Detail::now.econ_date_fract++;
 	if (EconTime::Detail::now.econ_date_fract < DAY_TICKS) return;
 	EconTime::Detail::now.econ_date_fract = 0;

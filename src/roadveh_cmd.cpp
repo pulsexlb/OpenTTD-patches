@@ -2441,7 +2441,7 @@ bool TransferExternalRoadVehicleToEntrance(RoadVehicle *v, DepotID exit_id, Tile
 {
  const Depot *exit = Depot::GetIfValid(exit_id);
  if (v == nullptr || !v->IsInExternalTrip() || exit == nullptr || exit->xy != expected_tile ||
-   !Depot::IsExternalConnection(exit->xy) || !IsRoadDepotTile(exit->xy) || GetTileOwner(exit->xy) != v->owner ||
+   !Depot::IsExternalConnection(exit->xy) || !IsRoadDepotTile(exit->xy) || !IsInfraTileUsageAllowed(v->type, v->owner, exit->xy) ||
    (GetPresentRoadTypes(exit->xy) & v->compatible_roadtypes).None()) return false;
  const TileIndex origin = v->tile;
  if (!Depot::IsExternalConnection(origin)) return false;

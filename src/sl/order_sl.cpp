@@ -167,6 +167,8 @@ NamedSaveLoadTable GetOrderExtraInfoDescription()
 		/* Wait-for-couple criteria restricting the approaching train, added with feature version 1. */
 		NSL("wait_couple_slot", SLE_CONDVAR_X(OrderExtraInfo, wait_couple_slot, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_WAIT_COUPLE_CRITERIA))),
 		NSL("wait_couple_slot_group", SLE_CONDVAR_X(OrderExtraInfo, wait_couple_slot_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_WAIT_COUPLE_CRITERIA))),
+		NSL("wait_couple_power_mode", SLE_CONDVAR_X(OrderExtraInfo, wait_couple_power_mode, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_WAIT_COUPLE_CRITERIA, 2))),
+		NSL("wait_couple_power_hp", SLE_CONDVAR_X(OrderExtraInfo, wait_couple_power_hp, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_WAIT_COUPLE_CRITERIA, 2))),
 		NSL("wait_couple_group", SLE_CONDVAR_X(OrderExtraInfo, wait_couple_group, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_WAIT_COUPLE_CRITERIA))),
 	};
 

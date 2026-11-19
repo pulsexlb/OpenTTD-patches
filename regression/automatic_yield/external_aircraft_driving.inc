@@ -19,7 +19,7 @@ void FlightTick()
 {
  if (_exit_game || HasModalProgress() || _generating_world) return;
  const std::string mode=std::getenv("PXP_FLIGHT_MODE"),dist=std::getenv("PXP_FLIGHT_DIST");
- const bool reload=std::getenv("PXP_FLIGHT_RELOAD"),cross=mode=="cross",removed=mode=="removed",closed=mode=="closed",unavailable=mode=="unavailable",heli=mode=="heli";
+ const bool reload=std::getenv("PXP_FLIGHT_RELOAD"),shared=mode=="shared",cross=mode=="cross"||shared,removed=mode=="removed",closed=mode=="closed",unavailable=mode=="unavailable",heli=mode=="heli";
  const bool retarget=mode=="retarget",retarget_airborne=mode=="retarget-airborne",retarget_outside=mode=="retarget-outside";
  static Aircraft *v=nullptr;static bool ready=false,saved[4]={},seen=false,returned=false,loaded=false,taxi=false,takeoff=false,paid=false;
  static bool airport_changed=false;static uint closed_ticks=0, missing_ticks=0;static uint ticks=0,deliveries=0;static int previous=-1;static StateTicks stopped=INVALID_STATE_TICKS;static Money previous_profit{};
@@ -32,7 +32,12 @@ void FlightTick()
   _game_mode=GameMode::Normal;auto *company=DoStartupNewCompany(DSNC_NONE);company->money=10000000;company->current_loan=0;_current_company=_local_company;SetLocalCompany(company->index);_current_company=company->index;_pause_mode={};
   _settings_game.vehicle.external_connections=true;_settings_game.vehicle.external_boundary_editing=true;_settings_game.vehicle.never_expire_vehicles=true;
   _settings_game.vehicle.plane_crashes=0;
-  for(uint x:{40U,90U}) FlightRequire(CmdBuildAirport(DoCommandFlag::Execute,TileXY(x,40),heli?AT_HELISTATION:AT_LARGE,0,INVALID_AIRTYPE,DiagDirection::NE,StationID::Invalid(),false),"native airport");
+  Company *operator_company = shared ? DoStartupNewCompany(DSNC_NONE) : company;
+  operator_company->money = 10000000;
+  for(uint x:{40U,90U}) {
+   AutoRestoreBackup builder(_current_company, (x == 90 ? operator_company : company)->index);
+   FlightRequire(CmdBuildAirport(DoCommandFlag::Execute,TileXY(x,40),heli?AT_HELISTATION:AT_LARGE,0,INVALID_AIRTYPE,DiagDirection::NE,StationID::Invalid(),false),"native airport");
+  }
   auto *home=Station::GetByTile(TileXY(40,40)),*other=Station::GetByTile(TileXY(90,40));assert(home&&other&&home->airport.hangar);
   for(auto *st:{home,other}){st->RecomputeCatchment();UpdateStationAcceptance(st,false);}
   FlightRequire(CmdManageExternalCity(DoCommandFlag::Execute,DepotID::Invalid(),ExternalCityID::Invalid(),ExternalCityOperation::Create,1,"External flight city"),"city");
@@ -54,6 +59,13 @@ void FlightTick()
   Order order;order.MakeExternalFlight(ExternalCity::Get(city)->market_station);
   fprintf(flight_log,"ORDER marker=%u market=%u city=%u boundary=%u refit=%u raw=%u type=%u\n",order.IsExternalFlightOrder(),ExternalCity::Get(city)->market_station.base(),GetExternalOrderCity(order).base(),GetExternalFlightBoundary(GetExternalOrderCity(order),v->tile).base(),order.IsRefit(),order.GetRefitCargo(),uint(v->type));fflush(flight_log);FlightRequire(CmdInsertOrder(DoCommandFlag::Execute,InsertOrderCmdData(v->index,VehicleOrderID{0},order)),"flight order");
   FlightRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,v->index.base(),VehicleOrderID{0},MOF_LOAD,to_underlying(OrderLoadType::FullLoad),INVALID_CARGO,{}),"external loading");
+  if(shared) {
+   bool &sharing = _settings_game.economy.infrastructure_sharing[to_underlying(VehicleType::Aircraft)];
+   sharing = false;
+   assert(other->owner != v->owner);
+   assert(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,v->index.base(),VehicleOrderID{0},MOF_EXTERNAL_RETURN_DEPOT,other->index.base(),INVALID_CARGO,{}).Failed());
+   sharing = true;
+  }
   if(cross||removed)FlightRequire(CmdModifyOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,v->index.base(),VehicleOrderID{0},MOF_EXTERNAL_RETURN_DEPOT,other->index.base(),INVALID_CARGO,{}),"return airport");
   FlightRequire(CmdChangeTimetable(DoCommandFlag::Execute,OrderTargetType::Vehicle,v->index.base(),VehicleOrderID{0},MTF_WAIT_TIME,160,{}),"external timetable");
   order.Free();order.MakeGoToStation(cross?other->index:home->index);order.SetStopLocation(OrderStopLocation::FarEnd);order.SetLoadType(OrderLoadType::NoLoad);

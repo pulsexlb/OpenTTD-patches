@@ -28,7 +28,7 @@ shutil.copy2(here/'regression.cfg',out/'test.cfg')
 (out/'build-identity.json').write_text(json.dumps({'production_executable_sha256':hashlib.sha256((b/'runtime/openttd.exe').read_bytes()).hexdigest(),'suite':a.suite},indent=2),encoding='utf8')
 results=[]
 for distribution in ['manual','asymmetric']:
- for mode in (['same','cross','truck','removed','blocked','rotated'] if a.suite=='road' else ['chain']):
+ for mode in (['same','cross','shared','truck','removed','blocked','rotated'] if a.suite=='road' else ['chain']):
   start=out/(distribution+'-'+mode);start.mkdir(exist_ok=True)
   for phase in (['new','0','1','2'] if a.suite=='road' else ['new','input','output']):
    folder=start if phase=='new' else start/('reload-'+phase);folder.mkdir(exist_ok=True)

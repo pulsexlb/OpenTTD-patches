@@ -2794,7 +2794,7 @@ bool Vehicle::BeginExternalTrip()
 {
 	if (!_settings_game.vehicle.external_connections || (this->type != VehicleType::Train && this->type != VehicleType::Road && this->type != VehicleType::Ship) ||
 			!this->current_order.IsExternalTripOrder() || !this->current_order.GetDepotOrderType().Test(OrderDepotTypeFlag::PartOfOrders) ||
-			!IsExternalPortal(this->tile)) return false;
+			!IsExternalPortal(this->tile) || !IsInfraTileUsageAllowed(this->type, this->owner, this->tile)) return false;
 	/* A vehicle may turn through another entrance at a dead end. Only the
 	 * explicitly ordered entrance starts the off-map journey, including trains. */
 	if (this->dest_tile != this->tile) return false;
@@ -2834,7 +2834,7 @@ void Vehicle::StartExternalJourney(const ExternalCity *city)
 	this->external_cruise_speed = std::max(1, std::min(this->GetDisplayMaxSpeed(), int(this->current_order.GetMaxSpeed())));
 	const uint64_t leg = ExternalTravelTicks(this->external_distance_tiles, this->external_cruise_speed, this->type);
 	const uint64_t stop = this->current_order.IsWaitTimetabled() ? this->current_order.GetTimetabledWait() :
-		uint64_t(city == nullptr ? _settings_game.vehicle.external_stop_minutes : city->stop_minutes) * std::max<uint>(1, _settings_time.ticks_per_minute);
+		uint64_t(city == nullptr ? _settings_game.vehicle.external_stop_minutes : city->stop_minutes) * std::max<uint>(1, _settings_game.game_time.ticks_per_minute);
 	this->external_arrival_tick = _state_ticks + StateTicksDelta{int64_t(leg)};
 	this->external_departure_tick = this->external_arrival_tick + StateTicksDelta{int64_t(stop)};
 	this->external_return_tick = this->external_departure_tick + StateTicksDelta{int64_t(leg)};
@@ -2852,7 +2852,15 @@ uint64_t Vehicle::ExternalTravelTicks(uint16_t distance, uint16_t speed, Vehicle
 	 * Trains advance twice per state tick. Do not equate tiles with kilometres. */
 	if (type == VehicleType::Aircraft) return CeilDiv(uint64_t(distance) * TILE_SIZE * 256 * std::max<uint>(1, _settings_game.vehicle.plane_speed), uint64_t(2) * std::max<uint>(1, speed));
 	const uint advance = (type == VehicleType::Road || type == VehicleType::Ship) ? GetAdvanceSpeed(2 * uint(speed)) : 2 * GetAdvanceSpeed(speed);
-	return CeilDiv(uint64_t(distance) * TILE_SIZE * 192, uint64_t(std::max(1U, advance)));
+	uint64_t progress = uint64_t(distance) * TILE_SIZE * 192;
+	uint64_t rate = std::max(1U, advance);
+	if (type == VehicleType::Train && _settings_game.game_time.time_in_minutes) {
+		/* Express the native travel time at the default clock rate in game minutes,
+		 * then schedule it on the shared game clock. Round only the final deadline. */
+		progress *= std::max<uint>(1, _settings_game.game_time.ticks_per_minute);
+		rate *= 74;
+	}
+	return CeilDiv(progress, rate);
 }
 ExternalTripPhase Vehicle::GetExternalTripPhase() const
 {
@@ -2885,8 +2893,9 @@ bool Vehicle::TickExternalTrip()
 			LinkRefresher::Run(this, true, false);
 			if (this->current_order.IsWaitTimetabled()) {
 				const int64_t wait = std::max<int64_t>(0, int64_t(this->current_order.GetTimetabledWait()) - this->lateness_counter);
+				const auto return_leg = this->external_return_tick - this->external_departure_tick;
 				this->external_departure_tick = _state_ticks + StateTicksDelta{wait};
-				this->external_return_tick = this->external_departure_tick + StateTicksDelta{int64_t(ExternalTravelTicks(this->external_distance_tiles, this->external_cruise_speed, this->type))};
+				this->external_return_tick = this->external_departure_tick + return_leg;
 			}
 			InvalidateWindowData(WindowClass::VehicleView, this->index);
 			InvalidateWindowClassesData(WindowClass::ExternalEntrance);

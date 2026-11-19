@@ -104,6 +104,16 @@ static const SaveLoad _external_city_desc[] = {
  SLE_ARR(ExternalCity, industry_month_consumed, VarTypes::U32, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO),
  SLE_ARR(ExternalCity, industry_month_produced, VarTypes::U32, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO),
  SLE_ARR(ExternalCity, industry_remainders, VarTypes::U16, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO),
+ SLE_ARR(ExternalCity, industry_storage, VarTypes::I32, EXTERNAL_CITY_INDUSTRIES * 256),
+ SLE_ARR(ExternalCity, industry_last_delivery, VarTypes::I32, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO),
+ SLE_ARR(ExternalCity, industry_previous_produced, VarTypes::U32, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO),
+ SLE_ARR(ExternalCity, industry_transported, VarTypes::U32, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO),
+ SLE_ARR(ExternalCity, industry_previous_transported, VarTypes::U32, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO),
+ SLE_ARR(ExternalCity, industry_rates, VarTypes::U8, EXTERNAL_CITY_INDUSTRIES * INDUSTRY_NUM_OUTPUTS),
+ SLE_ARR(ExternalCity, industry_level, VarTypes::U8, EXTERNAL_CITY_INDUSTRIES),
+ SLE_ARR(ExternalCity, industry_built, VarTypes::I32, EXTERNAL_CITY_INDUSTRIES),
+ SLE_ARR(ExternalCity, industry_accepts, VarTypes::U8, EXTERNAL_CITY_INDUSTRIES * INDUSTRY_NUM_INPUTS),
+ SLE_ARR(ExternalCity, industry_products, VarTypes::U8, EXTERNAL_CITY_INDUSTRIES * INDUSTRY_NUM_OUTPUTS),
  SLE_VAR(ExternalCity, industry_counter, VarTypes::U16),
  SLE_ARR(ExternalCity, industry_recent_supply, VarTypes::U8, EXTERNAL_CITY_INDUSTRIES * NUM_CARGO),
  SLE_ARR(ExternalCity, industry_intermediate, VarTypes::U8, EXTERNAL_CITY_INDUSTRIES),
@@ -131,6 +141,10 @@ struct EXCTChunkHandler : ChunkHandler {
 			ExternalCity *city = ExternalCity::CreateAtIndex(ExternalCityID{uint16_t(index)});
 			SlObject(city, table);
    for (IndustryType type : city->industry_types) if (type != IT_INVALID && type >= NUM_INDUSTRYTYPES) SlErrorCorrupt("Invalid external industry");
+   for (uint level : city->industry_level) if (level != 0 && (level < 4 || level > 128)) SlErrorCorrupt("Invalid external industry production level");
+   for (const auto &cargoes : {std::span<const CargoType>(city->industry_accepts), std::span<const CargoType>(city->industry_products)}) {
+    for (CargoType cargo : cargoes) if (cargo != INVALID_CARGO && cargo >= NUM_CARGO) SlErrorCorrupt("Invalid external industry cargo");
+   }
    for (uint fraction : city->industry_remainders) if (fraction >= 256) SlErrorCorrupt("Invalid external industry fraction");
    for (uint cycles : city->industry_recent_supply) if (cycles > 28) SlErrorCorrupt("Invalid external industry supply history");
    for (uint role : city->trade_cargo_roles) if (role > 2) SlErrorCorrupt("Invalid external city trade cargo role");

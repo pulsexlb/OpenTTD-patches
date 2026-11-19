@@ -26,3 +26,4 @@ extern bool ValidateVehicleTileHash(const Vehicle *v);
 #include "core/random_func.hpp"
 #include "core/checksum_func.hpp"
 #include "tracerestrict_cmd.h"
+#include "external_shared_portals.h"

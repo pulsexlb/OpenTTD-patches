@@ -124,6 +124,8 @@ struct OrderExtraInfo {
 	uint16_t rv_transport_dest_station = 0;   ///< Reserved: a dropped criterion ("the first station the candidate declares for unloading"), kept so that savegames written with feature version 2 still load.
 	uint16_t wait_couple_slot = 0;           ///< Wait-for-couple: trace restrict slot the approaching train must hold, slot id + 1 (0 = any).
 	uint16_t wait_couple_slot_group = 0;     ///< Wait-for-couple: trace restrict slot group the approaching train must hold a slot of, group id + 1 (0 = any).
+	WaitCouplePowerMode wait_couple_power_mode = WaitCouplePowerMode::Any;
+	uint16_t wait_couple_power_hp = 0;
 	uint16_t wait_couple_group = 0;          ///< Wait-for-couple: vehicle group the approaching train must belong to, group id + 1 (0 = any).
 };
 
@@ -1071,6 +1073,31 @@ public:
 		if (group == TraceRestrictSlotGroupID::Invalid() && !this->extra) return;
 		this->CheckExtraInfoAlloced();
 		this->extra->wait_couple_slot_group = group == TraceRestrictSlotGroupID::Invalid() ? 0 : group.base() + 1;
+	}
+
+	WaitCouplePowerMode GetWaitCouplePowerMode() const { return this->extra ? this->extra->wait_couple_power_mode : WaitCouplePowerMode::Any; }
+	uint16_t GetWaitCouplePowerValue() const { return this->extra ? this->extra->wait_couple_power_hp : 0; }
+	void SetWaitCouplePowerMode(WaitCouplePowerMode mode)
+	{
+		if (!this->extra && mode == WaitCouplePowerMode::Any) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->wait_couple_power_mode = mode;
+	}
+	void SetWaitCouplePowerValue(uint16_t hp)
+	{
+		if (!this->extra && hp == 0) return;
+		this->CheckExtraInfoAlloced();
+		this->extra->wait_couple_power_hp = hp;
+	}
+	bool MatchesWaitCouplePower(uint32_t hp) const
+	{
+		switch (this->GetWaitCouplePowerMode()) {
+			case WaitCouplePowerMode::Any: return true;
+			case WaitCouplePowerMode::Greater: return hp > this->GetWaitCouplePowerValue();
+			case WaitCouplePowerMode::Less: return hp < this->GetWaitCouplePowerValue();
+			case WaitCouplePowerMode::Equal: return hp == this->GetWaitCouplePowerValue();
+			default: return false;
+		}
 	}
 
 	/** Does the wait-for-couple order require the approaching train to belong to a specific vehicle group? */

@@ -4671,8 +4671,8 @@ public:
 	{
 		text_colour = TextColour::FromString;
 		if (v->IsInExternalTrip() || v->Primary()->external_return_pending) {
-			const auto remaining = std::max<int64_t>(0, (v->Primary()->external_return_tick - _state_ticks).base());
-			const int64_t seconds = CeilDiv(remaining * 60, int64_t(std::max<uint>(1, _settings_time.ticks_per_minute)));
+			const auto remaining = v->IsInExternalTrip() ? std::max<int64_t>(0, (v->Primary()->external_return_tick - _state_ticks).base()) : 0;
+			const int64_t seconds = CeilDiv(remaining * 60, int64_t(std::max<uint>(1, _settings_game.game_time.ticks_per_minute)));
 			return GetString(STR_EXTERNAL_STATUS_TIME, GetExternalTripStatus(v), seconds / 60, seconds % 60);
 		}
 
@@ -5220,7 +5220,7 @@ public:
 		int64_t seconds = -1;
 		if (v->IsInExternalTrip()) {
 			const auto remaining = std::max<int64_t>(0, (v->Primary()->external_return_tick - _state_ticks).base());
-			seconds = CeilDiv(remaining * 60, int64_t(std::max<uint>(1, _settings_time.ticks_per_minute)));
+			seconds = CeilDiv(remaining * 60, int64_t(std::max<uint>(1, _settings_game.game_time.ticks_per_minute)));
 		}
 		if (seconds != this->external_seconds_shown || v->GetExternalTripPhase() != this->external_phase_shown) {
 			this->external_seconds_shown = seconds;

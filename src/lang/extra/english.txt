@@ -2771,6 +2771,14 @@ STR_ORDER_WAIT_COUPLE_MORE_BUTTON                                  :{BLACK}More 
 STR_ORDER_WAIT_COUPLE_MORE_TOOLTIP                                 :{BLACK}Further wait-for-coupling criteria: locomotive type and diagnostics
 STR_ORDER_WAIT_COUPLE_OPTIONS_CAPTION                              :{WHITE}Wait-for-coupling criteria
 
+STR_WAIT_COUPLE_POWER_LABEL :Approaching train power
+STR_WAIT_COUPLE_POWER_ANY :Any
+STR_WAIT_COUPLE_POWER_GREATER :Greater than
+STR_WAIT_COUPLE_POWER_LESS :Less than
+STR_WAIT_COUPLE_POWER_EQUAL :Equal to
+STR_WAIT_COUPLE_POWER_VALUE :{COMMA} hp
+STR_WAIT_COUPLE_POWER_QUERY :Enter power in horsepower (0–65,535)
+STR_WAIT_COUPLE_POWER_MISMATCH :Approaching train does not meet the power requirement
 STR_WAIT_COUPLE_TRACTION_BUTTON                                    :Locomotive type
 STR_WAIT_COUPLE_TRACTION_TOOLTIP                                   :{BLACK}Choose which locomotive types can couple to this waiting train
 STR_WAIT_COUPLE_TRACTION_ANY                                       :Any type
@@ -2873,7 +2881,7 @@ STR_EXTERNAL_TRIP_SETTINGS_HELP :{BLACK}Return through the original entrance, or
 STR_EXTERNAL_RETURN_INCOMPATIBLE :The return entrance has an incompatible railway type.
 STR_EXTERNAL_UNASSIGNED_CITY :Unassigned city
 STR_EXTERNAL_RETURN_PICK :Choose exit on map...
-STR_EXTERNAL_RETURN_PICK_INVALID :Choose a highlighted exit in the same city, owned by this company, with compatible track.
+STR_EXTERNAL_RETURN_PICK_INVALID :Choose a highlighted, compatible exit in this city that your company can use.
 STR_EXTERNAL_ENTRANCE_LIST_HELP :{BLACK}Trains leaving or returning through this entrance, sorted by expected return. Click to open a vehicle; service numbers can be changed in its external journey order.
 STR_EXTERNAL_ENTRANCE_LIST_EMPTY :No associated off-map vehicles
 STR_EXTERNAL_LIST_IDENTITY :{RAW_STRING} | {RAW_STRING}
@@ -2933,11 +2941,11 @@ STR_EXTERNAL_CARGO_LOAD_CAPTION :{WHITE}External city: per-cargo loading
 STR_EXTERNAL_CARGO_UNLOAD_CAPTION :{WHITE}External city: per-cargo unloading
 
 STR_EXTERNAL_PRODUCTION_ABSTRACT :Abstract NewGRF market: fixed monthly supply; special production callbacks are not simulated
-STR_EXTERNAL_PRODUCTION_RECIPE :Fixed industry recipe from active definitions; monthly processing; finished stock is shared across the city
-STR_EXTERNAL_PRODUCTION_AXIS_COKE :AXIS coke oven: 8 coal -> 6 coke + 1 coal tar + 1 sulphur; monthly processing (up to 256 coal); other GRF callbacks are not simulated
-STR_EXTERNAL_PRODUCTION_FULL :Finished-goods store full; production paused, inputs retained
-STR_EXTERNAL_PRODUCTION_READY :Inputs in storage; processing at the next economic month
-STR_EXTERNAL_PRODUCTION_RAW :Raw-material industry: monthly production
+STR_EXTERNAL_PRODUCTION_RECIPE :Uses the active industry production rules and the shared city stock
+STR_EXTERNAL_PRODUCTION_AXIS_COKE :AXIS coke oven: production follows the active NewGRF
+STR_EXTERNAL_PRODUCTION_FULL :Shared export store full
+STR_EXTERNAL_PRODUCTION_READY :Inputs in storage
+STR_EXTERNAL_PRODUCTION_RAW :Produces on the industry cycle
 STR_EXTERNAL_PRODUCTION_MISSING :Waiting for raw-material deliveries
 STR_EXTERNAL_PRODUCTION_MONTH :This industry produced this month: {CARGO_LONG}
 STR_EXTERNAL_PRODUCTION_INPUT :Raw materials awaiting processing: {CARGO_LONG}
@@ -2966,7 +2974,7 @@ STR_EXTERNAL_FLIGHT_RETURN_HOME :Return to departure airport (default)
 STR_EXTERNAL_FLIGHT_DESTINATION :Destination city
 STR_EXTERNAL_FLIGHT_DESTINATION_HELP :Click to change the destination of the selected external flight. Loading, timetable and return airport settings are preserved. A journey already outside finishes at its original city; the new city applies next time.
 STR_EXTERNAL_FLIGHT_RETURN_PICK :Choose airport on map...
-STR_EXTERNAL_FLIGHT_RETURN_PICK_INVALID :Click an airport belonging to your company that can handle this aircraft.
+STR_EXTERNAL_FLIGHT_RETURN_PICK_INVALID :Click an airport this aircraft is allowed to use and can land at.
 STR_EXTERNAL_FLIGHT_RETURN_SUFFIX : [Return: {STATION}]
 
 STR_EXTERNAL_CITY_VEHICLES :Vehicles outside the map
@@ -2986,7 +2994,7 @@ STR_ORDER_STOP_REFIT_FIXED :{BLACK}Auto-refit: {STRING}
 STR_ORDER_STOP_REFIT_OFF_OPTION :{BLACK}Do not refit
 STR_ORDER_STOP_REFIT_HELP :{BLACK}Choose automatic refitting at this stop: off, available cargo, or a specific cargo. Only cargo types permitted by the vehicle NewGRF and the order's loading rules are used.
 
-STR_EXTERNAL_PRODUCTION_AXIS_COKE_TWO :AXIS coke oven: 8 coal -> 6 coke + 2 sulphur; monthly processing (up to 256 coal); other GRF callbacks are not simulated
+STR_EXTERNAL_PRODUCTION_AXIS_COKE_TWO :AXIS coke oven: production follows the active NewGRF
 STR_EXTERNAL_PRODUCTION_AXIS_BLAST :AXIS blast furnace: produces on delivery; recent ore, coke and limestone supplies raise the yield; other GRF callbacks are not simulated
 STR_EXTERNAL_PRODUCTION_RECENT :Recent supply: {NUM} industry cycles remaining
 STR_EXTERNAL_PRODUCTION_PENDING :Finished goods awaiting market space: {CARGO_LONG}
@@ -2999,7 +3007,7 @@ STR_EXTERNAL_ECONOMY_OUTPUT_LIST :Collect here: {RAW_STRING}
 STR_EXTERNAL_TRADE_NAME :Reciprocal trade
 STR_EXTERNAL_TRADE_CREDIT :Shared industrial collection allowance: {NUM} units
 STR_EXTERNAL_TRADE_RULE :Any demanded freight can unlock every supply; passengers/mail are exempt
-STR_EXTERNAL_TRADE_CAP :Stock limit: {NUM} units per supplied cargo; replenished monthly
+STR_EXTERNAL_TRADE_CAP :Stock limit: {NUM} units per supplied cargo; replenished gradually throughout the economy month
 STR_CONFIG_EXTERNAL_ECONOMY_MODE :External city economy: {STRING}
 STR_CONFIG_EXTERNAL_ECONOMY_MODE_HELP :Only applies to new external cities. In industry mode, local industries determine imports and exports. In reciprocal trade, each city starts with fixed, randomly chosen imports and exports. Any company can deliver requested freight to earn shared credit or spend it at any entrance on any export in stock. The more requested types supplied last economy month, the more credit each unit earns this month. Even one type earns credit. Supply all types to earn one unit per unit delivered next month. Passengers and mail travel as usual.
 STR_CONFIG_EXTERNAL_ECONOMY_INDUSTRY :Industry supply and demand

@@ -14,6 +14,8 @@
 #include "gfx_func.h"
 #include "cargotype.h"
 #include "industrytype.h"
+#include "industry.h"
+#include "newgrf_industries.h"
 #include "newgrf.h"
 #include "newgrf_config.h"
 #include "core/random_func.hpp"
@@ -58,6 +60,16 @@ bool IsExternalCityPassengerOrMail(CargoType cargo)
  return spec->classes.Test(CargoClass::Passengers) || spec->classes.Test(CargoClass::Mail) ||
    spec->town_production_effect == TownProductionEffect::Passengers || spec->town_production_effect == TownProductionEffect::Mail;
 }
+std::span<const CargoType> GetExternalFactoryCargoes(const ExternalCity *city, IndustryType type, bool produced)
+{
+ const auto *spec = GetIndustrySpec(type);
+ const size_t slot = GetExternalIndustrySlot(city, type);
+ if (slot < EXTERNAL_CITY_INDUSTRIES && city->industry_level[slot] != 0) {
+  if (produced && spec->callback_mask.Test(IndustryCallbackMask::OutputCargoTypes)) return std::span(city->industry_products).subspan(slot * INDUSTRY_NUM_OUTPUTS, INDUSTRY_NUM_OUTPUTS);
+  if (!produced && spec->callback_mask.Test(IndustryCallbackMask::InputCargoTypes)) return std::span(city->industry_accepts).subspan(slot * INDUSTRY_NUM_INPUTS, INDUSTRY_NUM_INPUTS);
+ }
+ return produced ? std::span<const CargoType>(spec->produced_cargo) : std::span<const CargoType>(spec->accepts_cargo);
+}
 ExternalCityEconomy GetExternalCityEconomy(ExternalCityID id)
 {
  ExternalCityEconomy result;
@@ -98,9 +110,8 @@ ExternalCityEconomy GetExternalCityEconomy(ExternalCityID id)
  for (size_t i = 0; i < std::min<size_t>(EXTERNAL_CITY_INDUSTRIES, candidates.size()); ++i) {
   const auto type = candidates[i].second;
   result.industries.push_back(type);
-  const auto *spec = GetIndustrySpec(type);
-  result.produced |= cargoes(spec->produced_cargo);
-  result.accepted |= cargoes(spec->accepts_cargo);
+  result.produced |= cargoes(GetExternalFactoryCargoes(city, type, true));
+  result.accepted |= cargoes(GetExternalFactoryCargoes(city, type, false));
  }
  for (const CargoSpec *cargo : CargoSpec::Iterate()) {
   if (cargo->town_production_effect == TownProductionEffect::Passengers || cargo->town_production_effect == TownProductionEffect::Mail) result.town_produced.Set(cargo->Index());
@@ -259,18 +270,7 @@ bool ExternalIndustryUsesAxisBlastRecipe(IndustryType type)
 
 bool ExternalIndustryUsesRecipe(IndustryType type)
 {
- if (ExternalIndustryUsesAxisCokeRecipe(type) || ExternalIndustryUsesAxisBlastRecipe(type)) return true;
- if (type >= NUM_INDUSTRYTYPES) return false;
- const auto *spec = GetIndustrySpec(type);
- /* Use the active definition rather than a GRF name or original industry ID.
-  * Presentation callbacks do not change fixed cargo/production properties.
-  * Everything else requires an actual industry context (including persistent
-  * storage and map position), which a city market cannot safely impersonate. */
- constexpr IndustryCallbackMasks presentation{
-  IndustryCallbackMask::CargoSuffix, IndustryCallbackMask::FundMoreText,
-  IndustryCallbackMask::WindowMoreText, IndustryCallbackMask::SpecialEffect,
-  IndustryCallbackMask::DecideColour};
- return spec->enabled && (spec->callback_mask & ~presentation).None();
+ return type < NUM_INDUSTRYTYPES && GetIndustrySpec(type)->enabled;
 }
 size_t GetExternalIndustrySlot(const ExternalCity *city, IndustryType type)
 {
@@ -278,6 +278,10 @@ size_t GetExternalIndustrySlot(const ExternalCity *city, IndustryType type)
  return size_t(it - city->industry_types.begin());
 }
 static void DeliverExternalBlastInput(ExternalCity *city, size_t slot, const CargoArray &amounts);
+static void ProcessExternalInputs(ExternalCity *city, Station *station, size_t slot);
+enum class FactoryEvent { Initialize, Delivery, ProductionTick, MonthlyChange, RandomChange };
+static void RunExternalProductionCallback(ExternalCity *city, Station *station, size_t slot, FactoryEvent event);
+static void InitializeExternalFactoryCallbacks(ExternalCity *city, Station *station);
 void StoreExternalCityInputs(ExternalCity *city, CargoType cargo, uint amount)
 {
  CargoArray amounts{}; amounts[cargo] = amount;
@@ -314,6 +318,7 @@ void StoreExternalCityInputs(ExternalCity *city, const CargoArray &amounts)
  /* Receipt is independent of production speed or finished-goods capacity.
   * Share each delivery between eligible recipes in stable slot order; retain
   * all raw materials until processing. Town/abstract-market cargo is consumed. */
+ InitializeExternalFactoryCallbacks(city, Station::GetIfValid(city->market_station));
  std::array<CargoArray, EXTERNAL_CITY_INDUSTRIES> deliveries{};
  for (CargoType cargo : EnumRange(NUM_CARGO)) {
  const uint amount = amounts[cargo];
@@ -323,28 +328,33 @@ void StoreExternalCityInputs(ExternalCity *city, const CargoArray &amounts)
  for (size_t slot = 0; slot < EXTERNAL_CITY_INDUSTRIES; ++slot) {
   const IndustryType type = city->industry_types[slot];
   if (!ExternalIndustryUsesRecipe(type)) continue;
-  const auto *spec = GetIndustrySpec(type);
-  if (std::ranges::find(spec->accepts_cargo, cargo) == spec->accepts_cargo.end()) continue;
+  const auto inputs = GetExternalFactoryCargoes(city, type, false);
+  if (std::ranges::find(inputs, cargo) == inputs.end()) continue;
   receivers[count++] = slot;
  }
  for (size_t i = 0; i < count; ++i) {
   const size_t slot = receivers[i];
   const uint share = amount / count + (i < amount % count);
-  if (ExternalIndustryUsesAxisBlastRecipe(city->industry_types[slot])) deliveries[slot][cargo] = share;
-  else city->industry_inputs[ExternalIndustryCargoIndex(slot, cargo)] += share;
+  deliveries[slot][cargo] = share;
+  if (share != 0) city->industry_last_delivery[ExternalIndustryCargoIndex(slot, cargo)] = EconTime::CurDate().base();
  }
  }
+ Station *station = Station::GetIfValid(city->market_station);
  for (size_t slot = 0; slot < EXTERNAL_CITY_INDUSTRIES; ++slot) {
-  if (ExternalIndustryUsesAxisBlastRecipe(city->industry_types[slot])) DeliverExternalBlastInput(city, slot, deliveries[slot]);
+  if (std::ranges::none_of(deliveries[slot], [](uint amount) { return amount != 0; })) continue;
+  const IndustryType type = city->industry_types[slot];
+  if (ExternalIndustryUsesAxisBlastRecipe(type)) {
+   DeliverExternalBlastInput(city, slot, deliveries[slot]);
+   continue;
+  }
+  for (CargoType cargo : EnumRange(NUM_CARGO)) city->industry_inputs[ExternalIndustryCargoIndex(slot, cargo)] += deliveries[slot][cargo];
+  const auto callbacks = GetIndustrySpec(type)->callback_mask;
+  if (callbacks.Test(IndustryCallbackMask::ProductionCargoArrival)) {
+   RunExternalProductionCallback(city, station, slot, FactoryEvent::Delivery);
+  } else if (!callbacks.Test(IndustryCallbackMask::Production256Ticks)) {
+   ProcessExternalInputs(city, station, slot);
+  }
  }
-}
-static CargoTypes ExternalAbstractSupply(const ExternalCityEconomy &profile)
-{
- CargoTypes result = profile.town_produced;
- for (IndustryType type : profile.industries) if (!ExternalIndustryUsesRecipe(type)) {
-  for (CargoType cargo : GetIndustrySpec(type)->produced_cargo) if (cargo < NUM_CARGO && CargoSpec::Get(cargo)->IsValid()) result.Set(cargo);
- }
- return result;
 }
 static void ConfigureExternalCityEconomy(ExternalCity *city)
 {
@@ -377,7 +387,7 @@ void InitializeExternalCityMarket(ExternalCity *city)
   return; // Existing saves retain every unit; never invent past inputs or production.
  }
  const auto profile = GetExternalCityEconomy(city->index);
- for (CargoType cargo : city->exchange_market ? profile.produced : ExternalAbstractSupply(profile)) city->stock[cargo] = 512;
+ for (CargoType cargo : city->exchange_market ? profile.produced : profile.town_produced) city->stock[cargo] = 512;
  city->market_initialized = true;
  city->month_supply = city->stock; city->month_demand = city->demand; city->statistics_initialized = true;
 }
@@ -424,20 +434,21 @@ void GenerateExternalCities()
  EnsureExternalCityMarkets();
 }
 
-static uint PublishExternalProduction(ExternalCity *city, Station *station, CargoType cargo, uint amount)
+static uint PublishExternalProduction(ExternalCity *city, Station *station, CargoType cargo, uint amount, size_t slot = EXTERNAL_CITY_INDUSTRIES)
 {
  amount = std::min<uint>(amount, 4096 - std::min<uint>(4096, city->stock[cargo]));
  const uint added = station == nullptr ? amount : AddExternalSupply(city, station, cargo, amount);
  city->stock[cargo] += added; city->month_supply[cargo] += added;
+ if (slot < EXTERNAL_CITY_INDUSTRIES) city->industry_transported[ExternalIndustryCargoIndex(slot, cargo)] += added;
  return added;
 }
-static void FlushExternalBlastOutput(ExternalCity *city, Station *station, size_t slot)
+static void FlushExternalIndustryOutput(ExternalCity *city, Station *station, size_t slot)
 {
  for (CargoType cargo : GetIndustrySpec(city->industry_types[slot])->produced_cargo) {
   if (cargo >= NUM_CARGO) continue;
   auto &pending = city->industry_pending_output[ExternalIndustryCargoIndex(slot, cargo)];
   if (pending == 0) continue;
-  const uint added = PublishExternalProduction(city, station, cargo, uint(std::min<uint64_t>(4096, pending)));
+  const uint added = PublishExternalProduction(city, station, cargo, uint(std::min<uint64_t>(4096, pending)), slot);
   pending -= added;
  }
 }
@@ -476,78 +487,192 @@ static void DeliverExternalBlastInput(ExternalCity *city, size_t slot, const Car
    city->industry_month_produced[index] += produced;
   }
  }
- FlushExternalBlastOutput(city, Station::GetIfValid(city->market_station), slot);
+ FlushExternalIndustryOutput(city, Station::GetIfValid(city->market_station), slot);
 }
+/** Run the same production program as a map factory. The boundary station supplies the
+ * geographic/town scope; inventories and NewGRF registers belong to the external factory. */
+static void RunExternalProductionCallback(ExternalCity *city, Station *station, size_t slot, FactoryEvent event)
+{
+ if (station == nullptr || station->town == nullptr) return;
+ Industry industry(IndustryID::Invalid());
+ industry.type = city->industry_types[slot];
+ const auto *spec = GetIndustrySpec(industry.type);
+ industry.location.tile = station->xy; // Width zero: this instance owns no map tiles.
+ industry.town = station->town;
+ industry.owner = OWNER_NONE;
+ industry.founder = city->owner;
+ industry.prod_level = PRODLEVEL_DEFAULT;
+ const uint32_t seed = MixExternalEconomySeed(city->economy_seed + slot);
+ industry.selected_layout = 1 + (seed % std::max<size_t>(1, spec->layouts.size()));
+ industry.ctlflags.Set(IndustryControlFlag::NoClosure);
+ industry.last_prod_year = EconTime::CurYear();
+ industry.counter = city->industry_counter;
+ industry.random = uint16_t(MixExternalEconomySeed(city->economy_seed + slot));
+ industry.was_cargo_delivered = event == FactoryEvent::Delivery;
+ const auto inputs = GetExternalFactoryCargoes(city, industry.type, false);
+ const auto outputs = GetExternalFactoryCargoes(city, industry.type, true);
+ for (size_t i = 0; i < inputs.size(); ++i) if (inputs[i] < NUM_CARGO) industry.accepted_cargo_count = i + 1;
+ for (size_t i = 0; i < outputs.size(); ++i) if (outputs[i] < NUM_CARGO) industry.produced_cargo_count = i + 1;
+ industry.accepted = std::make_unique<Industry::AcceptedCargo[]>(industry.accepted_cargo_count);
+ industry.produced = std::make_unique<Industry::ProducedCargo[]>(industry.produced_cargo_count);
+ for (size_t i = 0; i < industry.accepted_cargo_count; ++i) {
+  auto &input = industry.accepted[i];
+  input.cargo = inputs[i];
+  if (input.cargo >= NUM_CARGO) continue;
+  const size_t index = ExternalIndustryCargoIndex(slot, input.cargo);
+  input.waiting = ClampTo<uint16_t>(city->industry_inputs[index]);
+  input.last_accepted = EconTime::Date{city->industry_last_delivery[index]};
+ }
+ for (size_t i = 0; i < industry.produced_cargo_count; ++i) {
+  auto &output = industry.produced[i];
+  output.cargo = outputs[i];
+  if (output.cargo >= NUM_CARGO) continue;
+  const size_t index = ExternalIndustryCargoIndex(slot, output.cargo);
+  output.waiting = ClampTo<uint16_t>(city->industry_pending_output[index]);
+  output.rate = city->industry_level[slot] == 0 ? spec->production_rate[i] : city->industry_rates[slot * INDUSTRY_NUM_OUTPUTS + i];
+  output.history[THIS_MONTH].transported = city->industry_transported[index];
+  output.history[LAST_MONTH].transported = city->industry_previous_transported[index];
+  output.history[THIS_MONTH].production = city->industry_month_produced[index];
+  output.history[LAST_MONTH].production = city->industry_previous_produced[index];
+ }
+ auto storage = std::span(city->industry_storage).subspan(slot * 256, 256);
+ if (city->industry_level[slot] == 0) {
+  city->industry_built[slot] = CalTime::CurDate().base();
+  industry.construction_date = CalTime::CurDate();
+  if (spec->callback_mask.Test(IndustryCallbackMask::ProdChangeBuild)) {
+   const auto level = GetIndustryCallback(CBID_INDUSTRY_PROD_CHANGE_BUILD, 0, Random(), &industry, industry.type, industry.location.tile, storage);
+   if (level >= PRODLEVEL_MINIMUM && level <= PRODLEVEL_MAXIMUM) {
+    industry.prod_level = level;
+    industry.RecomputeProductionMultipliers();
+   }
+  }
+  if (spec->callback_mask.Any({IndustryCallbackMask::InputCargoTypes, IndustryCallbackMask::OutputCargoTypes})) {
+   InitializeIndustryCargoTypes(&industry, storage);
+   auto accepted = std::span(city->industry_accepts).subspan(slot * INDUSTRY_NUM_INPUTS, INDUSTRY_NUM_INPUTS);
+   auto produced = std::span(city->industry_products).subspan(slot * INDUSTRY_NUM_OUTPUTS, INDUSTRY_NUM_OUTPUTS);
+   std::ranges::fill(accepted, INVALID_CARGO);
+   std::ranges::fill(produced, INVALID_CARGO);
+   for (size_t i = 0; i < industry.accepted_cargo_count; ++i) accepted[i] = industry.accepted[i].cargo;
+   for (size_t i = 0; i < industry.produced_cargo_count; ++i) produced[i] = industry.produced[i].cargo;
+  }
+  for (size_t i = 0; i < industry.produced_cargo_count; ++i) city->industry_rates[slot * INDUSTRY_NUM_OUTPUTS + i] = industry.produced[i].rate;
+  city->industry_level[slot] = industry.prod_level;
+ }
+ if (event == FactoryEvent::Initialize) return;
+ industry.prod_level = city->industry_level[slot];
+ industry.construction_date = CalTime::Date{city->industry_built[slot]};
+ if (event == FactoryEvent::MonthlyChange || event == FactoryEvent::RandomChange) {
+  ChangeIndustryProduction(&industry, event == FactoryEvent::MonthlyChange, storage);
+  for (size_t i = 0; i < industry.produced_cargo_count; ++i) city->industry_rates[slot * INDUSTRY_NUM_OUTPUTS + i] = industry.produced[i].rate;
+  city->industry_level[slot] = industry.prod_level;
+  return;
+ }
+ IndustryProductionCallback(&industry, event == FactoryEvent::Delivery ? 0 : 1, storage);
+ for (const auto &input : industry.Accepted()) {
+  if (input.cargo >= NUM_CARGO) continue;
+  const size_t index = ExternalIndustryCargoIndex(slot, input.cargo);
+  auto &stored = city->industry_inputs[index];
+  const uint previous = ClampTo<uint16_t>(stored);
+  stored = stored - previous + input.waiting;
+  if (input.waiting < previous) city->industry_month_consumed[index] += previous - input.waiting;
+ }
+ for (const auto &output : industry.Produced()) {
+  if (output.cargo >= NUM_CARGO) continue;
+  const size_t index = ExternalIndustryCargoIndex(slot, output.cargo);
+  auto &pending = city->industry_pending_output[index];
+  const uint produced = output.waiting - ClampTo<uint16_t>(pending);
+  pending += produced;
+  city->industry_month_produced[index] += produced;
+ }
+ FlushExternalIndustryOutput(city, station, slot);
+}
+
+static void InitializeExternalFactoryCallbacks(ExternalCity *city, Station *station)
+{
+ if (station == nullptr || station->town == nullptr || city->exchange_market) return;
+ bool cargoes_changed = false;
+ for (size_t slot = 0; slot < EXTERNAL_CITY_INDUSTRIES; ++slot) {
+  const auto type = city->industry_types[slot];
+  if (city->industry_level[slot] != 0 || !ExternalIndustryUsesRecipe(type)) continue;
+  const auto callbacks = GetIndustrySpec(type)->callback_mask;
+  if (!callbacks.Any({IndustryCallbackMask::InputCargoTypes, IndustryCallbackMask::OutputCargoTypes, IndustryCallbackMask::ProdChangeBuild})) continue;
+  RunExternalProductionCallback(city, station, slot, FactoryEvent::Initialize);
+  cargoes_changed |= callbacks.Any({IndustryCallbackMask::InputCargoTypes, IndustryCallbackMask::OutputCargoTypes});
+ }
+ if (cargoes_changed) UpdateExternalMarketAcceptance(station);
+}
+
+void RandomiseExternalCityProduction()
+{
+ for (auto *city : ExternalCity::Iterate()) {
+  if (city->exchange_market) continue;
+  Station *station = Station::GetIfValid(city->market_station);
+  if (station == nullptr || station->town == nullptr) continue;
+  InitializeExternalFactoryCallbacks(city, station);
+  for (size_t slot = 0; slot < EXTERNAL_CITY_INDUSTRIES; ++slot) {
+   const auto type = city->industry_types[slot];
+   if (ExternalIndustryUsesRecipe(type) && GetIndustrySpec(type)->callback_mask.Test(IndustryCallbackMask::ProductionChange) &&
+       RandomRange(std::max<size_t>(1, Industry::GetNumItems())) == 0) RunExternalProductionCallback(city, station, slot, FactoryEvent::RandomChange);
+  }
+ }
+}
+
 void TickExternalCityIndustries(uint production_ticks)
 {
  assert(production_ticks != 0);
  for (auto *city : ExternalCity::Iterate()) {
+  if (city->exchange_market) continue;
   --city->industry_counter;
-  if (city->industry_counter % production_ticks != 0) continue;
+  const bool normal_tick = city->industry_counter % INDUSTRY_PRODUCE_TICKS == 0;
+  const bool scaled_tick = city->industry_counter % production_ticks == 0;
+  if (!normal_tick && !scaled_tick) continue;
+  Station *station = Station::GetIfValid(city->market_station);
+  InitializeExternalFactoryCallbacks(city, station);
   for (size_t slot = 0; slot < EXTERNAL_CITY_INDUSTRIES; ++slot) {
-   if (!ExternalIndustryUsesAxisBlastRecipe(city->industry_types[slot])) continue;
-   for (CargoType cargo : GetIndustrySpec(city->industry_types[slot])->accepts_cargo) {
-    if (cargo >= NUM_CARGO) continue;
-    auto &remaining = city->industry_recent_supply[ExternalIndustryCargoIndex(slot, cargo)];
-    if (remaining != 0) --remaining;
+   const IndustryType type = city->industry_types[slot];
+   if (!ExternalIndustryUsesRecipe(type)) continue;
+   const auto *spec = GetIndustrySpec(type);
+   const bool periodic_callback = spec->callback_mask.Test(IndustryCallbackMask::Production256Ticks);
+   if (!(periodic_callback ? scaled_tick : normal_tick)) continue;
+   if (ExternalIndustryUsesAxisBlastRecipe(type)) {
+    for (CargoType cargo : spec->accepts_cargo) {
+     if (cargo >= NUM_CARGO) continue;
+     auto &remaining = city->industry_recent_supply[ExternalIndustryCargoIndex(slot, cargo)];
+     if (remaining != 0) --remaining;
+    }
+   } else if (periodic_callback) {
+    RunExternalProductionCallback(city, station, slot, FactoryEvent::ProductionTick);
+   } else if (!spec->callback_mask.Test(IndustryCallbackMask::ProductionCargoArrival)) {
+    ProcessExternalInputs(city, station, slot); // Retry work held by a full export store, including pre-upgrade inputs.
    }
-   FlushExternalBlastOutput(city, Station::GetIfValid(city->market_station), slot);
+   const auto products = GetExternalFactoryCargoes(city, type, true);
+   for (size_t i = 0; i < products.size(); ++i) {
+    const CargoType cargo = products[i];
+    if (cargo >= NUM_CARGO || !CargoSpec::Get(cargo)->IsValid()) continue;
+    uint amount = city->industry_level[slot] == 0 ? spec->production_rate[i] : city->industry_rates[slot * INDUSTRY_NUM_OUTPUTS + i];
+    if (!periodic_callback) amount = _industry_cargo_scaler.Scale(amount);
+    if (i == 0 && spec->behaviour.Test(IndustryBehaviour::CutTrees) && city->industry_counter % INDUSTRY_CUT_TREE_TICKS == 0) amount += 45;
+    const size_t index = ExternalIndustryCargoIndex(slot, cargo);
+    city->industry_month_produced[index] += PublishExternalProduction(city, station, cargo, amount, slot);
+   }
+   FlushExternalIndustryOutput(city, station, slot);
   }
+  InvalidateWindowClassesData(WindowClass::ExternalCityEconomy);
  }
 }
-static void ProduceExternalIndustry(ExternalCity *city, Station *station, size_t slot)
+static void ProcessExternalInputs(ExternalCity *city, Station *station, size_t slot)
 {
- const IndustryType type = city->industry_types[slot];
- if (!ExternalIndustryUsesRecipe(type)) return;
- if (ExternalIndustryUsesAxisBlastRecipe(type)) {
-  FlushExternalBlastOutput(city, station, slot);
-  return; // Arrival-driven; the monthly refresh must not invent a delivery.
- }
- if (ExternalIndustryUsesAxisCokeRecipe(type)) {
-  /* Steeltown: 8 coal -> 6 coke + 1 coal tar + 1 sulphur; other verified
-   * economies: 8 coal -> 6 coke + 2 sulphur. Process complete batches,
-   * retaining small deliveries and blocked inputs rather than losing them.
-   * The off-map monthly cadence/cap is deliberate; no on-map callback timing,
-   * closure or persistent-storage side effects are impersonated here. */
-  const CargoType coal = GetCargoTypeByLabel(CT_COAL);
-  const auto *spec = GetIndustrySpec(type);
-  const CargoType tar = GetCargoTypeByLabel(CargoLabel{"CTAR"});
-  const bool has_tar = tar < NUM_CARGO && std::ranges::find(spec->produced_cargo, tar) != spec->produced_cargo.end();
-  std::vector<CargoType> products{GetCargoTypeByLabel(CargoLabel{"COKE"}), GetCargoTypeByLabel(CargoLabel{"SULP"})};
-  std::vector<uint> ratios{6, has_tar ? 1U : 2U};
-  if (has_tar) { products.push_back(tar); ratios.push_back(1); }
-  auto &stored = city->industry_inputs[ExternalIndustryCargoIndex(slot, coal)];
-  uint batches = uint(std::min<uint64_t>(32, stored / 8));
-  for (size_t i = 0; i < products.size(); ++i) batches = std::min(batches, (4096 - std::min<uint>(4096, city->stock[products[i]])) / ratios[i]);
-  if (batches == 0 || (station != nullptr && !CargoPacket::CanAllocateItem(products.size()))) return;
-  for (size_t i = 0; i < products.size(); ++i) {
-   const uint amount = batches * ratios[i];
-   const uint added = PublishExternalProduction(city, station, products[i], amount);
-   assert(added == amount);
-   city->industry_month_produced[ExternalIndustryCargoIndex(slot, products[i])] += added;
-  }
-  stored -= batches * 8;
-  city->industry_month_consumed[ExternalIndustryCargoIndex(slot, coal)] += batches * 8;
-  return;
- }
- const auto *spec = GetIndustrySpec(type);
- for (size_t output = 0; output < spec->produced_cargo.size(); ++output) {
-  const CargoType cargo = spec->produced_cargo[output];
-  if (cargo >= NUM_CARGO || !CargoSpec::Get(cargo)->IsValid()) continue;
-  /* Off-map monthly cadence: eight native production batches. Terrain-only
-   * lumbermills use their original 45-unit tree-cut batch, without map edits. */
-  uint amount = spec->production_rate[output] * 8U;
-  if (output == 0 && spec->behaviour.Test(IndustryBehaviour::CutTrees)) amount += 45U * 8;
-  city->industry_month_produced[ExternalIndustryCargoIndex(slot, cargo)] += PublishExternalProduction(city, station, cargo, amount);
- }
- for (size_t input = 0; input < spec->accepts_cargo.size(); ++input) {
-  const CargoType cargo = spec->accepts_cargo[input];
+ const auto *spec = GetIndustrySpec(city->industry_types[slot]);
+ const auto inputs = GetExternalFactoryCargoes(city, city->industry_types[slot], false);
+ const auto outputs = GetExternalFactoryCargoes(city, city->industry_types[slot], true);
+ for (size_t input = 0; input < inputs.size(); ++input) {
+  const CargoType cargo = inputs[input];
   if (cargo >= NUM_CARGO || !CargoSpec::Get(cargo)->IsValid()) continue;
   auto &stored = city->industry_inputs[ExternalIndustryCargoIndex(slot, cargo)];
   if (stored == 0) continue;
   CargoArray multipliers{};
-  for (size_t output = 0; output < spec->produced_cargo.size(); ++output) {
-   const CargoType product = spec->produced_cargo[output];
+  for (size_t output = 0; output < outputs.size(); ++output) {
+   const CargoType product = outputs[output];
    if (product < NUM_CARGO && CargoSpec::Get(product)->IsValid()) multipliers[product] += spec->input_cargo_multiplier[input][output];
   }
   auto fits = [&](uint amount) {
@@ -559,7 +684,7 @@ static void ProduceExternalIndustry(ExternalCity *city, Station *station, size_t
    }
    return station == nullptr || CargoPacket::CanAllocateItem(packets);
   };
-  uint low = 0, high = uint(std::min<uint64_t>(256, stored));
+  uint low = 0, high = ClampTo<uint16_t>(stored);
   while (low < high) {
    const uint middle = (low + high + 1) / 2;
    if (fits(middle)) low = middle; else high = middle - 1;
@@ -569,7 +694,7 @@ static void ProduceExternalIndustry(ExternalCity *city, Station *station, size_t
    const size_t index = ExternalIndustryCargoIndex(slot, product);
    const uint64_t scaled = uint64_t(low) * multipliers[product] + city->industry_remainders[index];
    const uint count = uint(scaled / 256);
-   const uint added = PublishExternalProduction(city, station, product, count);
+   const uint added = PublishExternalProduction(city, station, product, count, slot);
    assert(added == count); // All output space and packet slots were checked before consuming inputs.
    city->industry_month_produced[index] += added;
    city->industry_remainders[index] = uint16_t(scaled % 256);
@@ -577,6 +702,36 @@ static void ProduceExternalIndustry(ExternalCity *city, Station *station, size_t
   stored -= low;
   city->industry_month_consumed[ExternalIndustryCargoIndex(slot, cargo)] += low;
  }
+}
+/** Publish the fraction of the 256-unit monthly resident supply or trade replenishment due on this
+ * economy tick. The date already saved and synchronized by the game is the entire clock. */
+void TickExternalCityMarketSupply(uint day, uint day_tick, uint month_days)
+{
+ assert(day >= 1 && day <= month_days && day_tick < DAY_TICKS);
+ const uint ticks = month_days * DAY_TICKS;
+ const uint elapsed = (day - 1) * DAY_TICKS + day_tick;
+ const uint amount = (elapsed + 1) * 256 / ticks - elapsed * 256 / ticks;
+ if (amount == 0) return;
+
+ CargoTypes residents, exchange_residents, freight;
+ for (const CargoSpec *cargo : CargoSpec::Iterate()) {
+  if (cargo->town_production_effect == TownProductionEffect::Passengers || cargo->town_production_effect == TownProductionEffect::Mail) residents.Set(cargo->Index());
+  if (IsExternalCityPassengerOrMail(cargo->Index())) exchange_residents.Set(cargo->Index());
+  else freight.Set(cargo->Index());
+ }
+ bool changed = false;
+ for (ExternalCity *city : ExternalCity::Iterate()) {
+  Station *station = Station::GetIfValid(city->market_station);
+  CargoTypes supplied = residents;
+  if (city->exchange_market) {
+   supplied = exchange_residents;
+   for (CargoType cargo : freight) if (city->trade_cargo_roles[cargo] == 1) supplied.Set(cargo);
+  }
+  for (CargoType cargo : supplied) {
+   changed |= PublishExternalProduction(city, station, cargo, amount) != 0;
+  }
+ }
+ if (changed) InvalidateWindowClassesData(WindowClass::ExternalCityEconomy);
 }
 void RefillExternalCityMarkets()
 {
@@ -598,9 +753,16 @@ void RefillExternalCityMarkets()
   }
   city->month_supply = city->stock;
   city->month_loaded = {}; city->month_delivered = {};
+  city->industry_previous_produced = city->industry_month_produced;
   city->industry_month_consumed.fill(0); city->industry_month_produced.fill(0);
-  for (CargoType cargo : city->exchange_market ? profile.produced : ExternalAbstractSupply(profile)) PublishExternalProduction(city, station, cargo, 256);
-  for (size_t slot = 0; slot < EXTERNAL_CITY_INDUSTRIES; ++slot) ProduceExternalIndustry(city, station, slot);
+  city->industry_previous_transported = city->industry_transported;
+  city->industry_transported.fill(0);
+  if (!city->exchange_market) {
+   for (size_t slot = 0; slot < city->industry_types.size(); ++slot) {
+    const auto type = city->industry_types[slot];
+    if (ExternalIndustryUsesRecipe(type) && GetIndustrySpec(type)->callback_mask.Test(IndustryCallbackMask::MonthlyProdChange)) RunExternalProductionCallback(city, station, slot, FactoryEvent::MonthlyChange);
+   }
+  }
  }
  EnsureExternalCityMarkets();
  InvalidateWindowClassesData(WindowClass::ExternalCityEconomy);
@@ -612,6 +774,7 @@ void ServiceExternalCityVehicle(Vehicle *train, bool arrival)
  InitializeExternalCityMarket(city);
  Station *station = Station::GetIfValid(city->market_station);
  if (station == nullptr) return;
+ InitializeExternalFactoryCallbacks(city, station);
  CargoStationIDVectorSet next_stations;
  bool routing_ready = false;
  if (!arrival && train->current_order.IsRefit()) {

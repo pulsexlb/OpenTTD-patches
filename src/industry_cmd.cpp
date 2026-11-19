@@ -1807,6 +1807,110 @@ static void PopulateStationsNearby(Industry *ind)
 	});
 }
 
+/** Resolve per-instance cargo slots for industries with dynamic inputs or outputs. */
+void InitializeIndustryCargoTypes(Industry *i, std::span<int32_t> external_storage)
+{
+ const auto type = i->type;
+ const auto *indspec = GetIndustrySpec(type);
+	if (indspec->callback_mask.Test(IndustryCallbackMask::InputCargoTypes)) {
+		/* Clear all input cargo types */
+		i->accepted_cargo_count = 0;
+		i->accepted.reset();
+
+		uint8_t cargo_count = 0;
+		std::array<CargoType, INDUSTRY_NUM_INPUTS> accepts_cargo{};
+
+		/* Query actual types */
+		uint maxcargoes = indspec->behaviour.Test(IndustryBehaviour::CargoTypesUnlimited) ? INDUSTRY_NUM_INPUTS : 3;
+		for (uint j = 0; j < maxcargoes; j++) {
+			uint16_t res = GetIndustryCallback(CBID_INDUSTRY_INPUT_CARGO_TYPES, j, 0, i, type, INVALID_TILE, external_storage);
+			if (res == CALLBACK_FAILED || GB(res, 0, 8) == UINT8_MAX) break;
+			if (indspec->grf_prop.grffile->grf_version >= 8 && res >= 0x100) {
+				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_INPUT_CARGO_TYPES, res);
+				break;
+			}
+			CargoType cargo = GetCargoTranslation(GB(res, 0, 8), indspec->grf_prop.grffile);
+			/* Industries without "unlimited" cargo types support depend on the specific order/slots of cargo types.
+			 * They need to be able to blank out specific slots without aborting the callback sequence,
+			 * and solve this by returning undefined cargo indexes. Skip these. */
+			if (!IsValidCargoType(cargo) && !indspec->behaviour.Test(IndustryBehaviour::CargoTypesUnlimited)) {
+				/* As slots are allocated as needed now, this means we do need to add a slot for the invalid cargo. */
+				accepts_cargo[cargo_count] = INVALID_CARGO;
+				cargo_count++;
+				continue;
+			}
+			/* Verify valid cargo */
+			if (std::ranges::find(indspec->accepts_cargo, cargo) == std::end(indspec->accepts_cargo)) {
+				/* Cargo not in spec, error in NewGRF */
+				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_INPUT_CARGO_TYPES, res);
+				break;
+			}
+			if (std::find(accepts_cargo.begin(), accepts_cargo.begin() + cargo_count, cargo) != accepts_cargo.begin() + cargo_count) {
+				/* Duplicate cargo */
+				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_INPUT_CARGO_TYPES, res);
+				break;
+			}
+			accepts_cargo[cargo_count] = cargo;
+			cargo_count++;
+		}
+
+		i->accepted_cargo_count = cargo_count;
+		i->accepted = std::make_unique<Industry::AcceptedCargo[]>(cargo_count);
+		for (uint8_t index = 0; index < cargo_count; ++index) {
+			Industry::AcceptedCargo &a = i->accepted[index];
+			a.cargo = accepts_cargo[index];
+		}
+	}
+
+	if (indspec->callback_mask.Test(IndustryCallbackMask::OutputCargoTypes)) {
+		/* Clear all output cargo types */
+		i->produced_cargo_count = 0;
+		i->produced.reset();
+
+		uint8_t cargo_count = 0;
+		std::array<CargoType, INDUSTRY_NUM_INPUTS> produced_cargo{};
+
+		/* Query actual types */
+		uint maxcargoes = indspec->behaviour.Test(IndustryBehaviour::CargoTypesUnlimited) ? INDUSTRY_NUM_OUTPUTS : 2;
+		for (uint j = 0; j < maxcargoes; j++) {
+			uint16_t res = GetIndustryCallback(CBID_INDUSTRY_OUTPUT_CARGO_TYPES, j, 0, i, type, INVALID_TILE, external_storage);
+			if (res == CALLBACK_FAILED || GB(res, 0, 8) == UINT8_MAX) break;
+			if (indspec->grf_prop.grffile->grf_version >= 8 && res >= 0x100) {
+				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_OUTPUT_CARGO_TYPES, res);
+				break;
+			}
+			CargoType cargo = GetCargoTranslation(GB(res, 0, 8), indspec->grf_prop.grffile);
+			/* Allow older GRFs to skip slots. */
+			if (!IsValidCargoType(cargo) && !indspec->behaviour.Test(IndustryBehaviour::CargoTypesUnlimited)) {
+				/* As slots are allocated as needed now, this means we do need to add a slot for the invalid cargo. */
+				produced_cargo[cargo_count] = INVALID_CARGO;
+				cargo_count++;
+				continue;
+			}
+			/* Verify valid cargo */
+			if (std::ranges::find(indspec->produced_cargo, cargo) == std::end(indspec->produced_cargo)) {
+				/* Cargo not in spec, error in NewGRF */
+				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_OUTPUT_CARGO_TYPES, res);
+				break;
+			}
+			if (std::find(produced_cargo.begin(), produced_cargo.begin() + cargo_count, cargo) != produced_cargo.begin() + cargo_count) {
+				/* Duplicate cargo */
+				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_OUTPUT_CARGO_TYPES, res);
+				break;
+			}
+			produced_cargo[cargo_count] = cargo;
+			cargo_count++;
+		}
+
+		i->produced_cargo_count = cargo_count;
+		i->produced = std::make_unique<Industry::ProducedCargo[]>(cargo_count);
+		for (uint8_t index = 0; index < cargo_count; ++index) {
+			Industry::ProducedCargo &p = i->produced[index];
+			p.cargo = produced_cargo[index];
+		}
+	}
+}
+
 /**
  * Put an industry on the map.
  * @param i                   Just allocated poolitem, mostly empty.
@@ -1921,103 +2025,7 @@ static void DoCreateNewIndustry(Industry *i, TileIndex tile, IndustryType type, 
 		}
 	}
 
-	if (indspec->callback_mask.Test(IndustryCallbackMask::InputCargoTypes)) {
-		/* Clear all input cargo types */
-		i->accepted_cargo_count = 0;
-		i->accepted.reset();
-
-		uint8_t cargo_count = 0;
-		std::array<CargoType, INDUSTRY_NUM_INPUTS> accepts_cargo{};
-
-		/* Query actual types */
-		uint maxcargoes = indspec->behaviour.Test(IndustryBehaviour::CargoTypesUnlimited) ? INDUSTRY_NUM_INPUTS : 3;
-		for (uint j = 0; j < maxcargoes; j++) {
-			uint16_t res = GetIndustryCallback(CBID_INDUSTRY_INPUT_CARGO_TYPES, j, 0, i, type, INVALID_TILE);
-			if (res == CALLBACK_FAILED || GB(res, 0, 8) == UINT8_MAX) break;
-			if (indspec->grf_prop.grffile->grf_version >= 8 && res >= 0x100) {
-				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_INPUT_CARGO_TYPES, res);
-				break;
-			}
-			CargoType cargo = GetCargoTranslation(GB(res, 0, 8), indspec->grf_prop.grffile);
-			/* Industries without "unlimited" cargo types support depend on the specific order/slots of cargo types.
-			 * They need to be able to blank out specific slots without aborting the callback sequence,
-			 * and solve this by returning undefined cargo indexes. Skip these. */
-			if (!IsValidCargoType(cargo) && !indspec->behaviour.Test(IndustryBehaviour::CargoTypesUnlimited)) {
-				/* As slots are allocated as needed now, this means we do need to add a slot for the invalid cargo. */
-				accepts_cargo[cargo_count] = INVALID_CARGO;
-				cargo_count++;
-				continue;
-			}
-			/* Verify valid cargo */
-			if (std::ranges::find(indspec->accepts_cargo, cargo) == std::end(indspec->accepts_cargo)) {
-				/* Cargo not in spec, error in NewGRF */
-				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_INPUT_CARGO_TYPES, res);
-				break;
-			}
-			if (std::find(accepts_cargo.begin(), accepts_cargo.begin() + cargo_count, cargo) != accepts_cargo.begin() + cargo_count) {
-				/* Duplicate cargo */
-				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_INPUT_CARGO_TYPES, res);
-				break;
-			}
-			accepts_cargo[cargo_count] = cargo;
-			cargo_count++;
-		}
-
-		i->accepted_cargo_count = cargo_count;
-		i->accepted = std::make_unique<Industry::AcceptedCargo[]>(cargo_count);
-		for (uint8_t index = 0; index < cargo_count; ++index) {
-			Industry::AcceptedCargo &a = i->accepted[index];
-			a.cargo = accepts_cargo[index];
-		}
-	}
-
-	if (indspec->callback_mask.Test(IndustryCallbackMask::OutputCargoTypes)) {
-		/* Clear all output cargo types */
-		i->produced_cargo_count = 0;
-		i->produced.reset();
-
-		uint8_t cargo_count = 0;
-		std::array<CargoType, INDUSTRY_NUM_INPUTS> produced_cargo{};
-
-		/* Query actual types */
-		uint maxcargoes = indspec->behaviour.Test(IndustryBehaviour::CargoTypesUnlimited) ? INDUSTRY_NUM_OUTPUTS : 2;
-		for (uint j = 0; j < maxcargoes; j++) {
-			uint16_t res = GetIndustryCallback(CBID_INDUSTRY_OUTPUT_CARGO_TYPES, j, 0, i, type, INVALID_TILE);
-			if (res == CALLBACK_FAILED || GB(res, 0, 8) == UINT8_MAX) break;
-			if (indspec->grf_prop.grffile->grf_version >= 8 && res >= 0x100) {
-				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_OUTPUT_CARGO_TYPES, res);
-				break;
-			}
-			CargoType cargo = GetCargoTranslation(GB(res, 0, 8), indspec->grf_prop.grffile);
-			/* Allow older GRFs to skip slots. */
-			if (!IsValidCargoType(cargo) && !indspec->behaviour.Test(IndustryBehaviour::CargoTypesUnlimited)) {
-				/* As slots are allocated as needed now, this means we do need to add a slot for the invalid cargo. */
-				produced_cargo[cargo_count] = INVALID_CARGO;
-				cargo_count++;
-				continue;
-			}
-			/* Verify valid cargo */
-			if (std::ranges::find(indspec->produced_cargo, cargo) == std::end(indspec->produced_cargo)) {
-				/* Cargo not in spec, error in NewGRF */
-				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_OUTPUT_CARGO_TYPES, res);
-				break;
-			}
-			if (std::find(produced_cargo.begin(), produced_cargo.begin() + cargo_count, cargo) != produced_cargo.begin() + cargo_count) {
-				/* Duplicate cargo */
-				ErrorUnknownCallbackResult(indspec->grf_prop.grfid, CBID_INDUSTRY_OUTPUT_CARGO_TYPES, res);
-				break;
-			}
-			produced_cargo[cargo_count] = cargo;
-			cargo_count++;
-		}
-
-		i->produced_cargo_count = cargo_count;
-		i->produced = std::make_unique<Industry::ProducedCargo[]>(cargo_count);
-		for (uint8_t index = 0; index < cargo_count; ++index) {
-			Industry::ProducedCargo &p = i->produced[index];
-			p.cargo = produced_cargo[index];
-		}
-	}
+	InitializeIndustryCargoTypes(i);
 
 	/* Plant the tiles */
 
@@ -3006,7 +3014,7 @@ static const uint PERCENT_TRANSPORTED_80 = 204;
  * @param i Industry for which changes are performed
  * @param monthly true if it's the monthly call, false if it's the random call
  */
-static void ChangeIndustryProduction(Industry *i, bool monthly)
+void ChangeIndustryProduction(Industry *i, bool monthly, std::span<int32_t> external_storage)
 {
 	StringID str = STR_NULL;
 	bool closeit = false;
@@ -3022,7 +3030,7 @@ static void ChangeIndustryProduction(Industry *i, bool monthly)
 
 	bool callback_enabled = indspec->callback_mask.Test(monthly ? IndustryCallbackMask::MonthlyProdChange : IndustryCallbackMask::ProductionChange);
 	if (callback_enabled) {
-		uint16_t res = GetIndustryCallback(monthly ? CBID_INDUSTRY_MONTHLYPROD_CHANGE : CBID_INDUSTRY_PRODUCTION_CHANGE, 0, Random(), i, i->type, i->location.tile);
+		uint16_t res = GetIndustryCallback(monthly ? CBID_INDUSTRY_MONTHLYPROD_CHANGE : CBID_INDUSTRY_PRODUCTION_CHANGE, 0, Random(), i, i->type, i->location.tile, external_storage);
 		if (res != CALLBACK_FAILED) { // failed callback means "do nothing"
 			suppress_message = HasBit(res, 7);
 			/* Get the custom message if any */
@@ -3113,7 +3121,7 @@ static void ChangeIndustryProduction(Industry *i, bool monthly)
 				/* Close the industry when it has the lowest possible production rate */
 				if (new_prod > 1) closeit = false;
 
-				if (abs(percent) >= 10) {
+				if (abs(percent) >= 10 && external_storage.empty()) {
 					ReportNewsProductionChangeIndustry(i, p.cargo, percent);
 				}
 			}
@@ -3175,7 +3183,7 @@ static void ChangeIndustryProduction(Industry *i, bool monthly)
 		str = indspec->closure_text;
 	}
 
-	if (!suppress_message && str != STR_NULL) {
+	if (external_storage.empty() && !suppress_message && str != STR_NULL) {
 		NewsType nt;
 		/* Compute news category */
 		if (closeit) {
@@ -3244,6 +3252,7 @@ void IndustryDailyLoop()
 			_industry_builder.TryBuildNewIndustry();
 		} else {
 			Industry *i = Industry::GetRandom();
+			RandomiseExternalCityProduction();
 			if (i != nullptr) {
 				ChangeIndustryProduction(i, false);
 				SetWindowDirty(WindowClass::IndustryView, i->index);

@@ -257,7 +257,16 @@ TEST_CASE_METHOD(ScheduleGroupFixture, "Couple - speed filter commands validate 
 		CHECK(train->current_order.GetCoupleSpeedValue(0) == 75);
 		CHECK(train->current_order.GetCoupleSpeedUnit(0) == 0);
 	}
+	CHECK(CmdModifyOrder(DoCommandFlag::Execute, OrderTargetType::OrderList, schedule->index.base(), 0, MOF_WAIT_COUPLE_POWER_MODE, 1, INVALID_CARGO, {}).Failed());
 	schedule->GetOrderAt(0)->MakeWaitCouple();
+	for (Train *train : trains) train->current_order = *schedule->GetOrderAt(0);
+	CHECK(CmdModifyOrder(DoCommandFlag::Execute, OrderTargetType::OrderList, schedule->index.base(), 0, MOF_WAIT_COUPLE_POWER_MODE, 4, INVALID_CARGO, {}).Failed());
+	REQUIRE(CmdModifyOrder(DoCommandFlag::Execute, OrderTargetType::OrderList, schedule->index.base(), 0, MOF_WAIT_COUPLE_POWER_MODE, 2, INVALID_CARGO, {}).Succeeded());
+	REQUIRE(CmdModifyOrder(DoCommandFlag::Execute, OrderTargetType::Vehicle, trains[0]->index.base(), 0, MOF_WAIT_COUPLE_POWER_VALUE, 4200, INVALID_CARGO, {}).Succeeded());
+	for (Train *train : trains) {
+		CHECK(train->current_order.GetWaitCouplePowerMode() == WaitCouplePowerMode::Less);
+		CHECK(train->current_order.GetWaitCouplePowerValue() == 4200);
+	}
 	CHECK(CmdModifyOrder(DoCommandFlag::Execute, OrderTargetType::OrderList, schedule->index.base(), 0, MOF_COUPLE_REJECT_FASTER, 1, INVALID_CARGO, {}).Failed());
 }
 

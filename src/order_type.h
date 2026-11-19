@@ -315,6 +315,9 @@ enum class OrderConditionComparator : uint8_t {
 };
 
 
+/** Power of the approaching consist, measured in mechanical horsepower. */
+enum class WaitCouplePowerMode : uint8_t { Any, Greater, Less, Equal };
+
 /** Source of an inclusive coupling speed bound; stored using existing speed flags. */
 enum class CoupleSpeedBoundMode : uint8_t { Disabled, OwnMax, Manual };
 
@@ -395,6 +398,8 @@ enum ModifyOrderFlags : uint8_t {
 	MOF_WAIT_COUPLE_PARTNER_GROUP, ///< Require the approaching train to belong to a vehicle group.
 	MOF_EXTERNAL_RETURN_DEPOT, ///< External trip return entrance, invalid = same entrance.
 	MOF_EXTERNAL_FLIGHT_CITY, ///< Change an existing external flight's destination city.
+	MOF_WAIT_COUPLE_POWER_MODE,
+	MOF_WAIT_COUPLE_POWER_VALUE,
 	MOF_END
 };
 

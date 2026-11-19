@@ -1101,7 +1101,15 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 			if (HasBit(v->flags, VAF_PUSHBACK) && (v->state != AS_RUNNING ||
 					!IsTaxiTile(v->pushback_origin) || !IsTaxiTile(v->pushback_target) || v->planned_path.empty())) SlErrorCorrupt("Invalid saved aircraft pushback");
 			if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile)) SlErrorCorrupt("Aircraft route does not start at its current tile");
-			if (v->state == AS_RUNNING && !HasAircraftTileReservation(v, v->tile, TRACK_BIT_NONE)) SlErrorCorrupt("Taxiing aircraft has no current tile reservation");
+			if (v->state == AS_RUNNING && !HasAircraftTileReservation(v, v->tile, TRACK_BIT_NONE)) {
+				/* An admitted route may be stationary while its first real taxi window
+				 * is blocked. Its complete directional booking is validated below. */
+				const bool waiting_for_window = v->reserved_path.empty() && !v->virtual_path.empty() &&
+						v->cur_speed == 0 && v->taxi_progress == 0 && v->pushback_progress == 0 &&
+						v->next_trackdir == INVALID_TRACKDIR && !HasBit(v->flags, VAF_PUSHBACK) &&
+						(v->taxi_block_reason == AircraftTaxiBlock::Traffic || v->taxi_block_reason == AircraftTaxiBlock::Protected);
+				if (!waiting_for_window) SlErrorCorrupt("Taxiing aircraft has no current tile reservation");
+			}
 		}
 		if (v->taxi_progress > 255 || v->pushback_progress > 255) SlErrorCorrupt("Invalid aircraft movement remainder");
 		for (size_t i = 0; i < v->planned_path.size(); ++i) {

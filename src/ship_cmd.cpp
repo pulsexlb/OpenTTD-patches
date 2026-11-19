@@ -1192,7 +1192,7 @@ bool TransferExternalShipToEntrance(Ship *ship, DepotID exit_id, TileIndex expec
 	const Depot *exit = Depot::GetIfValid(exit_id);
 	if (ship == nullptr || !ship->IsInExternalTrip() || !ship->IsInDepot() || !ship->vehstatus.Test(VehState::Hidden) ||
 			exit == nullptr || exit->xy != expected_tile || !IsShipDepotTile(exit->xy) ||
-			!Depot::IsExternalConnection(exit->xy) || GetTileOwner(exit->xy) != ship->owner ||
+			!Depot::IsExternalConnection(exit->xy) || !IsInfraTileUsageAllowed(ship->type, ship->owner, exit->xy) ||
 			!Depot::IsExternalConnection(ship->tile)) return false;
 	const TileIndex origin = ship->tile;
 	if (origin == exit->xy) return true;

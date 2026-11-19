@@ -1287,6 +1287,7 @@ static StringID GetCoupleCandidateResultString(CoupleCandidateResult result)
 		case CoupleCandidateResult::Traction: return STR_WAIT_COUPLE_TRACTION_MISMATCH;
 		case CoupleCandidateResult::WaitPartnerSlot: return STR_WAIT_COUPLE_PARTNER_SLOT_MISMATCH;
 		case CoupleCandidateResult::WaitPartnerSlotGroup: return STR_WAIT_COUPLE_PARTNER_SLOT_GROUP_MISMATCH;
+		case CoupleCandidateResult::WaitPartnerPower: return STR_WAIT_COUPLE_POWER_MISMATCH;
 		case CoupleCandidateResult::WaitPartnerGroup: return STR_WAIT_COUPLE_PARTNER_GROUP_MISMATCH;
 		case CoupleCandidateResult::ServiceNumber: return STR_COUPLE_DIAGNOSTIC_SERVICE_NUMBER;
 		case CoupleCandidateResult::Station:     return STR_COUPLE_DIAGNOSTIC_STATION;
@@ -1985,6 +1986,8 @@ enum WaitCoupleCriteriaWidgets : WidgetID {
 	WID_WCP_SLOT_GROUP,          ///< Slot group the approaching train must hold a slot of ("路签组").
 	WID_WCP_GROUP_LABEL,         ///< Label of the approaching train's vehicle group criterion.
 	WID_WCP_GROUP,               ///< Vehicle group the approaching train must belong to ("载具组").
+	WID_WCP_POWER_MODE,
+	WID_WCP_POWER_VALUE,
 	WID_WCP_TRACTION_LABEL,      ///< Label of the traction class criterion.
 	WID_WCP_TRACTION,            ///< Traction class criterion (any / steam / diesel / electric).
 	WID_WCP_DIAGNOSTICS,         ///< Show whether a waiting train has been claimed.
@@ -2006,6 +2009,8 @@ private:
 
 	/** Snapshot of the criteria which are shown, to refresh the dropdowns when the order changes. */
 	struct SettingsSnapshot {
+		WaitCouplePowerMode power_mode{};
+		uint16_t power_hp = 0;
 		uint8_t traction = 0;
 		uint16_t slot = 0;        ///< Slot id + 1, 0 = any.
 		uint16_t slot_group = 0;  ///< Slot group id + 1, 0 = any.
@@ -2013,7 +2018,8 @@ private:
 
 		bool operator==(const SettingsSnapshot &other) const
 		{
-			return this->traction == other.traction && this->slot == other.slot && this->slot_group == other.slot_group && this->group == other.group;
+			return this->power_mode == other.power_mode && this->power_hp == other.power_hp &&
+					this->traction == other.traction && this->slot == other.slot && this->slot_group == other.slot_group && this->group == other.group;
 		}
 	};
 
@@ -2038,6 +2044,8 @@ private:
 	SettingsSnapshot GetSettings() const
 	{
 		SettingsSnapshot s;
+		s.power_mode = this->order->GetWaitCouplePowerMode();
+		s.power_hp = this->order->GetWaitCouplePowerValue();
 		s.traction = this->order->GetWaitCoupleTraction();
 		s.slot = this->order->HasWaitCouplePartnerSlot() ? this->order->GetWaitCouplePartnerSlot().base() + 1 : 0;
 		s.slot_group = this->order->HasWaitCouplePartnerSlotGroup() ? this->order->GetWaitCouplePartnerSlotGroup().base() + 1 : 0;
@@ -2053,6 +2061,8 @@ private:
 		this->GetWidget<NWidgetCore>(WID_WCP_SLOT)->SetString(STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_ANY);
 		this->GetWidget<NWidgetCore>(WID_WCP_SLOT_GROUP)->SetString(STR_ORDER_COUPLE_ANY_GROUP);
 		this->GetWidget<NWidgetCore>(WID_WCP_GROUP)->SetString(STR_ORDER_COUPLE_ANY_VEHICLE_GROUP);
+		this->GetWidget<NWidgetCore>(WID_WCP_POWER_MODE)->SetString(STR_WAIT_COUPLE_POWER_ANY + to_underlying(this->order->GetWaitCouplePowerMode()));
+		this->SetWidgetDisabledState(WID_WCP_POWER_VALUE, this->order->GetWaitCouplePowerMode() == WaitCouplePowerMode::Any);
 		this->GetWidget<NWidgetCore>(WID_WCP_TRACTION)->SetString(STR_WAIT_COUPLE_TRACTION_ANY + this->order->GetWaitCoupleTraction());
 	}
 
@@ -2175,6 +2185,14 @@ public:
 				ShowDropDownList(this, this->BuildPartnerGroupList(), -1, WID_WCP_GROUP, 0);
 				break;
 
+			case WID_WCP_POWER_MODE: {
+				static constexpr StringID choices[] = {STR_WAIT_COUPLE_POWER_ANY, STR_WAIT_COUPLE_POWER_GREATER, STR_WAIT_COUPLE_POWER_LESS, STR_WAIT_COUPLE_POWER_EQUAL};
+				ShowDropDownMenu(this, choices, to_underlying(this->order->GetWaitCouplePowerMode()), widget, 0, 0);
+				break;
+			}
+			case WID_WCP_POWER_VALUE:
+				ShowQueryString(GetString(STR_JUST_INT, this->order->GetWaitCouplePowerValue()), GetEncodedString(STR_WAIT_COUPLE_POWER_QUERY), 6, this, CS_NUMERAL, {});
+				break;
 			case WID_WCP_TRACTION: {
 				static constexpr StringID choices[] = {
 					STR_WAIT_COUPLE_TRACTION_ANY, STR_WAIT_COUPLE_TRACTION_STEAM,
@@ -2227,6 +2245,9 @@ public:
 				}
 				break;
 
+			case WID_WCP_POWER_MODE:
+				this->ModifyOrder(MOF_WAIT_COUPLE_POWER_MODE, index);
+				break;
 			case WID_WCP_TRACTION:
 				this->ModifyOrder(MOF_WAIT_COUPLE_TRACTION, static_cast<uint16_t>(index));
 				break;
@@ -2236,6 +2257,17 @@ public:
 		}
 	}
 
+	void OnQueryTextFinished(std::optional<std::string> str) override
+	{
+		if (!str || str->empty()) return;
+		auto hp = ParseInteger<uint>(*str);
+		if (!hp || *hp > UINT16_MAX) {
+			ShowErrorMessage(GetEncodedString(STR_WAIT_COUPLE_POWER_QUERY), {}, WarningLevel::Error);
+			return;
+		}
+		this->ModifyOrder(MOF_WAIT_COUPLE_POWER_VALUE, *hp);
+	}
+
 	/**
 	 * Show the name of the selected slot / slot group / vehicle group on its widget. The widget
 	 * string mechanism is bypassed because the text carries a parameter.
@@ -2243,6 +2275,7 @@ public:
 	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
 	{
 		switch (widget) {
+			case WID_WCP_POWER_VALUE: return GetString(STR_WAIT_COUPLE_POWER_VALUE, this->order->GetWaitCouplePowerValue());
 			case WID_WCP_SLOT: {
 				const auto slot = this->order->GetWaitCouplePartnerSlot();
 				return TraceRestrictSlot::IsValidID(slot) ? GetString(STR_TRACE_RESTRICT_SLOT_NAME, slot.base()) : GetString(STR_ORDER_WAIT_COUPLE_PARTNER_SLOT_ANY);
@@ -2285,6 +2318,11 @@ static constexpr NWidgetPart _nested_wait_couple_options_widgets[] = {
 		NWidget(NWID_HORIZONTAL),
 			NWidget(WWT_TEXT, Colours::Invalid, WID_WCP_GROUP_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_ORDER_WAIT_COUPLE_PARTNER_GROUP_LABEL, STR_NULL),
 			NWidget(WWT_DROPDOWN, Colours::Grey, WID_WCP_GROUP), SetFill(0, 0), SetResize(0, 0),
+		EndContainer(),
+		NWidget(NWID_HORIZONTAL),
+			NWidget(WWT_TEXT, Colours::Invalid), SetFill(1, 0), SetStringTip(STR_WAIT_COUPLE_POWER_LABEL, STR_NULL),
+			NWidget(WWT_DROPDOWN, Colours::Grey, WID_WCP_POWER_MODE),
+			NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_WCP_POWER_VALUE), SetMinimalSize(65, 0), SetStringTip(STR_WAIT_COUPLE_POWER_VALUE, STR_WAIT_COUPLE_POWER_QUERY),
 		EndContainer(),
 		NWidget(NWID_HORIZONTAL),
 			NWidget(WWT_TEXT, Colours::Invalid, WID_WCP_TRACTION_LABEL), SetFill(1, 0), SetResize(1, 0), SetStringTip(STR_WAIT_COUPLE_TRACTION_BUTTON, STR_WAIT_COUPLE_TRACTION_TOOLTIP),
@@ -7848,7 +7886,7 @@ public:
 			if (!this->ExternalPickValid()) { ResetObjectToPlace(); return; }
 			if (this->OrderAt(this->external_pick_index)->IsExternalFlightOrder()) {
 				const Station *airport = IsAirportTile(tile) ? Station::GetByTile(tile) : nullptr;
-				if (airport == nullptr || airport->owner != this->TargetOwner() ||
+				if (airport == nullptr || !IsInfraUsageAllowed(VehicleType::Aircraft, this->TargetOwner(), airport->owner) ||
 						(this->HasVehicle() && !CanVehicleUseStation(this->vehicle, airport))) {
 					ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_MODIFY_THIS_ORDER), GetEncodedString(STR_EXTERNAL_FLIGHT_RETURN_PICK_INVALID), WarningLevel::Info);
 					return;

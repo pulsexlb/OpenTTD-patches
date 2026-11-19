@@ -24,6 +24,7 @@
 
 #include "strings_func.h"
 #include "vehicle_func.h"
+#include "infrastructure_func.h"
 #include "sound_func.h"
 #include "ai/ai.hpp"
 #include "game/game.hpp"
@@ -3484,6 +3485,13 @@ bool HandleAircraftMovement(Aircraft *v)
 		return true;
 	}
 
+	/* A legacy admitted taxi route can be waiting for its first real window.
+	 * Obtain it before rotating, aligning at the destination, or moving. */
+	if (v->state == AS_RUNNING && v->reserved_path.empty() && !ExtendAircraftTaxiReservation(v)) {
+		StopTaxiAircraft(v);
+		return true;
+	}
+
 	if ((v->state <= AS_RUNNING || v->state == AS_START_TAKEOFF || v->state == AS_LANDED) &&
 			!v->vehstatus.Test(VehState::Hidden) && !EnsureAircraftTaxiRunways(v)) {
 		StopTaxiAircraft(v);
@@ -3623,7 +3631,7 @@ void Aircraft::BeginExternalFlight()
 bool Aircraft::ResumeExternalFlight()
 {
 	auto usable = [this](const Station *station) {
-		return station != nullptr && station->owner == this->owner && CanAircraftUseAirport(this, station);
+		return station != nullptr && IsInfraUsageAllowed(VehicleType::Aircraft, this->owner, station->owner) && CanAircraftUseAirport(this, station);
 	};
 	const Station *airport = Station::GetIfValid(this->external_return_airport);
 	if (!usable(airport) || airport->airport.tile != this->external_return_airport_tile) airport = nullptr;

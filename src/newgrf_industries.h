@@ -29,6 +29,7 @@ struct IndustriesScopeResolver : public ScopeResolver {
 	uint32_t random_bits; ///< Random bits of the new industry.
 	Industry *industry;   ///< %Industry being resolved.
 	IndustryType type;    ///< Type of the industry.
+	std::span<int32_t> external_storage{}; ///< Persistent variables for an off-map industry.
 
 	mutable std::unique_ptr<IndustryLocationDistanceCache> location_distance_cache;
 	mutable std::unique_ptr<IndustryLocationDistanceAndCountCache> town_location_distance_cache;
@@ -93,9 +94,11 @@ enum class IndustryAvailabilityCallType : uint8_t {
 };
 
 /* in newgrf_industry.cpp */
-uint16_t GetIndustryCallback(CallbackID callback, uint32_t param1, uint32_t param2, Industry *industry, IndustryType type, TileIndex tile);
+uint16_t GetIndustryCallback(CallbackID callback, uint32_t param1, uint32_t param2, Industry *industry, IndustryType type, TileIndex tile, std::span<int32_t> external_storage = {});
 uint32_t GetIndustryIDAtOffset(TileIndex new_tile, const Industry *i, GrfID cur_grfid);
-void IndustryProductionCallback(Industry *ind, int reason);
+void InitializeIndustryCargoTypes(Industry *industry, std::span<int32_t> external_storage = {});
+void ChangeIndustryProduction(Industry *industry, bool monthly, std::span<int32_t> external_storage = {});
+void IndustryProductionCallback(Industry *ind, int reason, std::span<int32_t> external_storage = {});
 CommandCost CheckIfCallBackAllowsCreation(TileIndex tile, IndustryType type, size_t layout, uint32_t seed, uint16_t initial_random_bits, Owner founder, IndustryAvailabilityCallType creation_type);
 uint32_t GetIndustryProbabilityCallback(IndustryType type, IndustryAvailabilityCallType creation_type, uint32_t default_prob);
 bool IndustryTemporarilyRefusesCargo(Industry *ind, CargoType cargo_type);

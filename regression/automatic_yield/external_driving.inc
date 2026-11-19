@@ -38,6 +38,11 @@ void ExternalConnectionDrivingTick()
   }
   _settings_game.vehicle.external_connections=true;
   _settings_game.vehicle.external_trip_minutes=10;
+  if(mode=="clock80" || mode=="clock160"){
+   _settings_game.vehicle.external_trip_distance=64;
+   DemoRequire(CmdChangeSetting(DoCommandFlag::Execute,"game_time.time_in_minutes",1),"enable shared game clock");
+   DemoRequire(CmdChangeSetting(DoCommandFlag::Execute,"game_time.ticks_per_minute",mode=="clock80"?80:160),"set shared clock rate");
+  }
   DemoRequire(CmdRenameVehicle(DoCommandFlag::Execute,demo_slow->index,"外联口往返验收列车"),"name example train");
   while(demo_slow->GetNumOrders()!=0)DemoRequire(CmdDeleteOrder(DoCommandFlag::Execute,OrderTargetType::Vehicle,demo_slow->index.base(),VehicleOrderID{0}),"clear demonstration orders");
   Order outside;outside.MakeGoToDepot(GetDepotDestinationIndex(portal),{OrderDepotTypeFlag::PartOfOrders},ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS);
@@ -89,9 +94,16 @@ void ExternalConnectionDrivingTick()
    /* The observer runs before this loop's tick increment; it sees the same
     * state-tick number as the preceding loop's final-entry callback. */
    if(!reload){
-    const uint64_t stop=mode=="custom"?160:uint64_t(_settings_game.vehicle.external_stop_minutes)*_settings_time.ticks_per_minute;
+    const uint64_t stop=mode=="custom"?160:uint64_t(_settings_game.vehicle.external_stop_minutes)*_settings_game.game_time.ticks_per_minute;
     const uint64_t expected=2*Vehicle::ExternalTravelTicks(_settings_game.vehicle.external_trip_distance,demo_slow->external_cruise_speed)+stop;
     assert(uint64_t((due-_state_ticks).base())==expected);
+    if(mode=="clock80" || mode=="clock160"){
+     const auto &clock = _settings_game.game_time;
+     assert(clock.time_in_minutes && clock.ticks_per_minute == (mode=="clock80"?80:160));
+     fprintf(demo_log,"RAIL_CLOCK rate=%u speed=%u distance=%u leg=%lld stop=%lld\n",clock.ticks_per_minute,
+       demo_slow->external_cruise_speed,demo_slow->external_distance_tiles,
+       (long long)(demo_slow->external_arrival_tick-_state_ticks).base(),(long long)(demo_slow->external_departure_tick-demo_slow->external_arrival_tick).base());
+    }
    }
   }
   assert(demo_slow->cur_speed==0&&demo_slow->IsChainInDepot());

@@ -147,6 +147,7 @@ enum class CoupleCandidateResult : uint8_t {
 	WaitPartnerSlot,
 	WaitPartnerSlotGroup,
 	WaitPartnerGroup,
+	WaitPartnerPower,
 	WaitingCompany,
 	Arrangement,
 };
