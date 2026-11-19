@@ -3541,8 +3541,8 @@ bool HandleAircraftMovement(Aircraft *v)
 
 	if ((v->state <= AS_RUNNING || v->state == AS_START_TAKEOFF || v->state == AS_LANDED) &&
 			!EnsureAircraftJunctionAdmission(v)) {
-		 
 		StopTaxiAircraft(v);
+		UpdateAircraftTaxiTraffic(v, false);
 		return true;
 	}
 
