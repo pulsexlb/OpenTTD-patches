@@ -25,15 +25,20 @@
 	if (pools->empty()) delete pools;
 }
 
+/* static */ bool PoolBase::cleaning_pools = false;
+
 /**
  * Clean all pools of given type.
  * @param pt pool types to clean.
  */
 /* static */ void PoolBase::Clean(PoolTypes pt)
 {
+	bool was_cleaning = cleaning_pools;
+	cleaning_pools = true;
 	for (PoolBase *pool : *PoolBase::GetPools()) {
 		if (pt.Test(pool->type)) pool->CleanPool();
 	}
+	cleaning_pools = was_cleaning;
 }
 
 /* These are here to avoid needing formatting includes in pool_func */

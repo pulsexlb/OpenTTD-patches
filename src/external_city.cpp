@@ -42,9 +42,13 @@ INSTANTIATE_POOL_METHODS(ExternalBoundary)
 
 ExternalCity::~ExternalCity()
 {
- if (!Station::CleaningPool()) {
-  if (Station *station = Station::GetIfValid(this->market_station); station != nullptr && station->external_city == this->index.base()) delete station;
- }
+	/* PoolBase::Clean() tears pools down in link order: CargoPacket can already
+	 * be gone when this runs, while Station is still alive. Let Station's own
+	 * pool cleanup release the market station instead of deleting it here. */
+	if (PoolBase::IsCleaning()) return;
+	if (!Station::CleaningPool()) {
+		if (Station *station = Station::GetIfValid(this->market_station); station != nullptr && station->external_city == this->index.base()) delete station;
+	}
 }
 
 static uint32_t MixExternalEconomySeed(uint32_t value)

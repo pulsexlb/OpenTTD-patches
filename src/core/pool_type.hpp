@@ -48,6 +48,9 @@ struct PoolBase {
 		return pools;
 	}
 
+	/** True while PoolBase::Clean() is tearing down multiple pools. */
+	static bool IsCleaning() { return cleaning_pools; }
+
 	static void Clean(PoolTypes);
 
 	/**
@@ -67,6 +70,8 @@ struct PoolBase {
 	virtual void CleanPool() = 0;
 
 private:
+	static bool cleaning_pools; ///< Set while PoolBase::Clean() runs.
+
 	/**
 	 * Dummy private copy constructor to prevent compilers from
 	 * copying the structure, which fails due to GetPools().
