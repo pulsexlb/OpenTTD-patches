@@ -1223,8 +1223,8 @@ void OrderList::InsertOrderAt(Order &&ins_order, VehicleOrderID index)
 	/* We can visit oil rigs and buoys that are not our own. They will be shown in
 	 * the list of stations. So, we need to invalidate that window if needed. */
 	if (new_order->IsType(OT_GOTO_STATION) || new_order->IsType(OT_GOTO_WAYPOINT)) {
-		BaseStation *bs = BaseStation::Get(new_order->GetDestination().ToStationID());
-		if (bs->owner == OWNER_NONE) InvalidateWindowClassesData(WindowClass::StationList);
+		BaseStation *bs = BaseStation::GetIfValid(new_order->GetDestination().ToStationID());
+		if (bs != nullptr && bs->owner == OWNER_NONE) InvalidateWindowClassesData(WindowClass::StationList);
 	}
 }
 
@@ -1467,11 +1467,24 @@ static void DeleteOrderWarnings(const Vehicle *v)
 TileIndex Order::GetLocation(const Vehicle *v, bool airport) const
 {
 	switch (this->GetType()) {
-		case OT_GOTO_WAYPOINT:
+		case OT_GOTO_WAYPOINT: {
+			const Waypoint *wp = Waypoint::GetIfValid(this->GetDestination().ToStationID());
+			return wp == nullptr ? INVALID_TILE : wp->xy;
+		}
+
 		case OT_GOTO_STATION:
-		case OT_IMPLICIT:
-			if (airport && v != nullptr && v->type == VehicleType::Aircraft) return Station::Get(this->GetDestination().ToStationID())->airport.tile;
-			return BaseStation::Get(this->GetDestination().ToStationID())->xy;
+		case OT_IMPLICIT: {
+			if (this->IsExternalFlightOrder()) {
+				const auto city = GetExternalOrderCity(*this);
+				if (!ExternalCity::IsValidID(city)) return INVALID_TILE;
+				return GetExternalFlightBoundary(city, v == nullptr ? TileIndex{} : v->tile);
+			}
+			const StationID station = this->GetDestination().ToStationID();
+			const Station *st = Station::GetIfValid(station);
+			if (st == nullptr) return INVALID_TILE;
+			if (airport && v != nullptr && v->type == VehicleType::Aircraft) return st->airport.tile;
+			return st->xy;
+		}
 
 		case OT_GOTO_DEPOT: {
 			if (this->GetDepotActionType() & ODATFB_NEAREST_DEPOT) return INVALID_TILE;
@@ -1644,6 +1657,15 @@ static CommandCost ValidateStandaloneNewOrder(const Order &new_order)
 	if (new_order.IsType(OT_GOTO_COUPLE) && (new_order.GetCoupleSpeedComparator(0) > 6 || new_order.GetCoupleSpeedComparator(1) > 6 || new_order.GetCoupleSpeedUnit(0) >= 6 || new_order.GetCoupleSpeedUnit(1) >= 6)) return CMD_ERROR;
 	switch (new_order.GetType()) {
 		case OT_GOTO_STATION:
+			if (new_order.IsExternalFlightOrder()) {
+				if (!_settings_game.vehicle.external_connections) return CMD_ERROR;
+				const auto city = GetExternalOrderCity(new_order);
+				if (city != ExternalCityID::Invalid()) {
+					const ExternalCity *ext = ExternalCity::GetIfValid(city);
+					if (ext == nullptr || !Station::IsValidID(ext->market_station) || GetExternalFlightBoundary(city, TileIndex{}) == INVALID_TILE) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
+				}
+				break;
+			}
 			if (Station::GetIfValid(new_order.GetDestination().ToStationID()) == nullptr) return CMD_ERROR;
 			break;
 
@@ -1899,11 +1921,15 @@ CommandCost CmdInsertOrder(DoCommandFlags flags, const InsertOrderCmdData &data)
 	Order new_order{};
 	MemberPtrsTie(new_order, Order::GetCmdRefFields()) = data.new_order;
 	/* The command payload carries the destination, not OrderExtraInfo. Virtual
-	 * city stations unambiguously identify external flights on every peer. */
-	if (!data.is_list && new_order.IsType(OT_GOTO_STATION)) {
+	 * city stations unambiguously identify external flights on every peer;
+	 * an undefined destination needs the explicit flag. */
+	if (new_order.IsType(OT_GOTO_STATION)) {
 		const Station *station = Station::GetIfValid(new_order.GetDestination().ToStationID());
 		if (station != nullptr && station->external_city != UINT16_MAX) {
 			new_order.MakeExternalFlight(station->index);
+			MemberPtrsTie(new_order, Order::GetCmdRefFields()) = data.new_order;
+		} else if (data.external_flight) {
+			new_order.MakeExternalFlight(new_order.GetDestination().ToStationID());
 			MemberPtrsTie(new_order, Order::GetCmdRefFields()) = data.new_order;
 		}
 	}
@@ -2000,18 +2026,20 @@ static CommandCost PreInsertOrderCheck(Vehicle *v, const Order &new_order, CmdIn
 	 * and has the correct flags if any */
 	switch (new_order.GetType()) {
 		case OT_GOTO_STATION: {
+			const bool flight = new_order.IsExternalFlightOrder();
 			const Station *st = Station::GetIfValid(new_order.GetDestination().ToStationID());
-			if (st == nullptr) return CMD_ERROR;
+			if (!flight) {
+				if (st == nullptr) return CMD_ERROR;
 
-			if (st->owner != OWNER_NONE) {
-				CommandCost ret = CheckInfraUsageAllowed(v->type, st->owner);
-				if (ret.Failed()) return ret;
+				if (st->owner != OWNER_NONE) {
+					CommandCost ret = CheckInfraUsageAllowed(v->type, st->owner);
+					if (ret.Failed()) return ret;
+				}
 			}
 
-			const bool flight = new_order.IsExternalFlightOrder();
 			if (flight && (!_settings_game.vehicle.external_connections || v->type != VehicleType::Aircraft ||
-					!ExternalCity::IsValidID(GetExternalOrderCity(new_order)) || GetExternalFlightBoundary(GetExternalOrderCity(new_order), v->tile) == INVALID_TILE)) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
-			if (st->external_city != UINT16_MAX && !flight) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
+					(GetExternalOrderCity(new_order) != ExternalCityID::Invalid() && GetExternalFlightBoundary(GetExternalOrderCity(new_order), v->tile) == INVALID_TILE))) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
+			if (st != nullptr && st->external_city != UINT16_MAX && !flight) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
 			if (!flight && !CanVehicleUseStation(v, st)) return CommandCost::DualErrorMessage(STR_ERROR_CAN_T_ADD_ORDER, GetVehicleCannotUseStationReason(v, st));
 			for (Vehicle *u = v->FirstShared(); u != nullptr; u = u->NextShared()) {
 				if (!flight && !CanVehicleUseStation(u, st)) return CommandCost::DualErrorMessage(STR_ERROR_CAN_T_ADD_ORDER_SHARED, GetVehicleCannotUseStationReason(u, st));
@@ -3728,9 +3756,11 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			break;
 
 		case MOF_EXTERNAL_FLIGHT_CITY: {
-			const auto *city = ExternalCity::GetIfValid(ExternalCityID{data});
-			if (!order->IsExternalFlightOrder() || !_settings_game.vehicle.external_connections || city == nullptr ||
-					!Station::IsValidID(city->market_station) || GetExternalFlightBoundary(city->index, is_list ? TileIndex{} : v->tile) == INVALID_TILE) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
+			if (!order->IsExternalFlightOrder() || !_settings_game.vehicle.external_connections) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
+			if (data != UINT16_MAX) {
+				const auto *city = ExternalCity::GetIfValid(ExternalCityID{data});
+				if (city == nullptr || !Station::IsValidID(city->market_station) || GetExternalFlightBoundary(city->index, is_list ? TileIndex{} : v->tile) == INVALID_TILE) return CommandCost(STR_EXTERNAL_FLIGHT_INVALID);
+			}
 			for (const Vehicle *u = ol->GetFirstSharedVehicle(); u != nullptr; u = u->NextShared()) {
 				if (u->type != VehicleType::Aircraft) return CMD_ERROR;
 			}
@@ -4341,7 +4371,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 				break;
 
 			case MOF_EXTERNAL_FLIGHT_CITY:
-				order->SetDestination(ExternalCity::Get(ExternalCityID{data})->market_station);
+				order->SetDestination(data == UINT16_MAX ? StationID::Invalid() : ExternalCity::Get(ExternalCityID{data})->market_station);
 				ClearOrderDestinationRefcountMap();
 				break;
 
@@ -5683,9 +5713,12 @@ static bool CheckForValidOrders(const Vehicle *v)
 {
 	for (const Order *order : v->Orders()) {
 		switch (order->GetType()) {
-			case OT_GOTO_STATION:
-			case OT_GOTO_WAYPOINT:
-				return true;
+		case OT_GOTO_STATION:
+			if (order->IsExternalFlightOrder() && !ExternalCity::IsValidID(GetExternalOrderCity(*order))) break;
+			return true;
+
+		case OT_GOTO_WAYPOINT:
+			return true;
 
 			case OT_GOTO_DEPOT:
 				if ((order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) == 0) return true;
@@ -6708,6 +6741,17 @@ bool ProcessOrders(Vehicle *v)
 		return false;
 	}
 
+	/* An external flight with no destination city is a placeholder. Skip it
+	 * the same way a slot order with no usable target is ignored: no takeoff,
+	 * no waiting for an unreachable boundary. */
+	if (v->type == VehicleType::Aircraft && order->IsExternalFlightOrder() &&
+			!ExternalCity::IsValidID(GetExternalOrderCity(*order))) {
+		v->IncrementImplicitOrderIndex();
+		v->current_order.Free();
+		v->SetDestTile(INVALID_TILE);
+		return ProcessOrders(v);
+	}
+
 	/* If it is unchanged, keep it. */
 	if (order->Equals(v->current_order) && (v->type == VehicleType::Aircraft || v->dest_tile != INVALID_TILE) &&
 			(v->type != VehicleType::Ship || !order->IsType(OT_GOTO_STATION) || Station::Get(order->GetDestination().ToStationID())->facilities.Test(StationFacility::Dock))) {
@@ -6901,6 +6945,7 @@ void InsertOrderCmdData::SerialisePayload(BufferSerialisationRef buffer) const
 	}
 	buffer.Send_generic(this->sel_ord);
 	buffer.Send_generic(this->new_order);
+	buffer.Send_bool(this->external_flight);
 }
 
 bool InsertOrderCmdData::Deserialise(DeserialisationBuffer &buffer, StringValidationSettings default_string_validation)
@@ -6913,6 +6958,7 @@ bool InsertOrderCmdData::Deserialise(DeserialisationBuffer &buffer, StringValida
 	}
 	buffer.Recv_generic(this->sel_ord, default_string_validation);
 	buffer.Recv_generic(this->new_order, default_string_validation);
+	this->external_flight = buffer.Recv_bool();
 
 	return true;
 }

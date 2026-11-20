@@ -2810,9 +2810,9 @@ STR_WAIT_COUPLE_SLOT_BUTTON :Automatic slot: {TRSLOT}
 STR_WAIT_COUPLE_SLOT_TOOLTIP :{BLACK}Acquire this slot before accepting a coupling train, then return it after coupling. If full, keep waiting. An independently held slot is preserved.
 STR_WAIT_COUPLE_SLOT_SUFFIX : (acquire then return {TRSLOT})
 
-STR_CONFIG_EXTERNAL_CONNECTIONS :External connections (prototype): {STRING}
+STR_CONFIG_EXTERNAL_CONNECTIONS :External connections (prototype): {STRING2}
 STR_CONFIG_EXTERNAL_CONNECTIONS_HELP :Allow vehicles to travel outside the map, with loading, stopping, automatic refitting and return settings. Turning this off does not cancel active journeys. Refitting follows the vehicle's station-refit rules. Decoupling outside the map is not supported. New games generate one city on each map edge using the selected town-name generator. Existing saves are not changed.
-STR_CONFIG_EXTERNAL_TRIP_MINUTES :Default external round trip: {NUM} minutes
+STR_CONFIG_EXTERNAL_TRIP_MINUTES :Default external round trip: {STRING2}
 STR_CONFIG_EXTERNAL_TRIP_MINUTES_HELP :Total external journey in timetable minutes. An explicitly timetabled wait on the portal order overrides this duration. Changing this setting does not retime journeys already in progress.
 STR_EXTERNAL_TRIP_ACTION :External round trip
 STR_EXTERNAL_TRIP_ORDER_SUFFIX : (external round trip)
@@ -2877,7 +2877,7 @@ STR_EXTERNAL_ENTRANCE_POSITION :Entrance position: {STRING} ({NUM}, {NUM})
 STR_EXTERNAL_ENTRANCE_COUNT :External vehicles using this entrance: {NUM}
 STR_EXTERNAL_ENTRANCE_LOCATE :Locate entrance
 STR_EXTERNAL_ENTRANCE_HELP :Choose the return entrance in the order's external journey settings.
-STR_EXTERNAL_TRIP_SETTINGS_HELP :{BLACK}Return through the original entrance, or choose a highlighted exit in the same city on the map. The current trip retains its return entrance. Assign a city boundary through the map menu first if needed.
+STR_EXTERNAL_TRIP_SETTINGS_HELP :{BLACK}Return through the original entrance, or choose a highlighted exit in the same city on the map. Use Manage Order to change this. The current trip retains its return entrance. Assign a city boundary through the map menu first if needed.
 STR_EXTERNAL_RETURN_INCOMPATIBLE :The return entrance has an incompatible railway type.
 STR_EXTERNAL_UNASSIGNED_CITY :Unassigned city
 STR_EXTERNAL_RETURN_PICK :Choose exit on map...
@@ -2912,9 +2912,9 @@ STR_EXTERNAL_ECONOMY_DETAILS :Details
 STR_EXTERNAL_ECONOMY_SELECT :Industry: {RAW_STRING}
 STR_EXTERNAL_ECONOMY_REQUIRES :Requires:
 STR_EXTERNAL_ECONOMY_PRODUCTS :Produces:
-STR_CONFIG_EXTERNAL_DISTANCE :Default one-way external distance: {NUM} tiles
+STR_CONFIG_EXTERNAL_DISTANCE :Default one-way external distance: {STRING2}
 STR_CONFIG_EXTERNAL_DISTANCE_HELP :Travel time uses native rail distance divided by consist speed. Both legs are counted; stop time is separate.
-STR_CONFIG_EXTERNAL_STOP :Default external stop: {NUM} minutes
+STR_CONFIG_EXTERNAL_STOP :Default external stop: {STRING2}
 STR_CONFIG_EXTERNAL_STOP_HELP :Default city stop in timetable minutes. An explicitly timetabled wait, including zero, overrides it.
 STR_EXTERNAL_CITY_STOP :Stop at city: {NUM} minutes
 STR_EXTERNAL_CITY_STOP_TITLE :City stop (0–1440 minutes)
@@ -2964,15 +2964,16 @@ STR_EXTERNAL_SHIP_BUILD_FAILED :Can't establish external sea route
 STR_EXTERNAL_SHIP_QUERY_TITLE :Open a sea route to the neighbouring city?
 STR_EXTERNAL_SHIP_QUERY_TEXT :{YELLOW}This waterway reaches the regional boundary.{}Destination: {RAW_STRING}{}Open a shipping connection here?{}Ships can return through a compatible water entrance.
 
-STR_CONFIG_EXTERNAL_BOUNDARY_EDITING :Allow players to edit external city boundaries: {STRING}
+STR_CONFIG_EXTERNAL_BOUNDARY_EDITING :Allow players to edit external city boundaries: {STRING2}
 STR_CONFIG_EXTERNAL_BOUNDARY_EDITING_HELP :Disabled by default. Players cannot create external cities or add, redraw or remove their boundaries. Existing cities and routes keep working. Scenario editors may still create cities and edit boundaries.
 STR_EXTERNAL_BOUNDARY_LOCKED :Creating external cities and editing their boundaries is disabled in game settings
 STR_EXTERNAL_FLIGHT_MENU :Fly to an external city...
 STR_EXTERNAL_FLIGHT_INVALID :Select an external city with a boundary for this flight
 STR_EXTERNAL_FLIGHT_INVALID_AIRPORT :The return airport cannot accommodate this aircraft
 STR_EXTERNAL_FLIGHT_RETURN_HOME :Return to departure airport (default)
-STR_EXTERNAL_FLIGHT_DESTINATION :Destination city
-STR_EXTERNAL_FLIGHT_DESTINATION_HELP :Click to change the destination of the selected external flight. Loading, timetable and return airport settings are preserved. A journey already outside finishes at its original city; the new city applies next time.
+STR_EXTERNAL_FLIGHT_DESTINATION :Target city
+STR_EXTERNAL_FLIGHT_CITY_UNDEFINED :{PUSH_COLOUR}{RED}Undefined{POP_COLOUR}
+STR_EXTERNAL_FLIGHT_DESTINATION_HELP :{BLACK}New flights start with an undefined destination. Click to choose a city; loading, timetable and return airport settings are preserved. Flights left undefined are skipped. A journey already outside finishes at its original city; the new city applies next time.
 STR_EXTERNAL_FLIGHT_RETURN_PICK :Choose airport on map...
 STR_EXTERNAL_FLIGHT_RETURN_PICK_INVALID :Click an airport this aircraft is allowed to use and can land at.
 STR_EXTERNAL_FLIGHT_RETURN_SUFFIX : [Return: {STATION}]
@@ -3008,7 +3009,7 @@ STR_EXTERNAL_TRADE_NAME :Reciprocal trade
 STR_EXTERNAL_TRADE_CREDIT :Shared industrial collection allowance: {NUM} units
 STR_EXTERNAL_TRADE_RULE :Any demanded freight can unlock every supply; passengers/mail are exempt
 STR_EXTERNAL_TRADE_CAP :Stock limit: {NUM} units per supplied cargo; replenished gradually throughout the economy month
-STR_CONFIG_EXTERNAL_ECONOMY_MODE :External city economy: {STRING}
+STR_CONFIG_EXTERNAL_ECONOMY_MODE :External city economy: {STRING2}
 STR_CONFIG_EXTERNAL_ECONOMY_MODE_HELP :Only applies to new external cities. In industry mode, local industries determine imports and exports. In reciprocal trade, each city starts with fixed, randomly chosen imports and exports. Any company can deliver requested freight to earn shared credit or spend it at any entrance on any export in stock. The more requested types supplied last economy month, the more credit each unit earns this month. Even one type earns credit. Supply all types to earn one unit per unit delivered next month. Passengers and mail travel as usual.
 STR_CONFIG_EXTERNAL_ECONOMY_INDUSTRY :Industry supply and demand
 STR_CONFIG_EXTERNAL_ECONOMY_TRADE :Reciprocal trade

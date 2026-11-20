@@ -800,7 +800,7 @@ public:
 	inline OrderDepotExtraFlags GetDepotExtraFlags() const { return static_cast<OrderDepotExtraFlags>(GB(this->flags, 8, 8)); }
 	bool HasExternalFlightPolicy() const { return this->extra != nullptr && HasBit(this->extra->external_cargo_flags, 7); }
 	bool IsExternalFlightOrder() const { return this->IsType(OT_GOTO_STATION) && this->HasExternalFlightPolicy(); }
-	void MakeExternalFlight(StationID station) { this->MakeGoToStation(station); this->SetStopLocation(OrderStopLocation::FarEnd); this->SetExternalReturnDepot(DepotID::Invalid()); SetBit(this->extra->external_cargo_flags, 7); }
+	void MakeExternalFlight(StationID station = StationID::Invalid()) { this->MakeGoToStation(station); this->SetStopLocation(OrderStopLocation::FarEnd); this->SetExternalReturnDepot(DepotID::Invalid()); SetBit(this->extra->external_cargo_flags, 7); }
 	StationID GetExternalReturnAirport() const
 	{
 		const StationID airport{this->GetExternalReturnDepot().base()};

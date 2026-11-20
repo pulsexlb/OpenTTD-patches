@@ -29,14 +29,15 @@ struct InsertOrderCmdData final : public CommandPayloadSerialisable<InsertOrderC
 	OrderListID list = OrderListID::Invalid(); ///< Target order list when #is_list is true.
 	VehicleOrderID sel_ord; // This may be INVALID_VEH_ORDER_ID to append to the end of the order list
 	OrderFields::Value new_order;
+	bool external_flight = false; ///< External-flight flag lives in OrderExtraInfo, which is not part of #OrderFields.
 
 	InsertOrderCmdData() = default;
 	/** Target a vehicle's (possibly shared) orders. */
 	InsertOrderCmdData(VehicleID veh, VehicleOrderID sel_ord, const Order &order) :
-			veh(veh), sel_ord(sel_ord), new_order(MemberPtrsTie(order, Order::GetCmdRefFields())) {}
+			veh(veh), sel_ord(sel_ord), new_order(MemberPtrsTie(order, Order::GetCmdRefFields())), external_flight(order.IsExternalFlightOrder()) {}
 	/** Target a player-created order list. */
 	InsertOrderCmdData(OrderListID list, VehicleOrderID sel_ord, const Order &order) :
-			is_list(true), list(list), sel_ord(sel_ord), new_order(MemberPtrsTie(order, Order::GetCmdRefFields())) {}
+			is_list(true), list(list), sel_ord(sel_ord), new_order(MemberPtrsTie(order, Order::GetCmdRefFields())), external_flight(order.IsExternalFlightOrder()) {}
 
 	void SerialisePayload(BufferSerialisationRef buffer) const;
 	bool Deserialise(DeserialisationBuffer &buffer, StringValidationSettings default_string_validation);
