@@ -5358,15 +5358,22 @@ void CheckOrders(const Vehicle *v)
 			}
 			/* Does station have a load-bay for this vehicle? */
 			if (order->IsType(OT_GOTO_STATION)) {
-				const Station *st = Station::Get(order->GetDestination().ToStationID());
-
-				n_st++;
-				if (!CanVehicleUseStation(v, st)) {
+				if (order->IsExternalFlightOrder()) {
+					/* An external city is a stop too. Undefined flights are
+					 * skipped at runtime, so they don't count as a stop. */
+					if (ExternalCity::IsValidID(GetExternalOrderCity(*order))) n_st++;
+					continue;
+				}
+				const Station *st = Station::GetIfValid(order->GetDestination().ToStationID());
+				if (st == nullptr || !CanVehicleUseStation(v, st)) {
 					message = STR_NEWS_VEHICLE_HAS_INVALID_ENTRY;
 				}
+				n_st++;
 			}
 			if (order->IsType(OT_GOTO_DEPOT)) {
 				has_depot_order = true;
+				/* Surface external trips call at an off-map city as well. */
+				if (order->IsExternalTripOrder()) n_st++;
 			}
 			/* Lists taking part in coupling/dispatching may legitimately have
 			 * few station orders; don't complain about those. */
