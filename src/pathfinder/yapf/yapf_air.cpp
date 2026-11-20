@@ -178,7 +178,9 @@ public:
 		pf.SetDestination(v->IsHelicopter(), dest_state);
 		path_found = pf.FindPath(v);
 		Node *last = pf.GetBestNode();
-		if (!path_found || last == nullptr) return INVALID_TRACKDIR;
+		if (!path_found || last == nullptr) {
+			return INVALID_TRACKDIR;
+		}
 
 		std::deque<AircraftPlannedNode> route;
 		for (Node *n = last; n != nullptr; n = n->parent) {
@@ -225,6 +227,7 @@ public:
 	void PfSetStartupNodes()
 	{
 		bool is_choice = (KillFirstBit(m_orgTrackdirs) != TRACKDIR_BIT_NONE);
+		int added = 0;
 		for (TrackdirBits tdb = m_orgTrackdirs; tdb != TRACKDIR_BIT_NONE; tdb = KillFirstBit(tdb)) {
 			Trackdir td = (Trackdir)FindFirstBit(tdb);
 			if (!IsAircraftVirtualTileAvailable(Yapf().GetVehicle(), m_orgTile, td)) continue;
@@ -235,6 +238,9 @@ public:
 			assert(to_underlying(difference) <= 4);
 			n1.cost = (to_underlying(difference) / 2) * YAPF_TILE_LENGTH;
 			Yapf().AddStartupNode(n1);
+			added++;
+		}
+		if (added == 0) {
 		}
 	}
 };
@@ -273,7 +279,7 @@ public:
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
 		if (!IsDiagonalTrackdir(td)) return false;
-		if (!IsAircraftVirtualDestinationAvailable(Yapf().GetVehicle(), tile)) return false;
+			if (!IsAircraftVirtualDestinationAvailable(Yapf().GetVehicle(), tile, TrackToTrackBits(TrackdirToTrack(td)))) return false;
 
 		switch (this->dest_state) {
 			case AS_HANGAR:

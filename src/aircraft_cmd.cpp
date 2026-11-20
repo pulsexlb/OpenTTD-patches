@@ -573,7 +573,6 @@ static void CheckIfAircraftNeedsService(Aircraft *v)
 {
 	if (v->IsInExternalTrip() || v->external_landing || v->current_order.IsExternalFlightOrder()) return;
 	if (!v->IsNormalAircraft()) return;
-	if (v->IsAircraftFlying() && !v->IsAircraftFreelyFlying()) return;
 
 	if (Company::Get(v->owner)->settings.vehicle.servint_aircraft == 0 || !v->NeedsAutomaticServicing()) return;
 	if (v->IsChainInDepot()) {
@@ -581,18 +580,21 @@ static void CheckIfAircraftNeedsService(Aircraft *v)
 		return;
 	}
 
-	/* When we're parsing conditional orders and the like
-	 * we don't want to consider going to a depot too. */
+	/* Automatic servicing may only reroute the aircraft while it is parked at a
+	 * terminal or stand, about to depart (the controller parks a just-landed
+	 * aircraft at the runway end as AS_IDLE too, so that case is covered):
+	 * touchdown servicing itself is done by HandlePlaneLandsOnRunway.
+	 * Rerouting a taxiing, rolling or flying aircraft replans across live
+	 * reservations mid-route and tangles apron traffic into deadlocks. */
+	if (v->state >= AS_RUNNING) return;
+
 	if (!v->current_order.IsType(OT_GOTO_DEPOT) && !v->current_order.IsType(OT_GOTO_STATION)) return;
 
-	const Station *st;
-	if (v->state <= AS_RUNNING) {
-		st = Station::GetIfValid(v->GetCurrentAirportID());
-	} else {
-		st = Station::GetIfValid(GetTargetDestination(v->current_order, true).ToStationID());
-	}
-	/* The target station may have been deleted while the aircraft was en route; in
-	 * that case there is nothing to service at, so do not dereference the stale slot. */
+	/* The aircraft is parked at an airport; only that airport is relevant. The
+	 * target station may have been deleted while the aircraft was en route; in
+	 * that case there is nothing to service at, so do not dereference the stale
+	 * slot. */
+	const Station *st = Station::GetIfValid(v->GetCurrentAirportID());
 	if (st == nullptr) return;
 
 	/* Guard against a stale AFB_HANGAR flag: the airport may claim to have a hangar
@@ -1465,6 +1467,7 @@ void UpdateAircraftState(Aircraft *v)
 		}
 
 		case OT_NOTHING:
+		case OT_DUMMY:
 			if (cur_station == StationID::Invalid()) {
 				/* If flying, find closest airport and go there. */
 				ClosestDepot closestHangar = v->FindClosestDepot();
@@ -1473,7 +1476,11 @@ void UpdateAircraftState(Aircraft *v)
 				dest_tile = (hangar_station != nullptr && hangar_station->airport.hangar != nullptr) ?
 						v->GetOrderHangarLocation(hangar_station->airport.hangar->index) : INVALID_TILE;
 			} else {
-				/* If aircraft is in an airport, go to its hangar or aprons. */
+				/* If aircraft is in an airport, go to its hangar or aprons.
+				 * This must also cover a cleared (dummy) order: an aircraft
+				 * stranded away from any terminal — e.g. just after landing
+				 * with its orders deleted — has to leave the runway instead of
+				 * parking there with the complete runway locked forever. */
 				Station *st = Station::Get(cur_station);
 				if (st->airport.HasHangar()) {
 					next_state = AS_HANGAR;
@@ -1482,12 +1489,38 @@ void UpdateAircraftState(Aircraft *v)
 					next_state = AS_APRON;
 					dest_tile = v->GetOrderStationLocation(st->index);
 				}
+				/* Let IsReachableDest accept the own airport as the target;
+				 * without it the aircraft would wait forever for an invalid
+				 * destination it can never reach. */
+				v->targetairport = cur_station;
+				cur_dest_station = cur_station;
 			}
 			break;
 
 		default:
 			Debug(misc, 0, "Unhandled order type");
 			break;
+	}
+
+	/* A grounded aircraft must never be left without a destination: it would
+	 * stay parked wherever it stands — potentially on a runway while holding
+	 * its complete runway lock — forever. A cleared order, a depot that no
+	 * longer exists, or any unhandled order type all end up here; park at the
+	 * current airport instead (hangar if available, else an apron). */
+	if (dest_tile == INVALID_TILE && cur_station != StationID::Invalid()) {
+		 
+		Station *st = Station::Get(cur_station);
+		if (st->airport.HasHangar()) {
+			next_state = AS_HANGAR;
+			dest_tile = v->GetOrderHangarLocation(st->airport.hangar->index);
+		} else {
+			next_state = AS_APRON;
+			dest_tile = v->GetOrderStationLocation(st->index);
+		}
+		/* Let IsReachableDest accept the own airport as the target; without it
+		 * the aircraft would wait forever for a destination it cannot have. */
+		v->targetairport = cur_station;
+		cur_dest_station = cur_station;
 	}
 
 	v->dest_tile = dest_tile;
@@ -1585,6 +1618,7 @@ static bool AircraftEntersHangar(Aircraft *v)
 	v->progress = 0;
 	v->cur_speed = 0;
 	v->state = AS_HANGAR;
+	 
 	ReleaseAircraftTaxiPath(v, false);
 
 	{
@@ -2088,13 +2122,21 @@ void HandleAircraftLanding(Aircraft *v)
 			assert(IsRunwayExtreme(v->tile));
 			assert(IsRunwayEnd(v->tile));
 
-			/* Keep the complete runway until a checked local taxi track exists. */
+			 
+			/* The landing roll is finished. Hold only the single tile we stopped
+			 * on as an ordinary taxi reservation: that position has a taxi exit,
+			 * so the rest of the runway can serve a departure waiting at the
+			 * opposite head. The whole-runway lock belongs to the roll itself
+			 * (TryReserveAircraftRunway), not to the wait for a taxi route. */
 			Trackdir trackdir = DiagDirToDiagTrackdir(GetRunwayExtremeDirection(v->tile));
+			TryReserveAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(trackdir)), TrackdirToTrackdirBits(trackdir));
+			if (v->reserved_runway != INVALID_TILE) ReleaseAircraftRunway(v);
 			Trackdir next_trackdir = GetFreeAirportTrackdir(v->tile, trackdir, v);
 			if (!IsValidTrackdir(next_trackdir) ||
 					!TryReserveAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(next_trackdir)), TrackdirToTrackdirBits(next_trackdir))) {
-				/* No exit from the runway end yet: keep this complete runway
-				 * exclusively booked until a safe taxi exit is available.
+				 
+				/* No checked exit yet: keep this single runway tile reserved
+				 * until a safe taxi exit is available.
 				 * Zero the speed and stop moving this tick: any movement now
 				 * would push the aircraft off its exact stopping position, and
 				 * HandleAircraftState (which re-arms this wait) only runs while
@@ -2120,6 +2162,7 @@ void HandleAircraftLanding(Aircraft *v)
 			v->taxi_progress = 0;
 			SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
 			v->UpdateNextTile(INVALID_TILE);
+			 
 			break;
 		}
 
@@ -2219,13 +2262,13 @@ AircraftState GetNextAircraftState(const Aircraft &a)
 			return AS_HANGAR;
 
 		case OT_NOTHING:
+		case OT_DUMMY:
 			/* If aircraft is in an airport, go to its hangar or aprons. */
 			if (Station::Get(a.targetairport)->airport.HasHangar()) {
 				return AS_HANGAR;
 			} else {
 				return a.IsHelicopter() ? AS_HELIPAD : AS_APRON;
 			}
-			return AS_IDLE;
 
 		default:
 			return AS_IDLE;
@@ -2248,9 +2291,13 @@ bool HandleAircraftState(Aircraft *v)
 		UpdateAircraftCache(v);
 	}
 
-	if (!IsAircraftOnNextPosition(v)) return false;
+	const bool on_next_position = IsAircraftOnNextPosition(v);
+	/* An idle aircraft without a route still needs its destination refreshed,
+	 * but has not arrived anywhere. Skip arrival handling so departure from a
+	 * stand can reach the planner instead of repeatedly returning here. */
+	if (!on_next_position && (v->state != AS_IDLE || IsValidTile(v->GetNextTile()))) return false;
 
-	if (!v->IsAircraftFlying()) {
+	if (on_next_position && !v->IsAircraftFlying()) {
 		switch (v->current_order.GetType()) {
 			case OT_LEAVESTATION:
 				/* A leave station order only needs one tick to get processed,
@@ -2974,7 +3021,18 @@ void HandleMissingAircraftOrders(Aircraft *v)
 		CommandCost ret = Command<Commands::SendVehicleToDepot>::Do(DoCommandFlag::Execute, v->index, DepotCommandFlags{}, INVALID_TILE);
 		cur_company.Restore();
 
-		if (ret.Failed()) HandleAircraftFalling(v);
+		if (ret.Failed()) {
+			if (v->IsAircraftFalling()) {
+				/* Already descending: continue the fall. */
+				HandleAircraftFalling(v);
+			} else if (v->IsAircraftFreelyFlying()) {
+				/* Airborne with no destination and no reachable hangar:
+				 * start the fall, like the flight controller does. */
+				AircraftStartsFalling(v);
+			}
+			/* A grounded aircraft without a reachable hangar simply stays
+			 * where it is; it must not crash or assert on deleted orders. */
+		}
 	} else if (!v->current_order.IsType(OT_GOTO_DEPOT)) {
 		v->current_order.Free();
 	}
@@ -3086,27 +3144,69 @@ bool TryReservePath(Aircraft *v)
 	const bool leaving_hangar = v->vehstatus.Test(VehState::Hidden) && IsValidTile(v->tile) && IsHangarTile(v->tile);
 	/* Failed admission must not retain a partial virtual route or doorway.
 	 * Only an aircraft already on the ground keeps its current real tile. */
+	bool keep_admission_request = false;
 	auto rollback = scope_guard([&]() {
 		AircraftTaxiBlock block = v->taxi_block_reason;
-		ReleaseAircraftTaxiPath(v, !leaving_hangar);
+		ReleaseAircraftTaxiPath(v, !leaving_hangar, keep_admission_request);
 		v->taxi_block_reason = block;
 	});
-	if (!IsValidTile(v->tile) || !IsAirportTile(v->tile) || !MayHaveAirTracks(v->tile) || !IsValidTrackdir(v->trackdir)) return false;
+	if (!IsValidTile(v->tile) || !IsAirportTile(v->tile) || !MayHaveAirTracks(v->tile) || !IsValidTrackdir(v->trackdir)) {
+		 
+		return false;
+	}
+	/* A stale trackdir — left behind by a cancelled turn or restored from an
+	 * old save — may not match the tile's built tracks. YAPF cannot originate
+	 * a route from such a trackdir (no valid origin node exists), so re-derive
+	 * one from the tile's actual tracks, preferring the direction the aircraft
+	 * is facing. */
+	if ((GetAirportTileTracks(v->tile) & TrackToTrackBits(TrackdirToTrack(v->trackdir))) == TRACK_BIT_NONE) {
+		Trackdir chosen = INVALID_TRACKDIR;
+		for (TrackdirBits tdb = TrackBitsToTrackdirBits(GetAirportTileTracks(v->tile)); tdb != TRACKDIR_BIT_NONE; tdb = KillFirstBit(tdb)) {
+			Trackdir td = (Trackdir)FindFirstBit(tdb);
+			if (!IsAircraftVirtualTileAvailable(v, v->tile, td)) continue;
+			if (chosen == INVALID_TRACKDIR || TrackdirToDirection(td) == v->direction) chosen = td;
+		}
+		if (chosen == INVALID_TRACKDIR) {
+			 
+			return false;
+		}
+		v->trackdir = v->Next()->trackdir = chosen;
+	}
 	v->taxi_block_reason = AircraftTaxiBlock::None;
-	ReleaseAircraftTaxiPath(v, !leaving_hangar);
+	ReleaseAircraftTaxiPath(v, !leaving_hangar, true);
 	v->UpdateNextTile(INVALID_TILE);
 	PBSTileInfo destination{};
 	bool found = false;
 	AircraftState dest_state = GetNextAircraftState(*v);
+	/* YAPF has no AS_IDLE target (PfDetectDestination returns false for it).
+	 * Asking for a route here only produces a permanent route-unavailable loop.
+	 * A ground aircraft with no destination keeps its physical tile and drops
+	 * every other claim so it cannot strand other traffic. */
+	if (dest_state == AS_IDLE) {
+		ReleaseAircraftStalledReservations(v);
+		v->taxi_block_reason = AircraftTaxiBlock::None;
+		return false;
+	}
 	Trackdir first = YapfAircraftFindPath(v, destination, found, dest_state, v->path);
-	v->HandlePathfindingResult(found);
+	/* A failed taxi path is a reservation wait, not a lost vehicle. YAPF's
+	 * destination test rejects an occupied terminal, apron or runway-head
+	 * tile, so a perfectly reachable route reports "not found" while another
+	 * aircraft holds the destination — the ground equivalent of waiting at a
+	 * red signal. Trains do not report "cannot find route" for that, and
+	 * neither should aircraft. Never raise the lost flag here; only clear a
+	 * stale one once a route is actually found. */
+	if (found) v->HandlePathfindingResult(true);
 	if (!found || !destination.okay || !IsValidTrackdir(first)) {
+		 
+		ReleaseAircraftStalledReservations(v);
 		return false;
 	}
 	const bool pushback = PrepareAircraftPushback(v, first);
 	if (!TryReserveAircraftTaxiPath(v)) return false;
 	if (IsTerminalState(dest_state) && !TryClaimAircraftTerminal(v, destination.tile)) return false;
+	keep_admission_request = true;
 	if (!ExtendAircraftTaxiReservation(v)) {
+		 
 		return false;
 	}
 	rollback.cancel();
@@ -3118,6 +3218,7 @@ bool TryReservePath(Aircraft *v)
 			v->direction = v->Next()->direction = TrackdirToDirection(first);
 			SetVisibility(v, true);
 		}
+		 
 		AircraftLeavesHangar(v);
 		v->PlayLeaveStationSound();
 	}
@@ -3126,6 +3227,7 @@ bool TryReservePath(Aircraft *v)
 	v->next_pos.pos = AP_DEFAULT;
 	v->UpdateNextTile(destination.tile);
 	v->taxi_blocked_ticks = 0;
+	 
 
 	if (pushback) {
 		SetBit(v->flags, VAF_PUSHBACK);
@@ -3203,6 +3305,7 @@ static bool MoveTaxiAircraft(Aircraft *v)
 	const AircraftPlannedNode current = v->planned_path.front();
 	if (!HasAircraftVirtualTileReservation(v, v->tile, TrackdirToTrackdirBits(current.td)) ||
 			!HasAircraftTileReservation(v, v->tile, TrackToTrackBits(TrackdirToTrack(current.td)))) {
+		 
 		StopTaxiAircraft(v);
 		return false;
 	}
@@ -3218,10 +3321,11 @@ static bool MoveTaxiAircraft(Aircraft *v)
 			CFollowTrackAirport swept(v);
 			if (!swept.Follow(v->tile, current.td) || swept.new_tile != gp.new_tile ||
 					!HasAircraftVirtualTileReservation(v, swept.new_tile, swept.new_td_bits)) {
+				 
 				StopTaxiAircraft(v);
 				return false;
 			}
-			if (!IsAircraftTaxiEnvelopeAvailable(v, gp.new_tile)) {
+			if (!IsAircraftTaxiEnvelopeAvailable(v, gp.new_tile, TrackdirBitsToTrackBits(swept.new_td_bits))) {
 				StopTaxiAircraft(v);
 				return false;
 			}
@@ -3279,7 +3383,9 @@ static bool MoveTaxiAircraft(Aircraft *v)
 		ReleaseAircraftTile(v, previous, TRACK_BIT_ALL);
 		if (v->allocated_terminal == previous) ReleaseAircraftTerminal(v);
 		if (v->reserved_runway != INVALID_TILE && !IsRunway(v->tile)) {
+			 
 			ReleaseAircraftRunway(v);
+			 
 		}
 		/* Never extend past the final stop; its local alignment is handled by arrival. */
 		if (v->tile != v->GetNextTile()) ExtendAircraftTaxiReservation(v);
@@ -3475,12 +3581,14 @@ bool HandleAircraftMovement(Aircraft *v)
 
 	if (v->state == AS_IDLE && DoesAircraftNeedRotation(v)) {
 		/* Older snapshots may still contain a pre-admission landing turn. */
+		 
 		v->next_trackdir = v->Next()->next_trackdir = INVALID_TRACKDIR;
 		v->cur_speed = 0;
 		v->ClearWaitTime();
 	}
 	if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile ||
 			!HasAircraftVirtualTileReservation(v, v->tile, TrackdirToTrackdirBits(v->planned_path.front().td)))) {
+		 
 		StopTaxiAircraft(v);
 		return true;
 	}
@@ -3493,7 +3601,15 @@ bool HandleAircraftMovement(Aircraft *v)
 	}
 
 	if ((v->state <= AS_RUNNING || v->state == AS_START_TAKEOFF || v->state == AS_LANDED) &&
+			!EnsureAircraftJunctionAdmission(v)) {
+		StopTaxiAircraft(v);
+		UpdateAircraftTaxiTraffic(v, false);
+		return true;
+	}
+
+	if ((v->state <= AS_RUNNING || v->state == AS_START_TAKEOFF || v->state == AS_LANDED) &&
 			!v->vehstatus.Test(VehState::Hidden) && !EnsureAircraftTaxiRunways(v)) {
+		 
 		StopTaxiAircraft(v);
 		return true;
 	}
@@ -3559,7 +3675,9 @@ static bool AircraftController(Aircraft *v, bool mode)
 		return mode ? true : HandleCrashedAircraft(v); // 'v' can be deleted here
 	}
 
-	if (v->vehstatus.Test(VehState::Stopped) && v->cur_speed == 0) return true;
+	if (v->vehstatus.Test(VehState::Stopped) && v->cur_speed == 0) {
+		return true;
+	}
 
 	v->HandleBreakdown();
 
@@ -3575,14 +3693,19 @@ static bool AircraftController(Aircraft *v, bool mode)
 		 * exit. Only the first controller call may advance the waiting order. */
 		if (mode) return true;
 		v->HandleWaiting(false, true);
-		if (v->current_order.IsType(OT_WAITING)) return true;
+		if (v->current_order.IsType(OT_WAITING)) {
+			 
+			return true;
+		}
 		UpdateAircraftState(v);
 	}
 
 	if (!v->external_landing) ProcessOrders(v);
 
 	v->HandleLoading(mode);
-	if (v->current_order.IsType(OT_LOADING)) return true;
+	if (v->current_order.IsType(OT_LOADING)) {
+		return true;
+	}
 
 	/* Check if we should wait here for unbunching. */
 	if (v->state == AS_HANGAR && v->IsWaitingForUnbunching()) return true;
@@ -3591,6 +3714,7 @@ static bool AircraftController(Aircraft *v, bool mode)
 
 	/* Check if next destination is too far. */
 	if (!IsReachableDest(v)) {
+		 
 		if (!v->IsWaiting()) v->SetWaitTime(AIRCRAFT_WAIT_FREE_PATH_TICKS);
 		return true;
 	}

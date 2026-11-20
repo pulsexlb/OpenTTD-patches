@@ -1294,6 +1294,37 @@ struct AircraftVirtualReservationStructHandler final : public TypedSaveLoadStruc
 	}
 };
 
+template <bool Request>
+struct AircraftJunctionActionStructHandler final : public TypedSaveLoadStructHandler<AircraftJunctionActionStructHandler<Request>, Aircraft> {
+	NamedSaveLoadTable GetDescription() const override
+	{
+		static const NamedSaveLoad desc[] = {
+			NSL("junction", SLE_VAR(AircraftJunctionAction, junction, SLE_UINT32)),
+			NSL("entry_tile", SLE_VAR(AircraftJunctionAction, entry_tile, SLE_UINT32)),
+			NSL("exit_tile", SLE_VAR(AircraftJunctionAction, exit_tile, SLE_UINT32)),
+			NSL("entry_td", SLE_VAR(AircraftJunctionAction, entry_td, SLE_UINT8)),
+			NSL("exit_td", SLE_VAR(AircraftJunctionAction, exit_td, SLE_UINT8)),
+			NSL("entered", SLE_VAR(AircraftJunctionAction, entered, SLE_BOOL)),
+			NSL("tiles", SLE_VARVEC(AircraftJunctionAction, tiles, SLE_UINT32)),
+			NSL("tracks", SLE_VARVEC(AircraftJunctionAction, tracks, SLE_UINT8)),
+			NSL("swept", SLE_VARVEC(AircraftJunctionAction, swept, SLE_UINT8)),
+		};
+		return desc;
+	}
+	void Save(Aircraft *v) const override
+	{
+		auto &actions = Request ? v->junction_requests : v->junction_actions;
+		SlSetStructListLength(actions.size());
+		for (auto &action : actions) SlObjectSaveFiltered(&action, this->GetLoadDescription());
+	}
+	void Load(Aircraft *v) const override
+	{
+		auto &actions = Request ? v->junction_requests : v->junction_actions;
+		actions.resize(SlGetStructListLength(64));
+		for (auto &action : actions) SlObjectLoadFiltered(&action, this->GetLoadDescription());
+	}
+};
+
 struct VehicleTypeStructHandler final : public TypedSaveLoadStructHandler<VehicleTypeStructHandler, Vehicle> {
 	const VehicleType type;
 
@@ -1832,6 +1863,17 @@ NamedSaveLoadTable GetVehicleDescription(VehicleType vt)
 		NSL("allocated_terminal", SLE_CONDVAR_X(Aircraft, allocated_terminal, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("reserved_runway", SLE_CONDVAR_X(Aircraft, reserved_runway, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("taxi_runways", SLE_CONDVARVEC_X(Aircraft, taxi_runways, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 6))),
+		NSLT_STRUCTLIST<AircraftJunctionActionStructHandler<false>>("junction_actions", SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 9)),
+		NSLT_STRUCTLIST<AircraftJunctionActionStructHandler<true>>("junction_requests", SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 9)),
+		NSL("junction_regions", SLE_CONDVARVEC_X(Aircraft, junction_regions, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 7))),
+		NSL("junction_tiles", SLE_CONDVARVEC_X(Aircraft, junction_tiles, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 7))),
+		NSL("junction_runways", SLE_CONDVARVEC_X(Aircraft, junction_runways, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 8))),
+		NSL("junction_entered", SLE_CONDVAR_X(Aircraft, junction_entered, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 7))),
+		NSL("junction_request_regions", SLE_CONDVARVEC_X(Aircraft, junction_request_regions, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 7))),
+		NSL("junction_request_tiles", SLE_CONDVARVEC_X(Aircraft, junction_request_tiles, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 7))),
+		NSL("junction_request_tick", SLE_CONDVAR_X(Aircraft, junction_request_tick, SLE_INT64, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 7))),
+		NSL("junction_legacy", SLE_CONDVAR_X(Aircraft, junction_legacy, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 8))),
+		NSL("junction_legacy_tiles", SLE_CONDVARVEC_X(Aircraft, junction_legacy_tiles, SLE_UINT32, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 8))),
 		NSL("taxi_blocked_ticks", SLE_CONDVAR_X(Aircraft, taxi_blocked_ticks, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION))),
 		NSL("taxi_jam_ticks", SLE_CONDVAR_X(Aircraft, taxi_jam_ticks, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2))),
 		NSL("taxi_block_reason", SLE_CONDVAR_X(Aircraft, taxi_block_reason, SLE_UINT8, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRCRAFT_ROLLING_RESERVATION, 2))),
