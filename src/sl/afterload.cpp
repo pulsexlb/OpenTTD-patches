@@ -4997,6 +4997,13 @@ bool AfterLoadGame()
 	if (SlXvIsFeaturePresent(XSLFI_EXTERNAL_CONNECTIONS, 3, 3)) MigrateExternalCityBoundaries();
 	for (Depot *portal : Depot::Iterate()) portal->external_city = ExternalCityID::Invalid();
 	if (!ValidateExternalBoundaries()) SlErrorCorrupt("Invalid external city boundary regions");
+	/* Older builds used the company-deletion sentinel for unowned cities.
+	 * Current snapshots already have authoritative OWNER_NONE ownership. */
+	if (SlXvIsFeaturePresent(XSLFI_EXTERNAL_CONNECTIONS, 1, 18)) {
+		for (ExternalCity *city : ExternalCity::Iterate()) if (city->owner == INVALID_OWNER) city->owner = OWNER_NONE;
+		for (ExternalBoundary *region : ExternalBoundary::Iterate()) if (region->owner == INVALID_OWNER) region->owner = OWNER_NONE;
+		for (Station *station : Station::Iterate()) if (station->IsExternalMarket() && station->owner == INVALID_OWNER) station->owner = OWNER_NONE;
+	}
 	for (auto *city : ExternalCity::Iterate()) InitializeExternalCityMarket(city);
 	EnsureExternalCityMarkets();
 	for (Vehicle *vehicle : Vehicle::Iterate()) if (ExternalCity::GetIfValid(vehicle->external_trip_city) == nullptr) vehicle->external_trip_city = ExternalCityID::Invalid();

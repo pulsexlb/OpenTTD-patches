@@ -925,7 +925,12 @@ ExternalCityID GetExternalCityForEntrance(TileIndex tile)
 }
 void ChangeExternalCityOwner(Owner old_owner, Owner new_owner)
 {
- for (ExternalCity *city : ExternalCity::Iterate()) if (city->owner == old_owner) city->owner = new_owner;
+ if (new_owner == INVALID_OWNER) new_owner = OWNER_NONE;
+ for (ExternalCity *city : ExternalCity::Iterate()) {
+  if (city->owner != old_owner) continue;
+  city->owner = new_owner;
+  if (Station *station = Station::GetIfValid(city->market_station); station != nullptr && station->external_city == city->index.base()) station->owner = new_owner;
+ }
  for (ExternalBoundary *region : ExternalBoundary::Iterate()) if (region->owner == old_owner) region->owner = new_owner;
 }
 bool ValidateExternalBoundaries()

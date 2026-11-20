@@ -291,6 +291,51 @@ static bool CanAircraftUseAirport(const Aircraft *v, const Station *st)
 			(v->IsHelicopter() && (!st->airport.helipads.empty() || !st->airport.heliports.empty()));
 }
 
+static bool CanUseExternalReturnAirport(const Aircraft *v, const Station *st)
+{
+	return st != nullptr && IsValidTile(st->airport.tile) &&
+			IsInfraUsageAllowed(VehicleType::Aircraft, v->owner, st->owner) && CanAircraftUseAirport(v, st);
+}
+
+static bool CanRetargetExternalReturnFlight(const Aircraft *v)
+{
+	return v->IsAircraftFreelyFlying() || (!v->IsHelicopter() && v->state == AS_ON_HOLD_APPROACHING &&
+			v->reserved_runway == INVALID_TILE && v->reserved_path.empty());
+}
+
+static bool IsExternalReturnTargetValid(const Aircraft *v)
+{
+	const Station *st = Station::GetIfValid(v->targetairport);
+	const TileIndex tile = v->GetNextTile();
+	return CanUseExternalReturnAirport(v, st) && v->current_order.IsType(OT_GOTO_STATION) &&
+			!v->current_order.IsExternalFlightOrder() && v->current_order.GetDestination().ToStationID() == st->index &&
+			IsValidTile(tile) && IsAirportTileOfStation(tile, st->index) &&
+			(v->IsHelicopter() ? IsApron(tile) : (IsRunwayStart(tile) && IsLandingTypeTile(tile)));
+}
+
+static Station *FindExternalReturnAirport(const Aircraft *v)
+{
+	/* Keep a visible return flight on its selected airport while it is usable. */
+	Station *airport = Station::GetIfValid(v->targetairport);
+	if (v->external_landing && v->current_order.IsType(OT_GOTO_STATION) && !v->current_order.IsExternalFlightOrder() &&
+			CanUseExternalReturnAirport(v, airport) && v->current_order.GetDestination().ToStationID() == airport->index) return airport;
+	airport = Station::GetIfValid(v->external_return_airport);
+	if (!CanUseExternalReturnAirport(v, airport) || airport->airport.tile != v->external_return_airport_tile) airport = nullptr;
+	if (airport == nullptr) {
+		airport = Station::GetIfValid(v->external_home_airport);
+		if (!CanUseExternalReturnAirport(v, airport) || airport->airport.tile != v->external_home_tile) airport = nullptr;
+	}
+	if (airport == nullptr) {
+		uint best = UINT_MAX;
+		for (Station *candidate : Station::Iterate()) {
+			if (!CanUseExternalReturnAirport(v, candidate)) continue;
+			const uint distance = DistanceSquare(v->tile, candidate->airport.tile);
+			if (distance < best) { best = distance; airport = candidate; }
+		}
+	}
+	return airport;
+}
+
 TileIndex Aircraft::GetOrderStationLocation(StationID station)
 {
 	if (this->current_order.IsExternalFlightOrder()) return GetExternalFlightBoundary(GetExternalOrderCity(this->current_order), this->tile);
@@ -1421,6 +1466,9 @@ void UpdateAircraftState(Aircraft *v)
 {
 	if (!v->IsNormalAircraft() || v->current_order.IsType(OT_WAITING)) return;
 	if (v->IsInExternalTrip()) return;
+	/* The controller revalidates this temporary return destination. Do not
+	 * replace it with a depot diversion or fall while waiting for an airport. */
+	if (v->external_landing && CanRetargetExternalReturnFlight(v)) return;
 	if (v->IsAircraftFreelyFlying() && v->current_order.IsExternalFlightOrder()) {
 		AircraftUpdateNextPos(v);
 		return;
@@ -1942,6 +1990,7 @@ static void UpdateAircraftTargetTile(Aircraft *v)
 	TileIndex tile = v->GetNextTile();
 	bool valid = IsValidTile(tile) && IsAirportTile(tile) &&
 			(v->IsHelicopter() || IsRunwayExtreme(tile));
+	if (v->external_landing && v->IsAircraftFreelyFlying()) valid &= IsExternalReturnTargetValid(v);
 	if (valid) {
 		v->UpdateNextTile(tile);
 		return;
@@ -2736,6 +2785,10 @@ void Aircraft::UpdateNextTile(TileIndex tile)
 void AircraftUpdateNextPos(Aircraft *v)
 {
 	assert(v->IsAircraftFreelyFlying());
+	if (v->external_landing) {
+		if (!IsExternalReturnTargetValid(v) || v->state == AS_FLYING_NO_DEST) AssignLandingTile(v, FindClosestLandingTile(v));
+		return;
+	}
 	if (v->current_order.IsExternalFlightOrder()) {
 		TileIndex boundary = GetExternalFlightBoundary(GetExternalOrderCity(v->current_order), v->tile);
 		if (IsValidTile(boundary)) {
@@ -2763,8 +2816,23 @@ void AircraftUpdateNextPos(Aircraft *v)
  */
 TileIndex FindClosestLandingTile(Aircraft *v)
 {
-	v->targetairport = GetTargetDestination(v->current_order, true).ToStationID();
-	Station *st = Station::GetIfValid(v->targetairport);
+	Station *st;
+	if (v->external_landing) {
+		st = FindExternalReturnAirport(v);
+		if (st == nullptr) {
+			v->targetairport = StationID::Invalid();
+			return INVALID_TILE;
+		}
+		if (!v->current_order.IsType(OT_GOTO_STATION) || v->current_order.IsExternalFlightOrder() ||
+				v->current_order.GetDestination().ToStationID() != st->index) {
+			v->current_order.Free();
+			v->current_order.MakeGoToStation(st->index);
+		}
+		v->targetairport = st->index;
+	} else {
+		v->targetairport = GetTargetDestination(v->current_order, true).ToStationID();
+		st = Station::GetIfValid(v->targetairport);
+	}
 	if (st == nullptr) return INVALID_TILE; // the order does not resolve to an airport
 
 	if (!CanAircraftUseAirport(v, st)) {
@@ -3701,6 +3769,14 @@ static bool AircraftController(Aircraft *v, bool mode)
 	}
 
 	if (!v->external_landing) ProcessOrders(v);
+	else if (!mode && CanRetargetExternalReturnFlight(v) && !v->IsAircraftFalling() &&
+			(!IsExternalReturnTargetValid(v) || v->state == AS_FLYING_NO_DEST) &&
+			(v->state != AS_FLYING_NO_DEST || (v->tick_counter & 31) == 0)) {
+		/* Revalidate before movement can consume a removed landing tile. Retry
+		 * missing airports on simulation ticks, without advancing real orders. */
+		if (!v->IsAircraftFreelyFlying()) v->state = AS_FLYING;
+		AircraftUpdateNextPos(v);
+	}
 
 	v->HandleLoading(mode);
 	if (v->current_order.IsType(OT_LOADING)) {
@@ -3754,30 +3830,14 @@ void Aircraft::BeginExternalFlight()
 
 bool Aircraft::ResumeExternalFlight()
 {
-	auto usable = [this](const Station *station) {
-		return station != nullptr && IsInfraUsageAllowed(VehicleType::Aircraft, this->owner, station->owner) && CanAircraftUseAirport(this, station);
-	};
-	const Station *airport = Station::GetIfValid(this->external_return_airport);
-	if (!usable(airport) || airport->airport.tile != this->external_return_airport_tile) airport = nullptr;
-	if (airport == nullptr) {
-		airport = Station::GetIfValid(this->external_home_airport);
-		if (!usable(airport) || airport->airport.tile != this->external_home_tile) airport = nullptr;
-	}
-	if (airport == nullptr) {
-		uint best = UINT_MAX;
-		for (const Station *candidate : Station::Iterate()) {
-			if (!usable(candidate)) continue;
-			const uint distance = DistanceSquare(this->tile, candidate->airport.tile);
-			if (distance < best) { best = distance; airport = candidate; }
-		}
-	}
+	Station *airport = FindExternalReturnAirport(this);
 	if (airport == nullptr) return false;
 	this->current_order.Free();
 	this->current_order.MakeGoToStation(airport->index);
 	this->targetairport = airport->index;
 	this->state = AS_FLYING;
-	AssignLandingTile(this, FindClosestLandingTile(this));
 	this->external_landing = true;
+	AssignLandingTile(this, FindClosestLandingTile(this));
 	this->cur_speed = std::min<uint>(this->external_cruise_speed, this->vcache.cached_max_speed);
 	for (Aircraft *part = this; part != nullptr; part = part->Next()) {
 		part->vehstatus.Reset(VehState::Hidden);
