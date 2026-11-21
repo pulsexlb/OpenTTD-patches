@@ -275,8 +275,38 @@ Station *GetTargetAirportIfValid(const Aircraft *v)
 }
 
 /**
+ * Minimum runway length in tiles needed by an aircraft engine with the given
+ * maximum speed: speed x conversion factor x small/large aircraft modifier.
+ * Helicopter engines need no runway and are expected to be filtered earlier.
+ */
+static uint AircraftRequiredRunwayLength(uint max_speed, bool large)
+{
+	const uint factor = _settings_game.vehicle.plane_runway_length_factor;
+	if (factor == 0) return 0;
+	const uint percent = large ? _settings_game.vehicle.plane_runway_large_factor : _settings_game.vehicle.plane_runway_small_factor;
+	if (percent == 0) return 0;
+	return static_cast<uint>(CeilDivT<uint64_t>(static_cast<uint64_t>(max_speed) * factor * percent, 100000u));
+}
+
+/** Get the minimum runway length in tiles required by an aircraft engine to take off or land. */
+uint GetAircraftRequiredRunwayLength(EngineID engine)
+{
+	const AircraftVehicleInfo *avi = AircraftVehInfo(engine);
+	/* Helicopters do not use runways. */
+	if (!(avi->subtype & AIR_CTOL)) return 0;
+	return AircraftRequiredRunwayLength(avi->max_speed, (avi->subtype & AIR_FAST) != 0);
+}
+
+uint GetAircraftRequiredRunwayLength(const Aircraft *v)
+{
+	if (v == nullptr || !v->IsNormalAircraft()) return 0;
+	return GetAircraftRequiredRunwayLength(v->engine_type);
+}
+
+/**
  * Whether an airport can be used by an aircraft, including the availability of a
- * terminal (apron/helipad/heliport) where the aircraft can park.
+ * terminal (apron/helipad/heliport) where the aircraft can park and of a runway
+ * long enough for the aircraft to take off and land.
  * @param v The aircraft.
  * @param st The airport station.
  * @return True if the airport is usable by the aircraft.
@@ -287,14 +317,41 @@ static bool CanAircraftUseAirport(const Aircraft *v, const Station *st)
 
 	/* An airport without any terminal (e.g. runway-only or heliport-only layouts)
 	 * is not usable: a plane needs an apron, a helicopter a helipad/heliport. */
-	return !st->airport.aprons.empty() ||
-			(v->IsHelicopter() && (!st->airport.helipads.empty() || !st->airport.heliports.empty()));
+	if (!(!st->airport.aprons.empty() ||
+			(v->IsHelicopter() && (!st->airport.helipads.empty() || !st->airport.heliports.empty())))) return false;
+
+	/* A fixed-wing aircraft additionally needs a runway long enough for its
+	 * speed; helicopters need none and always pass this check. */
+	return GetStationMaxRunwayLength(st) >= GetAircraftRequiredRunwayLength(v);
 }
 
 static bool CanUseExternalReturnAirport(const Aircraft *v, const Station *st)
 {
 	return st != nullptr && IsValidTile(st->airport.tile) &&
 			IsInfraUsageAllowed(VehicleType::Aircraft, v->owner, st->owner) && CanAircraftUseAirport(v, st);
+}
+
+/**
+ * Whether the aircraft's current order goes to an airport that cannot be used
+ * by it. Such an order can never be reached, no matter where the aircraft is.
+ */
+static bool OrderAirportUnusable(const Aircraft *v)
+{
+	if (!v->current_order.IsType(OT_GOTO_STATION) || v->current_order.IsExternalFlightOrder()) return false;
+	Station *st = Station::GetIfValid(v->current_order.GetDestination().ToStationID());
+	return st != nullptr && !CanAircraftUseAirport(v, st);
+}
+
+/**
+ * Whether the aircraft's current order goes to an airport that cannot be used
+ * by it, while no diversion towards another airport is active. Such an order
+ * can never be reached and the aircraft must stay put instead of retrying.
+ */
+static bool OrderDestinationUnusable(const Aircraft *v)
+{
+	if (!OrderAirportUnusable(v)) return false;
+	Station *st = Station::Get(v->current_order.GetDestination().ToStationID());
+	return v->targetairport == st->index;
 }
 
 static bool CanRetargetExternalReturnFlight(const Aircraft *v)
@@ -1178,7 +1235,15 @@ static bool MaybeCrashAirplane(Aircraft *v)
 	if (_settings_game.vehicle.plane_crashes == 0) return false;
 
 	uint32_t prob = (0x4000 << _settings_game.vehicle.plane_crashes) / 1500;
-	uint32_t rand = GB(Random(), 0, 18);
+
+	/* Airplanes that are attempting an emergency landing have a bigger chance
+	 * to crash (as in jgrpp). */
+	if (_settings_game.vehicle.improved_breakdowns && v->breakdown_ctr == 1 &&
+			v->breakdown_type == BREAKDOWN_AIRCRAFT_EM_LANDING) {
+		prob = std::max<uint32_t>(prob, 0x10000 / 50);
+	}
+
+	uint32_t rand = GB(Random(), 0, 22);
 	if (rand > prob) return false;
 
 	/* Crash the airplane. Remove all goods stored at the station. */
@@ -1495,9 +1560,30 @@ void UpdateAircraftState(Aircraft *v)
 			if (st == nullptr || !CanAircraftUseAirport(v, st)) {
 				/* The target airport cannot be used by this aircraft: keep the order
 				 * and mark the aircraft as unable to reach it (red status bar text +
-				 * news) instead of crashing on a missing apron/helipad. The landing
-				 * logic will divert to the closest usable airport. */
+				 * news) instead of crashing on a missing apron/helipad. */
 				v->HandlePathfindingResult(false);
+				Station *cur = IsAirportTile(v->tile) ? Station::GetIfValid(GetStationIndex(v->tile)) : nullptr;
+				/* A grounded aircraft already inside a hangar stays there in the
+				 * generic "cannot reach" state; IsReachableDest keeps it from
+				 * planning a departure. Otherwise it routes into the current
+				 * airport's hangar so it does not occupy a terminal. Only an
+				 * airport without any hangar leaves it parked at a terminal. */
+				if (v->state == AS_HANGAR) return;
+				if (cur == nullptr) break;
+				if (cur->airport.HasHangar()) {
+					next_state = AS_HANGAR;
+					dest_tile = v->GetOrderHangarLocation(cur->airport.hangar->index);
+				} else if (IsTerminalState(v->state) || (v->state == AS_IDLE &&
+						(IsApron(v->tile) || IsHelipadTile(v->tile) || IsHeliportTile(v->tile)))) {
+					return;
+				} else {
+					next_state = AS_APRON;
+					dest_tile = v->GetOrderStationLocation(cur->index);
+				}
+				/* Accept the own airport as target so IsReachableDest lets the
+				 * planning run, and GetNextAircraftState routes into the hangar. */
+				v->targetairport = cur->index;
+				cur_dest_station = cur->index;
 				break;
 			}
 			/* Destination is usable: clear the "cannot reach" flag. */
@@ -1592,7 +1678,8 @@ void UpdateAircraftState(Aircraft *v)
 					v->state = AS_START_TAKEOFF;
 				}
 			} else {
-				if (IsRunwayStart(v->tile)) {
+				/* Only take off from a runway long enough for this aircraft. */
+				if (IsRunwayStart(v->tile) && GetAircraftRunwayLength(v->tile) >= GetAircraftRequiredRunwayLength(v)) {
 					v->state = AS_START_TAKEOFF;
 					v->UpdateNextTile(v->tile);
 				} else {
@@ -2183,7 +2270,6 @@ void HandleAircraftLanding(Aircraft *v)
 			Trackdir next_trackdir = GetFreeAirportTrackdir(v->tile, trackdir, v);
 			if (!IsValidTrackdir(next_trackdir) ||
 					!TryReserveAircraftTile(v, v->tile, TrackToTrackBits(TrackdirToTrack(next_trackdir)), TrackdirToTrackdirBits(next_trackdir))) {
-				 
 				/* No checked exit yet: keep this single runway tile reserved
 				 * until a safe taxi exit is available.
 				 * Zero the speed and stop moving this tick: any movement now
@@ -2211,7 +2297,6 @@ void HandleAircraftLanding(Aircraft *v)
 			v->taxi_progress = 0;
 			SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
 			v->UpdateNextTile(INVALID_TILE);
-			 
 			break;
 		}
 
@@ -2305,6 +2390,14 @@ AircraftState GetNextAircraftState(const Aircraft &a)
 
 	switch (a.current_order.GetType()) {
 		case OT_GOTO_STATION:
+			/* The ordered airport cannot be used by this aircraft: taxi into a
+			 * hangar of the current airport instead of occupying a terminal. A
+			 * plane already inside a hangar must not plan into it again, the
+			 * planner treats a hangar origin as a departure. */
+			if (OrderAirportUnusable(&a) && !IsHangarTile(a.tile)) {
+				const Station *cur = Station::GetIfValid(GetStationIndex(a.tile));
+				if (cur != nullptr && cur->airport.HasHangar()) return AS_HANGAR;
+			}
 			return a.IsHelicopter() ? AS_HELIPAD : AS_APRON;
 
 		case OT_GOTO_DEPOT:
@@ -2363,6 +2456,13 @@ bool HandleAircraftState(Aircraft *v)
 				if (IsAirportTile(v->tile) && IsApron(v->tile)) {
 					if (v->targetairport == GetStationIndex(v->tile)) {
 						AircraftEntersTerminal(v);
+					} else if (v->IsHelicopter() && OrderDestinationUnusable(v)) {
+						/* The destination airport cannot be used by this helicopter:
+						 * stay parked in the generic "cannot reach" state instead of
+						 * taking off and diverting forever. */
+						v->HandlePathfindingResult(false);
+						v->state = AS_IDLE;
+						v->UpdateNextTile(INVALID_TILE);
 					} else {
 						/* The destination changed while the aircraft is parked at a
 						 * terminal. Helicopters can take off directly from any apron
@@ -2910,8 +3010,11 @@ TileIndex FindClosestLandingTile(Aircraft *v)
 		return landing_tile;
 	}
 
+	const uint min_runway = GetAircraftRequiredRunwayLength(v);
 	for (auto &it : st->airport.runways) {
 		if (!IsLandingTypeTile(it)) continue;
+		/* Skip runways too short for this aircraft. */
+		if (GetAircraftRunwayLength(it) < min_runway) continue;
 		if (DistanceSquare(it, v->tile) < best_dist) {
 			landing_tile = it;
 			best_dist = DistanceSquare(it, v->tile);
@@ -2985,6 +3088,16 @@ bool IsReachableDest(Aircraft *v)
 	}
 	if (v->targetairport == GetStationIndex(v->tile)) return true;
 	if (v->targetairport == StationID::Invalid()) return false;
+
+	/* The ordered destination airport cannot be used by this aircraft: do not
+	 * divert towards a hangar and do not retry, so a parked aircraft stays put
+	 * in the generic "cannot reach" state instead of cycling parking, loading
+	 * and diversions. An aircraft already diverted to another airport keeps
+	 * finishing that diversion (its targetairport differs from the order). */
+	if (OrderDestinationUnusable(v)) {
+		v->HandlePathfindingResult(false);
+		return false;
+	}
 
 	assert(Station::IsValidID(v->targetairport));
 
@@ -3265,7 +3378,6 @@ bool TryReservePath(Aircraft *v)
 	 * stale one once a route is actually found. */
 	if (found) v->HandlePathfindingResult(true);
 	if (!found || !destination.okay || !IsValidTrackdir(first)) {
-		 
 		ReleaseAircraftStalledReservations(v);
 		return false;
 	}
@@ -3274,7 +3386,6 @@ bool TryReservePath(Aircraft *v)
 	if (IsTerminalState(dest_state) && !TryClaimAircraftTerminal(v, destination.tile)) return false;
 	keep_admission_request = true;
 	if (!ExtendAircraftTaxiReservation(v)) {
-		 
 		return false;
 	}
 	rollback.cancel();
@@ -3295,7 +3406,6 @@ bool TryReservePath(Aircraft *v)
 	v->next_pos.pos = AP_DEFAULT;
 	v->UpdateNextTile(destination.tile);
 	v->taxi_blocked_ticks = 0;
-	 
 
 	if (pushback) {
 		SetBit(v->flags, VAF_PUSHBACK);

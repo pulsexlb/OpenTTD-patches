@@ -1509,6 +1509,15 @@ STR_CONFIG_SETTING_PLANE_CRASHES_NONE                           :無
 STR_CONFIG_SETTING_PLANE_CRASHES_REDUCED                        :減少
 STR_CONFIG_SETTING_PLANE_CRASHES_NORMAL                         :正常
 
+STR_CONFIG_SETTING_PLANE_RUNWAY_LENGTH_FACTOR                   :速度-跑道長度轉換係數：{STRING}
+STR_CONFIG_SETTING_PLANE_RUNWAY_LENGTH_FACTOR_HELPTEXT          :固定翼飛機起降所需最短跑道長度 = 最大速度 × 轉換係數 × 機型係數（轉換係數單位為千分之一格/速度單位），0 表示不限制跑道長度
+STR_CONFIG_SETTING_PLANE_RUNWAY_LENGTH_FACTOR_VALUE             :{COMMA}
+STR_CONFIG_SETTING_PLANE_RUNWAY_SMALL_FACTOR                    :小型飛機跑道長度係數：{STRING}
+STR_CONFIG_SETTING_PLANE_RUNWAY_SMALL_FACTOR_HELPTEXT           :套用於螺旋槳飛機（不含直升機）所需跑道長度的百分比
+STR_CONFIG_SETTING_PLANE_RUNWAY_LARGE_FACTOR                    :大型飛機跑道長度係數：{STRING}
+STR_CONFIG_SETTING_PLANE_RUNWAY_LARGE_FACTOR_HELPTEXT           :套用於噴射機所需跑道長度的百分比
+STR_CONFIG_SETTING_PLANE_RUNWAY_PERCENT_VALUE                   :{COMMA}%
+
 STR_CONFIG_SETTING_CROSSING_WITH_COMPETITOR                     :允許在競爭對手擁有的道路或鐵道上建設平交道：{STRING}
 STR_CONFIG_SETTING_CROSSING_WITH_COMPETITOR_HELPTEXT            :啟用時，可在競爭對手擁有的道路或鐵道上建設平交道
 
@@ -4259,6 +4268,7 @@ STR_PURCHASE_INFO_ENGINES_ONLY                                  :僅機車頭
 STR_PURCHASE_INFO_ALL_BUT                                       :所有貨物（{CARGO_LIST}除外）
 STR_PURCHASE_INFO_MAX_TE                                        :{BLACK}最大牽引力：{GOLD}{FORCE}
 STR_PURCHASE_INFO_AIRCRAFT_RANGE                                :{BLACK}範圍：{GOLD}{COMMA} 方格
+STR_PURCHASE_INFO_AIRCRAFT_MIN_RUNWAY                           :{BLACK}所需跑道長度：{GOLD}{COMMA} 格
 STR_PURCHASE_INFO_AIRCRAFT_TYPE                                 :{BLACK}飛機類型：{GOLD}{STRING}
 STR_PURCHASE_INFO_RAILTYPES                                     :{BLACK}軌道類型：{GOLD}{STRING}
 
@@ -4829,6 +4839,7 @@ STR_ORDER_WAIT_TO_UNBUNCH                                       :（等候調節
 
 STR_ORDER_GO_TO_STATION                                         :{STRING} {STATION}
 STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION                       :{PUSH_COLOUR}{RED}(不能使用車站){POP_COLOUR} {STRING} {STATION}
+STR_ORDER_RUNWAY_TOO_SHORT                                      :{PUSH_COLOUR}{RED}(跑道長度太短){POP_COLOUR}
 
 STR_ORDER_IMPLICIT                                              :（自動）
 
@@ -6107,7 +6118,7 @@ STR_BLUEPRINT_TOOLTIP_SLOT                                      :{BLACK}切換�
 STR_BLUEPRINT_EXPORT                                            :{BLACK}匯出
 STR_BLUEPRINT_IMPORT                                            :{BLACK}匯入
 STR_BLUEPRINT_EXPORT_IMPORT                                     :{BLACK}匯出/匯入
-STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint 修補程式，版本 {RAW_STRING}
+STR_BLUEPRINT_INFO_VERSION                                      :{WHITE}Blueprint 修補程式，版本 {STRING}
 STR_BLUEPRINT_EXPORT_MENU_SLOT                                  :匯出目前欄位...
 STR_BLUEPRINT_EXPORT_MENU_ALL                                   :將所有欄位匯出到檔案...
 STR_BLUEPRINT_IMPORT_MENU_SLOT                                  :匯入到目前欄位...

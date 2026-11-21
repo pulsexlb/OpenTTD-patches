@@ -867,6 +867,22 @@ static std::vector<TileIndex> RunwayTiles(TileIndex extreme)
 	return {};
 }
 
+uint GetAircraftRunwayLength(TileIndex extreme)
+{
+	return static_cast<uint>(RunwayTiles(extreme).size());
+}
+
+uint GetStationMaxRunwayLength(const Station *st)
+{
+	if (st == nullptr) return 0;
+	uint best = 0;
+	for (TileIndex extreme : st->airport.runways) {
+		uint length = GetAircraftRunwayLength(extreme);
+		if (length > best) best = length;
+	}
+	return best;
+}
+
 /* Resolve every runway crossing this tile without using the unbounded legacy
  * endpoint walk. A crossing tile belongs to both runway axes. */
 static bool CollectAircraftRunways(TileIndex tile, std::set<TileIndex> &runways)

@@ -34,6 +34,7 @@
 #include "engine_gui.h"
 #include "cargotype.h"
 #include "roadveh_transport.h"
+#include "aircraft_cmd.h"
 #include "core/backup_type.hpp"
 
 #include "core/geometry_func.hpp"
@@ -956,6 +957,13 @@ static int DrawAircraftPurchaseInfo(int left, int right, int y, EngineID engine_
 	uint16_t range = e->GetRange();
 	if (range != 0) {
 		DrawString(left, right, y, GetString(STR_PURCHASE_INFO_AIRCRAFT_RANGE, range));
+		y += GetCharacterHeight(FontSize::Normal);
+	}
+
+	/* Minimum runway length needed to take off or land. */
+	uint min_runway = GetAircraftRequiredRunwayLength(engine_number);
+	if (min_runway != 0) {
+		DrawString(left, right, y, GetString(STR_PURCHASE_INFO_AIRCRAFT_MIN_RUNWAY, min_runway));
 		y += GetCharacterHeight(FontSize::Normal);
 	}
 

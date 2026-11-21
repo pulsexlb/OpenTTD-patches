@@ -877,6 +877,9 @@ struct VehicleSettings {
 	UnitID                 max_aircraft;                          ///< max planes in game per company
 	UnitID                 max_ships;                             ///< max ships in game per company
 	uint8_t                plane_speed;                           ///< divisor for speed of aircraft
+	uint16_t               plane_runway_length_factor;            ///< runway tiles needed per aircraft speed unit, in 1/1000 tiles (0 = no runway length limit)
+	uint16_t               plane_runway_small_factor;             ///< required runway length multiplier for small (propeller) aircraft, in percent
+	uint16_t               plane_runway_large_factor;             ///< required runway length multiplier for large (jet) aircraft, in percent
 	uint8_t                freight_trains;                        ///< value to multiply the weight of cargo by
 	bool                   dynamic_engines;                       ///< enable dynamic allocation of engine data
 	bool                   never_expire_vehicles;                 ///< never expire vehicles

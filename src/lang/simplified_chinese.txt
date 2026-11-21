@@ -1519,6 +1519,15 @@ STR_CONFIG_SETTING_PLANE_CRASHES_NONE                           :不出现*
 STR_CONFIG_SETTING_PLANE_CRASHES_REDUCED                        :较少出现
 STR_CONFIG_SETTING_PLANE_CRASHES_NORMAL                         :正常
 
+STR_CONFIG_SETTING_PLANE_RUNWAY_LENGTH_FACTOR                   :速度-跑道长度转化系数：{STRING}
+STR_CONFIG_SETTING_PLANE_RUNWAY_LENGTH_FACTOR_HELPTEXT          :固定翼飞机起降所需最短跑道长度 = 最大速度 × 转化系数 × 机型系数（转化系数单位为千分之一格/速度单位），0 表示不限制跑道长度
+STR_CONFIG_SETTING_PLANE_RUNWAY_LENGTH_FACTOR_VALUE             :{COMMA}
+STR_CONFIG_SETTING_PLANE_RUNWAY_SMALL_FACTOR                    :小型飞机跑道长度系数：{STRING}
+STR_CONFIG_SETTING_PLANE_RUNWAY_SMALL_FACTOR_HELPTEXT           :应用于螺旋桨飞机（不含直升机）所需跑道长度的百分比
+STR_CONFIG_SETTING_PLANE_RUNWAY_LARGE_FACTOR                    :大型飞机跑道长度系数：{STRING}
+STR_CONFIG_SETTING_PLANE_RUNWAY_LARGE_FACTOR_HELPTEXT           :应用于喷气式飞机所需跑道长度的百分比
+STR_CONFIG_SETTING_PLANE_RUNWAY_PERCENT_VALUE                   :{COMMA}%
+
 STR_CONFIG_SETTING_CROSSING_WITH_COMPETITOR                     :允许在竞争对手所属的道路或铁路上建平交道口：{STRING}
 STR_CONFIG_SETTING_CROSSING_WITH_COMPETITOR_HELPTEXT            :启用时允许在竞争对手所属的道路上建平交道口
 
@@ -1543,9 +1552,9 @@ STR_CONFIG_SETTING_DEFAULT_AIR_TYPE                            :默认航空类�
 STR_CONFIG_SETTING_DEFAULT_AIR_TYPE_HELPTEXT                   :选择开始或加载游戏后要使用的航空类型。'第一个可用'选择最旧的机场类型，'最后一个可用'选择最新的类型，'最常用'选择当前使用最多的类型
 STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS                    :允许建设自定义机场：{STRING}
 STR_CONFIG_SETTING_ALLOW_CUSTOMIZED_AIRPORTS_HELPTEXT           :启用此设置后，每位玩家都可以建设自定义机场
-STR_CONFIG_SETTING_AIR_ROTATION_STEP_TICKS                      :飞机滑行转向步进延迟：{STRING2}
+STR_CONFIG_SETTING_AIR_ROTATION_STEP_TICKS                      :飞机滑行转向步进延迟：{STRING}
 STR_CONFIG_SETTING_AIR_ROTATION_STEP_TICKS_HELPTEXT             :飞机滑行时每转 45 度等待的 tick 数。数值越小转向越流畅，数值越大看起来更从容
-STR_CONFIG_SETTING_AIR_PUSHBACK                                 :飞机从机位倒行推出：{STRING2}
+STR_CONFIG_SETTING_AIR_PUSHBACK                                 :飞机从机位倒行推出：{STRING}
 STR_CONFIG_SETTING_AIR_PUSHBACK_HELPTEXT                        :飞机从客机机位机尾朝后倒退滑出，在滑行道上再掉头，而不是原地转向
 
 STR_CONFIG_SETTING_WARN_LOST_VEHICLE                            :列车无法找到路线时提示：{STRING}
@@ -4297,6 +4306,7 @@ STR_PURCHASE_INFO_ENGINES_ONLY                                  :仅机车
 STR_PURCHASE_INFO_ALL_BUT                                       :所有货物（{CARGO_LIST}除外）
 STR_PURCHASE_INFO_MAX_TE                                        :{BLACK}最大牵引力：{GOLD}{FORCE}
 STR_PURCHASE_INFO_AIRCRAFT_RANGE                                :{BLACK}航行距离：{GOLD}{COMMA} 格
+STR_PURCHASE_INFO_AIRCRAFT_MIN_RUNWAY                           :{BLACK}所需跑道长度：{GOLD}{COMMA} 格
 STR_PURCHASE_INFO_AIRCRAFT_TYPE                                 :{BLACK}飞机类型：{GOLD}{STRING}
 STR_PURCHASE_INFO_RAILTYPES                                     :{BLACK}轨道类型：{GOLD}{STRING}
 
@@ -4969,6 +4979,7 @@ STR_ORDER_WAIT_TO_UNBUNCH                                       :（等待调节
 
 STR_ORDER_GO_TO_STATION                                         :{STRING} {STATION}
 STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION                       :{PUSH_COLOUR}{RED}（不能使用车站）{POP_COLOUR} {STRING} {STATION}
+STR_ORDER_RUNWAY_TOO_SHORT                                      :{PUSH_COLOUR}{RED}（跑道长度太短）{POP_COLOUR}
 
 STR_ORDER_IMPLICIT                                              :（自动）
 

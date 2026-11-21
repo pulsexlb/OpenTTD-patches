@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include "aircraft.h"
+#include "aircraft_cmd.h"
 #include "vehicle_gui.h"
 #include "newgrf_engine.h"
 #include "strings_func.h"
@@ -43,7 +44,15 @@ void DrawAircraftDetails(const Aircraft *v, const Rect &r)
 			} else {
 				DrawString(r.left, r.right, y, GetString(STR_VEHICLE_INFO_CAPACITY, u->cargo_type, u->cargo_cap, GetCargoSubtypeText(u)));
 			}
-			y += GetCharacterHeight(FontSize::Normal) + WidgetDimensions::scaled.vsep_normal;
+			y += GetCharacterHeight(FontSize::Normal);
+
+			/* Minimum runway length needed to take off or land. */
+			uint min_runway = GetAircraftRequiredRunwayLength(u);
+			if (min_runway != 0) {
+				DrawString(r.left, r.right, y, GetString(STR_PURCHASE_INFO_AIRCRAFT_MIN_RUNWAY, min_runway));
+				y += GetCharacterHeight(FontSize::Normal);
+			}
+			y += WidgetDimensions::scaled.vsep_normal;
 		}
 
 		if (u->cargo_cap != 0) {

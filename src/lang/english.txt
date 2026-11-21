@@ -1637,6 +1637,15 @@ STR_CONFIG_SETTING_PLANE_CRASHES_NONE                           :None*
 STR_CONFIG_SETTING_PLANE_CRASHES_REDUCED                        :Reduced
 STR_CONFIG_SETTING_PLANE_CRASHES_NORMAL                         :Normal
 
+STR_CONFIG_SETTING_PLANE_RUNWAY_LENGTH_FACTOR                   :Speed to runway length factor: {STRING2}
+STR_CONFIG_SETTING_PLANE_RUNWAY_LENGTH_FACTOR_HELPTEXT          :Fixed-wing aircraft need a runway of at least (max speed x factor x aircraft size modifier) tiles to take off or land, with the factor in 1/1000 tiles per speed unit. 0 disables the runway length limit
+STR_CONFIG_SETTING_PLANE_RUNWAY_LENGTH_FACTOR_VALUE             :{COMMA}
+STR_CONFIG_SETTING_PLANE_RUNWAY_SMALL_FACTOR                    :Runway length factor for small aircraft: {STRING2}
+STR_CONFIG_SETTING_PLANE_RUNWAY_SMALL_FACTOR_HELPTEXT           :Percentage applied to the required runway length of propeller aircraft (not helicopters)
+STR_CONFIG_SETTING_PLANE_RUNWAY_LARGE_FACTOR                    :Runway length factor for large aircraft: {STRING2}
+STR_CONFIG_SETTING_PLANE_RUNWAY_LARGE_FACTOR_HELPTEXT           :Percentage applied to the required runway length of fast (jet) aircraft
+STR_CONFIG_SETTING_PLANE_RUNWAY_PERCENT_VALUE                   :{COMMA}%
+
 STR_CONFIG_SETTING_CROSSING_WITH_COMPETITOR                     :Allow level crossings with roads or rails owned by competitors: {STRING2}
 STR_CONFIG_SETTING_CROSSING_WITH_COMPETITOR_HELPTEXT            :Allow construction of level crossings on roads or rails owned by competitors
 
@@ -4608,6 +4617,7 @@ STR_PURCHASE_INFO_ENGINES_ONLY                                  :Engines only
 STR_PURCHASE_INFO_ALL_BUT                                       :All but {CARGO_LIST}
 STR_PURCHASE_INFO_MAX_TE                                        :{BLACK}Max. Tractive Effort: {GOLD}{FORCE}
 STR_PURCHASE_INFO_AIRCRAFT_RANGE                                :{BLACK}Range: {GOLD}{COMMA} tiles
+STR_PURCHASE_INFO_AIRCRAFT_MIN_RUNWAY                           :{BLACK}Required runway length: {GOLD}{COMMA} tile{P "" s}
 STR_PURCHASE_INFO_AIRCRAFT_TYPE                                 :{BLACK}Aircraft type: {GOLD}{STRING}
 STR_PURCHASE_INFO_RAILTYPES                                     :{BLACK}Rail types: {GOLD}{RAW_STRING}
 
@@ -5265,6 +5275,7 @@ STR_ORDER_WAIT_TO_UNBUNCH                                       :{SPACE}(Wait to
 
 STR_ORDER_GO_TO_STATION                                         :{STRING} {STATION}
 STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION                       :{PUSH_COLOUR}{RED}(Can't use station){POP_COLOUR} {STRING} {STATION}
+STR_ORDER_RUNWAY_TOO_SHORT                                      :{PUSH_COLOUR}{RED}(Runway too short){POP_COLOUR}
 
 STR_ORDER_IMPLICIT                                              :{SPACE}(Implicit)
 

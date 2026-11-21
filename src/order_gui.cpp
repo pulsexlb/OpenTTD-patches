@@ -34,6 +34,8 @@
 #include "infrastructure_func.h"
 #include "hotkeys.h"
 #include "aircraft.h"
+#include "aircraft_cmd.h"
+#include "pbs_air.h"
 #include "train.h"
 #include "train_cmd.h"
 #include "vehicle_gui.h"
@@ -3006,6 +3008,18 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 			} else AppendStringInPlace(line, valid_station ? STR_ORDER_GO_TO_STATION : STR_ORDER_GO_TO_STATION_CAN_T_USE_STATION,
 					STR_ORDER_GO_TO + ((v == nullptr || v->IsGroundVehicle()) ? order->GetNonStopType() : 0),
 					order->GetDestination().ToStationID());
+
+			/* A fixed-wing aircraft whose destination airport has no runway long
+			 * enough for its speed gets a red warning appended to the order. */
+			if (valid_station && v != nullptr && v->type == VehicleType::Aircraft) {
+				const Aircraft *ac = Aircraft::From(v);
+				const Station *dst = Station::GetIfValid(order->GetDestination().ToStationID());
+				if (!ac->IsHelicopter() && dst != nullptr && IsValidTile(dst->airport.tile) &&
+						GetStationMaxRunwayLength(dst) < GetAircraftRequiredRunwayLength(ac)) {
+					line.push_back(' ');
+					AppendStringInPlace(line, STR_ORDER_RUNWAY_TOO_SHORT);
+				}
+			}
 
 			if (timetable) {
 				/* Show only wait time in the timetable window. */

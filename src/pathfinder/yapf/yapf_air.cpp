@@ -9,6 +9,7 @@
 
 #include "../../stdafx.h"
 #include "../../aircraft.h"
+#include "../../aircraft_cmd.h"
 #include "../../pbs_air.h"
 
 #include "../../track_func.h"
@@ -175,7 +176,7 @@ public:
 
 		Tpf pf;
 		pf.SetOrigin(v->tile, trackdirs);
-		pf.SetDestination(v->IsHelicopter(), dest_state);
+		pf.SetDestination(v->IsHelicopter(), dest_state, GetAircraftRequiredRunwayLength(v));
 		path_found = pf.FindPath(v);
 		Node *last = pf.GetBestNode();
 		if (!path_found || last == nullptr) {
@@ -251,6 +252,8 @@ class CYapfDestinationAircraftBase {
 protected:
 	AircraftState dest_state;
 	bool is_helicopter;
+	/** Minimum runway length in tiles required by this aircraft for landing/takeoff goals. */
+	uint min_runway = 0;
 
 public:
 	typedef typename Types::Tpf Tpf;              ///< the pathfinder class (derived from THIS class)
@@ -263,10 +266,11 @@ public:
 		return *static_cast<Tpf *>(this);
 	}
 
-	void SetDestination(bool is_helicopter, AircraftState dest_state)
+	void SetDestination(bool is_helicopter, AircraftState dest_state, uint min_runway = 0)
 	{
 		this->dest_state = dest_state;
 		this->is_helicopter = is_helicopter;
+		this->min_runway = min_runway;
 	}
 
 	/** Called by YAPF to detect if node ends in the desired destination */
@@ -292,9 +296,11 @@ public:
 				return IsPlaneApronTile(tile) && IsAircraftTerminalAvailable(Yapf().GetVehicle(), tile);
 			case AS_ON_HOLD_APPROACHING:
 			case AS_DESCENDING:
-				return IsRunwayStart(tile) && IsLandingTypeTile(tile);
+				/* Only runway starts whose runway is long enough for this aircraft. */
+				return IsRunwayStart(tile) && IsLandingTypeTile(tile) && GetAircraftRunwayLength(tile) >= this->min_runway;
 			case AS_START_TAKEOFF:
-				return this->is_helicopter ? IsApron(tile) : IsRunwayStart(tile);
+				return this->is_helicopter ? IsApron(tile) :
+						(IsRunwayStart(tile) && GetAircraftRunwayLength(tile) >= this->min_runway);
 			case AS_IDLE:
 				return false;
 			default:

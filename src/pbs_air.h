@@ -50,4 +50,9 @@ void ReleaseAircraftRunway(Aircraft *v);
 void ReleaseAircraftStalledReservations(Aircraft *v);
 void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual = false);
 void ClearAircraftReservationIndexes();
+
+/** Get the length in tiles of the runway containing \a extreme (0 when \a extreme is not a runway extreme). */
+uint GetAircraftRunwayLength(TileIndex extreme);
+/** Get the length in tiles of the longest runway of \a st's airport (0 when it has no runway). */
+uint GetStationMaxRunwayLength(const Station *st);
 #endif /* PBS_AIR_H */

@@ -14,8 +14,18 @@
 #include "engine_type.h"
 #include "vehicle_type.h"
 
+struct Aircraft;
+
 CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine *e, Vehicle **v);
 CommandCost CmdIgnoreAircraftReservations(DoCommandFlags flags, VehicleID veh_id);
+
+/**
+ * Get the minimum runway length in tiles required by an aircraft to take off or
+ * land: derived from the engine's maximum speed and the small/large aircraft
+ * runway length modifiers. Helicopters and non-normal aircraft need no runway.
+ */
+uint GetAircraftRequiredRunwayLength(const Aircraft *v);
+uint GetAircraftRequiredRunwayLength(EngineID engine);
 
 DEF_CMD_TUPLE_LT(Commands::IgnoreAircraftReservations, CmdIgnoreAircraftReservations, {}, CommandType::VehicleManagement, CmdDataT<VehicleID>)
 
