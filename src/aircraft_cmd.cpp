@@ -863,6 +863,61 @@ enum AircraftSpeedLimits {
 };
 
 /**
+ * Move the landing roll of an aircraft along its quadratic braking profile.
+ * Starting from the touchdown speed (in ground units, i.e. without the plane
+ * speed factor, exactly like taxiing), the deceleration is strongest at high
+ * speed and tapers off like the vanilla speed-squared slowdown, but it is a
+ * function of the distance rolled: the aircraft has reached the airport's
+ * taxiing speed exactly when it has used up its braking distance, i.e. when
+ * it has consumed the minimum runway length it requires for landing counted
+ * from the start of the runway, or at the end of the roll if that is sooner.
+ * Because the profile is a function of the
+ * distance between the aircraft and the runway-end stop position, it is
+ * independent of the plane speed setting and of any pause during the roll.
+ * @pre v->state == AS_LANDED, the profile is armed and the braking distance is known.
+ * @param v Aircraft on its landing roll.
+ * @return The number of position updates needed within the tick.
+ */
+static int UpdateAircraftLandingRollSpeed(Aircraft *v)
+{
+	/* The taxiing speed is the airport speed the ground taxiing uses, without
+	 * the plane speed factor. */
+	uint taxi_speed = GetAirTypeInfo(GetAirType(v->tile))->max_speed;
+	uint target = v->landing_brake_speed;
+
+	/* Distance between the aircraft and the position where the landing roll
+	 * ends, i.e. how much runway is left, and how much of it has been rolled
+	 * since the touchdown. */
+	uint available = abs(v->next_pos.x - v->x_pos) + abs(v->next_pos.y - v->y_pos);
+	uint rolled = (available < v->landing_roll_start_available) ? v->landing_roll_start_available - available : 0;
+
+	if (target > taxi_speed && v->landing_brake_distance != 0) {
+		if (rolled >= v->landing_brake_distance) {
+			target = taxi_speed;
+		} else {
+			/* Quadratic decay: v = taxi_speed + excess * (1 - rolled / distance)^2. */
+			uint64_t remaining = v->landing_brake_distance - rolled;
+			uint64_t distance = v->landing_brake_distance;
+			target = taxi_speed + static_cast<uint>((uint64_t)(target - taxi_speed) * remaining * remaining / (distance * distance));
+		}
+	}
+
+	if (target != v->cur_speed) {
+		v->cur_speed = target;
+		SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
+	}
+	v->subspeed = 0;
+
+	/* Ground units: use the same movement conversion as taxiing, which is not
+	 * affected by the plane speed factor (the touchdown speed has already been
+	 * converted to these units). */
+	uint spd = v->GetOldAdvanceSpeed(target);
+	spd += v->progress;
+	v->progress = (uint8_t)spd;
+	return spd >> 8;
+}
+
+/**
  * Sets the new speed for an aircraft
  * @param v The vehicle for which the speed should be obtained
  * @return The number of position updates needed within the tick
@@ -886,6 +941,38 @@ static int UpdateAircraftSpeed(Aircraft *v)
 			 * is on the runway, so use its own tile when the next tile is not
 			 * valid (it may have been invalidated by an airport edit while the
 			 * plane was rolling). */
+			if (v->landing_brake_speed != 0) {
+				if (v->landing_brake_distance == 0) {
+					/* First speed update of the roll: the vehicle cache has been
+					 * refreshed for the ground state, so freeze the braking
+					 * distance from the same required runway length the vehicle
+					 * GUI shows. The braking finishes where the required runway
+					 * length is used up, counted from the start of the runway; if
+					 * the touchdown happened past that point (or the runway is
+					 * shorter), the braking spans the whole remaining roll. */
+					uint required = GetAircraftRequiredRunwayLength(v);
+					uint start_available = v->landing_roll_start_available;
+					uint mark = 0;
+					uint runway_tiles = 0;
+					TileIndex far_end = v->GetNextTile();
+					if (IsValidTile(far_end) && IsRunway(v->tile)) {
+						/* Walk back from the roll's runway end to its landing start. */
+						DiagDirection roll_dir = GetRunwayExtremeDirection(far_end);
+						TileIndex runway_start = GetRunwayExtreme(far_end, ReverseDiagDir(roll_dir));
+						runway_tiles = std::max(TileX(far_end), TileX(runway_start)) - std::min(TileX(far_end), TileX(runway_start))
+								+ std::max(TileY(far_end), TileY(runway_start)) - std::min(TileY(far_end), TileY(runway_start)) + 1;
+						int boundary = static_cast<int>((runway_tiles - 1) * TILE_SIZE) + 8 - static_cast<int>(required * TILE_SIZE);
+						mark = (boundary <= 0) ? 0 : std::min<uint>(static_cast<uint>(boundary), start_available);
+					}
+						v->landing_brake_distance = static_cast<uint16_t>(std::max<uint>(1, start_available - mark));
+				}
+				if (v->landing_brake_speed != 0 && v->landing_brake_distance != 0) {
+					/* The roll follows the deterministic quadratic braking profile
+					 * armed at the touchdown; the acceleration logic below would
+					 * fight it. */
+					return UpdateAircraftLandingRollSpeed(v);
+				}
+			}
 			TileIndex tile = v->GetNextTile();
 			if (!IsValidTile(tile) || !IsAirportTile(tile)) tile = v->tile;
 			speed_limit = GetAirTypeInfo(GetAirType(tile))->max_speed;
@@ -2258,6 +2345,12 @@ void HandleAircraftLanding(Aircraft *v)
 {
 	switch (v->state) {
 		case AS_LANDED: {
+			/* The landing roll is finished: disarm the quadratic braking profile
+			 * so any movement that follows (waiting for an exit, taxiing) is not
+			 * governed by it any more. */
+			v->landing_brake_speed = 0;
+			v->landing_brake_distance = 0;
+			v->landing_roll_start_available = 0;
 			if (v->IsHelicopter()) {
 				assert(IsAirportTile(v->tile));
 				assert(IsApron(v->tile));
@@ -2347,6 +2440,27 @@ static void HandlePlaneLandsOnRunway(Aircraft *v)
 
 	v->state = AS_LANDED;
 	v->UpdateNextTile(v->GetNextTile());
+
+	/* Arm the quadratic braking profile: starting from the touchdown speed,
+	 * the aircraft must have slowed to the airport's taxiing speed when it has
+	 * used up the minimum runway length it requires for landing, or when the
+	 * landing roll ends, whichever comes first. Distances are measured in
+	 * pixels along the runway; a zero required length (no runway requirement)
+	 * leaves the roll to the generic speed logic.
+	 * The touchdown speed is converted from the flight units to the ground
+	 * units taxiing uses: ground movement is not affected by the plane speed
+	 * factor, and the whole roll runs in these units. The braking distance
+	 * itself is frozen on the first speed update of the roll, when the vehicle
+	 * cache has been refreshed for the ground state, so it matches the
+	 * required runway length shown in the vehicle GUI. */
+	uint required = GetAircraftRequiredRunwayLength(v);
+	if (required != 0 && v->cur_speed != 0) {
+		uint available = abs(v->next_pos.x - v->x_pos) + abs(v->next_pos.y - v->y_pos);
+		v->cur_speed /= _settings_game.vehicle.plane_speed;
+		v->landing_brake_speed = v->cur_speed;
+		v->landing_roll_start_available = static_cast<uint16_t>(std::min<uint>(available, 0xFFFF));
+		SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
+	}
 
 	/* Check if the aircraft needs to be replaced or renewed and send it to a hangar if needed. */
 	if (v->NeedsAutomaticServicing()) {
@@ -3822,9 +3936,13 @@ bool HandleAircraftMovement(Aircraft *v)
 
 	/* Maybe crash the airplane if landing too fast. */
 	assert(v->state != AS_LANDED || IsAirportTile(v->tile));
-	if (v->state == AS_LANDED &&
-			v->cur_speed > GetAirTypeInfo(GetAirType(v->tile))->max_speed * _settings_game.vehicle.plane_speed) {
-		if (MaybeCrashAirplane(v)) return true;
+	if (v->state == AS_LANDED) {
+		/* Rolling faster than the airport's taxiing speed risks crashing. The
+		 * braking profile rolls in ground units (taxiing is not affected by the
+		 * plane speed factor), the generic roll keeps the flight units. */
+		uint crash_speed = GetAirTypeInfo(GetAirType(v->tile))->max_speed;
+		if (v->landing_brake_speed == 0 || v->landing_brake_distance == 0) crash_speed *= _settings_game.vehicle.plane_speed;
+		if (v->cur_speed > crash_speed && MaybeCrashAirplane(v)) return true;
 	}
 
 	int count = UpdateAircraftSpeed(v);

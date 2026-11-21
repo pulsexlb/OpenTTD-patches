@@ -244,6 +244,7 @@ enum SlXvFeatureIndex {
 	XSLFI_WAIT_COUPLE_CRITERIA,                   ///< Wait-for-couple orders may restrict the approaching train by slot, slot group and vehicle group.
 	XSLFI_AIRCRAFT_ROLLING_RESERVATION,           ///< Directed taxi routes, exclusive rolling occupancy and pushback state.
 	XSLFI_EXTERNAL_CONNECTIONS,                   ///< Timed external journeys and order action.
+	XSLFI_AIRCRAFT_LANDING_BRAKE,                 ///< Aircraft landing rolls follow a quadratic braking profile.
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
 

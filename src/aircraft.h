@@ -281,6 +281,9 @@ struct Aircraft final : public SpecializedVehicle<Aircraft, VehicleType::Aircraf
 	TileIndex pushback_target = INVALID_TILE;
 	uint16_t pushback_progress = 0;
 	uint16_t taxi_progress = 0;
+	uint16_t landing_brake_speed = 0;           ///< Touchdown speed in ground units (no plane speed factor) the quadratic braking profile starts from; 0 disarmed, saved.
+	uint16_t landing_brake_distance = 0;        ///< Pixels from the touchdown position to where the required runway length is used up from the runway start (or the roll end), saved.
+	uint16_t landing_roll_start_available = 0;  ///< Pixels between the touchdown position and the runway-end stop position, saved.
 	uint16_t crashed_counter;      ///< Timer for handling crash animations.
 	Trackdir trackdir;             ///< Current trackdir while aircraft is on land.
 	AircraftState state = AS_HANGAR; ///< Current aircraft state. @see AircraftState
