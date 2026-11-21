@@ -88,6 +88,13 @@ static void ChangeTimetable(Vehicle *v, VehicleOrderID order_number, uint32_t va
 	Order *order = v->GetOrder(order_number);
 	assert(order != nullptr);
 	if (order->HasNoTimetableTimes()) return;
+	/* Coupling orders have no wait time of their own: flags bit 3 stores the
+	 * "use the waiting consist's schedule" option, so #Order::SetWaitTimetabled
+	 * refuses to mark them wait-timetabled. Booking a wait time anyway would
+	 * inflate the cached timetable duration without the order ever contributing
+	 * it (see #OrderList::DebugCheckSanity), so refuse wait-time changes
+	 * entirely. Travel times are unaffected: they live in flags bit 7. */
+	if (mtf == MTF_WAIT_TIME && order->IsType(OT_GOTO_COUPLE)) return;
 
 	int total_delta = 0;
 	int timetable_delta = 0;
@@ -207,6 +214,13 @@ static void ChangeTimetableOnOrderList(OrderList *ol, VehicleOrderID order_numbe
 {
 	Order *order = ol->GetOrderAt(order_number);
 	assert(order != nullptr);
+	/* Coupling orders have no wait time of their own: flags bit 3 stores the
+	 * "use the waiting consist's schedule" option, so #Order::SetWaitTimetabled
+	 * refuses to mark them wait-timetabled. Booking a wait time anyway would
+	 * inflate the cached timetable duration without the order ever contributing
+	 * it (see #OrderList::DebugCheckSanity), so refuse wait-time changes
+	 * entirely. Travel times are unaffected: they live in flags bit 7. */
+	if (mtf == MTF_WAIT_TIME && order->IsType(OT_GOTO_COUPLE)) return;
 
 	int total_delta = 0;
 	int timetable_delta = 0;
