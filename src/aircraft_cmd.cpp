@@ -274,33 +274,44 @@ Station *GetTargetAirportIfValid(const Aircraft *v)
 	return st->airport.tile == INVALID_TILE ? nullptr : st;
 }
 
+/** The shortest runway any airport offers; slower aircraft never need less than it. */
+static constexpr uint MIN_AIRCRAFT_RUNWAY_LENGTH = 4;
+
 /**
  * Minimum runway length in tiles needed by an aircraft engine with the given
- * maximum speed: speed x conversion factor x small/large aircraft modifier.
- * Helicopter engines need no runway and are expected to be filtered earlier.
+ * effective maximum speed: speed x conversion factor x small/large aircraft
+ * modifier. Helicopter engines need no runway and are expected to be filtered
+ * earlier.
+ * The speed must be passed in the engine's internal units, i.e. as obtained
+ * from Engine::GetDisplayMaxSpeed() or VehicleCache::cached_max_speed, so that
+ * NewGRF aircraft defining their speed via callback are handled like any other.
  */
-static uint AircraftRequiredRunwayLength(uint max_speed, bool large)
+static uint AircraftRequiredRunwayLength(EngineID engine, uint max_speed)
 {
+	const AircraftVehicleInfo *avi = AircraftVehInfo(engine);
+	/* Helicopters do not use runways. */
+	if (!(avi->subtype & AIR_CTOL)) return 0;
 	const uint factor = _settings_game.vehicle.plane_runway_length_factor;
 	if (factor == 0) return 0;
-	const uint percent = large ? _settings_game.vehicle.plane_runway_large_factor : _settings_game.vehicle.plane_runway_small_factor;
+	const uint percent = (avi->subtype & AIR_FAST) ? _settings_game.vehicle.plane_runway_large_factor : _settings_game.vehicle.plane_runway_small_factor;
 	if (percent == 0) return 0;
-	return static_cast<uint>(CeilDivT<uint64_t>(static_cast<uint64_t>(max_speed) * factor * percent, 100000u));
+	return std::max(MIN_AIRCRAFT_RUNWAY_LENGTH,
+			static_cast<uint>(CeilDivT<uint64_t>(static_cast<uint64_t>(max_speed) * factor * percent, 100000u)));
 }
 
 /** Get the minimum runway length in tiles required by an aircraft engine to take off or land. */
 uint GetAircraftRequiredRunwayLength(EngineID engine)
 {
-	const AircraftVehicleInfo *avi = AircraftVehInfo(engine);
-	/* Helicopters do not use runways. */
-	if (!(avi->subtype & AIR_CTOL)) return 0;
-	return AircraftRequiredRunwayLength(avi->max_speed, (avi->subtype & AIR_FAST) != 0);
+	/* Use the same effective speed as displayed in the GUI, so NewGRF aircraft
+	 * providing their speed via callback get the correct requirement too. */
+	return AircraftRequiredRunwayLength(engine, Engine::Get(engine)->GetDisplayMaxSpeed());
 }
 
 uint GetAircraftRequiredRunwayLength(const Aircraft *v)
 {
 	if (v == nullptr || !v->IsNormalAircraft()) return 0;
-	return GetAircraftRequiredRunwayLength(v->engine_type);
+	/* Use the same effective speed as the aircraft itself uses for movement. */
+	return AircraftRequiredRunwayLength(v->engine_type, v->vcache.cached_max_speed);
 }
 
 /**

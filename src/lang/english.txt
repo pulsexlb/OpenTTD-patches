@@ -5000,6 +5000,7 @@ STR_VEHICLE_INFO_NO_CAPACITY                                    :{BLACK}Capacity
 STR_VEHICLE_INFO_CAPACITY                                       :{BLACK}Capacity: {LTBLUE}{CARGO_LONG}{STRING}
 STR_VEHICLE_INFO_CAPACITY_MULT                                  :{BLACK}Capacity: {LTBLUE}{CARGO_LONG}{STRING} (x{NUM})
 STR_VEHICLE_INFO_CAPACITY_CAPACITY                              :{BLACK}Capacity: {LTBLUE}{CARGO_LONG}, {CARGO_LONG}{STRING}
+STR_VEHICLE_INFO_AIRCRAFT_MIN_RUNWAY                            :{BLACK}Required runway length: {LTBLUE}{COMMA} tile{P "" s}
 
 STR_VEHICLE_INFO_FEEDER_CARGO_VALUE                             :{BLACK}Transfer Credits: {LTBLUE}{CURRENCY_LONG}
 

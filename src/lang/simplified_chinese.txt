@@ -4704,6 +4704,7 @@ STR_VEHICLE_INFO_NO_CAPACITY                                    :{BLACK}容量�
 STR_VEHICLE_INFO_CAPACITY                                       :{BLACK}容量：{LTBLUE}{CARGO_LONG}{STRING}
 STR_VEHICLE_INFO_CAPACITY_MULT                                  :{BLACK}容量：{LTBLUE}{CARGO_LONG}{STRING}（×{NUM}）
 STR_VEHICLE_INFO_CAPACITY_CAPACITY                              :{BLACK}容量：{LTBLUE}{CARGO_LONG}，{CARGO_LONG}{STRING}
+STR_VEHICLE_INFO_AIRCRAFT_MIN_RUNWAY                            :{BLACK}所需跑道长度：{LTBLUE}{COMMA} 格
 
 STR_VEHICLE_INFO_FEEDER_CARGO_VALUE                             :{BLACK}转运账面收入：{LTBLUE}{CURRENCY_LONG}
 

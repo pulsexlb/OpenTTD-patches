@@ -49,7 +49,7 @@ void DrawAircraftDetails(const Aircraft *v, const Rect &r)
 			/* Minimum runway length needed to take off or land. */
 			uint min_runway = GetAircraftRequiredRunwayLength(u);
 			if (min_runway != 0) {
-				DrawString(r.left, r.right, y, GetString(STR_PURCHASE_INFO_AIRCRAFT_MIN_RUNWAY, min_runway));
+				DrawString(r.left, r.right, y, GetString(STR_VEHICLE_INFO_AIRCRAFT_MIN_RUNWAY, min_runway));
 				y += GetCharacterHeight(FontSize::Normal);
 			}
 			y += WidgetDimensions::scaled.vsep_normal;
