@@ -1267,6 +1267,12 @@ public:
 		return HasBit(this->subtype, GVSF_VIRTUAL) || (this->rv_transport_flags & RV_TRANSPORT_CARRIED) != 0;
 	}
 
+	/** Real trains remain company-owned while carried; other carried vehicles keep their existing statistics exclusion. */
+	inline bool IsCompanyStatisticsCountable() const
+	{
+		return !HasBit(this->subtype, GVSF_VIRTUAL) && (this->type == VehicleType::Train || (this->rv_transport_flags & RV_TRANSPORT_CARRIED) == 0);
+	}
+
 	/**
 	 * Check if the vehicle is a front engine.
 	 * @return Returns true if the vehicle is a front engine.

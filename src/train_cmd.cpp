@@ -2226,39 +2226,8 @@ static void MakeTrainBackup(TrainList &list, Train *t)
 }
 
 /**
- * Restore the train from the backup list.
- * @param list the train to restore.
- */
-static void RestoreTrainBackup(TrainList &list)
-{
-	/* No train, nothing to do. */
-	if (list.empty()) return;
-
-	Train *prev = nullptr;
-	/* Iterate over the list and rebuild it. */
-	for (Train *t : list) {
-		if (prev != nullptr) {
-			prev->SetNext(t);
-		} else if (t->Previous() != nullptr) {
-			/* Make sure the head of the train is always the first in the chain. */
-			t->Previous()->SetNext(nullptr);
-		}
-		prev = t;
-	}
-	list.RestoreState();
-}
-
-/**
- * Fully rebuild a chain from a backup list, unlike RestoreTrainBackup also
- * terminating the restored tail. RestoreTrainBackup relies on the head of the
- * backed-up chain following the previous chain's tail in the (rearranged)
- * world, so its implicit cut lands on the right link for vanilla
- * arrange-then-restore flows. A trial that flips a chain's order before
- * merging breaks that adjacency: the cut lands mid-chain and the restored
- * tail keeps stale links into the other chain, leaving vehicles shared
- * between two chains. This variant explicitly detaches the head from any
- * stale predecessor and nulls the last vehicle's next, so it restores any
- * full-chain backup regardless of how the trial rearranged the world.
+ * Fully rebuild a chain from a backup list, detaching a stale predecessor and
+ * terminating the restored tail so that both chains' First/Last caches recover.
  * @param list the complete chain, in order, to rebuild.
  */
 static void RestoreChainFromList(const TrainList &list)
@@ -2278,6 +2247,12 @@ static void RestoreChainFromList(const TrainList &list)
 	/* Terminate the tail: it may still point into the other trial chain. */
 	prev->SetNext(nullptr);
 	list.RestoreState();
+}
+
+/** Restore a complete train using the same explicit-tail recovery as coupling trials. */
+static void RestoreTrainBackup(TrainList &list)
+{
+	RestoreChainFromList(list);
 }
 
 /**
@@ -8637,9 +8612,7 @@ bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 	CommandCost cb = CheckVehicleStartStopCallback(merged_prim);
 	ok &= !cb.Failed();
 
-	/* The trial flipped chain orders before merging, so the vanilla
-	 * RestoreTrainBackup cut can land mid-chain (see RestoreChainFromList);
-	 * restore both chains explicitly, tail terminated. */
+	/* Restore both physical chains and their tail caches after the trial. */
 	RestoreChainFromList(original_src);
 	RestoreChainFromList(original_dst);
 
@@ -11234,7 +11207,12 @@ void Train::ClearReferencesToRemovedPart(Train *head, const Train *removed)
 	if (head == nullptr || removed == nullptr) return;
 	Vehicle::ClearUnitMainOfChain(head, removed);
 	for (Train *u = head; u != nullptr; u = u->Next()) {
-		if (u->Primary() == removed) u->SetPrimary(head);
+		if (u->Primary() == removed) {
+			u->SetPrimary(head);
+			/* The surviving wreck uses a safe anchor, not a new counted identity. */
+			u->ClearFrontEngine();
+			u->ClearFrontWagon();
+		}
 		/* Keep the surviving half's role for engine counts and saved wreckage. */
 		if (u->other_multiheaded_part == removed) u->other_multiheaded_part = nullptr;
 	}

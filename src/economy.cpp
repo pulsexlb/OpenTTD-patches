@@ -544,7 +544,7 @@ void ChangeOwnershipOfCompanyItems(Owner old_owner, Owner new_owner)
 				if (v->IsEngineCountable()) {
 					GroupStatistics::CountEngine(v, 1);
 				}
-				if (v->IsPrimaryVehicle() && v->Primary() == v && !v->IsVirtualOrCarried()) {
+				if (v->IsPrimaryVehicle() && v->Primary() == v && v->IsCompanyStatisticsCountable()) {
 					GroupStatistics::CountVehicle(v, 1);
 					auto &unitidgen = new_company->freeunits[v->type];
 					v->unitnumber = unitidgen.UseID(unitidgen.NextID());

@@ -143,8 +143,8 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 {
 	/* Keep the caller's identity: a retiring primary may already belong to
 	 * another chain. Mutation callers must remove its count before rebinding. */
-	/* make virtual trains group-neutral */
-	if (v->IsVirtualOrCarried()) return;
+	/* Company statistics include real trains even while they are carried. */
+	if (!v->IsCompanyStatisticsCountable()) return;
 
 	assert(delta == 1 || delta == -1);
 
@@ -171,8 +171,8 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
  */
 /* static */ void GroupStatistics::CountEngine(const Vehicle *v, int delta)
 {
-	/* make virtual trains group-neutral */
-	if (v->IsVirtualOrCarried()) return;
+	/* Company statistics include real trains even while they are carried. */
+	if (!v->IsCompanyStatisticsCountable()) return;
 
 	assert(delta == 1 || delta == -1);
 	GroupStatistics::GetAllGroup(v).num_engines[v->engine_type] += delta;
@@ -228,7 +228,7 @@ uint16_t GroupStatistics::GetNumEngines(EngineID engine) const
 	for (const Vehicle *head : Vehicle::IterateFrontOnly()) {
 		if (head->type == VehicleType::Train && head != head->First()) continue;
 		const Vehicle *v = head->Primary();
-		if (v->IsPrimaryVehicle() && !v->IsVirtualOrCarried()) {
+		if (v->IsPrimaryVehicle() && v->IsCompanyStatisticsCountable()) {
 			GroupStatistics::AddProfitLastYear(v);
 			if (v->economy_age > VEHICLE_PROFIT_MIN_AGE) GroupStatistics::VehicleReachedMinAge(v);
 		}

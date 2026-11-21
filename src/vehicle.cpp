@@ -1092,7 +1092,7 @@ uint CountVehiclesInChain(const Vehicle *v)
  */
 bool Vehicle::IsEngineCountable() const
 {
-	if (this->IsVirtualOrCarried()) return false;
+	if (!this->IsCompanyStatisticsCountable()) return false;
 	switch (this->type) {
 		case VehicleType::Aircraft: return Aircraft::From(this)->IsNormalAircraft(); // don't count plane shadows and helicopter rotors
 		case VehicleType::Train:

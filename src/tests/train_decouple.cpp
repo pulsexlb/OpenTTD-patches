@@ -20,6 +20,9 @@
 #include "../order_cmd.h"
 #include "../company_base.h"
 #include "../company_func.h"
+#include "../group.h"
+#include "../vehicle_func.h"
+#include "../roadveh.h"
 #include "../core/pool_func.hpp"
 #include "../station_base.h"
 #include "../waypoint_base.h"
@@ -133,6 +136,222 @@ protected:
 		return v;
 	}
 };
+
+class TrainStatisticsFixture : public TrainDecoupleFixture {
+protected:
+	AutoRestoreBackup<CompanyID> company_backup{_current_company, AutoRestoreBackupNoNewValueTag{}};
+	AutoRestoreBackup<uint8_t> length_limit{_settings_game.vehicle.max_train_length, uint8_t{8}};
+	Company *company;
+	TileIndex depot;
+
+	TrainStatisticsFixture()
+	{
+		REQUIRE(Company::GetNumItems() == 0);
+		REQUIRE(Group::GetNumItems() == 0);
+		ResetVehicleHash();
+		AllocateMap(64, 64);
+		company = Company::Create();
+		_current_company = company->index;
+		depot = TileXY(10, 10);
+		MakeRailDepot(depot, _current_company, DepotID{0}, DiagDirection::SW, RAILTYPE_RAIL);
+	}
+
+	~TrainStatisticsFixture()
+	{
+		_vehicle_pool.CleanPool();
+		ResetVehicleHash();
+		_group_pool.CleanPool();
+		_company_pool.CleanPool();
+		DeallocateMap();
+	}
+
+	Train *MakeDepotTrain()
+	{
+		Train *v = MakeTrain();
+		v->owner = _current_company;
+		v->tile = depot;
+		v->track = TRACK_BIT_DEPOT;
+		v->direction = Direction::SW;
+		v->vehstatus = {VehState::Stopped, VehState::Hidden};
+		v->SetFrontEngine();
+		v->SetPrimary(v);
+		return v;
+	}
+};
+
+TEST_CASE_METHOD(TrainStatisticsFixture, "Train statistics - deleting a middle primary does not register the wreck's anchor")
+{
+	Train *head = MakeDepotTrain();
+	Train *part = MakeDepotTrain();
+	Train *primary = MakeDepotTrain();
+	head->ClearEngine();
+	head->SetWagon();
+	part->ClearEngine();
+	part->SetArticulatedPart();
+	part->SetUnitMain(primary);
+	head->SetNext(part);
+	part->SetNext(primary);
+	BindTrainPrimary(head, primary);
+	Group *group = Group::Create(_current_company, VehicleType::Train);
+	for (Train *v : {head, part, primary}) v->group_id = group->index;
+	GroupStatistics::UpdateAfterLoad();
+	REQUIRE(company->group_all[VehicleType::Train].num_vehicle == 1);
+	REQUIRE(group->statistics.num_vehicle == 1);
+	REQUIRE(company->group_all[VehicleType::Train].GetNumEngines(engine->index) == 2);
+
+	part->SetNext(nullptr);
+	Train::ClearReferencesToRemovedPart(head, primary);
+	CHECK(primary->Primary() == primary);
+	CHECK(primary->IsPrimaryVehicle());
+	for (Train *v : {head, part}) {
+		CHECK(v->Primary() == head);
+		CHECK_FALSE(v->IsPrimaryVehicle());
+	}
+	CHECK(head->IsWagon());
+	CHECK(head->IsEngineCountable());
+	CHECK(part->IsArticulatedPart());
+	CHECK_FALSE(part->IsEngineCountable());
+	CHECK_FALSE(part->HasUnitMain());
+
+	delete primary;
+	CHECK(company->group_all[VehicleType::Train].num_vehicle == 0);
+	CHECK(group->statistics.num_vehicle == 0);
+	delete head;
+	CHECK(company->group_all[VehicleType::Train].num_vehicle == 0);
+	CHECK(group->statistics.num_vehicle == 0);
+	CHECK(company->group_all[VehicleType::Train].GetNumEngines(engine->index) == 0);
+}
+
+TEST_CASE_METHOD(TrainStatisticsFixture, "Train statistics - deleting a non-primary keeps the surviving identity")
+{
+	Train *head = MakeDepotTrain();
+	Train *tail = MakeDepotTrain();
+	head->SetNext(tail);
+	BindTrainPrimary(head, head);
+	GroupStatistics::UpdateAfterLoad();
+	head->SetNext(nullptr);
+	Train::ClearReferencesToRemovedPart(head, tail);
+	CHECK(head->Primary() == head);
+	CHECK(head->IsPrimaryVehicle());
+	delete tail;
+	CHECK(company->group_all[VehicleType::Train].num_vehicle == 1);
+	delete head;
+	CHECK(company->group_all[VehicleType::Train].num_vehicle == 0);
+}
+
+TEST_CASE_METHOD(TrainStatisticsFixture, "Train statistics - carried trains retain counts and profits across a rebuild")
+{
+	Train *head = MakeDepotTrain();
+	Train *primary = MakeDepotTrain();
+	Train *part = MakeDepotTrain();
+	head->ClearEngine();
+	head->SetWagon();
+	part->ClearEngine();
+	part->SetArticulatedPart();
+	part->SetUnitMain(primary);
+	head->SetNext(primary);
+	primary->SetNext(part);
+	BindTrainPrimary(head, primary);
+	Group *group = Group::Create(_current_company, VehicleType::Train);
+	for (Train *v : {head, primary, part}) v->group_id = group->index;
+	primary->profit_last_year = 100 * 256;
+	primary->economy_age = VEHICLE_PROFIT_MIN_AGE + 1;
+	Train *virtual_train = MakeDepotTrain();
+	virtual_train->SetVirtual();
+
+	auto check_statistics = [&]() {
+		const GroupStatistics &all = company->group_all[VehicleType::Train];
+		CHECK(all.num_vehicle == 1);
+		CHECK(all.GetNumEngines(engine->index) == 2);
+		CHECK(all.profit_last_year == 100);
+		CHECK(all.num_vehicle_min_age == 1);
+		CHECK(all.profit_last_year_min_age == 100);
+		CHECK(group->statistics.num_vehicle == 1);
+		CHECK(group->statistics.GetNumEngines(engine->index) == 2);
+	};
+	GroupStatistics::UpdateAfterLoad();
+	check_statistics();
+	for (Train *v : {head, primary, part}) v->rv_transport_flags |= Vehicle::RV_TRANSPORT_CARRIED;
+	CHECK(primary->IsVirtualOrCarried());
+	CHECK(primary->IsCompanyStatisticsCountable());
+	CHECK(primary->IsEngineCountable());
+	CHECK_FALSE(part->IsEngineCountable());
+	CHECK_FALSE(virtual_train->IsCompanyStatisticsCountable());
+	GroupStatistics::UpdateAfterLoad();
+	check_statistics();
+	GroupStatistics::UpdateProfits();
+	check_statistics();
+	SECTION("unloaded train keeps its owning count") {
+		for (Train *v : {head, primary, part}) v->rv_transport_flags &= ~Vehicle::RV_TRANSPORT_CARRIED;
+		check_statistics();
+		GroupStatistics::UpdateAfterLoad();
+		check_statistics();
+	}
+	SECTION("still-carried train is removed from owning statistics on destruction") {}
+	primary->SetNext(nullptr);
+	Train::ClearReferencesToRemovedPart(head, part);
+	delete part;
+	head->SetNext(nullptr);
+	Train::ClearReferencesToRemovedPart(head, primary);
+	delete primary;
+	delete head;
+	CHECK(company->group_all[VehicleType::Train].num_vehicle == 0);
+	CHECK(company->group_all[VehicleType::Train].GetNumEngines(engine->index) == 0);
+	CHECK(group->statistics.num_vehicle == 0);
+	CHECK(group->statistics.profit_last_year == 0);
+
+	REQUIRE(RoadVehicle::CanAllocateItem());
+	RoadVehicle *road = RoadVehicle::Create();
+	CHECK(road->IsCompanyStatisticsCountable());
+	road->rv_transport_flags |= Vehicle::RV_TRANSPORT_CARRIED;
+	CHECK_FALSE(road->IsCompanyStatisticsCountable());
+	CHECK_FALSE(road->IsEngineCountable());
+}
+
+TEST_CASE_METHOD(TrainStatisticsFixture, "Depot moves - preflight restores both chains and every tail cache")
+{
+	Train *source = MakeDepotTrain();
+	Train *destination = MakeDepotTrain();
+	Train *tail = MakeDepotTrain();
+	destination->SetNext(tail);
+	BindTrainPrimary(destination, destination);
+	GroupStatistics::UpdateAfterLoad();
+	bool rejected = false;
+	SECTION("successful preflight") {}
+	SECTION("length rejection after attachment checks") {
+		_settings_game.vehicle.max_train_length = 1;
+		rejected = true;
+	}
+	const uint8_t source_subtype = source->subtype;
+	const uint8_t destination_subtype = destination->subtype;
+	const uint8_t tail_subtype = tail->subtype;
+	GameRandomSeedChecker random_checker;
+	for (int i = 0; i < 3; ++i) {
+		CommandCost result = CmdMoveRailVehicle({}, source->index, destination->index, MoveRailVehicleFlags::MoveChain);
+		CHECK(result.Failed() == rejected);
+		if (rejected) CHECK(result.GetErrorMessage() == STR_ERROR_TRAIN_TOO_LONG);
+		CHECK(source->Previous() == nullptr);
+		CHECK(source->Next() == nullptr);
+		CHECK(source->First() == source);
+		CHECK(source->Last() == source);
+		CHECK(source->Primary() == source);
+		CHECK(source->subtype == source_subtype);
+		CHECK(destination->Previous() == nullptr);
+		CHECK(destination->Next() == tail);
+		CHECK(tail->Previous() == destination);
+		CHECK(tail->Next() == nullptr);
+		for (Train *v : {destination, tail}) {
+			CHECK(v->First() == destination);
+			CHECK(v->Last() == tail);
+			CHECK(v->Primary() == destination);
+		}
+		CHECK(destination->subtype == destination_subtype);
+		CHECK(tail->subtype == tail_subtype);
+		CHECK(company->group_all[VehicleType::Train].num_vehicle == 2);
+		CHECK(company->group_default[VehicleType::Train].num_vehicle == 2);
+		CHECK(random_checker.Check());
+	}
+}
 
 TEST_CASE_METHOD(TrainDecoupleFixture, "External connections - opt-in portals and saved game-time deadlines")
 {
@@ -488,10 +707,10 @@ TEST_CASE("External markets - supply replenishes without creating receipt quotas
   CHECK(b->stock[export_cargo] == total);
   CHECK(a->stock[mail] == total); CHECK(b->stock[passengers] == total); CHECK(b->trade_credit == 37);
  }
- a->stock[mail] = 4096; TickExternalCityMarketSupply(30, DAY_TICKS - 1, 30); CHECK(a->stock[mail] == 4096);
- *CargoSpec::Get(passengers) = CargoSpec{};
- RefillExternalCityMarkets(); CHECK(a->stock[passengers] == 0); CHECK(b->stock[passengers] == 0);
- CHECK(random.Check());
+	a->stock[mail] = 4096; TickExternalCityMarketSupply(30, DAY_TICKS - 1, 30); CHECK(a->stock[mail] == 4096);
+	*CargoSpec::Get(passengers) = CargoSpec{};
+	RefillExternalCityMarkets(); CHECK(a->stock[passengers] == 0); CHECK(b->stock[passengers] == 0);
+	CHECK(random.Check());
 }
 
 TEST_CASE("External trade cargoes - vehicle transport cargoes are never selected")
