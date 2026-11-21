@@ -64,6 +64,8 @@ std::vector<NamedSaveLoad> GetCheatsDesc(bool save) {
 		NSLT("inflation_income.value",    SLE_VAR(Cheats, inflation_income.value, SLE_BOOL)),
 		NSLT("town_rating.been_used",     SLE_VAR(Cheats, town_rating.been_used, SLE_BOOL)),
 		NSLT("town_rating.value",         SLE_VAR(Cheats, town_rating.value, SLE_BOOL)),
+		NSLT("external_city_reselect.been_used", SLE_VAR(Cheats, external_city_reselect.been_used, SLE_BOOL)),
+		NSLT("external_city_reselect.value",     SLE_VAR(Cheats, external_city_reselect.value, SLE_BOOL)),
 	};
 
 	std::vector<NamedSaveLoad> desc(std::begin(_cheats_desc), std::end(_cheats_desc));

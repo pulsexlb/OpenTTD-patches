@@ -92,6 +92,7 @@ bool IsExternalCityPassengerOrMail(CargoType cargo);
 std::pair<uint, uint> GetExternalCityTradeCoverage(const ExternalCity *city);
 void ShowExternalCityEconomyWindow(ExternalCityID city);
 void InitializeExternalCityMarket(ExternalCity *city);
+void RegenerateExternalCityTradeCargoes(ExternalCity *city);
 void TickExternalCityMarketSupply(uint day, uint day_tick, uint month_days);
 void RefillExternalCityMarkets();
 bool ExternalIndustryUsesRecipe(IndustryType type);

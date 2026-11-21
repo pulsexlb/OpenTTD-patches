@@ -494,6 +494,67 @@ TEST_CASE("External markets - supply replenishes without creating receipt quotas
  CHECK(random.Check());
 }
 
+TEST_CASE("External trade cargoes - vehicle transport cargoes are never selected")
+{
+	REQUIRE(ExternalCity::GetNumItems() == 0);
+	std::vector<CargoSpec> cargoes;
+	for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) cargoes.push_back(*CargoSpec::Get(cargo));
+	auto cleanup = scope_guard([&] {
+		_external_city_pool.CleanPool();
+		for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) *CargoSpec::Get(cargo) = cargoes[cargo];
+	});
+	for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) *CargoSpec::Get(cargo) = CargoSpec{};
+	const CargoType passengers{100}, mail{101}, coal{102}, goods{103};
+	for (const auto cargo : {passengers, mail}) {
+		auto *spec = CargoSpec::Get(cargo);
+		spec->bitnum = 1;
+		spec->town_production_effect = cargo == passengers ? TownProductionEffect::Passengers : TownProductionEffect::Mail;
+		spec->town_acceptance_effect = cargo == passengers ? TownAcceptanceEffect::Passengers : TownAcceptanceEffect::Mail;
+	}
+	for (const auto cargo : {coal, goods, RV_TRANSPORT_CARGO_SLOT, RAIL_TRANSPORT_CARGO_SLOT}) CargoSpec::Get(cargo)->bitnum = 1;
+	GameRandomSeedChecker random;
+	auto *city = ExternalCity::Create();
+	city->economy_seed = 4242; city->exchange_market = true;
+	/* A broken selection: the dedicated vehicle-transport cargoes hold trade roles. */
+	city->trade_cargo_roles[RV_TRANSPORT_CARGO_SLOT] = 1;
+	city->trade_cargo_roles[RAIL_TRANSPORT_CARGO_SLOT] = 2;
+	const auto profile = GetExternalCityEconomy(city->index);
+	CHECK(!profile.produced.Test(RV_TRANSPORT_CARGO_SLOT));
+	CHECK(!profile.accepted.Test(RAIL_TRANSPORT_CARGO_SLOT));
+	RegenerateExternalCityTradeCargoes(city);
+	CHECK(city->trade_cargo_roles[RV_TRANSPORT_CARGO_SLOT] == 0);
+	CHECK(city->trade_cargo_roles[RAIL_TRANSPORT_CARGO_SLOT] == 0);
+	const auto fixed = GetExternalCityEconomy(city->index);
+	CHECK((!fixed.produced.Test(RV_TRANSPORT_CARGO_SLOT) && !fixed.accepted.Test(RV_TRANSPORT_CARGO_SLOT)));
+	CHECK((!fixed.produced.Test(RAIL_TRANSPORT_CARGO_SLOT) && !fixed.accepted.Test(RAIL_TRANSPORT_CARGO_SLOT)));
+	CHECK((fixed.produced.Test(passengers) && fixed.accepted.Test(mail)));
+	/* Deterministic repair: re-running from the same seed changes nothing. */
+	const auto roles = city->trade_cargo_roles;
+	RegenerateExternalCityTradeCargoes(city);
+	CHECK(city->trade_cargo_roles == roles);
+	for (uint seed = 1; seed < 40; ++seed) {
+		city->economy_seed = seed;
+		RegenerateExternalCityTradeCargoes(city);
+		CHECK(city->trade_cargo_roles[RV_TRANSPORT_CARGO_SLOT] == 0);
+		CHECK(city->trade_cargo_roles[RAIL_TRANSPORT_CARGO_SLOT] == 0);
+		/* Only one supply and one demand remain among the two freight candidates. */
+		uint roles_count = 0;
+		for (uint cargo = 0; cargo < NUM_CARGO; ++cargo) roles_count += city->trade_cargo_roles[cargo] != 0 ? 1 : 0;
+		CHECK(roles_count == 2);
+	}
+	/* A city whose selection is already clean is left completely untouched. */
+	auto *clean = ExternalCity::Create();
+	clean->economy_seed = 7; clean->exchange_market = true;
+	RegenerateExternalCityTradeCargoes(clean);
+	REQUIRE(std::ranges::any_of(clean->trade_cargo_roles, [](uint8_t role) { return role != 0; }));
+	clean->stock[passengers] = 999;
+	const auto clean_roles = clean->trade_cargo_roles;
+	RegenerateExternalCityTradeCargoes(clean);
+	CHECK(clean->trade_cargo_roles == clean_roles);
+	CHECK(clean->stock[passengers] == 999);
+	CHECK(random.Check());
+}
+
 TEST_CASE("External industry - unlimited incoming stock, original recipes and output backpressure conserve cargo")
 {
  REQUIRE(ExternalCity::GetNumItems() == 0);

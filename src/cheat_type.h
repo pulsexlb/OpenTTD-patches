@@ -34,6 +34,7 @@ struct Cheats {
 	Cheat town_rating{};      ///< 100% town local authority rating
 	Cheat rain{};             ///< force the (cosmetic) weather
 	uint8_t rain_mode = 0;    ///< RainForcing mode of the weather cheat (persisted with the savegame)
+	Cheat external_city_reselect{}; ///< re-select all external city cargoes (action cheat; value is unused)
 };
 
 /** Available cheats. */
@@ -51,6 +52,7 @@ enum CheatNumbers : uint8_t {
 	CHT_STATION_RATING,  ///< 100% station ratings
 	CHT_TOWN_RATING,     ///< 100% town local authority ratings
 	CHT_RAIN,            ///< Force the (cosmetic) weather
+	CHT_RESELECT_EXTERNAL_CARGOES, ///< Re-select all external city cargoes
 
 	CHT_NUM_CHEATS,      ///< Number of cheats.
 };

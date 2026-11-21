@@ -10,6 +10,7 @@
 #include "stdafx.h"
 #include "command_func.h"
 #include "cheat_type.h"
+#include "external_city.h"
 #include "company_base.h"
 #include "company_func.h"
 #include "currency_func.h"
@@ -217,6 +218,27 @@ struct CheatEntry {
 };
 
 static constexpr VarMemType InflationCheat = SLE_VAR_NULL; ///< Sentinel for inflation cheats
+static constexpr VarMemType ActionCheat = SLE_VAR_U128; ///< Sentinel for action cheats: they have no value, clicking their button runs them once
+
+/** Width of an action cheat's execute button; depends on the current GUI scale, so only usable at runtime. */
+static int ExecuteButtonWidth()
+{
+	return SETTING_BUTTON_WIDTH * 2;
+}
+
+/**
+ * Re-select the cargoes of every external city from its saved seed, repairing
+ * selections that picked the dedicated vehicle-transport cargoes.
+ * @param new_value not used.
+ * @param change_direction not used.
+ * @return Always zero.
+ */
+static int32_t ClickReselectExternalCityCargoes(int32_t new_value, int32_t change_direction)
+{
+	for (ExternalCity *city : ExternalCity::Iterate()) RegenerateExternalCityTradeCargoes(city);
+	InvalidateWindowClassesData(WindowClass::ExternalCityEconomy);
+	return 0;
+}
 
 /**
  * The available cheats.
@@ -236,6 +258,7 @@ static const CheatEntry _cheats_ui[] = {
 	{CNM_ALL,        SLE_VAR_BL,     STR_CHEAT_STATION_RATING,   &_cheats.station_rating.value,                 &_cheats.station_rating.been_used,         nullptr                    },
 	{CNM_ALL,        SLE_VAR_BL,     STR_CHEAT_TOWN_RATING,      &_cheats.town_rating.value,                    &_cheats.town_rating.been_used,            nullptr                    },
 	{CNM_LOCAL_ONLY, SLE_VAR_U8,  STR_CHEAT_RAIN,            &_cheats.rain_mode,                            &_cheats.rain.been_used,                   &ClickRainCheat            },
+	{CNM_LOCAL_ONLY, ActionCheat,    STR_CHEAT_RESELECT_EXTERNAL_CARGOES, nullptr,                   &_cheats.external_city_reselect.been_used, &ClickReselectExternalCityCargoes},
 };
 
 static bool IsCheatAllowed(CheatNetworkMode mode)
@@ -336,6 +359,24 @@ struct CheatWindow : Window {
 
 					uint64_t val = (uint64_t)ReadValue(ce->variable, SLE_VAR_U64);
 					str = GetString(ce->str, val * 1000 >> 16, 3);
+					break;
+				}
+
+				case ActionCheat: {
+					/* Action cheats draw a labelled execute button instead of a value. */
+					bool pressed = this->flags.Test(WindowFlag::Timeout) && this->clicked_cheat == static_cast<CheatNumbers>(i);
+					const int width = ExecuteButtonWidth();
+					const int extra = width - SETTING_BUTTON_WIDTH;
+					/* In RTL layouts the wider button grows to the left. */
+					const int btn_left = rtl ? button_left - extra : button_left;
+					Rect button{btn_left, y + button_y_offset, btn_left + width - 1, y + button_y_offset + SETTING_BUTTON_HEIGHT - 1};
+					DrawFrameRect(button, Colours::Yellow, pressed ? FrameFlag::Lowered : FrameFlags{});
+					DrawString(button.left, button.right, y + text_y_offset, GetString(STR_CHEAT_RESELECT_EXTERNAL_CARGOES_EXEC), pressed ? TextColour::White : TextColour::Black, AlignmentH::Centre);
+					/* The wider execute button shifts the label; draw it here. */
+					uint label_left = rtl ? text_left : text_left + extra;
+					uint label_right = rtl ? text_right - extra : text_right;
+					DrawString(label_left, label_right, y + text_y_offset, GetString(ce->str));
+					str.clear();
 					break;
 				}
 
@@ -454,6 +495,10 @@ struct CheatWindow : Window {
 					width = std::max(width, GetStringBoundingBox(GetString(ce.str, STR_CONFIG_SETTING_OFF)).width);
 					break;
 
+				case ActionCheat:
+					width = std::max(width, GetStringBoundingBox(GetString(ce.str)).width);
+					break;
+
 				default:
 					switch (ce.str.base()) {
 						/* Display date for change date cheat */
@@ -485,7 +530,7 @@ struct CheatWindow : Window {
 		this->line_height = std::max<uint>(this->line_height, SETTING_BUTTON_HEIGHT);
 		this->line_height = std::max<uint>(this->line_height, GetCharacterHeight(FontSize::Normal)) + WidgetDimensions::scaled.framerect.Vertical();
 
-		size.width = width + WidgetDimensions::scaled.hsep_wide * 4 + this->box.width + SETTING_BUTTON_WIDTH /* stuff on the left */ + WidgetDimensions::scaled.hsep_wide * 2 /* extra spacing on right */;
+		size.width = width + WidgetDimensions::scaled.hsep_wide * 4 + this->box.width + std::max<int>(SETTING_BUTTON_WIDTH, ExecuteButtonWidth()) /* stuff on the left */ + WidgetDimensions::scaled.hsep_wide * 2 /* extra spacing on right */;
 		size.height = this->line_height * lines;
 	}
 
@@ -528,6 +573,19 @@ struct CheatWindow : Window {
 
 		CheatNumbers cheat = static_cast<CheatNumbers>(btn);
 		const CheatEntry *ce = &_cheats_ui[cheat];
+
+		if (ce->type == ActionCheat) {
+			/* Only the execute button runs an action cheat. */
+			if (!IsInsideMM(x, WidgetDimensions::scaled.hsep_wide * 2 + this->box.width, WidgetDimensions::scaled.hsep_wide * 2 + this->box.width + ExecuteButtonWidth())) return;
+			this->clicked_setting = nullptr;
+			if (!_networking) *ce->been_used = true;
+			this->clicked_cheat = cheat;
+			ce->proc(0, 0);
+			this->SetTimeout();
+			this->SetDirty();
+			return;
+		}
+
 		int value = static_cast<int32_t>(ReadValue(ce->variable, ce->type));
 		int oldvalue = value;
 
@@ -750,6 +808,7 @@ struct CheatWindow : Window {
 		}
 
 		const CheatEntry *ce = &_cheats_ui[clicked_cheat];
+		if (ce->type == ActionCheat) return; // Action cheats never open a text query.
 
 		if (ce->type == InflationCheat) {
 			format_buffer_sized<64> tmp_buffer;

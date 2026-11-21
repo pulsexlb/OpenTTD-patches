@@ -847,6 +847,8 @@ STR_CHEAT_INFLATION_COST_QUERY_CAPT                             :{WHITE}Change i
 STR_CHEAT_INFLATION_INCOME                                      :{LTBLUE}Change inflation income factor: {ORANGE}{DECIMAL}
 STR_CHEAT_INFLATION_INCOME_QUERY_CAPT                           :{WHITE}Change inflation income factor
 STR_CHEAT_TOWN_RATING                                           :{LTBLUE}Town local authority ratings fixed at Outstanding: {ORANGE}{STRING}
+STR_CHEAT_RESELECT_EXTERNAL_CARGOES                             :{LTBLUE}Re-select all external city cargoes
+STR_CHEAT_RESELECT_EXTERNAL_CARGOES_EXEC                        :Execute
 
 ##default-translation STR_EMPTY
 STR_NETWORK_MESSAGE_GIVE_MONEY_RECEIVE                          :*** {RAW_STRING} gave your company {CURRENCY_LONG}

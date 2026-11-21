@@ -20,6 +20,7 @@
 #include "landscape.h"
 #include "train.h"
 #include "roadveh.h"
+#include "roadveh_transport.h"
 #include "aircraft.h"
 #include "station_base.h"
 #include "transparency.h"
@@ -880,7 +881,8 @@ static WindowDesc _external_economy_desc(__FILE__, __LINE__, WindowPosition::Cen
 static CargoTypes ExternalIndustryCargoes(const auto &list)
 {
  CargoTypes mask;
- for (CargoType cargo : list) if (cargo < NUM_CARGO && CargoSpec::Get(cargo)->IsValid()) mask.Set(cargo);
+ /* The dedicated vehicle-transport cargoes are never city trade goods. */
+ for (CargoType cargo : list) if (cargo < NUM_CARGO && CargoSpec::Get(cargo)->IsValid() && !RVTransportIsSpecialCargo(cargo)) mask.Set(cargo);
  return mask;
 }
 struct ExternalEconomyWindow : Window {

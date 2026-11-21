@@ -22,6 +22,7 @@
 #include "core/backup_type.hpp"
 #include "train.h"
 #include "roadveh.h"
+#include "roadveh_transport.h"
 #include "ship.h"
 #include "station_base.h"
 #include "station_func.h"
@@ -83,6 +84,8 @@ ExternalCityEconomy GetExternalCityEconomy(ExternalCityID id)
   for (const CargoSpec *cargo : CargoSpec::Iterate()) {
    const CargoType type = cargo->Index();
    if (IsExternalCityPassengerOrMail(type)) { result.town_produced.Set(type); result.town_accepted.Set(type); continue; }
+   /* The dedicated vehicle-transport cargoes are never city trade goods. */
+   if (RVTransportIsSpecialCargo(type)) continue;
    if (city->trade_cargo_roles[type] == 1) result.produced.Set(type);
    if (city->trade_cargo_roles[type] == 2) result.accepted.Set(type);
   }
@@ -92,7 +95,9 @@ ExternalCityEconomy GetExternalCityEconomy(ExternalCityID id)
  const uint32_t seed = city->economy_seed == 0 ? MixExternalEconomySeed(0xC17EC17EU + id.base()) : city->economy_seed;
  auto cargoes = [](const auto &list) {
   CargoTypes mask;
-  for (CargoType cargo : list) if (cargo < NUM_CARGO && CargoSpec::Get(cargo)->IsValid()) mask.Set(cargo);
+  /* The dedicated vehicle-transport cargoes are never city trade goods, even
+   * when a NewGRF factory resolves them through the cargo translation table. */
+  for (CargoType cargo : list) if (cargo < NUM_CARGO && CargoSpec::Get(cargo)->IsValid() && !RVTransportIsSpecialCargo(cargo)) mask.Set(cargo);
   return mask;
  };
  /* Only finalised, active specifications are used. No position-dependent GRF
@@ -360,15 +365,17 @@ void StoreExternalCityInputs(ExternalCity *city, const CargoArray &amounts)
   }
  }
 }
-static void ConfigureExternalCityEconomy(ExternalCity *city)
+/** Seed-derived reciprocal-trade cargo selection: up to 3 supply and 3 demand
+ * cargoes. Passenger/mail and the dedicated vehicle-transport cargoes (the two
+ * slots above the NewGRF range) never take a role. */
+static void AssignExternalCityTradeCargoes(ExternalCity *city)
 {
- if (_settings_game.vehicle.external_economy_mode != 1) return;
- city->exchange_market = true;
  /* Private, seed-derived ordering: neither map RNG nor local GUI state is
   * consumed. Persist cargo roles, never reroll on load or a client join. */
  std::vector<std::pair<uint32_t, CargoType>> cargoes;
  for (const CargoSpec *cargo : CargoSpec::Iterate()) {
   if (IsExternalCityPassengerOrMail(cargo->Index())) continue;
+  if (RVTransportIsSpecialCargo(cargo->Index())) continue;
   cargoes.emplace_back(MixExternalEconomySeed(city->economy_seed ^ (uint(cargo->Index()) + 1) * 0x9E3779B9U), cargo->Index());
  }
  std::sort(cargoes.begin(), cargoes.end());
@@ -377,6 +384,12 @@ static void ConfigureExternalCityEconomy(ExternalCity *city)
  const size_t demands = std::min<size_t>(3, cargoes.size() - supplies);
  for (size_t n = 0; n < supplies; ++n) city->trade_cargo_roles[cargoes[n].second] = 1;
  for (size_t n = supplies; n < supplies + demands; ++n) city->trade_cargo_roles[cargoes[n].second] = 2;
+}
+static void ConfigureExternalCityEconomy(ExternalCity *city)
+{
+ if (_settings_game.vehicle.external_economy_mode != 1) return;
+ city->exchange_market = true;
+ AssignExternalCityTradeCargoes(city);
 }
 void InitializeExternalCityMarket(ExternalCity *city)
 {
@@ -394,6 +407,45 @@ void InitializeExternalCityMarket(ExternalCity *city)
  for (CargoType cargo : city->exchange_market ? profile.produced : profile.town_produced) city->stock[cargo] = 512;
  city->market_initialized = true;
  city->month_supply = city->stock; city->month_demand = city->demand; city->statistics_initialized = true;
+}
+/** Re-derive the reciprocal-trade cargo selection from the saved seed with the
+ * dedicated vehicle-transport cargoes excluded. Cities whose selection was
+ * already free of them are left completely untouched, so re-running this is
+ * always harmless. */
+void RegenerateExternalCityTradeCargoes(ExternalCity *city)
+{
+ if (!city->exchange_market) return;
+ const auto old_roles = city->trade_cargo_roles;
+ city->trade_cargo_roles.fill(0);
+ AssignExternalCityTradeCargoes(city);
+ if (city->trade_cargo_roles == old_roles) return;
+ const auto profile = GetExternalCityEconomy(city->index);
+ Station *station = Station::GetIfValid(city->market_station);
+ if (station == nullptr) {
+  /* No market yet: the next EnsureExternalCityMarkets seeds the new supply. */
+  for (CargoType cargo : profile.produced) city->stock[cargo] = 512;
+  return;
+ }
+ for (CargoType cargo : EnumRange(NUM_CARGO)) {
+  if (profile.produced.Test(cargo)) continue;
+  /* Waiting cargo of the old selection can no longer be served. */
+  city->stock[cargo] = 0;
+  auto &ge = station->goods[cargo];
+  if (ge.data != nullptr) ge.data.reset();
+ }
+ for (CargoType cargo : profile.produced) {
+  auto &ge = station->goods[cargo];
+  if (ge.data != nullptr) continue;
+  if (!LinkGraph::IsValidID(ge.link_graph) && LinkGraph::CanAllocateItem()) {
+   auto *graph = LinkGraph::Create(cargo);
+   ge.link_graph = graph->index;
+   ge.node = graph->AddNode(station);
+   LinkGraphSchedule::instance.Queue(graph);
+  }
+  /* A repaired market starts with the same supply as a fresh one. */
+  city->stock[cargo] = AddExternalSupply(city, station, cargo, 512);
+ }
+ UpdateExternalMarketAcceptance(station);
 }
 /** New-game destinations share the selected native/GRF town naming scheme.
  * A private RNG keeps map generation unchanged. Names and profiles are saved,

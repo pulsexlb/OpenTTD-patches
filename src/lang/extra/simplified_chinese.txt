@@ -799,6 +799,8 @@ STR_CHEAT_INFLATION_COST_QUERY_CAPT                             :{WHITE}改变�
 STR_CHEAT_INFLATION_INCOME                                      :{LTBLUE}改变收入通胀因子：{ORANGE}{DECIMAL}
 STR_CHEAT_INFLATION_INCOME_QUERY_CAPT                           :{WHITE}改变收入通胀因子
 STR_CHEAT_TOWN_RATING                                           :{LTBLUE}城镇评价锁定为“完美”：{ORANGE}{STRING}
+STR_CHEAT_RESELECT_EXTERNAL_CARGOES                             :{LTBLUE}重新选择所有图外城市货物
+STR_CHEAT_RESELECT_EXTERNAL_CARGOES_EXEC                        :执行
 
 STR_NETWORK_MESSAGE_GIVE_MONEY_RECEIVE                          :*** {STRING} 给了你的公司 {CURRENCY_LONG}
 STR_NETWORK_MESSAGE_GAVE_MONEY_AWAY                             :*** 你给了 {STRING} {CURRENCY_LONG}
