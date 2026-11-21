@@ -26,6 +26,7 @@ bool TryReserveAircraftTaxiPath(Aircraft *v);
 void PruneAircraftVirtualReservations(Aircraft *v);
 TrackBits GetAircraftVirtualBookedTracks(TileIndex tile);
 TrackBits GetAircraftAirportEditTracks(TileIndex tile);
+bool HasAircraftJunctionFootprint(TileIndex tile);
 void UpdateAircraftTaxiTraffic(Aircraft *v, bool moved);
 bool IsAircraftTaxiEnvelopeAvailable(Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL);
 

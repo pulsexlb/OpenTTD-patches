@@ -989,6 +989,27 @@ TrackBits GetAircraftAirportEditTracks(TileIndex tile)
 	return tracks;
 }
 
+/**
+ * Check whether any aircraft holds an admitted junction action whose footprint
+ * includes the tile. The swept directions of such an action were derived from
+ * the tile's current tracks, so adding a connection to the tile would change
+ * them mid-turn. Other kinds of occupation (reservations, planned routes,
+ * terminal claims, runway locks) are unaffected by only extending the tracks
+ * of a tile.
+ * @param tile Tile to check.
+ * @return True iff an admitted junction action covers the tile.
+ */
+bool HasAircraftJunctionFootprint(TileIndex tile)
+{
+	if (!IsTaxiTile(tile)) return false;
+	for (const Aircraft *v : Aircraft::Iterate()) {
+		if (!v->IsNormalAircraft()) continue;
+		if (std::binary_search(v->junction_tiles.begin(), v->junction_tiles.end(), tile) ||
+				std::binary_search(v->junction_legacy_tiles.begin(), v->junction_legacy_tiles.end(), tile)) return true;
+	}
+	return false;
+}
+
 static AircraftTaxiBlock CheckAircraftRunwayTile(const Aircraft *v, TileIndex tile)
 {
 	/* The whole runway tile remains exclusive, but only its actual runway
