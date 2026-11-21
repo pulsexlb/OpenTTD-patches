@@ -3271,10 +3271,10 @@ static void DrawAirportFences(TileInfo *ti)
 	StationID st_id = GetStationIndex(ti->tile);
 
 	static const SpriteBounds fence_bounds[4] = {
-		{{0,  0, 0}, {16, 1, 4}, {}}, // NE
-		{{0, 15, 0}, {1, 16, 4}, {}}, // SE
-		{{15,  0, 0}, {1, 16, 4}, {}}, // SW
-		{{0, 0, 0}, {1, 16, 4}, {}}, // NW
+		{{0,  0, 0}, { 1, 16, 4}, {}}, // NE
+		{{0, 16, 0}, {16,  1, 4}, {}}, // SE
+		{{16, 0, 0}, { 1, 16, 4}, {}}, // SW
+		{{0,  0, 0}, {16,  1, 4}, {}}, // NW
 	};
 
 	PaletteID palette = GetCompanyPalette(GetTileOwner(ti->tile));
