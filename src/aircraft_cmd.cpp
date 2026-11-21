@@ -869,8 +869,9 @@ enum AircraftSpeedLimits {
  * speed and tapers off like the vanilla speed-squared slowdown, but it is a
  * function of the distance rolled: the aircraft has reached the airport's
  * taxiing speed exactly when it has used up its braking distance, i.e. when
- * it has consumed the minimum runway length it requires for landing counted
- * from the start of the runway, or at the end of the roll if that is sooner.
+ * it arrives at the centre of the tile that completes the minimum runway
+ * length it requires for landing counted from the start of the runway, or at
+ * the end of the roll if that is sooner.
  * Because the profile is a function of the
  * distance between the aircraft and the runway-end stop position, it is
  * independent of the plane speed setting and of any pause during the roll.
@@ -941,31 +942,36 @@ static int UpdateAircraftSpeed(Aircraft *v)
 			 * is on the runway, so use its own tile when the next tile is not
 			 * valid (it may have been invalidated by an airport edit while the
 			 * plane was rolling). */
-			if (v->landing_brake_speed != 0) {
-				if (v->landing_brake_distance == 0) {
-					/* First speed update of the roll: the vehicle cache has been
-					 * refreshed for the ground state, so freeze the braking
-					 * distance from the same required runway length the vehicle
-					 * GUI shows. The braking finishes where the required runway
-					 * length is used up, counted from the start of the runway; if
-					 * the touchdown happened past that point (or the runway is
-					 * shorter), the braking spans the whole remaining roll. */
-					uint required = GetAircraftRequiredRunwayLength(v);
-					uint start_available = v->landing_roll_start_available;
-					uint mark = 0;
-					uint runway_tiles = 0;
-					TileIndex far_end = v->GetNextTile();
-					if (IsValidTile(far_end) && IsRunway(v->tile)) {
-						/* Walk back from the roll's runway end to its landing start. */
-						DiagDirection roll_dir = GetRunwayExtremeDirection(far_end);
-						TileIndex runway_start = GetRunwayExtreme(far_end, ReverseDiagDir(roll_dir));
-						runway_tiles = std::max(TileX(far_end), TileX(runway_start)) - std::min(TileX(far_end), TileX(runway_start))
-								+ std::max(TileY(far_end), TileY(runway_start)) - std::min(TileY(far_end), TileY(runway_start)) + 1;
-						int boundary = static_cast<int>((runway_tiles - 1) * TILE_SIZE) + 8 - static_cast<int>(required * TILE_SIZE);
-						mark = (boundary <= 0) ? 0 : std::min<uint>(static_cast<uint>(boundary), start_available);
-					}
+				if (v->landing_brake_speed != 0) {
+					if (v->landing_brake_distance == 0) {
+						/* First speed update of the roll: the vehicle cache has been
+						 * refreshed for the ground state, so freeze the braking
+						 * distance from the same required runway length the vehicle
+						 * GUI shows. The braking finishes at the centre of the tile
+						 * that completes the required runway length, counted from the
+						 * start of the runway; if the touchdown happened past that
+						 * point (or the runway is shorter), the braking spans the
+						 * whole remaining roll. */
+						uint required = GetAircraftRequiredRunwayLength(v);
+						uint start_available = v->landing_roll_start_available;
+						uint mark = 0;
+						uint runway_tiles = 0;
+						TileIndex far_end = v->GetNextTile();
+						if (IsValidTile(far_end) && IsRunway(v->tile)) {
+							/* Walk back from the roll's runway end to its landing start. */
+							DiagDirection roll_dir = GetRunwayExtremeDirection(far_end);
+							TileIndex runway_start = GetRunwayExtreme(far_end, ReverseDiagDir(roll_dir));
+							runway_tiles = std::max(TileX(far_end), TileX(runway_start)) - std::min(TileX(far_end), TileX(runway_start))
+									+ std::max(TileY(far_end), TileY(runway_start)) - std::min(TileY(far_end), TileY(runway_start)) + 1;
+							/* The tile that completes the required runway length has its
+							 * centre (runway_tiles - required) tiles before the runway-end
+							 * stop position; a runway shorter than the requirement brakes
+							 * over the whole remaining roll. */
+							int boundary = (static_cast<int>(runway_tiles) - static_cast<int>(required)) * TILE_SIZE;
+							mark = (boundary <= 0) ? 0 : std::min<uint>(static_cast<uint>(boundary), start_available);
+						}
 						v->landing_brake_distance = static_cast<uint16_t>(std::max<uint>(1, start_available - mark));
-				}
+					}
 				if (v->landing_brake_speed != 0 && v->landing_brake_distance != 0) {
 					/* The roll follows the deterministic quadratic braking profile
 					 * armed at the touchdown; the acceleration logic below would
@@ -1619,6 +1625,7 @@ static bool IsAircraftOnNextPosition(const Aircraft *v)
 }
 
 static bool FinishAircraftTaxiRoute(Aircraft *v);
+bool TryReservePath(Aircraft *v);
 
 
 /**
@@ -2427,6 +2434,121 @@ void HandleAircraftLanding(Aircraft *v)
 }
 
 /**
+ * Try to leave the landing roll early at a taxi track on the runway.
+ * A runway tile built over taxi tracks keeps them: a track perpendicular to
+ * the runway axis is a crossing taxiway, and the runway-parallel track is the
+ * taxiway the runway was built over. Once the roll has used up the required
+ * runway length (the braking profile has brought the aircraft down to the
+ * airport's taxiing speed at the centre of the tile that completes it), such
+ * a tile is an exit: the aircraft claims the taxi track, plans a taxi route
+ * off the runway and only then releases the whole-runway lock, exactly like
+ * the end-of-roll handoff does. Leaving on the runway-parallel track simply
+ * converts the remaining runway into ordinary taxiing, which releases its
+ * tiles again as the aircraft advances.
+ * The exit is all-or-nothing: when no taxi route can be reserved right now,
+ * the attempt is rolled back and the roll simply continues towards the runway
+ * end, where the ordinary handoff waits for an exit. The aircraft never stops
+ * in the middle of the runway, so the runway stays blocked as briefly as
+ * possible.
+ * @param v Aircraft on its landing roll.
+ * @return True iff the aircraft left the landing roll and is taxiing away.
+ */
+static bool TryAircraftEarlyRunwayExit(Aircraft *v)
+{
+	if (v->state != AS_LANDED || v->IsHelicopter() || v->IsWaiting()) return false;
+	/* Only the armed braking profile defines the required runway length; a roll
+	 * without one (no runway requirement) always rolls to the runway end. */
+	if (v->landing_brake_speed == 0 || v->landing_brake_distance == 0) return false;
+
+	TileIndex far_end = v->GetNextTile();
+	if (!IsValidTile(far_end) || !IsRunwayEnd(far_end)) return false;
+
+	/* Runway heads are handled by the end-of-roll handoff; only a plain runway
+	 * tile can host an early-exit taxi track. */
+	if (!IsRunway(v->tile) || IsRunwayExtreme(v->tile)) return false;
+
+	/* The aircraft may leave only once the required runway length is used up,
+	 * i.e. once the braking profile has brought it down to the airport's
+	 * taxiing speed. The distance to the runway-end stop position is the same
+	 * measure the braking profile uses, so this matches its completion. */
+	uint available = abs(v->next_pos.x - v->x_pos) + abs(v->next_pos.y - v->y_pos);
+	uint rolled = (available < v->landing_roll_start_available) ? v->landing_roll_start_available - available : 0;
+	if (rolled < v->landing_brake_distance) return false;
+
+	/* React exactly when the aircraft is abreast of the tile centre along the
+	 * roll axis, so a turn happens at the centre of the exit tile and not
+	 * half a tile earlier at its edge. */
+	DiagDirection roll_dir = GetRunwayExtremeDirection(far_end);
+	int coord = DiagDirToAxis(roll_dir) == Axis::X ? v->x_pos : v->y_pos;
+	if ((coord & 15) != 8) return false;
+
+	/* Any taxi track on this tile is an exit. A track perpendicular to the
+	 * runway axis is a crossing taxiway and is tried first: the aircraft
+	 * leaves the runway sideways. The runway-parallel track (the taxiway the
+	 * runway was built over) is tried last: leaving the roll on it converts
+	 * the remaining runway into ordinary taxiing, which releases its tiles
+	 * again as the aircraft advances. */
+	TrackBits taxi = GetAirportTileTracks(v->tile) & TRACK_BIT_CROSS;
+	if (taxi == TRACK_BIT_NONE) return false;
+	TrackBits runway = GetRunwayTracks(v->tile);
+	const TrackBits passes[2] = { taxi & ~runway, taxi & runway };
+
+	for (const TrackBits *pass = passes; pass != passes + 2; ++pass) {
+		for (TrackBits retry = *pass; retry != TRACK_BIT_NONE;) {
+			Track track = RemoveFirstTrack(&retry);
+			TrackBits trackbits = TrackToTrackBits(track);
+			/* Claim the exit track for both travel directions: the taxi route
+			 * may leave the runway on either side of it. */
+			if (!TryReserveAircraftTile(v, v->tile, trackbits, TrackBitsToTrackdirBits(trackbits))) continue;
+
+			for (TrackdirBits tds = TrackBitsToTrackdirBits(trackbits); tds != TRACKDIR_BIT_NONE; tds = KillFirstBit(tds)) {
+				Trackdir saved_trackdir = v->trackdir;
+				Trackdir saved_next_trackdir = v->next_trackdir;
+				v->trackdir = v->Next()->trackdir = static_cast<Trackdir>(FindFirstBit(tds));
+				v->next_trackdir = v->Next()->next_trackdir = INVALID_TRACKDIR;
+
+				/* The whole-runway lock is only released once the route is fully
+				 * admitted: if this attempt fails, the roll continues without any
+				 * window in which the runway would be unprotected. */
+				if (TryReservePath(v)) {
+					if (v->reserved_runway != INVALID_TILE) ReleaseAircraftRunway(v);
+					/* The roll is over: the braking profile and its roll progress
+					 * are not used any more, the taxi controller governs the speed
+					 * and the origin rotation aligns the aircraft to the exit. */
+					v->landing_brake_speed = 0;
+					v->landing_brake_distance = 0;
+					v->landing_roll_start_available = 0;
+					v->taxi_progress = 0;
+					v->progress = 0;
+					v->subspeed = 0;
+					SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
+					return true;
+				}
+
+				/* No taxi route in this direction right now: undo the attempt but
+				 * keep the exit track claimed for the other direction. The
+				 * trackdir is still the exit while releasing, so the at-rest trim
+				 * keeps exactly the claimed exit track. */
+				ReleaseAircraftTaxiPath(v, true, false);
+				/* The planner cleared the roll's runway-end anchor: restore it, so
+				 * the remaining roll keeps its exact stopping position. */
+				v->UpdateNextTile(far_end);
+				v->trackdir = v->Next()->trackdir = saved_trackdir;
+				v->next_trackdir = v->Next()->next_trackdir = saved_next_trackdir;
+				SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
+			}
+
+			/* Neither direction can leave right now: give the exit track back
+			 * and keep rolling towards the runway end. */
+			ReleaseAircraftTaxiPath(v, false);
+			v->UpdateNextTile(far_end);
+		}
+	}
+
+	return false;
+}
+
+/**
  * Plane touched down at the landing strip.
  * @param v Aircraft that landed.
  */
@@ -2442,11 +2564,12 @@ static void HandlePlaneLandsOnRunway(Aircraft *v)
 	v->UpdateNextTile(v->GetNextTile());
 
 	/* Arm the quadratic braking profile: starting from the touchdown speed,
-	 * the aircraft must have slowed to the airport's taxiing speed when it has
-	 * used up the minimum runway length it requires for landing, or when the
-	 * landing roll ends, whichever comes first. Distances are measured in
-	 * pixels along the runway; a zero required length (no runway requirement)
-	 * leaves the roll to the generic speed logic.
+	 * the aircraft must have slowed to the airport's taxiing speed when it
+	 * reaches the centre of the tile that completes the minimum runway length
+	 * it requires for landing, or when the landing roll ends, whichever comes
+	 * first. Distances are measured in pixels along the runway; a zero
+	 * required length (no runway requirement) leaves the roll to the generic
+	 * speed logic.
 	 * The touchdown speed is converted from the flight units to the ground
 	 * units taxiing uses: ground movement is not affected by the plane speed
 	 * factor, and the whole roll runs in these units. The braking distance
@@ -3959,6 +4082,9 @@ bool HandleAircraftMovement(Aircraft *v)
 
 	for (; count > 0; count--) {
 		MoveAircraft(v, nudge_towards_target);
+		/* A landing roll that has used up its required runway length may leave
+		 * the runway early at a crossing taxiway; on success it is taxiing. */
+		if (v->state == AS_LANDED && TryAircraftEarlyRunwayExit(v)) break;
 		/* MoveAircraft may have dropped the aircraft to a non-moving state when its
 		 * reserved path turned out to be invalid; stop moving it this tick. */
 		if (v->state < AS_MOVING || v->IsWaiting() || HandleAircraftState(v)) break;
