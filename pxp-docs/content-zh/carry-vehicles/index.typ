@@ -2,7 +2,7 @@
 
 *注：载具对接功能原创于 #link("https://github.com/Babel-TTT/OpenTTD-patches/tree/feature/road-veh-transport/")[Road Veh Transport 补丁]，px-patch 在此补丁的基础上，进行了优化和功能完善。*
 
-在设置选项中开启`载具运输`功能，即可在游戏中运输载具运输。
+在设置选项中开启`载具运输`功能，即可在游戏中运输载具。
 
 #figure(
   image("../../static/images/veh-carry-setting.png", width: 80%),

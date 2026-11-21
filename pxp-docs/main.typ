@@ -80,6 +80,24 @@
           )
         ),
         chapter(
+          "en/off-map",
+          content: include "content-en/ext-connect/index.typ",
+          children: (
+            chapter(
+              "en/off-map/cities",
+              content: include "content-en/ext-connect/ext-city.typ",
+            ),
+            chapter(
+              "en/off-map/vehicles",
+              content: include "content-en/ext-connect/veh-off-map.typ",
+            ),
+            chapter(
+              "en/off-map/settings",
+              content: include "content-en/ext-connect/settings.typ",
+            ),
+          )
+        ),
+        chapter(
           "en/bluepoint",
           content: include "content-en/bluepoint/index.typ",
         ),
@@ -181,6 +199,24 @@
             chapter(
               "zh/veh-carry/cross-company",
               content: include "content-zh/carry-vehicles/cross-comp.typ",
+            ),
+          )
+        ),
+        chapter(
+          "zh/off-map",
+          content: include "content-zh/ext-connect/index.typ",
+          children: (
+            chapter(
+              "zh/off-map/cities",
+              content: include "content-zh/ext-connect/ext-city.typ",
+            ),
+            chapter(
+              "zh/off-map/vehicles",
+              content: include "content-zh/ext-connect/veh-off-map.typ",
+            ),
+            chapter(
+              "zh/off-map/settings",
+              content: include "content-zh/ext-connect/settings.typ",
             ),
           )
         ),
