@@ -452,11 +452,9 @@ CommandCost AddAirportTrack(TileIndex tile, Track track, DoCommandFlags flags)
 	if (ret.Failed()) return ret;
 	if (!MayHaveAirTracks(tile)) return CommandCost(STR_ERROR_AIRPORT_CAN_T_HAVE_TRACKS);
 	if (HasAirportTileTrack(tile, track)) return CommandCost(STR_ERROR_ALREADY_BUILT);
-	/* Adding a connection only extends the tile's tracks: reservations, planned
-	 * routes and occupations on the tile all stay valid. Only an admitted
-	 * junction action (edge turn) depends on the swept directions derived from
-	 * the current tracks, so those still refuse the change. */
-	if (HasAircraftJunctionFootprint(tile)) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
+	/* Occupancy permits track additions, but admitted junction actions and
+	 * planned edge turns must retain their original swept geometry. */
+	if (HasAircraftAirportTrackAdditionConflict(tile, track)) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 	AirportTileType att = GetAirportTileType(tile);
 	if ((att == ATT_HANGAR_STANDARD || att == ATT_HANGAR_EXTENDED) && !IsDiagonalTrack(track)) return CommandCost(STR_ERROR_AIRPORT_CAN_T_ADD_TRACK_HANGAR);
 

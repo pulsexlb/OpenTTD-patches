@@ -3009,13 +3009,13 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 					STR_ORDER_GO_TO + ((v == nullptr || v->IsGroundVehicle()) ? order->GetNonStopType() : 0),
 					order->GetDestination().ToStationID());
 
-			/* A fixed-wing aircraft whose destination airport has no runway long
-			 * enough for its speed gets a red warning appended to the order. */
+			/* A fixed-wing aircraft whose destination airport has no landing-enabled
+			 * runway long enough for its speed gets a red warning appended to the order. */
 			if (valid_station && v != nullptr && v->type == VehicleType::Aircraft) {
 				const Aircraft *ac = Aircraft::From(v);
 				const Station *dst = Station::GetIfValid(order->GetDestination().ToStationID());
 				if (!ac->IsHelicopter() && dst != nullptr && IsValidTile(dst->airport.tile) &&
-						GetStationMaxRunwayLength(dst) < GetAircraftRequiredRunwayLength(ac)) {
+						GetStationMaxLandingRunwayLength(dst) < GetAircraftRequiredRunwayLength(ac)) {
 					line.push_back(' ');
 					AppendStringInPlace(line, STR_ORDER_RUNWAY_TOO_SHORT);
 				}

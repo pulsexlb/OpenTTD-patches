@@ -26,7 +26,7 @@ bool TryReserveAircraftTaxiPath(Aircraft *v);
 void PruneAircraftVirtualReservations(Aircraft *v);
 TrackBits GetAircraftVirtualBookedTracks(TileIndex tile);
 TrackBits GetAircraftAirportEditTracks(TileIndex tile);
-bool HasAircraftJunctionFootprint(TileIndex tile);
+bool HasAircraftAirportTrackAdditionConflict(TileIndex tile, Track track);
 void UpdateAircraftTaxiTraffic(Aircraft *v, bool moved);
 bool IsAircraftTaxiEnvelopeAvailable(Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL);
 
@@ -54,6 +54,6 @@ void ClearAircraftReservationIndexes();
 
 /** Get the length in tiles of the runway containing \a extreme (0 when \a extreme is not a runway extreme). */
 uint GetAircraftRunwayLength(TileIndex extreme);
-/** Get the length in tiles of the longest runway of \a st's airport (0 when it has no runway). */
-uint GetStationMaxRunwayLength(const Station *st);
+/** Get the length in tiles of the longest landing-enabled runway of \a st's airport (0 when it has none). */
+uint GetStationMaxLandingRunwayLength(const Station *st);
 #endif /* PBS_AIR_H */

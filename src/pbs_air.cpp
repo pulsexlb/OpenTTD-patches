@@ -872,11 +872,12 @@ uint GetAircraftRunwayLength(TileIndex extreme)
 	return static_cast<uint>(RunwayTiles(extreme).size());
 }
 
-uint GetStationMaxRunwayLength(const Station *st)
+uint GetStationMaxLandingRunwayLength(const Station *st)
 {
 	if (st == nullptr) return 0;
 	uint best = 0;
 	for (TileIndex extreme : st->airport.runways) {
+		if (!IsTaxiTile(extreme) || !IsRunwayStart(extreme) || !IsLandingTypeTile(extreme)) continue;
 		uint length = GetAircraftRunwayLength(extreme);
 		if (length > best) best = length;
 	}
@@ -990,22 +991,29 @@ TrackBits GetAircraftAirportEditTracks(TileIndex tile)
 }
 
 /**
- * Check whether any aircraft holds an admitted junction action whose footprint
- * includes the tile. The swept directions of such an action were derived from
- * the tile's current tracks, so adding a connection to the tile would change
- * them mid-turn. Other kinds of occupation (reservations, planned routes,
- * terminal claims, runway locks) are unaffected by only extending the tracks
- * of a tile.
- * @param tile Tile to check.
- * @return True iff an admitted junction action covers the tile.
+ * Check whether adding a track changes an aircraft's admitted junction footprint
+ * or the swept directions of a planned edge turn, including distant turns and
+ * ignored aircraft. Ordinary tile occupancy does not prevent track additions.
+ * @param tile Tile to change.
+ * @param track Track to add.
+ * @return True iff the addition conflicts with existing movement geometry.
  */
-bool HasAircraftJunctionFootprint(TileIndex tile)
+bool HasAircraftAirportTrackAdditionConflict(TileIndex tile, Track track)
 {
 	if (!IsTaxiTile(tile)) return false;
+	const TrackdirBits added = TrackBitsToTrackdirBits(TrackToTrackBits(track));
 	for (const Aircraft *v : Aircraft::Iterate()) {
 		if (!v->IsNormalAircraft()) continue;
 		if (std::binary_search(v->junction_tiles.begin(), v->junction_tiles.end(), tile) ||
 				std::binary_search(v->junction_legacy_tiles.begin(), v->junction_legacy_tiles.end(), tile)) return true;
+		for (size_t i = 0; i + 1 < v->planned_path.size(); ++i) {
+			const auto &node = v->planned_path[i];
+			const auto &turn = v->planned_path[i + 1];
+			if (turn.tile != node.tile || turn.choice || !IsValidTrackdir(node.td)) continue;
+			CFollowTrackAirport follower(v);
+			if (follower.Follow(node.tile, node.td) && follower.new_tile == tile &&
+					(added & DiagdirReachesTrackdirs(follower.exitdir) & ~follower.new_td_bits) != TRACKDIR_BIT_NONE) return true;
+		}
 	}
 	return false;
 }
@@ -1240,9 +1248,11 @@ static void RestoreAircraftJunctions(Aircraft *v, const AircraftJunctionState &s
 
 void ReleaseAircraftStalledReservations(Aircraft *v)
 {
-	if (v->IsAircraftFlying() || v->vehstatus.Test(VehState::Hidden)) return;
+	/* A failed early-exit probe is not a stalled taxi route. The landing
+	 * controller owns the roll's runway lock until a safe handoff succeeds. */
+	if (v->state == AS_LANDED || v->IsAircraftFlying() || v->vehstatus.Test(VehState::Hidden)) return;
 	if (!IsTaxiTile(v->tile) || !IsRunway(v->tile)) return;
-	/* A landed/idle aircraft can legitimately keep the one physical tile it
+	/* An idle aircraft can legitimately keep the one physical tile it
 	 * occupies. Anything beyond that is a stranded claim; the old strict
 	 * "no reservations at all" test never fired for those aircraft. */
 	if (!v->planned_path.empty()) return;
@@ -1257,12 +1267,17 @@ void ReleaseAircraftStalledReservations(Aircraft *v)
 	}
 
 	/* A stopped aircraft physically occupies one runway axis at this tile.
-	 * Locks on any other axis cannot help it and only strand opposite traffic. */
+	 * Locks on any other axis cannot help it and only strand opposite traffic.
+	 * Old saves may name the same runway by its end rather than its start. */
 	std::set<TileIndex> physical;
 	if (!CollectAircraftRunways(v->tile, physical)) return;
+	auto is_physical = [&](TileIndex extreme) {
+		const auto tiles = RunwayTiles(extreme);
+		return !tiles.empty() && physical.count(IsRunwayStart(extreme) ? tiles.front() : tiles.back()) != 0;
+	};
 	const auto locked = AircraftLockedRunwayTiles(v);
-	std::erase_if(v->taxi_runways, [&](TileIndex extreme) { return physical.count(extreme) == 0; });
-	if (v->reserved_runway != INVALID_TILE && physical.count(v->reserved_runway) == 0) v->reserved_runway = INVALID_TILE;
+	std::erase_if(v->taxi_runways, [&](TileIndex extreme) { return !is_physical(extreme); });
+	if (v->reserved_runway != INVALID_TILE && !is_physical(v->reserved_runway)) v->reserved_runway = INVALID_TILE;
 	ReleaseAircraftRunwayTiles(v, locked);
 }
 

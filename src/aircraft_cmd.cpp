@@ -331,9 +331,9 @@ static bool CanAircraftUseAirport(const Aircraft *v, const Station *st)
 	if (!(!st->airport.aprons.empty() ||
 			(v->IsHelicopter() && (!st->airport.helipads.empty() || !st->airport.heliports.empty())))) return false;
 
-	/* A fixed-wing aircraft additionally needs a runway long enough for its
-	 * speed; helicopters need none and always pass this check. */
-	return GetStationMaxRunwayLength(st) >= GetAircraftRequiredRunwayLength(v);
+	/* The same runway must allow landing and be long enough. Temporary runway
+	 * occupancy does not make an airport unusable; helicopters need no runway. */
+	return v->IsHelicopter() || GetStationMaxLandingRunwayLength(st) >= GetAircraftRequiredRunwayLength(v);
 }
 
 static bool CanUseExternalReturnAirport(const Aircraft *v, const Station *st)
@@ -474,7 +474,7 @@ static StationID FindClosestHangar(const Aircraft *v)
 	}
 
 	for (const Station *st : Station::Iterate()) {
-		if (st->owner != v->owner || !CanVehicleUseStation(v, st) || !st->airport.HasHangar()) continue;
+		if (st->owner != v->owner || !st->airport.HasHangar() || !CanAircraftUseAirport(v, st)) continue;
 
 		/* Check if our last and next destinations can be reached from the depot airport. */
 		if (max_range != 0) {
@@ -1626,6 +1626,7 @@ static bool IsAircraftOnNextPosition(const Aircraft *v)
 
 static bool FinishAircraftTaxiRoute(Aircraft *v);
 bool TryReservePath(Aircraft *v);
+void UpdatePath(Aircraft *v);
 
 
 /**
@@ -2089,6 +2090,19 @@ bool HandleAircraftReadyToTakeoff(Aircraft *v)
 		return true;
 	}
 
+	/* A setting or state-sensitive speed callback may have changed the
+	 * requirement while waiting here. Do not commit to an obsolete runway. */
+	if (GetAircraftRunwayLength(v->tile) < GetAircraftRequiredRunwayLength(v)) {
+		v->cur_speed = 0;
+		v->subspeed = 0;
+		v->progress = 0;
+		v->taxi_progress = 0;
+		if (v->reserved_runway != INVALID_TILE) ReleaseAircraftRunway(v);
+		UpdatePath(v);
+		SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
+		return true;
+	}
+
 	/* Reserve this complete runway, including our own waiting tile. */
 	if (!TryReserveAircraftRunway(v, v->tile)) {
 		v->cur_speed = 0;
@@ -2316,11 +2330,21 @@ void HandleAircraftFlying(Aircraft *v)
 				}
 			} else {
 				if (v->next_pos.pos == AP_PLANE_HOLD_3) {
+					/* Recheck the selected runway before committing, not midway through
+					 * descent. A longer requirement may invalidate only this runway. */
+					TileIndex landing_tile = v->GetNextTile();
+					if (v->reserved_runway == INVALID_TILE &&
+							(!IsValidTile(landing_tile) || !IsAirportTile(landing_tile) || !IsRunwayStart(landing_tile) ||
+							!IsLandingTypeTile(landing_tile) || GetAircraftRunwayLength(landing_tile) < GetAircraftRequiredRunwayLength(v))) {
+						v->state = AS_FLYING;
+						AssignLandingTile(v, FindClosestLandingTile(v));
+						break;
+					}
 					/* Committing to the final descent: only now is the runway
 					 * reserved. Holding aircraft keep the runway free so that
 					 * departures are never blocked by circling arrivals. If the
 					 * runway was taken in the meantime, keep on holding. */
-					if (!TryReserveAircraftRunway(v, v->GetNextTile())) {
+					if (!TryReserveAircraftRunway(v, landing_tile)) {
 						v->state = AS_ON_HOLD_WAITING;
 					} else {
 						v->state = AS_DESCENDING;
@@ -3295,10 +3319,14 @@ TileIndex FindClosestFreeLandingTile(Aircraft *v) {
 
 ClosestDepot Aircraft::FindClosestDepot() const
 {
-	const Station *st = Station::GetIfValid(this->GetCurrentAirportID());
+	const Station *current = !this->IsAircraftFlying() && IsValidTile(this->tile) && IsAirportTile(this->tile) ?
+			Station::GetIfValid(GetStationIndex(this->tile)) : nullptr;
+	const Station *st = current;
 	if (st == nullptr || !st->airport.HasHangar()) st = GetTargetAirportIfValid(this);
-	/* If the station is not a valid airport or if it has no hangars */
-	if (st == nullptr || !CanVehicleUseStation(this, st) || !st->airport.HasHangar()) {
+	/* Ground taxiing to the current hangar needs no landing runway. A remote
+	 * or airborne diversion must pass the full landing suitability check. */
+	if (st == nullptr || !st->airport.HasHangar() ||
+			!(st == current ? CanVehicleUseStation(this, st) : CanAircraftUseAirport(this, st))) {
 		/* the aircraft has to search for a hangar on its own */
 		StationID station = FindClosestHangar(this);
 
