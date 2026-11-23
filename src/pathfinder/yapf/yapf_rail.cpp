@@ -112,7 +112,8 @@ private:
 		/* Reaching a tile occupied by the wait-for-couple partner IS the
 		 * destination -- do not try to reserve its tiles. */
 		for (const Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
-			if (ValidateCoupleCandidate(Yapf().GetVehicle(), t->First(), tile, true) != nullptr) return true;
+			if ((!IsDiagonalRailStationTile(tile) || HasBit(t->track, TrackdirToTrack(td))) &&
+					ValidateCoupleCandidate(Yapf().GetVehicle(), t->First(), tile, true) != nullptr) return true;
 		}
 		TrackdirBits tdb = TrackdirToTrackdirBits(td);
 		TrackBits tracks = TrackdirBitsToTrackBits(tdb);
@@ -121,24 +122,21 @@ private:
 		 * entire platform, without requiring a reservation. Block signals do
 		 * not create reservations, but a train waiting for coupling is a valid
 		 * safe position regardless. */
-		if (IsRailStationTile(tile)) {
+		if (IsRailStationTile(tile) && RailPlatformPosition{tile, td}.IsPlatform()) {
 			Train *best = nullptr;
 			Train *second_best = nullptr;
-			auto check_train_on_tile = [&](TileIndex t) {
+			auto check_train_on_tile = [&](TileIndex t, Track track) {
 				for (Train *tr : VehiclesOnTile<VehicleType::Train>(t)) {
 					if (tr->vehstatus.Test(VehState::Crashed) || tr->Primary()->vehstatus.Test(VehState::Stopped)) continue;
-					if (tr->track == TRACK_BIT_WORMHOLE || HasBit((TrackBits)tr->track, TrackdirToTrack(td))) {
+					if (tr->track == TRACK_BIT_WORMHOLE || HasBit(tr->track, track)) {
 						Train *head = tr->Primary();
 						if (best != nullptr && head->index != best->index) second_best = head;
 						if (best == nullptr || head->index < best->index) best = head;
 					}
 				}
 			};
-			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
-			for (TileIndex st_tile = tile + diff; IsCompatibleTrainStationTile(st_tile, tile); st_tile += diff) {
-				check_train_on_tile(st_tile);
-			}
-			check_train_on_tile(tile);
+			const RailPlatformPosition end{tile, ReverseTrackdir(td)};
+			for (auto p = end; p.IsContinuationOf(end); p = p.Next()) check_train_on_tile(p.tile, p.GetTrack());
 			if (best != nullptr) {
 				Vehicle *other_train = nullptr;
 				FollowTrainReservation(best, &other_train);
@@ -182,17 +180,16 @@ private:
 	 * @param dir The direction to reserve further tiles in.
 	 * @return \c true iff reservation succeeded.
 	 */
-	bool ReserveRailStationPlatform(TileIndex &tile, DiagDirection dir)
+	bool ReserveRailStationPlatform(TileIndex tile, Trackdir td)
 	{
-		TileIndex     start = tile;
-		TileIndexDiff diff = TileOffsByDiagDir(dir);
+		const RailPlatformPosition start{tile, ReverseTrackdir(td)};
 		const Train *v = Yapf().GetVehicle();
 		const bool couple = v->current_order.IsType(OT_GOTO_COUPLE);
 		/* Every tile walked below belongs to the same continuous platform strip
 		 * as \a start, so whether that strip is the couple partner's can be
 		 * decided once instead of per tile (IsCouplePartnerTile walks the whole
 		 * strip each call). */
-		const bool partner_strip = couple && IsCouplePartnerTile(v, start);
+		const bool partner_strip = couple && IsCouplePartnerTile(v, start.tile, start.GetTrack());
 		/* The partner's own tiles are the contact point, not a safe waiting
 		 * area. A foreign consist there is only in the way when the approach
 		 * walk says the route is blocked, i.e. it sits between us and the
@@ -213,8 +210,10 @@ private:
 		 * travelled, so they are exempt: the walk goes from the far end towards
 		 * the origin, so only tiles from the partner onwards are checked. */
 		bool seen_partner = false;
-		do {
-			const bool on_partner = partner_strip && IsCouplePartnerVehicleTile(v, tile);
+		for (auto p = start; p.IsContinuationOf(start) && (p.tile == tile || p.tile != this->origin_tile); p = p.Next()) {
+			const Track track = p.GetTrack();
+			const Track occupancy_track = IsDiagonalRailStationTile(p.tile) ? track : INVALID_TRACK;
+			const bool on_partner = partner_strip && IsCouplePartnerVehicleTile(v, p.tile, occupancy_track);
 			if (on_partner) seen_partner = true;
 			/* A foreign consist standing on a tile we reserve is in the way. On the
 			 * partner's own strip only the part between the partner and the origin is
@@ -224,20 +223,19 @@ private:
 			 * that train really sits between us and the contact end, so skipping the
 			 * check there keeps a partner reachable when the queue is on its far side. */
 			const bool check_foreign = couple && (seen_partner || !partner_strip) && (!on_partner || !approach_clear);
-			if (check_foreign && HasForeignConsistOnTile(v, tile)) {
+			if ((check_foreign && HasForeignConsistOnTile(v, p.tile, occupancy_track)) ||
+					(HasBit(GetStationReservationTrackBits(p.tile), track) && !partner_strip)) {
+				this->res_fail_tile = p.tile;
+				this->res_fail_td = p.Reverse().td;
 				return false;
 			}
-			if (HasStationReservation(tile) && !partner_strip) {
-				return false;
-			}
-			SetRailStationReservation(tile, true);
-			MarkTileDirtyByTile(tile, VMDF_NOT_MAP_MODE);
-			tile = TileAdd(tile, diff);
-		} while (IsCompatibleTrainStationTile(tile, start) && tile != this->origin_tile);
+			SetRailStationReservation(p.tile, track, true);
+			MarkTileDirtyByTile(p.tile, VMDF_NOT_MAP_MODE);
+		}
 
-		auto *st = Station::GetByTile(start);
-		TriggerStationRandomisation(st, start, StationRandomTrigger::PathReservation);
-		TriggerStationAnimation(st, start, StationAnimationTrigger::PathReservation);
+		auto *st = Station::GetByTile(start.tile);
+		TriggerStationRandomisation(st, start.tile, StationRandomTrigger::PathReservation);
+		TriggerStationAnimation(st, start.tile, StationAnimationTrigger::PathReservation);
 
 		return true;
 	}
@@ -251,18 +249,14 @@ private:
 	bool ReserveSingleTrack(TileIndex tile, Trackdir td)
 	{
 		const Train *v = Yapf().GetVehicle();
-		if (IsRailStationTile(tile)) {
-			if (!ReserveRailStationPlatform(tile, TrackdirToExitdir(ReverseTrackdir(td)))) {
-				/* Platform could not be reserved, undo. */
-				this->res_fail_tile = tile;
-				this->res_fail_td = td;
-			}
+		if (IsRailStationTile(tile) && RailPlatformPosition{tile, td}.IsPlatform()) {
+			if (!ReserveRailStationPlatform(tile, td)) return false;
 		} else {
 			/* A goto-couple train may only travel towards its partner while no
 			 * foreign consist stands on the track tile it passes. Plain-track
 			 * reservations alone miss a foreign train on a crossing/parallel
 			 * track bit, which then gets driven into. */
-			if (v->current_order.IsType(OT_GOTO_COUPLE) && HasForeignConsistOnTile(v, tile)) {
+			if (v->current_order.IsType(OT_GOTO_COUPLE) && HasForeignConsistOnTile(v, tile, IsDiagonalRailStationTile(tile) ? TrackdirToTrack(td) : INVALID_TRACK)) {
 				this->res_fail_tile = tile;
 				this->res_fail_td = td;
 				return false;
@@ -292,15 +286,13 @@ private:
 	 */
 	bool UnreserveSingleTrack(TileIndex tile, Trackdir td)
 	{
-		if (IsRailStationTile(tile)) {
-			TileIndex     start = tile;
-			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(td)));
+		if (IsRailStationTile(tile) && RailPlatformPosition{tile, td}.IsPlatform()) {
+			const RailPlatformPosition start{tile, ReverseTrackdir(td)};
 			const Train *v = Yapf().GetVehicle();
-			while ((tile != this->res_fail_tile || td != this->res_fail_td) && IsCompatibleTrainStationTile(tile, start)) {
-				/* Never clear the tiles of the claimed couple partner's own
-				 * platform: its arrival reservation must stay intact. */
-				if (!IsCouplePartnerTile(v, tile)) SetRailStationReservation(tile, false);
-				tile = TileAdd(tile, diff);
+			for (auto p = start; p.IsContinuationOf(start); p = p.Next()) {
+				if (p.tile == this->res_fail_tile && p.Reverse().td == this->res_fail_td) return false;
+				if (p.tile == this->origin_tile) break;
+				if (!IsCouplePartnerTile(v, p.tile, p.GetTrack())) UnreserveRailTrack(p.tile, p.GetTrack());
 			}
 		} else if (tile != this->res_fail_tile || td != this->res_fail_td) {
 			UnreserveRailTrackdir(tile, td);
@@ -1237,9 +1229,11 @@ static YapfRailRouteReason YapfExportRailRoute(const Train *v, Tpf &pf, uint max
 			target_td = FindFirstTrackdir(follower.new_td_bits);
 		}
 		if (follower.is_station && follower.tiles_skipped > 0) {
-			const TileIndexDiff offset = TileOffsByDiagDir(follower.exitdir);
-			for (int skipped = follower.tiles_skipped; skipped > 0; --skipped) {
-				if (!append({target - offset * skipped, target_td})) return YapfRailRouteReason::RouteLimit;
+			auto p = RailPlatformPosition{target, target_td}.Reverse();
+			for (int i = 0; i < follower.tiles_skipped; ++i) p = p.Next();
+			p = p.Reverse();
+			for (int i = 0; i < follower.tiles_skipped; ++i, p = p.Next()) {
+				if (!append({p.tile, p.td})) return YapfRailRouteReason::RouteLimit;
 				if (exported) return YapfRailRouteReason::Complete;
 			}
 		}
@@ -1341,7 +1335,8 @@ YapfRailRoute YapfTrainPlanRoute(const Train *v, TileIndex origin, Trackdir td, 
 		if (HasStationTileRail(exact_target)) {
 			/* The native follower compresses a platform to its directed far end.
 			 * Do not fabricate a complete path to a tile that it skipped over. */
-			if (exact_td == INVALID_TRACKDIR || BaseStation::GetByTile(exact_target)->GetPlatformLength(exact_target, TrackdirToExitdir(exact_td)) != 1) {
+			const RailPlatformPosition target{exact_target, exact_td};
+			if (exact_td == INVALID_TRACKDIR || (target.IsPlatform() && target.Next().IsContinuationOf(target))) {
 				result.reason = YapfRailRouteReason::UnsupportedTarget;
 				return result;
 			}

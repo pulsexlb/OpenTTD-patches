@@ -18,8 +18,8 @@
 
 TrackBits GetReservedTrackbits(TileIndex t);
 
-void SetRailStationPlatformReservation(TileIndex start, DiagDirection dir, bool b);
-bool IsRailStationPlatformFree(const Train *v, TileIndex start, DiagDirection dir);
+void SetRailStationPlatformReservation(TileIndex start, Trackdir td, bool b);
+bool IsRailStationPlatformFree(const Train *v, TileIndex start, Trackdir td);
 
 bool TryReserveRailTrack(TileIndex tile, Track t, bool trigger_stations = true);
 bool TryReserveRailTrackdir(const Train *v, TileIndex tile, Trackdir td, bool trigger_stations = true);
@@ -109,10 +109,10 @@ struct TrainReservationLookAhead {
 		return this->reservation_end_position - (this->tunnel_bridge_reserved_tiles * TILE_SIZE);
 	}
 
-	void AddStation(int tiles, StationID id, int16_t z_pos)
+	void AddStation(int length, StationID id, int16_t z_pos)
 	{
 		int32_t end = this->RealEndPosition();
-		this->items.push_back({ end, end + (((int32_t)TILE_SIZE) * tiles), z_pos, id.base(), 0, TRLIT_STATION });
+		this->items.push_back({ end, end + length, z_pos, id.base(), 0, TRLIT_STATION });
 	}
 
 	void AddReverse(int16_t z_pos)
@@ -203,9 +203,9 @@ private:
 bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bool forbid_90deg = false, PBSWaitingPositionRestrictedSignalState *restricted_signal_state = nullptr);
 bool IsWaitingPositionFreeTraceRestrictExecute(const TraceRestrictProgram *prog, const Train *v, TileIndex tile, Trackdir trackdir);
 
-bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile);
-bool HasForeignConsistOnTile(const Train *v, TileIndex tile);
-bool IsCouplePartnerTile(const Train *v, TileIndex tile);
+bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile, Track track = INVALID_TRACK);
+bool HasForeignConsistOnTile(const Train *v, TileIndex tile, Track track = INVALID_TRACK);
+bool IsCouplePartnerTile(const Train *v, TileIndex tile, Track track = INVALID_TRACK);
 bool IsCoupleApproachPathClearTo(const Train *v, const Train *tgt);
 bool IsCoupleApproachPathClear(const Train *v);
 

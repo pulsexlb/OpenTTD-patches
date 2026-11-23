@@ -182,6 +182,58 @@ TEST_CASE("Blueprint - missing objects and signal styles fail before terrain cha
 	CHECK(TileHeight(tile) == height);
 }
 
+TEST_CASE("Blueprint - staggered platform tracks retain individual rail types and orientations", "[diagonal-station]")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { DeallocateMap(); });
+	AutoRestoreBackup local(_local_company, OWNER_BEGIN);
+	const TileIndex t = TileXY(10, 10);
+	MakeRailStation(t, OWNER_BEGIN, StationID{7}, Axis::X, 0, RAILTYPE_RAIL);
+	SetDiagonalRailStationTracks(t, TRACK_BIT_HORZ, TRACK_BIT_LOWER);
+	SetSecondaryRailType(t, RAILTYPE_ELECTRIC);
+	Blueprint bp;
+	CopyAreaToBlueprint(TileArea(t, 1, 1), bp);
+	REQUIRE(bp.rail_tracks.size() == 2);
+	REQUIRE(bp.station_tiles.size() == 1);
+	for (uint8_t rotation = 0; rotation < 4; ++rotation) for (bool reflected : {false, true}) {
+		BlueprintPasteOptions options;
+		options.rotation = rotation;
+		options.reflected = reflected;
+		auto data = PrepareBlueprintPaste(bp, options, INVALID_RAILTYPE);
+		std::vector<uint8_t> bytes;
+		data.Serialise(BufferSerialisationRef(bytes));
+		DeserialisationBuffer reader(bytes.data(), bytes.size());
+		BlueprintPasteData decoded;
+		REQUIRE(decoded.Deserialise(reader, {}));
+		const auto &copy = decoded.blueprint;
+		REQUIRE(copy.station_tiles.size() == 1);
+		REQUIRE(copy.rail_tracks.size() == 2);
+		CHECK(copy.rail_tracks[0].railtype == RAILTYPE_RAIL);
+		CHECK(copy.rail_tracks[1].railtype == RAILTYPE_ELECTRIC);
+		CHECK(copy.rail_tracks[1].track == TransformBlueprintTrack(TRACK_LOWER, rotation, reflected));
+		CHECK(copy.station_tiles[0].diagonal_track == copy.rail_tracks[1].track);
+	}
+}
+
+TEST_CASE("Blueprint - version six ordinary platform loads with its axis and style", "[diagonal-station]")
+{
+	std::vector<uint8_t> bytes;
+	BufferSerialisationRef writer(bytes);
+	writer.Send_generic_seq(uint16_t{UINT16_MAX - 2}, uint16_t{1}, uint16_t{1}, std::string{});
+	for (int i = 0; i < 9; ++i) writer.Send_generic_integer(uint32_t{0});
+	writer.Send_generic_integer(uint32_t{1});
+	SerialiseBlueprintOffset(writer, {0, 0});
+	writer.Send_generic_seq(false, Axis::Y, RAILTYPE_RAIL, StationID{7}, TEST_GRFID, uint16_t{42});
+	for (int i = 0; i < 6; ++i) writer.Send_generic_integer(uint32_t{0});
+	DeserialisationBuffer reader(bytes.data(), bytes.size());
+	Blueprint bp;
+	REQUIRE(DeserialiseBlueprint(reader, bp, {}));
+	REQUIRE(bp.station_tiles.size() == 1);
+	CHECK(bp.station_tiles.front().diagonal_track == INVALID_TRACK);
+	CHECK(bp.station_tiles.front().axis == Axis::Y);
+	CHECK(bp.station_tiles.front().spec == BlueprintSpecRef{TEST_GRFID, 42});
+}
+
 TEST_CASE("Blueprint - version four payload has no signal styles or objects")
 {
 	std::vector<uint8_t> bytes;

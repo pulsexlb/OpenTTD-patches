@@ -60,6 +60,7 @@ struct BuildSignalTrackCmdData final : public AutoFmtTupleCmdData<BuildSignalTra
 };
 
 DEF_CMD_TUPLE(Commands::BuildRailLong,      CmdBuildRailroadTrack,       CMD_NO_WATER | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<TileIndex, RailType, Track, BuildRailTrackFlags, bool>)
+CommandCost ValidateAutoDrag(Trackdir *trackdir, TileIndex start, TileIndex end);
 DEF_CMD_TUPLE(Commands::RemoveRailLong,     CmdRemoveRailroadTrack,                     CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<TileIndex, Track>)
 DEF_CMD_TUPLE(Commands::BuildRail,          CmdBuildSingleRail,          CMD_NO_WATER | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<RailType, Track, BuildRailTrackFlags>)
 DEF_CMD_TUPLE(Commands::RemoveRail,         CmdRemoveSingleRail,                        CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<Track>)

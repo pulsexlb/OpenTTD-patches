@@ -3046,6 +3046,8 @@ STR_STATION_BUILD_NUMBER_OF_TRACKS                              :{BLACK}Number o
 STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP                      :{BLACK}Select number of platforms for railway station
 STR_STATION_BUILD_PLATFORM_LENGTH                               :{BLACK}Platform length
 STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP                       :{BLACK}Select length of railway station
+STR_STATION_BUILD_DIAGONAL                                      :{BLACK}Diagonal track
+STR_STATION_BUILD_DIAGONAL_TOOLTIP                              :{BLACK}Drag along an existing horizontal or vertical rail track. Select the track at the start of the drag. Use Remove to take off just that platform.
 STR_STATION_BUILD_DRAG_DROP                                     :{BLACK}Drag & Drop
 STR_STATION_BUILD_DRAG_DROP_TOOLTIP                             :{BLACK}Build a station using drag & drop
 
@@ -5572,6 +5574,7 @@ STR_ERROR_MESSAGE_CAPTION_OTHER_COMPANY                         :{YELLOW}Message
 STR_ERROR_OFF_EDGE_OF_MAP                                       :off edge of map
 STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP                              :too close to edge of map
 STR_ERROR_NOT_ENOUGH_CASH_REQUIRES_CURRENCY                     :not enough cash - requires {CURRENCY_LONG}
+STR_ERROR_DIAGONAL_STATION_NEEDS_TRACK                          :Select a straight horizontal or vertical rail track
 STR_ERROR_FLAT_LAND_REQUIRED                                    :flat land required
 STR_ERROR_LAND_SLOPED_IN_WRONG_DIRECTION                        :land sloped in wrong direction
 STR_ERROR_CAN_T_DO_THIS                                         :Can't do this...

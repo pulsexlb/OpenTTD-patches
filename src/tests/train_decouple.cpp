@@ -16,6 +16,11 @@
 #include "../tracerestrict_cmd.h"
 #include "../date_func.h"
 #include "../train_cmd.h"
+#include "../station_cmd.h"
+#include "../blueprint_cmd.h"
+#include "../command_func.h"
+#include "../network/network.h"
+#include "../tile_cmd.h"
 #include "../order_func.h"
 #include "../order_cmd.h"
 #include "../company_base.h"
@@ -131,6 +136,7 @@ protected:
 		REQUIRE(Train::CanAllocateItem());
 		Train *v = Train::Create();
 		v->SetEngine();
+		v->track = TRACK_BIT_X; // Default rail used by the single-track fixtures.
 		v->engine_type = engine->index;
 		v->gcache.cached_veh_length = VEHICLE_LENGTH;
 		return v;
@@ -2658,6 +2664,8 @@ protected:
 		SetPresentSignals(tile, SignalAlongTrackdir(TRACKDIR_X_SW));
 		SetSignalType(tile, TRACK_X, SignalType::Path);
 		auto *program = GetTraceRestrictProgram(MakeTraceRestrictRefId(tile, TRACK_X), true);
+		/* Replacing a previously marked tile clears its flag but preserves the existing program mapping. */
+		TraceRestrictSetIsSignalRestrictedBit(tile);
 		TraceRestrictInstructionItem item{0}; item.SetType(role == AutoYieldRole::Clear ? TRIT_AUTO_YIELD_CLEAR : TRIT_AUTO_YIELD_AREA);
 		item.SetValue(area == INVALID_TRACE_RESTRICT_SLOT_ID.base() ? membership->index.base() : area);
 		if (role != AutoYieldRole::Clear) item.SetAuxField(to_underlying(role));
@@ -2679,7 +2687,9 @@ protected:
 		TraceRestrictProgramInput input(TileXY(x,y), TRACKDIR_X_SW, nullptr, nullptr);
 		input.permitted_slot_operations = permissions;
 		TraceRestrictProgramResult out;
-		GetExistingTraceRestrictProgram(input.tile, TRACK_X)->Execute(v, input, out);
+		const auto *program = GetExistingTraceRestrictProgram(input.tile, TRACK_X);
+		REQUIRE(program != nullptr);
+		program->Execute(v, input, out);
 		return out;
 	}
 	void Register(Train *v) { Execute(v, 3, 10, TRPISP_PBS_RES_END_ACQUIRE); Execute(v, 3, 10, TRPISP_RELEASE_FRONT); }
@@ -7227,4 +7237,300 @@ TEST_CASE("External CargoDist - retain cargo routed elsewhere and sell only the 
  CHECK(list.DeliverToExternal(70,cargo,TileXY(20,10),9,10,income,destination,&goods)==70);
  CHECK(list.StoredCount()==0);CHECK(income>earned);
  CHECK(CargoPacket::GetNumItems()==initial_packets);
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Diagonal station - decoupling requires one continuous occupied platform", "[diagonal-station]")
+{
+	const TileIndex first = TileXY(20, 20), bend = TileXY(20, 21), last = TileXY(21, 21);
+	for (TileIndex t : {first, bend, last}) MakeRailStation(t, _current_company, station->index, t == last ? Axis::X : Axis::Y, 0, RAILTYPE_RAIL);
+	SetDiagonalRailStationTracks(bend, TRACK_BIT_VERT, TRACK_BIT_LEFT);
+	Train *middle = MakeTrain(), *tail = MakeTrain();
+	moving->SetNext(middle);
+	middle->SetNext(tail);
+	moving->tile = first; moving->track = TRACK_BIT_Y;
+	middle->tile = bend; middle->track = TRACK_BIT_LEFT;
+	tail->tile = last; tail->track = TRACK_BIT_X;
+	CHECK(TrainFitStation(moving));
+	std::swap(moving->tile, tail->tile);
+	std::swap(moving->track, tail->track);
+	CHECK(TrainFitStation(moving));
+	middle->track = TRACK_BIT_RIGHT;
+	CHECK_FALSE(TrainFitStation(moving));
+	SetDiagonalRailStationTracks(bend, TRACK_BIT_VERT, TRACK_BIT_VERT);
+	CHECK_FALSE(TrainFitStation(moving));
+	MakeRailNormal(bend, _current_company, TRACK_BIT_LEFT, RAILTYPE_RAIL);
+	middle->track = TRACK_BIT_LEFT;
+	CHECK_FALSE(TrainFitStation(moving));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Diagonal station - YAPF scores the entire bent platform and charges only traversed track", "[diagonal-station]")
+{
+	AutoRestoreBackup settings(_settings_game.pf.yapf, AutoRestoreBackupNoNewValueTag{});
+	auto &costs = _settings_game.pf.yapf;
+	costs.rail_shorter_platform_penalty = 4000;
+	costs.rail_curve45_penalty = 100;
+	costs.rail_shorter_platform_per_tile_penalty = 0;
+	costs.rail_longer_platform_penalty = 800;
+	costs.rail_longer_platform_per_tile_penalty = 0;
+	costs.rail_station_penalty = 0;
+	const TileIndex origin = TileXY(20, 20), fork = TileXY(21, 20);
+	MakeRailNormal(origin, _current_company, TRACK_BIT_X, RAILTYPE_RAIL);
+	MakeRailNormal(fork, _current_company, TRACK_BIT_X | TRACK_BIT_RIGHT, RAILTYPE_RAIL);
+	auto platform = [&](uint x, uint y, Track track) {
+		TileIndex t = TileXY(x, y);
+		MakeRailStation(t, _current_company, station->index, track == TRACK_Y ? Axis::Y : Axis::X, 0, RAILTYPE_RAIL);
+		if (track == TRACK_LEFT) SetDiagonalRailStationTracks(t, TRACK_BIT_LEFT, TRACK_BIT_LEFT);
+	};
+	/* Straight arm: 32 steps. Turning arm: 16 + 8 + 3 * 16 = 72 steps. */
+	platform(22, 20, TRACK_X);
+	platform(23, 20, TRACK_X);
+	for (uint y : {21u, 22u}) MakeRailNormal(TileXY(21, y), _current_company, TRACK_BIT_Y, RAILTYPE_RAIL);
+	platform(21, 23, TRACK_Y);
+	platform(21, 24, TRACK_LEFT);
+	for (uint x = 22; x <= 24; ++x) platform(x, 24, TRACK_X);
+	const TileIndex beyond = TileXY(25, 24);
+	MakeRailNormal(beyond, _current_company, TRACK_BIT_X, RAILTYPE_RAIL);
+	station->train_station = TileArea(TileXY(21, 20), 4, 5);
+	moving->current_order.MakeGoToStation(station->index);
+	auto route = [&](Track rejected = INVALID_TRACK, TileIndex target = INVALID_TILE) {
+		return YapfTrainPlanRoute(moving, origin, TRACKDIR_X_SW, 100, [&](TileIndex tile, Trackdir td) {
+			return tile != fork || TrackdirToTrack(td) != rejected;
+		}, target);
+	};
+	moving->gcache.cached_total_length = 32;
+	const auto short_small = route(TRACK_RIGHT);
+	const auto bent_small = route(TRACK_X);
+	REQUIRE(short_small.complete);
+	REQUIRE(bent_small.complete);
+	const auto best_small = route();
+	REQUIRE(best_small.complete);
+	CHECK(best_small.path.back().tile == TileXY(23, 20));
+	moving->gcache.cached_total_length = 72;
+	const auto short_long = route(TRACK_RIGHT);
+	const auto bent_long = route(TRACK_X);
+	REQUIRE(short_long.complete);
+	REQUIRE(bent_long.complete);
+	CAPTURE(short_small.cost, bent_small.cost, short_long.cost, bent_long.cost);
+	CHECK(short_long.cost - short_small.cost == 4000);
+	CHECK(bent_small.cost - bent_long.cost == 800);
+	const auto best = route();
+	REQUIRE(best.complete);
+	CHECK(best.path.back().tile == TileXY(21, 23));
+	CHECK(best.cost == bent_long.cost);
+	const auto pass = route(TRACK_X, beyond);
+	REQUIRE(pass.complete);
+	costs.rail_station_penalty = 37;
+	CHECK(route(TRACK_X).cost == best.cost);
+	CHECK(route(TRACK_X, beyond).cost - pass.cost == 5 * 37);
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Diagonal station - stop once along a bent platform in either direction", "[diagonal-station]")
+{
+	std::vector<RailPlatformPosition> path;
+	TileIndex tile = TileXY(20, 20);
+	for (Trackdir td : {TRACKDIR_Y_SE, TRACKDIR_LEFT_S, TRACKDIR_X_SW, TRACKDIR_X_SW, TRACKDIR_RIGHT_S, TRACKDIR_Y_SE}) {
+		const RailPlatformPosition p{tile, td};
+		MakeRailStation(tile, _current_company, station->index, p.GetTrack() == TRACK_X ? Axis::X : Axis::Y, 0, RAILTYPE_RAIL);
+		if (!IsDiagonalTrackdir(td)) SetDiagonalRailStationTracks(tile, TRACK_BIT_VERT, TRACK_BIT_VERT);
+		path.push_back(p);
+		tile = p.Next().tile;
+	}
+	if (GENERATE(false, true)) {
+		std::reverse(path.begin(), path.end());
+		for (auto &p : path) p = p.Reverse();
+	}
+	const auto mode = GENERATE(OrderStopLocation::NearEnd, OrderStopLocation::Middle, OrderStopLocation::FarEnd);
+	moving->current_order.MakeGoToStation(station->index);
+	moving->current_order.SetStopLocation(mode);
+	moving->gcache.cached_total_length = 32;
+	const int expected = mode == OrderStopLocation::NearEnd ? 28 : mode == OrderStopLocation::Middle ? 52 : 76;
+	int progress = 0;
+	for (const auto &p : path) {
+		moving->tile = p.tile;
+		moving->direction = TrackdirToDirection(p.td);
+		moving->track = TrackToTrackBits(p.GetTrack());
+		int remaining, total;
+		CHECK(GetTrainStopLocation(station->index, p.tile, moving, false, &remaining, &total) == expected);
+		REQUIRE(total == 80);
+		CHECK(remaining == total - progress);
+		GetNewVehiclePosResult gp{};
+		VehicleEnterTileCoordinates(gp, ReverseDiagDir(TrackdirToExitdir(p.Reverse().td)), p.GetTrack());
+		const auto delta = TileIndexDiffCByDir(moving->direction);
+		for (int i = 0; i < p.PieceLength(); ++i, ++progress) {
+			const auto result = VehicleEnterTile(moving, p.tile, gp.x + i * delta.x, gp.y + i * delta.y);
+			CHECK(result.Test(VehicleEnterTileState::EnteredStation) == (progress == expected));
+		}
+	}
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Diagonal station - paste and undo one platform beside an existing one", "[diagonal-station]")
+{
+	AutoRestoreBackup local(_local_company, _current_company);
+	AutoRestoreBackup headless(_network_dedicated, true);
+	AutoRestoreBackup distant(_settings_game.station.distant_join_stations, false);
+	Company::Get(_current_company)->avail_railtypes.Set(RAILTYPE_RAIL);
+	auto cleanup = scope_guard([] { ClearBlueprintUndoStack(); });
+	const TileIndex source = TileXY(20, 20), target = TileXY(24, 20);
+	for (TileIndex t : {source, target}) {
+		const TrackBits bit = t == source ? TRACK_BIT_RIGHT : TRACK_BIT_LEFT;
+		MakeRailStation(t, _current_company, station->index, Axis::X, 0, RAILTYPE_RAIL);
+		SetDiagonalRailStationTracks(t, bit, bit);
+	}
+	AutoRestoreBackup spread(_settings_game.station.station_spread, uint8_t{32});
+	BlueprintPasteData data;
+	CopyAreaToBlueprint(TileArea(source, 1, 1), data.blueprint);
+	REQUIRE(Command<Commands::PasteBlueprint>::Do(DoCommandFlag::Execute, target, data).Succeeded());
+	CHECK(GetRailStationTrackBits(target) == TRACK_BIT_VERT);
+	CHECK(GetRailStationPlatformBits(target) == TRACK_BIT_VERT);
+	CHECK(GetStationIndex(target) == station->index);
+	const BlueprintUndoRecord *record = GetBlueprintUndoRecord();
+	REQUIRE(record != nullptr);
+	REQUIRE(record->origin == target);
+	BlueprintUndoData undo;
+	undo.built = record->built;
+	REQUIRE(Command<Commands::UndoBlueprintPaste>::Do(DoCommandFlag::Execute, target, undo).Succeeded());
+	CHECK(GetRailStationTrackBits(target) == TRACK_BIT_LEFT);
+	CHECK(GetRailStationPlatformBits(target) == TRACK_BIT_LEFT);
+	CHECK(GetStationIndex(target) == station->index);
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Diagonal station - staggered parallel platforms follow the selected track", "[diagonal-station]")
+{
+	AutoRestoreBackup headless(_network_dedicated, true);
+	AutoRestoreBackup spread(_settings_game.station.station_spread, uint8_t{32});
+	AutoRestoreBackup distant(_settings_game.station.distant_join_stations, true);
+	const Trackdir td = GENERATE(TRACKDIR_UPPER_E, TRACKDIR_LEFT_S);
+	const bool lay_parallel_first = GENERATE(true, false);
+	Company::Get(_current_company)->avail_railtypes.Set(RAILTYPE_RAIL);
+	const RailPlatformPosition start{TileXY(20, 20), td};
+	const TrackBits parallel = td == TRACKDIR_UPPER_E ? TRACK_BIT_HORZ : TRACK_BIT_VERT;
+	auto ahead = [](RailPlatformPosition p, int count) {
+		while (count-- > 0) p = p.Next();
+		return p;
+	};
+	const RailPlatformPosition shared = ahead(start, 2);
+	const RailPlatformPosition short_start{shared.tile, NextTrackdir(shared.td)};
+	CHECK(CmdBuildDiagonalRailStation({}, start.tile, start.tile, INVALID_TRACK, station->index, true).Failed());
+	CHECK(CmdBuildDiagonalRailStation({}, start.tile, INVALID_TILE, start.GetTrack(), station->index, true).Failed());
+	auto lay = [&](RailPlatformPosition first, int count, DoCommandFlags flags) {
+		return CmdBuildRailroadTrack(flags | DoCommandFlag::Auto, ahead(first, count - 1).tile, first.tile, RAILTYPE_RAIL, first.GetTrack(), BuildRailTrackFlags::None, true);
+	};
+	REQUIRE(lay(start, 7, DoCommandFlag::Execute).Succeeded());
+	if (lay_parallel_first) {
+		REQUIRE(lay(short_start, 3, DoCommandFlag::Execute).Succeeded());
+	}
+	auto build = [&](RailPlatformPosition first, int count) {
+		const TileIndex end = ahead(first, count - 1).tile;
+		const auto quote = CmdBuildDiagonalRailStation({}, first.tile, end, first.GetTrack(), station->index, true);
+		REQUIRE(quote.Succeeded());
+		CHECK_FALSE(first.IsPlatform());
+		const auto result = CmdBuildDiagonalRailStation(DoCommandFlag::Execute, first.tile, end, first.GetTrack(), station->index, true);
+		REQUIRE(result.Succeeded());
+		CHECK(result.GetCost() == quote.GetCost());
+	};
+	build(start, 7);
+	CHECK(shared.IsPlatform());
+	CHECK_FALSE(short_start.IsPlatform());
+	if (!lay_parallel_first) {
+		const auto quote = lay(short_start, 3, {});
+		REQUIRE(quote.Succeeded());
+		CHECK(GetRailStationTrackBits(shared.tile) == TrackToTrackBits(shared.GetTrack()));
+		SetRailStationReservation(shared.tile, shared.GetTrack(), true);
+		const auto result = lay(short_start, 3, DoCommandFlag::Execute);
+		REQUIRE(result.Succeeded());
+		CHECK(result.GetCost() == quote.GetCost());
+		CHECK(GetStationReservationTrackBits(shared.tile) == TrackToTrackBits(shared.GetTrack()));
+		CHECK_FALSE(short_start.IsPlatform());
+		SetRailStationReservation(shared.tile, shared.GetTrack(), false);
+	}
+	CHECK(GetRailStationTrackBits(shared.tile) == parallel);
+	build(short_start, 3);
+	REQUIRE(shared.Count() == 7);
+	REQUIRE(short_start.Count() == 3);
+	CHECK(shared.CountAhead() == 5);
+	CHECK(shared.Reverse().CountAhead() == 3);
+
+	/* Coupling can nudge a vehicle across a piece boundary in either direction. */
+	moving->tile = start.tile;
+	moving->track = TrackToTrackBits(start.GetTrack());
+	moving->direction = TrackdirToDirection(td);
+	const int origin_x = TileX(start.tile) * TILE_SIZE + (parallel == TRACK_BIT_HORZ ? 3 : 11);
+	const int origin_y = TileY(start.tile) * TILE_SIZE + (parallel == TRACK_BIT_HORZ ? 4 : 3);
+	moving->x_pos = origin_x;
+	moving->y_pos = origin_y;
+	const auto step = TileIndexDiffCByDir(moving->direction);
+	TrainMoveToPosition(moving, origin_x + 8 * step.x, origin_y + 8 * step.y);
+	CHECK(moving->tile == start.Next().tile);
+	CHECK(moving->GetVehicleTrackdir() == start.Next().td);
+	TrainMoveToPosition(moving, origin_x, origin_y);
+	CHECK(moving->GetVehicleTrackdir() == td);
+
+	const auto enter = start.Reverse().Next().Reverse();
+	MakeRailNormal(enter.tile, _current_company, TrackToTrackBits(enter.GetTrack()), RAILTYPE_RAIL);
+	CFollowTrackRail follower(moving);
+	REQUIRE(follower.Follow(enter.tile, enter.td));
+	CHECK(follower.new_tile == ahead(start, 6).tile);
+	CHECK(follower.new_td_bits == TrackdirToTrackdirBits(ahead(start, 6).td));
+	CHECK(follower.tiles_skipped == 6);
+	SetRailStationPlatformReservation(start.tile, start.td, true);
+	CHECK(GetStationReservationTrackBits(shared.tile) == TrackToTrackBits(shared.GetTrack()));
+	REQUIRE(TryReserveRailTrack(shared.tile, short_start.GetTrack(), false));
+	SetRailStationPlatformReservation(start.tile, start.td, false);
+	CHECK(GetStationReservationTrackBits(shared.tile) == TrackToTrackBits(short_start.GetTrack()));
+	UnreserveRailTrack(shared.tile, short_start.GetTrack());
+
+	waiting->tile = shared.tile;
+	waiting->track = TrackToTrackBits(shared.GetTrack());
+	waiting->direction = TrackdirToDirection(shared.td);
+	UpdateVehicleTileHash(waiting, false);
+	CHECK_FALSE(IsRailStationPlatformFree(moving, start.tile, start.td));
+	CHECK(IsRailStationPlatformFree(moving, short_start.tile, short_start.td));
+	CHECK(ResolveCoupleTargetStation(moving, ahead(short_start, 2).tile, ahead(short_start, 2).td, true) == nullptr);
+
+	moving->current_order.MakeGoToStation(station->index);
+	moving->current_order.SetStopLocation(OrderStopLocation::FarEnd);
+	for (auto end : {ahead(start, 6), start.Reverse()}) {
+		moving->tile = end.tile;
+		moving->track = TrackToTrackBits(end.GetTrack());
+		moving->direction = TrackdirToDirection(end.td);
+		int remaining, total;
+		int stop = GetTrainStopLocation(station->index, end.tile, moving, false, &remaining, &total);
+		CHECK(total == 56);
+		CHECK(remaining == 8);
+		CHECK(stop == total - static_cast<int>(VEHICLE_LENGTH / 2));
+		int x = end.GetTrack() == TRACK_LOWER || end.GetTrack() == TRACK_LEFT ? 8 : 0;
+		int y = end.GetTrack() == TRACK_LOWER || end.GetTrack() == TRACK_RIGHT ? 8 : 0;
+		for (int i = 0; i < 8; ++i) {
+			const int wx = x + i;
+			const int wy = y + (parallel == TRACK_BIT_HORZ ? 7 - i : i);
+			const auto result = VehicleEnterTile(moving, end.tile, wx, wy);
+			CHECK(result.Test(VehicleEnterTileState::EnteredStation) == (GetTrainStraightTrackOffset(moving->direction, wx, wy) == stop % 8));
+		}
+	}
+	auto remove = [&](RailPlatformPosition first, int count, bool keep) {
+		return CmdRemoveDiagonalRailStation(DoCommandFlag::Execute, first.tile, ahead(first, count - 1).tile, first.GetTrack(), keep);
+	};
+	CHECK(remove(shared, 1, true).Failed());
+	REQUIRE(remove(short_start, 3, true).Succeeded());
+	CHECK(shared.Count() == 7);
+	CHECK_FALSE(short_start.IsPlatform());
+	CHECK(GetRailStationTrackBits(shared.tile) == parallel);
+	CHECK(GetStationIndex(shared.tile) == station->index);
+	REQUIRE(CmdRemoveSingleRail(DoCommandFlag::Execute, shared.tile, short_start.GetTrack()).Succeeded());
+	CHECK(shared.IsPlatform());
+	CHECK(GetRailStationTrackBits(shared.tile) == TrackToTrackBits(shared.GetTrack()));
+	CHECK(CmdRemoveSingleRail({}, shared.tile, shared.GetTrack()).Failed());
+	REQUIRE(lay(short_start, 1, DoCommandFlag::Execute).Succeeded());
+	/* Remove the first lane at a shared tile and also remove its rail.
+	 * A single remaining secondary track must keep its electric rail type. */
+	waiting->tile = station->xy;
+	waiting->track = TRACK_BIT_X;
+	UpdateVehicleTileHash(waiting, false);
+	build(short_start, 3);
+	SetSecondaryRailType(shared.tile, RAILTYPE_ELECTRIC);
+	REQUIRE(remove(shared, 1, false).Succeeded());
+	CHECK(GetRailStationPlatformBits(shared.tile) == TrackToTrackBits(short_start.GetTrack()));
+	CHECK(GetRailStationTrackBits(shared.tile) == TrackToTrackBits(short_start.GetTrack()));
+	CHECK(GetRailType(shared.tile) == RAILTYPE_ELECTRIC);
+	CHECK(GetTileRailTypeByTrack(shared.tile, short_start.GetTrack()) == RAILTYPE_ELECTRIC);
 }

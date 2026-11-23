@@ -4372,6 +4372,12 @@ bool AfterLoadGame()
 		}
 	}
 
+	if (SlXvIsFeatureMissing(XSLFI_DIAGONAL_RAIL_STATIONS)) {
+		for (TileIndex t(0); t < map_size; ++t) {
+			if (IsRailStationTile(t)) SB(_m[t].m3, 0, 4, 0);
+		}
+	}
+
 	/* Update structures for multitile docks */
 	if (IsSavegameVersionBefore(SLV_MULTITILE_DOCKS)) {
 		for (TileIndex t(0); t < map_size; t++) {

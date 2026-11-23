@@ -436,7 +436,8 @@ static const uint16_t SPR_AIRTYPE_PREVIEW_COUNT            = 9 * 4;
 static const uint16_t AIRTYPE_SPRITE_TOTAL_COUNT           = AIRTYPE_SPRITE_COUNT + SPR_AIRTYPE_PREVIEW_COUNT;
 
 /* From where can we start putting NewGRFs? */
-static const SpriteID SPR_NEWGRFS_BASE = SPR_AIRTYPE_BASE + AIRTYPE_SPRITE_TOTAL_COUNT;
+static const SpriteID SPR_DIAGONAL_PLATFORMS_BASE = SPR_AIRTYPE_BASE + AIRTYPE_SPRITE_TOTAL_COUNT;
+static const SpriteID SPR_NEWGRFS_BASE = SPR_DIAGONAL_PLATFORMS_BASE + 32;
 
 /* Manager face sprites */
 static const SpriteID SPR_GRADIENT = 874; // background gradient behind manager face

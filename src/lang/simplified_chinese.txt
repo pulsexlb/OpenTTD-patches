@@ -2911,6 +2911,8 @@ STR_STATION_BUILD_NUMBER_OF_TRACKS                              :{BLACK}轨道�
 STR_STATION_BUILD_NUMBER_OF_TRACKS_TOOLTIP                      :{BLACK}选择车站站台的数量
 STR_STATION_BUILD_PLATFORM_LENGTH                               :{BLACK}站台长度
 STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP                       :{BLACK}选择车站站台的长度
+STR_STATION_BUILD_DIAGONAL                                      :{BLACK}斜向股道
+STR_STATION_BUILD_DIAGONAL_TOOLTIP                              :{BLACK}沿已有的屏幕水平或竖直股道拖建。拖动起点决定股道。打开拆除模式可单独拆除该股道的站台。
 STR_STATION_BUILD_DRAG_DROP                                     :{BLACK}拖动模式
 STR_STATION_BUILD_DRAG_DROP_TOOLTIP                             :{BLACK}使用拖动模式建设车站
 
@@ -5376,6 +5378,7 @@ STR_ERROR_MESSAGE_CAPTION_OTHER_COMPANY                         :{YELLOW}来自 
 STR_ERROR_OFF_EDGE_OF_MAP                                       :超过地图边界
 STR_ERROR_TOO_CLOSE_TO_EDGE_OF_MAP                              :距离地图边缘过近
 STR_ERROR_NOT_ENOUGH_CASH_REQUIRES_CURRENCY                     :资金不足 - 需要 {CURRENCY_LONG}
+STR_ERROR_DIAGONAL_STATION_NEEDS_TRACK                          :请选择屏幕水平或竖直的直线股道
 STR_ERROR_FLAT_LAND_REQUIRED                                    :需要平坦的地面
 STR_ERROR_LAND_SLOPED_IN_WRONG_DIRECTION                        :土地倾斜方向不正确
 STR_ERROR_CAN_T_DO_THIS                                         :不能这样做……

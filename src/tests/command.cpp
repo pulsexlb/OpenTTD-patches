@@ -21,6 +21,8 @@
 #include "../plans_cmd.h"
 #include "../settings_cmd.h"
 #include "../signs_cmd.h"
+#include "../station_cmd.h"
+#include "../track_type.h"
 #include "../tracerestrict_cmd.h"
 #include "../vehicle_cmd.h"
 #include "../order_cmd.h"
@@ -103,6 +105,8 @@ TEST_CASE("CmdDataT simple tests")
 	CHECK(CmdPayload<Commands::RemovePlan>::Make(PlanID{5}) == CmdPayload<Commands::RemovePlan>::Make(PlanID{5}));
 	CHECK(CmdPayload<Commands::RemovePlan>::Make(PlanID{5}) != CmdPayload<Commands::RemovePlan>::Make(PlanID{6}));
 
+	CHECK(TestCommandPayload<Commands::BuildDiagonalRailStation>({TileIndex{0x1234}, TRACK_LOWER, StationID{513}, true}, {0x92, 0x34, 3, 1, 2, 1}));
+	CHECK(TestCommandPayload<Commands::RemoveDiagonalRailStation>({TileIndex{0x1234}, TRACK_RIGHT, true}, {0x92, 0x34, 5, 1}));
 	CHECK(TestCommandPayload<Commands::AddPlan>({}, {}));
 	CHECK(TestCommandPayload<Commands::CreateOrderList>({"A", OrderListID{513}, true}, {0x41, 0, 1, 2, 1}));
 	CHECK(TestCommandPayload<Commands::MoveOrderListToGroup>({OrderListID{513}, OrderListID::Invalid()}, {1, 2, 255, 255}));

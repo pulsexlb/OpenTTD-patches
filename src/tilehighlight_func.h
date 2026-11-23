@@ -22,6 +22,8 @@ void SetObjectToPlaceWnd(CursorID icon, PaletteID pal, HighLightStyle mode, Wind
 void SetObjectToPlace(CursorID icon, PaletteID pal, HighLightStyle mode, WindowClass window_class, WindowNumber window_num, WindowToken window_token = WindowToken(0));
 void ResetObjectToPlace();
 
+enum Track : uint8_t;
+void VpSelectDiagonalStationTiles(int x, int y, Track track);
 void VpSelectTilesWithMethod(int x, int y, ViewportPlaceMethod method);
 void VpStartDragging(ViewportDragDropSelectionProcess process);
 void VpStartPlaceSizing(TileIndex tile, ViewportPlaceMethod method, ViewportDragDropSelectionProcess process);

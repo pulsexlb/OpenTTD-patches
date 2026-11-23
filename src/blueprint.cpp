@@ -257,6 +257,17 @@ static void CopyStationTile(Blueprint &blueprint, TileIndex tile, TileIndexDiffC
 		case StationType::Rail:
 		case StationType::RailWaypoint: {
 			BlueprintStationTile st{offset, IsRailWaypointTile(tile), GetRailStationAxis(tile), GetRailType(tile), GetStationIndex(tile)};
+			if (IsDiagonalRailStationTile(tile)) {
+				for (Track track : SetTrackBitIterator(GetRailStationTrackBits(tile))) {
+					st.railtype = GetRailTypeByTrack(tile, track);
+					blueprint.rail_tracks.push_back({offset, track, st.railtype});
+					if (HasBit(GetRailStationPlatformBits(tile), track)) {
+						st.diagonal_track = track;
+						blueprint.station_tiles.push_back(st);
+					}
+				}
+				break;
+			}
 			if (const StationSpec *spec = GetStationSpec(tile); spec != nullptr) st.spec = {spec->grf_prop.grfid, spec->grf_prop.local_id};
 			blueprint.station_tiles.push_back(st);
 			break;
@@ -833,8 +844,11 @@ Blueprint TransformBlueprint(const Blueprint &blueprint, uint8_t rotation, bool 
 		result.ship_depots.push_back({a, TransformBlueprintAxis(depot.axis, rotation)});
 	}
 
-	for (const BlueprintStationTile &st : blueprint.station_tiles) {
-		result.station_tiles.push_back({tile_offset(st.offset), st.is_waypoint, TransformBlueprintAxis(st.axis, rotation), st.railtype, st.station, st.spec});
+	for (BlueprintStationTile st : blueprint.station_tiles) {
+		st.offset = tile_offset(st.offset);
+		st.axis = TransformBlueprintAxis(st.axis, rotation);
+		if (st.diagonal_track != INVALID_TRACK) st.diagonal_track = TransformBlueprintTrack(st.diagonal_track, rotation, reflected);
+		result.station_tiles.push_back(st);
 	}
 
 	for (BlueprintRoadStop stop : blueprint.road_stops) {
@@ -926,6 +940,10 @@ std::vector<BlueprintStationRect> GroupStationTiles(const Blueprint &blueprint)
 	std::vector<Cell> grid(w * h);
 
 	for (const BlueprintStationTile &st : blueprint.station_tiles) {
+		if (st.diagonal_track != INVALID_TRACK) {
+			result.push_back({st.offset, 1, 1, false, st.axis, st.railtype, st.station, st.spec, st.diagonal_track});
+			continue;
+		}
 		Cell &cell = grid[st.offset.y * w + st.offset.x];
 		cell.present = true;
 		cell.is_waypoint = st.is_waypoint;
@@ -1110,7 +1128,11 @@ static bool BlueprintOffsetsValid(const Blueprint &bp)
 	for (const BlueprintCanal &v : bp.canals) if (!ok(v.offset)) return false;
 	for (const BlueprintLock &v : bp.locks) if (!ok(v.offset) || !IsValidDiagDirection(v.dir)) return false;
 	for (const BlueprintShipDepot &v : bp.ship_depots) if (!ok(v.offset)) return false;
-	for (const BlueprintStationTile &v : bp.station_tiles) if (!ok(v.offset) || !IsValidAxis(v.axis)) return false;
+	for (const BlueprintStationTile &v : bp.station_tiles) {
+		if (!ok(v.offset) || !IsValidAxis(v.axis)) return false;
+		if (v.diagonal_track != INVALID_TRACK && (v.is_waypoint || v.spec.grfid != GrfID{} ||
+				v.diagonal_track < TRACK_UPPER || !IsValidTrack(v.diagonal_track))) return false;
+	}
 	for (const BlueprintRoadStop &v : bp.road_stops) if (!ok(v.offset) || (v.drive_through ? !IsValidAxis(v.axis) : !IsValidDiagDirection(v.dir))) return false;
 	for (const BlueprintDock &v : bp.docks) if (!ok(v.offset) || !IsValidDiagDirection(v.dir)) return false;
 	for (const BlueprintBuoy &v : bp.buoys) if (!ok(v.offset)) return false;
@@ -1529,10 +1551,10 @@ void RecordBlueprintUndoCustomAirportTile(TileIndex tile, AirType air_type)
  * @param axis Axis of the platform.
  * @param railtype Rail type of the platform.
  */
-void RecordBlueprintUndoStationTile(TileIndex tile, bool is_waypoint, Axis axis, RailType railtype)
+void RecordBlueprintUndoStationTile(TileIndex tile, bool is_waypoint, Axis axis, RailType railtype, Track diagonal_track)
 {
 	if (!_undo_group_open) return;
-	_undo_group.station_tiles.push_back({UndoGroupPos(tile), is_waypoint, axis, railtype, StationID::Invalid()});
+	_undo_group.station_tiles.push_back({UndoGroupPos(tile), is_waypoint, axis, railtype, StationID::Invalid(), {}, diagonal_track});
 }
 
 /**
@@ -1782,6 +1804,7 @@ static void TrimBlueprintUndoRecord(BlueprintUndoRecord &record)
 	std::erase_if(bp.rail_tracks, [&](const BlueprintRailTrack &v) {
 		if (!on_map(v.offset)) return true;
 		TileIndex t = target(v.offset);
+		if (IsDiagonalRailStationTile(t)) return !(ours(t) && HasBit(GetRailStationTrackBits(t), v.track));
 		return !(IsPlainRailTile(t) && ours(t) && HasTrack(t, v.track));
 	});
 	std::erase_if(bp.signals, [&](const BlueprintSignal &v) {
@@ -1805,7 +1828,8 @@ static void TrimBlueprintUndoRecord(BlueprintUndoRecord &record)
 	std::erase_if(bp.station_tiles, [&](const BlueprintStationTile &v) {
 		if (!on_map(v.offset)) return true;
 		TileIndex t = target(v.offset);
-		return !((v.is_waypoint ? IsRailWaypointTile(t) : IsRailStationTile(t)) && ours(t));
+		if (IsDiagonalRailStationTile(t)) return !(ours(t) && v.diagonal_track != INVALID_TRACK && HasBit(GetRailStationPlatformBits(t), v.diagonal_track));
+		return !(v.diagonal_track == INVALID_TRACK && (v.is_waypoint ? IsRailWaypointTile(t) : IsRailStationTile(t)) && ours(t));
 	});
 	std::erase_if(bp.road_stops, [&](const BlueprintRoadStop &v) {
 		if (!on_map(v.offset)) return true;
@@ -2208,6 +2232,15 @@ CommandCost CmdPasteBlueprint(DoCommandFlags flags, TileIndex origin, const Blue
 		if (IsTileType(tile, TileType::Station)) new_station_ids[original] = GetStationIndex(tile);
 	};
 
+	/* If a pasted platform shares an existing station tile, anchor the other
+	 * pieces to that station even when the overlap comes later in the copy. */
+	for (const auto &st : bp.station_tiles) {
+		if (st.diagonal_track == INVALID_TRACK || !tile_valid(st.offset)) continue;
+		const TileIndex tile = target_tile(st.offset);
+		if (IsDiagonalRailStationTile(tile) && IsTileOwner(tile, _current_company) &&
+				HasBit(GetRailStationTrackBits(tile), st.diagonal_track)) register_new_station(st.station, st.offset);
+	}
+
 	for (const BlueprintStationRect &rect : station_rects) {
 		if (!tile_valid(rect.offset)) continue;
 		StationClassID station_class = rect.is_waypoint ? STAT_CLASS_WAYP : STAT_CLASS_DFLT;
@@ -2218,7 +2251,23 @@ CommandCost CmdPasteBlueprint(DoCommandFlags flags, TileIndex origin, const Blue
 			station_class = spec->class_index;
 			station_type = spec->index;
 		}
-		if (rect.is_waypoint) {
+		if (rect.diagonal_track != INVALID_TRACK) {
+			TileIndex tile = target_tile(rect.offset);
+			if (GetTileRailTypeByTrack(tile, rect.diagonal_track) != rect.railtype) continue;
+			const StationID join = join_target(rect.station);
+			/* On an occupied tile use the normal local extension command. This
+			 * also works when distant station joining is disabled. */
+			if (IsDiagonalRailStationTile(tile)) {
+				if (join != NEW_STATION && join != GetStationIndex(tile)) continue;
+				BlueprintDoCommand<Commands::BuildDiagonalRailStation>(state, flags, tile, tile, rect.diagonal_track, NEW_STATION, false);
+			} else {
+				bool built = BlueprintDoCommand<Commands::BuildDiagonalRailStation>(state, flags, tile, tile, rect.diagonal_track, join, true);
+				if (!built && join != NEW_STATION) {
+					built = BlueprintDoCommand<Commands::BuildDiagonalRailStation>(state, flags, tile, tile, rect.diagonal_track, NEW_STATION, true);
+				}
+				if (built) register_new_station(rect.station, rect.offset);
+			}
+		} else if (rect.is_waypoint) {
 			/* Waypoints can only be placed on existing straight tracks; lay those first. */
 			Track track = AxisToTrack(rect.axis);
 			for (uint dy = 0; dy < rect.h; dy++) {
@@ -2595,11 +2644,13 @@ CommandCost CmdUndoBlueprintPaste(DoCommandFlags flags, TileIndex origin, const 
 		 * taking with it any track that was already there when the paste built
 		 * over it. What track the paste laid itself was recorded separately and
 		 * comes out with the rail below, which leaves bare ground either way. */
-		if (rect.is_waypoint) {
+		if (rect.diagonal_track != INVALID_TRACK) {
+			BlueprintDoCommand<Commands::RemoveDiagonalRailStation>(state, flags, start, start, rect.diagonal_track, true);
+		} else if (rect.is_waypoint) {
 			if (!IsRailWaypointTile(start)) continue;
 			BlueprintDoCommand<CMD_REMOVE_FROM_RAIL_WAYPOINT>(state, flags, start, end, true);
 		} else {
-			if (!IsRailStationTile(start)) continue;
+			if (!IsRailStationTile(start) || IsDiagonalRailStationTile(start)) continue;
 			BlueprintDoCommand<CMD_REMOVE_FROM_RAIL_STATION>(state, flags, start, end, true);
 		}
 	}
@@ -2644,8 +2695,10 @@ CommandCost CmdUndoBlueprintPaste(DoCommandFlags flags, TileIndex origin, const 
 	for (const BlueprintRailTrack &rt : bp.rail_tracks) {
 		if (!tile_valid(rt.offset)) continue;
 		TileIndex tile = target_tile(rt.offset);
-		if (!IsPlainRailTile(tile) || !IsTileOwner(tile, _current_company)) continue;
-		if (!HasTrack(tile, rt.track)) continue;
+		if (IsDiagonalRailStationTile(tile)) {
+			if (!HasBit(GetRailStationTrackBits(tile), rt.track) || HasBit(GetRailStationPlatformBits(tile), rt.track)) continue;
+		} else if (!IsPlainRailTile(tile) || !HasTrack(tile, rt.track)) continue;
+		if (!IsTileOwner(tile, _current_company)) continue;
 		BlueprintDoCommand<CMD_REMOVE_SINGLE_RAIL>(state, flags, tile, rt.track);
 	}
 

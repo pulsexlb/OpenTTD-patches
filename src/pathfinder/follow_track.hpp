@@ -187,9 +187,10 @@ struct CFollowTrackT {
 
 		if (this->is_station) {
 			/* Check skipped station tiles as well. */
-			TileIndexDiff diff = TileOffsByDiagDir(this->exitdir);
-			for (TileIndex tile = this->new_tile - diff * this->tiles_skipped; tile != this->new_tile; tile += diff) {
-				if (HasStationReservation(tile)) {
+			auto p = RailPlatformPosition{this->new_tile, FindFirstTrackdir(this->new_td_bits)}.Reverse();
+			for (int i = 0; i < this->tiles_skipped; ++i) {
+				p = p.Next();
+				if (HasReservedTracks(p.tile, TrackToTrackBits(p.GetTrack()))) {
 					this->new_td_bits = TRACKDIR_BIT_NONE;
 					this->err = ErrorCode::Reserved;
 					return false;
@@ -462,16 +463,17 @@ protected:
 
 		/* special handling for rail stations - get to the end of platform */
 		if (IsRailTT() && this->is_station) {
-			/* entered railway station
-			 * get platform length */
-			uint length = BaseStation::GetByTile(this->new_tile)->GetPlatformLength(this->new_tile, TrackdirToExitdir(this->old_td));
-			/* how big step we must do to get to the last platform tile? */
-			this->tiles_skipped = length - 1;
-			/* move to the platform end */
-			TileIndexDiff diff = TileOffsByDiagDir(this->exitdir);
-			diff *= this->tiles_skipped;
-			this->new_tile = TileAdd(this->new_tile, diff);
-			return true;
+			RailPlatformPosition entry{this->new_tile, FindFirstTrackdir(this->new_td_bits)};
+			this->is_station = entry.IsPlatform();
+			if (this->is_station && IsRailStationTile(entry.tile)) {
+				auto end = entry;
+				for (auto next = entry.Next(); next.IsContinuationOf(entry); next = next.Next()) {
+					end = next;
+					++this->tiles_skipped;
+				}
+				this->new_tile = end.tile;
+				this->new_td_bits = TrackdirToTrackdirBits(end.td);
+			}
 		}
 
 		return true;

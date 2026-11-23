@@ -89,7 +89,9 @@ void AfterLoadCompanyStats()
 				switch (GetStationType(tile)) {
 					case StationType::Rail:
 					case StationType::RailWaypoint:
-						if (c != nullptr && !IsStationTileBlocked(tile)) c->infrastructure.rail[GetRailType(tile)]++;
+						if (c != nullptr && !IsStationTileBlocked(tile)) {
+							for (Track track : SetTrackBitIterator(GetRailStationTrackBits(tile))) c->infrastructure.rail[GetTileRailTypeByTrack(tile, track)]++;
+						}
 						break;
 
 					case StationType::Bus:

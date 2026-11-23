@@ -14,6 +14,7 @@
 #include <functional>
 
 #include "../../pbs.h"
+#include "../../rail_platform_geometry.h"
 #include "../../tracerestrict.h"
 #include "../../tracerestrict_early_route.h"
 #include "../follow_track.hpp"
@@ -215,9 +216,9 @@ public:
 	 */
 	inline bool IsAnyStationTileReserved(TileIndex tile, Trackdir trackdir, int distance)
 	{
-		TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(trackdir)));
-		for (; distance >= 0; distance--, tile += diff) {
-			if (HasStationReservation(tile)) return true;
+		RailPlatformPosition p{tile, ReverseTrackdir(trackdir)};
+		for (; distance >= 0; --distance, p = p.Next()) {
+			if (HasReservedTracks(p.tile, TrackToTrackBits(p.GetTrack()))) return true;
 		}
 		return false;
 	}
@@ -235,7 +236,7 @@ public:
 		if (n.num_signals_passed >= this->sig_look_ahead_costs.size() / 2) return 0;
 		if (!IsPbsSignal(n.last_signal_type)) return 0;
 
-		if (IsRailStationTile(tile) && IsAnyStationTileReserved(tile, trackdir, skipped)) {
+		if (IsRailStationTile(tile) && RailPlatformPosition{tile, trackdir}.IsPlatform() && IsAnyStationTileReserved(tile, trackdir, skipped)) {
 			return Yapf().PfGetSettings().rail_pbs_station_penalty * (skipped + 1);
 		} else if (TrackOverlapsTracks(GetReservedTrackbits(tile), TrackdirToTrack(trackdir))) {
 			int cost = Yapf().PfGetSettings().rail_pbs_cross_penalty;
@@ -589,14 +590,17 @@ public:
 		return cost;
 	}
 
-	inline int PlatformLengthPenalty(int platform_length)
+	inline int PlatformLengthPenalty(int platform_steps)
 	{
 		int cost = 0;
 		const Train *v = Yapf().GetVehicle();
 		dbg_assert(v != nullptr);
 		dbg_assert(v->type == VehicleType::Train);
 		dbg_assert(v->gcache.cached_total_length != 0);
-		int missing_platform_length = CeilDiv(v->gcache.cached_total_length, TILE_SIZE) - platform_length;
+		/* A half-tile platform can fall short even when both lengths round up to the same tile.
+		 * Keep the original whole-tile scoring for excess capacity. */
+		const int missing_steps = v->gcache.cached_total_length - platform_steps;
+		const int missing_platform_length = missing_steps > 0 ? static_cast<int>(CeilDiv(missing_steps, TILE_SIZE)) : missing_steps / static_cast<int>(TILE_SIZE);
 		if (missing_platform_length < 0) {
 			/* apply penalty for longer platform than needed */
 			cost += Yapf().PfGetSettings().rail_longer_platform_penalty + Yapf().PfGetSettings().rail_longer_platform_per_tile_penalty * -missing_platform_length;
@@ -725,10 +729,11 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 					if ((n.parent != nullptr && n.parent->GetTile() == this->rail_route_required_point &&
 							n.parent->GetTrackdir() == this->rail_route_required_point_td) ||
 							(cur.tile == this->rail_route_required_point && cur.td == this->rail_route_required_point_td)) n.key.required_point_seen = true;
-					if (follower->is_station && follower->tiles_skipped > 0 && cur.td == this->rail_route_required_point_td) {
-						const TileIndexDiff step = TileOffsByDiagDir(follower->exitdir);
+					if (follower->is_station && follower->tiles_skipped > 0) {
+						auto p = RailPlatformPosition{cur.tile, cur.td}.Reverse();
 						for (int skipped = follower->tiles_skipped; skipped > 0; --skipped) {
-							if (cur.tile - step * skipped == this->rail_route_required_point) n.key.required_point_seen = true;
+							p = p.Next();
+							if (p.tile == this->rail_route_required_point && p.Reverse().td == this->rail_route_required_point_td) n.key.required_point_seen = true;
 						}
 					}
 				}
@@ -739,9 +744,10 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 				 * cannot be traversed as an intermediate stop on another route.
 				 * A bridge/tunnel's skipped coordinates are ground, not its deck. */
 				if (follower->is_station && follower->tiles_skipped > 0) {
-					const TileIndexDiff step = TileOffsByDiagDir(follower->exitdir);
+					auto p = RailPlatformPosition{cur.tile, cur.td}.Reverse();
 					for (int skipped = follower->tiles_skipped; skipped > 0; --skipped) {
-						if (!this->rail_route_filter(cur.tile - step * skipped, cur.td)) return false;
+						p = p.Next();
+						if (!this->rail_route_filter(p.tile, p.Reverse().td)) return false;
 					}
 				}
 				if (!this->rail_route_filter(cur.tile, cur.td)) return false;
@@ -751,7 +757,7 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 			segment_cost += Yapf().OneTileCost(cur.tile, cur.td);
 
 			/* If we skipped some tunnel/bridge/station tiles, add their base cost */
-			segment_cost += YAPF_TILE_LENGTH * follower->tiles_skipped;
+			segment_cost += (follower->is_station && !IsDiagonalTrackdir(cur.td) ? YAPF_TILE_CORNER_LENGTH : YAPF_TILE_LENGTH) * follower->tiles_skipped;
 
 			/* Slope cost. */
 			segment_cost += Yapf().SlopeCost(cur.tile, cur.td);
@@ -829,10 +835,10 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 
 			} else if (follower->is_station) {
 				/* Station penalties. */
-				uint platform_length = follower->tiles_skipped + 1;
+				segment.station_tiles = follower->tiles_skipped + 1;
 				/* We don't know yet if the station is our target or not. Act like
 				 * if it is pass-through station (not our destination). */
-				segment_cost += Yapf().PfGetSettings().rail_station_penalty * platform_length;
+				segment_cost += Yapf().PfGetSettings().rail_station_penalty * segment.station_tiles;
 				/* We will end in this pass (station is possible target) */
 				end_segment_reason.Set(EndSegmentReason::Station);
 
@@ -1007,13 +1013,11 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 
 			/* Station platform-length penalty. */
 			if (end_segment_reason.Test(EndSegmentReason::Station)) {
-				const BaseStation *st = BaseStation::GetByTile(n.GetLastTile());
-				dbg_assert(st != nullptr);
-				uint platform_length = st->GetPlatformLength(n.GetLastTile(), ReverseDiagDir(TrackdirToExitdir(n.GetLastTrackdir())));
-				/* Reduce the extra cost caused by passing-station penalty (each station receives it in the segment cost). */
-				extra_cost -= Yapf().PfGetSettings().rail_station_penalty * platform_length;
-				/* Add penalty for the inappropriate platform length. */
-				extra_cost += PlatformLengthPenalty(platform_length);
+				const RailPlatformPosition end{n.GetLastTile(), ReverseTrackdir(n.GetLastTrackdir())};
+				/* Refund just the pass-through cost charged to this (possibly cached) segment. */
+				extra_cost -= Yapf().PfGetSettings().rail_station_penalty * segment.station_tiles;
+				const int capacity = GetRailPlatformLengthAhead(end) + GetRailPlatformLengthAhead(end.Reverse()) - end.PieceLength();
+				extra_cost += PlatformLengthPenalty(capacity);
 			}
 		}
 

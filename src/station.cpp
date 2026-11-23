@@ -23,6 +23,7 @@
 #include "vehiclelist.h"
 #include "core/pool_func.hpp"
 #include "station_base.h"
+#include "rail_platform_geometry.h"
 #include "station_kdtree.h"
 #include "roadstop_base.h"
 #include "industry.h"
@@ -316,6 +317,45 @@ void Station::MarkTilesDirty(bool cargo_change) const
 			MarkTileDirtyByTile(tile, VMDF_NOT_MAP_MODE);
 		}
 	}
+}
+
+/** Advance to the unique connecting platform track across the exit edge. */
+bool AdvanceRailPlatform(RailPlatformPosition &p)
+{
+	const DiagDirection exit = TrackdirToExitdir(p.td);
+	const TileIndex next = p.Next().tile;
+	if (next == INVALID_TILE || !IsRailStationTile(next) || GetStationIndex(next) != GetStationIndex(p.tile)) return false;
+
+	/* Station tracks are either a single rail or a parallel pair. Only one
+	 * of them can meet this edge, including where a platform bends. */
+	const TrackdirBits reachable = TrackBitsToTrackdirBits(GetRailStationPlatformBits(next)) & DiagdirReachesTrackdirs(exit);
+	if (reachable == TRACKDIR_BIT_NONE) return false;
+	const Trackdir td = FindFirstTrackdir(reachable);
+	const RailType rt = GetRailTypeByTrack(p.tile, p.GetTrack());
+	const RailType next_rt = GetRailTypeByTrack(next, TrackdirToTrack(td));
+	if (!IsCompatibleRail(next_rt, rt)) return false;
+	if (td != NextTrackdir(p.td) && GetTileMaxZ(next) != GetTileMaxZ(p.tile)) return false;
+	if ((reachable & TrackdirCrossesTrackdirs(p.td)) != TRACKDIR_BIT_NONE && Rail90DegTurnDisallowed(rt, next_rt, _settings_game.pf.forbid_90_deg)) return false;
+
+	p = {next, td};
+	return true;
+}
+
+int GetRailPlatformLengthAhead(RailPlatformPosition origin)
+{
+	if (!origin.IsPlatform()) return 0;
+	if (IsRailWaypointTile(origin.tile)) return origin.PieceLength();
+
+	RailPlatformPosition p = origin;
+	int length = 0;
+	for (;;) {
+		length += p.PieceLength();
+		if (!AdvanceRailPlatform(p)) break;
+		/* A platform covering a closed circuit has no physical end. Retain its
+		 * straight stopping sections rather than measuring around it twice. */
+		if (p.tile == origin.tile && p.td == origin.td) return origin.CountAhead() * origin.PieceLength();
+	}
+	return length;
 }
 
 /* virtual */ uint Station::GetPlatformLength(TileIndex tile) const

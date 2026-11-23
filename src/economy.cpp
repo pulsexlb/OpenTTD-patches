@@ -27,6 +27,7 @@
 #include "newgrf_sound.h"
 #include "newgrf_industrytiles.h"
 #include "newgrf_station.h"
+#include "rail_platform_geometry.h"
 #include "newgrf_airporttiles.h"
 #include "newgrf_roadstop.h"
 #include "object.h"
@@ -2079,10 +2080,15 @@ static void LoadUnloadVehicle(Vehicle *front)
 		}
 	}
 	int platform_length_left = 0;
-	if (pull_through_mode) {
-		platform_length_left = st->GetPlatformLength(station_tile, ReverseDiagDir(DirToDiagDir(station_vehicle->GetMovingDirection()))) * TILE_SIZE - GetTileMarginInFrontOfTrain(Train::From(station_vehicle));
-	} else if (front->type == VehicleType::Train) {
-		platform_length_left = st->GetPlatformLength(station_tile) * TILE_SIZE - front->GetGroundVehicleCache()->cached_total_length;
+	if (front->type == VehicleType::Train) {
+		const Train *loading = Train::From(station_vehicle);
+		const RailPlatformPosition position{station_tile, loading->GetVehicleTrackdir()};
+		platform_length_left = GetRailPlatformLengthAhead(position.Reverse());
+		if (pull_through_mode) {
+			platform_length_left -= GetTileMarginInFrontOfTrain(loading);
+		} else {
+			platform_length_left += GetRailPlatformLengthAhead(position) - position.PieceLength() - front->GetGroundVehicleCache()->cached_total_length;
+		}
 	}
 
 	CargoStationIDVectorSet next_station = front->GetNextStoppingStation();

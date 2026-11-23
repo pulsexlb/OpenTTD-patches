@@ -17,6 +17,7 @@
 #include "newgrf_station_id.h"
 
 enum RailType : uint8_t;
+enum Track : uint8_t;
 enum RoadType : uint8_t;
 
 /** Station naming classes. */
@@ -33,6 +34,8 @@ StringID GenerateStationName(Station *st, TileIndex tile, StationNaming name_cla
 
 DEF_CMD_TUPLE   (Commands::BuildDock,                      CmdBuildDock,                       CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<StationID, bool>)
 DEF_CMD_TUPLE   (Commands::BuildRailStation,               CmdBuildRailStation, CMD_NO_WATER | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<RailType, Axis, uint8_t, uint8_t, StationClassID, uint16_t, StationID, bool>)
+DEF_CMD_TUPLE   (Commands::BuildDiagonalRailStation,       CmdBuildDiagonalRailStation, CMD_NO_WATER | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<TileIndex, Track, StationID, bool>)
+DEF_CMD_TUPLE   (Commands::RemoveDiagonalRailStation,      CmdRemoveDiagonalRailStation,         {}, CommandType::LandscapeConstruction, CmdDataT<TileIndex, Track, bool>)
 DEF_CMD_TUPLE   (Commands::RemoveFromRailStation,          CmdRemoveFromRailStation,                 {}, CommandType::LandscapeConstruction, CmdDataT<TileIndex, bool>)
 DEF_CMD_TUPLE   (Commands::BuildRoadStop,                  CmdBuildRoadStop,    CMD_NO_WATER | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<uint8_t, uint8_t, RoadStopType, bool, DiagDirection, RoadType, RoadStopClassID, uint16_t, StationID, bool>)
 DEF_CMD_TUPLE   (Commands::RemoveRoadStop,                 CmdRemoveRoadStop,                        {}, CommandType::LandscapeConstruction, CmdDataT<uint8_t, uint8_t, RoadStopType, bool>)

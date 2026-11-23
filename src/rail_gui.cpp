@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include "external_city.h"
+#include "error.h"
 #include "gui.h"
 #include "station_base.h"
 #include "waypoint_base.h"
@@ -98,7 +99,12 @@ struct StationPickerSelection {
 	StationClassID sel_class; ///< Selected station class.
 	uint16_t sel_type; ///< Selected station type within the class.
 	Axis axis; ///< Selected orientation of the station.
+	bool diagonal = false; ///< Drag along an existing horizontal or vertical rail.
+
+	bool SupportsDiagonal() const { return this->sel_class == STAT_CLASS_DFLT && this->sel_type == 0; }
+	bool IsDiagonal() const { return this->diagonal && this->SupportsDiagonal(); }
 };
+static Track _diagonal_station_drag_track = INVALID_TRACK;
 static StationPickerSelection _station_gui; ///< Settings of the station picker.
 
 
@@ -276,7 +282,21 @@ void CcStation(const CommandCost &result, TileIndex tile)
  */
 static void PlaceRail_Station(TileIndex tile)
 {
-	if (_remove_button_clicked) {
+	if (_station_gui.IsDiagonal() || (_remove_button_clicked && IsDiagonalRailStationTile(tile))) {
+		TrackBits tracks = TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0));
+		if (tracks == TRACK_BIT_VERT) {
+			tracks = _tile_fract_coords.x <= _tile_fract_coords.y ? TRACK_BIT_RIGHT : TRACK_BIT_LEFT;
+		} else if (tracks == TRACK_BIT_HORZ) {
+			tracks = _tile_fract_coords.x + _tile_fract_coords.y < TILE_SIZE ? TRACK_BIT_UPPER : TRACK_BIT_LOWER;
+		}
+		if (!HasExactlyOneBit(tracks) || (tracks & (TRACK_BIT_HORZ | TRACK_BIT_VERT)) == TRACK_BIT_NONE) {
+			ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION), GetEncodedString(STR_ERROR_DIAGONAL_STATION_NEEDS_TRACK), WarningLevel::Info);
+			return;
+		}
+		_diagonal_station_drag_track = FindFirstTrack(tracks);
+		VpStartPlaceSizing(tile, VPM_RAILDIRS, DDSP_DIAGONAL_STATION);
+		VpSetPlaceSizingLimit(_remove_button_clicked ? 0 : _settings_game.station.station_spread);
+	} else if (_remove_button_clicked) {
 		VpStartPlaceSizing(tile, VPM_X_AND_Y_LIMITED, DDSP_REMOVE_STATION);
 		VpSetPlaceSizingLimit(-1);
 	} else if (_settings_client.gui.station_dragdrop) {
@@ -1005,7 +1025,11 @@ struct BuildRailToolbarWindow : Window {
 		/* no dragging if you have pressed the convert button */
 		if (FindWindowById(WindowClass::BuildSignal, 0) != nullptr && _convert_signal_button && this->IsWidgetLowered(WID_RAT_BUILD_SIGNALS)) return;
 
-		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
+		if (select_proc == DDSP_DIAGONAL_STATION) {
+			VpSelectDiagonalStationTiles(pt.x, pt.y, _diagonal_station_drag_track);
+		} else {
+			VpSelectTilesWithMethod(pt.x, pt.y, select_method);
+		}
 	}
 
 	Point OnInitialPosition(int16_t sm_width, [[maybe_unused]] int16_t sm_height, [[maybe_unused]] int window_number) override
@@ -1045,6 +1069,20 @@ struct BuildRailToolbarWindow : Window {
 					break;
 				}
 
+				case DDSP_DIAGONAL_STATION: {
+					const Track track = _diagonal_station_drag_track;
+					if (_remove_button_clicked) {
+						Command<Commands::RemoveDiagonalRailStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, CommandCallback::PlaySound_CONSTRUCTION_RAIL, start_tile, end_tile, track, !_ctrl_pressed);
+					} else {
+						const bool adjacent = _ctrl_pressed;
+						auto proc = [=](bool test, StationID to_join) {
+							if (test) return Command<Commands::BuildDiagonalRailStation>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildDiagonalRailStation>()), start_tile, end_tile, track, StationID::Invalid(), adjacent).Succeeded();
+							return Command<Commands::BuildDiagonalRailStation>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, CommandCallback::Station, start_tile, end_tile, track, to_join, adjacent);
+						};
+						ShowSelectStationIfNeeded(TileArea(start_tile, end_tile), proc);
+					}
+					break;
+				}
 				case DDSP_REMOVE_STATION:
 				case DDSP_BUILD_STATION:
 					if (this->IsWidgetLowered(WID_RAT_BUILD_STATION)) {
@@ -1427,15 +1465,13 @@ private:
 	 */
 	void SetSelectedSize()
 	{
-		if (_settings_client.gui.station_dragdrop) {
+		if (_station_gui.IsDiagonal() || _settings_client.gui.station_dragdrop || _remove_button_clicked) {
 			SetTileSelectSize(1, 1);
 		} else {
 			int x = _settings_client.gui.station_numtracks;
 			int y = _settings_client.gui.station_platlength;
 			if (_station_gui.axis == Axis::X) std::swap(x, y);
-			if (!_remove_button_clicked) {
-				SetTileSelectSize(x, y);
-			}
+			SetTileSelectSize(x, y);
 		}
 
 		int rad = (_settings_game.station.modified_catchment) ? CA_TRAIN : CA_UNMODIFIED;
@@ -1452,13 +1488,6 @@ public:
 
 	void OnInit() override
 	{
-		this->LowerWidget(WID_BRAS_PLATFORM_DIR_X + to_underlying(_station_gui.axis));
-		if (_settings_client.gui.station_dragdrop) {
-			this->LowerWidget(WID_BRAS_PLATFORM_DRAG_N_DROP);
-		} else {
-			this->LowerWidget(WID_BRAS_PLATFORM_NUM_BEGIN + _settings_client.gui.station_numtracks);
-			this->LowerWidget(WID_BRAS_PLATFORM_LEN_BEGIN + _settings_client.gui.station_platlength);
-		}
 		this->SetWidgetLoweredState(WID_BRAS_HIGHLIGHT_OFF, !_settings_client.gui.station_show_coverage);
 		this->SetWidgetLoweredState(WID_BRAS_HIGHLIGHT_ON, _settings_client.gui.station_show_coverage);
 		this->SetSelectedSize();
@@ -1480,16 +1509,29 @@ public:
 		}
 
 		this->PickerWindow::OnInvalidateData(data, gui_scope);
+		if (gui_scope && _station_gui.diagonal && !_station_gui.SupportsDiagonal()) {
+			_station_gui.diagonal = false;
+			this->SetSelectedSize();
+		}
 	}
 
 	void OnPaint() override
 	{
 		const StationSpec *statspec = StationClass::Get(_station_gui.sel_class)->GetSpec(_station_gui.sel_type);
+		const bool diagonal = _station_gui.IsDiagonal();
+		const bool fixed_size = !diagonal && !_settings_client.gui.station_dragdrop;
+		this->SetWidgetDisabledState(WID_BRAS_PLATFORM_DIAGONAL, !_station_gui.SupportsDiagonal());
+		this->SetWidgetLoweredState(WID_BRAS_PLATFORM_DIAGONAL, diagonal);
+		this->SetWidgetLoweredState(WID_BRAS_PLATFORM_DIR_X, !diagonal && _station_gui.axis == Axis::X);
+		this->SetWidgetLoweredState(WID_BRAS_PLATFORM_DIR_Y, !diagonal && _station_gui.axis == Axis::Y);
+		this->SetWidgetLoweredState(WID_BRAS_PLATFORM_DRAG_N_DROP, !diagonal && _settings_client.gui.station_dragdrop);
 		int rad = (_settings_game.station.modified_catchment) ? CA_TRAIN : CA_UNMODIFIED;
 		rad += _settings_game.station.catchment_increase;
 
 		for (uint bits = 0; bits < 7; bits++) {
-			bool disable = bits >= _settings_game.station.station_spread;
+			const bool disable = bits >= _settings_game.station.station_spread;
+			this->SetWidgetLoweredState(bits + WID_BRAS_PLATFORM_NUM_1, fixed_size && bits + 1 == _settings_client.gui.station_numtracks);
+			this->SetWidgetLoweredState(bits + WID_BRAS_PLATFORM_LEN_1, fixed_size && bits + 1 == _settings_client.gui.station_platlength);
 			if (statspec == nullptr) {
 				this->SetWidgetDisabledState(bits + WID_BRAS_PLATFORM_NUM_1, disable);
 				this->SetWidgetDisabledState(bits + WID_BRAS_PLATFORM_LEN_1, disable);
@@ -1580,13 +1622,13 @@ public:
 	void OnClick([[maybe_unused]] Point pt, WidgetID widget, [[maybe_unused]] int click_count) override
 	{
 		switch (widget) {
+			case WID_BRAS_PLATFORM_DIAGONAL:
 			case WID_BRAS_PLATFORM_DIR_X:
 			case WID_BRAS_PLATFORM_DIR_Y:
-				this->RaiseWidget(WID_BRAS_PLATFORM_DIR_X + to_underlying(_station_gui.axis));
-				_station_gui.axis = static_cast<Axis>(widget - WID_BRAS_PLATFORM_DIR_X);
-				this->LowerWidget(WID_BRAS_PLATFORM_DIR_X + to_underlying(_station_gui.axis));
-
+				_station_gui.diagonal = widget == WID_BRAS_PLATFORM_DIAGONAL && !_station_gui.diagonal;
+				if (widget != WID_BRAS_PLATFORM_DIAGONAL) _station_gui.axis = static_cast<Axis>(widget - WID_BRAS_PLATFORM_DIR_X);
 				this->SetSelectedSize();
+				UpdateTileSelection();
 				SndClickBeep();
 				this->SetDirty();
 				CloseWindowById(WindowClass::JoinStation, 0);
@@ -1599,6 +1641,7 @@ public:
 			case WID_BRAS_PLATFORM_NUM_5:
 			case WID_BRAS_PLATFORM_NUM_6:
 			case WID_BRAS_PLATFORM_NUM_7: {
+				_station_gui.diagonal = false;
 				this->RaiseWidget(WID_BRAS_PLATFORM_NUM_BEGIN + _settings_client.gui.station_numtracks);
 				this->RaiseWidget(WID_BRAS_PLATFORM_DRAG_N_DROP);
 
@@ -1633,6 +1676,7 @@ public:
 			case WID_BRAS_PLATFORM_LEN_5:
 			case WID_BRAS_PLATFORM_LEN_6:
 			case WID_BRAS_PLATFORM_LEN_7: {
+				_station_gui.diagonal = false;
 				this->RaiseWidget(_settings_client.gui.station_platlength + WID_BRAS_PLATFORM_LEN_BEGIN);
 				this->RaiseWidget(WID_BRAS_PLATFORM_DRAG_N_DROP);
 
@@ -1661,7 +1705,8 @@ public:
 			}
 
 			case WID_BRAS_PLATFORM_DRAG_N_DROP: {
-				_settings_client.gui.station_dragdrop ^= true;
+				_settings_client.gui.station_dragdrop = _station_gui.IsDiagonal() || !_settings_client.gui.station_dragdrop;
+				_station_gui.diagonal = false;
 
 				this->ToggleWidgetLoweredState(WID_BRAS_PLATFORM_DRAG_N_DROP);
 
@@ -1779,6 +1824,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_station_builder_widg
 						NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_LEN_7), SetAspect(1.25f), SetStringTip(STR_BLACK_7, STR_STATION_BUILD_PLATFORM_LENGTH_TOOLTIP),
 					EndContainer(),
 					NWidget(NWID_HORIZONTAL), SetPIPRatio(1, 0, 1),
+						NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_DIAGONAL), SetStringTip(STR_STATION_BUILD_DIAGONAL, STR_STATION_BUILD_DIAGONAL_TOOLTIP),
 						NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_DRAG_N_DROP), SetMinimalSize(75, 12), SetStringTip(STR_STATION_BUILD_DRAG_DROP, STR_STATION_BUILD_DRAG_DROP_TOOLTIP),
 					EndContainer(),
 					NWidget(WWT_LABEL, Colours::Invalid), SetStringTip(STR_STATION_BUILD_COVERAGE_AREA_TITLE), SetFill(1, 0),
@@ -2518,6 +2564,7 @@ static void ShowBuildWaypointPicker(Window *parent)
 void InitializeRailGui()
 {
 	_build_depot_direction = DiagDirection::NW;
+	_station_gui.diagonal = false;
 	_station_gui.sel_class = STAT_CLASS_DFLT;
 	_station_gui.sel_type = 0;
 	_waypoint_gui.sel_class = STAT_CLASS_WAYP;

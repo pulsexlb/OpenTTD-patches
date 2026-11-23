@@ -56,6 +56,9 @@ RailType GetTileRailType(TileIndex tile)
  */
 RailType GenericGetRailTypeByTrack(TileIndex t, Track track, bool return_invalid)
 {
+	if (IsDiagonalRailStationTile(t)) {
+		return GetPlainRailParallelTrackRailTypeByTrackBit(t, TrackToTrackBits(track));
+	}
 	if (IsPlainRailTile(t)) {
 		TrackBits bits = GetTrackBits(t);
 		if (bits == TRACK_BIT_HORZ || bits == TRACK_BIT_VERT) {
@@ -80,6 +83,7 @@ RailType GenericGetRailTypeByTrack(TileIndex t, Track track, bool return_invalid
  */
 RailType GenericGetRailTypeByTrackBit(TileIndex t, TrackBits tb, bool return_invalid)
 {
+	if (IsDiagonalRailStationTile(t)) return GetPlainRailParallelTrackRailTypeByTrackBit(t, tb);
 	if (IsPlainRailTile(t)) {
 		TrackBits bits = GetTrackBits(t);
 		if (bits == TRACK_BIT_HORZ || bits == TRACK_BIT_VERT) {
@@ -104,6 +108,9 @@ RailType GenericGetRailTypeByTrackBit(TileIndex t, TrackBits tb, bool return_inv
  */
 RailType GenericGetRailTypeByEntryDir(TileIndex t, DiagDirection enterdir, bool return_invalid)
 {
+	if (IsDiagonalRailStationTile(t)) {
+		return GetPlainRailParallelTrackRailTypeByTrackBit(t, GetRailStationTrackBits(t) & DiagdirReachesTracks(enterdir));
+	}
 	if (IsPlainRailTile(t)) {
 		TrackBits bits = GetTrackBits(t);
 		if (bits == TRACK_BIT_HORZ || bits == TRACK_BIT_VERT) {
@@ -128,8 +135,8 @@ RailType GenericGetRailTypeByEntryDir(TileIndex t, DiagDirection enterdir, bool 
  */
 RailType GetTileSecondaryRailTypeIfValid(TileIndex t)
 {
-	if (IsPlainRailTile(t)) {
-		TrackBits bits = GetTrackBits(t);
+	if (IsPlainRailTile(t) || IsDiagonalRailStationTile(t)) {
+		TrackBits bits = IsPlainRailTile(t) ? GetTrackBits(t) : GetRailStationTrackBits(t);
 		if (bits == TRACK_BIT_HORZ || bits == TRACK_BIT_VERT) {
 			return GetSecondaryRailType(t);
 		} else {
