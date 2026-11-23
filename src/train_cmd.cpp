@@ -11724,6 +11724,17 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			return true;
 		}
 		consist->flags.Reset(VehicleRailFlag::SameDirDecouplePending);
+		/* The wait kept the consist flagged stuck. A stuck consist must not
+		 * release its reservation in ReverseTrainDirection(): the turnaround
+		 * would leave the chain we reserved while facing the other way
+		 * orphaned on the far side of the station. The former partner has just
+		 * cleared the shared platform, so that chain is now entirely ours and
+		 * can be released like a completed turnaround does. */
+		if (consist->flags.Test(VehicleRailFlag::Stuck)) {
+			consist->flags.Reset(VehicleRailFlag::Stuck);
+			consist->wait_counter = 0;
+			SetWindowWidgetDirty(WindowClass::VehicleView, consist->index, WID_VV_START_STOP);
+		}
 		if (CheckReverseTrain(consist)) {
 			consist->flags.Set(VehicleRailFlag::Reversing);
 			return true;
