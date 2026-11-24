@@ -4964,8 +4964,8 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 					/* Allow copying unreachable destinations if they were already unreachable for the source.
 					 * This is basically to allow cloning / autorenewing / autoreplacing vehicles, while the stations
 					 * are temporarily invalid due to reconstruction. */
-					const Station *st = Station::Get(order->GetDestination().ToStationID());
-					if (CanVehicleUseStation(src, st) && !CanVehicleUseStation(dst, st)) {
+					const Station *st = Station::GetIfValid(order->GetDestination().ToStationID());
+					if (st != nullptr && CanVehicleUseStation(src, st) && !CanVehicleUseStation(dst, st)) {
 						return CommandCost::DualErrorMessage(STR_ERROR_CAN_T_COPY_SHARE_ORDER, GetVehicleCannotUseStationReason(dst, st));
 					}
 				}
@@ -5064,8 +5064,8 @@ CommandCost CmdCloneOrder(DoCommandFlags flags, CloneOptions action, VehicleID v
 			 * and neither can helicopters and aircraft. */
 			for (const Order *order : src_orders == nullptr ? OrderIterateWrapper<const Order>(nullptr, nullptr) : std::as_const(*src_orders).Orders()) {
 				if (OrderGoesToStation(dst, order)) {
-					const Station *st = Station::Get(order->GetDestination().ToStationID());
-					if (!CanVehicleUseStation(dst, st)) {
+					const Station *st = Station::GetIfValid(order->GetDestination().ToStationID());
+					if (st != nullptr && !CanVehicleUseStation(dst, st)) {
 						return CommandCost::DualErrorMessage(STR_ERROR_CAN_T_COPY_SHARE_ORDER, GetVehicleCannotUseStationReason(dst, st));
 					}
 				}
@@ -6468,7 +6468,16 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 				v->IncrementRealOrderIndex();
 			} else {
 				if (v->type != VehicleType::Aircraft) {
-					v->SetDestTile(Depot::Get(order->GetDestination().ToDepotID())->xy);
+					const Depot *depot = Depot::GetIfValid(order->GetDestination().ToDepotID());
+					if (depot == nullptr) {
+						/* The destination depot no longer exists. */
+						v->SetDestTile(INVALID_TILE);
+						if (pbs_look_ahead) return false;
+						UpdateVehicleTimetable(v, true);
+						v->IncrementRealOrderIndex();
+						return false;
+					}
+					v->SetDestTile(depot->xy);
 				} else {
 					Aircraft *a = Aircraft::From(v);
 					const StationID station_id = GetTargetDestination(a->current_order, true).ToStationID();
@@ -6481,9 +6490,19 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			}
 			break;
 
-		case OT_GOTO_WAYPOINT:
-			v->SetDestTile(Waypoint::Get(order->GetDestination().ToStationID())->xy);
+		case OT_GOTO_WAYPOINT: {
+			const Waypoint *wp = Waypoint::GetIfValid(order->GetDestination().ToStationID());
+			if (wp == nullptr) {
+				/* The destination waypoint no longer exists. */
+				v->SetDestTile(INVALID_TILE);
+				if (pbs_look_ahead) return false;
+				UpdateVehicleTimetable(v, true);
+				v->IncrementRealOrderIndex();
+				return false;
+			}
+			v->SetDestTile(wp->xy);
 			return true;
+		}
 
 		case OT_CONDITIONAL: {
 			assert(!pbs_look_ahead);
@@ -6760,8 +6779,11 @@ bool ProcessOrders(Vehicle *v)
 	}
 
 	/* If it is unchanged, keep it. */
+	const Station *ship_dest = (v->type == VehicleType::Ship && order->IsType(OT_GOTO_STATION)) ?
+			Station::GetIfValid(order->GetDestination().ToStationID()) : nullptr;
 	if (order->Equals(v->current_order) && (v->type == VehicleType::Aircraft || v->dest_tile != INVALID_TILE) &&
-			(v->type != VehicleType::Ship || !order->IsType(OT_GOTO_STATION) || Station::Get(order->GetDestination().ToStationID())->facilities.Test(StationFacility::Dock))) {
+			(v->type != VehicleType::Ship || !order->IsType(OT_GOTO_STATION) ||
+			 (ship_dest != nullptr && ship_dest->facilities.Test(StationFacility::Dock)))) {
 		return false;
 	}
 

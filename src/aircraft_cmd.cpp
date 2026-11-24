@@ -361,8 +361,8 @@ static bool OrderAirportUnusable(const Aircraft *v)
 static bool OrderDestinationUnusable(const Aircraft *v)
 {
 	if (!OrderAirportUnusable(v)) return false;
-	Station *st = Station::Get(v->current_order.GetDestination().ToStationID());
-	return v->targetairport == st->index;
+	const Station *st = Station::GetIfValid(v->current_order.GetDestination().ToStationID());
+	return st != nullptr && v->targetairport == st->index;
 }
 
 static bool CanRetargetExternalReturnFlight(const Aircraft *v)
@@ -409,8 +409,14 @@ TileIndex Aircraft::GetOrderStationLocation(StationID station)
 	if (this->current_order.IsExternalFlightOrder()) return GetExternalFlightBoundary(GetExternalOrderCity(this->current_order), this->tile);
 	if (station == this->last_station_visited) this->last_station_visited = StationID::Invalid();
 
-	assert(Station::IsValidID(station));
-	Station *st = Station::Get(station);
+	Station *st = Station::GetIfValid(station);
+	if (st == nullptr) {
+		/* The destination station no longer exists. Treat it like an unusable
+		 * airport: keep the state machine consistent without dereferencing a
+		 * freed pool slot. */
+		this->HandlePathfindingResult(false);
+		return INVALID_TILE;
+	}
 
 	if (!CanAircraftUseAirport(this, st)) {
 		/* The airport has no usable terminal for this aircraft (e.g. an airport

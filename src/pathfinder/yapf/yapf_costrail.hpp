@@ -780,9 +780,10 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 				end_segment_reason.Set(EndSegmentReason::Depot);
 
 			} else if (cur.tile_type == TileType::Station && IsRailWaypoint(cur.tile)) {
-				if (v->current_order.IsType(OT_GOTO_WAYPOINT) &&
-						GetStationIndex(cur.tile) == v->current_order.GetDestination() &&
-						!Waypoint::Get(v->current_order.GetDestination().ToStationID())->IsSingleTile()) {
+					const Waypoint *dest_wp = v->current_order.IsType(OT_GOTO_WAYPOINT) ? Waypoint::GetIfValid(v->current_order.GetDestination().ToStationID()) : nullptr;
+					if (dest_wp != nullptr &&
+							GetStationIndex(cur.tile) == v->current_order.GetDestination() &&
+							!dest_wp->IsSingleTile()) {
 					/* This waypoint is our destination; maybe this isn't an unreserved
 					 * one, so check that and if so see that as the last signal being
 					 * red. This way waypoints near stations should work better. */

@@ -176,7 +176,7 @@ public:
 		this->couple_station_dest = false;
 		switch (v->current_order.GetType()) {
 			case OT_GOTO_WAYPOINT:
-				if (!Waypoint::Get(v->current_order.GetDestination().ToStationID())->IsSingleTile()) {
+				if (const Waypoint *wp = Waypoint::GetIfValid(v->current_order.GetDestination().ToStationID()); wp != nullptr && !wp->IsSingleTile()) {
 					/* In case of 'complex' waypoints we need to do a look
 					 * ahead. This look ahead messes a bit about, which
 					 * means that it 'corrupts' the cache. To prevent this

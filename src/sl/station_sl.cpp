@@ -46,8 +46,8 @@ static void UpdateWaypointOrder(Order *o)
 {
 	if (!o->IsType(OT_GOTO_STATION)) return;
 
-	const Station *st = Station::Get(o->GetDestination().ToStationID());
-	if (!st->had_vehicle_of_type.Test(StationVehicleType::Waypoint)) return;
+	const Station *st = Station::GetIfValid(o->GetDestination().ToStationID());
+	if (st == nullptr || !st->had_vehicle_of_type.Test(StationVehicleType::Waypoint)) return;
 
 	o->MakeGoToWaypoint(o->GetDestination().ToStationID());
 }

@@ -2999,7 +2999,8 @@ void DrawOrderString(const Vehicle *v, const Order *order, int order_index, int 
 		case OT_GOTO_STATION: {
 			OrderLoadType load = order->GetLoadType();
 			OrderUnloadType unload = order->GetUnloadType();
-			bool valid_station = order->IsExternalFlightOrder() || ((v != nullptr) ? CanVehicleUseStation(v, Station::Get(order->GetDestination().ToStationID())) : true);
+			const Station *dest_station = Station::GetIfValid(order->GetDestination().ToStationID());
+			bool valid_station = order->IsExternalFlightOrder() || dest_station == nullptr || ((v != nullptr) ? CanVehicleUseStation(v, dest_station) : true);
 
 			if (order->IsExternalFlightOrder()) {
 				const auto *city = ExternalCity::GetIfValid(GetExternalOrderCity(*order));

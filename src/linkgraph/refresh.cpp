@@ -407,8 +407,8 @@ void LinkRefresher::RefreshStats(const Order *cur, const Order *next, uint32_t t
 {
 	StationID next_station = next->IsExternalTripOrder() ? GetExternalOrderStation(next) : next->GetDestination().ToStationID();
 	Station *st = Station::GetIfValid(cur->IsExternalTripOrder() ? GetExternalOrderStation(cur) : cur->GetDestination().ToStationID());
-	if (st != nullptr && next_station != StationID::Invalid() && next_station != st->index) {
-		Station *st_to = Station::Get(next_station);
+	Station *st_to = Station::GetIfValid(next_station);
+	if (st != nullptr && st_to != nullptr && next_station != StationID::Invalid() && next_station != st->index) {
 		for (CargoType cargo : EnumRange(NUM_CARGO)) {
 			/* Refresh the link and give it a minimum capacity. */
 

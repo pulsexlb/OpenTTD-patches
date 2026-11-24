@@ -684,9 +684,9 @@ TileIndex RoadVehicle::GetOrderStationLocation(StationID station)
 {
 	if (station == this->last_station_visited) this->last_station_visited = StationID::Invalid();
 
-	const Station *st = Station::Get(station);
-	if (!CanVehicleUseStation(this, st)) {
-		/* There is no stop left at the station, so don't even TRY to go there */
+	const Station *st = Station::GetIfValid(station);
+	if (st == nullptr || !CanVehicleUseStation(this, st)) {
+		/* The destination no longer exists or has no stop left, so don't even TRY to go there */
 		this->IncrementRealOrderIndex();
 		return {};
 	}

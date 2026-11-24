@@ -132,9 +132,13 @@ static bool OrderDestinationIsAllowed(const Order *order, const Vehicle *v, Owne
 	switch (order->GetType()) {
 		case OT_IMPLICIT:
 		case OT_GOTO_STATION:
-		case OT_GOTO_WAYPOINT:
-			dest_owner = BaseStation::Get(order->GetDestination().ToStationID())->owner;
+		case OT_GOTO_WAYPOINT: {
+			const BaseStation *dest = BaseStation::GetIfValid(order->GetDestination().ToStationID());
+			/* A vanished destination cannot block company removal. */
+			if (dest == nullptr) return true;
+			dest_owner = dest->owner;
 			break;
+		}
 		case OT_GOTO_DEPOT:
 			if ((order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0) return true;
 			if (v->type == VehicleType::Aircraft) {

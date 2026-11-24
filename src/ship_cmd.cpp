@@ -353,8 +353,8 @@ TileIndex Ship::GetOrderStationLocation(StationID station)
 {
 	if (station == this->last_station_visited) this->last_station_visited = StationID::Invalid();
 
-	const Station *st = Station::Get(station);
-	if (CanVehicleUseStation(this, st)) {
+	const Station *st = Station::GetIfValid(station);
+	if (st != nullptr && CanVehicleUseStation(this, st)) {
 		return st->xy;
 	} else {
 		this->IncrementRealOrderIndex();
@@ -692,8 +692,8 @@ static void CheckDistanceBetweenShips(TileIndex tile, Ship *v, TrackBits tracks,
 {
 	// No checking close to docks and depots.
 	if (v->current_order.IsType(OT_GOTO_STATION)) {
-		Station *st = Station::Get(v->current_order.GetDestination().ToStationID());
-		if (st->IsWithinRangeOfDockingTile(tile, 3)) return;
+		Station *st = Station::GetIfValid(v->current_order.GetDestination().ToStationID());
+		if (st != nullptr && st->IsWithinRangeOfDockingTile(tile, 3)) return;
 	} else if (!v->current_order.IsType(OT_GOTO_WAYPOINT)) {
 		if (DistanceManhattan(v->dest_tile, tile) <= 3) return;
 	}
@@ -981,8 +981,8 @@ static void ShipController(Ship *v)
 							}
 						} else if (v->current_order.IsType(OT_GOTO_STATION) && IsDockingTile(gp.new_tile)) {
 							/* Process station in the orderlist. */
-							Station *st = Station::Get(v->current_order.GetDestination().ToStationID());
-							if (st->docking_station.Contains(gp.new_tile) && IsShipDestinationTile(gp.new_tile, st->index)) {
+							Station *st = Station::GetIfValid(v->current_order.GetDestination().ToStationID());
+							if (st != nullptr && st->docking_station.Contains(gp.new_tile) && IsShipDestinationTile(gp.new_tile, st->index)) {
 								v->last_station_visited = st->index;
 								if (st->facilities.Test(StationFacility::Dock)) { // ugly, ugly workaround for problem with ships able to drop off cargo at wrong stations
 									ShipArrivesAt(v, st);

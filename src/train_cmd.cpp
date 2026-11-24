@@ -9291,9 +9291,9 @@ TileIndex Train::GetOrderStationLocation(StationID station)
 {
 	if (station == this->last_station_visited) this->last_station_visited = StationID::Invalid();
 
-	const Station *st = Station::Get(station);
-	if (!st->facilities.Test(StationFacility::Train)) {
-		/* The destination station has no trainstation tiles. */
+	const Station *st = Station::GetIfValid(station);
+	if (st == nullptr || !st->facilities.Test(StationFacility::Train)) {
+		/* The destination no longer exists or has no trainstation tiles. */
 		this->IncrementRealOrderIndex();
 		return {};
 	}
@@ -12108,8 +12108,8 @@ void Train::OnPeriodic()
 
 		/* update destination */
 		if (this->current_order.IsType(OT_GOTO_STATION)) {
-			TileIndex tile = Station::Get(this->current_order.GetDestination().ToStationID())->train_station.tile;
-			if (tile != INVALID_TILE) this->dest_tile = tile;
+			const Station *st = Station::GetIfValid(this->current_order.GetDestination().ToStationID());
+			if (st != nullptr && st->train_station.tile != INVALID_TILE) this->dest_tile = st->train_station.tile;
 		}
 
 		if (this->running_ticks != 0) {

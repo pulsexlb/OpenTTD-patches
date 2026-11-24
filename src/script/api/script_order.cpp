@@ -266,15 +266,19 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 			/* We don't know where the nearest depot is... (yet) */
 			if (order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) return INVALID_TILE;
 
-			if (v->type != VehicleType::Aircraft) return ::Depot::Get(order->GetDestination().ToDepotID())->xy;
+			if (v->type != VehicleType::Aircraft) {
+				const Depot *depot = ::Depot::GetIfValid(order->GetDestination().ToDepotID());
+				return depot == nullptr ? INVALID_TILE : depot->xy;
+			}
 			/* Aircraft's hangars are referenced by StationID, not DepotID */
-			const Station *st = ::Station::Get(order->GetDestination().ToStationID());
-			if (st->airport.hangar == nullptr) return INVALID_TILE;
+			const Station *st = ::Station::GetIfValid(order->GetDestination().ToStationID());
+			if (st == nullptr || st->airport.hangar == nullptr) return INVALID_TILE;
 			return st->airport.hangar->xy;
 		}
 
 		case OT_GOTO_STATION: {
-			const Station *st = ::Station::Get(order->GetDestination().ToStationID());
+			const Station *st = ::Station::GetIfValid(order->GetDestination().ToStationID());
+			if (st == nullptr) return INVALID_TILE;
 			if (!st->train_station.IsEmpty()) {
 				for (TileIndex t : st->train_station) {
 					if (st->TileBelongsToRailStation(t)) return t;
@@ -296,7 +300,8 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 		}
 
 		case OT_GOTO_WAYPOINT: {
-			const Waypoint *wp = ::Waypoint::Get(order->GetDestination().ToStationID());
+			const Waypoint *wp = ::Waypoint::GetIfValid(order->GetDestination().ToStationID());
+			if (wp == nullptr) return INVALID_TILE;
 			if (!wp->train_station.IsEmpty()) {
 				for (TileIndex t : wp->train_station) {
 					if (wp->TileBelongsToRailStation(t)) return t;
