@@ -307,7 +307,8 @@ void UpdateAirportsNoise()
 			}
 
 			Town *nearest = AirportGetNearestTown(bta, dist);
-			nearest->noise_reached += GetAirportNoiseLevelForDistance(noise_level, dist);
+			/* Noise is only attributed when the airport actually has a town within reach. */
+			if (nearest != nullptr) nearest->noise_reached += GetAirportNoiseLevelForDistance(noise_level, dist);
 		}
 	}
 }
@@ -359,16 +360,19 @@ CommandCost CheckTownAuthorityForAirports(TileIndex tile, Station *st, const Bit
 	Town *authority_refuse_town = *post_town;
 
 	if (_settings_game.economy.station_noise_level) {
-		/* Do not allow to build a new airport if this raises the town noise over the maximum allowed by town. */
-		if (*post_town == *pre_town) {
-			/* Preexisting airport and the same town to get noise... */
-			if ((*post_town)->noise_reached - pre_noise + post_noise > (*post_town)->MaxTownNoise()) {
-				authority_refuse_message = STR_ERROR_LOCAL_AUTHORITY_REFUSES_NOISE;
-			}
-		} else {
-			/* Check that adding the airport noise to post_town doesn't exceed the maximum allowed by town. */
-			if (((*post_town)->noise_reached + post_noise) > (*post_town)->MaxTownNoise()) {
-				authority_refuse_message = STR_ERROR_LOCAL_AUTHORITY_REFUSES_NOISE;
+		/* Do not allow to build a new airport if this raises the town noise over the maximum allowed by town.
+		 * Without any town in reach there is no noise limit to enforce. */
+		if (*post_town != nullptr) {
+			if (*post_town == *pre_town) {
+				/* Preexisting airport and the same town to get noise... */
+				if ((*post_town)->noise_reached - pre_noise + post_noise > (*post_town)->MaxTownNoise()) {
+					authority_refuse_message = STR_ERROR_LOCAL_AUTHORITY_REFUSES_NOISE;
+				}
+			} else {
+				/* Check that adding the airport noise to post_town doesn't exceed the maximum allowed by town. */
+				if (((*post_town)->noise_reached + post_noise) > (*post_town)->MaxTownNoise()) {
+					authority_refuse_message = STR_ERROR_LOCAL_AUTHORITY_REFUSES_NOISE;
+				}
 			}
 		}
 	} else if (_settings_game.difficulty.town_council_tolerance != TOWN_COUNCIL_PERMISSIVE) {
@@ -393,12 +397,12 @@ CommandCost CheckTownAuthorityForAirports(TileIndex tile, Station *st, const Bit
 void UpdateNoiseForTowns(Town *pre_nearest, Town *post_nearest, const uint pre_noise, const uint post_noise)
 {
 	/* Subtract previous noise. */
-	if (pre_noise > 0) pre_nearest->noise_reached -= pre_noise;
+	if (pre_noise > 0 && pre_nearest != nullptr) pre_nearest->noise_reached -= pre_noise;
 
 	/* Add noise to updated airport. */
-	post_nearest->noise_reached += post_noise;
+	if (post_nearest != nullptr) post_nearest->noise_reached += post_noise;
 
-	if (_settings_game.economy.station_noise_level) {
+	if (_settings_game.economy.station_noise_level && post_nearest != nullptr) {
 		SetWindowDirty(WindowClass::TownView, post_nearest->index);
 		if (pre_nearest != nullptr && pre_nearest != post_nearest) SetWindowDirty(WindowClass::TownView, pre_nearest->index);
 	}
@@ -739,7 +743,8 @@ CommandCost RemoveRunway(DoCommandFlags flags, TileIndex start_tile, TileIndex e
 		}
 		Town *nearest = AirportGetNearestTown(bta, dist);
 		uint16_t noise_level = CalculateAirportNoiseLevel(st->airport);
-		nearest->noise_reached -= GetAirportNoiseLevelForDistance(noise_level, dist);
+		const int noise = GetAirportNoiseLevelForDistance(noise_level, dist);
+		if (nearest != nullptr) nearest->noise_reached -= noise;
 
 		DiagDirection diag_dir = GetRunwayExtremeDirection(start_tile);
 		for (Tile tile_iter : ta) {
@@ -758,8 +763,8 @@ CommandCost RemoveRunway(DoCommandFlags flags, TileIndex start_tile, TileIndex e
 		st->UpdateAirportDataStructure();
 
 		noise_level = CalculateAirportNoiseLevel(st->airport);
-		nearest->noise_reached += GetAirportNoiseLevelForDistance(noise_level, dist);
-		if (_settings_game.economy.station_noise_level) {
+		if (nearest != nullptr) nearest->noise_reached += GetAirportNoiseLevelForDistance(noise_level, dist);
+		if (_settings_game.economy.station_noise_level && nearest != nullptr) {
 			SetWindowDirty(WindowClass::TownView, nearest->index);
 		}
 
@@ -939,7 +944,7 @@ CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, Ti
 				if (st->TileBelongsToAirport(t)) bta.SetTile(t);
 			}
 			nearest = AirportGetNearestTown(bta, dist);
-			if (flags.Test(DoCommandFlag::Execute)) {
+			if (flags.Test(DoCommandFlag::Execute) && nearest != nullptr) {
 				uint16_t noise_level = CalculateAirportNoiseLevel(st->airport);
 				nearest->noise_reached -= GetAirportNoiseLevelForDistance(noise_level, dist);
 			}
@@ -1431,7 +1436,7 @@ CommandCost RemoveAirportTiles(DoCommandFlags flags, TileIndex start_tile, TileI
 				}
 				Town *nearest = AirportGetNearestTown(bta, dist);
 				uint16_t noise_level = CalculateAirportNoiseLevel(st->airport);
-				nearest->noise_reached -= GetAirportNoiseLevelForDistance(noise_level, dist);
+				if (nearest != nullptr) nearest->noise_reached -= GetAirportNoiseLevelForDistance(noise_level, dist);
 
 				affected_stations.emplace_back(st);
 			}
@@ -1487,7 +1492,7 @@ CommandCost RemoveAirportTiles(DoCommandFlags flags, TileIndex start_tile, TileI
 				}
 				Town *nearest = AirportGetNearestTown(bta, dist);
 				uint16_t noise_level = CalculateAirportNoiseLevel(st->airport);
-				nearest->noise_reached += GetAirportNoiseLevelForDistance(noise_level, dist);
+				if (nearest != nullptr) nearest->noise_reached += GetAirportNoiseLevelForDistance(noise_level, dist);
 			}
 			st->AfterStationTileSetChange(true, StationType::Airport);
 			st->MarkTilesDirty(false);
@@ -1986,9 +1991,9 @@ CommandCost RemoveAirport(TileIndex tile, DoCommandFlags flags)
 		}
 		nearest = AirportGetNearestTown(bta, dist);
 		uint16_t noise_level = CalculateAirportNoiseLevel(st->airport);
-		nearest->noise_reached -= GetAirportNoiseLevelForDistance(noise_level, dist);
+		if (nearest != nullptr) nearest->noise_reached -= GetAirportNoiseLevelForDistance(noise_level, dist);
 
-		if (_settings_game.economy.station_noise_level) {
+		if (_settings_game.economy.station_noise_level && nearest != nullptr) {
 			SetWindowDirty(WindowClass::TownView, nearest->index);
 		}
 	}

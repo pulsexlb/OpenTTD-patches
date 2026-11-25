@@ -175,7 +175,10 @@ extern uint16_t GetAirportNoiseLevelForDistance(uint noise_level, uint distance)
 	TileArea ta(tile, as->layouts[0].size_x, as->layouts[0].size_y);
 	AddAirportTileTableToBitmapTileArea(as->layouts[0], &bta, DiagDirection::Begin, ati->cost_multiplier);
 	uint dist;
-	return AirportGetNearestTown(bta, dist)->index;
+	const Town *nearest = AirportGetNearestTown(bta, dist);
+	/* There may be no town at all on the map, or none within reach; there is then no nearest town. */
+	if (nearest == nullptr) return TownID::Invalid();
+	return nearest->index;
 }
 
 /* static */ SQInteger ScriptAirport::GetAirportNumHelipads(AirportType type)
