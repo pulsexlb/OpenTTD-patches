@@ -5488,7 +5488,13 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 			const TileIndex front_ahead = TileAddByDiagDir(v->GetMovingFront()->tile, ft.exitdir);
 			bool foreign = false;
 			TileIndex foreign_tile = INVALID_TILE;
-			for (int i = 1; i <= ft.tiles_skipped + 1; i++) {
+			/* A tunnel or bridge interior is jumped exactly like a platform, but those
+			 * tiles are not travelled at all: they are virtual for the crossing. A
+			 * station lying under a bridge or above a tunnel keeps its own vehicles on
+			 * precisely those tiles, and they are not in our way. Only the far end of
+			 * the crossing is real track, so start the scan there. */
+			const int scan_start = (ft.is_bridge || ft.is_tunnel) ? ft.tiles_skipped + 1 : 1;
+			for (int i = scan_start; i <= ft.tiles_skipped + 1; i++) {
 				TileIndex t = ft.new_tile - step * (ft.tiles_skipped + 1 - i);
 				if (!IsValidTile(t) || !IsRailStationTile(t)) continue;
 				if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerVehicleTile(v, t)) break;

@@ -1819,8 +1819,9 @@ static CoupleApproachOutcome CoupleApproachSearch(const Train *v, const Train *t
 		/* The follower jumps whole station platforms in one step and lands past them, so a
 		 * partner standing on one is stepped over and never seen. Look at every tile the step
 		 * covered, from the first skipped one up to where it landed. A tunnel or bridge
-		 * interior is jumped the same way, but those tiles are virtual and carry no vehicles,
-		 * which IsValidTile filters out. */
+		 * interior is jumped the same way, but those tiles are virtual for the crossing and
+		 * are not travelled: a station lying under a bridge or above a tunnel keeps its own
+		 * vehicles there, so only the far end of the crossing may be scanned. */
 		TileIndexDiff step = TileOffsByDiagDir(ft.exitdir);
 		TrackBits mover_track = TrackToTrackBits(TrackdirToTrack(n.td));
 
@@ -1834,7 +1835,8 @@ static CoupleApproachOutcome CoupleApproachSearch(const Train *v, const Train *t
 
 		bool saw_foreign = false;
 		bool reached = false;
-		for (uint i = 1; i <= ft.tiles_skipped + 1; i++) {
+		const uint scan_start = (ft.is_bridge || ft.is_tunnel) ? ft.tiles_skipped + 1 : 1;
+		for (uint i = scan_start; i <= ft.tiles_skipped + 1; i++) {
 			TileIndex t = ft.new_tile - step * (ft.tiles_skipped + 1 - i);
 			if (!IsValidTile(t) || t == n.tile) continue;
 			/* The contact happens where the partner is met; tiles past it are not travelled. */
