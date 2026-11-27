@@ -658,7 +658,10 @@ add_files(
     train.h
     train_cmd.cpp
     train_cmd.h
+    train_couple.cpp
+    train_couple.h
     train_gui.cpp
+    train_internal.h
     train_settings.h
     train_speed_adaptation.h
     transparency.h
