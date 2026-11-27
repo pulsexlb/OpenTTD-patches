@@ -485,15 +485,16 @@ static SigInfo ExploreSegment(Owner owner)
 				continue; // continue the while() loop
 				}
 
-			case TileType::Station:
-				if (!HasStationRail(tile)) continue;
-				if (!IsOneSignalBlock(owner, GetTileOwner(tile))) continue;
-				if (DiagDirToAxis(enterdir) != GetRailStationAxis(tile)) continue; // different axis
-				if (IsStationTileBlocked(tile)) continue; // 'eye-candy' station tile
-
-				if (!(info.flags & SF_TRAIN) && HasVehicleOnTile<VehicleType::Train>(tile, IsTrainNotInDepot)) info.flags |= SF_TRAIN;
+			case TileType::Station: {
+				if (!HasStationRail(tile) || !IsOneSignalBlock(owner, GetTileOwner(tile)) || IsStationTileBlocked(tile)) continue;
+				const TrackBits tracks = GetRailStationTrackBits(tile) & _enterdir_to_trackbits[enterdir];
+				if (tracks == TRACK_BIT_NONE) continue;
+				if (!(info.flags & SF_TRAIN) && EnsureNoTrainOnTrackBits(tile, tracks).Failed()) info.flags |= SF_TRAIN;
+				exitdir = TrackdirToExitdir(TrackEnterdirToTrackdir(FindFirstTrack(tracks), ReverseDiagDir(enterdir)));
+				enterdir = ReverseDiagDir(exitdir);
 				tile += TileOffsByDiagDir(exitdir);
 				break;
+			}
 
 			case TileType::Road:
 				if (!IsLevelCrossing(tile)) continue;
@@ -727,14 +728,15 @@ uint8_t GetForwardAspectFollowingTrack(TileIndex tile, Trackdir trackdir)
 				break;
 			}
 
-			case TileType::Station:
-				if (!HasStationRail(tile)) return 0;
-				if (!IsOneSignalBlock(owner, GetTileOwner(tile))) return 0;
-				if (DiagDirToAxis(enterdir) != GetRailStationAxis(tile)) return 0; // different axis
-				if (IsStationTileBlocked(tile)) return 0; // 'eye-candy' station tile
-
+			case TileType::Station: {
+				if (!HasStationRail(tile) || !IsOneSignalBlock(owner, GetTileOwner(tile)) || IsStationTileBlocked(tile)) return 0;
+				const TrackBits tracks = GetRailStationTrackBits(tile) & _enterdir_to_trackbits[enterdir];
+				if (tracks == TRACK_BIT_NONE) return 0;
+				exitdir = TrackdirToExitdir(TrackEnterdirToTrackdir(FindFirstTrack(tracks), ReverseDiagDir(enterdir)));
+				enterdir = ReverseDiagDir(exitdir);
 				tile += TileOffsByDiagDir(exitdir);
 				break;
+			}
 
 			case TileType::Road:
 				if (!IsLevelCrossing(tile)) return 0;
@@ -1471,14 +1473,15 @@ void PropagateAspectChange(TileIndex tile, Trackdir trackdir, uint8_t aspect)
 				break;
 			}
 
-			case TileType::Station:
-				if (!HasStationRail(tile)) return;
-				if (!IsOneSignalBlock(owner, GetTileOwner(tile))) return;
-				if (DiagDirToAxis(enterdir) != GetRailStationAxis(tile)) return; // different axis
-				if (IsStationTileBlocked(tile)) return; // 'eye-candy' station tile
-
+			case TileType::Station: {
+				if (!HasStationRail(tile) || !IsOneSignalBlock(owner, GetTileOwner(tile)) || IsStationTileBlocked(tile)) return;
+				const TrackBits tracks = GetRailStationTrackBits(tile) & _enterdir_to_trackbits[enterdir];
+				if (tracks == TRACK_BIT_NONE) return;
+				exitdir = TrackdirToExitdir(TrackEnterdirToTrackdir(FindFirstTrack(tracks), ReverseDiagDir(enterdir)));
+				enterdir = ReverseDiagDir(exitdir);
 				tile += TileOffsByDiagDir(exitdir);
 				break;
+			}
 
 			case TileType::Road:
 				if (!IsLevelCrossing(tile)) return;

@@ -17,11 +17,14 @@
 /** Bit in a #BlueprintPastePreview tile marking an element footprint highlight. */
 static const uint BLUEPRINT_PREVIEW_HIGHLIGHT_BIT = 7;
 
+/** Offset of the track mask to highlight as diagonal platforms. */
+static constexpr uint BLUEPRINT_PREVIEW_PLATFORM_SHIFT = 8;
+
 /** Per-tile overlays shown in the viewport while the paste tool is active. */
 struct BlueprintPastePreview {
 	uint16_t width = 0;               ///< Size of the paste area along the X axis.
 	uint16_t height = 0;              ///< Size of the paste area along the Y axis.
-	std::vector<uint8_t> tiles;       ///< Per tile: bits 0..5 = #TrackBits overlay, bit 7 = footprint highlight.
+	std::vector<uint16_t> tiles;       ///< Per tile: bits 0..5 = #TrackBits overlay, bit 7 = footprint, bits 8..13 = platforms.
 	std::vector<bool> blocked;        ///< Per tile: whether this part cannot be built at the current position.
 };
 

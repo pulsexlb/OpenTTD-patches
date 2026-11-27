@@ -244,6 +244,7 @@ static void LoadSpriteTables()
 
 	/* Load route step graphics */
 	LoadGrfFile("route_step.grf", SPR_ROUTE_STEP_BASE, false);
+	LoadGrfFile("diagonal_platforms.grf", SPR_DIAGONAL_PLATFORMS_BASE, false);
 
 	/* Initialize the unicode to sprite mapping table */
 	InitializeUnicodeGlyphMap();

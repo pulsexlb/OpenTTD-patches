@@ -207,6 +207,7 @@ struct BlueprintStationTile {
 	RailType railtype;     ///< Rail type of the platform.
 	StationID station;     ///< Original station; parts of one station are joined again when pasting.
 	BlueprintSpecRef spec{}; ///< NewGRF platform or waypoint style.
+	Track diagonal_track = INVALID_TRACK; ///< Built-in platform on this individual track, with rails recorded separately.
 };
 
 /** A road stop (bus / truck / road waypoint). */
@@ -314,6 +315,7 @@ struct BlueprintStationRect {
 	RailType railtype;     ///< Rail type.
 	StationID station;     ///< Original station; parts of one station are joined again when pasting.
 	BlueprintSpecRef spec{}; ///< All tiles in this rectangle share the same style.
+	Track diagonal_track = INVALID_TRACK; ///< Built-in platform on this individual track, with rails recorded separately.
 };
 
 /**
@@ -420,7 +422,7 @@ void RecordBlueprintUndoBuoy(TileIndex tile);
 void RecordBlueprintUndoDock(TileIndex tile, DiagDirection dir);
 void RecordBlueprintUndoAirport(TileIndex tile, uint8_t type, uint8_t layout, uint8_t rotation, uint8_t air_type, uint16_t w, uint16_t h);
 void RecordBlueprintUndoCustomAirportTile(TileIndex tile, AirType air_type);
-void RecordBlueprintUndoStationTile(TileIndex tile, bool is_waypoint, Axis axis, RailType railtype);
+void RecordBlueprintUndoStationTile(TileIndex tile, bool is_waypoint, Axis axis, RailType railtype, Track diagonal_track = INVALID_TRACK);
 void RecordBlueprintUndoRoadStop(TileIndex tile, StationType type, bool drive_through, DiagDirection dir, Axis axis);
 void RecordBlueprintUndoTerraform(TileIndex corner, uint8_t height_before);
 std::vector<BlueprintStationRect> GroupStationTiles(const Blueprint &blueprint);

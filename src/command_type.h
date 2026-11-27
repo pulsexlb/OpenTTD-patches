@@ -796,6 +796,8 @@ enum class Commands : uint16_t {
 	ManageExternalCity,                      ///< Create, link or edit a shared external destination.
 	BuildExternalRoadConnection,             ///< Confirm a road entrance at the actual map boundary.
 
+	BuildDiagonalRailStation,
+	RemoveDiagonalRailStation,
 	End,                                    ///< Must ALWAYS be on the end of this list!! (period)
 };
 

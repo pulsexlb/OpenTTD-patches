@@ -571,6 +571,15 @@ inline Axis GetRailStationAxis(TileIndex t)
 	return HasBit(GetStationGfx(t), 0) ? Axis::Y : Axis::X;
 }
 
+/** Built-in platforms on straight screen-horizontal or screen-vertical rail.
+ * The low nibble of m3 holds the track mask shifted down by TRACK_UPPER.
+ * m8 stores both rail types, two reservation bits and two platform bits.
+ */
+inline bool IsDiagonalRailStationTile(TileIndex t)
+{
+	return IsRailStationTile(t) && GB(_m[t].m3, 0, 4) != 0;
+}
+
 /**
  * Get the rail track of a rail station tile.
  * @param t Tile to query
@@ -590,7 +599,26 @@ inline Track GetRailStationTrack(TileIndex t)
  */
 inline TrackBits GetRailStationTrackBits(TileIndex t)
 {
+	if (IsDiagonalRailStationTile(t)) return static_cast<TrackBits>(GB(_m[t].m3, 0, 4) << TRACK_UPPER);
 	return AxisToTrackBits(GetRailStationAxis(t));
+}
+
+inline TrackBits GetRailStationPlatformBits(TileIndex t)
+{
+	if (!HasStationTileRail(t) || IsStationTileBlocked(t)) return TRACK_BIT_NONE;
+	if (IsDiagonalRailStationTile(t)) {
+		const uint first = (GetRailStationTrackBits(t) & TRACK_BIT_HORZ) != 0 ? TRACK_UPPER : TRACK_LEFT;
+		return static_cast<TrackBits>(GB(_me[t].m8, 14, 2) << first);
+	}
+	return GetRailStationTrackBits(t);
+}
+
+inline void SetDiagonalRailStationTracks(TileIndex t, TrackBits tracks, TrackBits platforms)
+{
+	assert_tile(tracks != TRACK_BIT_NONE && platforms != TRACK_BIT_NONE && (platforms & tracks) == platforms, t);
+	SB(_m[t].m3, 0, 4, tracks >> TRACK_UPPER);
+	const uint first = (tracks & TRACK_BIT_HORZ) != 0 ? TRACK_UPPER : TRACK_LEFT;
+	SB(_me[t].m8, 14, 2, platforms >> first);
 }
 
 /**
@@ -609,11 +637,51 @@ inline TrackBits GetRailStationTrackBits(TileIndex t)
 inline bool IsCompatibleTrainStationTile(TileIndex test_tile, TileIndex station_tile)
 {
 	dbg_assert_tile(IsRailStationTile(station_tile), station_tile);
-	return IsRailStationTile(test_tile) && !IsStationTileBlocked(test_tile) &&
+	return IsRailStationTile(test_tile) && !IsDiagonalRailStationTile(test_tile) &&
+			!IsDiagonalRailStationTile(station_tile) && !IsStationTileBlocked(test_tile) &&
 			IsCompatibleRail(GetRailType(test_tile), GetRailType(station_tile)) &&
 			GetRailStationAxis(test_tile) == GetRailStationAxis(station_tile) &&
 			GetStationIndex(test_tile) == GetStationIndex(station_tile);
 }
+
+/** A position on one continuous station platform, with a direction of travel. */
+struct RailPlatformPosition {
+	TileIndex tile;
+	Trackdir td;
+
+	Track GetTrack() const { return TrackdirToTrack(this->td); }
+	int PieceLength() const { return IsDiagonalTrackdir(this->td) ? TILE_SIZE : TILE_SIZE / 2; }
+
+	RailPlatformPosition Reverse() const { return {this->tile, ReverseTrackdir(this->td)}; }
+
+	RailPlatformPosition Next() const
+	{
+		const auto delta = TileIndexDiffCByDiagDir(TrackdirToExitdir(this->td));
+		return {TileAddWrap(this->tile, delta.x, delta.y), NextTrackdir(this->td)};
+	}
+
+	bool IsPlatform() const
+	{
+		return this->tile < Map::Size() && IsValidTrackdir(this->td) && HasBit(GetRailStationPlatformBits(this->tile), this->GetTrack());
+	}
+
+	bool IsContinuationOf(RailPlatformPosition origin) const
+	{
+		return this->IsPlatform() && IsRailStationTile(this->tile) && origin.IsPlatform() &&
+				GetStationIndex(this->tile) == GetStationIndex(origin.tile) &&
+				IsCompatibleRail(GetTileRailTypeByTrack(this->tile, this->GetTrack()), GetTileRailTypeByTrack(origin.tile, origin.GetTrack()));
+	}
+
+	uint CountAhead() const
+	{
+		if (!this->IsPlatform()) return 0;
+		uint count = 1;
+		for (auto p = this->Next(); p.IsContinuationOf(*this); p = p.Next()) ++count;
+		return count;
+	}
+
+	uint Count() const { return this->IsPlatform() ? this->CountAhead() + this->Reverse().CountAhead() - 1 : 0; }
+};
 
 /**
  * Get the reservation state of the rail station
@@ -624,6 +692,7 @@ inline bool IsCompatibleTrainStationTile(TileIndex test_tile, TileIndex station_
 inline bool HasStationReservation(TileIndex t)
 {
 	dbg_assert_tile(HasStationRail(t), t);
+	if (IsDiagonalRailStationTile(t)) return GB(_me[t].m8, 12, 2) != 0;
 	return HasBit(_me[t].m6, 2);
 }
 
@@ -647,7 +716,20 @@ inline void SetRailStationReservation(TileIndex t, bool b)
  */
 inline TrackBits GetStationReservationTrackBits(TileIndex t)
 {
+	if (IsDiagonalRailStationTile(t)) {
+		const uint first = (GetRailStationTrackBits(t) & TRACK_BIT_HORZ) != 0 ? TRACK_UPPER : TRACK_LEFT;
+		return static_cast<TrackBits>(GB(_me[t].m8, 12, 2) << first);
+	}
 	return HasStationReservation(t) ? GetRailStationTrackBits(t) : TRACK_BIT_NONE;
+}
+
+inline void SetRailStationReservation(TileIndex t, Track track, bool reserved)
+{
+	if (IsDiagonalRailStationTile(t)) {
+		AssignBit(_me[t].m8, 12 + (track & 1), reserved);
+	} else {
+		SetRailStationReservation(t, reserved);
+	}
 }
 
 /**

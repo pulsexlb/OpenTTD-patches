@@ -55,6 +55,7 @@ enum BuildRailStationWidgets : WidgetID {
 	WID_BRAS_PLATFORM_LEN_6,       ///< Button to select 6 tiles length station platforms.
 	WID_BRAS_PLATFORM_LEN_7,       ///< Button to select 7 tiles length station platforms.
 
+	WID_BRAS_PLATFORM_DIAGONAL,    ///< Drag along an existing diagonal track.
 	WID_BRAS_PLATFORM_DRAG_N_DROP, ///< Button to enable drag and drop type station placement.
 
 	WID_BRAS_HIGHLIGHT_OFF,        ///< Button for turning coverage highlighting off.

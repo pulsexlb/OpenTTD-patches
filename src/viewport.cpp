@@ -1682,7 +1682,7 @@ static bool DrawBlueprintPastePreview(const TileInfo *ti)
 	if (dx < 0 || dy < 0 || dx >= preview->width || dy >= preview->height) return false;
 
 	size_t index = static_cast<size_t>(dy) * preview->width + dx;
-	uint8_t overlay = preview->tiles[index];
+	uint16_t overlay = preview->tiles[index];
 
 	/* A blueprint's area is a rectangle but its contents rarely fill it. Tiles
 	 * that receive nothing are left unmarked rather than outlined along with the
@@ -1699,9 +1699,8 @@ static bool DrawBlueprintPastePreview(const TileInfo *ti)
 	static_assert(TRACK_X == HT_DIR_X && TRACK_Y == HT_DIR_Y);
 	static_assert(TRACK_UPPER == HT_DIR_HU && TRACK_LOWER == HT_DIR_HL);
 	static_assert(TRACK_LEFT == HT_DIR_VL && TRACK_RIGHT == HT_DIR_VR);
-	static const HighLightStyle _bp_autorail_type[TRACK_END] = { HT_DIR_X, HT_DIR_Y, HT_DIR_VR, HT_DIR_VL, HT_DIR_HU, HT_DIR_HL };
 	for (Track track : SetTrackBitIterator(static_cast<TrackBits>(GB(overlay, 0, 6)))) {
-		DrawAutorailSelection(ti, _bp_autorail_type[track]);
+		DrawAutorailSelection(ti, static_cast<HighLightStyle>(track), HasBit(overlay >> BLUEPRINT_PREVIEW_PLATFORM_SHIFT, track) ? PALETTE_SEL_TILE_BLUE : (PaletteID)-1);
 	}
 	return false;
 }
@@ -6714,12 +6713,40 @@ static HighLightStyle CalcPolyrailDrawstyle(Point pt, bool dragging)
 	return ret;
 }
 
+/** Project the cursor onto the selected platform track, retaining its offset in a two-track tile. */
+void VpSelectDiagonalStationTiles(int x, int y, Track track)
+{
+	if (x == -1) {
+		_thd.selend.x = -1;
+		return;
+	}
+
+	const TileIndex start = TileVirtXY(_thd.selstart.x, _thd.selstart.y);
+	const bool horizontal = (TrackToTrackBits(track) & TRACK_BIT_HORZ) != TRACK_BIT_NONE;
+	auto longitudinal = [horizontal](int wx, int wy) { return horizontal ? wy - wx : wx + wy; };
+	const int origin = longitudinal(TileX(start) * TILE_SIZE + TILE_SIZE / 2, TileY(start) * TILE_SIZE + TILE_SIZE / 2);
+	const int delta = longitudinal(x, y) - origin;
+	RailPlatformPosition p{start, TrackToTrackdir(track)};
+	const Direction positive = horizontal ? Direction::E : Direction::S;
+	if ((delta < 0) == (TrackdirToDirection(p.td) == positive)) p = p.Reverse();
+	int steps = (std::abs(delta) + TILE_SIZE / 2) / TILE_SIZE;
+	if (_thd.sizelimit > 0) steps = std::min(steps, 2 * (_thd.sizelimit - 1));
+	for (int i = 0; i < steps; ++i) {
+		const auto next = p.Next();
+		if (!IsValidTile(next.tile)) break;
+		p = next;
+	}
+	_thd.selend = {static_cast<int>(TileX(p.tile) * TILE_SIZE), static_cast<int>(TileY(p.tile) * TILE_SIZE)};
+	_thd.dir2 = HT_DIR_END;
+	_thd.next_drawstyle = HT_LINE | static_cast<HighLightStyle>(track);
+	ShowLengthMeasurement(_thd.next_drawstyle, start, p.tile);
+}
+
 /**
- * Selects tiles while dragging
- * @param x X coordinate of end of selection
- * @param y Y coordinate of end of selection
- * @param method modifies the way tiles are selected. Possible
- * methods are VPM_* in viewport.h
+ * Selects tiles while dragging.
+ * @param x X coordinate of end of selection.
+ * @param y Y coordinate of end of selection.
+ * @param method Selection method (VPM_*).
  */
 void VpSelectTilesWithMethod(int x, int y, ViewportPlaceMethod method)
 {
@@ -6943,7 +6970,7 @@ EventState VpHandlePlaceSizingDrag()
 	HighLightStyle others = _thd.place_mode & ~(HT_DRAG_MASK | HT_DIR_MASK);
 	if ((_thd.next_drawstyle & HT_DRAG_MASK) == HT_RECT) {
 		_thd.place_mode = HT_RECT | others;
-	} else if (_thd.select_method & VPM_SIGNALDIRS) {
+	} else if ((_thd.select_method & VPM_SIGNALDIRS) || _thd.select_proc == DDSP_DIAGONAL_STATION) {
 		_thd.place_mode = HT_RECT | others;
 	} else if (_thd.select_method & VPM_RAILDIRS) {
 		_thd.place_mode = (_thd.select_method & ~VPM_RAILDIRS ? _thd.next_drawstyle : HT_RAIL) | others;

@@ -34,6 +34,9 @@
 #include "textbuf_gui.h"
 #include "air.h"
 #include "airport_cmd.h"
+#include "bridge_map.h"
+#include "rail_map.h"
+#include "station_map.h"
 #include "rail_cmd.h"
 #include "rail_gui.h"
 #include "road_cmd.h"
@@ -66,14 +69,14 @@
 bool SetClipboardContents(const std::string &contents); ///< Implemented per OS.
 
 /** Identifying prefix of a blueprint in clipboard text form; the trailing digit is the format version. */
-static constexpr std::string_view BLUEPRINT_CLIPBOARD_PREFIX = "OTTD-BP-6;";
+static constexpr std::string_view BLUEPRINT_CLIPBOARD_PREFIX = "OTTD-BP-7;";
 
 /** Also accept older exports: v3 has no styles, v4 has station styles only, v5 adds signals/objects. */
 static bool HasBlueprintTextPrefix(std::string_view text, std::string_view prefix)
 {
 	if (text.starts_with(prefix)) return true;
 	std::string legacy(prefix);
-	for (char version : {'3', '4', '5'}) {
+	for (char version : {'3', '4', '5', '6'}) {
 		legacy[legacy.size() - 2] = version;
 		if (text.starts_with(legacy)) return true;
 	}
@@ -167,10 +170,10 @@ static std::string EncodeBlueprintText(const Blueprint &blueprint)
 }
 
 /** Identifying prefix of one page of slots saved to a file; the trailing digit is the format version. */
-static constexpr std::string_view BLUEPRINT_SET_FILE_PREFIX = "OTTD-BPSET-6;";
+static constexpr std::string_view BLUEPRINT_SET_FILE_PREFIX = "OTTD-BPSET-7;";
 
 /** Identifying prefix of the autosave, which holds every page; the trailing digit is the format version. */
-static constexpr std::string_view BLUEPRINT_ALL_FILE_PREFIX = "OTTD-BPALL-6;";
+static constexpr std::string_view BLUEPRINT_ALL_FILE_PREFIX = "OTTD-BPALL-7;";
 
 /** File extension used for exported blueprint sets, appended to the player-typed file name. */
 static constexpr std::string_view BLUEPRINT_SET_FILE_EXTENSION = ".txt";
@@ -719,7 +722,7 @@ static void RebuildPastePreview()
 	_paste_preview.tiles.assign(static_cast<size_t>(bp.width) * bp.height, 0);
 	_paste_preview.blocked.assign(static_cast<size_t>(bp.width) * bp.height, false);
 
-	auto mark = [&](int x, int y, uint8_t bits) {
+	auto mark = [&](int x, int y, uint16_t bits) {
 		if (x < 0 || y < 0 || x >= bp.width || y >= bp.height) return;
 		_paste_preview.tiles[static_cast<size_t>(y) * bp.width + x] |= bits;
 	};
@@ -756,7 +759,12 @@ static void RebuildPastePreview()
 		highlight(tb.other_end.x, tb.other_end.y);
 	}
 	for (const BlueprintStationTile &st : bp.station_tiles) {
-		mark(st.offset.x, st.offset.y, (st.axis == Axis::X ? TRACK_BIT_X : TRACK_BIT_Y) | (1 << BLUEPRINT_PREVIEW_HIGHLIGHT_BIT));
+		if (st.diagonal_track != INVALID_TRACK) {
+			const uint16_t bit = TrackToTrackBits(st.diagonal_track);
+			mark(st.offset.x, st.offset.y, bit | (bit << BLUEPRINT_PREVIEW_PLATFORM_SHIFT));
+		} else {
+			mark(st.offset.x, st.offset.y, AxisToTrackBits(st.axis) | (1 << BLUEPRINT_PREVIEW_HIGHLIGHT_BIT));
+		}
 	}
 	for (const BlueprintObject &v : bp.objects) {
 		for (uint y = 0; y < v.h; ++y) for (uint x = 0; x < v.w; ++x) highlight(v.offset.x + x, v.offset.y + y);
@@ -861,7 +869,7 @@ static void RecomputePasteBlocked(TileIndex origin)
 		/* The land will be flattened first; only hard obstacles block the paste. */
 		for (uint y = 0; y < bp.height; y++) {
 			for (uint x = 0; x < bp.width; x++) {
-				uint8_t overlay = _paste_preview.tiles[static_cast<size_t>(y) * bp.width + x];
+				uint16_t overlay = _paste_preview.tiles[static_cast<size_t>(y) * bp.width + x];
 				if (overlay == 0) continue;
 				TileIndexDiffC offset = {static_cast<int16_t>(x), static_cast<int16_t>(y)};
 				if (!tile_valid(offset) || BlueprintTileBlocked(target(offset), GB(overlay, 0, 6) != 0)) block(x, y);
@@ -891,7 +899,13 @@ static void RecomputePasteBlocked(TileIndex origin)
 		}
 	}
 	for (const BlueprintRailTrack &rt : bp.rail_tracks) {
-		if (tile_valid(rt.offset) && PreviewTest<CMD_BUILD_SINGLE_RAIL>(target(rt.offset), rt.railtype, rt.track, BuildRailTrackFlags{})) continue;
+		if (tile_valid(rt.offset)) {
+			TileIndex tile = target(rt.offset);
+			if (((IsPlainRailTile(tile) && HasTrack(tile, rt.track)) ||
+					(IsDiagonalRailStationTile(tile) && HasBit(GetRailStationTrackBits(tile), rt.track))) &&
+					IsTileOwner(tile, _local_company) && GetRailTypeByTrack(tile, rt.track) == rt.railtype) continue;
+			if (PreviewTest<CMD_BUILD_SINGLE_RAIL>(tile, rt.railtype, rt.track, BuildRailTrackFlags{})) continue;
+		}
 		block(rt.offset.x, rt.offset.y);
 	}
 	for (const BlueprintRailDepot &depot : bp.rail_depots) {
@@ -924,6 +938,18 @@ static void RecomputePasteBlocked(TileIndex origin)
 	}
 	for (const BlueprintStationRect &rect : GroupStationTiles(bp)) {
 		bool ok;
+		if (rect.diagonal_track != INVALID_TRACK) {
+			/* The track can be supplied by the same paste, as for waypoints. */
+			if (tile_valid(rect.offset)) {
+				TileIndex tile = target(rect.offset);
+				if (GetTileSlope(tile) == SLOPE_FLAT && !IsBridgeAbove(tile) &&
+						(PreviewTest<Commands::BuildDiagonalRailStation>(tile, tile, rect.diagonal_track, NEW_STATION, !IsDiagonalRailStationTile(tile)) ||
+						(IsDiagonalRailStationTile(tile) && IsTileOwner(tile, _local_company) && HasBit(GetRailStationPlatformBits(tile), rect.diagonal_track)) ||
+						PreviewTest<CMD_BUILD_SINGLE_RAIL>(tile, rect.railtype, rect.diagonal_track, BuildRailTrackFlags{}))) continue;
+			}
+			block(rect.offset.x, rect.offset.y);
+			continue;
+		}
 		if (rect.is_waypoint) {
 			/* Test the tracks the waypoint will sit on; the waypoint itself follows them. */
 			Track track = AxisToTrack(rect.axis);
@@ -1019,21 +1045,28 @@ static constexpr PixelColour BLUEPRINT_PREVIEW_CELL_COLOURS[] = {
 struct BlueprintSchematic {
 	uint16_t width;  ///< Extent along the X axis, in tiles.
 	uint16_t height; ///< Extent along the Y axis, in tiles.
-	std::vector<BlueprintPreviewCell> cells; ///< Cell categories, index = y * width + x.
+	struct Cell {
+		BlueprintPreviewCell category = BlueprintPreviewCell::Empty;
+		TrackBits tracks = TRACK_BIT_NONE;
+		TrackBits platforms = TRACK_BIT_NONE;
+	};
+	std::vector<Cell> cells; ///< Indexed by y * width + x.
 
 	BlueprintSchematic(const Blueprint &bp) : width(bp.width), height(bp.height)
 	{
-		this->cells.assign(static_cast<size_t>(this->width) * this->height, BlueprintPreviewCell::Empty);
-		auto mark = [&](int x, int y, BlueprintPreviewCell cell) {
+		this->cells.resize(static_cast<size_t>(this->width) * this->height);
+		auto mark = [&](int x, int y, BlueprintPreviewCell category, TrackBits tracks = TRACK_BIT_NONE, TrackBits platforms = TRACK_BIT_NONE) {
 			if (x < 0 || y < 0 || x >= this->width || y >= this->height) return;
-			BlueprintPreviewCell &current = this->cells[static_cast<size_t>(y) * this->width + x];
-			if (cell > current) current = cell;
+			Cell &current = this->cells[static_cast<size_t>(y) * this->width + x];
+			current.category = std::max(current.category, category);
+			current.tracks |= tracks;
+			current.platforms |= platforms;
 		};
 
 		for (const BlueprintObject &v : bp.objects) {
 			for (uint y = 0; y < v.h; ++y) for (uint x = 0; x < v.w; ++x) mark(v.offset.x + x, v.offset.y + y, BlueprintPreviewCell::Object);
 		}
-		for (const BlueprintRailTrack &rt : bp.rail_tracks) mark(rt.offset.x, rt.offset.y, BlueprintPreviewCell::Rail);
+		for (const BlueprintRailTrack &rt : bp.rail_tracks) mark(rt.offset.x, rt.offset.y, BlueprintPreviewCell::Rail, TrackToTrackBits(rt.track));
 		for (const BlueprintRailDepot &depot : bp.rail_depots) mark(depot.offset.x, depot.offset.y, BlueprintPreviewCell::Rail);
 		for (const BlueprintRoad &road : bp.roads) mark(road.offset.x, road.offset.y, BlueprintPreviewCell::Road);
 		for (const BlueprintRoadDepot &depot : bp.road_depots) mark(depot.offset.x, depot.offset.y, BlueprintPreviewCell::Road);
@@ -1060,7 +1093,10 @@ struct BlueprintSchematic {
 				mark(x, y, cell);
 			}
 		}
-		for (const BlueprintStationTile &st : bp.station_tiles) mark(st.offset.x, st.offset.y, BlueprintPreviewCell::Station);
+		for (const BlueprintStationTile &st : bp.station_tiles) {
+			const TrackBits platforms = st.diagonal_track == INVALID_TRACK ? TRACK_BIT_NONE : TrackToTrackBits(st.diagonal_track);
+			mark(st.offset.x, st.offset.y, BlueprintPreviewCell::Station, platforms, platforms);
+		}
 		for (const BlueprintRoadStop &stop : bp.road_stops) mark(stop.offset.x, stop.offset.y, BlueprintPreviewCell::Station);
 		for (const BlueprintDock &dock : bp.docks) {
 			TileIndexDiffC d = TileIndexDiffCByDiagDir(dock.dir);
@@ -1164,11 +1200,22 @@ struct BlueprintPreviewWindow : public Window {
 
 		for (uint y = 0; y < this->schematic.height; y++) {
 			for (uint x = 0; x < this->schematic.width; x++) {
-				BlueprintPreviewCell cell_content = this->schematic.cells[static_cast<size_t>(y) * this->schematic.width + x];
-				if (cell_content == BlueprintPreviewCell::Empty) continue;
-				GfxFillRect(ox + static_cast<int>(x) * cell, oy + static_cast<int>(y) * cell,
-						ox + static_cast<int>(x + 1) * cell - 1, oy + static_cast<int>(y + 1) * cell - 1,
-						BLUEPRINT_PREVIEW_CELL_COLOURS[static_cast<size_t>(cell_content)]);
+				const auto &piece = this->schematic.cells[static_cast<size_t>(y) * this->schematic.width + x];
+				if (piece.category == BlueprintPreviewCell::Empty) continue;
+				const int left = ox + x * cell, top = oy + y * cell;
+				if (cell >= 3 && piece.category == BlueprintPreviewCell::Station && piece.platforms != TRACK_BIT_NONE) {
+					auto edge = [&](Trackdir td) {
+						auto d = TileIndexDiffCByDiagDir(TrackdirToExitdir(td));
+						return Point{left + (1 + d.x) * (cell - 1) / 2, top + (1 + d.y) * (cell - 1) / 2};
+					};
+					for (Track track : SetTrackBitIterator(piece.tracks)) {
+						const Trackdir td = TrackToTrackdir(track);
+						const Point a = edge(td), b = edge(ReverseTrackdir(td));
+						GfxDrawLine(a.x, a.y, b.x, b.y, HasBit(piece.platforms, track) ? PC_YELLOW : PC_WHITE);
+					}
+				} else {
+					GfxFillRect(left, top, left + cell - 1, top + cell - 1, BLUEPRINT_PREVIEW_CELL_COLOURS[static_cast<size_t>(piece.category)]);
+				}
 			}
 		}
 	}

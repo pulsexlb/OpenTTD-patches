@@ -1144,6 +1144,7 @@ static CommandCost CheckFlatLandRailStation(TileArea tile_area, DoCommandFlags f
 		 * so station points to StationID::Invalid() if we can build on any station.
 		 * Or it points to a station if we're only allowed to build on exactly that station. */
 		if (station != nullptr && IsTileType(tile_cur, TileType::Station)) {
+			if (IsDiagonalRailStationTile(tile_cur)) return CommandCost(STR_ERROR_MUST_REMOVE_RAILWAY_STATION_FIRST);
 			if (!IsRailStation(tile_cur)) {
 				return ClearTile_Station(tile_cur, DoCommandFlag::Auto); // get error message
 			} else {
@@ -1530,8 +1531,8 @@ void FreeTrainStationPlatformReservation(const Train *v)
 {
 	Train *moving_front = v->GetMovingFront();
 	Train *moving_back = v->GetMovingBack();
-	if (IsRailStationTile(moving_front->tile)) SetRailStationPlatformReservation(moving_front->tile, TrackdirToExitdir(moving_front->GetVehicleTrackdir()), false);
-	if (IsRailStationTile(moving_back->tile)) SetRailStationPlatformReservation(moving_back->tile, TrackdirToExitdir(ReverseTrackdir(moving_back->GetVehicleTrackdir())), false);
+	if (IsRailStationTile(moving_front->tile)) SetRailStationPlatformReservation(moving_front->tile, moving_front->GetVehicleTrackdir(), false);
+	if (IsRailStationTile(moving_back->tile)) SetRailStationPlatformReservation(moving_back->tile, ReverseTrackdir(moving_back->GetVehicleTrackdir()), false);
 }
 
 /**
@@ -1552,9 +1553,9 @@ static void RestoreTrainReservation(Train *v)
 {
 	Train *moving_front = v->GetMovingFront();
 	Train *moving_back = v->GetMovingBack();
-	if (IsRailStationTile(moving_front->tile)) SetRailStationPlatformReservation(moving_front->tile, TrackdirToExitdir(moving_front->GetVehicleTrackdir()), true);
+	if (IsRailStationTile(moving_front->tile)) SetRailStationPlatformReservation(moving_front->tile, moving_front->GetVehicleTrackdir(), true);
 	TryPathReserve(v, true, true);
-	if (IsRailStationTile(moving_back->tile)) SetRailStationPlatformReservation(moving_back->tile, TrackdirToExitdir(ReverseTrackdir(moving_back->GetVehicleTrackdir())), true);
+	if (IsRailStationTile(moving_back->tile)) SetRailStationPlatformReservation(moving_back->tile, ReverseTrackdir(moving_back->GetVehicleTrackdir()), true);
 }
 
 /**
@@ -1825,7 +1826,7 @@ CommandCost CmdBuildRailStation(DoCommandFlags flags, TileIndex tile_org, RailTy
 			}
 
 			if (reservation) {
-				SetRailStationPlatformReservation(platform_begin, dir, true);
+				SetRailStationPlatformReservation(platform_begin, DiagDirToDiagTrackdir(dir), true);
 			}
 		}
 
@@ -1835,6 +1836,148 @@ CommandCost CmdBuildRailStation(DoCommandFlags flags, TileIndex tile_org, RailTy
 	}
 
 	return cost;
+}
+
+/** Follow the selected straight rail drag, preserving the offset of the first rail piece. */
+static std::vector<RailPlatformPosition> GetDiagonalStationDrag(TileIndex start, TileIndex end, Track track)
+{
+	if (!IsValidTile(start) || !IsValidTile(end) || !IsValidTrack(track) || IsDiagonalTrack(track)) return {};
+	Trackdir td = TrackToTrackdir(track);
+	if (ValidateAutoDrag(&td, start, end).Failed()) return {};
+
+	std::vector<RailPlatformPosition> pieces;
+	for (RailPlatformPosition p{start, td}; IsValidTile(p.tile); p = p.Next()) {
+		pieces.push_back(p);
+		if (p.tile == end) return pieces;
+	}
+	return {};
+}
+
+/** Refresh the changed rail and the end caps of both neighbours on this lane. */
+static void RefreshDiagonalRailPlatform(RailPlatformPosition p, Owner owner)
+{
+	MarkTileDirtyByTile(p.tile);
+	for (auto neighbour : {p.Next(), p.Reverse().Next()}) {
+		if (neighbour.IsPlatform()) MarkTileDirtyByTile(neighbour.tile);
+	}
+	AddTrackToSignalBuffer(p.tile, p.GetTrack(), owner);
+	YapfNotifyTrackLayoutChange(p.tile, p.GetTrack());
+}
+
+static CommandCost CollectPlatformReservation(RailPlatformPosition p, std::vector<Train *> &affected)
+{
+	if (!HasBit(GetReservedTrackbits(p.tile), p.GetTrack())) return CommandCost();
+	Train *train = GetTrainForReservation(p.tile, p.GetTrack());
+	if (train == nullptr || include(affected, train)) return CommandCost();
+	return CheckTrainReservationPreventsTrackModification(train);
+}
+
+/** Build the standard double-sided platform on one already laid straight rail track. */
+CommandCost CmdBuildDiagonalRailStation(DoCommandFlags flags, TileIndex start, TileIndex end, Track track, StationID station_to_join, bool adjacent)
+{
+	const auto pieces = GetDiagonalStationDrag(start, end, track);
+	if (pieces.empty()) return CMD_ERROR;
+	const TileArea area(start, end);
+	if (area.w > _settings_game.station.station_spread || area.h > _settings_game.station.station_spread) return CommandCost(STR_ERROR_STATION_TOO_SPREAD_OUT);
+
+	const bool reuse = station_to_join != NEW_STATION;
+	if (!reuse) station_to_join = StationID::Invalid();
+	if (station_to_join != StationID::Invalid() && (!_settings_game.station.distant_join_stations || !Station::IsValidID(station_to_join))) return CMD_ERROR;
+	CommandCost ret = CheckIfAuthorityAllowsNewStation(area.tile, flags);
+	if (ret.Failed()) return ret;
+
+	const TrackBits parallel = (TrackToTrackBits(track) & TRACK_BIT_HORZ) != TRACK_BIT_NONE ? TRACK_BIT_HORZ : TRACK_BIT_VERT;
+	const int height = GetTileZ(start);
+	StationID existing = StationID::Invalid();
+	std::vector<Train *> affected;
+	Money price = 0;
+	for (auto p : pieces) {
+		const bool station = IsDiagonalRailStationTile(p.tile);
+		if (!station && !IsPlainRailTile(p.tile)) return CommandCost(STR_ERROR_DIAGONAL_STATION_NEEDS_TRACK);
+		ret = CheckTileOwnership(p.tile);
+		if (ret.Failed()) return ret;
+		if (!station && HasSignals(p.tile)) return CommandCost(STR_ERROR_MUST_REMOVE_SIGNALS_FIRST);
+		const TrackBits tracks = station ? GetRailStationTrackBits(p.tile) : GetTrackBits(p.tile);
+		if ((tracks & ~parallel) != TRACK_BIT_NONE || !HasBit(tracks, p.GetTrack())) return CommandCost(STR_ERROR_DIAGONAL_STATION_NEEDS_TRACK);
+		if (GetTileSlope(p.tile) != SLOPE_FLAT || GetTileZ(p.tile) != height) return CommandCost(STR_ERROR_FLAT_LAND_REQUIRED);
+		if (IsBridgeAbove(p.tile)) return CommandCost(STR_ERROR_MUST_DEMOLISH_BRIDGE_FIRST);
+		if (station) {
+			StationID sid = GetStationIndex(p.tile);
+			if (existing != StationID::Invalid() && sid != existing) return CommandCost(STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING);
+			existing = sid;
+			if (p.IsPlatform()) continue;
+		}
+
+		ret = EnsureNoTrainOnTrackBits(p.tile, TrackToTrackBits(p.GetTrack()));
+		if (ret.Failed()) return ret;
+		ret = CollectPlatformReservation(p, affected);
+		if (ret.Failed()) return ret;
+		price += _price[Price::BuildStationRail] + _price[Price::BuildStationRailLength];
+	}
+	if (std::ranges::all_of(pieces, [](auto p) { return p.IsPlatform(); })) return CommandCost(STR_ERROR_ALREADY_BUILT);
+
+	Station *st = nullptr;
+	if (!adjacent && existing == StationID::Invalid()) {
+		/* Only tiles next to the dragged rail can join it. The bounding rectangle also contains empty corners. */
+		for (const auto &piece : pieces) {
+			ret = GetStationAround(TileArea(piece.tile, 1, 1), st == nullptr ? StationID::Invalid() : st->index,
+					_current_company, &st, [](const Station *) { return true; });
+			if (ret.Failed()) return ret;
+		}
+		if (st == nullptr) st = Station::GetIfValid(station_to_join);
+	} else {
+		ret = FindJoiningStation(existing, station_to_join, adjacent, area, &st);
+		if (ret.Failed()) return ret;
+	}
+	TileArea rail_area = area;
+	if (st != nullptr && !st->train_station.IsEmpty()) {
+		ret = CanExpandRailStation(st, rail_area);
+		if (ret.Failed()) return ret;
+		for (const auto &piece : pieces) {
+			if (piece.IsPlatform()) continue;
+			for (auto neighbour : {piece.Next(), piece.Reverse().Next()}) {
+				if (!neighbour.IsPlatform() || GetStationIndex(neighbour.tile) != st->index) continue;
+				ret = CollectPlatformReservation(neighbour, affected);
+				if (ret.Failed()) return ret;
+			}
+		}
+	}
+	ret = BuildStationPart(&st, flags, reuse, area, StationNaming::Rail);
+	if (ret.Failed()) return ret;
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		for (Train *v : affected) FreeTrainReservation(v);
+		st->train_station = rail_area;
+		st->AddFacility(StationFacility::Train, start);
+		st->rect.BeforeAddRect(area.tile, area.w, area.h, StationRect::ADD_TRY);
+		Company *company = Company::Get(st->owner);
+		for (auto p : pieces) {
+			const TrackBits bit = TrackToTrackBits(p.GetTrack());
+			if (p.IsPlatform()) continue;
+			if (IsDiagonalRailStationTile(p.tile)) {
+				SetDiagonalRailStationTracks(p.tile, GetRailStationTrackBits(p.tile), GetRailStationPlatformBits(p.tile) | bit);
+			} else {
+				const TrackBits tracks = GetTrackBits(p.tile);
+				const TrackBits reserved = GetRailReservationTrackBits(p.tile);
+				const RailType rt = GetRailType(p.tile);
+				const RailType secondary = tracks == parallel ? GetSecondaryRailType(p.tile) : rt;
+				MakeRailStation(p.tile, st->owner, st->index, Axis::X, 0, rt);
+				SetDiagonalRailStationTracks(p.tile, tracks, bit);
+				SetRailType(p.tile, (tracks & TRACK_BIT_RT_1) != TRACK_BIT_NONE ? rt : secondary);
+				SetSecondaryRailType(p.tile, secondary);
+				SetRailStationTileFlags(p.tile, nullptr);
+				for (Track t : SetTrackBitIterator(reserved)) SetRailStationReservation(p.tile, t, true);
+				++company->infrastructure.station;
+			}
+			RecordBlueprintUndoStationTile(p.tile, false, Axis::X, GetRailTypeByTrack(p.tile, p.GetTrack()), p.GetTrack());
+			RefreshDiagonalRailPlatform(p, st->owner);
+		}
+		for (Train *v : affected) RestoreTrainReservation(v);
+		st->MarkTilesDirty(false);
+		st->AfterStationTileSetChange(true, StationType::Rail);
+		ZoningMarkDirtyStationCoverageArea(st);
+	}
+	return CommandCost(ExpensesType::Construction, price);
 }
 
 static TileArea MakeStationAreaSmaller(BaseStation *st, TileArea ta, bool (*func)(BaseStation *, TileIndex))
@@ -1918,6 +2061,90 @@ void MakeRoadWaypointStationAreaSmaller(BaseStation *st, TileArea &road_waypoint
 	road_waypoint_area = MakeStationAreaSmaller(st, road_waypoint_area, TileBelongsToRoadWaypointStation);
 }
 
+static CommandCost CheckRemoveDiagonalRailPlatforms(TileIndex tile, TrackBits platforms, std::vector<Train *> &affected)
+{
+	if (_current_company != OWNER_WATER) {
+		CommandCost ret = CheckTileOwnership(tile);
+		if (ret.Failed()) return ret;
+	}
+	CommandCost ret = EnsureNoTrainOnTrackBits(tile, platforms);
+	if (ret.Failed()) return ret;
+	for (Track track : SetTrackBitIterator(platforms)) {
+		ret = CollectPlatformReservation({tile, TrackToTrackdir(track)}, affected);
+		if (ret.Failed()) return ret;
+	}
+	return CommandCost();
+}
+
+static void RemoveDiagonalRailPlatforms(Station *st, TileIndex tile, TrackBits removed, bool keep_rail)
+{
+	const TrackBits platforms = GetRailStationPlatformBits(tile) & ~removed;
+	const TrackBits tracks = GetRailStationTrackBits(tile) & ~(keep_rail ? TRACK_BIT_NONE : removed);
+	const TrackBits reserved = GetStationReservationTrackBits(tile) & tracks;
+	const Owner owner = st->owner;
+	auto &infrastructure = Company::Get(owner)->infrastructure;
+	if (!keep_rail) {
+		for (Track track : SetTrackBitIterator(removed)) --infrastructure.rail[GetTileRailTypeByTrack(tile, track)];
+	}
+
+	if (platforms != TRACK_BIT_NONE) {
+		/* Drawing and whole-tile queries use the primary type for a single track. */
+		if ((tracks & TRACK_BIT_RT_1) == TRACK_BIT_NONE) SetRailType(tile, GetSecondaryRailType(tile));
+		SetDiagonalRailStationTracks(tile, tracks, platforms);
+		for (Track track : SetTrackBitIterator(removed & ~tracks)) SetRailStationReservation(tile, track, false);
+	} else {
+		const RailType primary = GetRailType(tile);
+		const RailType secondary = GetSecondaryRailType(tile);
+		if (tracks != TRACK_BIT_NONE) {
+			MakeRailNormal(tile, owner, tracks, (tracks & TRACK_BIT_RT_1) != TRACK_BIT_NONE ? primary : secondary);
+			SetSecondaryRailType(tile, secondary);
+			SetTrackReservation(tile, reserved);
+		} else {
+			DoClearSquare(tile);
+		}
+		--infrastructure.station;
+		st->rect.AfterRemoveTile(st, tile);
+	}
+	for (Track track : SetTrackBitIterator(removed)) {
+		RefreshDiagonalRailPlatform({tile, TrackToTrackdir(track)}, owner);
+	}
+	DirtyCompanyInfrastructureWindows(owner);
+}
+
+CommandCost CmdRemoveDiagonalRailStation(DoCommandFlags flags, TileIndex start, TileIndex end, Track track, bool keep_rail)
+{
+	const auto pieces = GetDiagonalStationDrag(start, end, track);
+	std::vector<Train *> affected;
+	std::vector<RailPlatformPosition> remove;
+	std::vector<Station *> stations;
+	for (auto p : pieces) {
+		if (!IsDiagonalRailStationTile(p.tile) || !p.IsPlatform()) continue;
+		CommandCost ret = CheckRemoveDiagonalRailPlatforms(p.tile, TrackToTrackBits(p.GetTrack()), affected);
+		if (ret.Failed()) return ret;
+		remove.push_back(p);
+		Station *st = Station::GetByTile(p.tile);
+		include(stations, st);
+	}
+	if (remove.empty()) return CommandCost(STR_ERROR_THERE_IS_NO_STATION);
+	if (flags.Test(DoCommandFlag::Execute)) {
+		for (Train *v : affected) FreeTrainReservation(v);
+		for (Station *st : stations) ZoningMarkDirtyStationCoverageArea(st);
+		for (auto p : remove) RemoveDiagonalRailPlatforms(Station::GetByTile(p.tile), p.tile, TrackToTrackBits(p.GetTrack()), keep_rail);
+		for (Station *st : stations) {
+			MakeRailStationAreaSmaller(st);
+			if (st->train_station.IsEmpty()) {
+				st->facilities.Reset(StationFacility::Train);
+				SetWindowClassesDirty(WindowClass::VehicleOrders);
+			}
+			st->MarkTilesDirty(false);
+			st->AfterStationTileSetChange(false, StationType::Rail);
+		}
+		for (Train *v : affected) RestoreTrainReservation(v);
+	}
+	const Money piece_cost = _price[Price::ClearStationRail] - (keep_rail ? _price[Price::ClearRail] : Money{0});
+	return CommandCost(ExpensesType::Construction, piece_cost * static_cast<int>(remove.size()));
+}
+
 /**
  * Remove a number of tiles from any rail station within the area.
  * @param ta the area to clear station tile from.
@@ -1957,6 +2184,30 @@ CommandCost RemoveFromRailBaseStation(TileArea ta, std::vector<T *> &affected_st
 			ret = CheckOwnership(st->owner);
 			error.AddCost(std::move(ret));
 			if (ret.Failed()) continue;
+		}
+
+		if constexpr (std::is_same_v<T, Station>) {
+			if (IsDiagonalRailStationTile(tile)) {
+				const TrackBits platforms = GetRailStationPlatformBits(tile);
+				std::vector<Train *> affected;
+				ret = CheckRemoveDiagonalRailPlatforms(tile, platforms, affected);
+				if (ret.Failed()) {
+					error.AddCost(std::move(ret));
+					continue;
+				}
+				if (flags.Test(DoCommandFlag::Execute)) {
+					if (!include(affected_stations, st)) {
+						ZoningMarkDirtyStationCoverageArea(st);
+					}
+					for (Train *v : affected) FreeTrainReservation(v);
+					RemoveDiagonalRailPlatforms(st, tile, platforms, keep_rail);
+					for (Train *v : affected) RestoreTrainReservation(v);
+				}
+				const int count = CountBits(platforms);
+				quantity += count;
+				if (keep_rail) total_cost.AddCost(-count * _price[Price::ClearRail]);
+				continue;
+			}
 		}
 
 		Train *v = nullptr;
@@ -3519,9 +3770,101 @@ static void DrawTile_Airport(TileInfo *ti)
 	DrawAirportFences(ti);
 }
 
+void DrawTrackBits(TileInfo *ti, TrackBits track);
+
+/** Classify a single platform mouth for drawing. Track continuity for trains is handled separately. */
+enum class DiagonalPlatformEnd : uint8_t { Through, Capped, Bend };
+
+static DiagonalPlatformEnd GetDiagonalPlatformEnd(TileIndex tile, Trackdir td)
+{
+	const DiagDirection exit = TrackdirToExitdir(td);
+	const auto delta = TileIndexDiffCByDiagDir(exit);
+	const TileIndex next = TileAddWrap(tile, delta.x, delta.y);
+	if (next == INVALID_TILE || !IsRailStationTile(next) || GetStationIndex(next) != GetStationIndex(tile)) return DiagonalPlatformEnd::Capped;
+
+	const bool diagonal = IsDiagonalRailStationTile(next);
+	const Track track = diagonal ? TrackdirToTrack(NextTrackdir(td)) : DiagDirToDiagTrack(exit);
+	if (!HasBit(GetRailStationPlatformBits(next), track)) return DiagonalPlatformEnd::Capped;
+	if (!IsCompatibleRail(GetTileRailTypeByTrack(next, track), GetTileRailTypeByTrack(tile, TrackdirToTrack(td)))) return DiagonalPlatformEnd::Capped;
+	if (diagonal) return DiagonalPlatformEnd::Through;
+
+	/* Only the built-in layout has the platform lips at world coordinates 5 and 11. */
+	if (IsCustomStationSpecIndex(next) || GetTileMaxZ(next) != GetTileZ(tile)) return DiagonalPlatformEnd::Capped;
+	return DiagonalPlatformEnd::Bend;
+}
+
+static void DrawDiagonalPlatform(TileInfo *ti, Track track)
+{
+	const bool vertical = track == TRACK_LEFT || track == TRACK_RIGHT;
+	const bool lower_or_right = track == TRACK_LOWER || track == TRACK_RIGHT;
+	const int cx = track == TRACK_LOWER || track == TRACK_LEFT ? 12 : 4;
+	const int cy = lower_or_right ? 12 : 4;
+	for (int end = 0; end < 2; ++end) {
+		const Trackdir forward = TrackToTrackdir(track); // Screen east or south.
+		const Trackdir td = end == 0 ? ReverseTrackdir(forward) : forward;
+		const DiagDirection exit = TrackdirToExitdir(td);
+		const auto mouth = GetDiagonalPlatformEnd(ti->tile, td);
+		for (int side = 0; side < 2; ++side) {
+			/* See media/baseset/diagonal_platforms.py. Inside and outside meet different
+			 * points of the same diamond edge; the parallel lane uses the opposite bevel. */
+			const bool outside = (side != 0) != lower_or_right;
+			const int shape = mouth == DiagonalPlatformEnd::Through ? 0 : mouth == DiagonalPlatformEnd::Capped ? 1 : outside ? 3 : 2;
+			const SpriteID sprite = SPR_DIAGONAL_PLATFORMS_BASE + (((vertical * 2 + end) * 2 + side) * 4 + shape);
+
+			/* Sort each half at the centre of its own ledge, keeping the train between the two lips. */
+			const int along = (end == 0 ? -1 : 1) * (mouth == DiagonalPlatformEnd::Bend ? (outside ? 3 : 1) : 2);
+			const int across = side == 0 ? -3 : 3;
+			const int8_t x = cx + (vertical ? along - across : across - along) - 2;
+			const int8_t y = cy + along + across - 2;
+			const SpriteBounds bounds{{x, y, 0}, {4, 4, 3}, {static_cast<int8_t>(cx - x), static_cast<int8_t>(cy - y), 0}};
+			const bool transparent = IsTransparencySet(TransparencyOption::Buildings);
+			if (mouth != DiagonalPlatformEnd::Bend || (exit != DiagDirection::SW && exit != DiagDirection::SE)) {
+				AddSortableSpriteToDraw(sprite, PAL_NONE, *ti, bounds, transparent);
+				continue;
+			}
+
+			/* The ordinary platform in front has an end face of its own. Sort the
+			 * shared coping at that platform's surface, so the face cannot cut a
+			 * notch in the white line. Keep the long ledge beside the train sorted
+			 * on its own tile. Each pixel is submitted once, also in transparency. */
+			const SubSprite *tip = nullptr;
+			if (outside) {
+				static const SubSprite west[] = {{-16, -64, 64, 64}, {-64, -64, -17, 64}};
+				static const SubSprite east[] = {{-64, -64, 15, 64}, {16, -64, 64, 64}};
+				static const SubSprite south[] = {{-64, -64, 64, 3}, {-64, 4, 64, 64}};
+				const SubSprite *cut = vertical ? south : end == 0 ? west : east;
+				AddSortableSpriteToDraw(sprite, PAL_NONE, *ti, bounds, transparent, &cut[0]);
+				tip = &cut[1];
+			}
+			const bool x_axis = exit == DiagDirection::SW;
+			const bool front = (side != 0) != (vertical && !x_axis);
+			const int8_t lip = front ? 12 : 3;
+			const int8_t tx = x_axis ? TILE_SIZE + 1 : lip;
+			const int8_t ty = x_axis ? lip : TILE_SIZE + 1;
+			const SpriteBounds joint{{tx, ty, 2}, {1, 1, 1}, {static_cast<int8_t>(cx - tx), static_cast<int8_t>(cy - ty), -2}};
+			AddSortableSpriteToDraw(sprite, PAL_NONE, *ti, joint, transparent, tip);
+		}
+	}
+}
+
+static void DrawDiagonalRailStation(TileInfo *ti, DrawTileProcParams params)
+{
+	const TileIndex tile = ti->tile;
+	if (!params.no_ground_tiles) DrawTrackBits(ti, GetRailStationTrackBits(tile));
+	if (params.min_visible_height <= 4 * ZOOM_BASE && !IsInvisibilitySet(TransparencyOption::Buildings)) {
+		for (Track track : SetTrackBitIterator(GetRailStationPlatformBits(tile))) DrawDiagonalPlatform(ti, track);
+	}
+	if (HasRailCatenaryDrawn(GetRailType(tile), GetTileSecondaryRailTypeIfValid(tile))) DrawRailCatenary(ti);
+	DrawBridgeMiddle(ti);
+}
+
 /** @copydoc DrawTileProc */
 static void DrawTile_Station(TileInfo *ti, DrawTileProcParams params)
 {
+	if (IsDiagonalRailStationTile(ti->tile)) {
+		DrawDiagonalRailStation(ti, params);
+		return;
+	}
 	if (IsAirportTile(ti->tile) && HasAirtypeGfx(ti->tile)) {
 		DrawTile_Airport(ti);
 		return;
@@ -3960,7 +4303,7 @@ static TrackStatus GetTileTrackStatus_Station(TileIndex tile, TransportType mode
 	switch (mode) {
 		case TransportType::Rail:
 			if (HasStationRail(tile) && !IsStationTileBlocked(tile)) {
-				trackdirbits = TrackToTrackdirBits(GetRailStationTrack(tile));
+				trackdirbits = TrackBitsToTrackdirBits(GetRailStationTrackBits(tile));
 			}
 			break;
 
@@ -4163,27 +4506,35 @@ static VehicleEnterTileStates VehicleEnterTile_Station(Vehicle *v, TileIndex til
 		}
 		if (!HasStationTileRail(tile)) return {};
 		if (!consist->current_order.ShouldStopAtStation(consist, station_id, IsRailWaypoint(tile))) return {};
+		Trackdir td;
+		if (tile == t->tile) {
+			td = t->GetVehicleTrackdir();
+		} else {
+			/* On entry the vehicle still carries the track of the previous tile. */
+			const DiagDirection entry = DiagdirBetweenTiles(t->tile, tile);
+			if (!IsValidDiagDirection(entry)) return {};
+			td = FindFirstTrackdir(TrackBitsToTrackdirBits(GetRailStationTrackBits(tile)) & DiagdirReachesTrackdirs(entry));
+		}
+		const RailPlatformPosition position{tile, td};
+		if (!position.IsPlatform()) return {};
 
 		int station_ahead;
 		int station_length;
-		int stop = GetTrainStopLocation(station_id, tile, t, true, &station_ahead, &station_length);
-
-		/* Stop whenever that amount of station ahead + the distance from the
-		 * begin of the platform to the stop location is longer than the length
-		 * of the platform. Station ahead 'includes' the current tile where the
-		 * vehicle is on, so we need to subtract that. */
-		if (stop + station_ahead - (int)TILE_SIZE >= station_length) return {};
-
-		DiagDirection dir = DirToDiagDir(v->GetMovingDirection());
-
-		x &= 0xF;
-		y &= 0xF;
-
-		if (DiagDirToAxis(dir) != Axis::X) std::swap(x, y);
-		if (y == TILE_SIZE / 2) {
+		const int target = GetTrainStopLocation(station_id, tile, t, true, &station_ahead, &station_length, td);
+		/* A full piece can start eight steps into a tile-length interval after a bend. */
+		const int stop = std::max(0, target) - (station_length - station_ahead);
+		if (stop < 0 || stop >= position.PieceLength()) return {};
+		if (!IsDiagonalTrackdir(td)) {
+			x = GetTrainStraightTrackOffset(TrackdirToDirection(td), x, y);
+		} else {
+			DiagDirection dir = TrackdirToExitdir(td);
+			x &= TILE_UNIT_MASK;
+			y &= TILE_UNIT_MASK;
+			if (DiagDirToAxis(dir) != Axis::X) std::swap(x, y);
+			if (y != TILE_SIZE / 2) return {};
 			if (dir != DiagDirection::SE && dir != DiagDirection::SW) x = TILE_SIZE - 1 - x;
-			stop &= TILE_SIZE - 1;
-
+		}
+		{
 			if (x == stop) {
 				if (consist->UsingRealisticBraking() && consist->cur_speed > 15 && !(consist->lookahead != nullptr && consist->lookahead->flags.Test(TrainReservationLookAheadFlag::ApplyAdvisory))) {
 					/* Travelling too fast, do not stop and report overshoot to player */
@@ -5390,8 +5741,11 @@ static void ChangeTileOwner_Station(TileIndex tile, Owner old_owner, Owner new_o
 			case StationType::Rail:
 			case StationType::RailWaypoint:
 				if (!IsStationTileBlocked(tile)) {
-					old_company->infrastructure.rail[GetRailType(tile)]--;
-					new_company->infrastructure.rail[GetRailType(tile)]++;
+					for (Track track : SetTrackBitIterator(GetRailStationTrackBits(tile))) {
+						RailType rt = GetTileRailTypeByTrack(tile, track);
+						old_company->infrastructure.rail[rt]--;
+						new_company->infrastructure.rail[rt]++;
+					}
 				}
 				break;
 
@@ -5558,7 +5912,7 @@ static CommandCost TerraformTile_Station(TileIndex tile, DoCommandFlags flags, i
 			switch (GetStationType(tile)) {
 				case StationType::RailWaypoint:
 				case StationType::Rail: {
-					if (!AutoslopeCheckForAxis(tile, z_new, tileh_new, GetRailStationAxis(tile))) break;
+					if (IsDiagonalRailStationTile(tile) || !AutoslopeCheckForAxis(tile, z_new, tileh_new, GetRailStationAxis(tile))) break;
 					return CommandCost(ExpensesType::Construction, _price[Price::BuildFoundation]);
 				}
 

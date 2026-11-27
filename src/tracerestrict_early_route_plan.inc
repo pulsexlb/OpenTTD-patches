@@ -103,9 +103,9 @@ static std::optional<std::pair<TileIndex, Trackdir>> FirstClear(const YapfRailRo
 	return std::nullopt;
 }
 
-static bool AtTarget(const Order &order, TileIndex tile)
+static bool AtTarget(const Order &order, TileIndex tile, Trackdir direction)
 {
-	if (order.IsType(OT_GOTO_STATION)) return IsRailStationTile(tile) && GetStationIndex(tile) == order.GetDestination().ToStationID();
+	if (order.IsType(OT_GOTO_STATION)) return IsRailStationTile(tile) && RailPlatformPosition{tile, direction}.IsPlatform() && GetStationIndex(tile) == order.GetDestination().ToStationID();
 	if (order.IsType(OT_GOTO_WAYPOINT)) return IsRailWaypoint(tile) && GetStationIndex(tile) == order.GetDestination().ToStationID();
 	return order.IsType(OT_GOTO_DEPOT) && IsRailDepotTile(tile) && GetDepotIndex(tile) == order.GetDestination().ToDepotID();
 }
@@ -128,7 +128,7 @@ static Reach PhysicalReach(const Train *v, TileIndex start, Trackdir td,
 		if (!seen.insert({tile, direction}).second) continue;
 		--remaining;
 		if (HasOnewaySignalBlockingTrackdir(tile, direction)) continue;
-		if (target != nullptr ? AtTarget(*target, tile) : std::find(clears.begin(), clears.end(), std::pair{tile, direction}) != clears.end()) return Reach::Yes;
+		if (target != nullptr ? AtTarget(*target, tile, direction) : std::find(clears.begin(), clears.end(), std::pair{tile, direction}) != clears.end()) return Reach::Yes;
 		if (IsRailDepotTile(tile)) unknown_reverse = true; // Native YAPF may leave a non-target depot reversed.
 		if (IsPlainRailTile(tile) || IsRailTunnelBridgeTile(tile)) {
 			if (const auto *program = GetExistingTraceRestrictProgram(tile, TrackdirToTrack(direction)); program != nullptr &&
@@ -172,7 +172,7 @@ static EarlyRailStopPlan BuildEarlyRailStopPlan(const Train *v, TileIndex origin
 	using namespace EarlyRailPlanningDetail;
 	EarlyRailStopPlan result;
 	if (v == nullptr || !query || !IsValidTile(origin) || !IsValidTrackdir(td) || clears.size() < 2) return result;
-	std::set<TileIndex> excluded;
+	std::set<std::pair<TileIndex, Track>> excluded;
 	std::vector<EarlyRailStopPlan> deferred;
 	std::vector<EarlyRailRejectedPlatform> proven_rejections;
 	/* A native onward failure can be temporary or require the native reverse
@@ -183,9 +183,9 @@ static EarlyRailStopPlan BuildEarlyRailStopPlan(const Train *v, TileIndex origin
 			candidate.rejected_platforms = proven_rejections;
 			if (candidate.onward.reason != YapfRailRouteReason::NoPath || candidate.current.path.empty()) return candidate;
 			const auto endpoint = candidate.current.path.back();
-			const auto exit_direction = TrackdirToExitdir(endpoint.trackdir);
-			const uint length = Station::GetByTile(endpoint.tile)->GetPlatformLength(endpoint.tile, ReverseDiagDir(exit_direction));
-			const TileIndex near_end = endpoint.tile - TileOffsByDiagDir(exit_direction) * (length - 1);
+			const RailPlatformPosition back{endpoint.tile, ReverseTrackdir(endpoint.trackdir)};
+			auto near_end = back;
+			while (near_end.Next().IsContinuationOf(back)) near_end = near_end.Next();
 			const Order *next = v->GetOrder(candidate.next_order_index);
 			if (next == nullptr) return candidate;
 			const auto forward = PhysicalReach(v, endpoint.tile, endpoint.trackdir, clears, next, remaining_nodes);
@@ -193,12 +193,12 @@ static EarlyRailStopPlan BuildEarlyRailStopPlan(const Train *v, TileIndex origin
 				candidate.reason = forward == Reach::Yes ? EarlyRailPlanReason::DeferredBlocked : EarlyRailPlanReason::DeferredNodeBudget;
 				return candidate;
 			}
-			const auto reverse = PhysicalReach(v, near_end, ReverseTrackdir(endpoint.trackdir), clears, next, remaining_nodes);
+			const auto reverse = PhysicalReach(v, near_end.tile, near_end.td, clears, next, remaining_nodes);
 			if (reverse != Reach::No) {
 				candidate.reason = remaining_nodes == 0 ? EarlyRailPlanReason::DeferredNodeBudget : EarlyRailPlanReason::DeferredUnsupportedReverse;
 				return candidate;
 			}
-			proven_rejections.push_back({near_end, endpoint.tile, endpoint.trackdir, true});
+			proven_rejections.push_back({near_end.tile, endpoint.tile, ReverseTrackdir(near_end.td), true});
 		}
 		EarlyRailStopPlan failed;
 		failed.reason = EarlyRailPlanReason::NoCurrentRoute;
@@ -214,7 +214,7 @@ static EarlyRailStopPlan BuildEarlyRailStopPlan(const Train *v, TileIndex origin
 	};
 	for (uint candidate = 0; candidate < MAX_PLATFORM_CANDIDATES; candidate++) {
 		const YapfRailRouteFilter admit = [&](TileIndex tile, Trackdir direction) {
-			return !excluded.contains(tile) && (!filter || filter(tile, direction));
+			return !excluded.contains({tile, TrackdirToTrack(direction)}) && (!filter || filter(tile, direction));
 		};
 		result.current = query_route(v->current_order, v->cur_real_order_index, origin, td, admit);
 		result.onward = {};
@@ -227,7 +227,7 @@ static EarlyRailStopPlan BuildEarlyRailStopPlan(const Train *v, TileIndex origin
 		}
 		for (const auto &step : result.current.path) {
 			if (result.selected_clear && std::pair{step.tile, step.trackdir} == *result.selected_clear) break;
-			if (IsRailStationTile(step.tile) && !(v->current_order.IsType(OT_GOTO_STATION) &&
+			if (IsRailStationTile(step.tile) && RailPlatformPosition{step.tile, step.trackdir}.IsPlatform() && !(v->current_order.IsType(OT_GOTO_STATION) &&
 					GetStationIndex(step.tile) == v->current_order.GetDestination().ToStationID()) &&
 					v->current_order.ShouldStopAtStation(v, GetStationIndex(step.tile), false)) {
 				result.selected_clear.reset(); result.reason = EarlyRailPlanReason::DeferredIntermediateStop; return result;
@@ -244,14 +244,21 @@ static EarlyRailStopPlan BuildEarlyRailStopPlan(const Train *v, TileIndex origin
 		if (!v->current_order.ShouldStopAtStation(v, GetStationIndex(endpoint.tile), false)) {
 			result.reason = EarlyRailPlanReason::DeferredNoNextOrder; return result;
 		}
-		const auto exit_direction = TrackdirToExitdir(endpoint.trackdir);
-		const uint length = Station::GetByTile(endpoint.tile)->GetPlatformLength(endpoint.tile, ReverseDiagDir(exit_direction));
-		if (length == 0 || Station::GetByTile(endpoint.tile)->GetPlatformLength(endpoint.tile, exit_direction) != 1) {
+		const RailPlatformPosition end{endpoint.tile, endpoint.trackdir};
+		if (!end.IsPlatform() || end.Next().IsContinuationOf(end)) {
 			result.reason = EarlyRailPlanReason::DeferredNativeQuery; return result;
 		}
-		const TileIndexDiff delta = TileOffsByDiagDir(exit_direction);
-		const TileIndex near_end = endpoint.tile - delta * (length - 1);
-		if (v->gcache.cached_total_length > length * TILE_SIZE) {
+		const auto back = end.Reverse();
+		auto near_end = back;
+		uint length = back.PieceLength();
+		while (near_end.Next().IsContinuationOf(back)) {
+			near_end = near_end.Next();
+			length += near_end.PieceLength();
+		}
+		auto exclude_platform = [&]() {
+			for (auto p = back; p.IsContinuationOf(back); p = p.Next()) excluded.emplace(p.tile, p.GetTrack());
+		};
+		if (v->gcache.cached_total_length > length) {
 			/* Native stopping may permit overhang/through loading. Do not alter
 			 * that policy or claim a fully sheltered departure here. */
 			result.reason = EarlyRailPlanReason::DeferredShortPlatform; return result;
@@ -270,7 +277,7 @@ static EarlyRailStopPlan BuildEarlyRailStopPlan(const Train *v, TileIndex origin
 				result.reason = result.onward.reason == YapfRailRouteReason::NoPath ? EarlyRailPlanReason::DeferredUnsupportedReverse : DeferredQueryReason(result.onward);
 			}
 			deferred.push_back(result);
-			for (uint i = 0; i < length; i++) excluded.insert(near_end + delta * i);
+			exclude_platform();
 			if (remaining_nodes == 0) return fallback();
 			continue;
 		} else {
@@ -280,14 +287,14 @@ static EarlyRailStopPlan BuildEarlyRailStopPlan(const Train *v, TileIndex origin
 			result.physical_exit_proven = forward == Reach::Yes;
 			if (forward == Reach::Yes) { result.reason = next.reason; return result; }
 			if (forward == Reach::Unknown) { result.reason = EarlyRailPlanReason::DeferredNodeBudget; return result; }
-			const auto reverse = PhysicalReach(v, near_end, ReverseTrackdir(endpoint.trackdir), clears, nullptr, remaining_nodes);
+			const auto reverse = PhysicalReach(v, near_end.tile, near_end.td, clears, nullptr, remaining_nodes);
 			reject = reverse == Reach::No;
 			if (!reject) { result.reason = remaining_nodes == 0 ? EarlyRailPlanReason::DeferredNodeBudget : EarlyRailPlanReason::DeferredUnsupportedReverse; return result; }
 		}
 		if (reject) {
-			proven_rejections.push_back({near_end, endpoint.tile, endpoint.trackdir, next.order != nullptr});
+			proven_rejections.push_back({near_end.tile, endpoint.tile, ReverseTrackdir(near_end.td), next.order != nullptr});
 			result.rejected_platforms = proven_rejections;
-			for (uint i = 0; i < length; i++) excluded.insert(near_end + delta * i);
+			exclude_platform();
 		}
 	}
 	if (!deferred.empty()) return fallback();

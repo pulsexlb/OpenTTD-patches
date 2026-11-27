@@ -14,6 +14,7 @@
 #include "viewport_func.h"
 #include "vehicle_func.h"
 #include "newgrf_station.h"
+#include "rail_platform_geometry.h"
 #include "pathfinder/follow_track.hpp"
 #include "tracerestrict.h"
 #include "newgrf_newsignals.h"
@@ -61,52 +62,31 @@ TrackBits GetReservedTrackbits(TileIndex t)
  * Set the reservation for a complete station platform.
  * @pre IsRailStationTile(start)
  * @param start starting tile of the platform
- * @param dir the direction in which to follow the platform
+ * @param td the track and direction in which to follow the platform
  * @param b the state the reservation should be set to
  */
-void SetRailStationPlatformReservation(TileIndex start, DiagDirection dir, bool b)
+void SetRailStationPlatformReservation(TileIndex start, Trackdir td, bool b)
 {
-	TileIndex     tile = start;
-	TileIndexDiff diff = TileOffsByDiagDir(dir);
+	const RailPlatformPosition origin{start, td};
+	if (!IsRailStationTile(start) || !origin.IsPlatform()) return;
 
-	assert_tile(IsRailStationTile(start), start);
-	assert_tile(GetRailStationAxis(start) == DiagDirToAxis(dir), start);
-
-	do {
-		SetRailStationReservation(tile, b);
-		MarkTileDirtyByTile(tile, VMDF_NOT_MAP_MODE);
-		tile = TileAdd(tile, diff);
-	} while (IsCompatibleTrainStationTile(tile, start));
+	for (auto p = origin; p.IsContinuationOf(origin); p = p.Next()) {
+		SetRailStationReservation(p.tile, p.GetTrack(), b);
+		MarkTileDirtyByTile(p.tile, VMDF_NOT_MAP_MODE);
+	}
 }
 
-/**
- * Check whether a station platform is free of any other train.
- * @param v     The train to ignore.
- * @param start Starting tile of the platform.
- * @param dir   Direction in which to follow the platform.
- * @return true if no other train occupies the platform.
- */
-bool IsRailStationPlatformFree(const Train *v, TileIndex start, DiagDirection dir)
+/** Check whether a station platform is free of any other train. */
+bool IsRailStationPlatformFree(const Train *v, TileIndex start, Trackdir td)
 {
-	TileIndex     tile = start;
-	TileIndexDiff diff = TileOffsByDiagDir(dir);
-
-	assert_tile(IsRailStationTile(start), start);
-	assert_tile(GetRailStationAxis(start) == DiagDirToAxis(dir), start);
-
-	do {
-		for (const Vehicle *u : Vehicle::Iterate()) {
-			if (u->type != VehicleType::Train || u->vehstatus.Test(VehState::Crashed)) continue;
-			/* Hidden vehicles are carried by another vehicle and are not on the rail network any
-			 * more, but their tile field still points at where they were loaded: they must not
-			 * keep the platform marked as occupied. */
-			if (u->vehstatus.Test(VehState::Hidden)) continue;
-			const Train *t = Train::From(u);
-			if (t->Primary()->index == v->Primary()->index) continue;
-			if (t->tile == tile) return false;
+	const RailPlatformPosition origin{start, td};
+	for (auto p = origin; p.IsContinuationOf(origin); p = p.Next()) {
+		for (const Train *t : VehiclesOnTile<VehicleType::Train>(p.tile)) {
+			if (t->vehstatus.Any({VehState::Crashed, VehState::Hidden})) continue;
+			if (t->Primary() == v->Primary()) continue;
+			if (HasBit(t->track, p.GetTrack())) return false;
 		}
-		tile = TileAdd(tile, diff);
-	} while (IsCompatibleTrainStationTile(tile, start));
+	}
 	return true;
 }
 
@@ -185,8 +165,8 @@ bool TryReserveRailTrack(TileIndex tile, Track track, bool trigger_stations)
 			break;
 
 		case TileType::Station:
-			if (HasStationRail(tile) && !HasStationReservation(tile)) {
-				SetRailStationReservation(tile, true);
+			if (HasStationRail(tile) && !HasBit(GetStationReservationTrackBits(tile), track)) {
+				SetRailStationReservation(tile, track, true);
 				if (trigger_stations) {
 					auto *st = BaseStation::GetByTile(tile);
 					TriggerStationRandomisation(st, tile, StationRandomTrigger::PathReservation);
@@ -264,7 +244,7 @@ void UnreserveRailTrack(TileIndex tile, Track t)
 
 		case TileType::Station:
 			if (HasStationRail(tile)) {
-				SetRailStationReservation(tile, false);
+				SetRailStationReservation(tile, t, false);
 				MarkTileDirtyByTile(tile, VMDF_NOT_MAP_MODE);
 			}
 			break;
@@ -449,6 +429,21 @@ static void AddSignalToLookAhead(TrainReservationLookAhead *lookahead, uint16_t 
 	}
 }
 
+/** Record the physical platform once, even if the reservation reaches it in several straight runs. */
+static void AddPlatformToLookAhead(TrainReservationLookAhead &lookahead, RailPlatformPosition piece, int entry, int16_t z)
+{
+	const StationID station = GetStationIndex(piece.tile);
+	/* The last station item may precede curve and speed limit items within this platform. */
+	for (auto it = lookahead.items.rbegin(); it != lookahead.items.rend(); ++it) {
+		if (it->type != TRLIT_STATION) continue;
+		if (it->data_id == station.base() && it->start <= entry && entry < it->end) return;
+		break;
+	}
+	const int start = entry - (GetRailPlatformLengthAhead(piece.Reverse()) - piece.PieceLength());
+	const int end = entry + GetRailPlatformLengthAhead(piece);
+	lookahead.items.push_back({start, end, z, station.base(), 0, TRLIT_STATION});
+}
+
 /**
  * Follow a reservation starting from a specific tile to the end.
  * @param o The owner of the track to follow; tracks of other owners are excluded.
@@ -569,18 +564,18 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 		if (reserved == TRACKDIR_BIT_NONE) {
 			if (ft.is_station) {
 				/* Check skipped station tiles as well, maybe our reservation ends inside the station. */
-				TileIndexDiff diff = TileOffsByDiagDir(ft.exitdir);
-				while (ft.tiles_skipped-- > 0) {
-					ft.new_tile -= diff;
-					if (HasStationReservation(ft.new_tile)) {
-						if (lookahead != nullptr) {
-							lookahead->AddStation(1 + ft.tiles_skipped, GetStationIndex(ft.new_tile), z);
-							lookahead->reservation_end_position += (1 + ft.tiles_skipped) * TILE_SIZE;
-						}
-						tile = ft.new_tile;
-						trackdir = DiagDirToDiagTrackdir(ft.exitdir);
-						break;
+				auto p = RailPlatformPosition{ft.new_tile, FindFirstTrackdir(ft.new_td_bits)}.Reverse();
+				for (int remaining = ft.tiles_skipped; remaining > 0; --remaining) {
+					p = p.Next();
+					if (!HasReservedTracks(p.tile, TrackToTrackBits(p.GetTrack()))) continue;
+					if (lookahead != nullptr) {
+						const int length = remaining * p.PieceLength();
+						AddPlatformToLookAhead(*lookahead, p.Reverse(), lookahead->RealEndPosition() + length - p.PieceLength(), z);
+						lookahead->reservation_end_position += length;
 					}
+					tile = p.tile;
+					trackdir = p.Reverse().td;
+					break;
 				}
 			}
 			break;
@@ -597,25 +592,22 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 		trackdir = new_trackdir;
 
 		if (lookahead != nullptr) {
-			if (ft.tiles_skipped > 0) {
-				DiagDirection skip_dir = ReverseDiagDir(TrackdirToExitdir(ReverseTrackdir(trackdir)));
-				check_direction(DiagDirToDir(skip_dir), 0, tile);
-			}
+			const RailPlatformPosition end{tile, trackdir};
+			const int skipped_distance = ft.tiles_skipped * (ft.is_station ? end.PieceLength() : TILE_SIZE);
 			if (ft.is_station) {
-				if (ft.tiles_skipped > 0) {
-					TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(trackdir));
-					TileIndex start = tile - (diff * ft.tiles_skipped);
-					for (int i = 0; i < ft.tiles_skipped; i++) {
-						check_rail_type(start, trackdir, i * TILE_SIZE);
-						start += diff;
-					}
+				auto start = end.Reverse();
+				for (int i = 0; i < ft.tiles_skipped; ++i) start = start.Next();
+				start = start.Reverse();
+				check_direction(TrackdirToDirection(start.td), 0, start.tile);
+				for (int i = 0; i <= ft.tiles_skipped; ++i, start = start.Next()) {
+					check_rail_type(start.tile, start.td, i * end.PieceLength());
 				}
-				check_rail_type(tile, trackdir, ft.tiles_skipped * TILE_SIZE);
-				lookahead->AddStation(1 + ft.tiles_skipped, GetStationIndex(ft.new_tile), z);
+				AddPlatformToLookAhead(*lookahead, end, lookahead->RealEndPosition() + skipped_distance, z);
 			} else {
+				if (ft.tiles_skipped > 0) check_direction(DiagDirToDir(TrackdirToExitdir(trackdir)), 0, tile);
 				check_rail_type(tile, trackdir, 0);
 			}
-			check_direction(TrackdirToDirection(trackdir), ft.tiles_skipped * TILE_SIZE, tile);
+			check_direction(TrackdirToDirection(trackdir), skipped_distance, tile);
 			if (IsTileType(tile, TileType::TunnelBridge) && TrackdirEntersTunnelBridge(tile, trackdir)) {
 				uint16_t bridge_speed = 0;
 				if (IsBridge(tile)) {
@@ -734,7 +726,7 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 				}
 			}
 
-			lookahead->reservation_end_position += (IsDiagonalTrackdir(trackdir) ? 16 : 8) + (ft.tiles_skipped * 16);
+			lookahead->reservation_end_position += end.PieceLength() + skipped_distance;
 			update_z(tile, trackdir, false);
 		}
 
@@ -816,15 +808,12 @@ static void FollowReservationEnumerate(Owner o, RailTypes rts, TileIndex tile, T
 
 		if (ft.is_station) {
 			/* Check skipped station tiles as well, maybe our reservation ends inside the station. */
-			TileIndexDiff diff = TileOffsByDiagDir(ft.exitdir);
-			TileIndex t = ft.new_tile - (ft.tiles_skipped * diff);
-			while (ft.tiles_skipped-- > 0) {
-				if (HasStationReservation(t)) {
-					if (handler(t, DiagDirToDiagTrackdir(ft.exitdir))) return;
-				} else {
-					break;
-				}
-				t += diff;
+			auto p = RailPlatformPosition{ft.new_tile, FindFirstTrackdir(ft.new_td_bits)}.Reverse();
+			for (int i = 0; i < ft.tiles_skipped; ++i) p = p.Next();
+			p = p.Reverse();
+			for (int i = 0; i < ft.tiles_skipped; ++i, p = p.Next()) {
+				if (!HasReservedTracks(p.tile, TrackToTrackBits(p.GetTrack()))) break;
+				if (handler(p.tile, p.td)) return;
 			}
 		}
 
@@ -883,8 +872,9 @@ struct FindTrainOnTrackInfo {
  * @param tile The tile to search for.
  * @param departing Train whose geometrically separated split partner can be ignored.
  */
-static void CheckTrainsOnTrack(FindTrainOnTrackInfo &info, TileIndex tile, const Train *departing = nullptr)
+static void CheckTrainsOnTrack(FindTrainOnTrackInfo &info, TileIndex tile, const Train *departing = nullptr, Track track = INVALID_TRACK)
 {
+	if (track == INVALID_TRACK) track = TrackdirToTrack(info.res.trackdir);
 	for (Train *t : VehiclesOnTile<VehicleType::Train>(tile)) {
 		if (t->vehstatus.Test(VehState::Crashed)) continue;
 		if (departing != nullptr && IsDecoupledPartBehindDeparture(departing, t)) continue;
@@ -902,7 +892,7 @@ static void CheckTrainsOnTrack(FindTrainOnTrackInfo &info, TileIndex tile, const
 				continue;
 			}
 		}
-		if (t->track & TRACK_BIT_WORMHOLE || HasBit((TrackBits)t->track, TrackdirToTrack(info.res.trackdir))) {
+		if (t->track & TRACK_BIT_WORMHOLE || HasBit(t->track, track)) {
 			t = t->Primary();
 
 			/* ALWAYS return the lowest ID (anti-desync!) */
@@ -986,14 +976,11 @@ PBSTileInfo FollowTrainReservation(const Train *v, Vehicle **train_on_res, Follo
 			 * but never past our moving front on this platform: a split partner
 			 * behind it is not standing on the path we are about to take. */
 			const Train *moving_front = v->GetMovingFront();
-			const bool front_on_platform = IsCompatibleTrainStationTile(moving_front->tile, ftoti.res.tile);
-			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(ftoti.res.trackdir)));
-			if (!front_on_platform || moving_front->tile != ftoti.res.tile) {
-				for (TileIndex st_tile = ftoti.res.tile + diff; *train_on_res == nullptr && IsCompatibleTrainStationTile(st_tile, ftoti.res.tile); st_tile += diff) {
-					CheckTrainsOnTrack(ftoti, st_tile, v);
-					if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
-					if (front_on_platform && st_tile == moving_front->tile) break;
-				}
+			const RailPlatformPosition end{ftoti.res.tile, ReverseTrackdir(ftoti.res.trackdir)};
+			for (auto p = end; *train_on_res == nullptr && p.IsContinuationOf(end); p = p.Next()) {
+				if (p.tile == moving_front->tile && HasBit(moving_front->track, p.GetTrack())) break;
+				CheckTrainsOnTrack(ftoti, p.tile, v, p.GetTrack());
+				if (ftoti.best != nullptr) *train_on_res = ftoti.best->Primary();
 			}
 		}
 		if (*train_on_res == nullptr && IsTileType(ftoti.res.tile, TileType::TunnelBridge) && IsTrackAcrossTunnelBridge(ftoti.res.tile, TrackdirToTrack(ftoti.res.trackdir)) && !IsTunnelBridgeWithSignalSimulation(ftoti.res.tile)) {
@@ -1091,41 +1078,30 @@ static int ScanTrainPositionForLookAheadStation(Train *moving_front, TileIndex s
 				cur_tile = u_tile;
 			}
 		}
-		if (HasStationTileRail(u->tile)) {
+		const RailPlatformPosition origin{u->tile, u->GetVehicleTrackdir()};
+		if (origin.IsPlatform()) {
 			StationID current = GetStationIndex(u->tile);
 			if (current != prev) {
-				/* Train is in a station, add that to the lookahead */
-				TileIndex tile = u->tile;
-				Trackdir trackdir = u->GetVehicleTrackdir();
-
-				RailType rt = GetRailTypeByTrack(tile, TrackdirToTrack(trackdir));
-				int z = GetTileMaxPixelZ(tile);
-
-				DiagDirection forward_dir = TrackdirToExitdir(trackdir);
-				TileIndexDiff diff = TileOffsByDiagDir(forward_dir);
-				uint forward_length = BaseStation::GetByTile(tile)->GetPlatformLength(tile, forward_dir);
-				uint reverse_length = BaseStation::GetByTile(tile)->GetPlatformLength(tile, ReverseDiagDir(forward_dir));
-
-				TrainReservationLookAhead &lookahead = *(moving_front->Primary()->lookahead);
+				const int piece_length = origin.PieceLength();
+				RailType rt = GetRailTypeByTrack(origin.tile, origin.GetTrack());
+				int z = GetTileMaxPixelZ(origin.tile);
+				const uint forward_length = IsRailStationTile(origin.tile) ? origin.CountAhead() : 1;
+				TrainReservationLookAhead &lookahead = *moving_front->Primary()->lookahead;
 
 				if (u == moving_front) {
-					for (uint i = 1; i < forward_length; i++) {
-						/* Check for mid platform rail type change */
-						TileIndex new_tile = tile + (i * diff);
-						RailType new_rt = GetRailTypeByTrack(new_tile, TrackdirToTrack(trackdir));
+					auto p = origin.Next();
+					for (uint i = 1; i < forward_length; ++i, p = p.Next()) {
+						RailType new_rt = GetRailTypeByTrack(p.tile, p.GetTrack());
 						if (new_rt != rt) {
-							uint16_t rail_speed = GetTrainSpeedLimitForRailtype(moving_front->First(), new_rt, new_tile, TrackdirToTrack(trackdir));
-							if (rail_speed > 0) lookahead.AddTrackSpeedLimit(rail_speed, (i - 1) * TILE_SIZE, 4, z);
+							uint16_t rail_speed = GetTrainSpeedLimitForRailtype(moving_front->First(), new_rt, p.tile, p.GetTrack());
+							if (rail_speed > 0) lookahead.AddTrackSpeedLimit(rail_speed, (i - 1) * piece_length, 4, z);
 							rt = new_rt;
 						}
 					}
 					start_offset_tiles = forward_length - 1;
 				}
 
-				lookahead.AddStation(forward_length - 1, current, z);
-				lookahead.items.back().start -= offset + (reverse_length * TILE_SIZE);
-				lookahead.items.back().end -= offset;
-
+				AddPlatformToLookAhead(lookahead, origin, lookahead.RealEndPosition() - offset - piece_length, z);
 				prev = current;
 			}
 		} else {
@@ -1318,9 +1294,11 @@ void FillTrainReservationLookAhead(Train *v)
 		}
 		int station_offset_tiles = ScanTrainPositionForLookAheadStation(moving_front, tile);
 		if (station_offset_tiles > 0) {
-			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(trackdir));
-			tile += station_offset_tiles * diff;
-			lookahead->reservation_end_position += station_offset_tiles * TILE_SIZE;
+			RailPlatformPosition p{tile, trackdir};
+			for (int i = 0; i < station_offset_tiles; ++i) p = p.Next();
+			tile = p.tile;
+			trackdir = p.td;
+			lookahead->reservation_end_position += station_offset_tiles * p.PieceLength();
 		}
 	} else {
 		old_reservation_end_position = lookahead->reservation_end_position;
@@ -1434,17 +1412,17 @@ Train *GetTrainForReservation(TileIndex tile, Track track)
 		 * search in this direction as the reservation can't come from this side.*/
 		if (HasOnewaySignalBlockingTrackdir(tile, ReverseTrackdir(trackdir)) && !HasPbsSignalOnTrackdir(tile, trackdir)) continue;
 
-	FindTrainOnTrackInfo ftoti;
-	ftoti.res = FollowReservation(GetTileOwner(tile), rts, tile, trackdir, FRF_IGNORE_ONEWAY, nullptr, nullptr);
+		FindTrainOnTrackInfo ftoti;
+		ftoti.res = FollowReservation(GetTileOwner(tile), rts, tile, trackdir, FRF_IGNORE_ONEWAY, nullptr, nullptr);
 
-	CheckTrainsOnTrack(ftoti, ftoti.res.tile);
-	if (ftoti.best != nullptr) return ftoti.best;
+		CheckTrainsOnTrack(ftoti, ftoti.res.tile);
+		if (ftoti.best != nullptr) return ftoti.best;
 
 		/* Special case for stations: check the whole platform for a vehicle. */
 		if (IsRailStationTile(ftoti.res.tile)) {
-			TileIndexDiff diff = TileOffsByDiagDir(TrackdirToExitdir(ReverseTrackdir(ftoti.res.trackdir)));
-			for (TileIndex st_tile = ftoti.res.tile + diff; IsCompatibleTrainStationTile(st_tile, ftoti.res.tile); st_tile += diff) {
-				CheckTrainsOnTrack(ftoti, st_tile);
+			const RailPlatformPosition end{ftoti.res.tile, ReverseTrackdir(ftoti.res.trackdir)};
+			for (auto p = end.Next(); p.IsContinuationOf(end); p = p.Next()) {
+				CheckTrainsOnTrack(ftoti, p.tile, nullptr, p.GetTrack());
 				if (ftoti.best != nullptr) return ftoti.best;
 			}
 		}
@@ -1618,14 +1596,14 @@ bool GetTrainReservationPathTo(const Train *v, TileIndex tile, Trackdir td, size
  * Check whether a vehicle of the couple partner of \a v stands on \a tile.
  * Only meaningful for trains with a goto-couple order and a claimed target.
  */
-bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile)
+bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile, Track track)
 {
 	if (!v->current_order.IsType(OT_GOTO_COUPLE)) return false;
 	const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
 	if (tgt == nullptr) return false;
 	const Train *partner = tgt->Primary();
 	for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
-		if (u->Primary() == partner) return true;
+		if (u->Primary() == partner && (track == INVALID_TRACK || HasBit(u->track, track))) return true;
 	}
 	return false;
 }
@@ -1636,7 +1614,7 @@ bool IsCouplePartnerVehicleTile(const Train *v, TileIndex tile)
  * "something else is in the way" test: the partner and ourselves may share the
  * track, anything else may not.
  */
-bool HasForeignConsistOnTile(const Train *v, TileIndex tile)
+bool HasForeignConsistOnTile(const Train *v, TileIndex tile, Track track)
 {
 	const Train *mover = v->Primary();
 	const Train *partner = nullptr;
@@ -1646,7 +1624,7 @@ bool HasForeignConsistOnTile(const Train *v, TileIndex tile)
 	}
 	for (const Train *u : VehiclesOnTile<VehicleType::Train>(tile)) {
 		const Train *up = u->Primary();
-		if (up != mover && up != partner) return true;
+		if (up != mover && up != partner && (track == INVALID_TRACK || (u->track & TrackToTrackBits(track)) != 0 || TracksOverlap(u->track | TrackToTrackBits(track)))) return true;
 	}
 	return false;
 }
@@ -1658,44 +1636,31 @@ bool HasForeignConsistOnTile(const Train *v, TileIndex tile)
  * can never reach a different platform, unlike a mere compatibility check
  * (which only compares station, axis and direction).
  */
-static bool CouplePlatformStripHasPartner(const Train *partner, TileIndex tile)
+static bool CouplePlatformStripHasPartner(const Train *partner, TileIndex tile, Track track)
 {
-	if (!IsRailStationTile(tile)) return false;
-	Track tr = GetRailStationTrack(tile);
-
-	auto strip_tile_has_partner = [&](TileIndex t) {
-		for (const Train *u : VehiclesOnTile<VehicleType::Train>(t)) {
-			if (u->Primary() == partner) return true;
-		}
-		return false;
-	};
-
-	if (strip_tile_has_partner(tile)) return true;
-
-	for (DiagDirection dd = DiagDirection::Begin; dd < DiagDirection::End; dd++) {
-		if (!(DiagdirReachesTracks(dd) & TrackToTrackBits(tr))) continue;
-		TileIndex t = tile;
-		for (;;) {
-			t = TileAdd(t, TileOffsByDiagDir(dd));
-			if (!IsRailStationTile(t) || !IsCompatibleTrainStationTile(t, tile)) break;
-			if (strip_tile_has_partner(t)) return true;
+	const RailPlatformPosition origin{tile, TrackToTrackdir(track)};
+	if (!origin.IsPlatform()) return false;
+	for (auto direction : {origin, origin.Reverse()}) {
+		for (auto p = direction; p.IsContinuationOf(direction); p = p.Next()) {
+			for (const Train *u : VehiclesOnTile<VehicleType::Train>(p.tile)) {
+				if (u->Primary() == partner && HasBit(u->track, p.GetTrack())) return true;
+			}
 		}
 	}
 	return false;
 }
 
-/**
- * Check whether \a tile belongs to the couple partner of \a v: either a
- * vehicle of the partner stands on it, or it is a station tile of the same
- * continuous platform strip as (one of the body tiles of) the partner.
- */
-bool IsCouplePartnerTile(const Train *v, TileIndex tile)
+bool IsCouplePartnerTile(const Train *v, TileIndex tile, Track track)
 {
-	if (IsCouplePartnerVehicleTile(v, tile)) return true;
+	if (IsCouplePartnerVehicleTile(v, tile, track)) return true;
 	if (!v->current_order.IsType(OT_GOTO_COUPLE) || !IsRailStationTile(tile)) return false;
 	const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
 	if (tgt == nullptr) return false;
-	return CouplePlatformStripHasPartner(tgt->Primary(), tile);
+	if (track != INVALID_TRACK) return CouplePlatformStripHasPartner(tgt->Primary(), tile, track);
+	for (Track platform : SetTrackBitIterator(GetRailStationPlatformBits(tile))) {
+		if (CouplePlatformStripHasPartner(tgt->Primary(), tile, platform)) return true;
+	}
+	return false;
 }
 
 /** Tile budget for the couple approach walk. */
@@ -1834,8 +1799,20 @@ static CoupleApproachOutcome CoupleApproachSearch(const Train *v, const Train *t
 
 		bool saw_foreign = false;
 		bool reached = false;
+		const bool diagonal_platform = IsDiagonalRailStationTile(ft.new_tile);
+		RailPlatformPosition pos{ft.new_tile, FindFirstTrackdir(ft.new_td_bits)};
+		if (diagonal_platform) {
+			pos = pos.Reverse();
+			for (int i = 0; i < ft.tiles_skipped; ++i) pos = pos.Next();
+			pos = pos.Reverse();
+		}
 		for (uint i = 1; i <= ft.tiles_skipped + 1; i++) {
 			TileIndex t = ft.new_tile - step * (ft.tiles_skipped + 1 - i);
+			if (diagonal_platform) {
+				t = pos.tile;
+				mover_track = TrackToTrackBits(pos.GetTrack());
+				pos = pos.Next();
+			}
 			if (!IsValidTile(t) || t == n.tile) continue;
 			/* The contact happens where the partner is met; tiles past it are not travelled. */
 			if (partner_on(t)) {
@@ -1856,6 +1833,10 @@ static CoupleApproachOutcome CoupleApproachSearch(const Train *v, const Train *t
 					}
 				}
 				if (!have_contact) {
+					if (diagonal_platform) {
+						if (foreign_on(t, mover_track)) saw_foreign = true;
+						continue;
+					}
 					/* Partner shares the tile but not our track: keep the old
 					 * conservative rule. */
 					if (foreign_on(t, mover_track)) saw_foreign = true;
@@ -1879,7 +1860,7 @@ static CoupleApproachOutcome CoupleApproachSearch(const Train *v, const Train *t
 		}
 		const bool met_foreign = n.met_foreign || saw_foreign;
 
-		TrackdirBits tdb = ft.new_td_bits & DiagdirReachesTrackdirs(ft.exitdir);
+		TrackdirBits tdb = ft.new_td_bits;
 		for (Trackdir ntd : SetTrackdirBitIterator(tdb)) {
 			relax(ft.new_tile, ntd, n.cost + 1, met_foreign);
 		}
@@ -1926,12 +1907,12 @@ bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
 		if (tgt != nullptr) {
 			const Train *partner = tgt->Primary();
-			bool found = CouplePlatformStripHasPartner(partner, tile);
+			bool found = IsRailStationTile(tile) && CouplePlatformStripHasPartner(partner, tile, TrackdirToTrack(trackdir));
 			if (!found) {
 				CFollowTrackRail cft(v, v->GetIndirectCompatibleRailTypes());
 				if (cft.Follow(tile, trackdir)) {
 					for (const Train *u : VehiclesOnTile<VehicleType::Train>(cft.new_tile)) {
-						if (u->Primary() == partner) found = true;
+						if (u->Primary() == partner && (!IsDiagonalRailStationTile(cft.new_tile) || (u->track & TrackdirBitsToTrackBits(cft.new_td_bits)) != 0)) found = true;
 					}
 				}
 			}
@@ -1956,7 +1937,6 @@ bool IsSafeWaitingPosition(const Train *v, TileIndex tile, Trackdir trackdir, bo
 	}
 
 	/* Check for reachable tracks. */
-	ft.new_td_bits &= DiagdirReachesTrackdirs(ft.exitdir);
 	if (ft.tiles_skipped == 0 && Rail90DegTurnDisallowedTilesFromTrackdir(ft.old_tile, ft.new_tile, ft.old_td, forbid_90deg)) ft.new_td_bits &= ~TrackdirCrossesTrackdirs(trackdir);
 	if (ft.new_td_bits == TRACKDIR_BIT_NONE) return include_line_end;
 
@@ -2044,7 +2024,7 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 		 * but only while the way from us to the partner is free of other
 		 * consists: a train on the far side of the partner does not block, a
 		 * train between us and the partner does. */
-		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, tile)) {
+		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, tile, IsDiagonalRailStationTile(tile) ? track : INVALID_TRACK)) {
 			if (IsCoupleApproachPathClear(v)) return true;
 		}
 		return false;
@@ -2097,14 +2077,13 @@ bool IsWaitingPositionFree(const Train *v, TileIndex tile, Trackdir trackdir, bo
 	if (!ft.Follow(tile, trackdir)) return true;
 
 	/* Check for reachable tracks. */
-	ft.new_td_bits &= DiagdirReachesTrackdirs(ft.exitdir);
 	if (Rail90DegTurnDisallowedTilesFromTrackdir(ft.old_tile, ft.new_tile, ft.old_td, forbid_90deg)) ft.new_td_bits &= ~TrackdirCrossesTrackdirs(trackdir);
 
 	if (HasReservedTracks(ft.new_tile, TrackdirBitsToTrackBits(ft.new_td_bits))) {
 		/* A tile of the claimed couple partner's platform is the contact point:
 		 * stopping there is allowed, but only while the way from us to the
 		 * partner is free of other consists. */
-		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, ft.new_tile)) {
+		if (v->current_order.IsType(OT_GOTO_COUPLE) && IsCouplePartnerTile(v, ft.new_tile, IsDiagonalRailStationTile(ft.new_tile) ? TrackdirToTrack(FindFirstTrackdir(ft.new_td_bits)) : INVALID_TRACK)) {
 			return IsCoupleApproachPathClear(v);
 		}
 		return false;

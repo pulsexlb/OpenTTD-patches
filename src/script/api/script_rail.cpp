@@ -248,7 +248,7 @@
 {
 	if (!IsRailTile(tile)) return RAILTRACK_INVALID;
 
-	if (IsRailStationTile(tile) || IsRailWaypointTile(tile)) return ::TrackToTrackBits(::GetRailStationTrack(tile));
+	if (IsRailStationTile(tile) || IsRailWaypointTile(tile)) return ::GetRailStationTrackBits(tile);
 	if (IsLevelCrossingTile(tile)) return ::GetCrossingRailBits(tile);
 	if (IsRailDepotTile(tile)) return ::TRACK_BIT_NONE;
 	return ::GetTrackBits(tile);

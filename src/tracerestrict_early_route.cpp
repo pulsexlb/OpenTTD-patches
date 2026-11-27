@@ -139,7 +139,7 @@ struct AutoYieldNativeRouteScope::State {
 	std::vector<uint32_t> pending;
 	std::map<TileIndex, TrackdirBits> corridor;
 	std::set<std::pair<TileIndex, Trackdir>> selected_platform;
-	std::set<TileIndex> rejected_platforms;
+	std::set<std::pair<TileIndex, Track>> rejected_platforms;
 	std::map<uint32_t, std::set<std::pair<TileIndex, Trackdir>>> native_denied;
 
 	void BuildCorridor(const YapfRailRoute &route)
@@ -166,12 +166,13 @@ struct AutoYieldNativeRouteScope::State {
 	{
 		selected_platform.clear(); rejected_platforms.clear();
 		if (source.IsType(OT_GOTO_STATION)) for (const auto &step : plan.current.path) {
-			if (IsRailStationTile(step.tile) && GetStationIndex(step.tile) == source.GetDestination()) selected_platform.emplace(step.tile, step.trackdir);
+			if (IsRailStationTile(step.tile) && RailPlatformPosition{step.tile, step.trackdir}.IsPlatform() && GetStationIndex(step.tile) == source.GetDestination()) selected_platform.emplace(step.tile, step.trackdir);
 		}
 		for (const auto &platform : plan.rejected_platforms) {
-			const auto delta = TileOffsByDiagDir(TrackdirToExitdir(platform.direction));
-			for (TileIndex tile = platform.first; IsValidTile(tile); tile += delta) {
-				rejected_platforms.insert(tile); if (tile == platform.last || rejected_platforms.size() >= MAX_NATIVE_PLAN_STEPS) break;
+			const RailPlatformPosition start{platform.first, platform.direction};
+			for (auto p = start; p.IsContinuationOf(start); p = p.Next()) {
+				rejected_platforms.emplace(p.tile, p.GetTrack());
+				if (p.tile == platform.last || rejected_platforms.size() >= MAX_NATIVE_PLAN_STEPS) break;
 			}
 		}
 	}
@@ -368,14 +369,14 @@ bool AutoYieldNativeRouteAllows(const Train *v, TileIndex tile, Trackdir td)
 		const auto denied = s.native_denied.find(s.split_order_signature);
 		if (denied != s.native_denied.end() && denied->second.contains({tile, td})) return false;
 	}
-	if (s.rejected_platforms.contains(tile)) return false;
+	if (s.rejected_platforms.contains({tile, TrackdirToTrack(td)})) return false;
 	if (s.plan.selected_clear && std::find(s.area.clears.begin(), s.area.clears.end(), std::pair{tile, td}) != s.area.clears.end()) return *s.plan.selected_clear == std::pair{tile, td};
 	if (s.saved) {
 		const auto it = s.corridor.find(tile);
 		return it == s.corridor.end() || HasTrackdir(it->second, td);
 	}
 	if (!s.plan.current.complete) return true;
-	if (!s.selected_platform.empty() && IsRailStationTile(tile) && GetStationIndex(tile) == s.source.GetDestination()) return s.selected_platform.contains({tile, td});
+	if (!s.selected_platform.empty() && IsRailStationTile(tile) && RailPlatformPosition{tile, td}.IsPlatform() && GetStationIndex(tile) == s.source.GetDestination()) return s.selected_platform.contains({tile, td});
 	return true;
 }
 

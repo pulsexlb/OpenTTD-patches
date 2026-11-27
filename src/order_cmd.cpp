@@ -5770,23 +5770,20 @@ static uint16_t GetFreeStationPlatforms(StationID st_id)
 	assert(Station::IsValidID(st_id));
 	const Station *st = Station::Get(st_id);
 	if (!st->facilities.Test(StationFacility::Train)) return 0;
-	bool is_free;
-	TileIndex t2;
 	uint16_t counter = 0;
-	for (TileIndex t1 : st->train_station) {
-		if (st->TileBelongsToRailStation(t1)) {
-			/* We only proceed if this tile is a track tile and the north(-east/-west) end of the platform */
-			if (IsCompatibleTrainStationTile(t1 + TileOffsByDiagDir(GetRailStationAxis(t1) == Axis::X ? DiagDirection::NE : DiagDirection::NW), t1) || IsStationTileBlocked(t1)) continue;
-			is_free = true;
-			t2 = t1;
-			do {
-				if (GetStationReservationTrackBits(t2)) {
-					is_free = false;
+	for (TileIndex tile : st->train_station) {
+		if (!st->TileBelongsToRailStation(tile)) continue;
+		for (Track track : SetTrackBitIterator(GetRailStationPlatformBits(tile))) {
+			const RailPlatformPosition start{tile, TrackToTrackdir(track)};
+			if (start.Reverse().Next().IsContinuationOf(start)) continue;
+			auto p = start;
+			while (!HasBit(GetStationReservationTrackBits(p.tile), p.GetTrack())) {
+				p = p.Next();
+				if (!p.IsContinuationOf(start)) {
+					++counter;
 					break;
 				}
-				t2 += TileOffsByDiagDir(GetRailStationAxis(t1) == Axis::X ? DiagDirection::SW : DiagDirection::SE);
-			} while (IsCompatibleTrainStationTile(t2, t1));
-			if (is_free) counter++;
+			}
 		}
 	}
 	return counter;

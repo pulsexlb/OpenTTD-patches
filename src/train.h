@@ -822,7 +822,8 @@ inline int GetTileMarginInFrontOfTrain(const Train *v)
 	return GetTileMarginInFrontOfTrain(v, v->x_pos, v->y_pos);
 }
 
-int GetTrainStopLocation(StationID station_id, TileIndex tile, Train *moving_front, bool update_train_state, int *station_ahead, int *station_length);
+int GetTrainStopLocation(StationID station_id, TileIndex tile, Train *moving_front, bool update_train_state, int *station_ahead, int *station_length, Trackdir td = INVALID_TRACKDIR);
+int GetTrainStraightTrackOffset(Direction dir, int x_pos, int y_pos);
 
 int GetTrainRealisticAccelerationAtSpeed(const int speed, const int mass, const uint32_t cached_power, const uint32_t max_te, const uint32_t air_drag, const RailTypes railtypes);
 int GetTrainEstimatedMaxAchievableSpeed(const Train *train, int mass, const int speed_cap);

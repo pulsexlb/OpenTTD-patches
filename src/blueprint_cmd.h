@@ -315,7 +315,7 @@ inline void SerialiseBlueprint(BufferSerialisationRef buffer, const Blueprint &d
 {
 	/* An impossible width distinguishes styled blueprints from legacy data,
 	 * including when several blueprints are nested in a slot set. */
-	buffer.Send_generic(uint16_t{UINT16_MAX - 2}); // Version 6, including signal restriction snapshots.
+	buffer.Send_generic(uint16_t{UINT16_MAX - 3}); // Version 7, including per-track station platforms.
 	buffer.Send_generic_seq(data.width, data.height, data.name);
 	WriteBlueprintVector(buffer, data.rail_tracks);
 	WriteBlueprintVector(buffer, data.signals);
@@ -327,6 +327,7 @@ inline void SerialiseBlueprint(BufferSerialisationRef buffer, const Blueprint &d
 	WriteBlueprintVector(buffer, data.locks);
 	WriteBlueprintVector(buffer, data.ship_depots);
 	WriteBlueprintVector(buffer, data.station_tiles);
+	for (const BlueprintStationTile &st : data.station_tiles) buffer.Send_generic(st.diagonal_track);
 	WriteBlueprintVector(buffer, data.road_stops);
 	WriteBlueprintVector(buffer, data.docks);
 	WriteBlueprintVector(buffer, data.buoys);
@@ -349,7 +350,8 @@ inline void SerialiseBlueprint(BufferSerialisationRef buffer, const Blueprint &d
 inline bool DeserialiseBlueprint(DeserialisationBuffer &buffer, Blueprint &data, StringValidationSettings settings)
 {
 	buffer.Recv_generic(data.width);
-	bool with_restrictions = data.width == UINT16_MAX - 2;
+	bool with_station_tracks = data.width == UINT16_MAX - 3;
+	bool with_restrictions = data.width == UINT16_MAX - 2 || with_station_tracks;
 	bool with_signal_specs = data.width == UINT16_MAX - 1 || with_restrictions;
 	bool with_specs = data.width == UINT16_MAX || with_signal_specs;
 	if (with_specs) buffer.Recv_generic(data.width);
@@ -364,6 +366,12 @@ inline bool DeserialiseBlueprint(DeserialisationBuffer &buffer, Blueprint &data,
 	ok &= ReadBlueprintVector(buffer, data.locks, settings);
 	ok &= ReadBlueprintVector(buffer, data.ship_depots, settings);
 	ok &= ReadBlueprintVector(buffer, data.station_tiles, settings, with_specs);
+	if (with_station_tracks) {
+		for (BlueprintStationTile &st : data.station_tiles) {
+			buffer.Recv_generic(st.diagonal_track);
+			if (st.diagonal_track != INVALID_TRACK && (st.diagonal_track < TRACK_UPPER || st.diagonal_track >= TRACK_END)) return false;
+		}
+	}
 	ok &= ReadBlueprintVector(buffer, data.road_stops, settings, with_specs);
 	ok &= ReadBlueprintVector(buffer, data.docks, settings);
 	ok &= ReadBlueprintVector(buffer, data.buoys, settings);

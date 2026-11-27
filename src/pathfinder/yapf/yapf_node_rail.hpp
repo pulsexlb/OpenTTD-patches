@@ -71,6 +71,7 @@ struct CYapfRailSegment {
 	TileIndex last_tile = INVALID_TILE;
 	Trackdir last_td = INVALID_TRACKDIR;
 	int cost = -1;
+	uint16_t station_tiles = 0; ///< Terminal station pieces included in the cached pass-through cost.
 	TileIndex last_signal_tile = INVALID_TILE;
 	Trackdir last_signal_td = INVALID_TRACKDIR;
 	EndSegmentReasons end_segment_reason{};

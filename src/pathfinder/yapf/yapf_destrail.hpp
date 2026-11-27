@@ -240,8 +240,8 @@ public:
 			 * destination must be detected on any tile of the segment. */
 			const Train *v = Yapf().GetVehicle();
 			bool found = false;
-			n.template IterateTiles<CYapfDestinationTileOrStationRailT<Types>>(v, Yapf(), [&](TileIndex tile, Trackdir) {
-				if (IsCouplePartnerVehicleTile(v, tile)) {
+			n.template IterateTiles<CYapfDestinationTileOrStationRailT<Types>>(v, Yapf(), [&](TileIndex tile, Trackdir td) {
+				if (IsCouplePartnerVehicleTile(v, tile, IsDiagonalRailStationTile(tile) ? TrackdirToTrack(td) : INVALID_TRACK)) {
 					found = true;
 					return false;
 				}
@@ -257,11 +257,11 @@ public:
 	{
 		if (this->dest_station_id != StationID::Invalid()) {
 			if (!HasStationTileRail(tile) || GetStationIndex(tile) != this->dest_station_id) return false;
-			if (GetRailStationTrack(tile) != TrackdirToTrack(td)) return false;
+			if (!RailPlatformPosition{tile, td}.IsPlatform()) return false;
 			/* For a goto-couple order only the partner's own continuous
 			 * platform strip is the destination; another platform of the same
 			 * station passes the checks above but is a separate strip. */
-			if (this->couple_station_dest) return IsCouplePartnerTile(Yapf().GetVehicle(), tile);
+			if (this->couple_station_dest) return IsCouplePartnerTile(Yapf().GetVehicle(), tile, TrackdirToTrack(td));
 			return true;
 		}
 
@@ -359,7 +359,7 @@ public:
 
 	Train *GetCoupleDestination(TileIndex tile, Trackdir td, uint32_t claim_cost)
 	{
-		if (IsRailStationTile(tile)) {
+		if (IsRailStationTile(tile) && RailPlatformPosition{tile, td}.IsPlatform()) {
 			/* Station tile: search the entire platform for a waiting train
 			 * directly, without requiring a reservation. Cross-company trains
 			 * that arrived via block signals do not leave reservations.

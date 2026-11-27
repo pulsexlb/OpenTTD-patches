@@ -142,6 +142,17 @@ static DualTrackBits GetRailTrackBitsUniversal(TileIndex t, DiagDirections *over
 
 		case TileType::Station:
 			if (!HasStationRail(t)) break;
+			if (IsDiagonalRailStationTile(t)) {
+				for (Track track : SetTrackBitIterator(GetRailStationTrackBits(t))) {
+					if (!HasRailCatenary(GetTileRailTypeByTrack(t, track))) continue;
+					if ((TrackToTrackBits(track) & TRACK_BIT_RT_1) != TRACK_BIT_NONE) {
+						out.primary |= TrackToTrackBits(track);
+					} else {
+						out.secondary |= TrackToTrackBits(track);
+					}
+				}
+				break;
+			}
 			if (!HasRailCatenary(GetRailType(t))) break;
 			out.primary = TrackToTrackBits(GetRailStationTrack(t));
 			break;

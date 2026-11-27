@@ -58,6 +58,13 @@ TEST_CASE_METHOD(TrainDecoupleFixture,"Couple - trial callback observes the real
   v->direction=Direction::NE;v->grf_cache.cache_valid=0x7F;
   v->grf_cache.position_consist_length=0xABCD;v->tcache.user_def_data=0xA5;
  }
+ const bool touching_head=GENERATE(false,true);
+ if(touching_head){
+  // The remote primary faces along the preceding bend. The nearer terminal
+  // must stay at the joint even when the forecast from facing would flip it.
+  waiting->x_pos=VEHICLE_LENGTH;
+  wagon->x_pos=2*VEHICLE_LENGTH;
+ }
  const auto cache=base->grf_cache;
  const std::array<Train*,5> all{base,a,b,waiting,wagon};
  // NewGRF construction may assign different visible orientations to the subparts.
@@ -66,10 +73,10 @@ TEST_CASE_METHOD(TrainDecoupleFixture,"Couple - trial callback observes the real
  };
  for(size_t i=0;i<all.size();i++)all[i]->flags.Set(VehicleRailFlag::Flipped,original_flipped[i]);
  // Real coupling now reverses the physical chain, while unit_main keeps
- // articulated membership. Both sides reverse for these approaching directions.
- const std::vector<uint32_t> expected{b->index.base(),a->index.base(),base->index.base(),wagon->index.base(),waiting->index.base()};
+ // articulated membership. At contact only the side facing away from the joint reverses.
+ const std::vector<uint32_t> expected{b->index.base(),a->index.base(),base->index.base(),(touching_head?waiting:wagon)->index.base(),(touching_head?wagon:waiting)->index.base()};
  const std::vector<bool> expected_flipped{
-  !original_flipped[2],!original_flipped[1],!original_flipped[0],!original_flipped[4],!original_flipped[3]
+  !original_flipped[2],!original_flipped[1],!original_flipped[0],touching_head?original_flipped[3]:!original_flipped[4],touching_head?original_flipped[4]:!original_flipped[3]
  };
  for(uint repeat=0;repeat<2;repeat++){
   REQUIRE(IsCoupleArrangementValid(base,waiting));
