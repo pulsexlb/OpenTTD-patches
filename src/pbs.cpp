@@ -293,6 +293,23 @@ void UnreserveRailTrack(TileIndex tile, Track t)
 	}
 }
 
+/** Release an unsignalled crossing as a unit, ignoring only a vehicle that is leaving it. */
+bool TryClearUnsignalledRailTunnelBridgeReservation(TileIndex tile, const Train *leaving)
+{
+	const TileIndex end = GetOtherTunnelBridgeEnd(tile);
+	if (IsTunnelBridgeWithSignalSimulation(tile) || IsTunnelBridgeWithSignalSimulation(end)) return false;
+	if (!HasAcrossTunnelBridgeReservation(tile) && !HasAcrossTunnelBridgeReservation(end)) return true;
+	/* Wormhole vehicles are indexed at their entrance. Test the real crossing
+	 * and both ramps, not surface tiles along its projected map coordinates. */
+	if (TunnelBridgeIsFree(tile, end, leaving, TBIFM_ACROSS_ONLY).Failed()) return false;
+
+	UnreserveAcrossRailTunnelBridge(tile);
+	UnreserveAcrossRailTunnelBridge(end);
+	MarkBridgeOrTunnelDirtyOnReservationChange(tile, VMDF_NOT_MAP_MODE);
+	MarkBridgeOrTunnelDirtyOnReservationChange(end, VMDF_NOT_MAP_MODE);
+	return true;
+}
+
 /** Flags for FollowReservation */
 enum FollowReservationFlags {
 	FRF_NONE                 = 0,        ///< No flags

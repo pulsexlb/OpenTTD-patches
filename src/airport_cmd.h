@@ -20,6 +20,13 @@
 #include "table/airporttile_ids.h"
 
 struct Station;
+struct Town;
+struct AirportTileLayout;
+class BitmapTileArea;
+
+CommandCost AddAirportTileTableToBitmapTileArea(const AirportTileLayout &layout, BitmapTileArea *area, DiagDirection rotation, uint cost_multiplier);
+Town *AirportGetNearestTown(const BitmapTileArea &area, uint &mindist);
+uint16_t GetAirportNoiseLevelForDistance(uint noise_level, uint distance);
 
 void UpdateAircraftOnUpdatedAirport(const Station *st);
 void ConvertAllAirportsToCustom();

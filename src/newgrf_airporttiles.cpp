@@ -58,12 +58,7 @@ AirportTileOverrideManager _airporttile_mngr(NEW_AIRPORTTILE_OFFSET, NUM_AIRPORT
 static const AirportSpec *GetSourceAirportSpec(GrfID grfid, uint16_t id)
 {
 	if (grfid.Empty()) return id < NEW_AIRPORT_OFFSET ? AirportSpec::GetWithoutOverride(id) : nullptr;
-	if (id >= NUM_AIRPORTS_PER_GRF) return nullptr;
-
-	const uint16_t index = _airport_mngr.GetID(id, grfid);
-	if (index >= NUM_AIRPORTS) return nullptr;
-	const AirportSpec *spec = AirportSpec::GetWithoutOverride(index);
-	return spec->enabled && spec->grf_prop.HasGrfFile() && spec->grf_prop.grfid == grfid && spec->grf_prop.local_id == id ? spec : nullptr;
+	return AirportSpec::GetByGrf(grfid, id);
 }
 
 static const AirportTileLayout *GetSourceLayout(const AirportSpec *spec, uint8_t layout, uint16_t pos, DiagDirection rotation)
@@ -149,7 +144,7 @@ const AirportTileGraphics *GetAirportTileGraphics(TileIndex tile)
 	if (st == nullptr) return nullptr;
 
 	auto it = st->airport.tile_graphics.find(tile);
-	return it != st->airport.tile_graphics.end() ? &it->second : nullptr;
+	return it != st->airport.tile_graphics.end() ? &it->second.graphics : nullptr;
 }
 
 /**
@@ -549,6 +544,39 @@ struct AirportTileAnimationBase : public AnimationBase<AirportTileAnimationBase,
 	static constexpr AirportTileCallbackMask cbm_animation_next_frame = AirportTileCallbackMask::AnimationNextFrame;
 };
 
+/** Install an optional material without touching the tile's fallback, topology or animation. */
+void InstallAirportTileGraphics(Station *st, TileIndex tile, const AirportTileGraphics *graphics)
+{
+	if (graphics == nullptr) {
+		st->airport.tile_graphics.erase(tile);
+	} else {
+		assert(IsInfrastructure(tile));
+		st->airport.tile_graphics.insert_or_assign(tile, AirportTileAppearance{*graphics, ResolveAirportTileGraphics(*graphics) == INVALID_AIRPORTTILE});
+	}
+}
+
+/** Start from frame zero without running any callback or consuming game RNG. */
+void ResetAirportTileAnimation(TileIndex tile, bool start_one_shot)
+{
+	SetAnimationFrame(tile, 0);
+	const AnimationStatus status = AirportTileSpec::GetByTile(tile)->animation.status;
+	if (status == AnimationStatus::Looping || (start_one_shot && status == AnimationStatus::NonLooping)) {
+		AddAnimatedTile(tile, false);
+	} else {
+		DeleteAnimatedTile(tile);
+	}
+}
+
+/** The loaded frame and ANIT entry already belong to this material unless its availability changed. */
+void ReconcileAirportTileGraphicsAnimation(TileIndex tile, AirportTileAppearance &appearance)
+{
+	const bool uses_fallback = ResolveAirportTileGraphics(appearance.graphics) == INVALID_AIRPORTTILE;
+	if (appearance.uses_fallback == uses_fallback) return;
+	appearance.uses_fallback = uses_fallback;
+	/* Do not fire Built or restart one-shot animations while loading. */
+	ResetAirportTileAnimation(tile);
+}
+
 void AnimateAirportTile(TileIndex tile)
 {
 	const AirportTileSpec *ats = AirportTileSpec::GetByTile(tile);
@@ -571,6 +599,17 @@ bool TriggerAirportTileAnimation(Station *st, TileIndex tile, AirportAnimationTr
 	return DoTriggerAirportTileAnimation(st, tile, trigger, Random());
 }
 
+/** Call after all of the airport topology and materials have been installed. Tiles must be in map order. */
+void InitializeBuiltAirportTiles(std::span<const TileIndex> tiles)
+{
+	for (TileIndex tile : tiles) ResetAirportTileAnimation(tile, true);
+	for (TileIndex tile : tiles) {
+		if (AirportTileSpec::GetByTile(tile)->animation.triggers.Test(AirportAnimationTrigger::Built)) {
+			TriggerAirportTileAnimation(Station::GetByTile(tile), tile, AirportAnimationTrigger::Built);
+		}
+	}
+}
+
 bool TriggerAirportAnimation(Station *st, AirportAnimationTrigger trigger, CargoType cargo_type)
 {
 	if (st->airport.IsEmpty()) return false;
@@ -583,9 +622,9 @@ bool TriggerAirportAnimation(Station *st, AirportAnimationTrigger trigger, Cargo
 		const AirportTileSpec *ats = AirportTileSpec::GetByTile(tile);
 		if (ats->grf_prop.grffile == nullptr) continue;
 
-		uint8_t var18_extra = 0;
+		uint32_t var18_extra = 0;
 		if (IsValidCargoType(cargo_type)) {
-			var18_extra |= ats->grf_prop.grffile->cargo_map[cargo_type] << 8;
+			var18_extra = uint32_t{ats->grf_prop.grffile->cargo_map[cargo_type]} << 8;
 		}
 
 		if (DoTriggerAirportTileAnimation(st, tile, trigger, random, var18_extra)) {

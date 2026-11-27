@@ -287,7 +287,7 @@ const std::initializer_list<SlxiSubChunkInfo> _sl_xv_sub_chunk_infos = {
 	{ XSLFI_AIRCRAFT_ROLLING_RESERVATION,     XSCF_NULL,                9,   9, "aircraft_rolling_reservation",     nullptr, nullptr, nullptr          },
 	{ XSLFI_EXTERNAL_CONNECTIONS, XSCF_NULL, 19, 19, "external_connections", nullptr, nullptr, "EXCT,EXBR" },
 	{ XSLFI_AIRCRAFT_LANDING_BRAKE, XSCF_NULL, 1, 1, "aircraft_landing_brake", nullptr, nullptr, nullptr },
-	{ XSLFI_AIRPORT_GRF_TILES, XSCF_NULL, 2, 2, "airport_grf_tiles", nullptr, nullptr, nullptr },
+	{ XSLFI_AIRPORT_GRF_TILES, XSCF_NULL, 3, 3, "airport_grf_tiles", nullptr, nullptr, nullptr },
 };
 
 /**

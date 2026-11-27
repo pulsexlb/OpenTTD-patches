@@ -164,6 +164,7 @@ struct AirportSpec : NewGRFSpecBase<AirportClassID> {
 	AirportSpecFlags flags = ASF_NONE;     ///< Flags describing how this airport spec is defined.
 
 	static const AirportSpec *Get(uint8_t type);
+	static const AirportSpec *GetByGrf(GrfID grfid, uint16_t local_id);
 	static AirportSpec *GetWithoutOverride(uint8_t type);
 
 	bool IsAvailable(AirType air_type = INVALID_AIRTYPE) const;

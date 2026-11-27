@@ -263,11 +263,11 @@ inline void WriteBlueprintVector(BufferSerialisationRef buffer, const std::vecto
 }
 
 inline void DeserialiseBlueprintItem(DeserialisationBuffer &buffer, BlueprintAirportTile &data, StringValidationSettings settings, bool with_graphics = true);
-inline void DeserialiseBlueprintItem(DeserialisationBuffer &buffer, BlueprintAirport &data, StringValidationSettings settings, bool with_graphics = true);
+inline void DeserialiseBlueprintItem(DeserialisationBuffer &buffer, BlueprintAirport &data, StringValidationSettings settings, bool with_graphics = true, bool with_spec = true);
 
 /** Read a length-prefixed blueprint vector from a command buffer; the length is capped against malicious data. */
 template <typename T>
-inline bool ReadBlueprintVector(DeserialisationBuffer &buffer, std::vector<T> &data, StringValidationSettings settings, bool with_extensions = true)
+inline bool ReadBlueprintVector(DeserialisationBuffer &buffer, std::vector<T> &data, StringValidationSettings settings, bool with_extensions = true, bool with_airport_spec = true)
 {
 	uint32_t count = 0;
 	buffer.Recv_generic_integer(count);
@@ -277,8 +277,10 @@ inline bool ReadBlueprintVector(DeserialisationBuffer &buffer, std::vector<T> &d
 	data.reserve(count);
 	for (uint32_t i = 0; i < count; i++) {
 		T item{};
-		if constexpr (std::is_same_v<T, BlueprintStationTile> || std::is_same_v<T, BlueprintRoadStop> || std::is_same_v<T, BlueprintSignal> ||
-				std::is_same_v<T, BlueprintAirport> || std::is_same_v<T, BlueprintAirportTile>) {
+		if constexpr (std::is_same_v<T, BlueprintAirport>) {
+			DeserialiseBlueprintItem(buffer, item, settings, with_extensions, with_airport_spec);
+		} else if constexpr (std::is_same_v<T, BlueprintStationTile> || std::is_same_v<T, BlueprintRoadStop> || std::is_same_v<T, BlueprintSignal> ||
+				std::is_same_v<T, BlueprintAirportTile>) {
 			DeserialiseBlueprintItem(buffer, item, settings, with_extensions);
 		} else {
 			DeserialiseBlueprintItem(buffer, item, settings);
@@ -322,20 +324,23 @@ inline void SerialiseBlueprintItem(BufferSerialisationRef buffer, const Blueprin
 	SerialiseBlueprintOffset(buffer, data.offset);
 	buffer.Send_generic_seq(data.type, data.layout, data.rotation, data.air_type, data.w, data.h, data.station);
 	WriteBlueprintVector(buffer, data.tiles);
+	buffer.Send_generic_seq(data.spec.grfid, data.spec.local_id);
 }
 
-inline void DeserialiseBlueprintItem(DeserialisationBuffer &buffer, BlueprintAirport &data, StringValidationSettings settings, bool with_graphics)
+inline void DeserialiseBlueprintItem(DeserialisationBuffer &buffer, BlueprintAirport &data, StringValidationSettings settings, bool with_graphics, bool with_spec)
 {
 	DeserialiseBlueprintOffset(buffer, data.offset, settings);
 	buffer.Recv_generic_seq(settings, data.type, data.layout, data.rotation, data.air_type, data.w, data.h, data.station);
 	if (!ReadBlueprintVector(buffer, data.tiles, settings, with_graphics)) buffer.RaiseDeserialisationError();
+	data.spec = {};
+	if (with_spec && !buffer.error) buffer.Recv_generic_seq(settings, data.spec.grfid, data.spec.local_id);
 }
 
 inline void SerialiseBlueprint(BufferSerialisationRef buffer, const Blueprint &data)
 {
 	/* An impossible width distinguishes styled blueprints from legacy data,
 	 * including when several blueprints are nested in a slot set. */
-	buffer.Send_generic(uint16_t{UINT16_MAX - 3}); // Version 7, including per-tile airport graphics.
+	buffer.Send_generic(uint16_t{UINT16_MAX - 4}); // Version 8, including stable NewGRF airport spec identities.
 	buffer.Send_generic_seq(data.width, data.height, data.name);
 	WriteBlueprintVector(buffer, data.rail_tracks);
 	WriteBlueprintVector(buffer, data.signals);
@@ -369,7 +374,8 @@ inline void SerialiseBlueprint(BufferSerialisationRef buffer, const Blueprint &d
 inline bool DeserialiseBlueprint(DeserialisationBuffer &buffer, Blueprint &data, StringValidationSettings settings)
 {
 	buffer.Recv_generic(data.width);
-	const bool with_airport_graphics = data.width == UINT16_MAX - 3;
+	const bool with_airport_spec = data.width == UINT16_MAX - 4;
+	const bool with_airport_graphics = data.width == UINT16_MAX - 3 || with_airport_spec;
 	bool with_restrictions = data.width == UINT16_MAX - 2 || with_airport_graphics;
 	bool with_signal_specs = data.width == UINT16_MAX - 1 || with_restrictions;
 	bool with_specs = data.width == UINT16_MAX || with_signal_specs;
@@ -388,7 +394,7 @@ inline bool DeserialiseBlueprint(DeserialisationBuffer &buffer, Blueprint &data,
 	ok &= ReadBlueprintVector(buffer, data.road_stops, settings, with_specs);
 	ok &= ReadBlueprintVector(buffer, data.docks, settings);
 	ok &= ReadBlueprintVector(buffer, data.buoys, settings);
-	ok &= ReadBlueprintVector(buffer, data.airports, settings, with_airport_graphics);
+	ok &= ReadBlueprintVector(buffer, data.airports, settings, with_airport_graphics, with_airport_spec);
 	ok &= ReadBlueprintVector(buffer, data.corner_heights, settings);
 	data.objects.clear();
 	if (with_signal_specs) ok &= ReadBlueprintVector(buffer, data.objects, settings);

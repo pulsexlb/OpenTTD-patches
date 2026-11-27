@@ -6470,6 +6470,7 @@ STR_BLUEPRINT_ERROR_INVALID_TEXT                                :{WHITE}该文�
 STR_BLUEPRINT_ERROR_INVALID_FILE_NAME                           :{WHITE}文件名无效
 STR_BLUEPRINT_ERROR_FILE_NOT_FOUND                              :{WHITE}未找到蓝图文件，或不是有效的蓝图集
 STR_BLUEPRINT_ERROR_FILE_WRITE                                  :{WHITE}无法写入蓝图文件
+STR_BLUEPRINT_ERROR_MISSING_AIRPORT                             :{WHITE}所需的 NewGRF 机场不可用，或无法从此蓝图确定其身份
 
 
 # Blueprint feature (undo toolbar, paste options, import/export, info windows)

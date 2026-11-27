@@ -258,6 +258,7 @@ struct BlueprintAirport {
 	uint16_t h;            ///< Size of the airport along the Y axis.
 	StationID station;     ///< Original station; parts of one station are joined again when pasting.
 	std::vector<BlueprintAirportTile> tiles; ///< Per-tile state; only filled for custom airports.
+	BlueprintSpecRef spec{}; ///< Exact identity for NewGRF airports; a zero GRFID denotes a stock airport or legacy unknown identity.
 };
 
 /** Contents of one blueprint: infrastructure copied from a rectangular map area. */
@@ -438,6 +439,7 @@ Direction TransformBlueprintDirection(Direction dir, uint8_t rotation, bool refl
 Axis TransformBlueprintAxis(Axis axis, uint8_t rotation);
 RoadBits TransformBlueprintRoadBits(RoadBits bits, uint8_t rotation, bool reflected);
 bool IsBlueprintAirportLayoutValid(const BlueprintAirport &airport);
+std::optional<uint8_t> ResolveBlueprintAirportType(const BlueprintAirport &airport);
 void ClearBlueprintAirportReservations(BlueprintAirportTile &apt);
 void TransformBlueprintAirportTile(BlueprintAirportTile &apt, uint8_t rotation, bool reflected);
 Blueprint TransformBlueprint(const Blueprint &blueprint, uint8_t rotation, bool reflected);

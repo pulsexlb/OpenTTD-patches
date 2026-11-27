@@ -96,6 +96,7 @@ uint8_t FreightWagonMult(CargoType cargo);
 void CheckTrainsLengths();
 
 void FreeTrainTrackReservation(Train *consist, TileIndex origin = INVALID_TILE, Trackdir orig_td = INVALID_TRACKDIR);
+bool TryClearUnsignalledRailTunnelBridgeReservation(TileIndex tile, const Train *leaving = nullptr);
 
 /** Result flags for TryPathReserveWithResultFlags */
 enum TryPathReserveResultFlags {

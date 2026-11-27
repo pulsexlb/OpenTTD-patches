@@ -180,7 +180,7 @@ public:
 	 * @param tile The tile to check.
 	 * @param type The AirportType to check.
 	 * @pre IsAirportInformationAvailable(type).
-	 * @return The amount of noise added to the nearest town.
+	 * @return The amount of noise added to the nearest town, or 0 if there is no nearest town.
 	 * @note The noise will be added to the town with TownID GetNearestTown(tile, type).
 	 */
 	static SQInteger GetNoiseLevelIncrease(TileIndex tile, AirportType type);
@@ -191,7 +191,7 @@ public:
 	 * @param tile The tile to check.
 	 * @param type The AirportType to check.
 	 * @pre IsAirportInformationAvailable(type).
-	 * @return The TownID of the town closest to the tile.
+	 * @return The TownID of the town closest to the airport footprint, or an invalid TownID if none exists.
 	 */
 	static TownID GetNearestTown(TileIndex tile, AirportType type);
 

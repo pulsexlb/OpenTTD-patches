@@ -888,8 +888,14 @@ void ServiceExternalCityVehicle(Vehicle *train, bool arrival)
  }
  if (!changed) return;
  UpdateExternalMarketAcceptance(station);
- if (train->type == VehicleType::Train) Train::From(train)->First()->CargoChanged();
- else if (train->type == VehicleType::Road) RoadVehicle::From(train)->First()->CargoChanged();
+ if (train->type == VehicleType::Train) {
+  /* The normal station stop is bypassed off-map; refresh the braking and
+   * acceleration caches here before any part of the consist can use them. */
+  Train *head = Train::From(train)->First();
+  head->CargoChanged();
+  head->UpdateAcceleration();
+  head->BroadcastConsistCaches();
+ } else if (train->type == VehicleType::Road) RoadVehicle::From(train)->First()->CargoChanged();
  else if (train->type == VehicleType::Aircraft) { train->InvalidateNewGRFCacheOfChain(); UpdateAircraftCache(Aircraft::From(train)); Aircraft::From(train)->MarkDirty(); }
  else if (train->type == VehicleType::Ship) {
   /* NewGRF ships may change speed and appearance with their cargo load.

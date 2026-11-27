@@ -22,6 +22,8 @@
 #include "newgrf_spritegroup.h"
 #include "station_base.h"
 
+#include <span>
+
 /** Scope resolver for handling the tiles of an airport. */
 struct AirportTileScopeResolver : public ScopeResolver {
 	Station *st;                ///< Destination station, or nullptr in the build GUI.
@@ -96,6 +98,10 @@ std::optional<AirportTileGraphics> MakeAirportTileGraphics(GrfID source_grfid, u
 const AirportTileGraphics *GetAirportTileGraphics(TileIndex tile);
 const AirportTileTable *GetAirportTileGraphicsSource(const AirportTileGraphics &graphics);
 StationGfx ResolveAirportTileGraphics(const AirportTileGraphics &graphics);
+void InstallAirportTileGraphics(Station *st, TileIndex tile, const AirportTileGraphics *graphics);
+void ResetAirportTileAnimation(TileIndex tile, bool start_one_shot = false);
+void ReconcileAirportTileGraphicsAnimation(TileIndex tile, AirportTileAppearance &appearance);
+void InitializeBuiltAirportTiles(std::span<const TileIndex> tiles);
 bool DrawAirportTileGraphicsInGUI(int x, int y, const AirportTileGraphics &graphics, PaletteID palette);
 
 void AnimateAirportTile(TileIndex tile);

@@ -946,8 +946,8 @@ static void ShipController(Ship *v)
 
 						if (v->current_order.IsType(OT_GOTO_STATION) && v->current_order.GetDestination() == station_id &&
 								IsDockingTile(gp.new_tile) && Company::Get(v->owner)->settings.remain_if_next_order_same_station) {
-							Station *st = Station::Get(station_id);
-							if (st->facilities.Test(StationFacility::Dock) && st->docking_station.Contains(gp.new_tile) && IsShipDestinationTile(gp.new_tile, station_id)) {
+							Station *st = Station::GetIfValid(station_id);
+							if (st != nullptr && st->facilities.Test(StationFacility::Dock) && st->docking_station.Contains(gp.new_tile) && IsShipDestinationTile(gp.new_tile, station_id)) {
 								v->last_station_visited = station_id;
 								ShipArrivesAt(v, st);
 								v->BeginLoading();

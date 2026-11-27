@@ -440,10 +440,7 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 			continue;
 		}
 
-		const bool was_airtype_gfx = HasAirtypeGfx(t);
-		const AirportTiles old_gfx = GetTileAirportGfx(t);
-		const StationGfx old_translated_gfx = was_airtype_gfx ? INVALID_AIRPORTTILE : GetTranslatedAirportTileID(old_gfx);
-		this->airport.tile_graphics.erase(t);
+		const AirportTileSpec *old_spec = force_airtype_gfx ? AirportTileSpec::GetByTile(t) : nullptr;
 
 		t.m5() = 0;
 
@@ -460,8 +457,8 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 		std::optional<AirportTileGraphics> graphics;
 		if (force_airtype_gfx && IsInfrastructure(t)) {
 			graphics = MakeAirportTileGraphics(this->airport.type, this->airport.layout, static_cast<uint16_t>(pos), rotation);
-			if (graphics.has_value()) this->airport.tile_graphics.emplace(t, *graphics);
 		}
+		InstallAirportTileGraphics(this, t, graphics ? &*graphics : nullptr);
 
 		switch (GetAirportTileType(t)) {
 			case ATT_INFRASTRUCTURE_WITH_CATCH:
@@ -502,13 +499,7 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 			SetAirportTileTracks(t, RotateTrackBits(airport_tile_desc->trackbits, rotation));
 		}
 
-		if (force_airtype_gfx) {
-			const bool same_graphics = graphics.has_value() ? old_translated_gfx == ResolveAirportTileGraphics(*graphics) :
-					was_airtype_gfx && old_gfx == airport_tile_desc->at_gfx;
-			if (!same_graphics) SetAnimationFrame(t, 0);
-			DeleteAnimatedTile(t);
-			if (AirportTileSpec::GetByTile(t)->animation.status != AnimationStatus::NoAnimation) AddAnimatedTile(t);
-		}
+		if (force_airtype_gfx && old_spec != AirportTileSpec::GetByTile(t)) ResetAirportTileAnimation(t);
 
 		written_tiles++;
 	}

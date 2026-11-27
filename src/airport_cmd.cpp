@@ -74,8 +74,7 @@ void UpdateAircraftOnUpdatedAirport(const Station *st)
 				break;
 
 			case OT_GOTO_DEPOT:
-				if (!st->airport.HasHangar()) continue;
-				if (GetOrderHangar(v->current_order) != st->airport.hangar) continue;
+				if (st->airport.hangar == nullptr || GetOrderHangar(v->current_order) != st->airport.hangar) continue;
 				v->dest_tile = v->GetOrderHangarLocation(st->airport.hangar->index);
 				break;
 
@@ -247,14 +246,20 @@ CommandCost AddAirportTileTableToBitmapTileArea(const AirportTileLayout &atl, Bi
 {
 	CommandCost cost(ExpensesType::Construction);
 
+	const bool swap_axes = (to_underlying(rotation) % 2) != 0;
+	if (!IsValidDiagDirection(rotation) || bta->IsEmpty() || bta->w == 0 || bta->h == 0 ||
+			bta->w != (swap_axes ? atl.size_y : atl.size_x) || bta->h != (swap_axes ? atl.size_x : atl.size_y) ||
+			atl.tiles.size() != static_cast<size_t>(atl.size_x) * atl.size_y) return CMD_ERROR;
+
 	uint tile_count = 0;
-	for (TileIndex t : (TileArea)*bta) {
+	for (TileIndex t : static_cast<const TileArea &>(*bta)) {
 		uint pos = RotatedAirportSpecPosition(t, *bta, rotation);
 		if (atl.tiles[pos].type != ATT_INVALID) {
 			bta->SetTile(t);
 			++tile_count;
 		}
 	}
+	if (tile_count == 0) return CMD_ERROR;
 	cost.AddCost(_price[Price::BuildStationAirport] * tile_count * cost_multiplier);
 	return cost;
 }
@@ -266,12 +271,12 @@ CommandCost AddAirportTileTableToBitmapTileArea(const AirportTileLayout &atl, Bi
  * @param[out] mindist Minimum distance to town
  * @return nearest town to airport
  */
-Town *AirportGetNearestTown(BitmapTileArea bta, uint &mindist)
+Town *AirportGetNearestTown(const BitmapTileArea &bta, uint &mindist)
 {
-	assert(Town::GetNumItems() > 0);
+	mindist = UINT_MAX - 1; // prevent overflow
+	if (bta.IsEmpty() || bta.w == 0 || bta.h == 0 || Town::GetNumItems() == 0) return nullptr;
 
 	Town *nearest = nullptr;
-	mindist = UINT_MAX - 1; // prevent overflow
 
 	for (TileIndex tile : bta) {
 		if (!bta.HasTile(tile)) continue;
@@ -280,8 +285,7 @@ Town *AirportGetNearestTown(BitmapTileArea bta, uint &mindist)
 		if (t == nullptr) continue;
 
 		uint dist = DistanceManhattan(t->xy, tile);
-		if (dist == mindist && t->index < nearest->index) nearest = t;
-		if (dist < mindist) {
+		if (nearest == nullptr || dist < mindist || (dist == mindist && t->index < nearest->index)) {
 			nearest = t;
 			mindist = dist;
 		}
@@ -831,22 +835,10 @@ bool HasReservationsOnNeighbourTiles(TileIndex tile)
 /** Set the AirType graphics of an airport tile, discarding any NewGRF appearance. */
 static void SetGfxByAirtypeTile(TileIndex tile, AirportTiles at)
 {
-	DeleteAnimatedTile(tile);
-	Station::GetByTile(tile)->airport.tile_graphics.erase(tile);
+	InstallAirportTileGraphics(Station::GetByTile(tile), tile, nullptr);
 	SetAirGfxType(tile, true);
 	SetTileAirportGfx(tile, at);
-	SetAnimationFrame(tile, 0);
-	if (AirportTileSpec::GetByTile(tile)->animation.status != AnimationStatus::NoAnimation) AddAnimatedTile(tile);
-}
-
-/** Set a NewGRF appearance without changing the tile's use or AirType graphics. */
-static void SetAirportTileAppearance(Station *st, TileIndex tile, const AirportTileGraphics &graphics)
-{
-	DeleteAnimatedTile(tile);
-	st->airport.tile_graphics.insert_or_assign(tile, graphics);
-	SetAnimationFrame(tile, 0);
-	if (AirportTileSpec::GetByTile(tile)->animation.status != AnimationStatus::NoAnimation) AddAnimatedTile(tile);
-	TriggerAirportTileAnimation(st, tile, AirportAnimationTrigger::Built);
+	ResetAirportTileAnimation(tile, true);
 }
 
 /**
@@ -920,7 +912,9 @@ static CommandCost ChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile
 
 		if (flags.Test(DoCommandFlag::Execute)) {
 			if (graphics != nullptr) {
-				SetAirportTileAppearance(Station::GetByTile(start_tile), start_tile, *graphics);
+				Station *st = Station::GetByTile(start_tile);
+				InstallAirportTileGraphics(st, start_tile, graphics);
+				InitializeBuiltAirportTiles(std::span(&start_tile, 1));
 			} else {
 				SetAirportTileRotation(start_tile, direction);
 				SetGfxByAirtypeTile(start_tile, infra_type);
@@ -956,6 +950,7 @@ static CommandCost ChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile
 	Station *st = nullptr;
 	Town *nearest = nullptr;
 	uint dist = 0;
+	std::vector<TileIndex> built_tiles;
 	for (; *iter != INVALID_TILE; ++(*iter)) {
 		Tile tile_iter = Tile(*iter);
 		if (!IsAirportTile(tile_iter)) return CMD_ERROR;
@@ -1039,8 +1034,10 @@ static CommandCost ChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile
 						SetAirportTileTracks(tile_iter, HasBit(tile_iter.m8(), 14) ? TRACK_BIT_Y : TRACK_BIT_X);
 						break;
 				}
-				SetGfxByAirtypeTile(tile_iter, infra_type);
-				if (graphics != nullptr) SetAirportTileAppearance(st, tile_iter, *graphics);
+				SetAirGfxType(tile_iter, true);
+				SetTileAirportGfx(tile_iter, infra_type);
+				InstallAirportTileGraphics(st, tile_iter, graphics);
+				built_tiles.push_back(tile_iter);
 				MarkTileDirtyByTile(tile_iter);
 			}
 
@@ -1088,6 +1085,8 @@ static CommandCost ChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile
 
 		st->UpdateAirportDataStructure();
 		st->AfterStationTileSetChange(true, StationType::Airport);
+		std::sort(built_tiles.begin(), built_tiles.end());
+		InitializeBuiltAirportTiles(built_tiles);
 
 		if (nearest != nullptr) {
 			uint16_t noise_level = CalculateAirportNoiseLevel(st->airport);
@@ -1876,6 +1875,7 @@ CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airpor
 	BitmapTileArea new_airport_tiles; // New airport tiles to be built.
 	new_airport_tiles.Initialize(airport_area);
 	CommandCost cost = AddAirportTileTableToBitmapTileArea(as->layouts[layout], &new_airport_tiles, rotation, ati->cost_multiplier);
+	if (cost.Failed()) return cost;
 
 	Station *st = nullptr;
 	ret = FindJoiningAirport(StationID::Invalid(), station_to_join, allow_adjacent, airport_area, &st);
@@ -1987,21 +1987,14 @@ CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airpor
 			}
 		}
 
-		/* Set animated tiles. */
-		for (TileIndex t : new_airport_tiles) {
-			if (!st->TileBelongsToAirport(t)) continue;
-			if (AirportTileSpec::GetByTile(t)->animation.status != AnimationStatus::NoAnimation) AddAnimatedTile(t);
-		}
-
-		/* Only call the animation trigger after all tiles have been built */
-		for (TileIndex t : new_airport_tiles) {
-			if (!st->TileBelongsToAirport(t)) continue;
-			TriggerAirportTileAnimation(st, t, AirportAnimationTrigger::Built);
-		}
-
 		RecountAirportInfrastructure(st->owner);
 
 		st->AfterStationTileSetChange(true, StationType::Airport);
+		std::vector<TileIndex> built_tiles;
+		for (TileIndex t : new_airport_tiles) {
+			if (new_airport_tiles.HasTile(t) && st->TileBelongsToAirport(t)) built_tiles.push_back(t);
+		}
+		InitializeBuiltAirportTiles(built_tiles);
 		InvalidateWindowData(WindowClass::StationView, st->index, -1);
 
 		UpdateAircraftOnUpdatedAirport(st);

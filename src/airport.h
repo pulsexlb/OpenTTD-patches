@@ -61,6 +61,12 @@ struct AirportTileGraphics {
 	bool operator==(const AirportTileGraphics &) const = default;
 };
 
+/** Material binding and the appearance to which the saved animation belongs. */
+struct AirportTileAppearance {
+	AirportTileGraphics graphics;
+	bool uses_fallback = false; ///< False by default for old saves, which did not record this distinction.
+};
+
 uint8_t GetVehiclePosOnBuild(TileIndex hangar_tile);
 
 TrackBits GetAllowedTracks(TileIndex tile);

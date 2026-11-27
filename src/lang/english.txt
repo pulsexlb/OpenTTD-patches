@@ -3446,6 +3446,7 @@ STR_BLUEPRINT_ERROR_AREA_TOO_LARGE                              :{WHITE}The sele
 STR_BLUEPRINT_ERROR_TOO_LARGE                                   :{WHITE}Blueprint too large to paste in a multiplayer game
 STR_BLUEPRINT_ERROR_MISSING_NEWGRF                              :{WHITE}A NewGRF station or waypoint style required by this blueprint is not available
 STR_BLUEPRINT_ERROR_MISSING_SIGNAL_STYLE                        :{WHITE}A NewGRF signal style required by this blueprint is not loaded or enabled
+STR_BLUEPRINT_ERROR_MISSING_AIRPORT                             :{WHITE}A required NewGRF airport is unavailable or cannot be identified from this blueprint
 STR_BLUEPRINT_ERROR_MISSING_OBJECT                              :{WHITE}A NewGRF object required by this blueprint is not loaded or enabled
 STR_BLUEPRINT_ERROR_OBJECT_ORIENTATION                          :{WHITE}A NewGRF object does not support the rotated footprint; reset the blueprint rotation or reflection
 STR_BLUEPRINT_UNDO_LIST_OBJECT                                  :{COMMA} object{P "" s}

@@ -766,7 +766,7 @@ static OldPersistentStorage _old_st_persistent_storage;
 
 struct SavedAirportTileGraphics {
 	TileIndex tile;
-	AirportTileGraphics graphics;
+	AirportTileAppearance appearance;
 };
 
 class AirportTileGraphicsStructHandler final : public TypedSaveLoadStructHandler<AirportTileGraphicsStructHandler, Station> {
@@ -775,13 +775,15 @@ public:
 	{
 		static const NamedSaveLoad desc[] = {
 			NSLT("tile",            SLE_VAR(SavedAirportTileGraphics, tile,                     SLE_UINT32)),
-			NSLT("tile_grfid",      SLE_VAR(SavedAirportTileGraphics, graphics.tile_grfid,      SLE_LABEL)),
-			NSLT("tile_id",         SLE_VAR(SavedAirportTileGraphics, graphics.tile_id,        SLE_UINT16)),
-			NSLT("source_grfid",    SLE_VAR(SavedAirportTileGraphics, graphics.source_grfid,    SLE_LABEL)),
-			NSLT("source_airport",  SLE_VAR(SavedAirportTileGraphics, graphics.source_airport,  SLE_UINT16)),
-			NSLT("source_layout",   SLE_VAR(SavedAirportTileGraphics, graphics.source_layout,   SLE_UINT8)),
-			NSLT("source_pos",      SLE_VAR(SavedAirportTileGraphics, graphics.source_pos,      SLE_UINT16)),
-			NSLT("source_rotation", SLE_VAR(SavedAirportTileGraphics, graphics.source_rotation, SLE_UINT8)),
+			NSLT("tile_grfid",      SLE_VAR(SavedAirportTileGraphics, appearance.graphics.tile_grfid,      SLE_LABEL)),
+			NSLT("tile_id",         SLE_VAR(SavedAirportTileGraphics, appearance.graphics.tile_id,        SLE_UINT16)),
+			NSLT("source_grfid",    SLE_VAR(SavedAirportTileGraphics, appearance.graphics.source_grfid,    SLE_LABEL)),
+			NSLT("source_airport",  SLE_VAR(SavedAirportTileGraphics, appearance.graphics.source_airport,  SLE_UINT16)),
+			NSLT("source_layout",   SLE_VAR(SavedAirportTileGraphics, appearance.graphics.source_layout,   SLE_UINT8)),
+			NSLT("source_pos",      SLE_VAR(SavedAirportTileGraphics, appearance.graphics.source_pos,      SLE_UINT16)),
+			NSLT("source_rotation", SLE_VAR(SavedAirportTileGraphics, appearance.graphics.source_rotation, SLE_UINT8)),
+			NSLT("uses_fallback",   SLE_CONDVAR_X(SavedAirportTileGraphics, appearance.uses_fallback, SLE_BOOL, SL_MIN_VERSION, SL_MAX_VERSION,
+					SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRPORT_GRF_TILES, 3))),
 		};
 		return desc;
 	}
@@ -789,8 +791,8 @@ public:
 	void Save(Station *st) const override
 	{
 		SlSetStructListLength(st->airport.tile_graphics.size());
-		for (const auto &[tile, graphics] : st->airport.tile_graphics) {
-			SavedAirportTileGraphics entry{tile, graphics};
+		for (const auto &[tile, appearance] : st->airport.tile_graphics) {
+			SavedAirportTileGraphics entry{tile, appearance};
 			SlObjectSaveFiltered(&entry, this->GetLoadDescription());
 		}
 	}
@@ -801,7 +803,7 @@ public:
 		for (size_t i = 0; i < count; ++i) {
 			SavedAirportTileGraphics entry{};
 			SlObjectLoadFiltered(&entry, this->GetLoadDescription());
-			if (!st->airport.tile_graphics.emplace(entry.tile, entry.graphics).second) SlErrorCorrupt("Duplicate airport tile graphics entry");
+			if (!st->airport.tile_graphics.emplace(entry.tile, entry.appearance).second) SlErrorCorrupt("Duplicate airport tile graphics entry");
 		}
 	}
 };

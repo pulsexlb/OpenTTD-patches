@@ -255,7 +255,8 @@ CommandCost CmdClearOrderBackup(DoCommandFlags flags, TileIndex tile, ClientID u
 /* static */ void OrderBackup::RemoveOrder(OrderType type, DestinationID destination, bool hangar)
 {
 	for (OrderBackup *ob : OrderBackup::Iterate()) {
-		for (const Order *order : ob->Orders()) {
+		for (Order *order : ob->Orders()) {
+			if (type == OT_GOTO_STATION) order->ClearConditionalStationReferences(destination.ToStationID());
 			OrderType ot = order->GetType();
 			if (ot == OT_GOTO_DEPOT && (order->GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0) continue;
 			if (ot == OT_GOTO_DEPOT && hangar && !IsHangarTile(ob->tile)) continue; // Not an aircraft? Can't have a hangar order.

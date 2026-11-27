@@ -15,15 +15,22 @@
 #include "../air_map.h"
 #include "../airport.h"
 #include "../airport_cmd.h"
+#include "../animated_tile.h"
+#include "../blueprint_cmd.h"
 #include "../company_func.h"
 #include "../core/backup_type.hpp"
+#include "../core/random_func.hpp"
 #include "../depot_base.h"
 #include "../map_func.h"
+#include "../newgrf.h"
 #include "../newgrf_airport.h"
+#include "../newgrf_airporttiles.h"
 #include "../scope.h"
 #include "../settings_type.h"
 #include "../station_base.h"
 #include "../station_map.h"
+#include "../script/api/script_airport.hpp"
+#include "../town.h"
 #include "../table/strings.h"
 
 #include "../safeguards.h"
@@ -281,4 +288,186 @@ TEST_CASE("Airport - converting does not touch stations without a convertible ai
 	custom->airport.h = 1;
 	custom->airport.type = AT_CUSTOM;
 	CHECK_FALSE(custom->ConvertAirportToCustom());
+}
+
+static constexpr GrfID TEST_AIRPORT_GRF("\x12\x34\xA1\xF7");
+static constexpr GrfID OTHER_AIRPORT_GRF("\x12\x34\xA1\xF8");
+
+TEST_CASE("Airport - reloading an unchanged material preserves its frame, ANIT and RNG")
+{
+	AllocateMap(64, 64);
+	AutoRestoreBackup animated(_animated_tiles, AutoRestoreBackupNoNewValueTag{});
+	_animated_tiles.clear();
+	auto cleanup = scope_guard([] { _station_pool.CleanPool(); DeallocateMap(); });
+	AutoRestoreBackup mappings(_airporttile_mngr.mappings, AutoRestoreBackupNoNewValueTag{});
+	_airporttile_mngr.ResetMapping();
+	constexpr StationGfx slot = NEW_AIRPORTTILE_OFFSET;
+	AutoRestoreBackup spec(*const_cast<AirportTileSpec *>(AirportTileSpec::Get(slot)), AutoRestoreBackupNoNewValueTag{});
+	GRFFile grf;
+	grf.grfid = TEST_AIRPORT_GRF;
+	CallbackResultSpriteGroup built_callback(3);
+	AirportTileSpec newgrf{};
+	newgrf.enabled = true;
+	newgrf.grf_prop.SetGRFFile(&grf);
+	newgrf.grf_prop.local_id = 2;
+	newgrf.grf_prop.subst_id = 0;
+	newgrf.grf_prop.override_id = INVALID_AIRPORTTILE;
+	newgrf.grf_prop.SetSpriteGroup(StandardSpriteGroup::Default, &built_callback);
+	newgrf.animation.status = AnimationStatus::Looping;
+	newgrf.animation.frames = 5;
+	newgrf.animation.speed = 4;
+	newgrf.animation.triggers.Set(AirportAnimationTrigger::Built);
+	_airporttile_mngr.SetEntitySpec(std::move(newgrf));
+
+	TileIndex tile = TileXY(10, 10);
+	TileIndex other = TileXY(11, 10);
+	Station *st = Station::Create(tile);
+	st->airport.type = AT_CUSTOM;
+	st->airport.Add(tile);
+	st->airport.Add(other);
+	for (TileIndex t : st->airport) {
+		MakeAirport(t, OWNER_BEGIN, st->index, 0, WaterClass::Invalid);
+		SetAirGfxType(t, true);
+		SetAirportTileType(t, ATT_INFRASTRUCTURE_NO_CATCH);
+		SetTileAirportGfx(t, ATTG_NO_CATCH_RADAR);
+	}
+
+	const AirportTileGraphics graphics{TEST_AIRPORT_GRF, 2};
+	REQUIRE(ResolveAirportTileGraphics(graphics) == slot);
+	InstallAirportTileGraphics(st, tile, &graphics);
+	SavedRandomSeeds seeds;
+	SaveRandomSeeds(&seeds);
+	auto restore_rng = scope_guard([&] { RestoreRandomSeeds(seeds); });
+	InitializeBuiltAirportTiles(std::span(&tile, 1));
+	CHECK(GetAnimationFrame(tile) == 3); // New construction runs the Built callback.
+
+	auto &appearance = st->airport.tile_graphics.at(tile);
+	GameRandomSeedChecker random;
+	SetAnimationFrame(tile, 19); // Action 2 can legally return frames beyond the nominal limit.
+	_animated_tiles.erase(tile); // A looping spec can be stopped by a callback.
+	ReconcileAirportTileGraphicsAnimation(tile, appearance);
+	CHECK(GetAnimationFrame(tile) == 19);
+	CHECK(_animated_tiles.find(tile) == _animated_tiles.end());
+	_animated_tiles[tile] = {7, false};
+	_animated_tiles[other] = {5, false};
+	SetAnimationFrame(other, 6);
+	ReconcileAirportTileGraphicsAnimation(tile, appearance);
+	CHECK(_animated_tiles.find(tile)->second.speed == 7);
+
+	const auto mapping = _airporttile_mngr.mappings[slot];
+	_airporttile_mngr.mappings[slot] = {};
+	ReconcileAirportTileGraphicsAnimation(tile, appearance);
+	CHECK(appearance.uses_fallback);
+	CHECK(appearance.graphics == graphics);
+	CHECK(GetAnimationFrame(tile) == 0);
+	CHECK(AirportTileSpec::GetByTile(tile) == AirportTileSpec::GetByTile(other));
+	REQUIRE(_animated_tiles.find(tile) != _animated_tiles.end());
+	CHECK(_animated_tiles.find(tile)->second.speed == AirportTileSpec::GetByTile(other)->animation.speed);
+
+	/* Simulate resaving and loading the persisted fallback bit and its ANIT state. */
+	const auto saved_appearance = appearance;
+	st->airport.tile_graphics.erase(tile);
+	auto &loaded = st->airport.tile_graphics.emplace(tile, saved_appearance).first->second;
+	SetAnimationFrame(tile, 8);
+	_animated_tiles.erase(tile);
+	ReconcileAirportTileGraphicsAnimation(tile, loaded);
+	CHECK(GetAnimationFrame(tile) == 8);
+	CHECK(_animated_tiles.find(tile) == _animated_tiles.end());
+
+	_airporttile_mngr.mappings[slot] = mapping;
+	ReconcileAirportTileGraphicsAnimation(tile, loaded);
+	CHECK_FALSE(loaded.uses_fallback);
+	CHECK(GetAnimationFrame(tile) == 0); // Recovery does not run Built again.
+	REQUIRE(_animated_tiles.find(tile) != _animated_tiles.end());
+	CHECK(_animated_tiles.find(tile)->second.speed == 4);
+	CHECK(GetAnimationFrame(other) == 6);
+	CHECK(_animated_tiles.find(other)->second.speed == 5);
+	CHECK(random.Check());
+}
+
+TEST_CASE("Airport - blueprint spec identity follows remapped slots and rejects unknown airports")
+{
+	AllocateMap(64, 64);
+	AirportSpec::ResetAirports();
+	auto cleanup = scope_guard([] { AirportSpec::ResetAirports(); DeallocateMap(); });
+	AutoRestoreBackup mappings(_airport_mngr.mappings, AutoRestoreBackupNoNewValueTag{});
+	_airport_mngr.ResetMapping();
+	constexpr uint8_t original_slot = NEW_AIRPORT_OFFSET;
+	constexpr uint8_t remapped_slot = original_slot + 1;
+	GRFFile grf;
+	grf.grfid = TEST_AIRPORT_GRF;
+	AirportSpec &spec = *AirportSpec::GetWithoutOverride(remapped_slot);
+	spec = *AirportSpec::GetWithoutOverride(AT_SMALL);
+	spec.grf_prop.SetGRFFile(&grf);
+	spec.grf_prop.local_id = 42;
+	_airport_mngr.mappings[remapped_slot] = {TEST_AIRPORT_GRF, 42, AT_SMALL};
+	_airport_mngr.mappings[original_slot] = {OTHER_AIRPORT_GRF, 42, AT_SMALL};
+
+	Blueprint bp;
+	bp.width = bp.height = 4;
+	bp.airports.push_back({{0, 0}, original_slot, 0, 0, AIRTYPE_GRAVEL, 4, 3, StationID::Invalid(), {}, {TEST_AIRPORT_GRF, 42}});
+	std::vector<uint8_t> buffer;
+	SerialiseBlueprint(BufferSerialisationRef(buffer), bp);
+	DeserialisationBuffer reader(buffer.data(), buffer.size());
+	Blueprint decoded;
+	REQUIRE(DeserialiseBlueprint(reader, decoded, {}));
+	REQUIRE(decoded.airports.size() == 1);
+	CHECK(decoded.airports[0].spec == bp.airports[0].spec);
+	CHECK(ResolveBlueprintAirportType(decoded.airports[0]) == remapped_slot);
+
+	/* A v7 blueprint stored just the runtime slot, without the identity. */
+	std::vector<uint8_t> legacy_buffer;
+	BufferSerialisationRef legacy_writer(legacy_buffer);
+	legacy_writer.Send_generic(uint16_t{UINT16_MAX - 3});
+	legacy_writer.Send_generic_seq(bp.width, bp.height, bp.name);
+	for (uint i = 0; i < 13; ++i) legacy_writer.Send_generic_integer(0U); // Vectors preceding airports.
+	legacy_writer.Send_generic_integer(1U);
+	const auto &item = bp.airports[0];
+	SerialiseBlueprintOffset(legacy_writer, item.offset);
+	legacy_writer.Send_generic_seq(item.type, item.layout, item.rotation, item.air_type, item.w, item.h, item.station);
+	legacy_writer.Send_generic_integer(0U); // Airport tiles.
+	legacy_writer.Send_generic_integer(0U); // Corner heights.
+	legacy_writer.Send_generic_integer(0U); // Objects.
+	DeserialisationBuffer legacy_reader(legacy_buffer.data(), legacy_buffer.size());
+	Blueprint old;
+	REQUIRE(DeserialiseBlueprint(legacy_reader, old, {}));
+	REQUIRE(old.airports.size() == 1);
+	CHECK_FALSE(ResolveBlueprintAirportType(old.airports[0]).has_value());
+	old.airports[0].type = AT_SMALL;
+	CHECK(ResolveBlueprintAirportType(old.airports[0]) == AT_SMALL);
+
+	/* A stale runtime slot points to a different, buildable stock substitute. A
+	 * missing exact GRF must fail preflight before the requested terraforming. */
+	_airport_mngr.mappings[remapped_slot] = {};
+	BlueprintPasteData paste;
+	paste.blueprint = std::move(decoded);
+	paste.blueprint.corner_heights.assign(25, 2);
+	paste.terraform_mode = BlueprintTerraformMode::Full;
+	TileIndex origin = TileXY(10, 10);
+	const auto tile_type = GetTileType(origin);
+	const auto tile_height = TileHeight(origin);
+	GameRandomSeedChecker random;
+	for (DoCommandFlags flags : {DoCommandFlags{}, DoCommandFlags{DoCommandFlag::Execute}}) {
+		const auto result = CmdPasteBlueprint(flags, origin, paste);
+		REQUIRE(result.Failed());
+		CHECK(result.GetErrorMessage() == STR_BLUEPRINT_ERROR_MISSING_AIRPORT);
+	}
+	CHECK(GetTileType(origin) == tile_type);
+	CHECK(TileHeight(origin) == tile_height);
+	CHECK(random.Check());
+}
+
+TEST_CASE("Airport - script noise and nearest town are safe on maps without towns")
+{
+	AllocateMap(64, 64);
+	AirportSpec::ResetAirports();
+	auto cleanup = scope_guard([] { DeallocateMap(); });
+	REQUIRE(Town::GetNumItems() == 0);
+	AutoRestoreBackup noise(_settings_game.economy.station_noise_level, true);
+	const TileIndex tile = TileXY(10, 10);
+	CHECK(ScriptAirport::GetNoiseLevelIncrease(tile, ScriptAirport::AT_SMALL) == 0);
+	CHECK(ScriptAirport::GetNearestTown(tile, ScriptAirport::AT_SMALL) == TownID::Invalid());
+	uint distance = 0;
+	CHECK(AirportGetNearestTown(BitmapTileArea{}, distance) == nullptr);
+	CHECK(distance == UINT_MAX - 1);
 }

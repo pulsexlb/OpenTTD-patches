@@ -12,7 +12,6 @@
 #include <set>
 #include "air.h"
 #include "airport_cmd.h"
-#include "animated_tile_func.h"
 #include "blueprint.h"
 #include "blueprint_cmd.h"
 #include "bridge_map.h"
@@ -21,6 +20,7 @@
 #include "core/math_func.hpp"
 #include "direction_func.h"
 #include "landscape_cmd.h"
+#include "newgrf_airport.h"
 #include "newgrf_airporttiles.h"
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
@@ -245,6 +245,37 @@ static void CopyWaterTile(Blueprint &blueprint, TileIndex tile, TileIndexDiffC o
 	}
 }
 
+/** Record the airport's identity, not the runtime slot used to access it. */
+static BlueprintSpecRef CaptureBlueprintAirportSpec(uint8_t type)
+{
+	if (type >= NUM_AIRPORTS) return {};
+	if (type >= NEW_AIRPORT_OFFSET) {
+		/* A missing airport can currently display a stock substitute. It is still
+		 * the airport in the mapping, not that substitute. */
+		const auto &mapping = _airport_mngr.mappings[type];
+		return {mapping.grfid, mapping.entity_id};
+	}
+	const auto &prop = AirportSpec::Get(type)->grf_prop;
+	return {prop.grfid, prop.local_id};
+}
+
+/** Find the exact type that CmdBuildAirport will build, without using a stale slot. */
+std::optional<uint8_t> ResolveBlueprintAirportType(const BlueprintAirport &airport)
+{
+	const AirportSpec *spec;
+	if (!airport.spec.grfid.Empty()) {
+		spec = AirportSpec::GetByGrf(airport.spec.grfid, airport.spec.local_id);
+	} else {
+		/* Legacy external airport slots have no portable identity. For a stock
+		 * type, do not silently build a NewGRF override in its place either. */
+		if (airport.type >= NEW_AIRPORT_OFFSET || airport.type == AT_OILRIG) return std::nullopt;
+		spec = AirportSpec::GetWithoutOverride(airport.type);
+	}
+	if (spec == nullptr || !spec->enabled || airport.layout >= spec->layouts.size()) return std::nullopt;
+	const uint8_t type = spec->GetIndex();
+	return AirportSpec::Get(type) == spec ? std::optional<uint8_t>{type} : std::nullopt;
+}
+
 /** Snapshot an airport tile with its independent graphics and without transient reservations. */
 static BlueprintAirportTile CaptureBlueprintAirportTile(Tile tile, TileIndexDiffC offset)
 {
@@ -319,7 +350,7 @@ static void CopyStationTile(Blueprint &blueprint, TileIndex tile, TileIndexDiffC
 
 			BlueprintAirport airport{anchor, st->airport.type, st->airport.layout,
 					static_cast<uint8_t>(to_underlying(st->airport.rotation)), static_cast<uint8_t>(st->airport.air_type),
-					st->airport.w, st->airport.h, st->index, {}};
+					st->airport.w, st->airport.h, st->index, {}, CaptureBlueprintAirportSpec(st->airport.type)};
 
 			if (st->airport.type == AT_CUSTOM) {
 				/* Custom (multitile) airports have no spec layout to rebuild from; capture every tile. */
@@ -1551,7 +1582,7 @@ void RecordBlueprintUndoDock(TileIndex tile, DiagDirection dir)
 void RecordBlueprintUndoAirport(TileIndex tile, uint8_t type, uint8_t layout, uint8_t rotation, uint8_t air_type, uint16_t w, uint16_t h)
 {
 	if (!_undo_group_open) return;
-	_undo_group.airports.push_back({UndoGroupPos(tile), type, layout, rotation, air_type, w, h, StationID::Invalid(), {}});
+	_undo_group.airports.push_back({UndoGroupPos(tile), type, layout, rotation, air_type, w, h, StationID::Invalid(), {}, CaptureBlueprintAirportSpec(type)});
 }
 
 void RecordBlueprintUndoCustomAirportTile(TileIndex tile, AirType air_type)
@@ -2057,6 +2088,7 @@ CommandCost CmdPasteBlueprint(DoCommandFlags flags, TileIndex origin, const Blue
 	 * before changing terrain; GetAllowedTracks cannot handle these values. */
 	for (const BlueprintAirport &airport : bp.airports) {
 		if (!IsBlueprintAirportLayoutValid(airport)) return CMD_ERROR;
+		if (airport.tiles.empty() && !ResolveBlueprintAirportType(airport)) return CommandCost(STR_BLUEPRINT_ERROR_MISSING_AIRPORT);
 	}
 	for (const BlueprintObject &object : bp.objects) {
 		const ObjectSpec *spec = ResolveBlueprintObject(object.spec);
@@ -2428,6 +2460,7 @@ CommandCost CmdPasteBlueprint(DoCommandFlags flags, TileIndex origin, const Blue
 			 * (gfx, tile type, rotation, tracks). Reservations start unset. */
 			if (flags.Test(DoCommandFlag::Execute) && built) {
 				std::set<StationID> affected;
+				std::vector<TileIndex> built_tiles;
 				for (const BlueprintAirportTile &apt : ordered) {
 					if (!tile_valid(apt.offset)) continue;
 					TileIndex tile = target_tile(apt.offset);
@@ -2444,37 +2477,35 @@ CommandCost CmdPasteBlueprint(DoCommandFlags flags, TileIndex origin, const Blue
 					Tile(tile).m8() = clean.m8;
 					/* Replace anything previously recorded at this position. Keep exact
 					 * descriptions even if this game cannot resolve the NewGRF. */
-					if (clean.graphics) {
-						st->airport.tile_graphics.insert_or_assign(tile, *clean.graphics);
-					} else {
-						st->airport.tile_graphics.erase(tile);
-					}
-					SetAnimationFrame(tile, 0);
-					if (AirportTileSpec::GetByTile(tile)->animation.status != AnimationStatus::NoAnimation) {
-						AddAnimatedTile(tile, false);
-					} else {
-						DeleteAnimatedTile(tile);
-					}
+					InstallAirportTileGraphics(st, tile, clean.graphics ? &*clean.graphics : nullptr);
+					built_tiles.push_back(tile);
 					RecordBlueprintUndoCustomAirportTile(tile, airtype);
 					MarkTileDirtyByTile(tile);
 					affected.insert(st->index);
 				}
 				/* Rebuild apron/runway/hangar structures and normalise tracks. A disconnected
 				 * layout can create several stations; rebuild them in station ID order. */
-				for (StationID id : affected) Station::Get(id)->UpdateAirportDataStructure();
+				for (StationID id : affected) {
+					Station *st = Station::Get(id);
+					st->UpdateAirportDataStructure();
+					st->AfterStationTileSetChange(true, StationType::Airport);
+				}
+				std::sort(built_tiles.begin(), built_tiles.end());
+				InitializeBuiltAirportTiles(built_tiles);
 			}
 			if (built) register_new_station(airport.station, airport.offset);
 			continue;
 		}
 
-		/* Spec airport: rebuild from type/layout, honouring the captured rotation and air type. */
+		/* Spec airport: the exact identity was checked before changing the map. */
+		const uint8_t airport_type = *ResolveBlueprintAirportType(airport);
 		AirType airtype = ValParamAirType(static_cast<AirType>(airport.air_type)) ? static_cast<AirType>(airport.air_type) : fallback_airtype;
 		/* jgrpp does not maintain Station::airport.rotation at runtime; fall back to north. */
 		DiagDirection rotation = (airport.rotation <= 3) ? static_cast<DiagDirection>(airport.rotation) : DiagDirection::NE;
 		StationID airport_join = (join == NEW_STATION) ? StationID::Invalid() : join;
-		bool built = BlueprintDoCommand<CMD_BUILD_AIRPORT>(state, flags, target_tile(airport.offset), airport.type, airport.layout, airtype, rotation, airport_join, true);
+		bool built = BlueprintDoCommand<CMD_BUILD_AIRPORT>(state, flags, target_tile(airport.offset), airport_type, airport.layout, airtype, rotation, airport_join, true);
 		if (!built && airport_join != StationID::Invalid()) {
-			built = BlueprintDoCommand<CMD_BUILD_AIRPORT>(state, flags, target_tile(airport.offset), airport.type, airport.layout, airtype, rotation, StationID::Invalid(), true);
+			built = BlueprintDoCommand<CMD_BUILD_AIRPORT>(state, flags, target_tile(airport.offset), airport_type, airport.layout, airtype, rotation, StationID::Invalid(), true);
 		}
 		if (built) register_new_station(airport.station, airport.offset);
 	}

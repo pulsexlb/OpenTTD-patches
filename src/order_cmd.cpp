@@ -1244,8 +1244,9 @@ void OrderList::DeleteOrderAt(VehicleOrderID index)
 		this->timetable_duration -= (to_remove->GetTimetabledWait() + to_remove->GetTimetabledTravel());
 		this->total_duration -= (to_remove->GetWaitTime() + to_remove->GetTravelTime());
 	}
-	if (!this->IsPlayerCreated()) {
-		UnregisterOrderDestination(to_remove, this->GetFirstSharedVehicle()->type, this->GetFirstSharedVehicle()->owner);
+	const Vehicle *first = this->GetFirstSharedVehicle();
+	if (!this->IsPlayerCreated() && first != nullptr) {
+		UnregisterOrderDestination(to_remove, first->type, first->owner);
 	} else {
 		ClearOrderDestinationRefcountMap();
 	}
@@ -1561,14 +1562,20 @@ uint GetOrderDistance(const Order *prev, const Order *cur, const Vehicle *v, int
  *  Support for editing player-created (standalone) order lists.
  * ------------------------------------------------------------------ */
 
-/** Invalidate every GUI that displays a standalone player-created order list. */
-void InvalidateStandaloneOrderGUIs()
+/** Invalidate dedicated windows that display standalone player-created order lists. */
+static void InvalidateStandaloneOrderListWindows()
 {
 	ClearOrderDestinationRefcountMap();
 	InvalidateWindowClassesData(WindowClass::OrderList, VIWD_MODIFY_ORDERS);
 	InvalidateWindowClassesData(WindowClass::OrderListEditor, VIWD_MODIFY_ORDERS);
 	InvalidateWindowClassesData(WindowClass::OrderListTimetable, VIWD_MODIFY_ORDERS);
 	InvalidateWindowClassesData(WindowClass::OrderListSchedule, VIWD_MODIFY_ORDERS);
+}
+
+/** Invalidate every GUI that displays a standalone player-created order list. */
+void InvalidateStandaloneOrderGUIs()
+{
+	InvalidateStandaloneOrderListWindows();
 
 	/* Vehicles sharing a player-created list must refresh their windows too. */
 	for (const OrderList *ol : OrderList::Iterate()) {
@@ -1776,12 +1783,12 @@ static void StandaloneListInsertUpdateVehicles(OrderList *ol, VehicleOrderID sel
 }
 
 /**
- * Update the order indices of the vehicles following a standalone order list
- * (its shared chain, e.g. vehicles executing it) after an order was deleted.
+ * Update the order indices of vehicles following an order list after an order was deleted.
  * @param ol the order list that had an order deleted
  * @param sel_ord the position the order was deleted at
+ * @param reset_unbunching whether to reset linked vehicles' unbunching data now
  */
-static void StandaloneListDeleteUpdateVehicles(OrderList *ol, VehicleOrderID sel_ord)
+static void OrderListDeleteUpdateVehicles(OrderList *ol, VehicleOrderID sel_ord, bool reset_unbunching)
 {
 	for (Vehicle *u = ol->GetFirstSharedVehicle(); u != nullptr; u = u->NextShared()) {
 		if (sel_ord == u->cur_real_order_index && u->current_order.IsAnyLoadingType()) {
@@ -1807,7 +1814,7 @@ static void StandaloneListDeleteUpdateVehicles(OrderList *ol, VehicleOrderID sel
 			}
 		}
 		/* Unbunching data is no longer valid. */
-		u->ResetDepotUnbunching();
+		if (reset_unbunching) u->ResetDepotUnbunching();
 
 		if (u->cur_timetable_order_index != INVALID_VEH_ORDER_ID) {
 			if (sel_ord < u->cur_timetable_order_index) {
@@ -1888,28 +1895,33 @@ static void ClearDanglingCoupleCheckPoints(OrderList *ol)
 	}
 }
 
-/** Delete an order from a standalone order list and fix up conditional jump targets. */
-static void DeleteOrderOnStandaloneList(OrderList *ol, VehicleOrderID sel_ord)
+/** Delete an order and fix up attached/suspended indices and conditional jumps. */
+static void DeleteOrderFromList(OrderList *ol, VehicleOrderID sel_ord, bool finalize = true)
 {
+	const Order *removed = ol->GetOrderAt(sel_ord);
+	if (removed == nullptr) return;
+	const bool implicit = removed->IsType(OT_IMPLICIT);
 	ol->DeleteOrderAt(sel_ord);
+	if (finalize) ClearDanglingCoupleCheckPoints(ol);
+	OrderListDeleteUpdateVehicles(ol, sel_ord, finalize);
 
-	ClearDanglingCoupleCheckPoints(ol);
+	const VehicleOrderID count = ol->GetNumOrders();
+	for (VehicleOrderID i = 0; i < count; ++i) {
+		Order *order = ol->GetOrderAt(i);
+		if (!order->IsType(OT_CONDITIONAL)) continue;
 
-	StandaloneListDeleteUpdateVehicles(ol, sel_ord);
-
-	/* As we delete an order, the order to skip to will be 'wrong'. */
-	VehicleOrderID cur_order_id = 0;
-	for (Order *order : ol->Orders()) {
-		if (order->IsType(OT_CONDITIONAL)) {
-			VehicleOrderID order_id = order->GetConditionSkipToOrder();
-			if (order_id >= sel_ord) order_id = std::max(order_id - 1, 0);
-			if (order_id == cur_order_id) order_id = (VehicleOrderID)((order_id + 1) % ol->GetNumOrders());
-			order->SetConditionSkipToOrder(order_id);
+		VehicleOrderID target = order->GetConditionSkipToOrder();
+		if (target > count) continue; // It was already invalid before the deletion.
+		if (target > sel_ord || (!implicit && target == sel_ord && target != 0)) {
+			--target;
+		} else if (implicit && target == sel_ord && target == count) {
+			target = 0;
 		}
-		cur_order_id++;
+		/* A jump to a removed implicit stop follows its successor, as if
+		 * the implicit stop had been skipped. Avoid a self-jump. */
+		if (target == i) target = (target + 1) % count;
+		order->SetConditionSkipToOrder(target);
 	}
-
-	InvalidateStandaloneOrderGUIs();
 }
 
 /**
@@ -2614,7 +2626,8 @@ CommandCost CmdDeleteOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 		}
 
 		if (flags.Test(DoCommandFlag::Execute)) {
-			DeleteOrderOnStandaloneList(ol, sel_ord);
+			DeleteOrderFromList(ol, sel_ord);
+			InvalidateStandaloneOrderGUIs();
 		}
 		return CommandCost();
 	}
@@ -2670,78 +2683,8 @@ static void CancelLoadingDueToDeletedOrder(Vehicle *v)
  */
 void DeleteOrder(Vehicle *v, VehicleOrderID sel_ord)
 {
-	v->orders->DeleteOrderAt(sel_ord);
-
-	ClearDanglingCoupleCheckPoints(v->orders);
-
-	Vehicle *u = v->FirstShared();
-	DeleteOrderWarnings(u);
-	for (; u != nullptr; u = u->NextShared()) {
-		assert(v->orders == u->orders);
-
-		if (sel_ord == u->cur_real_order_index && u->current_order.IsAnyLoadingType()) {
-			CancelLoadingDueToDeletedOrder(u);
-		}
-
-		if (sel_ord < u->cur_real_order_index) {
-			u->cur_real_order_index--;
-		} else if (sel_ord == u->cur_real_order_index) {
-			u->UpdateRealOrderIndex();
-		}
-
-		if (sel_ord < u->cur_implicit_order_index) {
-			u->cur_implicit_order_index--;
-		} else if (sel_ord == u->cur_implicit_order_index) {
-			/* Make sure the index is valid */
-			if (u->cur_implicit_order_index >= u->GetNumOrders()) u->cur_implicit_order_index = 0;
-
-			/* Skip non-implicit orders for the implicit-order-index (e.g. if the current implicit order was deleted */
-			while (u->cur_implicit_order_index != u->cur_real_order_index && !u->GetOrder(u->cur_implicit_order_index)->IsType(OT_IMPLICIT)) {
-				u->cur_implicit_order_index++;
-				if (u->cur_implicit_order_index >= u->GetNumOrders()) u->cur_implicit_order_index = 0;
-			}
-		}
-		/* Unbunching data is no longer valid. */
-		u->ResetDepotUnbunching();
-
-		if (u->cur_timetable_order_index != INVALID_VEH_ORDER_ID) {
-			if (sel_ord < u->cur_timetable_order_index) {
-				u->cur_timetable_order_index--;
-			} else if (sel_ord == u->cur_timetable_order_index) {
-				u->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
-			}
-		}
-
-		/* Update any possible open window of the vehicle */
-		InvalidateVehicleOrder(u, sel_ord | (INVALID_VEH_ORDER_ID << 16));
-	}
-
-	/* Keep the resume position of vehicles executing another list but calling
-	 * this list home in sync as well. If the order to resume at was deleted,
-	 * its successor has shifted into its place. */
-	AdjustExecutingResumeIndices(v->orders->index, [&](VehicleOrderID &idx) {
-		if (sel_ord < idx) {
-			idx--;
-		} else if (sel_ord == idx && idx >= v->GetNumOrders()) {
-			idx = 0;
-		}
-	});
-
-	/* As we delete an order, the order to skip to will be 'wrong'. */
-	VehicleOrderID cur_order_id = 0;
-	for (Order *order : v->Orders()) {
-		if (order->IsType(OT_CONDITIONAL)) {
-			VehicleOrderID order_id = order->GetConditionSkipToOrder();
-			if (order_id >= sel_ord) {
-				order_id = std::max(order_id - 1, 0);
-			}
-			if (order_id == cur_order_id) {
-				order_id = (order_id + 1) % v->GetNumOrders();
-			}
-			order->SetConditionSkipToOrder(order_id);
-		}
-		cur_order_id++;
-	}
+	DeleteOrderWarnings(v->FirstShared());
+	DeleteOrderFromList(v->orders, sel_ord);
 
 	InvalidateWindowClassesData(GetWindowClassForVehicleType(v->type));
 	InvalidateWindowClassesData(WindowClass::DepartureBoard);
@@ -3656,7 +3599,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 			break;
 
 		case MOF_COND_DESTINATION:
-			if (data >= v->GetNumOrders() || data == sel_ord) return CMD_ERROR;
+			if (data >= ol->GetNumOrders() || data == sel_ord) return CMD_ERROR;
 			break;
 
 		case MOF_SECOND_ORDERS:
@@ -4131,8 +4074,11 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 					case OrderConditionVariable::VehicleInSlot:
 						if (!old_var_was_slot) {
 							order->GetXDataRef() = INVALID_TRACE_RESTRICT_SLOT_ID.base();
-						} else if (order->GetConditionVariable() == OrderConditionVariable::VehicleInSlot && order->GetXData() != INVALID_TRACE_RESTRICT_SLOT_ID && TraceRestrictSlot::Get(order->GetXData())->vehicle_type != v->type) {
-							order->GetXDataRef() = INVALID_TRACE_RESTRICT_SLOT_ID.base();
+						} else if (new_condition == OrderConditionVariable::VehicleInSlot && order->GetXData() != INVALID_TRACE_RESTRICT_SLOT_ID) {
+							const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(order->GetXData());
+							if (slot == nullptr || (!is_list && slot->vehicle_type != v->type)) {
+								order->GetXDataRef() = INVALID_TRACE_RESTRICT_SLOT_ID.base();
+							}
 						}
 						if (old_condition != order->GetConditionVariable()) order->SetConditionComparator(OrderConditionComparator::IsTrue);
 						break;
@@ -4231,7 +4177,7 @@ CommandCost CmdModifyOrder(DoCommandFlags flags, OrderTargetType target_type, ui
 
 					case OrderConditionVariable::VehicleInSlot:
 						order->GetXDataRef() = data;
-						if (data != INVALID_TRACE_RESTRICT_SLOT_ID && TraceRestrictSlot::Get(data)->vehicle_type != v->type) {
+						if (!is_list && data != INVALID_TRACE_RESTRICT_SLOT_ID && TraceRestrictSlot::Get(data)->vehicle_type != v->type) {
 							if (order->GetConditionComparator() == OrderConditionComparator::Equal) order->SetConditionComparator(OrderConditionComparator::IsTrue);
 							if (order->GetConditionComparator() == OrderConditionComparator::NotEqual) order->SetConditionComparator(OrderConditionComparator::IsFalse);
 						}
@@ -5422,6 +5368,103 @@ static bool IsBatchRemoveOrderDepotRemoved(DestinationID destination)
 	return HasBit(_remove_order_from_all_vehicles_depots[destination.base() / 32], destination.base() % 32);
 }
 
+enum class OrderDepotDestinationKind : uint8_t { Depot, Hangar };
+using OrderDepotDestinationKinds = EnumBitSet<OrderDepotDestinationKind, uint8_t>;
+
+static OrderDepotDestinationKind GetOrderDepotDestinationKind(VehicleType type)
+{
+	return type == VehicleType::Aircraft ? OrderDepotDestinationKind::Hangar : OrderDepotDestinationKind::Depot;
+}
+
+/** Invalidate both station references of a conditional order, without turning a via test into an unrestricted one. */
+bool Order::ClearConditionalStationReferences(StationID station)
+{
+	if (station == StationID::Invalid() || !this->IsType(OT_CONDITIONAL)) return false;
+	const auto condition = this->GetConditionVariable();
+	bool changed = false;
+	if (ConditionVariableTestsCargoWaitingAmount(condition) && this->HasConditionViaStation() && this->GetConditionViaStationID() == station) {
+		this->SetConditionViaStationID(StationID::Invalid());
+		changed = true;
+	}
+	if (ConditionVariableHasStationID(condition) && this->GetConditionStationID() == station) {
+		this->SetConditionStationID(StationID::Invalid());
+		changed = true;
+	}
+	return changed;
+}
+
+/** Clean active snapshots separately, then visit every list exactly once, including unattached lists. */
+template <typename Match>
+static void RemoveOrderDestinations(Match match, StationID removed_station = StationID::Invalid())
+{
+	std::map<OrderListID, OrderDepotDestinationKinds> depot_kinds;
+	for (Vehicle *v : Vehicle::Iterate()) {
+		const auto kind = GetOrderDepotDestinationKind(v->type);
+		if (match(v->current_order, OrderDepotDestinationKinds{kind}, true)) {
+			v->current_order.MakeDummy();
+			InvalidateWindowData(WindowClass::VehicleView, v->index);
+		} else if (v->current_order.ClearConditionalStationReferences(removed_station)) {
+			InvalidateWindowData(WindowClass::VehicleView, v->index);
+		}
+
+		if (v->orders != nullptr) depot_kinds[v->orders->index].Set(kind);
+		if (!v->IsExecutingSchedule()) continue;
+		depot_kinds[v->primary_order].Set(kind);
+		for (uint32_t frame : v->execute_schedule_stack) {
+			depot_kinds[OrderListID{uint16_t(frame)}].Set(kind);
+		}
+	}
+
+	bool any_changed = false;
+	for (OrderList *list : OrderList::Iterate()) {
+		if (list->IsScheduleGroup() || list->GetNumOrders() == 0) continue;
+		/* Aircraft depot orders use the station namespace. Infer the namespace
+		 * from active and suspended users. An unattached, untyped list can
+		 * contain either kind: do not leave an ambiguous ID live for reuse. */
+		auto kinds = OrderDepotDestinationKinds{OrderDepotDestinationKind::Depot, OrderDepotDestinationKind::Hangar};
+		if (auto it = depot_kinds.find(list->index); it != depot_kinds.end()) kinds = it->second;
+
+		bool changed = false;
+		bool deleted_implicit = false;
+		for (VehicleOrderID id = 0; id < list->GetNumOrders();) {
+			Order *order = list->GetOrderAt(id);
+			if (match(*order, kinds, false)) {
+				changed = true;
+				if (order->IsType(OT_IMPLICIT)) {
+					DeleteOrderFromList(list, id, false);
+					deleted_implicit = true;
+					continue;
+				}
+
+				order->InvalidateGuiOnRemove();
+				/* Keep the entry and its travel time, but remove the stop and its wait time. */
+				const bool travel_timetabled = !order->HasNoTimetableTimes() && order->IsTravelTimetabled();
+				order->SetWaitTimetabled(false);
+				order->SetWaitTime(0);
+				order->MakeDummy();
+				order->SetTravelTimetabled(travel_timetabled);
+			} else if (order->ClearConditionalStationReferences(removed_station)) {
+				changed = true;
+			}
+			++id;
+		}
+		if (!changed) continue;
+		list->RecalculateDerivedCounters();
+		ClearDanglingCoupleCheckPoints(list);
+		if (deleted_implicit && list->GetFirstSharedVehicle() != nullptr) DeleteOrderWarnings(list->GetFirstSharedVehicle());
+		for (Vehicle *v = list->GetFirstSharedVehicle(); v != nullptr; v = v->NextShared()) {
+			v->ResetDepotUnbunching();
+			InvalidateVehicleOrder(v, VIWD_MODIFY_ORDERS);
+		}
+		any_changed = true;
+	}
+
+	if (any_changed) {
+		InvalidateStandaloneOrderListWindows(); // Also invalidates the destination refcount cache.
+		InvalidateWindowClassesData(WindowClass::DepartureBoard);
+	}
+}
+
 void StartRemoveOrderFromAllVehiclesBatch()
 {
 	assert(_remove_order_from_all_vehicles_batch == false);
@@ -5433,41 +5476,24 @@ void StopRemoveOrderFromAllVehiclesBatch()
 	assert(_remove_order_from_all_vehicles_batch == true);
 	_remove_order_from_all_vehicles_batch = false;
 
-	/* Go through all vehicles */
-	for (Vehicle *v : Vehicle::IterateFrontOnly()) {
-		if (v->type == VehicleType::Aircraft) continue;
-
-		Order *order = &v->current_order;
-		if (order->IsType(OT_GOTO_DEPOT) && IsBatchRemoveOrderDepotRemoved(order->GetDestination())) {
-			order->MakeDummy();
-			SetWindowDirty(WindowClass::VehicleView, v->index);
-		}
-
-		/* order list */
-		if (v->FirstShared() != v) continue;
-
-		RemoveVehicleOrdersIf(v, [&](const Order *o) {
-			OrderType ot = o->GetType();
-			if (ot != OT_GOTO_DEPOT) return false;
-			if ((o->GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0) return false;
-			return IsBatchRemoveOrderDepotRemoved(o->GetDestination());
-		});
-	}
-
+	if (_remove_order_from_all_vehicles_depots.empty()) return;
+	RemoveOrderDestinations([](const Order &order, OrderDepotDestinationKinds kinds, bool snapshot) {
+		return order.IsType(OT_GOTO_DEPOT) && (order.IsExternalTripOrder() || kinds.Test(OrderDepotDestinationKind::Depot)) &&
+				(snapshot || (order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) == 0) &&
+				IsBatchRemoveOrderDepotRemoved(order.GetDestination());
+	});
 	_remove_order_from_all_vehicles_depots.clear();
 }
 
 /**
- * Removes an order from all vehicles. Triggers when, say, a station is removed.
+ * Remove references to a deleted station, waypoint, depot or airport hangar from orders.
  * @param type The type of the order (OT_GOTO_[STATION|DEPOT|WAYPOINT]).
- * @param destination The destination. Can be a StationID, DepotID or WaypointID.
- * @param hangar Only used for airports in the destination.
- *               When false, remove airport and hangar orders.
- *               When true, remove either airport or hangar order.
+ * @param destination The deleted station, depot or waypoint ID.
+ * @param hangar The destination is a StationID and only its hangar was removed.
  */
 void RemoveOrderFromAllVehicles(OrderType type, DestinationID destination, bool hangar)
 {
-	if (destination == ((type == OT_GOTO_DEPOT) ? (DestinationID)DepotID::Invalid() : (DestinationID)StationID::Invalid())) return;
+	if (destination == ((type == OT_GOTO_DEPOT && !hangar) ? DestinationID(DepotID::Invalid()) : DestinationID(StationID::Invalid()))) return;
 
 	OrderBackup::RemoveOrder(type, destination, hangar);
 
@@ -5479,40 +5505,31 @@ void RemoveOrderFromAllVehicles(OrderType type, DestinationID destination, bool 
 		return;
 	}
 
-	/* Aircraft have StationIDs for depot orders and never use DepotIDs
-	 * This fact is handled specially below
-	 */
-
-	/* Go through all vehicles */
-	for (Vehicle *v : Vehicle::IterateFrontOnly()) {
-		Order *order = &v->current_order;
-		if ((v->type == VehicleType::Aircraft && order->IsType(OT_GOTO_DEPOT) && !hangar ? OT_GOTO_STATION : order->GetType()) == type &&
-				(!hangar || v->type == VehicleType::Aircraft) && order->GetDestination() == destination) {
-			order->MakeDummy();
-			InvalidateWindowData(WindowClass::VehicleView, v->index);
-		}
-
-		/* order list */
-		if (v->FirstShared() != v) continue;
-
-		RemoveVehicleOrdersIf(v, [&](const Order *o) {
-			OrderType ot = o->GetType();
-			if (ot == OT_CONDITIONAL) {
-				if (type == OT_GOTO_STATION && ConditionVariableTestsCargoWaitingAmount(o->GetConditionVariable())) {
-					if (order->GetConditionViaStationID() == destination) order->SetConditionViaStationID(StationID::Invalid());
-				}
-				if (type == OT_GOTO_STATION && ConditionVariableHasStationID(o->GetConditionVariable())) {
-					if (order->GetConditionStationID() == destination) order->SetConditionStationID(StationID::Invalid());
-				}
-				return false;
+	const StationID removed_station = type == OT_GOTO_STATION ? destination.ToStationID() : StationID::Invalid();
+	const Station *airport = (hangar || type == OT_GOTO_STATION) ? Station::GetIfValid(destination.ToStationID()) : nullptr;
+	const DepotID legacy_hangar = airport != nullptr && airport->airport.hangar != nullptr ? airport->airport.hangar->index : DepotID::Invalid();
+	const Depot *colliding_depot = removed_station != StationID::Invalid() && legacy_hangar == DepotID::Invalid() ? Depot::GetIfValid(destination.ToDepotID()) : nullptr;
+	const bool has_ground_depot = colliding_depot != nullptr && IsValidTile(colliding_depot->xy) && IsDepotTile(colliding_depot->xy) && !IsHangarTile(colliding_depot->xy);
+	RemoveOrderDestinations([&](const Order &order, OrderDepotDestinationKinds kinds, bool snapshot) {
+		const auto order_type = order.GetType();
+		if (order_type == OT_GOTO_DEPOT) {
+			/* The live copy of a nearest-depot order may already target the removed depot. */
+			if (!snapshot && (order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0) return false;
+			if (type == OT_GOTO_DEPOT && !hangar) {
+				return (order.IsExternalTripOrder() || kinds.Test(OrderDepotDestinationKind::Depot)) && order.GetDestination() == destination;
 			}
-			if (ot == OT_GOTO_DEPOT && (o->GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0) return false;
-			if (ot == OT_GOTO_DEPOT && hangar && v->type != VehicleType::Aircraft) return false; // Not an aircraft? Can't have a hangar order.
-			if (ot == OT_IMPLICIT || (v->type == VehicleType::Aircraft && ot == OT_GOTO_DEPOT && !hangar)) ot = OT_GOTO_STATION;
-			if (ot == OT_LABEL && IsDestinationOrderLabelSubType(o->GetLabelSubType()) && (type == OT_GOTO_STATION || type == OT_GOTO_WAYPOINT) && o->GetDestination() == destination) return true;
-			return (ot == type && o->GetDestination() == destination);
-		});
-	}
+			if (order.IsExternalTripOrder() || !kinds.Test(OrderDepotDestinationKind::Hangar) || (!hangar && type != OT_GOTO_STATION)) return false;
+			/* When a station without a hangar disappears, preserve a same-numbered
+			 * real ground depot in an untyped list. If both targets really were
+			 * possible, invalidate the ambiguous order rather than let the ID be reused. */
+			if (!hangar && has_ground_depot && kinds.Test(OrderDepotDestinationKind::Depot)) return false;
+			return order.GetDestination() == destination ||
+					(legacy_hangar != DepotID::Invalid() && order.GetDestination() == legacy_hangar && !Station::IsValidID(order.GetDestination().ToStationID()));
+		}
+		if (hangar || order.GetDestination() != destination) return false;
+		if (order_type == OT_LABEL && IsDestinationOrderLabelSubType(order.GetLabelSubType())) return type == OT_GOTO_STATION || type == OT_GOTO_WAYPOINT;
+		return (order_type == OT_IMPLICIT ? OT_GOTO_STATION : order_type) == type;
+	}, removed_station);
 }
 
 /**
@@ -6008,7 +6025,10 @@ VehicleOrderID ProcessConditionalOrder(const Order *order, const Vehicle *v, Pro
 				if (!order->HasConditionViaStation()) {
 					skip_order = OrderConditionCompare(occ, Station::Get(next_station)->goods[value].CargoAvailableCount(), order->GetXDataLow());
 				} else {
-					skip_order = OrderConditionCompare(occ, Station::Get(next_station)->goods[value].CargoAvailableViaCount(order->GetConditionViaStationID()), order->GetXDataLow());
+					const StationID via = order->GetConditionViaStationID();
+					/* An invalid via is a deleted destination, not the bucket for unrouted cargo. */
+					if (!Station::IsValidID(via)) break;
+					skip_order = OrderConditionCompare(occ, Station::Get(next_station)->goods[value].CargoAvailableViaCount(via), order->GetXDataLow());
 				}
 			}
 			break;
@@ -6022,7 +6042,9 @@ VehicleOrderID ProcessConditionalOrder(const Order *order, const Vehicle *v, Pro
 				if (!order->HasConditionViaStation()) {
 					waiting = Station::Get(next_station)->goods[cargo].CargoAvailableCount();
 				} else {
-					waiting = Station::Get(next_station)->goods[cargo].CargoAvailableViaCount(order->GetConditionViaStationID());
+					const StationID via = order->GetConditionViaStationID();
+					if (!Station::IsValidID(via)) break;
+					waiting = Station::Get(next_station)->goods[cargo].CargoAvailableViaCount(via);
 				}
 
 				uint32_t veh_capacity = 0;

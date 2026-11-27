@@ -17,7 +17,6 @@
 #include "sl/saveload.h"
 #include <map>
 #include <set>
-#include <tuple>
 #include "sl/extended_ver_sl.h"
 #include "scope.h"
 #include "date_func.h"
@@ -52,13 +51,14 @@ static void RestoreAircraftJunctions(Aircraft *v, const AircraftJunctionState &s
 
 static bool AircraftJunctionTracksConflict(TrackBits a, TrackBits b);
 static void SyncAircraftJunctionRecords(Aircraft *v);
-static bool CheckAircraftJunctionAccess(const Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL);
+static bool CheckAircraftJunctionAccess(const Aircraft *v, TileIndex tile, TrackBits tracks, TrackBits swept = TRACK_BIT_NONE);
 static bool TryReserveAircraftJunctions(Aircraft *v, TileIndex tile, TrackBits tracks, TileIndex runway = INVALID_TILE);
 static void PruneAircraftJunctions(Aircraft *v, bool keep_current = true);
 static void ReleaseAircraftJunctions(Aircraft *v);
 static void CancelAircraftJunctionRequest(Aircraft *v);
 static void RefreshAircraftLegacyJunctionFootprint(Aircraft *v);
 static void FinishAircraftLegacyJunctionAction(Aircraft *v);
+static bool YieldAircraftJunctionCycle(Aircraft *v);
 
 static const Direction _aircraft_envelope_directions[TRACK_END] = {
 	Direction::Invalid, Direction::Invalid, Direction::N, Direction::S, Direction::W, Direction::E,
@@ -221,56 +221,31 @@ static bool IsAircraftTaxiSharingAllowed(const Aircraft *v, TileIndex tile, cons
 			(other->state == AS_RUNNING || other->state == AS_IDLE);
 }
 
-/**
- * Phasing is a temporary escape from a prolonged jam, not a license to drive
- * through another aircraft. Two phasing aircraft still see each other: only
- * the soft reservation barriers drop, never the physical body conflict.
- *
- * The arbitration must be a pure function of each aircraft's own state so both
- * sides independently reach the same verdict; otherwise A waits for B and B
- * waits for A. The strict (x_pos, y_pos, index) key gives exactly that order:
- * the aircraft further back along the taxiway yields, and the vehicle index
- * breaks the tie when two bodies sit at the identical spot.
- */
-static bool AircraftPhasingConcedes(const Aircraft *v, const Aircraft *other)
-{
-	if (other == nullptr || other == v) return false;
-	if (!HasBit(v->flags, VAF_TAXI_PHASING) || !HasBit(other->flags, VAF_TAXI_PHASING)) return false;
-	/* A manual "ignore reservations" aircraft never participates; the player
-	 * asked for it to pass through and nothing may push back against that. */
-	if (v->ignore_airport_reservations || other->ignore_airport_reservations) return false;
-	return std::tie(v->x_pos, v->y_pos, v->index) > std::tie(other->x_pos, other->y_pos, other->index);
-}
+enum class AircraftJunctionUse { Body, Sweep, Ignore };
 
 /* This classification never picks a winner from the unordered physical tile hash. */
-static AircraftTaxiBlock CheckAircraftTaxiTile(const Aircraft *v, TileIndex tile, bool phasing, bool check_runway = true, TrackBits want = TRACK_BIT_ALL, bool check_junction = true)
+static AircraftTaxiBlock CheckAircraftTaxiTile(const Aircraft *v, TileIndex tile, bool check_runway = true, TrackBits want = TRACK_BIT_ALL,
+		AircraftJunctionUse junction_use = AircraftJunctionUse::Body)
 {
 	if (!IsTaxiTile(tile)) return AircraftTaxiBlock::Protected;
 	if (v->ignore_airport_reservations) return AircraftTaxiBlock::None;
-	/* A timed-out aircraft ignores reservations, not geometry or dirty map
-	 * records. Junction grants and runway owner claims are both "reserved". */
-	if (check_junction && !CheckAircraftJunctionAccess(v, tile, want)) {
+	/* Recovery from a jam never bypasses real ownership, a runway lock, or
+	 * a physical aircraft. Only the explicit manual override can do so. */
+	if (junction_use != AircraftJunctionUse::Ignore && !CheckAircraftJunctionAccess(v, tile,
+			junction_use == AircraftJunctionUse::Body ? want : TRACK_BIT_NONE,
+			junction_use == AircraftJunctionUse::Sweep ? want : TRACK_BIT_NONE)) {
 		return AircraftTaxiBlock::Protected;
 	}
 	auto runway = _aircraft_runway_owners.find(tile);
-	if (check_runway && !phasing && ((runway != _aircraft_runway_owners.end() && runway->second != v->index) ||
+	if (check_runway && ((runway != _aircraft_runway_owners.end() && runway->second != v->index) ||
 			(IsRunway(tile) && GetReservationAsRunway(tile) && runway == _aircraft_runway_owners.end()))) {
 		return AircraftTaxiBlock::Protected;
 	}
-	if (GetReservedAirportTracks(tile) != AircraftReservedTracks(tile)) {
-		return AircraftTaxiBlock::Protected;
-	}
+	if (GetReservedAirportTracks(tile) != AircraftReservedTracks(tile)) return AircraftTaxiBlock::Protected;
 	AircraftTaxiBlock block = AircraftTaxiBlock::None;
 	auto inspect = [&](const Aircraft *other) {
 		if (other == v || (other != nullptr && other->ignore_airport_reservations)) return;
 		bool shareable = IsAircraftTaxiSharingAllowed(v, tile, other);
-		if (phasing) {
-			/* Two phasing bodies may not overlap. Only the one that loses the
-			 * deterministic arbitration treats the other as a hard block. */
-			if (!AircraftPhasingConcedes(v, other)) return;
-			block = MergeAircraftBlock(block, AircraftTaxiBlock::Protected);
-			return;
-		}
 		block = MergeAircraftBlock(block, shareable ? AircraftTaxiBlock::Traffic : AircraftTaxiBlock::Protected);
 	};
 	auto owners = _aircraft_tile_owners.find(tile);
@@ -291,7 +266,7 @@ static AircraftTaxiBlock CheckAircraftTaxiTile(const Aircraft *v, TileIndex tile
 	return block;
 }
 
-static AircraftTaxiBlock CheckIncomingAircraftEnvelopes(const Aircraft *v, TileIndex tile, bool phasing, TrackBits tracks = TRACK_BIT_ALL)
+static AircraftTaxiBlock CheckIncomingAircraftEnvelopes(const Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL)
 {
 	AircraftTaxiBlock block = AircraftTaxiBlock::None;
 	if (v->ignore_airport_reservations) return block;
@@ -306,11 +281,7 @@ static AircraftTaxiBlock CheckIncomingAircraftEnvelopes(const Aircraft *v, TileI
 			if (id == v->index || !HasTrack(tracks, track)) continue;
 			const Vehicle *vehicle = Vehicle::GetIfValid(id);
 			const Aircraft *other = vehicle != nullptr && vehicle->type == VehicleType::Aircraft ? Aircraft::From(vehicle) : nullptr;
-			if (phasing) {
-				if (!AircraftPhasingConcedes(v, other)) continue;
-				block = MergeAircraftBlock(block, AircraftTaxiBlock::Protected);
-				continue;
-			}
+			if (other != nullptr && other->ignore_airport_reservations) continue;
 			const bool shareable = IsAircraftTaxiSharingAllowed(v, tile, other) && !IsApron(neighbour) && !IsHangar(neighbour);
 			block = MergeAircraftBlock(block, shareable ? AircraftTaxiBlock::Traffic : AircraftTaxiBlock::Protected);
 		}
@@ -320,19 +291,18 @@ static AircraftTaxiBlock CheckIncomingAircraftEnvelopes(const Aircraft *v, TileI
 
 /* A half-track sweeps only the facing half-track of its diagonal neighbour.
  * A centre stand or a diagonal track there is not part of that envelope. */
-static AircraftTaxiBlock CheckAircraftAssociatedTrack(const Aircraft *v, TileIndex tile, Track track, bool phasing)
+static AircraftTaxiBlock CheckAircraftAssociatedTrack(const Aircraft *v, TileIndex tile, Track track)
 {
 	TileIndex neighbour = TileAddByDir(tile, _aircraft_envelope_directions[track]);
 	if (!IsTaxiTile(neighbour) || !IsAirportTileOfStation(neighbour, GetStationIndex(tile)) || IsHangar(neighbour)) {
 		return AircraftTaxiBlock::Protected;
 	}
 	if (v->ignore_airport_reservations) return AircraftTaxiBlock::None;
-	if (!CheckAircraftJunctionAccess(v, neighbour, TrackToTrackBits(TrackToOppositeTrack(track)))) {
-		 
+	if (!CheckAircraftJunctionAccess(v, neighbour, TRACK_BIT_NONE, TrackToTrackBits(TrackToOppositeTrack(track)))) {
 		return AircraftTaxiBlock::Protected;
 	}
 	auto runway = _aircraft_runway_owners.find(neighbour);
-	if (!phasing && IsRunway(neighbour) && GetReservationAsRunway(neighbour) &&
+	if (IsRunway(neighbour) && GetReservationAsRunway(neighbour) &&
 			(runway == _aircraft_runway_owners.end() || runway->second != v->index)) {
 		 
 		return AircraftTaxiBlock::Protected;
@@ -346,11 +316,6 @@ static AircraftTaxiBlock CheckAircraftAssociatedTrack(const Aircraft *v, TileInd
 	AircraftTaxiBlock block = AircraftTaxiBlock::None;
 	auto inspect = [&](const Aircraft *other) {
 		if (other == v || (other != nullptr && other->ignore_airport_reservations)) return;
-		if (phasing) {
-			if (!AircraftPhasingConcedes(v, other)) return;
-			block = MergeAircraftBlock(block, AircraftTaxiBlock::Protected);
-			return;
-		}
 		bool shareable = IsAircraftTaxiSharingAllowed(v, neighbour, other) && !IsApron(tile) && !IsHangar(tile);
 		block = MergeAircraftBlock(block, shareable ? AircraftTaxiBlock::Traffic : AircraftTaxiBlock::Protected);
 	};
@@ -372,18 +337,18 @@ static AircraftTaxiBlock CheckAircraftAssociatedTrack(const Aircraft *v, TileInd
 	return block;
 }
 
-static AircraftTaxiBlock CheckAircraftTaxiTracks(const Aircraft *v, TileIndex tile, TrackBits tracks, bool phasing)
+static AircraftTaxiBlock CheckAircraftTaxiTracks(const Aircraft *v, TileIndex tile, TrackBits tracks)
 {
 	if (!IsTaxiTile(tile)) return AircraftTaxiBlock::Protected;
-	AircraftTaxiBlock block = MergeAircraftBlock(CheckAircraftTaxiTile(v, tile, phasing, true, tracks == TRACK_BIT_NONE ? TRACK_BIT_ALL : tracks),
-		CheckIncomingAircraftEnvelopes(v, tile, phasing, tracks == TRACK_BIT_NONE ? TRACK_BIT_ALL : tracks));
+	AircraftTaxiBlock block = MergeAircraftBlock(CheckAircraftTaxiTile(v, tile, true, tracks == TRACK_BIT_NONE ? TRACK_BIT_ALL : tracks),
+		CheckIncomingAircraftEnvelopes(v, tile, tracks == TRACK_BIT_NONE ? TRACK_BIT_ALL : tracks));
 	/* TRACK_BIT_NONE requests a tile-level-only check (runway acquisition). */
 	if (tracks == TRACK_BIT_NONE) return block;
 	if ((GetAirportTileTracks(tile) & tracks) != tracks) return AircraftTaxiBlock::Protected;
 	while (tracks != TRACK_BIT_NONE) {
 		Track track = RemoveFirstTrack(&tracks);
 		if (IsDiagonalTrack(track)) continue;
-		block = MergeAircraftBlock(block, CheckAircraftAssociatedTrack(v, tile, track, phasing));
+		block = MergeAircraftBlock(block, CheckAircraftAssociatedTrack(v, tile, track));
 	}
 	return block;
 }
@@ -397,8 +362,8 @@ static bool RecordAircraftTaxiBlock(Aircraft *v, AircraftTaxiBlock block, TileIn
 
 bool IsAircraftTaxiEnvelopeAvailable(Aircraft *v, TileIndex tile, TrackBits tracks)
 {
-	return RecordAircraftTaxiBlock(v, MergeAircraftBlock(CheckAircraftTaxiTile(v, tile, HasBit(v->flags, VAF_TAXI_PHASING), true, tracks),
-			CheckIncomingAircraftEnvelopes(v, tile, HasBit(v->flags, VAF_TAXI_PHASING), tracks)), tile);
+	return RecordAircraftTaxiBlock(v, MergeAircraftBlock(CheckAircraftTaxiTile(v, tile, true, tracks, AircraftJunctionUse::Sweep),
+			CheckIncomingAircraftEnvelopes(v, tile, tracks)), tile);
 }
 
 static TrackdirBits AircraftOwnedVirtualTrackdirs(const Aircraft *v, TileIndex tile)
@@ -464,7 +429,7 @@ static bool HasAircraftTakeoffRunwayConflict(const Aircraft *v, TileIndex tile)
 	return false;
 }
 
-bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, TrackdirBits travel)
+static bool TryReserveAircraftTileInternal(Aircraft *v, TileIndex tile, TrackBits tracks, TrackdirBits travel, bool junction_prechecked = false)
 {
 	if (!IsTaxiTile(tile) || tracks == TRACK_BIT_NONE) return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, tile);
 	const AircraftJunctionState previous_junctions(v);
@@ -475,7 +440,7 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 		RestoreAircraftJunctions(v, previous_junctions);
 		RestoreAircraftTaxiRunways(v, previous_runways);
 	});
-	if (!TryReserveAircraftJunctions(v, tile, tracks)) return false;
+	if (!junction_prechecked && !TryReserveAircraftJunctions(v, tile, tracks)) return false;
 	if (v->ignore_airport_reservations) {
 		if ((GetAirportTileTracks(tile) & tracks) != tracks ||
 				(!v->planned_path.empty() && !HasAircraftVirtualTileReservation(v, tile, travel))) return false;
@@ -511,6 +476,9 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 	/* Even existing real tracks restored from an old save need a complete
 	 * runway lock before they can be used. Phasing cannot bypass this lock. */
 	if ((held & tracks) == tracks) {
+		/* Never enter a legacy look-ahead claim that was acquired by phasing
+		 * through real traffic. An existing occupied tile can still be cleared. */
+		if (tile != v->tile && !RecordAircraftTaxiBlock(v, CheckAircraftTaxiTracks(v, tile, tracks), tile)) return false;
 		acquired = TryReserveAircraftTaxiRunways(v, tile, tracks);
 		return acquired;
 	}
@@ -529,7 +497,7 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 		 
 		return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, tile);
 	}
-	if (!RecordAircraftTaxiBlock(v, CheckAircraftTaxiTracks(v, tile, tracks, HasBit(v->flags, VAF_TAXI_PHASING)), tile)) return false;
+	if (!RecordAircraftTaxiBlock(v, CheckAircraftTaxiTracks(v, tile, tracks), tile)) return false;
 	if (!TryReserveAircraftTaxiRunways(v, tile, held | tracks)) return false;
 	for (auto &r : v->reserved_path) {
 		if (r.tile != tile) continue;
@@ -547,6 +515,13 @@ bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, Track
 	return true;
 }
 
+bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, TrackdirBits travel)
+{
+	if (!TryReserveAircraftTileInternal(v, tile, tracks, travel)) return false;
+	if (!v->junction_requests.empty()) CancelAircraftJunctionRequest(v);
+	return true;
+}
+
 void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks)
 {
 	for (auto it = v->reserved_path.begin(); it != v->reserved_path.end(); ++it) {
@@ -557,51 +532,54 @@ void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks)
 			PruneAircraftTaxiRunways(v);
 			return;
 		}
-		auto owners = _aircraft_tile_owners.find(tile);
-		if (owners == _aircraft_tile_owners.end() || owners->second.find(v->index) == owners->second.end() || owners->second.at(v->index) != it->tracks) {
-			 
-			v->reserved_path.erase(it);
-			PruneAircraftTaxiRunways(v);
-			return;
-		}
-		TrackBits before = AircraftReservedTracks(tile);
+		const TrackBits held = AircraftOwnedTracks(v, tile);
+		const TrackBits remove = (it->tracks | held) & tracks;
 		it->tracks &= ~tracks;
-		if (it->tracks == TRACK_BIT_NONE) {
-			owners->second.erase(v->index);
-			v->reserved_path.erase(it);
-		} else {
-			owners->second[v->index] = it->tracks;
+		if (it->tracks == TRACK_BIT_NONE) v->reserved_path.erase(it);
+
+		auto owners = _aircraft_tile_owners.find(tile);
+		if (held != TRACK_BIT_NONE) {
+			const TrackBits remaining = held & ~tracks;
+			if (remaining != TRACK_BIT_NONE) {
+				owners->second[v->index] = remaining;
+			} else {
+				owners->second.erase(v->index);
+				if (owners->second.empty()) _aircraft_tile_owners.erase(owners);
+			}
 		}
-		if (owners->second.empty()) _aircraft_tile_owners.erase(owners);
-		TrackBits remove = before & ~AircraftReservedTracks(tile);
+		/* A mismatched or missing index must not leave a ghost map bit, or
+		 * erase a bit still owned by another aircraft. Never touch a runway lock. */
 		if (IsTaxiTile(tile)) {
-			while (remove != TRACK_BIT_NONE) RemoveAirportTrackReservation(tile, RemoveFirstTrack(&remove));
+			TrackBits unowned = remove & ~AircraftReservedTracks(tile) & GetReservedAirportTracks(tile);
+			while (unowned != TRACK_BIT_NONE) RemoveAirportTrackReservation(tile, RemoveFirstTrack(&unowned));
 		}
 		PruneAircraftTaxiRunways(v);
 		return;
 	}
 }
 
+static bool IsAircraftTaxiTracksGeometryValid(TileIndex tile, TrackBits tracks)
+{
+	if (!IsTaxiTile(tile) || tracks == TRACK_BIT_NONE || (GetAirportTileTracks(tile) & tracks) != tracks) return false;
+	for (Track track : SetTrackBitIterator(tracks)) {
+		if (IsDiagonalTrack(track)) continue;
+		TileIndex neighbour = AircraftJunctionStep(tile, _aircraft_envelope_directions[track]);
+		if (!IsTaxiTile(neighbour) || !IsAirportTileOfStation(neighbour, GetStationIndex(tile)) || IsHangar(neighbour)) return false;
+	}
+	return true;
+}
+
+bool IsAircraftTaxiTrackGeometryValid(TileIndex origin, TileIndex tile, Trackdir td)
+{
+	return IsTaxiTile(origin) && IsValidTrackdir(td) && IsAircraftTaxiTracksGeometryValid(tile, TrackToTrackBits(TrackdirToTrack(td))) &&
+			IsAirportTileOfStation(tile, GetStationIndex(origin));
+}
+
 static AircraftTaxiBlock CheckAircraftVirtualTile(const Aircraft *v, TileIndex tile, TrackdirBits want)
 {
-	if (!IsTaxiTile(tile) || want == TRACKDIR_BIT_NONE ||
-			(GetAirportTileTracks(tile) & TrackdirBitsToTrackBits(want)) != TrackdirBitsToTrackBits(want)) {
-		 
-		return AircraftTaxiBlock::Protected;
-	}
+	if (!IsAircraftTaxiTracksGeometryValid(tile, TrackdirBitsToTrackBits(want))) return AircraftTaxiBlock::Protected;
 	/* The runway lock governs real entry, not a future virtual route. */
-	if (GetReservedAirportTracks(tile) != AircraftReservedTracks(tile)) {
-		 
-		return AircraftTaxiBlock::Protected;
-	}
-	for (Track track : SetTrackBitIterator(TrackdirBitsToTrackBits(want))) {
-		if (IsDiagonalTrack(track)) continue;
-		TileIndex neighbour = TileAddByDir(tile, _aircraft_envelope_directions[track]);
-		if (!IsTaxiTile(neighbour) || !IsAirportTileOfStation(neighbour, GetStationIndex(tile)) || IsHangar(neighbour)) {
-			 
-			return AircraftTaxiBlock::Protected;
-		}
-	}
+	if (GetReservedAirportTracks(tile) != AircraftReservedTracks(tile)) return AircraftTaxiBlock::Protected;
 
 	if (v->ignore_airport_reservations) return AircraftTaxiBlock::None;
 	TrackdirBits others = TRACKDIR_BIT_NONE;
@@ -628,8 +606,8 @@ bool IsAircraftVirtualTileAvailable(const Aircraft *v, TileIndex tile, Trackdir 
 
 bool IsAircraftVirtualDestinationAvailable(const Aircraft *v, TileIndex tile, TrackBits tracks)
 {
-	return CheckAircraftTaxiTile(v, tile, false, false, tracks) == AircraftTaxiBlock::None &&
-			CheckIncomingAircraftEnvelopes(v, tile, false, tracks) == AircraftTaxiBlock::None;
+	return CheckAircraftTaxiTile(v, tile, false, tracks) == AircraftTaxiBlock::None &&
+			CheckIncomingAircraftEnvelopes(v, tile, tracks) == AircraftTaxiBlock::None;
 }
 
 static std::map<TileIndex, TrackdirBits> AircraftPlannedTrackdirs(const Aircraft *v)
@@ -688,8 +666,8 @@ bool TryReserveAircraftTaxiPath(Aircraft *v)
 	}
 	const auto &destination = v->planned_path.back();
 	/* A shared virtual route never grants permission to stop on a real occupant. */
-	if (!RecordAircraftTaxiBlock(v, MergeAircraftBlock(CheckAircraftTaxiTile(v, destination.tile, false, false, TrackToTrackBits(TrackdirToTrack(destination.td))),
-			CheckIncomingAircraftEnvelopes(v, destination.tile, false, TrackToTrackBits(TrackdirToTrack(destination.td)))), destination.tile)) return false;
+	if (!RecordAircraftTaxiBlock(v, MergeAircraftBlock(CheckAircraftTaxiTile(v, destination.tile, false, TrackToTrackBits(TrackdirToTrack(destination.td))),
+			CheckIncomingAircraftEnvelopes(v, destination.tile, TrackToTrackBits(TrackdirToTrack(destination.td)))), destination.tile)) return false;
 	if (IsApron(destination.tile) && !IsAircraftTerminalAvailable(v, destination.tile)) return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, destination.tile);
 
 	ReleaseAircraftVirtualPath(v);
@@ -741,49 +719,97 @@ TrackBits GetAircraftVirtualBookedTracks(TileIndex tile)
 	return tracks;
 }
 
+/* Previous builds allowed phasing onto a foreign runway. Keep the saved
+ * compatibility marker until its real overlap is gone, even when stopped. */
+static void EndAircraftTaxiPhasing(Aircraft *v)
+{
+	if (!HasBit(v->flags, VAF_TAXI_PHASING)) return;
+	for (const auto &record : v->reserved_path) {
+		auto owner = _aircraft_runway_owners.find(record.tile);
+		if (owner != _aircraft_runway_owners.end() && owner->second != v->index) return;
+	}
+	ClrBit(v->flags, VAF_TAXI_PHASING);
+}
+
+static bool CanTrimAircraftTaxiWindow(const Aircraft *v)
+{
+	return !v->IsAircraftFlying() && v->state != AS_LANDED && v->reserved_runway == INVALID_TILE &&
+			!v->vehstatus.Test(VehState::Crashed) && v->next_trackdir == INVALID_TRACKDIR &&
+			!HasBit(v->flags, VAF_PUSHBACK) && IsTaxiTile(v->tile) && IsValidTrackdir(v->trackdir);
+}
+
+static void TrimAircraftTaxiWindow(Aircraft *v)
+{
+	/* There is no turn or pushback in progress. The current physical track
+	 * (including its swept neighbour) remains protected by real ownership and
+	 * body checks. Give up the rest of the window and its junction grants. */
+	const TrackBits physical = TrackToTrackBits(TrackdirToTrack(v->trackdir));
+	for (size_t i = 0; i < v->reserved_path.size();) {
+		const auto record = v->reserved_path[i];
+		const TrackBits keep = record.tile == v->tile ? record.tracks & physical : TRACK_BIT_NONE;
+		ReleaseAircraftTile(v, record.tile, TRACK_BIT_ALL & ~keep);
+		if (keep != TRACK_BIT_NONE) ++i;
+	}
+	ReleaseAircraftJunctions(v);
+}
+
+void StopAircraftTaxiTraffic(Aircraft *v)
+{
+	v->taxi_blocked_ticks = v->taxi_jam_ticks = 0;
+	v->taxi_block_reason = AircraftTaxiBlock::None;
+	if (!v->junction_requests.empty()) CancelAircraftJunctionRequest(v);
+	if (CanTrimAircraftTaxiWindow(v)) {
+		TrimAircraftTaxiWindow(v);
+		if (v->state == AS_RUNNING) {
+			/* A stopped aircraft has no active traversal intent. A fresh path is
+			 * planned on restart, without retaining remote virtual ownership. */
+			ReleaseAircraftTaxiPath(v, true);
+			v->state = AS_IDLE;
+			v->next_pos.pos = AP_DEFAULT;
+			v->UpdateNextTile(INVALID_TILE);
+		}
+	}
+	EndAircraftTaxiPhasing(v);
+}
+
 void UpdateAircraftTaxiTraffic(Aircraft *v, bool moved)
 {
 	if (moved) {
 		v->taxi_jam_ticks = 0;
 		v->taxi_block_reason = AircraftTaxiBlock::None;
-		if (HasBit(v->flags, VAF_TAXI_PHASING)) {
-			/* Phasing ends once the strict exclusive window is clean again. */
-			bool clean = true;
-			for (const auto &record : v->reserved_path) {
-				if (CheckAircraftTaxiTracks(v, record.tile, record.tracks, false) != AircraftTaxiBlock::None) { clean = false; break; }
-			}
-			if (clean) {
-				ClrBit(v->flags, VAF_TAXI_PHASING);
-				 
-			}
-		}
+		EndAircraftTaxiPhasing(v);
 		return;
 	}
 	const bool eligible = !v->vehstatus.Any({VehState::Stopped, VehState::Hidden, VehState::Crashed}) &&
 			(v->state == AS_IDLE || v->state == AS_RUNNING) && !v->current_order.IsType(OT_LOADING) && !v->current_order.IsType(OT_WAITING) &&
-			v->next_trackdir == INVALID_TRACKDIR;
-	/* Both shareable traffic and hard protected reservations can be waited out:
-	 * a sustained block of either kind earns the same temporary pass. Strict
-	 * geometry and map consistency checks stay in force while phasing. */
-	if (eligible && v->taxi_block_reason != AircraftTaxiBlock::None) {
-		if (v->taxi_jam_ticks < UINT16_MAX) ++v->taxi_jam_ticks;
-		if (v->taxi_jam_ticks > 1480 && !HasBit(v->flags, VAF_TAXI_PHASING)) {
-			SetBit(v->flags, VAF_TAXI_PHASING);
-			v->ClearWaitTime();
-			 
-		}
-	} else {
+			v->next_trackdir == INVALID_TRACKDIR && !HasBit(v->flags, VAF_PUSHBACK);
+	if (!eligible || v->taxi_block_reason == AircraftTaxiBlock::None) {
 		v->taxi_jam_ticks = 0;
+		EndAircraftTaxiPhasing(v);
+		return;
+	}
+
+	if (YieldAircraftJunctionCycle(v)) return;
+	if (v->taxi_jam_ticks < UINT16_MAX) ++v->taxi_jam_ticks;
+	if (v->taxi_jam_ticks == 1481) {
+		SetBit(v->flags, VAF_TAXI_PHASING);
+		v->ClearWaitTime();
+	}
+	if (v->taxi_jam_ticks >= 8192 && CanTrimAircraftTaxiWindow(v)) {
+		/* Expire once per blocked interval. An existing pending request keeps
+		 * its age; a released grant is not itself a pending FIFO request. */
+		TrimAircraftTaxiWindow(v);
+		v->taxi_jam_ticks = 0;
+		EndAircraftTaxiPhasing(v);
 	}
 }
-
 
 void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current, bool keep_request)
 {
 	for (size_t i = 0; i < v->reserved_path.size();) {
 		const auto r = v->reserved_path[i];
 		if (keep_current && r.tile == v->tile) { ++i; continue; }
-		ReleaseAircraftTile(v, r.tile, r.tracks);
+		ReleaseAircraftTile(v, r.tile, TRACK_BIT_ALL);
 	}
 	ReleaseAircraftVirtualPath(v);
 	v->planned_path.clear();
@@ -802,11 +828,6 @@ void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current, bool keep_request)
 		 * behind. At rest only the actually occupied centre track remains. */
 		TrackBits keep = TrackToTrackBits(TrackdirToTrack(v->trackdir));
 		ReleaseAircraftTile(v, v->tile, TRACK_BIT_ALL & ~keep);
-	}
-	if (keep_request && v->junction_request_tick == INVALID_STATE_TICKS && !v->junction_regions.empty()) {
-		v->junction_requests = v->junction_actions;
-		v->junction_request_tick = _state_ticks;
-		SyncAircraftJunctionRecords(v);
 	}
 	if (v->junction_legacy) {
 		RefreshAircraftLegacyJunctionFootprint(v);
@@ -855,12 +876,15 @@ bool ExtendAircraftTaxiReservation(Aircraft *v)
 	if (!TryReserveAircraftJunctions(v, next, ahead)) return false;
 	TrackBits previous = TRACK_BIT_NONE;
 	for (const auto &record : v->reserved_path) { if (record.tile == tile) previous |= record.tracks; }
-	if (!TryReserveAircraftTile(v, tile, current, current_tds)) {
+	if (!TryReserveAircraftTileInternal(v, tile, current, current_tds, true)) {
 		RestoreAircraftJunctions(v, previous_junctions);
 		RestoreAircraftTaxiRunways(v, previous_runways);
 		return false;
 	}
-	if (next == INVALID_TILE || TryReserveAircraftTile(v, next, ahead, ahead_tds)) return true;
+	if (next == INVALID_TILE || TryReserveAircraftTileInternal(v, next, ahead, ahead_tds, true)) {
+		if (!v->junction_requests.empty()) CancelAircraftJunctionRequest(v);
+		return true;
+	}
 	TrackBits added = current & ~previous;
 	if (added != TRACK_BIT_NONE) {
 		ReleaseAircraftTile(v, tile, added);
@@ -893,6 +917,13 @@ static std::vector<TileIndex> RunwayTiles(TileIndex extreme)
 		}
 	}
 	return {};
+}
+
+TileIndex GetAircraftRunwayEnd(TileIndex start)
+{
+	if (!IsTaxiTile(start) || !IsRunwayStart(start)) return INVALID_TILE;
+	const auto tiles = RunwayTiles(start);
+	return tiles.empty() ? INVALID_TILE : tiles.back();
 }
 
 uint GetAircraftRunwayLength(TileIndex extreme)
@@ -1056,8 +1087,8 @@ static AircraftTaxiBlock CheckAircraftRunwayTile(const Aircraft *v, TileIndex ti
 	 * head would otherwise block the takeoff it cannot perform either — an
 	 * ABBA deadlock. TryReserveAircraftJunctions handles this aircraft's own
 	 * runway-head action separately. */
-	return MergeAircraftBlock(CheckAircraftTaxiTile(v, tile, false, true, TRACK_BIT_ALL, false),
-		CheckIncomingAircraftEnvelopes(v, tile, false, GetRunwayTracks(tile)));
+	return MergeAircraftBlock(CheckAircraftTaxiTile(v, tile, true, TRACK_BIT_ALL, AircraftJunctionUse::Ignore),
+		CheckIncomingAircraftEnvelopes(v, tile, GetRunwayTracks(tile)));
 }
 
 static bool AircraftJunctionResting(const Aircraft *v)
@@ -1163,17 +1194,28 @@ static void AddAircraftJunctionTrack(AircraftJunctionAction &action, TileIndex t
 	}
 }
 
-static bool AircraftJunctionActionsConflict(const AircraftJunctionAction &a, const AircraftJunctionAction &b)
+/* A sweep reaches only the specified part of a neighbouring tile. Apply the
+ * same check when granting a traversal and when the aircraft uses it. */
+static bool AircraftJunctionFootprintsConflict(TrackBits a_tracks, TrackBits a_swept, TrackBits b_tracks, TrackBits b_swept)
+{
+	return AircraftJunctionTracksConflict(a_tracks, b_tracks) ||
+			(a_swept & (b_tracks | b_swept)) != TRACK_BIT_NONE || (b_swept & a_tracks) != TRACK_BIT_NONE;
+}
+
+static std::optional<std::pair<size_t, size_t>> FindAircraftJunctionConflict(const AircraftJunctionAction &a, const AircraftJunctionAction &b)
 {
 	for (size_t i = 0, j = 0; i < a.tiles.size() && j < b.tiles.size();) {
 		if (a.tiles[i] < b.tiles[j]) { ++i; continue; }
 		if (b.tiles[j] < a.tiles[i]) { ++j; continue; }
-		if (AircraftJunctionTracksConflict(a.tracks[i], b.tracks[j]) ||
-				(a.swept[i] & (b.tracks[j] | b.swept[j])) != TRACK_BIT_NONE ||
-				(b.swept[j] & a.tracks[i]) != TRACK_BIT_NONE) return true;
+		if (AircraftJunctionFootprintsConflict(a.tracks[i], a.swept[i], b.tracks[j], b.swept[j])) return std::pair{i, j};
 		++i; ++j;
 	}
-	return false;
+	return std::nullopt;
+}
+
+static bool AircraftJunctionActionsConflict(const AircraftJunctionAction &a, const AircraftJunctionAction &b)
+{
+	return FindAircraftJunctionConflict(a, b).has_value();
 }
 
 static AircraftJunctionAction AircraftJunctionPhysicalFootprint(const Aircraft *v)
@@ -1188,7 +1230,40 @@ static AircraftJunctionAction AircraftJunctionPhysicalFootprint(const Aircraft *
 	return physical;
 }
 
-static bool CheckAircraftJunctionAccess(const Aircraft *v, TileIndex tile, TrackBits tracks)
+static bool YieldAircraftJunctionCycle(Aircraft *v)
+{
+	if (!CanTrimAircraftTaxiWindow(v) || v->junction_actions.empty() || v->junction_requests.empty() || v->ignore_airport_reservations) return false;
+	AircraftJunctionAction occupied = AircraftJunctionPhysicalFootprint(v);
+	for (const auto &record : v->reserved_path) AddAircraftJunctionTrack(occupied, record.tile, record.tracks);
+	for (const auto &[id, other] : _aircraft_junction_requests) {
+		if (other == v || other->IsAircraftFlying() || other->vehstatus.Any({VehState::Stopped, VehState::Hidden, VehState::Crashed}) ||
+				std::pair(other->junction_request_tick, id) >= std::pair(v->junction_request_tick, v->index)) continue;
+		const auto blocks_other = [&](const AircraftJunctionAction &grant) {
+			return std::any_of(other->junction_requests.begin(), other->junction_requests.end(), [&](const auto &request) {
+				return AircraftJunctionActionsConflict(grant, request);
+			});
+		};
+		if (!std::any_of(v->junction_actions.begin(), v->junction_actions.end(), blocks_other)) continue;
+		if (!std::any_of(v->junction_requests.begin(), v->junction_requests.end(), [&](const auto &request) {
+			return std::any_of(other->junction_actions.begin(), other->junction_actions.end(), [&](const auto &grant) {
+				return AircraftJunctionActionsConflict(request, grant);
+			});
+		})) continue;
+		/* Only yield a soft claim, never an occupied track, sweep or real
+		 * window. Once we yield, the older request has priority on retry. */
+		if (std::any_of(other->junction_requests.begin(), other->junction_requests.end(), [&](const auto &request) {
+			return AircraftJunctionActionsConflict(occupied, request);
+		})) continue;
+		/* A remaining grant would bypass FIFO and let us retake the claims
+		 * immediately. Only back out if all of our grants can be yielded. */
+		if (!std::all_of(v->junction_actions.begin(), v->junction_actions.end(), blocks_other)) continue;
+		ReleaseAircraftJunctions(v);
+		return true;
+	}
+	return false;
+}
+
+static bool CheckAircraftJunctionAccess(const Aircraft *v, TileIndex tile, TrackBits tracks, TrackBits swept)
 {
 	if (v->ignore_airport_reservations) return true;
 	if (!v->junction_legacy) {
@@ -1196,7 +1271,6 @@ static bool CheckAircraftJunctionAccess(const Aircraft *v, TileIndex tile, Track
 			const Aircraft *other = Aircraft::GetIfValid(id);
 			if (other != nullptr && other != v && !other->ignore_airport_reservations &&
 					std::binary_search(other->junction_legacy_tiles.begin(), other->junction_legacy_tiles.end(), tile)) {
-				 
 				return false;
 			}
 		}
@@ -1208,7 +1282,7 @@ static bool CheckAircraftJunctionAccess(const Aircraft *v, TileIndex tile, Track
 			auto it = std::lower_bound(action.tiles.begin(), action.tiles.end(), tile);
 			if (it == action.tiles.end() || *it != tile) continue;
 			const size_t i = it - action.tiles.begin();
-			if (AircraftJunctionTracksConflict(tracks, action.tracks[i]) || (tracks & action.swept[i]) != TRACK_BIT_NONE) {
+			if (AircraftJunctionFootprintsConflict(tracks, swept, action.tracks[i], action.swept[i])) {
 				return false;
 			}
 		}
@@ -1237,16 +1311,6 @@ static void PruneAircraftJunctions(Aircraft *v, bool keep_current)
 	if ((!keep_current && v->reserved_runway == INVALID_TILE) ||
 			(v->IsAircraftFlying() && v->reserved_runway == INVALID_TILE && v->reserved_path.empty()) ||
 			(AircraftJunctionResting(v) && v->reserved_runway == INVALID_TILE)) {
-		ReleaseAircraftJunctions(v);
-		return;
-	}
-	/* A body that has driven into the crossing but cannot advance for a very
-	 * long time is parked on it (e.g. behind an opposing virtual route).
-	 * Route pruning alone can never clear its action: the occupied window is
-	 * the aircraft's own tile, so the grant is kept forever and every follower
-	 * deadlocks behind it. Drop the stale action once the jam saturates. The
-	 * physical single-tile reservations remain, so no collision is possible. */
-	if (v->taxi_jam_ticks >= 8192 && v->next_trackdir == INVALID_TRACKDIR && v->planned_path.empty() == false) {
 		ReleaseAircraftJunctions(v);
 		return;
 	}
@@ -1332,28 +1396,9 @@ static bool SameAircraftJunctionTraversal(const AircraftJunctionAction &a, const
 	return true;
 }
 
-static bool BuildAircraftJunctionAction(const Aircraft *v, TileIndex junction, AircraftJunctionAction &action)
+static size_t BuildAircraftJunctionAction(const Aircraft *v, TileIndex junction, size_t crossing, AircraftJunctionAction &action)
 {
-	/* Only consider a junction encountered by the immediate route window.
-	 * Membership in a neighbouring junction's approach is not a traversal. */
 	const auto &route = v->planned_path;
-	size_t crossing = route.size();
-	uint steps = 0;
-	for (size_t i = 0; i < route.size(); ++i) {
-		if (i != 0 && route[i].tile != route[i - 1].tile && ++steps > 1) break;
-		if (route[i].tile == junction) { crossing = i; break; }
-		if (!IsValidTrackdir(route[i].td)) return false;
-		if (i + 1 < route.size() && route[i + 1].tile == route[i].tile && !route[i + 1].choice) {
-			CFollowTrackAirport follower(v);
-			if (follower.Follow(route[i].tile, route[i].td) && follower.new_tile == junction) { crossing = i; break; }
-		}
-		if (!IsDiagonalTrackdir(route[i].td) &&
-				AircraftJunctionStep(route[i].tile, _aircraft_envelope_directions[TrackdirToTrack(route[i].td)]) == junction) {
-			crossing = i;
-			break;
-		}
-	}
-	if (crossing == route.size()) return false;
 	const TileIndex crossing_tile = route[crossing].tile;
 	size_t begin = crossing;
 	while (begin > 0 && route[begin - 1].tile == crossing_tile) --begin;
@@ -1374,14 +1419,50 @@ static bool BuildAircraftJunctionAction(const Aircraft *v, TileIndex junction, A
 	action.exit_td = route[end - 1].td;
 	for (size_t i = begin; i < end; ++i) {
 		const auto &node = route[i];
-		if (!IsTaxiTile(node.tile) || !IsValidTrackdir(node.td)) return false;
+		if (!IsTaxiTile(node.tile) || !IsValidTrackdir(node.td)) return 0;
 		AddAircraftJunctionTrack(action, node.tile, TrackToTrackBits(TrackdirToTrack(node.td)));
 		if (i + 1 < end && route[i + 1].tile == node.tile && !route[i + 1].choice) {
 			CFollowTrackAirport follower(v);
-			if (!follower.Follow(node.tile, node.td)) return false;
+			if (!follower.Follow(node.tile, node.td)) return 0;
 			/* An edge turn visits this space without changing the physical tile. */
 			AddAircraftJunctionFootprint(action, follower.new_tile, TRACK_BIT_NONE, TrackdirBitsToTrackBits(follower.new_td_bits));
 		}
+	}
+	return end;
+}
+
+/** Collect all traversals needed before the first independent waiting tile. */
+static bool CollectAircraftJunctionActions(const Aircraft *v, const AircraftJunctionGeometry &geometry, std::vector<AircraftJunctionAction> &actions)
+{
+	const auto &route = v->planned_path;
+	size_t end = 0;
+	for (uint group = 0; group < 2 && end < route.size(); ++group) {
+		const TileIndex tile = route[end].tile;
+		do { ++end; } while (end < route.size() && route[end].tile == tile);
+	}
+	std::set<std::pair<TileIndex, size_t>> seen;
+	size_t group_start = 0;
+	for (size_t i = 0; i < end; ++i) {
+		const auto &node = route[i];
+		if (i == 0 || route[i - 1].tile != node.tile) group_start = i;
+		if (!IsValidTrackdir(node.td)) return false;
+		auto add = [&](TileIndex junction) {
+			if (!geometry.regions.contains(junction) || !seen.emplace(junction, group_start).second) return true;
+			AircraftJunctionAction action;
+			const size_t exit = BuildAircraftJunctionAction(v, junction, i, action);
+			if (exit == 0 || action.tiles.size() > 64 || actions.size() >= 64) return false;
+			/* The exit group can itself require the next action. Request both
+			 * now instead of holding the first while waiting at that exit. */
+			end = std::max(end, exit);
+			actions.push_back(std::move(action));
+			return true;
+		};
+		if (!add(node.tile)) return false;
+		if (i + 1 < route.size() && route[i + 1].tile == node.tile && !route[i + 1].choice) {
+			CFollowTrackAirport follower(v);
+			if (!follower.Follow(node.tile, node.td) || !add(follower.new_tile)) return false;
+		}
+		if (!IsDiagonalTrackdir(node.td) && !add(AircraftJunctionStep(node.tile, _aircraft_envelope_directions[TrackdirToTrack(node.td)]))) return false;
 	}
 	return true;
 }
@@ -1393,22 +1474,25 @@ static bool CheckAircraftJunctionActionPhysical(const Aircraft *v, const Aircraf
 	if (v->ignore_airport_reservations) return std::all_of(action.tiles.begin(), action.tiles.end(), [](TileIndex tile) { return IsTaxiTile(tile); });
 	for (size_t i = 0; i < action.tiles.size(); ++i) {
 		const TileIndex tile = action.tiles[i];
-		if (!IsTaxiTile(tile)) return false;
+		if (!IsTaxiTile(tile)) {
+			return false;
+		}
 		/* Body tracks overlap geometrically; a swept half only conflicts with
 		 * its facing half. Diagonal tracks on the neighbour are independent. */
 		if (action.tracks[i] != TRACK_BIT_NONE &&
-				CheckAircraftTaxiTracks(v, tile, action.tracks[i], false) != AircraftTaxiBlock::None) {
+				CheckAircraftTaxiTracks(v, tile, action.tracks[i]) != AircraftTaxiBlock::None) {
 			return false;
 		}
 		if (action.swept[i] == TRACK_BIT_NONE || v->ignore_airport_reservations) continue;
-		if (GetReservedAirportTracks(tile) != AircraftReservedTracks(tile)) return false;
+		if (GetReservedAirportTracks(tile) != AircraftReservedTracks(tile)) {
+			return false;
+		}
 		auto owners = _aircraft_tile_owners.find(tile);
 		if (owners != _aircraft_tile_owners.end()) {
 			for (const auto &[id, tracks] : owners->second) {
 				const Aircraft *other = Aircraft::GetIfValid(id);
 				if (id != v->index && (other == nullptr || !other->ignore_airport_reservations) &&
 						(tracks & action.swept[i]) != TRACK_BIT_NONE) {
-					 
 					return false;
 				}
 			}
@@ -1419,7 +1503,9 @@ static bool CheckAircraftJunctionActionPhysical(const Aircraft *v, const Aircraf
 			TrackBits tracks = TRACK_BIT_NONE;
 			if (IsValidTrackdir(other->trackdir)) tracks |= TrackToTrackBits(TrackdirToTrack(other->trackdir));
 			if (IsValidTrackdir(other->next_trackdir)) tracks |= TrackToTrackBits(TrackdirToTrack(other->next_trackdir));
-			if ((tracks & action.swept[i]) != TRACK_BIT_NONE) return false;
+			if ((tracks & action.swept[i]) != TRACK_BIT_NONE) {
+				return false;
+			}
 		}
 	}
 	return true;
@@ -1431,64 +1517,40 @@ static bool TryReserveAircraftJunctions(Aircraft *v, TileIndex tile, TrackBits t
 	const TileIndex origin = runway != INVALID_TILE ? runway : (IsTaxiTile(tile) ? tile : v->tile);
 	if (!IsTaxiTile(origin)) return true;
 	const auto &geometry = GetAircraftJunctionGeometry(GetStationIndex(origin));
-	std::set<TileIndex> near;
-	auto collect = [&](TileIndex current, TrackBits bits) {
-		auto found = geometry.tiles.find(current);
-		if (found != geometry.tiles.end()) near.insert(found->second.begin(), found->second.end());
-		for (Track track : SetTrackBitIterator(bits)) {
-			if (IsDiagonalTrack(track)) continue;
-			found = geometry.tiles.find(AircraftJunctionStep(current, _aircraft_envelope_directions[track]));
-			if (found != geometry.tiles.end()) near.insert(found->second.begin(), found->second.end());
+	if (runway == INVALID_TILE && tile == INVALID_TILE && AircraftJunctionResting(v)) return true;
+
+	std::vector<AircraftJunctionAction> candidates;
+	if (runway == INVALID_TILE && !v->planned_path.empty()) {
+		if (!CollectAircraftJunctionActions(v, geometry, candidates)) {
+			return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, origin);
 		}
-	};
-	if (runway != INVALID_TILE) {
-		/* The runway has its own physical lock. Only its local entry is a
-		 * junction action, never its full length or its distant exits. */
-		collect(runway, TRACK_BIT_NONE);
-	} else {
-		if (tile == INVALID_TILE && AircraftJunctionResting(v)) return true;
-		if (IsTaxiTile(v->tile) && !v->IsAircraftFlying()) {
-			collect(v->tile, IsValidTrackdir(v->trackdir) ? TrackToTrackBits(TrackdirToTrack(v->trackdir)) : TRACK_BIT_NONE);
-		}
-		for (const auto &r : v->reserved_path) collect(r.tile, r.tracks);
-		if (tile != INVALID_TILE) collect(tile, tracks);
-	}
-	std::vector<AircraftJunctionAction> desired;
-	for (TileIndex key : near) {
+	} else if (geometry.regions.contains(origin) && (runway != INVALID_TILE || (tile == origin && tracks != TRACK_BIT_NONE))) {
+		/* A runway lock only needs its local entrance action. A direct reservation
+		 * without a route likewise only claims the junction on that tile. */
 		AircraftJunctionAction action;
+		action.junction = action.entry_tile = action.exit_tile = origin;
 		if (runway != INVALID_TILE) {
-			/* A remote approach tile beside a runway is not being crossed. */
-			if (key != runway) continue;
-			action.junction = key;
-			action.entry_tile = action.exit_tile = runway;
 			action.entry_td = action.exit_td = DiagDirToDiagTrackdir(GetRunwayExtremeDirection(runway));
 			AddAircraftJunctionTrack(action, runway, GetRunwayTracks(runway));
-		} else if (!BuildAircraftJunctionAction(v, key, action)) {
-			if (!v->planned_path.empty() || tile != key || tracks == TRACK_BIT_NONE) continue;
-			action.junction = key;
-			action.entry_tile = action.exit_tile = tile;
+		} else {
 			AddAircraftJunctionTrack(action, tile, tracks);
 			TrackBits first = tracks;
 			action.entry_td = action.exit_td = TrackToTrackdir(RemoveFirstTrack(&first));
 		}
+		candidates.push_back(std::move(action));
+	}
+	std::vector<AircraftJunctionAction> desired;
+	for (auto &action : candidates) {
 		const bool held = std::any_of(v->junction_actions.begin(), v->junction_actions.end(), [&](const auto &grant) {
 			return SameAircraftJunctionTraversal(grant, action);
 		});
-		if (!held) {
-			desired.push_back(std::move(action));
-		}
+		if (!held) desired.push_back(std::move(action));
 	}
-	if (desired.empty()) {
-		CancelAircraftJunctionRequest(v);
-		return true;
-	}
+	if (desired.empty()) return true;
 	if (desired.size() > 64 || v->junction_actions.size() + desired.size() > 64) return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, origin);
 	/* Replanning the same local action keeps its queue position. An unrelated
 	 * crossing starts a new request; there is no remote route-wide priority. */
-	bool same_request = false;
-	for (const auto &pending : v->junction_requests) {
-		for (const auto &action : desired) same_request |= pending.junction == action.junction;
-	}
+	const bool same_request = v->junction_requests == desired;
 	if (!same_request || v->junction_request_tick == INVALID_STATE_TICKS) v->junction_request_tick = _state_ticks;
 	v->junction_requests = desired;
 	SyncAircraftJunctionRecords(v);
@@ -1532,12 +1594,16 @@ static bool TryReserveAircraftJunctions(Aircraft *v, TileIndex tile, TrackBits t
 		}
 	}
 	for (const auto &action : desired) {
-		if (!CheckAircraftJunctionActionPhysical(v, action)) return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, origin);
+		if (!CheckAircraftJunctionActionPhysical(v, action)) {
+			return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, origin);
+		}
 	}
 	for (auto &action : desired) {
 		v->junction_actions.push_back(std::move(action));
 	}
-	CancelAircraftJunctionRequest(v);
+	/* Consume the queue position only when the corresponding real window
+	 * commits. A later failure restores grants but keeps the pending intent. */
+	SyncAircraftJunctionRecords(v);
 	return true;
 }
 
@@ -1655,9 +1721,44 @@ void ReleaseAircraftRunway(Aircraft *v)
 	PruneAircraftJunctions(v);
 }
 
+bool ProbeAircraftTaxiExit(Aircraft *v, bool (*try_exit)(Aircraft *))
+{
+	/* A landing roll has no taxi route yet. Preserve any local runway-admission
+	 * state, including queue age, independently of the candidate taxi route. */
+	if (!v->planned_path.empty() || !v->virtual_path.empty()) return false;
+	const AircraftJunctionState junctions(v);
+	const auto requests = v->junction_requests;
+	const auto request_tick = v->junction_request_tick;
+	const auto real = v->reserved_path;
+	const auto runways = v->taxi_runways;
+	const TileIndex terminal = v->allocated_terminal;
+	if (try_exit(v)) return true;
+
+	for (size_t i = 0; i < v->reserved_path.size();) {
+		const auto record = v->reserved_path[i];
+		const auto previous = std::find_if(real.begin(), real.end(), [&](const auto &r) { return r.tile == record.tile; });
+		const TrackBits keep = previous == real.end() ? TRACK_BIT_NONE : previous->tracks;
+		ReleaseAircraftTile(v, record.tile, record.tracks & ~keep);
+		if (keep != TRACK_BIT_NONE) ++i;
+	}
+	ReleaseAircraftVirtualPath(v);
+	v->planned_path.clear();
+	if (v->allocated_terminal != terminal) {
+		ReleaseAircraftTerminal(v);
+		v->allocated_terminal = terminal;
+		if (terminal != INVALID_TILE && !v->ignore_airport_reservations) _aircraft_terminal_owners[terminal] = v->index;
+	}
+	v->junction_actions = junctions.actions;
+	v->junction_requests = requests;
+	v->junction_request_tick = request_tick;
+	SyncAircraftJunctionRecords(v);
+	if (v->taxi_runways != runways) RestoreAircraftTaxiRunways(v, runways);
+	return false;
+}
+
 bool IsAircraftGroundTileAvailable(const Aircraft *v, TileIndex tile)
 {
-	return CheckAircraftTaxiTracks(v, tile, TRACK_BIT_NONE, false) == AircraftTaxiBlock::None;
+	return CheckAircraftTaxiTracks(v, tile, TRACK_BIT_NONE) == AircraftTaxiBlock::None;
 }
 
 bool IsAircraftRunwayAvailable(const Aircraft *v, TileIndex extreme)
@@ -2025,8 +2126,8 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 		if (taxi == _aircraft_tile_owners.end()) continue;
 		for (const auto &[id, tracks] : taxi->second) {
 			if (id == runway_owner) continue;
-			/* Phasing can acquire real tracks under another aircraft's runway
-			 * lock. Restore that transient overlap without changing either owner. */
+			/* Older builds could phase under another aircraft's runway lock.
+			 * Restore that overlap without changing either saved owner. */
 			const Aircraft *v = Aircraft::Get(id);
 			if (!HasBit(v->flags, VAF_TAXI_PHASING)) SlErrorCorrupt("Aircraft taxi reservation overlaps another aircraft runway");
 		}

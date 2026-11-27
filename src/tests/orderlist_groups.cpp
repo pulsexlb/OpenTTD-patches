@@ -13,10 +13,20 @@
 #include "../company_func.h"
 #include "../order_base.h"
 #include "../order_cmd.h"
+#include "../order_func.h"
 #include "../core/pool_func.hpp"
 #include "../core/backup_type.hpp"
 #include "../train.h"
 #include "../schedule_group_gui.h"
+#include "../depot_base.h"
+#include "../linkgraph/linkgraph.h"
+#include "../linkgraph/linkgraphschedule.h"
+#include "../linkgraph/refresh.h"
+#include "../map_func.h"
+#include "../rail_map.h"
+#include "../scope.h"
+#include "../station_base.h"
+#include "../tracerestrict.h"
 
 class ScheduleGroupFixture {
 protected:
@@ -36,6 +46,16 @@ protected:
 		_orderlist_pool.CleanPool();
 		_company_pool.CleanPool();
 		ClearOrderDestinationRefcountMap();
+	}
+	Train *AttachTrain(OrderList *list)
+	{
+		Train *v = Train::Create();
+		v->SetEngine();
+		v->SetFrontEngine();
+		v->owner = owner;
+		v->orders = list;
+		list->AssignVehicle(v);
+		return v;
 	}
 	OrderList *Create(const std::string &name, OrderListID parent = OrderListID::Invalid(), bool group = true)
 	{
@@ -413,4 +433,242 @@ TEST_CASE_METHOD(ScheduleGroupFixture, "Couple - speed bound sources switch atom
 	legacy.SetCoupleSpeedComparator(0, 2); // Existing not-equal criteria remain unchanged until edited.
 	CHECK(legacy.GetCoupleSpeedBoundMode(0) == CoupleSpeedBoundMode::Manual);
 	CHECK(legacy.GetCoupleSpeedComparator(0) == 2);
+}
+
+TEST_CASE_METHOD(ScheduleGroupFixture, "Independent timetable condition edits use their order list")
+{
+	OrderList *list = Create("Independent conditions", OrderListID::Invalid(), false);
+	Order condition;
+	condition.MakeConditional(1);
+	Order station;
+	station.MakeGoToStation(StationID{123});
+	list->GetOrderVector() = {condition, station, station};
+	list->RecalculateDerivedCounters();
+	auto modify = [&](DoCommandFlags flags, ModifyOrderFlags change, uint16_t value) {
+		return CmdModifyOrder(flags, OrderTargetType::OrderList, list->index.base(), 0, change, value, INVALID_CARGO, {});
+	};
+	CHECK(modify({}, MOF_COND_DESTINATION, 2).Succeeded());
+	CHECK(list->GetOrderAt(0)->GetConditionSkipToOrder() == 1);
+	CHECK(modify({}, MOF_COND_DESTINATION, 0).Failed());
+	CHECK(modify(DoCommandFlag::Execute, MOF_COND_DESTINATION, 3).Failed());
+	REQUIRE(modify(DoCommandFlag::Execute, MOF_COND_DESTINATION, 2).Succeeded());
+	CHECK(list->GetOrderAt(0)->GetConditionSkipToOrder() == 2);
+
+	auto cleanup = scope_guard([] { _tracerestrictslot_pool.CleanPool(); });
+	TraceRestrictSlot *slot = TraceRestrictSlot::Create(owner, VehicleType::Train);
+	REQUIRE(modify(DoCommandFlag::Execute, MOF_COND_VARIABLE, to_underlying(OrderConditionVariable::SlotOccupancy)).Succeeded());
+	REQUIRE(modify(DoCommandFlag::Execute, MOF_COND_VALUE, slot->index.base()).Succeeded());
+	REQUIRE(modify(DoCommandFlag::Execute, MOF_COND_VARIABLE, to_underlying(OrderConditionVariable::VehicleInSlot)).Succeeded());
+	CHECK(list->GetOrderAt(0)->GetXData() == slot->index);
+	REQUIRE(modify(DoCommandFlag::Execute, MOF_COND_VALUE, slot->index.base()).Succeeded());
+	CHECK(list->GetOrderAt(0)->GetXData() == slot->index);
+}
+
+TEST_CASE_METHOD(ScheduleGroupFixture, "Station removal fixes dormant lists, jumps and suspended resume positions")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	const StationID removed{123};
+	Order station;
+	station.MakeGoToStation(removed);
+	station.SetWaitTime(10);
+	station.SetWaitTimetabled(true);
+	station.SetTravelTime(20);
+	station.SetTravelTimetabled(true);
+	Order survivor;
+	survivor.MakeGoToStation(StationID{124});
+	Order implicit;
+	implicit.MakeImplicit(removed);
+	Order condition;
+	condition.MakeConditional(2);
+	condition.SetConditionVariable(OrderConditionVariable::CargoWaitingAmount);
+	condition.SetConditionStationID(removed);
+	condition.SetConditionViaStationID(removed);
+	Order jump_to_deleted;
+	jump_to_deleted.MakeConditional(1);
+	jump_to_deleted.SetConditionVariable(OrderConditionVariable::Unconditionally);
+
+	OrderList *active = Create("Detour", OrderListID::Invalid(), false);
+	active->GetOrderVector() = {survivor};
+	active->RecalculateDerivedCounters();
+	OrderList *home = OrderList::Create();
+	home->GetOrderVector() = {condition, implicit, survivor, station, jump_to_deleted};
+	home->RecalculateDerivedCounters();
+	OrderList *unattached = Create("Unattached detour", OrderListID::Invalid(), false);
+	unattached->GetOrderVector() = {condition, implicit, survivor, station, jump_to_deleted};
+	unattached->RecalculateDerivedCounters();
+
+	Train *v = AttachTrain(active);
+	v->primary_order = home->index;
+	v->primary_order_index = 2;
+	v->execute_schedule_stack.push_back(home->index.base() | (uint32_t{3} << 16));
+	v->execute_schedule_stack.push_back(unattached->index.base() | (uint32_t{1} << 16));
+	v->current_order = condition;
+	Train *other = AttachTrain(active);
+	other->current_order = station;
+	REQUIRE(v->IsExecutingSchedule());
+	REQUIRE(home->GetFirstSharedVehicle() == nullptr);
+
+	RemoveOrderFromAllVehicles(OT_GOTO_STATION, removed);
+	REQUIRE(Station::CreateAtIndex(removed, TileXY(10, 10))->index == removed);
+	for (const OrderList *list : {home, unattached}) {
+		REQUIRE(list->GetNumOrders() == 4);
+		CHECK(list->GetOrderAt(0)->GetConditionSkipToOrder() == 1);
+		CHECK(list->GetOrderAt(0)->GetConditionStationID() == StationID::Invalid());
+		CHECK(list->GetOrderAt(0)->HasConditionViaStation());
+		CHECK(list->GetOrderAt(0)->GetConditionViaStationID() == StationID::Invalid());
+		CHECK(list->GetOrderAt(1)->GetDestination() == survivor.GetDestination());
+		CHECK(list->GetOrderAt(2)->IsType(OT_DUMMY));
+		CHECK(list->GetOrderAt(2)->GetWaitTime() == 0);
+		CHECK(list->GetOrderAt(2)->GetTimetabledTravel() == 20);
+		CHECK(list->GetTotalDuration() == 20);
+		CHECK(list->GetOrderAt(3)->GetConditionSkipToOrder() == 1);
+	}
+	CHECK(v->current_order.GetConditionStationID() == StationID::Invalid());
+	CHECK(v->current_order.GetConditionViaStationID() == StationID::Invalid());
+	/* Even when the tested station is valid, an invalid via must not match
+	 * the empty/unrouted cargo bucket (the default comparison is equal to 0). */
+	Order via_only = v->current_order;
+	via_only.SetConditionStationID(removed);
+	CHECK(ProcessConditionalOrder(&via_only, v, PCO_DEFERRED) == INVALID_VEH_ORDER_ID);
+	v->cargo_type = static_cast<CargoType>(0);
+	v->cargo_cap = 10;
+	via_only.SetConditionVariable(OrderConditionVariable::CargoWaitingAmountPercentage);
+	CHECK(ProcessConditionalOrder(&via_only, v, PCO_DEFERRED) == INVALID_VEH_ORDER_ID);
+	CHECK(other->current_order.IsType(OT_DUMMY));
+	CHECK(v->primary_order_index == 1);
+	REQUIRE(v->execute_schedule_stack.size() == 2);
+	CHECK((v->execute_schedule_stack[0] >> 16) == 2);
+	CHECK((v->execute_schedule_stack[1] >> 16) == 1);
+}
+
+TEST_CASE_METHOD(ScheduleGroupFixture, "Depot removal sweeps unmounted schedules in both single and batch mode")
+{
+	const bool batch = GENERATE(false, true);
+	OrderList *list = Create("Dormant depot orders", OrderListID::Invalid(), false);
+	const DepotID depot{123};
+	Order fixed;
+	fixed.MakeGoToDepot(depot, OrderDepotTypeFlag::PartOfOrders);
+	Order nearest;
+	nearest.MakeGoToDepot(DepotID::Invalid(), OrderDepotTypeFlag::PartOfOrders, ONSF_NO_STOP_AT_INTERMEDIATE_STATIONS, ODATFB_NEAREST_DEPOT);
+	list->GetOrderVector() = {fixed, nearest};
+	list->RecalculateDerivedCounters();
+
+	if (batch) StartRemoveOrderFromAllVehiclesBatch();
+	RemoveOrderFromAllVehicles(OT_GOTO_DEPOT, depot);
+	if (batch) {
+		CHECK(list->GetFirstOrder()->IsType(OT_GOTO_DEPOT));
+		StopRemoveOrderFromAllVehiclesBatch();
+	}
+	CHECK(list->GetFirstOrder()->IsType(OT_DUMMY));
+	CHECK(list->GetLastOrder()->IsType(OT_GOTO_DEPOT));
+}
+
+TEST_CASE_METHOD(ScheduleGroupFixture, "Depot cleanup preserves typed orders on station ID collisions")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { _vehicle_pool.CleanPool(); _station_pool.CleanPool(); _depot_pool.CleanPool(); DeallocateMap(); });
+	const DepotID depot{123};
+	Station *station = Station::CreateAtIndex(StationID{depot.base()}, TileXY(10, 10));
+	Depot *ground = Depot::CreateAtIndex(depot, TileXY(20, 20));
+	MakeRailDepot(ground->xy, owner, depot, DiagDirection::NE, RAILTYPE_RAIL);
+	Order order;
+	order.MakeGoToDepot(depot, OrderDepotTypeFlag::PartOfOrders);
+	OrderList *untagged = Create("Untyped depot destination", OrderListID::Invalid(), false);
+	OrderList *typed = Create("Train depot destination", OrderListID::Invalid(), false);
+	for (OrderList *list : {untagged, typed}) {
+		list->GetOrderVector() = {order};
+		list->RecalculateDerivedCounters();
+	}
+	AttachTrain(typed);
+
+	RemoveOrderFromAllVehicles(OT_GOTO_STATION, station->index);
+	CHECK(typed->GetFirstOrder()->IsType(OT_GOTO_DEPOT));
+	CHECK(untagged->GetFirstOrder()->IsType(OT_GOTO_DEPOT));
+
+	/* A real hangar and ground depot sharing the number cannot be distinguished
+	 * without a vehicle type. Drop only the genuinely ambiguous order. */
+	station->airport.hangar = Depot::Create(TileXY(10, 10));
+	RemoveOrderFromAllVehicles(OT_GOTO_DEPOT, station->index, true);
+	CHECK(typed->GetFirstOrder()->IsType(OT_GOTO_DEPOT));
+	CHECK(untagged->GetFirstOrder()->IsType(OT_DUMMY));
+}
+
+TEST_CASE_METHOD(ScheduleGroupFixture, "LinkGraph separates cargo by policies across list boundaries")
+{
+	enum class Transition { Execute, Decouple, Resume };
+	const auto transition = GENERATE(Transition::Execute, Transition::Decouple, Transition::Resume);
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] {
+		_vehicle_pool.CleanPool();
+		_station_pool.CleanPool();
+		LinkGraphSchedule::Clear();
+		_link_graph_pool.CleanPool();
+		DeallocateMap();
+	});
+	Station *a = Station::Create(TileXY(10, 10));
+	Station *b = Station::Create(TileXY(15, 10));
+	Station *c = Station::Create(TileXY(20, 10));
+	Station *d = Station::Create(TileXY(25, 10));
+	auto stop = [](const Station *st) {
+		Order order;
+		order.MakeGoToStation(st->index);
+		return order;
+	};
+	const auto cargo0 = static_cast<CargoType>(0);
+	const auto cargo1 = static_cast<CargoType>(1);
+	Order filtered_stop = stop(b);
+	filtered_stop.SetLoadType(OrderLoadType::CargoTypeLoad);
+	filtered_stop.SetLoadType(OrderLoadType::NoLoad, cargo0);
+	filtered_stop.SetUnloadType(OrderUnloadType::CargoTypeUnload);
+	filtered_stop.SetUnloadType(OrderUnloadType::NoUnload, cargo0);
+
+	OrderList *active = Create("Active cargo route", OrderListID::Invalid(), false);
+	OrderList *target = Create("Other cargo route", OrderListID::Invalid(), false);
+	if (transition == Transition::Resume) {
+		active->GetOrderVector() = {stop(a)};
+		target->GetOrderVector() = {stop(c), filtered_stop, stop(d)};
+	} else {
+		Order crossing;
+		if (transition == Transition::Execute) {
+			crossing.MakeExecuteSchedule();
+			crossing.SetDestination(target->index);
+		} else {
+			crossing.MakeDecouple();
+			crossing.SetDecoupleSecondScheduleID(target->index);
+		}
+		active->GetOrderVector() = {stop(a), crossing, stop(c)};
+		target->GetOrderVector() = {filtered_stop, stop(d)};
+	}
+	active->RecalculateDerivedCounters();
+	target->RecalculateDerivedCounters();
+
+	Train *v = AttachTrain(active);
+	v->cur_implicit_order_index = 0;
+	if (transition == Transition::Resume) {
+		v->primary_order = target->index;
+		v->primary_order_index = 1;
+	}
+	v->vcache.cached_max_speed = 100;
+	v->cargo_type = cargo0;
+	v->cargo_cap = v->refit_cap = 20;
+	Train *wagon = Train::Create();
+	wagon->SetWagon();
+	wagon->owner = owner;
+	wagon->cargo_type = cargo1;
+	wagon->cargo_cap = wagon->refit_cap = 30;
+	v->SetNext(wagon);
+
+	LinkRefresher::Run(v, true, false, CargoTypes{cargo0, cargo1});
+	auto capacity = [](const Station *from, const Station *to, CargoType cargo) {
+		const GoodsEntry &src = from->goods[cargo];
+		const GoodsEntry &dst = to->goods[cargo];
+		const LinkGraph *graph = LinkGraph::GetIfValid(src.link_graph);
+		return graph != nullptr && src.link_graph == dst.link_graph ? graph->GetConstEdge(src.node, dst.node).Capacity() : 0u;
+	};
+	CHECK(capacity(a, b, cargo0) == 0);
+	CHECK(capacity(a, d, cargo0) == 20);
+	CHECK(capacity(a, b, cargo1) == 30);
+	CHECK(capacity(b, d, cargo1) == 30);
+	CHECK(capacity(a, d, cargo1) == 0);
 }

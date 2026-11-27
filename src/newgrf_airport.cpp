@@ -77,6 +77,16 @@ AirportSpec AirportSpec::specs[NUM_AIRPORTS]; ///< Airport specifications.
 	return as;
 }
 
+/** Resolve a loaded NewGRF airport by exact identity, never by substitute or override. */
+/* static */ const AirportSpec *AirportSpec::GetByGrf(GrfID grfid, uint16_t local_id)
+{
+	if (grfid.Empty() || local_id >= NUM_AIRPORTS_PER_GRF) return nullptr;
+	const uint16_t index = _airport_mngr.GetID(local_id, grfid);
+	if (index < NEW_AIRPORT_OFFSET || index >= NUM_AIRPORTS) return nullptr;
+	const AirportSpec *spec = GetWithoutOverride(index);
+	return spec->enabled && spec->grf_prop.HasGrfFile() && spec->grf_prop.grfid == grfid && spec->grf_prop.local_id == local_id ? spec : nullptr;
+}
+
 /**
  * Retrieve airport spec for the given airport. Even if an override is
  *  available the base spec is returned.

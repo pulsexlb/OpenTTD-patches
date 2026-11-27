@@ -1156,6 +1156,7 @@ public:
 	inline void SetConditionStationID(StationID st) { this->SetXData2Low(st + 1); }
 	/** Set condition via station ID */
 	inline void SetConditionViaStationID(StationID st) { this->SetXDataHigh(st + 2); }
+	bool ClearConditionalStationReferences(StationID station);
 	/** Clear condition via station ID */
 	inline void ClearConditionViaStation() { this->SetXDataHigh(0); }
 	/** Set condition dispatch scheduled ID */

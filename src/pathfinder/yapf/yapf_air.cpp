@@ -95,6 +95,15 @@ protected:
 
 public:
 
+	void SetGeometryOnly(TileIndex origin) { this->geometry_origin = origin; }
+	bool IsGeometryOnly() const { return this->geometry_origin != INVALID_TILE; }
+
+	bool IsTaxiPathTileAvailable(TileIndex tile, Trackdir td)
+	{
+		return this->IsGeometryOnly() ? IsAircraftTaxiTrackGeometryValid(this->geometry_origin, tile, td) :
+				IsAircraftVirtualTileAvailable(Yapf().GetVehicle(), tile, td);
+	}
+
 	/**
 	 * Called by YAPF to move from the given node to the next tile. For each
 	 * reachable trackdir on the new tile creates new node, initializes it
@@ -142,7 +151,7 @@ public:
 				Node &n = Yapf().CreateNewNode();
 				bool swept_free = true;
 				for (TrackdirBits swept = F.new_td_bits; swept != TRACKDIR_BIT_NONE; swept = KillFirstBit(swept)) {
-					if (!IsAircraftVirtualTileAvailable(Yapf().GetVehicle(), F.new_tile, static_cast<Trackdir>(FindFirstBit(swept)))) swept_free = false;
+					if (!this->IsTaxiPathTileAvailable(F.new_tile, static_cast<Trackdir>(FindFirstBit(swept)))) swept_free = false;
 				}
 				if (!swept_free) continue;
 				n.Set(&old_node, old_node.GetTile(), td, false);
@@ -195,6 +204,9 @@ public:
 		best_dest->okay = true;
 		return v->planned_path.front().td;
 	}
+
+private:
+	TileIndex geometry_origin = INVALID_TILE;
 };
 
 /** YAPF origin provider class for air. */
@@ -228,20 +240,19 @@ public:
 	void PfSetStartupNodes()
 	{
 		bool is_choice = (KillFirstBit(m_orgTrackdirs) != TRACKDIR_BIT_NONE);
-		int added = 0;
 		for (TrackdirBits tdb = m_orgTrackdirs; tdb != TRACKDIR_BIT_NONE; tdb = KillFirstBit(tdb)) {
 			Trackdir td = (Trackdir)FindFirstBit(tdb);
-			if (!IsAircraftVirtualTileAvailable(Yapf().GetVehicle(), m_orgTile, td)) continue;
+			if (!Yapf().IsTaxiPathTileAvailable(m_orgTile, td)) continue;
 			Node &n1 = Yapf().CreateNewNode();
 			n1.Set(nullptr, m_orgTile, td, is_choice);
-			DirDiff difference = NonOrientedDirDifference(TrackdirToDirection(Yapf().GetVehicle()->trackdir), TrackdirToDirection(td));
-			assert(to_underlying(difference) % 2 == 0);
-			assert(to_underlying(difference) <= 4);
-			n1.cost = (to_underlying(difference) / 2) * YAPF_TILE_LENGTH;
+			n1.cost = 0;
+			if (!Yapf().IsGeometryOnly()) {
+				DirDiff difference = NonOrientedDirDifference(TrackdirToDirection(Yapf().GetVehicle()->trackdir), TrackdirToDirection(td));
+				assert(to_underlying(difference) % 2 == 0);
+				assert(to_underlying(difference) <= 4);
+				n1.cost = (to_underlying(difference) / 2) * YAPF_TILE_LENGTH;
+			}
 			Yapf().AddStartupNode(n1);
-			added++;
-		}
-		if (added == 0) {
 		}
 	}
 };
@@ -283,7 +294,10 @@ public:
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
 		if (!IsDiagonalTrackdir(td)) return false;
-			if (!IsAircraftVirtualDestinationAvailable(Yapf().GetVehicle(), tile, TrackToTrackBits(TrackdirToTrack(td)))) return false;
+		if (Yapf().IsGeometryOnly()) {
+			return this->dest_state == AS_HANGAR ? IsHangar(tile) : IsPlaneApronTile(tile);
+		}
+		if (!IsAircraftVirtualDestinationAvailable(Yapf().GetVehicle(), tile, TrackToTrackBits(TrackdirToTrack(td)))) return false;
 
 		switch (this->dest_state) {
 			case AS_HANGAR:
@@ -350,10 +364,9 @@ public:
 		/* Is current trackdir a diagonal one? */
 		c += IsDiagonalTrackdir(n.GetTrackdir()) ? YAPF_TILE_LENGTH : YAPF_TILE_CORNER_LENGTH;
 
-		const Aircraft *v = Yapf().GetVehicle();
 		/* Virtual route search checks geometry and direction, not the future
 		 * real window. Destination occupancy is checked separately. */
-		if (!IsAircraftVirtualTileAvailable(v, n.GetTile(), n.GetTrackdir())) return false;
+		if (!Yapf().IsTaxiPathTileAvailable(n.GetTile(), n.GetTrackdir())) return false;
 
 		/* Add cost to avoid vehicles going over aprons and other special tiles as much as possible. */
 		if (!IsSimpleTrack(n.GetTile())) c += 8 * YAPF_TILE_LENGTH;
@@ -416,3 +429,19 @@ Trackdir YapfAircraftFindPath(Aircraft *v, PBSTileInfo &best_dest, bool &path_fo
 	return CYapfAircraft::ChooseAircraftPath(v, &best_dest, path_found, dest_state, path_cache);
 }
 
+/** Check the guaranteed end-of-roll exit, without booking or testing any traffic. */
+bool HasAircraftRunwayExit(const Aircraft *v, TileIndex start, bool to_hangar)
+{
+	const TileIndex end = GetAircraftRunwayEnd(start);
+	if (end == INVALID_TILE) return false;
+	/* The normal handoff stops at the centre and may select either direction
+	 * on any built diagonal track before it starts taxiing. */
+	const TrackBits origins = GetAirportTileTracks(end) & TRACK_BIT_CROSS;
+	if (origins == TRACK_BIT_NONE) return false;
+	CYapfAircraft pf;
+	pf.SetGeometryOnly(end);
+	pf.SetMaxSearchNodes(0);
+	pf.SetOrigin(end, TrackBitsToTrackdirBits(origins));
+	pf.SetDestination(false, to_hangar ? AS_HANGAR : AS_APRON);
+	return pf.FindPath(v);
+}

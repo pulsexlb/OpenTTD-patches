@@ -1242,13 +1242,13 @@ function Regression::Marine()
 	print("  BuildCanal():         " + AIMarine.BuildCanal(28744));
 }
 
-function Regression::Order()
+function Regression::Order(road_vehicle, road_clone)
 {
 	print("");
 	print("--Order--");
-	print("  GetOrderCount():       " + AIOrder.GetOrderCount(12));
+	print("  GetOrderCount():       " + AIOrder.GetOrderCount(road_vehicle));
 	print("  GetOrderCount():       " + AIOrder.GetOrderCount(9999));
-	print("  GetOrderDestination(): " + AIOrder.GetOrderDestination(12, 1));
+	print("  GetOrderDestination(): " + AIOrder.GetOrderDestination(road_vehicle, 1));
 	print("  AreOrderFlagsValid():  " + AIOrder.AreOrderFlagsValid(33416, AIOrder.OF_TRANSFER));
 	print("  AreOrderFlagsValid():  " + AIOrder.AreOrderFlagsValid(33416, AIOrder.OF_TRANSFER | AIOrder.OF_UNLOAD));
 	print("  AreOrderFlagsValid():  " + AIOrder.AreOrderFlagsValid(33416, AIOrder.OF_TRANSFER | AIOrder.OF_FULL_LOAD));
@@ -1259,37 +1259,37 @@ function Regression::Order()
 	print("  IsValidConditionalOrder(): " + AIOrder.IsValidConditionalOrder(AIOrder.OC_RELIABILITY, AIOrder.CF_IS_TRUE));
 	print("  IsValidConditionalOrder(): " + AIOrder.IsValidConditionalOrder(AIOrder.OC_REQUIRES_SERVICE, AIOrder.CF_IS_FALSE));
 	print("  IsValidConditionalOrder(): " + AIOrder.IsValidConditionalOrder(AIOrder.OC_AGE, AIOrder.CF_INVALID));
-	print("  IsValidVehicleOrder(): " + AIOrder.IsValidVehicleOrder(12, 1));
-	print("  IsGotoStationOrder():  " + AIOrder.IsGotoStationOrder(12, 1));
-	print("  IsGotoDepotOrder():    " + AIOrder.IsGotoDepotOrder(12, 1));
-	print("  IsGotoWaypointOrder(): " + AIOrder.IsGotoWaypointOrder(12, 1));
-	print("  IsConditionalOrder():  " + AIOrder.IsConditionalOrder(12, 1));
-	print("  IsCurrentOrderPartOfOrderList(): " + AIOrder.IsCurrentOrderPartOfOrderList(12));
-	print("  GetOrderFlags():       " + AIOrder.GetOrderFlags(12, 1));
-	print("  AppendOrder():         " + AIOrder.AppendOrder(12, 33416, AIOrder.OF_TRANSFER));
-	print("  InsertOrder():         " + AIOrder.InsertOrder(12, 0, 33416, AIOrder.OF_TRANSFER));
-	print("  GetOrderCount():       " + AIOrder.GetOrderCount(12));
-	print("  IsValidVehicleOrder(): " + AIOrder.IsValidVehicleOrder(12, 1));
-	print("  IsGotoStationOrder():  " + AIOrder.IsGotoStationOrder(12, 1));
-	print("  IsGotoDepotOrder():    " + AIOrder.IsGotoDepotOrder(12, 1));
-	print("  IsGotoWaypointOrder(): " + AIOrder.IsGotoWaypointOrder(12, 1));
-	print("  IsConditionalOrder():  " + AIOrder.IsConditionalOrder(12, 1));
-	print("  IsCurrentOrderPartOfOrderList(): " + AIOrder.IsCurrentOrderPartOfOrderList(12));
-	print("  GetOrderFlags():       " + AIOrder.GetOrderFlags(12, 0));
-	print("  GetOrderFlags():       " + AIOrder.GetOrderFlags(12, 1));
-	print("  GetOrderJumpTo():      " + AIOrder.GetOrderJumpTo(12, 1));
-	print("  RemoveOrder():         " + AIOrder.RemoveOrder(12, 0));
-	print("  SetOrderFlags():       " + AIOrder.SetOrderFlags(12, 0, AIOrder.OF_FULL_LOAD));
-	print("  GetOrderFlags():       " + AIOrder.GetOrderFlags(12, 0));
-	print("  GetOrderDestination(): " + AIOrder.GetOrderDestination(12, 0));
-	print("  CopyOrders():          " + AIOrder.CopyOrders(12, 1));
-	print("  CopyOrders():          " + AIOrder.CopyOrders(13, 12));
-	print("  ShareOrders():         " + AIOrder.ShareOrders(13, 1));
-	print("  ShareOrders():         " + AIOrder.ShareOrders(13, 12));
-	print("  UnshareOrders():       " + AIOrder.UnshareOrders(13));
-	print("  AppendOrder():         " + AIOrder.AppendOrder(12, 33421, AIOrder.OF_NONE));
+	print("  IsValidVehicleOrder(): " + AIOrder.IsValidVehicleOrder(road_vehicle, 1));
+	print("  IsGotoStationOrder():  " + AIOrder.IsGotoStationOrder(road_vehicle, 1));
+	print("  IsGotoDepotOrder():    " + AIOrder.IsGotoDepotOrder(road_vehicle, 1));
+	print("  IsGotoWaypointOrder(): " + AIOrder.IsGotoWaypointOrder(road_vehicle, 1));
+	print("  IsConditionalOrder():  " + AIOrder.IsConditionalOrder(road_vehicle, 1));
+	print("  IsCurrentOrderPartOfOrderList(): " + AIOrder.IsCurrentOrderPartOfOrderList(road_vehicle));
+	print("  GetOrderFlags():       " + AIOrder.GetOrderFlags(road_vehicle, 1));
+	print("  AppendOrder():         " + AIOrder.AppendOrder(road_vehicle, 33416, AIOrder.OF_TRANSFER));
+	print("  InsertOrder():         " + AIOrder.InsertOrder(road_vehicle, 0, 33416, AIOrder.OF_TRANSFER));
+	print("  GetOrderCount():       " + AIOrder.GetOrderCount(road_vehicle));
+	print("  IsValidVehicleOrder(): " + AIOrder.IsValidVehicleOrder(road_vehicle, 1));
+	print("  IsGotoStationOrder():  " + AIOrder.IsGotoStationOrder(road_vehicle, 1));
+	print("  IsGotoDepotOrder():    " + AIOrder.IsGotoDepotOrder(road_vehicle, 1));
+	print("  IsGotoWaypointOrder(): " + AIOrder.IsGotoWaypointOrder(road_vehicle, 1));
+	print("  IsConditionalOrder():  " + AIOrder.IsConditionalOrder(road_vehicle, 1));
+	print("  IsCurrentOrderPartOfOrderList(): " + AIOrder.IsCurrentOrderPartOfOrderList(road_vehicle));
+	print("  GetOrderFlags():       " + AIOrder.GetOrderFlags(road_vehicle, 0));
+	print("  GetOrderFlags():       " + AIOrder.GetOrderFlags(road_vehicle, 1));
+	print("  GetOrderJumpTo():      " + AIOrder.GetOrderJumpTo(road_vehicle, 1));
+	print("  RemoveOrder():         " + AIOrder.RemoveOrder(road_vehicle, 0));
+	print("  SetOrderFlags():       " + AIOrder.SetOrderFlags(road_vehicle, 0, AIOrder.OF_FULL_LOAD));
+	print("  GetOrderFlags():       " + AIOrder.GetOrderFlags(road_vehicle, 0));
+	print("  GetOrderDestination(): " + AIOrder.GetOrderDestination(road_vehicle, 0));
+	print("  CopyOrders():          " + AIOrder.CopyOrders(road_vehicle, AIVehicle.VEHICLE_INVALID));
+	print("  CopyOrders():          " + AIOrder.CopyOrders(road_clone, road_vehicle));
+	print("  ShareOrders():         " + AIOrder.ShareOrders(road_clone, AIVehicle.VEHICLE_INVALID));
+	print("  ShareOrders():         " + AIOrder.ShareOrders(road_clone, road_vehicle));
+	print("  UnshareOrders():       " + AIOrder.UnshareOrders(road_clone));
+	print("  AppendOrder():         " + AIOrder.AppendOrder(road_vehicle, 33421, AIOrder.OF_NONE));
 
-	print("  GetStopLocation():     " + AIOrder.GetStopLocation(13, 0));
+	print("  GetStopLocation():     " + AIOrder.GetStopLocation(road_clone, 0));
 	local veh_id = AIVehicle.BuildVehicle(23596, 8); print("  BuildVehicle():        " + veh_id);
 	print("  BuildRailStation():    " + AIRail.BuildRailStation(7958, AIRail.RAILTRACK_NE_SW, 1, 1, AIStation.STATION_NEW));
 	print("  AppendOrder():         " + AIOrder.AppendOrder(veh_id, 7958, AIOrder.OF_NONE));
@@ -2042,14 +2042,15 @@ function Regression::Vehicle()
 	print("--Vehicle--");
 	print("  IsValidVehicle(-1):   " + AIVehicle.IsValidVehicle(-1));
 	print("  IsValidVehicle(0):    " + AIVehicle.IsValidVehicle(0));
-	print("  IsValidVehicle(12):   " + AIVehicle.IsValidVehicle(12));
-	print("  ISValidVehicle(9999): " + AIVehicle.IsValidVehicle(9999));
+	print("  IsValidVehicle(9999): " + AIVehicle.IsValidVehicle(9999));
 
 	local bank = AICompany.GetBankBalance(AICompany.COMPANY_SELF);
 
-	print("  BuildVehicle():       " + AIVehicle.BuildVehicle(33417, 153));
-	print("  IsValidVehicle(12):   " + AIVehicle.IsValidVehicle(12));
-	print("  CloneVehicle():       " + AIVehicle.CloneVehicle(33417, 12, true));
+	local road_vehicle = AIVehicle.BuildVehicle(33417, 153);
+	print("  BuildVehicle():       " + road_vehicle);
+	print("  IsValidVehicle(road_vehicle):   " + AIVehicle.IsValidVehicle(road_vehicle));
+	local sold_clone = AIVehicle.CloneVehicle(33417, road_vehicle, true);
+	print("  CloneVehicle():       " + sold_clone);
 	print("  BuildVehicle():       " + AIVehicle.BuildVehicle(-1, 153));
 
 	local bank_after = AICompany.GetBankBalance(AICompany.COMPANY_SELF);
@@ -2061,15 +2062,16 @@ function Regression::Vehicle()
 
 	bank = AICompany.GetBankBalance(AICompany.COMPANY_SELF);
 
-	print("  SellVehicle(13):      " + AIVehicle.SellVehicle(13));
-	print("  IsInDepot():          " + AIVehicle.IsInDepot(12));
-	print("  IsStoppedInDepot():   " + AIVehicle.IsStoppedInDepot(12));
-	print("  StartStopVehicle():   " + AIVehicle.StartStopVehicle(12));
-	print("  IsInDepot():          " + AIVehicle.IsInDepot(12));
-	print("  IsStoppedInDepot():   " + AIVehicle.IsStoppedInDepot(12));
-	print("  SendVehicleToDepot(): " + AIVehicle.SendVehicleToDepot(12));
-	print("  IsInDepot():          " + AIVehicle.IsInDepot(12));
-	print("  IsStoppedInDepot():   " + AIVehicle.IsStoppedInDepot(12));
+	print("  SellVehicle(clone):   " + AIVehicle.SellVehicle(sold_clone));
+	print("  IsValidVehicle(sold_clone):   " + AIVehicle.IsValidVehicle(sold_clone));
+	print("  IsInDepot():          " + AIVehicle.IsInDepot(road_vehicle));
+	print("  IsStoppedInDepot():   " + AIVehicle.IsStoppedInDepot(road_vehicle));
+	print("  StartStopVehicle():   " + AIVehicle.StartStopVehicle(road_vehicle));
+	print("  IsInDepot():          " + AIVehicle.IsInDepot(road_vehicle));
+	print("  IsStoppedInDepot():   " + AIVehicle.IsStoppedInDepot(road_vehicle));
+	print("  SendVehicleToDepot(): " + AIVehicle.SendVehicleToDepot(road_vehicle));
+	print("  IsInDepot():          " + AIVehicle.IsInDepot(road_vehicle));
+	print("  IsStoppedInDepot():   " + AIVehicle.IsStoppedInDepot(road_vehicle));
 
 	bank_after = AICompany.GetBankBalance(AICompany.COMPANY_SELF);
 
@@ -2077,88 +2079,93 @@ function Regression::Vehicle()
 	print("    GetCosts():         " + accounting.GetCosts());
 	print("    Should be:          " + (bank - bank_after));
 
-	print("  GetName():            " + AIVehicle.GetName(12));
-	print("  SetName():            " + AIVehicle.SetName(12, "MyVehicleName"));
-	print("  GetName():            " + AIVehicle.GetName(12));
-	print("  CloneVehicle():       " + AIVehicle.CloneVehicle(33417, 12, true));
+	print("  GetName():            " + AIVehicle.GetName(road_vehicle));
+	print("  SetName():            " + AIVehicle.SetName(road_vehicle, "MyVehicleName"));
+	print("  GetName():            " + AIVehicle.GetName(road_vehicle));
+	local road_clone = AIVehicle.CloneVehicle(33417, road_vehicle, true);
+	print("  CloneVehicle():       " + road_clone);
 
 	print("  --VehicleData--");
-	print("    GetLocation():       " + AIVehicle.GetLocation(12));
-	print("    GetEngineType():     " + AIVehicle.GetEngineType(12));
-	print("    GetUnitNumber():     " + AIVehicle.GetUnitNumber(12));
-	print("    GetAge():            " + AIVehicle.GetAge(12));
-	print("    GetMaxAge():         " + AIVehicle.GetMaxAge(12));
-	print("    GetAgeLeft():        " + AIVehicle.GetAgeLeft(12));
-	print("    GetCurrentSpeed():   " + AIVehicle.GetCurrentSpeed(12));
-	print("    GetRunningCost():    " + AIVehicle.GetRunningCost(12));
-	print("    GetProfitThisYear(): " + AIVehicle.GetProfitThisYear(12));
-	print("    GetProfitLastYear(): " + AIVehicle.GetProfitLastYear(12));
-	print("    GetCurrentValue():   " + AIVehicle.GetCurrentValue(12));
-	print("    GetVehicleType():    " + AIVehicle.GetVehicleType(12));
-	print("    GetRoadType():       " + AIVehicle.GetRoadType(12));
-	print("    GetCapacity():       " + AIVehicle.GetCapacity(12, 10));
-	print("    GetCargoLoad():      " + AIVehicle.GetCargoLoad(12, 10));
-	print("    IsInDepot():         " + AIVehicle.IsInDepot(12));
-	print("    GetNumWagons():      " + AIVehicle.GetNumWagons(12));
-	print("    GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(12, 0));
-	print("    GetWagonAge():       " + AIVehicle.GetWagonAge(12, 0));
-	print("    GetLength():         " + AIVehicle.GetLength(12));
+	print("    GetLocation():       " + AIVehicle.GetLocation(road_vehicle));
+	print("    GetEngineType():     " + AIVehicle.GetEngineType(road_vehicle));
+	print("    GetUnitNumber():     " + AIVehicle.GetUnitNumber(road_vehicle));
+	print("    GetAge():            " + AIVehicle.GetAge(road_vehicle));
+	print("    GetMaxAge():         " + AIVehicle.GetMaxAge(road_vehicle));
+	print("    GetAgeLeft():        " + AIVehicle.GetAgeLeft(road_vehicle));
+	print("    GetCurrentSpeed():   " + AIVehicle.GetCurrentSpeed(road_vehicle));
+	print("    GetRunningCost():    " + AIVehicle.GetRunningCost(road_vehicle));
+	print("    GetProfitThisYear(): " + AIVehicle.GetProfitThisYear(road_vehicle));
+	print("    GetProfitLastYear(): " + AIVehicle.GetProfitLastYear(road_vehicle));
+	print("    GetCurrentValue():   " + AIVehicle.GetCurrentValue(road_vehicle));
+	print("    GetVehicleType():    " + AIVehicle.GetVehicleType(road_vehicle));
+	print("    GetRoadType():       " + AIVehicle.GetRoadType(road_vehicle));
+	print("    GetCapacity():       " + AIVehicle.GetCapacity(road_vehicle, 10));
+	print("    GetCargoLoad():      " + AIVehicle.GetCargoLoad(road_vehicle, 10));
+	print("    IsInDepot():         " + AIVehicle.IsInDepot(road_vehicle));
+	print("    GetNumWagons():      " + AIVehicle.GetNumWagons(road_vehicle));
+	print("    GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(road_vehicle, 0));
+	print("    GetWagonAge():       " + AIVehicle.GetWagonAge(road_vehicle, 0));
+	print("    GetLength():         " + AIVehicle.GetLength(road_vehicle));
 
 	print("  GetOwner():           " + AITile.GetOwner(32119));
-	print("  BuildVehicle():       " + AIVehicle.BuildVehicle(32119, 219));
-	print("  IsValidVehicle(14):   " + AIVehicle.IsValidVehicle(14));
-	print("  IsInDepot(14):        " + AIVehicle.IsInDepot(14));
-	print("  IsStoppedInDepot(14): " + AIVehicle.IsStoppedInDepot(14));
-	print("  IsValidVehicle(15):   " + AIVehicle.IsValidVehicle(15));
-	print("  IsInDepot(15):        " + AIVehicle.IsInDepot(15));
-	print("  IsStoppedInDepot(15): " + AIVehicle.IsStoppedInDepot(15));
+	local aircraft = AIVehicle.BuildVehicle(32119, 219);
+	print("  BuildVehicle():       " + aircraft);
+	print("  IsValidVehicle(aircraft):   " + AIVehicle.IsValidVehicle(aircraft));
+	print("  IsInDepot(aircraft):        " + AIVehicle.IsInDepot(aircraft));
+	print("  IsStoppedInDepot(aircraft): " + AIVehicle.IsStoppedInDepot(aircraft));
 
-	print("  BuildVehicle():       " + AIVehicle.BuildVehicle(28479, 204));
-	print("  IsValidVehicle(16):   " + AIVehicle.IsValidVehicle(16));
-	print("  IsInDepot(16):        " + AIVehicle.IsInDepot(16));
-	print("  IsStoppedInDepot(16): " + AIVehicle.IsStoppedInDepot(16));
+	local ship = AIVehicle.BuildVehicle(28479, 204);
+	print("  BuildVehicle():       " + ship);
+	print("  IsValidVehicle(ship):   " + AIVehicle.IsValidVehicle(ship));
+	print("  IsInDepot(ship):        " + AIVehicle.IsInDepot(ship));
+	print("  IsStoppedInDepot(ship): " + AIVehicle.IsStoppedInDepot(ship));
 
 	print("  BuildRailDepot():     " + AIRail.BuildRailDepot(10008, 10000));
-	print("  BuildVehicle():       " + AIVehicle.BuildVehicle(10008, 9));
-	print("  BuildVehicle():       " + AIVehicle.BuildVehicle(10008, 27));
-	print("  BuildVehicle():       " + AIVehicle.BuildVehicle(10008, 27));
-	print("  IsValidVehicle(17):   " + AIVehicle.IsValidVehicle(17));
-	print("  IsValidVehicle(18):   " + AIVehicle.IsValidVehicle(18));
-	print("  IsValidVehicle(19):   " + AIVehicle.IsValidVehicle(19)); // 19 is immediately joined to 18
-	print("  MoveWagonChain():     " + AIVehicle.MoveWagonChain(18, 0, 17, 0));
-	print("  GetNumWagons():       " + AIVehicle.GetNumWagons(17));
-	print("  GetLength():          " + AIVehicle.GetLength(17));
-	print("  GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(17, 0));
-	print("  GetWagonAge():        " + AIVehicle.GetWagonAge(17, 0));
-	print("  GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(17, 1));
-	print("  GetWagonAge():        " + AIVehicle.GetWagonAge(17, 1));
-	print("  GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(17 2));
-	print("  GetWagonAge():        " + AIVehicle.GetWagonAge(17, 2));
-	print("  GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(17 3));
-	print("  GetWagonAge():        " + AIVehicle.GetWagonAge(17, 3));
-	print("  GetVehicleType():     " + AIVehicle.GetVehicleType(14));
-	print("  GetLength():          " + AIVehicle.GetLength(14));
+	local train = AIVehicle.BuildVehicle(10008, 9);
+	print("  BuildVehicle():       " + train);
+	local wagons = AIVehicle.BuildVehicle(10008, 27);
+	print("  BuildVehicle():       " + wagons);
+	local joined_wagon = AIVehicle.BuildVehicle(10008, 27);
+	print("  BuildVehicle():       " + joined_wagon);
+	print("  IsValidVehicle(train):        " + AIVehicle.IsValidVehicle(train));
+	print("  IsValidVehicle(wagons):       " + AIVehicle.IsValidVehicle(wagons));
+	// The second wagon is immediately joined to the first and is not independently valid.
+	print("  IsValidVehicle(joined_wagon): " + AIVehicle.IsValidVehicle(joined_wagon));
+	print("  MoveWagonChain():     " + AIVehicle.MoveWagonChain(wagons, 0, train, 0));
+	print("  GetNumWagons():       " + AIVehicle.GetNumWagons(train));
+	print("  GetLength():          " + AIVehicle.GetLength(train));
+	print("  GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(train, 0));
+	print("  GetWagonAge():        " + AIVehicle.GetWagonAge(train, 0));
+	print("  GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(train, 1));
+	print("  GetWagonAge():        " + AIVehicle.GetWagonAge(train, 1));
+	print("  GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(train, 2));
+	print("  GetWagonAge():        " + AIVehicle.GetWagonAge(train, 2));
+	print("  GetWagonEngineType(): " + AIVehicle.GetWagonEngineType(train, 3));
+	print("  GetWagonAge():        " + AIVehicle.GetWagonAge(train, 3));
+	print("  GetVehicleType():     " + AIVehicle.GetVehicleType(aircraft));
+	print("  GetLength():          " + AIVehicle.GetLength(aircraft));
 
 	print("  --Refit--");
 	print("    GetBuildWithRefitCapacity(): " + AIVehicle.GetBuildWithRefitCapacity(28479, 211, 255));
 	print("    GetBuildWithRefitCapacity(): " + AIVehicle.GetBuildWithRefitCapacity(28479, 211, 0));
 	print("    GetBuildWithRefitCapacity(): " + AIVehicle.GetBuildWithRefitCapacity(28479, 211, 9));
 	print("    GetBuildWithRefitCapacity(): " + AIVehicle.GetBuildWithRefitCapacity(28481, 211, 0));
-	print("    BuildVehicleWithRefit():     " + AIVehicle.BuildVehicleWithRefit(28479, 211, 9));
-	print("    GetCapacity():               " + AIVehicle.GetCapacity(20, 9));
-	print("    GetCapacity():               " + AIVehicle.GetCapacity(20, 5));
-	print("    GetRefitCapacity():          " + AIVehicle.GetRefitCapacity(20, 5));
-	print("    RefitVehicle():              " + AIVehicle.RefitVehicle(20, 5));
-	print("    GetCapacity():               " + AIVehicle.GetCapacity(20, 9));
-	print("    GetCapacity():               " + AIVehicle.GetCapacity(20, 5));
-	print("    SellVehicle():               " + AIVehicle.SellVehicle(20));
+	local refitted_ship = AIVehicle.BuildVehicleWithRefit(28479, 211, 9);
+	print("    BuildVehicleWithRefit():     " + refitted_ship);
+	print("    GetCapacity():               " + AIVehicle.GetCapacity(refitted_ship, 9));
+	print("    GetCapacity():               " + AIVehicle.GetCapacity(refitted_ship, 5));
+	print("    GetRefitCapacity():          " + AIVehicle.GetRefitCapacity(refitted_ship, 5));
+	print("    RefitVehicle():              " + AIVehicle.RefitVehicle(refitted_ship, 5));
+	print("    GetCapacity():               " + AIVehicle.GetCapacity(refitted_ship, 9));
+	print("    GetCapacity():               " + AIVehicle.GetCapacity(refitted_ship, 5));
+	print("    SellVehicle():               " + AIVehicle.SellVehicle(refitted_ship));
 
 	print("  --Errors--");
-	print("    RefitVehicle():        " + AIVehicle.RefitVehicle(12, 0));
+	print("    RefitVehicle():        " + AIVehicle.RefitVehicle(road_vehicle, 0));
 	print("    GetLastErrorString():  " + AIError.GetLastErrorString());
-	print("    SellVehicle():         " + AIVehicle.SellVehicle(12));
+	print("    SellVehicle():         " + AIVehicle.SellVehicle(road_vehicle));
 	print("    GetLastErrorString():  " + AIError.GetLastErrorString());
-	print("    SendVehicleToDepot():  " + AIVehicle.SendVehicleToDepot(13));
+	print("    SendVehicleToDepot():  " + AIVehicle.SendVehicleToDepot(AIVehicle.VEHICLE_INVALID));
 	print("    GetLastErrorString():  " + AIError.GetLastErrorString());
 
 	local list = AIVehicleList();
@@ -2248,6 +2255,8 @@ function Regression::Vehicle()
 	for (local i = list.Begin(); !list.IsEnd(); i = list.Next()) {
 		print("    " + i + " => " + list.GetValue(i));
 	}
+
+	return { road_vehicle = road_vehicle, road_clone = road_clone };
 }
 
 function Regression::PrintSubsidy(subsidy_id)
@@ -2401,12 +2410,26 @@ function Regression::Terraforming()
 	print("  LowerTile():          " + AITile.LowerTile(61534, AITile.SLOPE_E));
 	print("  GetCosts():           " + accounting.GetCosts());
 	accounting.ResetCosts();
-	print("  RaiseTile():          " + AITile.RaiseTile(4033, AITile.SLOPE_S));
-	print("  LowerTile():          " + AITile.LowerTile(4033, AITile.SLOPE_S));
-	print("  LowerTile():          " + AITile.LowerTile(4033, AITile.SLOPE_E));
-	print("  RaiseTile():          " + AITile.RaiseTile(4033, AITile.SLOPE_E));
-	print("  RaiseTile():          " + AITile.RaiseTile(4033, AITile.SLOPE_NWS));
-	print("  GetCosts():           " + accounting.GetCosts());
+	/* Clearing costs depend on the tile's current ground cover. Compare each
+	 * estimate against the command on the same terrain, not a saved total. */
+	local expected_total = 0;
+	local results_match = true;
+	local operations = [[true, AITile.SLOPE_S], [false, AITile.SLOPE_S], [false, AITile.SLOPE_E],
+		[true, AITile.SLOPE_E], [true, AITile.SLOPE_NWS]];
+	foreach (operation in operations) {
+		local command = operation[0] ? AITile.RaiseTile : AITile.LowerTile;
+		local expected;
+		{
+			local test = AITestMode();
+			local quote = AIAccounting();
+			expected = command(4033, operation[1]);
+			expected_total += quote.GetCosts();
+		}
+		local result = command(4033, operation[1]);
+		results_match = results_match && result == expected;
+		print((operation[0] ? "  RaiseTile():          " : "  LowerTile():          ") + result);
+	}
+	print("  GetCosts() matches estimates: " + (results_match && accounting.GetCosts() == expected_total));
 }
 
 function Regression::Start()
@@ -2445,9 +2468,8 @@ function Regression::Start()
 	this.Town();
 	this.TownList();
 	this.Tunnel();
-	this.Vehicle();
-	/* Order has to be after Vehicle */
-	this.Order();
+	local vehicles = this.Vehicle();
+	this.Order(vehicles.road_vehicle, vehicles.road_clone);
 	this.CompanyGender();
 	print("");
 	print("  First Subsidy Test");

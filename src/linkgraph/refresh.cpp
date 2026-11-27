@@ -28,6 +28,51 @@ static uint32_t ScheduleHopLists(const OrderList *from, const OrderList *to)
 	return static_cast<uint32_t>((from->index.base() << 16) | to->index.base());
 }
 
+/** Resolve a schedule reference the link predictor can follow. */
+static OrderList *GetLinkRefreshSchedule(OrderListID id, const OrderList *from, Owner owner)
+{
+	OrderList *target = OrderList::GetIfValid(id);
+	return target != nullptr && target != from && target->GetNumOrders() > 0 &&
+			target->IsPlayerCreated() && target->IsVisibleToCompany(owner) ? target : nullptr;
+}
+
+static OrderList *GetLinkRefreshHome(const Vehicle *v)
+{
+	OrderList *home = v->IsExecutingSchedule() ? v->GetPrimaryOrderList() : nullptr;
+	return home != nullptr && home != v->orders && home->GetNumOrders() > 0 ? home : nullptr;
+}
+
+/** Collect cargo policies from all lists the predictor may walk. */
+static std::vector<const Order *> GetReachableCargoPolicies(const Vehicle *v)
+{
+	std::vector<const Order *> policies;
+	btree::btree_set<OrderListID> seen;
+	std::vector<const OrderList *> lists;
+	auto add_list = [&](const OrderList *list) {
+		if (list != nullptr && seen.insert(list->index).second) lists.push_back(list);
+	};
+	add_list(v->orders);
+	add_list(GetLinkRefreshHome(v));
+
+	/* Scan in list/order order, with the set used only to break cycles. This
+	 * conservatively includes both conditional paths and both split parts. */
+	for (size_t i = 0; i < lists.size(); ++i) {
+		const OrderList *list = lists[i];
+		for (const Order *order : list->Orders()) {
+			if (order->IsExecuteScheduleOrder()) {
+				add_list(GetLinkRefreshSchedule(order->GetDestination().ToOrderListID(), list, v->owner));
+			} else if (order->IsType(OT_DECOUPLE)) {
+				add_list(GetLinkRefreshSchedule(order->GetDecoupleFirstScheduleID(), list, v->owner));
+				add_list(GetLinkRefreshSchedule(order->GetDecoupleSecondScheduleID(), list, v->owner));
+			} else if ((order->IsType(OT_GOTO_STATION) || order->IsType(OT_IMPLICIT) || order->IsExternalTripOrder()) &&
+					(order->GetUnloadType() == OrderUnloadType::CargoTypeUnload || order->GetLoadType() == OrderLoadType::CargoTypeLoad)) {
+				policies.push_back(order);
+			}
+		}
+	}
+	return policies;
+}
+
 /**
  * Refresh all links the given vehicle will visit.
  * @param v Vehicle to refresh links for.
@@ -37,37 +82,36 @@ static uint32_t ScheduleHopLists(const OrderList *from, const OrderList *to)
  */
 /* static */ void LinkRefresher::Run(Vehicle *v, bool allow_merge, bool is_full_loading, CargoTypes cargo_mask)
 {
-	/* If there are no orders we can't predict anything.*/
-	if (v->orders == nullptr) return;
+	if (v->orders == nullptr || cargo_mask.None()) return;
 
-	CargoTypes have_cargo_mask = v->GetLastLoadingStationValidCargoMask();
+	const CargoTypes have_cargo_mask = v->GetLastLoadingStationValidCargoMask();
+	const auto policies = GetReachableCargoPolicies(v);
 
-	/* Scan orders for cargo-specific load/unload, and run LinkRefresher separately for each set of cargoes where they differ. */
+	/* Repeatedly extract the equivalence class of the first remaining cargo. */
 	while (cargo_mask.Any()) {
-		CargoTypes iter_cargo_mask = cargo_mask;
-		for (const Order *o : v->Orders()) {
-			if (o->IsType(OT_GOTO_STATION) || o->IsType(OT_IMPLICIT) || o->IsExternalTripOrder()) {
-				if (o->GetUnloadType() == OrderUnloadType::CargoTypeUnload) {
-					CargoMaskValueFilter<OrderUnloadType>(iter_cargo_mask, [&](CargoType cargo) -> OrderUnloadType {
-						return o->GetCargoUnloadType(cargo);
-					});
-				}
-				if (o->GetLoadType() == OrderLoadType::CargoTypeLoad) {
-					CargoMaskValueFilter<bool>(iter_cargo_mask, [&](CargoType cargo) -> bool {
-						return o->GetCargoLoadType(cargo) == OrderLoadType::NoLoad;
-					});
-				}
+		const CargoType first_cargo = cargo_mask.FindFirstBit();
+		const bool has_cargo = have_cargo_mask.Test(first_cargo);
+		CargoTypes iter_cargo_mask = cargo_mask & (has_cargo ? have_cargo_mask : ~have_cargo_mask);
+		for (const Order *order : policies) {
+			if (order->GetUnloadType() == OrderUnloadType::CargoTypeUnload) {
+				CargoMaskValueFilter<OrderUnloadType>(iter_cargo_mask, [&](CargoType cargo) { return order->GetCargoUnloadType(cargo); });
+			}
+			if (order->GetLoadType() == OrderLoadType::CargoTypeLoad) {
+				CargoMaskValueFilter<bool>(iter_cargo_mask, [&](CargoType cargo) { return order->GetCargoLoadType(cargo) == OrderLoadType::NoLoad; });
 			}
 		}
+		assert(iter_cargo_mask.Test(first_cargo));
 
 		/* Make sure the first order is a useful order. */
-		const Order *first = v->orders->GetNextDecisionNode(v->GetOrder(v->cur_implicit_order_index), 0, iter_cargo_mask, true);
+		CargoTypes first_mask = iter_cargo_mask;
+		const Order *first = v->orders->GetNextDecisionNode(v->GetOrder(v->cur_implicit_order_index), 0, first_mask, true);
+		assert(first_mask == iter_cargo_mask);
 		if (first != nullptr) {
 			HopSet seen_hops;
 			LinkRefresher refresher(v, &seen_hops, allow_merge, is_full_loading, iter_cargo_mask);
 
 			RefreshFlags flags = {};
-			if (iter_cargo_mask.Any(have_cargo_mask)) flags.Set(RefreshFlag::HasCargo);
+			if (has_cargo) flags.Set(RefreshFlag::HasCargo);
 			if (v->type == VehicleType::Aircraft) flags.Set(RefreshFlag::Aircraft);
 			refresher.RefreshLinks(first, first, { 0, TimetableTravelTimeFlag::NoWaitTime }, flags);
 		}
@@ -94,8 +138,8 @@ LinkRefresher::LinkRefresher(Vehicle *vehicle, HopSet *seen_hops, bool allow_mer
 	 * bottom return frame. Without it the junction links (last stop of the
 	 * schedule to the resumed stop of the primary list) would never be
 	 * refreshed for as long as the vehicle stays on the schedule. */
-	OrderList *home = vehicle->IsExecutingSchedule() ? OrderList::GetIfValid(vehicle->primary_order) : nullptr;
-	if (home != nullptr && home != vehicle->orders && home->GetNumOrders() > 0) {
+	OrderList *home = GetLinkRefreshHome(vehicle);
+	if (home != nullptr) {
 		this->home_list = home;
 		const Order *resume = home->GetOrderAt(vehicle->primary_order_index);
 		if (resume == nullptr) resume = home->GetFirstOrder();
@@ -339,9 +383,8 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 			 * prediction there, suspending the current list. The depth limit
 			 * only guards against runaway recursion; cycles in the executed
 			 * schedules are broken by the seen-hop check. */
-			OrderList *target = OrderList::GetIfValid(following->GetDestination().ToOrderListID());
-			if (target != nullptr && target != this->walk_orders && target->GetNumOrders() > 0
-					&& target->IsPlayerCreated() && target->IsVisibleToCompany(this->vehicle->owner)) {
+			OrderList *target = GetLinkRefreshSchedule(following->GetDestination().ToOrderListID(), this->walk_orders, this->vehicle->owner);
+			if (target != nullptr) {
 				this->resume_stack.emplace_back(this->walk_orders, this->walk_orders->GetNext(following));
 				this->walk_orders = target;
 				following = target->GetFirstOrder();
@@ -357,9 +400,8 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 			 * walking this list below (GetNextDecisionNode skips the decouple
 			 * order), so the stations after the decouple are still visited. */
 			for (OrderListID schedule_id : { following->GetDecoupleFirstScheduleID(), following->GetDecoupleSecondScheduleID() }) {
-				OrderList *target = OrderList::GetIfValid(schedule_id);
-				if (target == nullptr || target == this->walk_orders || target->GetNumOrders() == 0
-						|| !target->IsPlayerCreated() || !target->IsVisibleToCompany(this->vehicle->owner)) continue;
+				OrderList *target = GetLinkRefreshSchedule(schedule_id, this->walk_orders, this->vehicle->owner);
+				if (target == nullptr) continue;
 
 				/* Skip a leading stop at the station the consist currently stands at. */
 				const Order *start = target->GetFirstOrder();
@@ -374,6 +416,7 @@ std::pair<const Order *, LinkRefresher::TimetableTravelTime> LinkRefresher::Pred
 
 				CargoTypes sched_cargo_mask = this->cargo_mask;
 				const Order *first_target = target->GetNextDecisionNode(start, num_hops, sched_cargo_mask, true);
+				assert(sched_cargo_mask == this->cargo_mask);
 				if (first_target == nullptr) continue;
 
 				LinkRefresher branch(*this);

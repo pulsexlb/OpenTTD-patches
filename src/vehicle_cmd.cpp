@@ -16,6 +16,7 @@
 #include "company_func.h"
 #include "train.h"
 #include "aircraft.h"
+#include "pbs_air.h"
 #include "newgrf_text.h"
 #include "vehicle_func.h"
 #include "string_func.h"
@@ -739,6 +740,7 @@ CommandCost CmdStartStopVehicle(DoCommandFlags flags, VehicleID veh_id, bool eva
 		} else if (v->type != VehicleType::Train) {
 			v->cur_speed = 0; // trains can stop 'slowly'
 		}
+		if (v->type == VehicleType::Aircraft && v->vehstatus.Test(VehState::Stopped)) StopAircraftTaxiTraffic(Aircraft::From(v));
 		if (v->type == VehicleType::Train && !v->vehstatus.Test(VehState::Stopped) && v->cur_speed == 0 && Train::From(v)->lookahead != nullptr) {
 			/* Starting train from stationary with a lookahead, refresh it */
 			Train::From(v)->lookahead.reset();

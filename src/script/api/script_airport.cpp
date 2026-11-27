@@ -27,7 +27,9 @@
 
 /* static */ bool ScriptAirport::IsAirportInformationAvailable(AirportType type)
 {
-	return type >= 0 && type < (AirportType)NUM_AIRPORTS && AirportSpec::Get(type)->enabled;
+	if (type < 0 || type >= (AirportType)NUM_AIRPORTS) return false;
+	const AirportSpec *spec = AirportSpec::Get(type);
+	return spec->enabled && !spec->layouts.empty();
 }
 
 /* static */ Money ScriptAirport::GetPrice(AirportType type)
@@ -136,9 +138,14 @@
 	return (AirportType)::Station::Get(station_id)->airport.type;
 }
 
-extern CommandCost AddAirportTileTableToBitmapTileArea(const AirportTileLayout &atl, BitmapTileArea *bta, DiagDirection rotation, uint cost_multiplier);
-extern Town *AirportGetNearestTown(BitmapTileArea bta, uint &mindist);
-extern uint16_t GetAirportNoiseLevelForDistance(uint noise_level, uint distance);
+/** Look for the authority of the same footprint used by the build command. */
+static const Town *GetAirportTown(TileIndex tile, const AirportSpec &spec, uint &distance)
+{
+	const AirportTileLayout &layout = spec.layouts[0];
+	BitmapTileArea area(TileArea(tile, layout.size_x, layout.size_y));
+	if (AddAirportTileTableToBitmapTileArea(layout, &area, DiagDirection::NE, 0).Failed()) return nullptr;
+	return AirportGetNearestTown(area, distance);
+}
 
 /* static */ SQInteger ScriptAirport::GetNoiseLevelIncrease(TileIndex tile, AirportType type)
 {
@@ -148,18 +155,9 @@ extern uint16_t GetAirportNoiseLevelForDistance(uint noise_level, uint distance)
 	const AirportSpec *as = ::AirportSpec::Get(type);
 	if (!as->IsWithinMapBounds(0, tile, 0)) return -1;
 
-	if (_settings_game.economy.station_noise_level) {
-		BitmapTileArea bta;
-		const AirTypeInfo *ati = GetAirTypeInfo(as->airtype);
-		TileArea ta(tile, as->layouts[0].size_x, as->layouts[0].size_y);
-		AddAirportTileTableToBitmapTileArea(as->layouts[0], &bta, DiagDirection::Begin, ati->cost_multiplier);
-		uint dist;
-
-		AirportGetNearestTown(bta, dist);
-		return GetAirportNoiseLevelForDistance(as->GetAirportNoise(as->airtype), dist);
-	}
-
-	return 1;
+	uint dist;
+	if (GetAirportTown(tile, *as, dist) == nullptr) return 0;
+	return _settings_game.economy.station_noise_level ? GetAirportNoiseLevelForDistance(as->GetAirportNoise(as->airtype), dist) : 1;
 }
 
 /* static */ TownID ScriptAirport::GetNearestTown(TileIndex tile, AirportType type)
@@ -170,12 +168,8 @@ extern uint16_t GetAirportNoiseLevelForDistance(uint noise_level, uint distance)
 	const AirportSpec *as = AirportSpec::Get(type);
 	if (!as->IsWithinMapBounds(0, tile, 0)) return TownID::Invalid();
 
-	BitmapTileArea bta;
-	const AirTypeInfo *ati = GetAirTypeInfo(as->airtype);
-	TileArea ta(tile, as->layouts[0].size_x, as->layouts[0].size_y);
-	AddAirportTileTableToBitmapTileArea(as->layouts[0], &bta, DiagDirection::Begin, ati->cost_multiplier);
 	uint dist;
-	const Town *nearest = AirportGetNearestTown(bta, dist);
+	const Town *nearest = GetAirportTown(tile, *as, dist);
 	/* There may be no town at all on the map, or none within reach; there is then no nearest town. */
 	if (nearest == nullptr) return TownID::Invalid();
 	return nearest->index;

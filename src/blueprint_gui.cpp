@@ -986,7 +986,8 @@ static void RecomputePasteBlocked(TileIndex origin)
 			continue;
 		}
 		AirType airtype = ValParamAirType(static_cast<AirType>(airport.air_type)) ? static_cast<AirType>(airport.air_type) : (_sorted_airtypes.empty() ? AIRTYPE_BEGIN : _sorted_airtypes.front());
-		if (tile_valid(airport.offset) && PreviewTest<CMD_BUILD_AIRPORT>(target(airport.offset), airport.type, airport.layout, airtype, static_cast<DiagDirection>(airport.rotation % 4), StationID::Invalid(), true)) continue;
+		const auto airport_type = ResolveBlueprintAirportType(airport);
+		if (airport_type && tile_valid(airport.offset) && PreviewTest<CMD_BUILD_AIRPORT>(target(airport.offset), *airport_type, airport.layout, airtype, static_cast<DiagDirection>(airport.rotation % 4), StationID::Invalid(), true)) continue;
 		for (uint dy = 0; dy < airport.h; dy++) {
 			for (uint dx = 0; dx < airport.w; dx++) block(airport.offset.x + dx, airport.offset.y + dy);
 		}

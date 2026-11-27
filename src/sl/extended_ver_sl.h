@@ -245,7 +245,7 @@ enum SlXvFeatureIndex {
 	XSLFI_AIRCRAFT_ROLLING_RESERVATION,           ///< Directed taxi routes, exclusive rolling occupancy and pushback state.
 	XSLFI_EXTERNAL_CONNECTIONS,                   ///< Timed external journeys and order action.
 	XSLFI_AIRCRAFT_LANDING_BRAKE,                 ///< Aircraft landing rolls follow a quadratic braking profile.
-	XSLFI_AIRPORT_GRF_TILES,                      ///< Stable per-tile NewGRF graphics for custom airports (v1 used station-wide source IDs).
+	XSLFI_AIRPORT_GRF_TILES,                      ///< Custom airport materials: v1 station-wide source IDs, v2 per-tile identities, v3 saved fallback state.
 	XSLFI_SIZE,                                   ///< Total count of features, including null feature
 };
 

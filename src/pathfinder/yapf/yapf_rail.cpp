@@ -628,8 +628,10 @@ public:
 		this->SetReservationTarget(pNode, pNode->GetLastTile(), pNode->GetLastTrackdir());
 		this->couple_cost_found = static_cast<uint32_t>(pNode->GetCost());
 
-		/* Use the same criteria and target restriction as the destination search. */
+		/* A path is not a successful probe unless its final node resolves to a
+		 * concrete partner under the same criteria, claim cost and restriction. */
 		this->couple_target_found = Yapf().GetCoupleDestination(pNode->GetLastTile(), pNode->GetLastTrackdir(), this->couple_cost_found);
+		if (this->couple_target_found == nullptr) return INVALID_TRACKDIR;
 
 		/* Walk through the path back to the origin. */
 		Trackdir next_trackdir = INVALID_TRACKDIR;

@@ -713,6 +713,60 @@ TEST_CASE("External markets - supply replenishes without creating receipt quotas
 	CHECK(random.Check());
 }
 
+TEST_CASE_METHOD(TrainStatisticsFixture, "External markets - loading refreshes the whole train's weight and acceleration")
+{
+	REQUIRE(ExternalCity::GetNumItems() == 0);
+	REQUIRE(Station::GetNumItems() == 0);
+	const CargoType cargo{0};
+	AutoRestoreBackup cargo_spec(*CargoSpec::Get(cargo), CargoSpec{});
+	CargoSpec::Get(cargo)->bitnum = 0;
+	CargoSpec::Get(cargo)->weight = 16;
+	CargoSpec::Get(cargo)->town_production_effect = TownProductionEffect::Passengers;
+
+	Train *head = MakeDepotTrain();
+	Train *tail = MakeDepotTrain();
+	tail->ClearFrontEngine();
+	head->SetNext(tail);
+	BindTrainPrimary(head, head);
+	head->cargo_type = tail->cargo_type = cargo;
+	tail->cargo_cap = 40;
+	head->CargoChanged();
+	head->UpdateAcceleration();
+	head->BroadcastConsistCaches();
+	const auto empty_weight = head->gcache.cached_weight;
+	/* Use an impossible acceleration value so this also covers engines whose
+	 * rounded acceleration happens not to change for the chosen load. */
+	head->acceleration = tail->acceleration = 0;
+
+	auto *city = ExternalCity::Create();
+	city->owner = _current_company;
+	city->exchange_market = true;
+	Station *market = Station::Create(TileXY(20, 10));
+	market->owner = city->owner;
+	market->external_city = city->index.base();
+	city->market_station = market->index;
+	auto cleanup = scope_guard([] {
+		_station_pool.CleanPool();
+		_external_city_pool.CleanPool();
+	});
+	head->external_trip_city = city->index;
+	head->external_entry_tile = depot;
+	head->current_order.MakeWaiting();
+	auto *packet = CargoPacket::Create(40, uint16_t{0}, market->index, depot, Money(0));
+	market->goods[cargo].CreateData().cargo.Append(packet, StationID::Invalid());
+
+	ServiceExternalCityVehicle(head, false);
+
+	REQUIRE(tail->cargo.StoredCount() == 40);
+	CHECK(head->gcache.cached_weight > empty_weight);
+	CHECK(tail->gcache.cached_weight == head->gcache.cached_weight);
+	CHECK(tail->gcache.cached_axle_resistance == head->gcache.cached_axle_resistance);
+	CHECK(tail->tcache.cached_centre_mass == head->tcache.cached_centre_mass);
+	CHECK(tail->tcache.cached_uncapped_decel == head->tcache.cached_uncapped_decel);
+	CHECK(head->acceleration > 0);
+	CHECK(tail->acceleration == head->acceleration);
+}
+
 TEST_CASE("External trade cargoes - vehicle transport cargoes are never selected")
 {
 	REQUIRE(ExternalCity::GetNumItems() == 0);
@@ -6864,6 +6918,115 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - goto couple claims a wa
 	CHECK(GetRailReservationTrackBits(TileXY(11, 10)) != TRACK_BIT_NONE);
 	CHECK(random_checker.Check());
 	for (Train *train : {moving, waiting}) CHECK(ValidateVehicleTileHash(train));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - a restricted blocker miss does not delay a live match")
+{
+	ClearCoupleSearchLastFail();
+	auto clear_failures = scope_guard([]() { ClearCoupleSearchLastFail(); });
+	moving->current_order.SetCoupleRejectSlower(true);
+	waiting->vcache.cached_max_speed = 160;
+	CHECK_FALSE(TryPathReserve(moving));
+	CHECK(moving->couple_target == VehicleID::Invalid());
+
+	/* Still the same tick, but the blocked-tile search now has a valid partner. */
+	waiting->vcache.cached_max_speed = 120;
+	REQUIRE(TryPathReserve(moving));
+	CHECK(GetCoupleClaimant(waiting) == moving);
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - a failing first blocker does not hide another waiting consist")
+{
+	ClearCoupleSearchLastFail();
+	Train *second = MakeTrain();
+	second->SetFrontEngine();
+	second->owner = waiting->owner;
+	second->track = waiting->track;
+	second->direction = waiting->direction;
+	second->railtypes = waiting->railtypes;
+	second->compatible_railtypes = waiting->compatible_railtypes;
+	second->gcache.cached_total_length = VEHICLE_LENGTH;
+	second->current_order.AssignOrder(waiting->current_order);
+	second->last_station_visited = station->index;
+	Place(second, 12);
+
+	/* Make whichever blocker appears first in the tile hash unsuitable. */
+	Train *first_on_tile = nullptr;
+	for (Train *part : VehiclesOnTile<VehicleType::Train>(waiting->tile)) {
+		first_on_tile = part;
+		break;
+	}
+	REQUIRE((first_on_tile == waiting || first_on_tile == second));
+	Train *target = first_on_tile == waiting ? second : waiting;
+	waiting->vcache.cached_max_speed = 120;
+	second->vcache.cached_max_speed = 120;
+	SECTION("ineligible first blocker") {
+		moving->current_order.SetCoupleRejectSlower(true);
+		first_on_tile->vcache.cached_max_speed = 160;
+	}
+	SECTION("equal candidates are ranked by stable vehicle ID") {
+		target = waiting->index < second->index ? waiting : second;
+	}
+	Train *other = target == waiting ? second : waiting;
+	const TileIndex approach = TileXY(11, 10);
+	REQUIRE_FALSE(HasReservedTracks(approach, TRACK_BIT_X));
+	/* Equal positions make neither train strictly ahead of the selected
+	 * contact end. A reservation up to the tile before the platform is valid. */
+	REQUIRE(TryPathReserve(moving));
+	CHECK(moving->couple_target == target->index);
+	CHECK(GetCoupleClaimant(target) == moving);
+	CHECK(GetCoupleClaimant(other) == nullptr);
+	CHECK(GetRailReservationTrackBits(approach) == TRACK_BIT_X);
+	CHECK(HasStationReservation(station->xy));
+
+	/* Put the other body between the mover and its partner, without changing
+	 * the tile hash or the reservation bits. The occupied platform is no
+	 * longer a free waiting position even though the partner is still claimed. */
+	REQUIRE(IsWaitingPositionFree(moving, station->xy, TRACKDIR_X_SW));
+	other->x_pos -= 4;
+	CHECK_FALSE(IsWaitingPositionFree(moving, station->xy, TRACKDIR_X_SW));
+	CHECK(GetCoupleClaimant(target) == moving);
+	CHECK(HasStationReservation(station->xy));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple - a pending trailer cannot adopt or release a shared reservation")
+{
+	moving->flags.Set(VehicleRailFlag::SameDirDecouplePending);
+	REQUIRE(TryReserveRailTrack(TileXY(11, 10), TRACK_X));
+	CHECK_FALSE(TryPathReserve(moving));
+	FreeTrainTrackReservation(moving);
+	CHECK(HasReservedTracks(TileXY(11, 10), TRACK_BIT_X));
+	CHECK(HasStationReservation(station->xy));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail bridge release uses real occupancy and keeps both ends together")
+{
+	const TileIndex entrance = TileXY(11, 10), exit = TileXY(14, 10);
+	MakeRailBridgeRamp(entrance, _current_company, 0, DiagDirection::SW, RAILTYPE_RAIL, false);
+	MakeRailBridgeRamp(exit, _current_company, 0, DiagDirection::NE, RAILTYPE_RAIL, false);
+	SetBridgeMiddle(TileXY(12, 10), Axis::X);
+	SetBridgeMiddle(TileXY(13, 10), Axis::X);
+	REQUIRE(TryReserveRailTrack(entrance, TRACK_X));
+	REQUIRE(TryReserveRailTrack(exit, TRACK_X));
+	/* The waiting train below the bridge is not in the way. A wormhole
+	 * vehicle at the same map coordinates, indexed at the ramp, is. */
+	Train *crossing = MakeTrain();
+	crossing->track = TRACK_BIT_WORMHOLE;
+	Place(crossing, 11);
+	crossing->x_pos += TILE_SIZE;
+	CHECK_FALSE(TryClearUnsignalledRailTunnelBridgeReservation(entrance));
+	CHECK(HasReservedTracks(entrance, TRACK_BIT_X));
+	CHECK(HasReservedTracks(exit, TRACK_BIT_X));
+	SECTION("release when the last vehicle leaves") {
+		CHECK(TryClearUnsignalledRailTunnelBridgeReservation(exit, crossing));
+	}
+	SECTION("forward release ignores surface traffic under the bridge") {
+		UpdateVehicleTileHash(crossing, true);
+		FreeTrainTrackReservation(moving);
+	}
+	CHECK_FALSE(HasReservedTracks(entrance, TRACK_BIT_X));
+	CHECK_FALSE(HasReservedTracks(exit, TRACK_BIT_X));
+	CHECK(HasStationReservation(station->xy));
 }
 
 TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - reserved approach recognises a claimed rear vehicle")

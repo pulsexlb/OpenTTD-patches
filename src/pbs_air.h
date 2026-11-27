@@ -19,6 +19,8 @@ struct Station;
 void InvalidateAircraftJunctionGeometry(const Station *st);
 bool EnsureAircraftJunctionAdmission(Aircraft *v);
 
+bool IsAircraftTaxiTrackGeometryValid(TileIndex origin, TileIndex tile, Trackdir td);
+bool HasAircraftRunwayExit(const Aircraft *v, TileIndex start, bool to_hangar);
 bool IsAircraftVirtualTileAvailable(const Aircraft *v, TileIndex tile, Trackdir td);
 bool IsAircraftVirtualDestinationAvailable(const Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL);
 bool HasAircraftVirtualTileReservation(const Aircraft *v, TileIndex tile, TrackdirBits travel);
@@ -28,6 +30,7 @@ TrackBits GetAircraftVirtualBookedTracks(TileIndex tile);
 TrackBits GetAircraftAirportEditTracks(TileIndex tile);
 bool HasAircraftAirportTrackAdditionConflict(TileIndex tile, Track track);
 void UpdateAircraftTaxiTraffic(Aircraft *v, bool moved);
+void StopAircraftTaxiTraffic(Aircraft *v);
 bool IsAircraftTaxiEnvelopeAvailable(Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL);
 
 void EnableAircraftIgnoreReservations(Aircraft *v);
@@ -47,11 +50,14 @@ void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current, bool keep_request =
 bool ExtendAircraftTaxiReservation(Aircraft *v);
 bool EnsureAircraftTaxiRunways(Aircraft *v);
 bool TryReserveAircraftRunway(Aircraft *v, TileIndex extreme);
+bool ProbeAircraftTaxiExit(Aircraft *v, bool (*try_exit)(Aircraft *));
 void ReleaseAircraftRunway(Aircraft *v);
 void ReleaseAircraftStalledReservations(Aircraft *v);
 void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual = false);
 void ClearAircraftReservationIndexes();
 
+/** Get the validated far end of a runway start, or INVALID_TILE. */
+TileIndex GetAircraftRunwayEnd(TileIndex start);
 /** Get the length in tiles of the runway containing \a extreme (0 when \a extreme is not a runway extreme). */
 uint GetAircraftRunwayLength(TileIndex extreme);
 /** Get the length in tiles of the longest landing-enabled runway of \a st's airport (0 when it has none). */
