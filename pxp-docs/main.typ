@@ -50,6 +50,12 @@
         chapter(
           "en/airport",
           content: include "content-en/airport/index.typ",
+          children: (
+            chapter(
+              "en/airport/runway",
+              content: include "content-en/airport/aircraft-runway.typ",
+            ),
+          )
         ),
         chapter(
           "en/orderlist",
@@ -173,6 +179,12 @@
         chapter(
           "zh/airport",
           content: include "content-zh/airport/index.typ",
+          children: (
+            chapter(
+              "zh/airport/runway",
+              content: include "content-zh/airport/aircraft-runway.typ",
+            ),
+          )
         ),
         chapter(
           "zh/orderlist",
