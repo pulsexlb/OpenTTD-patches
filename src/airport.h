@@ -11,6 +11,7 @@
 #define AIRPORT_H
 
 #include "direction_type.h"
+#include "newgrf_type.h"
 #include "station_type.h"
 #include "track_type.h"
 #include "tile_type.h"
@@ -45,6 +46,19 @@ enum AirportTypes {
 	AT_CUSTOM          = 253, ///< Customized airport.
 	AT_INVALID         = 254, ///< Invalid airport.
 	AT_DUMMY           = 255, ///< Dummy airport.
+};
+
+/** NewGRF appearance of one airport tile, independent of its use on the map. */
+struct AirportTileGraphics {
+	GrfID tile_grfid{};
+	uint16_t tile_id = 0;
+	GrfID source_grfid{}; ///< Zero for a built-in source airport.
+	uint16_t source_airport = UINT16_MAX; ///< Airport local ID, or no known source layout.
+	uint8_t source_layout = 0;
+	uint16_t source_pos = 0; ///< Index in the unrotated source layout.
+	DiagDirection source_rotation = DiagDirection::NE;
+
+	bool operator==(const AirportTileGraphics &) const = default;
 };
 
 uint8_t GetVehiclePosOnBuild(TileIndex hangar_tile);

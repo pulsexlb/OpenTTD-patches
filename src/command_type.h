@@ -795,6 +795,7 @@ enum class Commands : uint16_t {
 	BuildExternalRailConnection,             ///< Convert an outward map-edge rail endpoint into an external portal.
 	ManageExternalCity,                      ///< Create, link or edit a shared external destination.
 	BuildExternalRoadConnection,             ///< Confirm a road entrance at the actual map boundary.
+	SetAirportTileGfx,                       ///< Set the NewGRF appearance of one custom airport tile.
 
 	End,                                    ///< Must ALWAYS be on the end of this list!! (period)
 };

@@ -217,6 +217,7 @@ struct AirportScopeResolver : public ScopeResolver {
 	const AirportSpec *spec; ///< AirportSpec for which the callback is run.
 	uint8_t layout;        ///< Layout of the airport to build.
 	TileIndex tile;     ///< Tile for the callback, only valid for airporttile callbacks.
+	bool allow_psa;     ///< Whether the resolver can reference the destination airport's storage.
 
 	/**
 	 * Constructor of the scope resolver for an airport.
@@ -225,9 +226,10 @@ struct AirportScopeResolver : public ScopeResolver {
 	 * @param st %Station of the airport for which the callback is run, or \c nullptr for build gui.
 	 * @param spec AirportSpec for which the callback is run.
 	 * @param layout Layout of the airport to build.
+	 * @param allow_psa Whether the resolver can reference the destination airport's storage.
 	 */
-	AirportScopeResolver(ResolverObject &ro, TileIndex tile, Station *st, const AirportSpec *spec, uint8_t layout)
-		: ScopeResolver(ro), st(st), spec(spec), layout(layout), tile(tile)
+	AirportScopeResolver(ResolverObject &ro, TileIndex tile, Station *st, const AirportSpec *spec, uint8_t layout, bool allow_psa = true)
+		: ScopeResolver(ro), st(st), spec(spec), layout(layout), tile(tile), allow_psa(allow_psa)
 	{
 	}
 

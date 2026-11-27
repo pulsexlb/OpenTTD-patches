@@ -58,6 +58,7 @@
 #include "../subsidy_base.h"
 #include "../subsidy_func.h"
 #include "../newgrf.h"
+#include "../newgrf_airporttiles.h"
 #include "../newgrf_station.h"
 #include "../engine_func.h"
 #include "../rail_gui.h"
@@ -730,6 +731,8 @@ static bool AirportsUseLegacyTileFormat()
  */
 static bool IsSavegameBeforeMultitileAirports()
 {
+	if (SlXvIsFeaturePresent(XSLFI_AIRPORT_GRF_TILES)) return false;
+
 	/* Savegames written by this patch pack store their extended version information; savegames
 	 * written by upstream OpenTTD or by another patch pack do not. Those never had the multi-tile
 	 * airport format, and their savegame version cannot be used for this decision, as other patch
@@ -746,6 +749,91 @@ static bool IsSavegameBeforeMultitileAirports()
 	/* Savegames with the extended version information also store whether they use the new
 	 * aircraft controller, which was introduced together with the multi-tile airports. */
 	return DidLoadLegacyAircraftData();
+}
+
+extern uint RotatedAirportSpecPosition(TileIndex tile, TileArea area, DiagDirection rotation);
+
+/** Reconcile animation with the material or its fallback after a graphics change. */
+static void RefreshAirportTileAnimation(TileIndex tile, bool reset_frame = false)
+{
+	const auto &animation = AirportTileSpec::GetByTile(tile)->animation;
+	if (reset_frame || GetAnimationFrame(tile) > animation.frames) SetAnimationFrame(tile, 0);
+	if (animation.status == AnimationStatus::Looping) {
+		AddAnimatedTile(tile, false);
+	} else if (animation.status == AnimationStatus::NoAnimation) {
+		DeleteAnimatedTile(tile);
+	}
+}
+
+/** Separate a v1 custom airport's raw graphics IDs from its operational map fields. */
+static void MigrateAirportTileGraphics(Station &st, const std::vector<EntityIDMapping> &airports, const std::vector<EntityIDMapping> &tiles)
+{
+	const uint8_t source_type = st.airport.source_type;
+	const uint8_t source_layout = st.airport.source_layout;
+	st.airport.source_type = AT_INVALID;
+	st.airport.source_layout = 0;
+	if (st.airport.type != AT_CUSTOM || st.airport.IsEmpty()) return;
+
+	const auto rotation = static_cast<DiagDirection>(st.airport.rotation);
+	GrfID source_grfid{};
+	uint16_t source_airport = UINT16_MAX;
+	const AirportTileLayout *layout = nullptr;
+	if (source_type < NUM_AIRPORTS && IsValidDiagDirection(rotation)) {
+		const AirportSpec *spec = AirportSpec::GetWithoutOverride(source_type);
+		if (source_type < NEW_AIRPORT_OFFSET) {
+			source_airport = source_type;
+		} else if (source_type < airports.size()) {
+			const auto &saved = airports[source_type];
+			if (!saved.grfid.Empty() && spec->enabled && spec->grf_prop.HasGrfFile() &&
+					spec->grf_prop.grfid == saved.grfid && spec->grf_prop.local_id == saved.entity_id) {
+				source_grfid = saved.grfid;
+				source_airport = saved.entity_id;
+			}
+		}
+		if (source_airport != UINT16_MAX && source_layout < spec->layouts.size()) {
+			const auto &candidate = spec->layouts[source_layout];
+			const bool swap_axes = (to_underlying(rotation) % 2) != 0;
+			if (st.airport.w == (swap_axes ? candidate.size_y : candidate.size_x) &&
+					st.airport.h == (swap_axes ? candidate.size_x : candidate.size_y)) layout = &candidate;
+		}
+	}
+
+	for (TileIndex tile : st.airport) {
+		if (!st.TileBelongsToAirport(tile) || HasAirtypeGfx(tile)) continue;
+		const AirportTileType type = GetAirportTileType(tile);
+		const AirportTiles old_gfx = GetTileAirportGfx(tile);
+		const bool infrastructure = IsInfrastructure(tile);
+		AirportTiles fallback = infrastructure ? GetAirportGfxForAirtype(tile) : ATTG_DEFAULT_GFX;
+		if (type == ATT_INFRASTRUCTURE_WITH_CATCH && fallback > ATTG_WITH_CATCH_BUILDING_TERMINAL) fallback = ATTG_WITH_CATCH_BUILDING_1;
+		if (type == ATT_INFRASTRUCTURE_NO_CATCH && (fallback < ATTG_NO_CATCH_FLAG || fallback >= ATTG_END)) fallback = ATTG_NO_CATCH_FLAG;
+
+		/* Only the save's tile mapping can identify an external raw ID. Even when the
+		 * GRF is missing, retain its identity; never use a newly assigned ID or substitute. */
+		if (infrastructure && old_gfx >= NEW_AIRPORTTILE_OFFSET && old_gfx != INVALID_AIRPORTTILE && old_gfx < tiles.size()) {
+			const auto &saved = tiles[old_gfx];
+			if (!saved.grfid.Empty() && saved.entity_id < NUM_AIRPORTTILES_PER_GRF) {
+				AirportTileGraphics graphics{saved.grfid, saved.entity_id};
+				if (layout != nullptr) {
+					const uint pos = RotatedAirportSpecPosition(tile, st.airport, rotation);
+					if (pos < layout->tiles.size() && pos <= UINT16_MAX) {
+						const AirportTileTable &source_tile = layout->tiles[pos];
+						if (source_tile.type == type && IsValidDiagDirection(source_tile.dir) && GetAirportTileRotation(tile) == RotateDiagDir(source_tile.dir, rotation)) {
+							const auto source = MakeAirportTileGraphics(source_grfid, source_airport, source_layout, static_cast<uint16_t>(pos), rotation);
+							if (source && source->tile_grfid == graphics.tile_grfid && source->tile_id == graphics.tile_id) graphics = *source;
+						}
+					}
+				}
+				st.airport.tile_graphics.emplace(tile, graphics);
+			}
+		}
+
+		SetAirGfxType(tile, true);
+		SetTileAirportGfx(tile, fallback);
+		if (infrastructure) SetAirportGfxForAirtype(tile, fallback);
+		const auto *graphics = GetAirportTileGraphics(tile);
+		const bool use_fallback = graphics == nullptr || ResolveAirportTileGraphics(*graphics) == INVALID_AIRPORTTILE;
+		if (use_fallback || GetAnimationFrame(tile) > AirportTileSpec::GetByTile(tile)->animation.frames) RefreshAirportTileAnimation(tile, use_fallback);
+	}
 }
 
 /**
@@ -1187,6 +1275,15 @@ bool AfterLoadGame()
 	if (SlXvIsFeatureMissing(XSLFI_LINKGRAPH_DAY_SCALE, 7)) {
 		extern void LinkGraphJobSetDayLengthFactor();
 		LinkGraphJobSetDayLengthFactor();
+	}
+
+	/* NewGRF loading can fill vacant mapping slots. Keep the v1 save's map IDs
+	 * separate from mappings for any newly loaded airport or tile specs. */
+	const bool migrate_airport_graphics = SlXvIsFeaturePresent(XSLFI_AIRPORT_GRF_TILES, 1, 1);
+	std::vector<EntityIDMapping> saved_airports, saved_airport_tiles;
+	if (migrate_airport_graphics) {
+		saved_airports = _airport_mngr.mappings;
+		saved_airport_tiles = _airporttile_mngr.mappings;
 	}
 
 	/* Load the sprites */
@@ -3242,8 +3339,21 @@ bool AfterLoadGame()
 	} else {
 		const bool convert_airports = ConvertAirportsToCustomEnabled();
 		for (Station *st : Station::Iterate()) {
-			/* With the custom airport feature enabled, airports are converted into custom
-			 * airports as well. This also drops the NewGRF airport graphics of the tiles. */
+			if (migrate_airport_graphics) MigrateAirportTileGraphics(*st, saved_airports, saved_airport_tiles);
+			/* Drop stale map entries, but never discard a valid identity because its GRF is unavailable. */
+			std::erase_if(st->airport.tile_graphics, [&](const auto &entry) {
+				const auto &[tile, graphics] = entry;
+				return graphics.tile_grfid.Empty() || graphics.tile_id >= NUM_AIRPORTTILES_PER_GRF ||
+						!IsValidDiagDirection(graphics.source_rotation) ||
+						st->airport.type != AT_CUSTOM || !IsValidTile(tile) || !st->TileBelongsToAirport(tile) || !IsInfrastructure(tile);
+			});
+			if (!migrate_airport_graphics) {
+				for (const auto &[tile, graphics] : st->airport.tile_graphics) {
+					if (gcf_res != GRFListCompatibility::AllGood || ResolveAirportTileGraphics(graphics) == INVALID_AIRPORTTILE ||
+							GetAnimationFrame(tile) > AirportTileSpec::GetByTile(tile)->animation.frames) RefreshAirportTileAnimation(tile);
+				}
+			}
+			/* With the custom airport feature enabled, convert spec airports to custom airports. */
 			if (convert_airports && st->ConvertAirportToCustom(true)) continue;
 			st->UpdateAirportDataStructure();
 		}
@@ -5188,6 +5298,13 @@ void ReloadNewGRFData()
 	CheckTrainsLengths();
 	AfterLoadTemplateVehiclesUpdateImages();
 	AfterLoadTemplateVehiclesUpdateProperties();
+	for (const Station *st : Station::Iterate()) {
+		if (st->airport.type != AT_CUSTOM) continue;
+		for (const auto &entry : st->airport.tile_graphics) {
+			const TileIndex tile = entry.first;
+			if (IsValidTile(tile) && st->TileBelongsToAirport(tile) && IsInfrastructure(tile)) RefreshAirportTileAnimation(tile);
+		}
+	}
 	UpdateAllAnimatedTileSpeeds();
 
 	InvalidateWindowData(WindowClass::BuildSignal, 0);

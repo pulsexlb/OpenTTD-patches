@@ -65,32 +65,14 @@ enum BuildHangarHeliportWidgets : WidgetID {
 	WID_BHW_NW,        ///< Hangar/heliport with NW entry.
 };
 
-/** Widgets of the #BuildAirportInfraNoCatchWindow class. */
-enum BuildAirportInfrastructureNoCatchmentWidgets : WidgetID {
-	WID_BAINC_CAPTION,   ///< Caption of the window.
-	WID_BAINC_FLAG,
-	WID_BAINC_TRANSMITTER,
-	WID_BAINC_TOWER,
-	WID_BAINC_RADAR,
-	WID_BAINC_PIER,
-	WID_BAINC_EMPTY,
-	WID_BAINC_ROTATION,          ///< Selected angle of rotation of the infrastructure tile.
-	WID_BAINC_ROTATION_DECREASE, ///< Decrease the angle of rotation.
-	WID_BAINC_ROTATION_INCREASE, ///< Increase the angle of rotation.
-};
-DECLARE_ENUM_AS_ADDABLE(BuildAirportInfrastructureNoCatchmentWidgets)
-
-/** Widgets of the #BuildAirportInfraWithCatchWindow class. */
-enum BuildAirportInfrastructureWithCatchmentWidgets : WidgetID {
-	WID_BAIWC_CAPTION,   ///< Caption of the window.
-	WID_BAIWC_BUILDING_1,
-	WID_BAIWC_BUILDING_2,
-	WID_BAIWC_BUILDING_3,
-	WID_BAIWC_BUILDING_FLAT,
-	WID_BAIWC_BUILDING_TERMINAL,
-	WID_BAIWC_ROTATION,          ///< Selected angle of rotation of the infrastructure tile.
-	WID_BAIWC_ROTATION_DECREASE, ///< Decrease the angle of rotation.
-	WID_BAIWC_ROTATION_INCREASE, ///< Increase the angle of rotation.
+/** Widgets of the #BuildAirportInfraWindow class. */
+enum BuildAirportInfrastructureWidgets : WidgetID {
+	WID_BAI_CAPTION,           ///< Caption of the window.
+	WID_BAI_ROTATION_LABEL,    ///< Label above the direction buttons.
+	WID_BAI_DIR_NE,            ///< North-east variant; disabled when unavailable.
+	WID_BAI_DIR_SE,            ///< South-east variant; disabled when unavailable.
+	WID_BAI_DIR_SW,            ///< South-west variant; disabled when unavailable.
+	WID_BAI_DIR_NW,            ///< North-west variant; disabled when unavailable.
 };
 
 /** Widgets of the #BuildAirportInfraWithCatchWindow class. */

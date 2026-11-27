@@ -828,16 +828,25 @@ bool HasReservationsOnNeighbourTiles(TileIndex tile)
 	return false;
 }
 
-/**
- * Change the airtype graphics of an airport tile.
- * @param tile
- * @param at New airtype tile.
- */
-void SetGfxByAirtypeTile(TileIndex tile, AirportTiles at) {
+/** Set the AirType graphics of an airport tile, discarding any NewGRF appearance. */
+static void SetGfxByAirtypeTile(TileIndex tile, AirportTiles at)
+{
 	DeleteAnimatedTile(tile);
+	Station::GetByTile(tile)->airport.tile_graphics.erase(tile);
 	SetAirGfxType(tile, true);
 	SetTileAirportGfx(tile, at);
+	SetAnimationFrame(tile, 0);
 	if (AirportTileSpec::GetByTile(tile)->animation.status != AnimationStatus::NoAnimation) AddAnimatedTile(tile);
+}
+
+/** Set a NewGRF appearance without changing the tile's use or AirType graphics. */
+static void SetAirportTileAppearance(Station *st, TileIndex tile, const AirportTileGraphics &graphics)
+{
+	DeleteAnimatedTile(tile);
+	st->airport.tile_graphics.insert_or_assign(tile, graphics);
+	SetAnimationFrame(tile, 0);
+	if (AirportTileSpec::GetByTile(tile)->animation.status != AnimationStatus::NoAnimation) AddAnimatedTile(tile);
+	TriggerAirportTileAnimation(st, tile, AirportAnimationTrigger::Built);
 }
 
 /**
@@ -853,7 +862,7 @@ void SetGfxByAirtypeTile(TileIndex tile, AirportTiles at) {
  * @param diagonal whether remove/add a diagonal tile area
  * @return the cost of this operation or an error
  */
-CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, TileIndex end_tile, AirType air_type, AirportTileType air_tile_type, AirportTiles infra_type, DiagDirection direction, bool adding, bool diagonal)
+static CommandCost ChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, TileIndex end_tile, AirType air_type, AirportTileType air_tile_type, AirportTiles infra_type, DiagDirection direction, bool adding, bool diagonal, const AirportTileGraphics *graphics)
 {
 	if (!IsValidTile(start_tile) || !IsValidTile(end_tile)) return CMD_ERROR;
 	if (!IsAirportTile(start_tile)) return CMD_ERROR;
@@ -896,6 +905,30 @@ CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, Ti
 	if (ret.Failed()) return ret;
 
 	if (!ValParamAirType(air_type)) return CommandCost(STR_ERROR_AIRPORT_INCORRECT_AIRTYPE);
+
+	const bool is_infrastructure = air_tile_type == ATT_INFRASTRUCTURE_WITH_CATCH || air_tile_type == ATT_INFRASTRUCTURE_NO_CATCH;
+	if (adding && is_infrastructure && start_tile == end_tile && GetAirportTileType(start_tile) == air_tile_type &&
+			Station::GetByTile(start_tile)->airport.type == AT_CUSTOM) {
+		ret = CheckTileOwnership(start_tile);
+		if (ret.Failed()) return ret;
+		if (air_type != GetAirType(start_tile)) return CommandCost(STR_ERROR_AIRPORT_INVALID_AIR_TYPE);
+
+		const AirportTileGraphics *previous = GetAirportTileGraphics(start_tile);
+		if (graphics != nullptr && previous != nullptr && *previous == *graphics) return CommandCost();
+		if (graphics == nullptr && previous == nullptr && HasAirtypeGfx(start_tile) &&
+				GetTileAirportGfx(start_tile) == infra_type && GetAirportTileRotation(start_tile) == direction) return CommandCost();
+
+		if (flags.Test(DoCommandFlag::Execute)) {
+			if (graphics != nullptr) {
+				SetAirportTileAppearance(Station::GetByTile(start_tile), start_tile, *graphics);
+			} else {
+				SetAirportTileRotation(start_tile, direction);
+				SetGfxByAirtypeTile(start_tile, infra_type);
+			}
+			MarkTileDirtyByTile(start_tile);
+		}
+		return CommandCost(ExpensesType::Construction, _price[Price::BuildStationAirport] * ati->cost_multiplier);
+	}
 
 	TileArea ta(start_tile, end_tile);
 
@@ -1007,6 +1040,7 @@ CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, Ti
 						break;
 				}
 				SetGfxByAirtypeTile(tile_iter, infra_type);
+				if (graphics != nullptr) SetAirportTileAppearance(st, tile_iter, *graphics);
 				MarkTileDirtyByTile(tile_iter);
 			}
 
@@ -1036,7 +1070,7 @@ CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, Ti
 					case ATT_HANGAR_EXTENDED:
 						tile_iter.m8() = 0;
 						SetAirportTileType(tile_iter, ATT_SIMPLE_TRACK);
-						SetAirGfxType(tile_iter, true);
+						SetGfxByAirtypeTile(tile_iter, ATTG_DEFAULT_GFX);
 						break;
 				}
 				SetAirportTileTracks(tile_iter, tracks);
@@ -1055,11 +1089,10 @@ CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, Ti
 		st->UpdateAirportDataStructure();
 		st->AfterStationTileSetChange(true, StationType::Airport);
 
-		uint16_t noise_level = CalculateAirportNoiseLevel(st->airport);
-		assert(nearest != nullptr);
-		nearest->noise_reached += GetAirportNoiseLevelForDistance(noise_level, dist);
-		if (_settings_game.economy.station_noise_level) {
-			SetWindowDirty(WindowClass::TownView, nearest->index);
+		if (nearest != nullptr) {
+			uint16_t noise_level = CalculateAirportNoiseLevel(st->airport);
+			nearest->noise_reached += GetAirportNoiseLevelForDistance(noise_level, dist);
+			if (_settings_game.economy.station_noise_level) SetWindowDirty(WindowClass::TownView, nearest->index);
 		}
 
 		UpdateAircraftOnUpdatedAirport(st);
@@ -1082,6 +1115,31 @@ CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, Ti
 	return cost;
 }
 
+
+CommandCost CmdChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile, TileIndex end_tile, AirType air_type, AirportTileType air_tile_type, AirportTiles infra_type, DiagDirection direction, bool adding, bool diagonal)
+{
+	return ChangeAirportTiles(flags, start_tile, end_tile, air_type, air_tile_type, infra_type, direction, adding, diagonal, nullptr);
+}
+
+/** Build or repaint one infrastructure tile using a cell from a NewGRF airport layout. */
+CommandCost CmdSetAirportTileGfx(DoCommandFlags flags, TileIndex tile, AirportTileType type, GrfID source_grfid, uint16_t source_airport, uint8_t layout, uint16_t pos, DiagDirection source_rotation)
+{
+	if (!IsValidTile(tile) || !IsAirportTile(tile)) return CMD_ERROR;
+	if (type != ATT_INFRASTRUCTURE_WITH_CATCH && type != ATT_INFRASTRUCTURE_NO_CATCH) return CMD_ERROR;
+	if (!IsSimpleTrack(tile) && GetAirportTileType(tile) != type) return CMD_ERROR;
+	if (Station::GetByTile(tile)->airport.type != AT_CUSTOM) return CMD_ERROR;
+
+	const auto graphics = MakeAirportTileGraphics(source_grfid, source_airport, layout, pos, source_rotation);
+	if (!graphics.has_value()) return CMD_ERROR;
+	const AirportTileTable *source = GetAirportTileGraphicsSource(*graphics);
+	if (source == nullptr || (source->type != ATT_INFRASTRUCTURE_WITH_CATCH && source->type != ATT_INFRASTRUCTURE_NO_CATCH)) return CMD_ERROR;
+
+	AirportTiles fallback = source->at_gfx;
+	if (type == ATT_INFRASTRUCTURE_WITH_CATCH && fallback > ATTG_WITH_CATCH_BUILDING_TERMINAL) fallback = ATTG_WITH_CATCH_BUILDING_1;
+	if (type == ATT_INFRASTRUCTURE_NO_CATCH && (fallback < ATTG_NO_CATCH_FLAG || fallback >= ATTG_END)) fallback = ATTG_NO_CATCH_EMPTY;
+	const DiagDirection direction = IsValidDiagDirection(source->dir) ? RotateDiagDir(source->dir, source_rotation) : source_rotation;
+	return ChangeAirportTiles(flags, tile, tile, GetAirType(tile), type, fallback, direction, true, false, &*graphics);
+}
 
 /**
  * Change the air type of an airport.
@@ -1385,6 +1443,8 @@ CommandCost CmdAirportToggleGround(DoCommandFlags flags, TileIndex start_tile, T
  */
 static void ClearAirportTileToWater(TileIndex tile, Station *st)
 {
+	st->airport.tile_graphics.erase(tile);
+	DeleteAnimatedTile(tile);
 	WaterClass wc = HasTileWaterClass(tile) ? GetWaterClass(tile) : WaterClass::Invalid;
 	DoClearSquare(tile);
 	/* Maybe change to water */
@@ -1896,19 +1956,16 @@ CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airpor
 		/* With the custom airport feature enabled, the newly built airport is a custom
 		 * airport too: its tiles use the air type graphics (instead of the NewGRF ones),
 		 * and the airport no longer depends on the airport spec. The air type is the one
-		 * the airport is built with, so its surface is kept. */
-		const bool convert_to_custom = ConvertAirportsToCustomEnabled();
+		 * the airport is built with, so its surface is kept. Infrastructure tiles (terminals,
+		 * towers, radars) keep their NewGRF graphics. */
+		st->LoadAirportTilesFromSpec(airport_area, rotation, air_type, will_be_custom);
 
-		st->LoadAirportTilesFromSpec(airport_area, rotation, air_type, convert_to_custom);
-
-		if (convert_to_custom) {
+		if (will_be_custom) {
 			st->airport.type = AT_CUSTOM;
 			st->airport.layout = 0;
 			/* The noise of the custom airport has already been accounted for above, using the
 			 * same area-based calculation which UpdateAirportsNoise() uses, so there is no need
 			 * to recalculate the noise of every town in the game here. */
-		} else if (custom_airport) {
-			st->airport.type = AT_CUSTOM;
 		}
 
 		/* Replace all hangars with hangars the human user can build. */
@@ -2006,7 +2063,6 @@ CommandCost RemoveAirport(TileIndex tile, DoCommandFlags flags)
 		tiles++;
 
 		if (flags.Test(DoCommandFlag::Execute)) {
-			DeleteAnimatedTile(tile_cur);
 			ClearAirportTileToWater(tile_cur, st);
 			DeleteNewGRFInspectWindow(GrfSpecFeature::AirportTiles, tile_cur.base());
 			DeleteNewGRFInspectWindow(GrfSpecFeature::AirTypes, tile_cur.base());
@@ -2019,6 +2075,8 @@ CommandCost RemoveAirport(TileIndex tile, DoCommandFlags flags)
 	if (flags.Test(DoCommandFlag::Execute)) {
 		/* Clear the persistent storage. */
 		delete st->airport.psa;
+		st->airport.psa = nullptr;
+		st->airport.tile_graphics.clear();
 
 		st->rect.AfterRemoveRect(st, st->airport);
 

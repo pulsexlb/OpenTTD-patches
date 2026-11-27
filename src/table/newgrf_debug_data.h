@@ -1869,13 +1869,13 @@ static const NIVariable _niv_airporttiles[] = {
 };
 
 class NIHAirportTile : public NIHelper {
-	bool IsInspectable(uint index) const override        { return AirportTileSpec::Get(GetAirportGfx(TileIndex{index}))->grf_prop.HasGrfFile(); }
+	bool IsInspectable(uint index) const override        { return AirportTileSpec::GetByTile(TileIndex{index})->grf_prop.HasGrfFile(); }
 	InspectTargetId GetParent(uint index) const override { return InspectTargetId(GrfSpecFeature::Airports, GetStationIndex(TileIndex{index}).base()); }
 	const void *GetInstance(uint)const override          { return nullptr; }
-	const void *GetSpec(uint index) const override       { return AirportTileSpec::Get(GetAirportGfx(TileIndex{index})); }
+	const void *GetSpec(uint index) const override       { return AirportTileSpec::GetByTile(TileIndex{index}); }
 	std::string GetName(uint index) const override       { return GetString(STR_NEWGRF_INSPECT_CAPTION_OBJECT_AT, STR_STATION_NAME, GetStationIndex(TileIndex{index}), TileIndex{index}); }
-	GrfID GetGRFID(uint index) const override            { return (this->IsInspectable(index)) ? AirportTileSpec::Get(GetAirportGfx(TileIndex{index}))->grf_prop.grfid : GrfID{}; }
-	std::span<const BadgeID> GetBadges(uint index) const override { return AirportTileSpec::Get(GetAirportGfx(TileIndex{index}))->badges; }
+	GrfID GetGRFID(uint index) const override            { return AirportTileSpec::GetByTile(TileIndex{index})->grf_prop.grfid; }
+	std::span<const BadgeID> GetBadges(uint index) const override { return AirportTileSpec::GetByTile(TileIndex{index})->badges; }
 
 	uint Resolve(uint index, uint var, uint param, GetVariableExtra &extra) const override
 	{
@@ -1922,18 +1922,18 @@ static const NIVariable _niv_airports[] = {
 };
 
 class NIHAirport : public NIHelper {
-	bool IsInspectable(uint index) const override        { return AirportSpec::Get(Station::Get(index)->airport.type)->grf_prop.HasGrfFile(); }
+	bool IsInspectable(uint index) const override        { return Station::Get(index)->airport.GetSpec()->grf_prop.HasGrfFile(); }
 	InspectTargetId GetParent(uint index) const override { return InspectTargetId(GrfSpecFeature::FakeTowns, Station::Get(index)->town->index.base()); }
 	const void *GetInstance(uint index)const override    { return Station::Get(index); }
-	const void *GetSpec(uint index) const override       { return AirportSpec::Get(Station::Get(index)->airport.type); }
+	const void *GetSpec(uint index) const override       { return Station::Get(index)->airport.GetSpec(); }
 	std::string GetName(uint index) const override       { return GetString(STR_NEWGRF_INSPECT_CAPTION_OBJECT_AT, STR_STATION_NAME, index, Station::Get(index)->airport.tile); }
-	GrfID GetGRFID(uint index) const override { return (this->IsInspectable(index)) ? AirportSpec::Get(Station::Get(index)->airport.type)->grf_prop.grfid : GrfID{}; }
-	std::span<const BadgeID> GetBadges(uint index) const override { return AirportSpec::Get(Station::Get(index)->airport.type)->badges; }
+	GrfID GetGRFID(uint index) const override { return Station::Get(index)->airport.GetSpec()->grf_prop.grfid; }
+	std::span<const BadgeID> GetBadges(uint index) const override { return Station::Get(index)->airport.GetSpec()->badges; }
 
 	uint Resolve(uint index, uint var, uint param, GetVariableExtra &extra) const override
 	{
 		Station *st = Station::Get(index);
-		AirportResolverObject ro(st->airport.tile, st, AirportSpec::Get(st->airport.type), st->airport.layout);
+		AirportResolverObject ro(st->airport.tile, st, st->airport.GetSpec(), st->airport.layout);
 		return ro.GetScope(VarSpriteGroupScope::Self)->GetVariable(var, param, extra);
 	}
 

@@ -24,6 +24,18 @@
 #include "time_type.h"
 #include "3rdparty/cpp-btree/btree_set.h"
 #include <map>
+#include <optional>
+
+/** The source location of a picker item when a sprite ID alone cannot identify it. */
+struct PickerItemSource {
+	GrfID grfid{};
+	uint16_t local_id = 0;
+	uint8_t layout = 0;
+	uint16_t position = 0;
+	uint8_t rotation = 0;
+
+	auto operator<=>(const PickerItemSource &) const = default;
+};
 
 /** Picker filter mode. */
 enum class PickerFilterMode : uint8_t {
@@ -40,11 +52,13 @@ struct PickerItem {
 	uint16_t local_id;
 	int class_index;
 	int index;
+	std::optional<PickerItemSource> source{}; ///< Persistent identity beyond the sprite ID, if required by the picker.
 
 	inline auto operator<=>(const PickerItem &other) const
 	{
 		if (auto cmp = this->grfid <=> other.grfid; cmp != 0) return cmp;
-		return this->local_id <=> other.local_id;
+		if (auto cmp = this->local_id <=> other.local_id; cmp != 0) return cmp;
+		return this->source <=> other.source;
 	}
 
 	inline bool operator==(const PickerItem &other) const = default;
@@ -105,6 +119,13 @@ public:
 	 * @return StringID without parameters.
 	 */
 	virtual StringID GetClassName(int id) const = 0;
+	/**
+	 * Get the name of a class as a string, for pickers whose classes are not NewGRF classes
+	 * and therefore have no string registered for them.
+	 * @param id The class to get the name for.
+	 * @return The name of the class.
+	 */
+	virtual std::string GetClassNameString(int id) const;
 
 	/* Type callbacks */
 	/**

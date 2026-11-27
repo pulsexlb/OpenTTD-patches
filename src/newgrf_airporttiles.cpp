@@ -9,6 +9,9 @@
 
 #include "stdafx.h"
 #include "debug.h"
+#include "core/backup_type.hpp"
+#include "zoom_func.h"
+#include "newgrf_airport.h"
 #include "newgrf_airporttiles.h"
 #include "newgrf_badge.h"
 #include "newgrf_extension.h"
@@ -20,6 +23,10 @@
 #include "landscape.h"
 #include "air_map.h"
 #include "company_base.h"
+#include "company_func.h"
+#include "direction_func.h"
+#include "gfx_func.h"
+#include "sprite.h"
 #include "town.h"
 #include "newgrf_animation_base.h"
 
@@ -47,13 +54,121 @@ AirportTileOverrideManager _airporttile_mngr(NEW_AIRPORTTILE_OFFSET, NUM_AIRPORT
 	return &AirportTileSpec::tiles[gfx];
 }
 
+/* A source identity must not resolve through a substitute or a different GRF's override. */
+static const AirportSpec *GetSourceAirportSpec(GrfID grfid, uint16_t id)
+{
+	if (grfid.Empty()) return id < NEW_AIRPORT_OFFSET ? AirportSpec::GetWithoutOverride(id) : nullptr;
+	if (id >= NUM_AIRPORTS_PER_GRF) return nullptr;
+
+	const uint16_t index = _airport_mngr.GetID(id, grfid);
+	if (index >= NUM_AIRPORTS) return nullptr;
+	const AirportSpec *spec = AirportSpec::GetWithoutOverride(index);
+	return spec->enabled && spec->grf_prop.HasGrfFile() && spec->grf_prop.grfid == grfid && spec->grf_prop.local_id == id ? spec : nullptr;
+}
+
+static const AirportTileLayout *GetSourceLayout(const AirportSpec *spec, uint8_t layout, uint16_t pos, DiagDirection rotation)
+{
+	if (spec == nullptr || layout >= spec->layouts.size() || !IsValidDiagDirection(rotation)) return nullptr;
+	const AirportTileLayout &source = spec->layouts[layout];
+	if (source.size_x == 0 || source.tiles.size() != static_cast<size_t>(source.size_x) * source.size_y || pos >= source.tiles.size()) return nullptr;
+	return source.tiles[pos].type != ATT_INVALID ? &source : nullptr;
+}
+
+static bool IsNewGRFAirportTileGraphics(StationGfx gfx)
+{
+	if (gfx < NEW_AIRPORTTILE_OFFSET || gfx == INVALID_AIRPORTTILE) return false;
+	const AirportTileSpec *spec = AirportTileSpec::Get(gfx);
+	return spec->enabled && spec->grf_prop.HasGrfFile() && !spec->grf_prop.grfid.Empty() && spec->grf_prop.HasSpriteGroups();
+}
+
+static StationGfx GetSourceTileGfx(const AirportTileTable &entry, DiagDirection rotation)
+{
+	const StationGfx gfx = entry.gfx[to_underlying(rotation)];
+	return gfx == INVALID_AIRPORTTILE ? gfx : GetTranslatedAirportTileID(gfx);
+}
+
+static std::optional<AirportTileGraphics> MakeAirportTileGraphics(const AirportSpec *spec, uint8_t layout, uint16_t pos, DiagDirection rotation)
+{
+	const AirportTileLayout *source = GetSourceLayout(spec, layout, pos, rotation);
+	if (source == nullptr) return std::nullopt;
+
+	const StationGfx gfx = GetSourceTileGfx(source->tiles[pos], rotation);
+	if (!IsNewGRFAirportTileGraphics(gfx)) return std::nullopt;
+
+	const auto &tile_prop = AirportTileSpec::Get(gfx)->grf_prop;
+	const auto &airport_prop = spec->grf_prop;
+	const uint16_t source_id = airport_prop.HasGrfFile() ? airport_prop.local_id : spec->GetIndex();
+	return AirportTileGraphics{tile_prop.grfid, tile_prop.local_id, airport_prop.grfid, source_id, layout, pos, rotation};
+}
+
+std::optional<AirportTileGraphics> MakeAirportTileGraphics(uint8_t airport_type, uint8_t layout, uint16_t pos, DiagDirection rotation)
+{
+	if (airport_type >= NUM_AIRPORTS) return std::nullopt;
+	return MakeAirportTileGraphics(AirportSpec::Get(airport_type), layout, pos, rotation);
+}
+
+std::optional<AirportTileGraphics> MakeAirportTileGraphics(GrfID source_grfid, uint16_t source_airport, uint8_t layout, uint16_t pos, DiagDirection rotation)
+{
+	return MakeAirportTileGraphics(GetSourceAirportSpec(source_grfid, source_airport), layout, pos, rotation);
+}
+
+static const AirportTileTable *GetMatchingSourceTile(const AirportTileGraphics &graphics, const AirportTileLayout *layout)
+{
+	if (layout == nullptr) return nullptr;
+
+	const AirportTileTable &source = layout->tiles[graphics.source_pos];
+	const StationGfx gfx = GetSourceTileGfx(source, graphics.source_rotation);
+	if (!IsNewGRFAirportTileGraphics(gfx)) return nullptr;
+	const auto &prop = AirportTileSpec::Get(gfx)->grf_prop;
+	return prop.grfid == graphics.tile_grfid && prop.local_id == graphics.tile_id ? &source : nullptr;
+}
+
+/** Find the unrotated source tile entry only if it still supplies the recorded variant. */
+const AirportTileTable *GetAirportTileGraphicsSource(const AirportTileGraphics &graphics)
+{
+	const AirportSpec *spec = GetSourceAirportSpec(graphics.source_grfid, graphics.source_airport);
+	return GetMatchingSourceTile(graphics, GetSourceLayout(spec, graphics.source_layout, graphics.source_pos, graphics.source_rotation));
+}
+
+/** Resolve an exact tile identity, even when its original airport layout is no longer available. */
+StationGfx ResolveAirportTileGraphics(const AirportTileGraphics &graphics)
+{
+	if (graphics.tile_grfid.Empty() || graphics.tile_id >= NUM_AIRPORTTILES_PER_GRF) return INVALID_AIRPORTTILE;
+	const uint16_t id = _airporttile_mngr.GetID(graphics.tile_id, graphics.tile_grfid);
+	if (id >= NUM_AIRPORTTILES || !IsNewGRFAirportTileGraphics(id)) return INVALID_AIRPORTTILE;
+
+	const auto &prop = AirportTileSpec::Get(id)->grf_prop;
+	return prop.grfid == graphics.tile_grfid && prop.local_id == graphics.tile_id ? id : INVALID_AIRPORTTILE;
+}
+
+/** Look up the graphics record of an airport infrastructure tile. */
+const AirportTileGraphics *GetAirportTileGraphics(TileIndex tile)
+{
+	if (!IsValidTile(tile) || !IsAirportTile(tile) || !IsInfrastructure(tile)) return nullptr;
+	const Station *st = Station::GetIfValid(GetStationIndex(tile));
+	if (st == nullptr) return nullptr;
+
+	auto it = st->airport.tile_graphics.find(tile);
+	return it != st->airport.tile_graphics.end() ? &it->second : nullptr;
+}
+
 /**
- * Retrieve airport tile spec for the given airport tile.
- * @param tile The airport tile.
- * @return A pointer to the corresponding AirportTileSpec.
+ * Retrieve the animation and graphics spec used on the map tile.
+ * AirType radar and flag IDs overlap with unrelated original airport tiles.
  */
 /* static */ const AirportTileSpec *AirportTileSpec::GetByTile(TileIndex tile)
 {
+	if (const AirportTileGraphics *graphics = GetAirportTileGraphics(tile); graphics != nullptr) {
+		const StationGfx gfx = ResolveAirportTileGraphics(*graphics);
+		if (gfx != INVALID_AIRPORTTILE) return AirportTileSpec::Get(gfx);
+	}
+
+	if (HasAirtypeGfx(tile)) {
+		const AirportTiles gfx = GetTileAirportGfx(tile);
+		if (IsInfrastructure(tile) && gfx < ATTG_END) return &_origin_airtype_specs[gfx];
+		return &_origin_airtype_specs[ATTG_DEFAULT_GFX];
+	}
+
 	return AirportTileSpec::Get(GetAirportGfx(tile));
 }
 
@@ -123,21 +238,10 @@ static uint32_t GetNearbyAirportTileInformation(uint8_t parameter, TileIndex til
 }
 
 
-/**
- * Make an analysis of a tile and check whether it belongs to the same
- * airport, and/or the same grf file
- * @param tile TileIndex of the tile to query
- * @param st Station to which to compare the tile to
- * @param cur_grfid GRFID of the current callback
- * @return value encoded as per NFO specs
- */
-static uint32_t GetAirportTileIDAtOffset(TileIndex tile, const Station *st, GrfID cur_grfid)
+/** Encode one tile's graphics ID as reported by variable 0x62. */
+static uint32_t GetAirportTileIDForGraphics(StationGfx gfx, GrfID cur_grfid)
 {
-	if (!st->TileBelongsToAirport(tile)) {
-		return 0xFFFF;
-	}
-
-	StationGfx gfx = GetAirportGfx(tile);
+	if (gfx == INVALID_AIRPORTTILE) return 0xFFFF;
 	const AirportTileSpec *ats = AirportTileSpec::Get(gfx);
 
 	if (gfx < NEW_AIRPORTTILE_OFFSET) { // Does it belongs to an old type?
@@ -166,16 +270,146 @@ static uint32_t GetAirportTileIDAtOffset(TileIndex tile, const Station *st, GrfI
 	return 0xFF << 8 | ats->grf_prop.subst_id; // so just give it the substitute
 }
 
+/* Convert coordinates in the unrotated layout to the layout's map orientation. */
+static TileIndexDiffC RotateSourceOffset(int x, int y, int width, int height, DiagDirection rotation)
+{
+	switch (rotation) {
+		case DiagDirection::NE: return {static_cast<int16_t>(x), static_cast<int16_t>(y)};
+		case DiagDirection::SE: return {static_cast<int16_t>(y), static_cast<int16_t>(width - 1 - x)};
+		case DiagDirection::SW: return {static_cast<int16_t>(width - 1 - x), static_cast<int16_t>(height - 1 - y)};
+		case DiagDirection::NW: return {static_cast<int16_t>(height - 1 - y), static_cast<int16_t>(x)};
+		default: NOT_REACHED();
+	}
+}
+
+AirportTileScopeResolver::AirportTileScopeResolver(ResolverObject &ro, const AirportTileSpec *ats, TileIndex tile, Station *st, const AirportTileGraphics *graphics)
+	: ScopeResolver(ro), st(st), tile(tile), ats(ats), graphics(graphics)
+{
+	if (this->graphics == nullptr && this->st != nullptr && this->tile != INVALID_TILE) {
+		this->graphics = GetAirportTileGraphics(this->tile);
+	}
+	if (this->graphics == nullptr) return;
+
+	/* When drawing the built-in fallback, the map record may still exist. */
+	if (!ats->grf_prop.HasGrfFile() || !ats->grf_prop.HasSpriteGroups() ||
+			ats->grf_prop.grfid != this->graphics->tile_grfid || ats->grf_prop.local_id != this->graphics->tile_id) {
+		this->graphics = nullptr;
+		return;
+	}
+
+	const AirportSpec *spec = GetSourceAirportSpec(this->graphics->source_grfid, this->graphics->source_airport);
+	const AirportTileLayout *layout = GetSourceLayout(spec, this->graphics->source_layout, this->graphics->source_pos, this->graphics->source_rotation);
+	if (GetMatchingSourceTile(*this->graphics, layout) == nullptr) return;
+	this->source_spec = spec;
+	this->source_layout = layout;
+	const int width = this->source_layout->size_x;
+	const int height = this->source_layout->size_y;
+	const uint16_t pos = this->graphics->source_pos;
+	this->source_offset = RotateSourceOffset(pos % width, pos / width, width, height, this->graphics->source_rotation);
+}
+
+const AirportSpec *AirportTileScopeResolver::GetAirportSpec() const
+{
+	if (this->graphics != nullptr) return this->source_spec;
+	return this->st != nullptr ? this->st->airport.GetSpec() : nullptr;
+}
+
+uint8_t AirportTileScopeResolver::GetAirportLayout() const
+{
+	if (this->graphics != nullptr) return this->source_layout != nullptr ? this->graphics->source_layout : 0;
+	return this->st != nullptr ? this->st->airport.layout : 0;
+}
+
+const AirportTileTable *AirportTileScopeResolver::GetSourceTileAtOffset(uint8_t parameter) const
+{
+	const AirportTileLayout &layout = *this->source_layout;
+	const uint rotation = to_underlying(this->graphics->source_rotation);
+	const int dx = static_cast<int>(GB(parameter, 0, 4) ^ 8) - 8;
+	const int dy = static_cast<int>(GB(parameter, 4, 4) ^ 8) - 8;
+	int width = layout.size_x;
+	int height = layout.size_y;
+	if ((rotation & 1) != 0) std::swap(width, height);
+
+	const int x = this->source_offset.x + dx;
+	const int y = this->source_offset.y + dy;
+	if (x < 0 || x >= width || y < 0 || y >= height) return nullptr;
+
+	const auto unrotated = RotateSourceOffset(x, y, width, height, static_cast<DiagDirection>((4 - rotation) % 4));
+	const AirportTileTable &entry = layout.tiles[unrotated.y * layout.size_x + unrotated.x];
+	return entry.type != ATT_INVALID ? &entry : nullptr;
+}
+
 /* virtual */ uint32_t AirportTileScopeResolver::GetVariable(uint16_t variable, uint32_t parameter, GetVariableExtra &extra) const
 {
-	assert(this->st != nullptr);
+	const bool has_world_tile = this->tile != INVALID_TILE && this->st != nullptr;
+
+	/* Variables which can be resolved using the source layout even in a GUI preview. */
+	switch (variable) {
+		case 0x7A: return GetBadgeVariableResult(*this->ro.grffile, this->ats->badges, parameter);
+
+		case A2VRI_AIRPORTTILES_AIRPORT_LAYOUT:
+			return this->GetAirportLayout();
+
+		case A2VRI_AIRPORTTILES_AIRPORT_ID: {
+			if (this->source_spec != nullptr) return this->source_spec->grf_prop.local_id;
+			const AirportSpec *spec = this->GetAirportSpec();
+			return spec != nullptr ? spec->grf_prop.local_id : 0;
+		}
+	}
+
+	if (this->source_layout != nullptr) {
+		switch (variable) {
+			case 0x43: {
+				const uint32_t x = this->source_offset.x;
+				const uint32_t y = this->source_offset.y;
+				return ((y & 0xF) << 20) | ((x & 0xF) << 16) | (y << 8) | x;
+			}
+
+			case 0x60: {
+				/* Airport membership comes from the source; terrain comes from the map. */
+				uint32_t result = this->GetSourceTileAtOffset(parameter) != nullptr ? 0x100 : 0;
+				if (has_world_tile && (extra.mask & ~0x100) != 0) {
+					result |= GetNearbyTileInformation(GetNearbyTile(parameter, this->tile), this->ro.grffile->grf_version >= 8, extra.mask);
+				}
+				return result;
+			}
+
+			case 0x61: {
+				if (this->GetSourceTileAtOffset(parameter) == nullptr) return UINT_MAX;
+				if (!has_world_tile) return 0;
+				const TileIndex neighbour = GetNearbyTile(parameter, this->tile);
+				/* The structural neighbour exists even if no live animation occupies its destination. */
+				return this->st->TileBelongsToAirport(neighbour) ? GetAnimationFrame(neighbour) : 0;
+			}
+
+			case 0x62: {
+				const AirportTileTable *entry = this->GetSourceTileAtOffset(parameter);
+				if (entry == nullptr) return 0xFFFF;
+				const StationGfx gfx = GetSourceTileGfx(*entry, this->graphics->source_rotation);
+				if (gfx == INVALID_AIRPORTTILE) {
+					const bool is_infrastructure = entry->type == ATT_INFRASTRUCTURE_WITH_CATCH || entry->type == ATT_INFRASTRUCTURE_NO_CATCH;
+					return 0xFF00 | (is_infrastructure ? entry->at_gfx : ATTG_DEFAULT_GFX);
+				}
+				return GetAirportTileIDForGraphics(gfx, this->ro.grffile->grfid);
+			}
+		}
+	}
+
+	if (!has_world_tile) {
+		if (this->graphics != nullptr && variable == 0x44) return 0;
+		extra.available = false;
+		return UINT_MAX;
+	}
 
 	switch (variable) {
 		/* Terrain type */
 		case 0x41: return GetTerrainType(this->tile);
 
 		/* Current town zone of the tile in the nearest town */
-		case 0x42: return to_underlying(GetTownRadiusGroup(ClosestTownFromTile(this->tile, UINT_MAX), this->tile));
+		case 0x42: {
+			const Town *town = ClosestTownFromTile(this->tile, UINT_MAX);
+			return to_underlying(town != nullptr ? GetTownRadiusGroup(town, this->tile) : HouseZone::TownEdge);
+		}
 
 		/* Position relative to most northern airport tile. */
 		case 0x43: return GetRelativePosition(this->tile, this->st->airport.tile);
@@ -196,15 +430,10 @@ static uint32_t GetAirportTileIDAtOffset(TileIndex tile, const Station *st, GrfI
 		}
 
 		/* Get airport tile ID at offset */
-		case 0x62: return GetAirportTileIDAtOffset(GetNearbyTile(parameter, this->tile), this->st, this->ro.grffile->grfid);
-
-		case 0x7A: return GetBadgeVariableResult(*this->ro.grffile, this->ats->badges, parameter);
-
-		case A2VRI_AIRPORTTILES_AIRPORT_LAYOUT:
-			return this->st->airport.layout;
-
-		case A2VRI_AIRPORTTILES_AIRPORT_ID:
-			return this->st->airport.GetSpec()->grf_prop.local_id;
+		case 0x62: {
+			const TileIndex neighbour = GetNearbyTile(parameter, this->tile);
+			return this->st->TileBelongsToAirport(neighbour) ? GetAirportTileIDForGraphics(GetAirportGfx(neighbour), this->ro.grffile->grfid) : 0xFFFF;
+		}
 	}
 
 	Debug(grf, 1, "Unhandled airport tile variable 0x{:X}", variable);
@@ -226,14 +455,15 @@ static uint32_t GetAirportTileIDAtOffset(TileIndex tile, const Station *st, GrfI
  * @param callback Callback ID.
  * @param callback_param1 First parameter (var 10) of the callback.
  * @param callback_param2 Second parameter (var 18) of the callback.
+ * @param graphics Optional source record for a GUI preview. Map draws look it up by tile.
  */
 AirportTileResolverObject::AirportTileResolverObject(const AirportTileSpec *ats, TileIndex tile, Station *st,
-		CallbackID callback, uint32_t callback_param1, uint32_t callback_param2)
+		CallbackID callback, uint32_t callback_param1, uint32_t callback_param2, const AirportTileGraphics *graphics)
 	: ResolverObject(ats->grf_prop.grffile, callback, callback_param1, callback_param2),
-		tiles_scope(*this, ats, tile, st),
-		airport_scope(*this, tile, st, st != nullptr ? AirportSpec::Get(st->airport.type) : nullptr, st != nullptr ? st->airport.layout : 0)
+			tiles_scope(*this, ats, tile, st, graphics),
+			airport_scope(*this, tile, st, this->tiles_scope.GetAirportSpec(), this->tiles_scope.GetAirportLayout(), this->tiles_scope.graphics == nullptr)
 {
-	this->root_spritegroup = ats->grf_prop.GetSpriteGroup(st != nullptr);
+	this->root_spritegroup = ats->grf_prop.GetSpriteGroup(st != nullptr || this->tiles_scope.graphics != nullptr);
 }
 
 GrfSpecFeature AirportTileResolverObject::GetFeature() const
@@ -252,7 +482,7 @@ uint16_t GetAirportTileCallback(CallbackID callback, uint32_t param1, uint32_t p
 	return object.ResolveCallback();
 }
 
-static void AirportDrawTileLayout(const TileInfo *ti, const TileLayoutSpriteGroup *group, Colours colour)
+static void AirportDrawTileLayout(const TileInfo *ti, const TileLayoutSpriteGroup *group, PaletteID palette)
 {
 	auto processor = group->ProcessRegisters(nullptr);
 	auto dts = processor.GetLayout();
@@ -264,33 +494,49 @@ static void AirportDrawTileLayout(const TileInfo *ti, const TileLayoutSpriteGrou
 		if (image == SPR_FLAT_WATER_TILE && IsTileOnWater(ti->tile)) {
 			DrawWaterClassGround(ti);
 		} else {
-			DrawGroundSprite(image, GroundSpritePaletteTransform(image, pal, GetColourPalette(colour)));
+			DrawGroundSprite(image, GroundSpritePaletteTransform(image, pal, palette));
 		}
 	}
 
-	DrawNewGRFTileSeq(ti, &dts, TransparencyOption::Buildings, 0, GetColourPalette(colour));
+	DrawNewGRFTileSeq(ti, &dts, TransparencyOption::Buildings, 0, palette);
 }
 
 bool DrawNewAirportTile(TileInfo *ti, Station *st, const AirportTileSpec *airts)
 {
-	if (ti->tileh != SLOPE_FLAT) {
-		bool draw_old_one = true;
-		if (airts->callback_mask.Test(AirportTileCallbackMask::DrawFoundations)) {
-			/* Called to determine the type (if any) of foundation to draw */
-			uint32_t callback_res = GetAirportTileCallback(CBID_AIRPTILE_DRAW_FOUNDATIONS, 0, 0, airts, st, ti->tile);
-			if (callback_res != CALLBACK_FAILED) draw_old_one = ConvertBooleanCallback(airts->grf_prop.grffile, CBID_AIRPTILE_DRAW_FOUNDATIONS, callback_res);
-		}
-
-		if (draw_old_one) DrawFoundation(ti, Foundation::Leveled);
+	bool draw_foundation = ti->tileh != SLOPE_FLAT;
+	if (draw_foundation && airts->callback_mask.Test(AirportTileCallbackMask::DrawFoundations)) {
+		uint32_t result = GetAirportTileCallback(CBID_AIRPTILE_DRAW_FOUNDATIONS, 0, 0, airts, st, ti->tile);
+		if (result != CALLBACK_FAILED) draw_foundation = ConvertBooleanCallback(airts->grf_prop.grffile, CBID_AIRPTILE_DRAW_FOUNDATIONS, result);
 	}
 
 	AirportTileResolverObject object(airts, ti->tile, st);
 	const TileLayoutSpriteGroup *group = object.Resolve<TileLayoutSpriteGroup>();
-	if (group == nullptr) {
-		return false;
-	}
+	if (group == nullptr) return false;
 
-	AirportDrawTileLayout(ti, group, Company::Get(st->owner)->colour);
+	/* Leave TileInfo untouched if the caller needs to draw the fallback instead. */
+	if (draw_foundation) DrawFoundation(ti, Foundation::Leveled);
+
+	const PaletteID palette = Company::IsValidID(st->owner) ? GetCompanyPalette(st->owner) : PALETTE_TO_GREY;
+	AirportDrawTileLayout(ti, group, palette);
+	return true;
+}
+
+bool DrawAirportTileGraphicsInGUI(int x, int y, const AirportTileGraphics &graphics, PaletteID palette)
+{
+	const StationGfx gfx = ResolveAirportTileGraphics(graphics);
+	if (gfx == INVALID_AIRPORTTILE) return false;
+
+	AirportTileResolverObject object(AirportTileSpec::Get(gfx), INVALID_TILE, nullptr, CBID_NO_CALLBACK, 0, 0, &graphics);
+	const TileLayoutSpriteGroup *group = object.Resolve<TileLayoutSpriteGroup>();
+	if (group == nullptr) return false;
+
+	auto processor = group->ProcessRegisters(nullptr);
+	auto dts = processor.GetLayout();
+	const SpriteID image = dts.ground.sprite;
+	if (GB(image, 0, SPRITE_WIDTH) != 0) {
+		DrawSprite(image, GroundSpritePaletteTransform(image, dts.ground.pal, palette), x, y);
+	}
+	DrawNewGRFTileSeqInGUI(x, y, &dts, 0, palette);
 	return true;
 }
 
@@ -357,4 +603,35 @@ uint8_t GetAirportTileAnimationSpeed(TileIndex tile)
 	if (ats == nullptr) return 0;
 
 	return AirportTileAnimationBase::GetAnimationSpeed(ats);
+}
+
+/** Collect individual source tiles which offer NewGRF graphics for this infrastructure type. */
+void GetGRFAirportTileCandidates(AirportTileType type, std::vector<AirportTileGfxSet> &candidates)
+{
+	candidates.clear();
+	if (type != ATT_INFRASTRUCTURE_WITH_CATCH && type != ATT_INFRASTRUCTURE_NO_CATCH) return;
+
+	for (uint i = 0; i < NUM_AIRPORTS; i++) {
+		const AirportSpec *spec = AirportSpec::GetWithoutOverride(i);
+		if (!spec->enabled) continue;
+
+		for (uint l = 0; l < spec->layouts.size() && l <= UINT8_MAX; l++) {
+			const AirportTileLayout &layout = spec->layouts[l];
+			if (layout.size_x == 0 || layout.tiles.size() != static_cast<size_t>(layout.size_x) * layout.size_y) continue;
+
+			for (uint pos = 0; pos < layout.tiles.size(); pos++) {
+				if (layout.tiles[pos].type != type) continue;
+
+				/* Identical tile IDs can draw differently at different positions in the source layout. */
+				AirportTileGfxSet set;
+				bool has_variant = false;
+				for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
+					auto &variant = set.variants[to_underlying(dir)];
+					variant = MakeAirportTileGraphics(spec, l, pos, dir);
+					has_variant |= variant.has_value();
+				}
+				if (has_variant) candidates.push_back(std::move(set));
+			}
+		}
+	}
 }

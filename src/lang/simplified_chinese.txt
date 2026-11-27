@@ -5814,7 +5814,9 @@ STR_ERROR_AIRPORT_NO_HELICOPTERS                                :{WHITE}这架�
 STR_BUILD_HELIPORT_CAPTION                                      :{WHITE}直升机场方向
 STR_BUILD_AIRPORT_INFRA_NO_CATCH_CAPTION                    :{WHITE}机场基础设施
 STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION                  :{WHITE}机场航站楼
-STR_BUILD_AIRPORT_INFRA_TOOLTIP                             :{BLACK}选择一段基础设施及其方向
+STR_BUILD_AIRPORT_INFRA_TOOLTIP                             :{BLACK}选择此基础设施图块的朝向
+STR_BUILD_AIRPORT_INFRA_UNAVAILABLE_DIRECTION               :{BLACK}此图形没有这个朝向的变体
+STR_ERROR_AIRPORT_NEWGRF_SINGLE_TILE                        :{WHITE}NewGRF 基础设施图形每次只能放置一格
 STR_BUILD_HANGAR_CAPTION                                    :{WHITE}机库方向
 STR_BUILD_HELIPORT_ORIENTATION_TOOLTIP                          :{BLACK}选择直升机场方向
 STR_BUILD_HANGAR_ORIENTATION_TOOLTIP                        :{BLACK}选择机库方向
@@ -5822,6 +5824,25 @@ STR_SELECT_GFX_AIRPORT_TRACKS_CAPTION                       :{WHITE}选择跑道
 STR_SELECT_GFX_AIRPORT_TRACKS_TOOLTIP                       :{BLACK}选择机场跑道图块的图形，然后点击跑道图块。
 STR_SELECT_GFX_AIRPORT_TRACKS_DETECT                           :{BLACK}自动
 STR_SELECT_GFX_AIRPORT_TRACKS_DEFAULT                       :{BLACK}默认
+STR_SELECT_AIRPORT_TILE_GFX_DEFAULT                         :{BLACK}内置图形
+STR_AIRPORT_TILE_CLASS_BUILTIN                              :内置图形
+STR_AIRPORT_TILE_CLASS_NEWGRF                               :NewGRF 机场
+STR_PICKER_AIRPORT_TILE_CLASS_TOOLTIP                       :{BLACK}选择基础设施图形的来源
+STR_PICKER_AIRPORT_TILE_TYPE_TOOLTIP                        :{BLACK}选择要建造的图形
+STR_PICKER_AIRPORT_TILE_COLLECTION_TOOLTIP                  :{BLACK}选择一个已保存的图形集合
+STR_PICKER_AIRPORT_TILE_RANDOM_TOOLTIP                      :{BLACK}随机图形
+STR_AIRPORT_TILE_BUILDING_1                                 :建筑 1
+STR_AIRPORT_TILE_BUILDING_2                                 :建筑 2
+STR_AIRPORT_TILE_BUILDING_3                                 :建筑 3
+STR_AIRPORT_TILE_BUILDING_FLAT                              :平顶建筑
+STR_AIRPORT_TILE_BUILDING_TERMINAL                          :航站楼
+STR_AIRPORT_TILE_FLAG                                       :旗杆
+STR_AIRPORT_TILE_TRANSMITTER                                :信号塔
+STR_AIRPORT_TILE_TOWER                                      :塔台
+STR_AIRPORT_TILE_RADAR                                      :雷达
+STR_AIRPORT_TILE_PIER                                       :栈桥
+STR_AIRPORT_TILE_EMPTY                                      :空地
+STR_AIRPORT_TILE_NEWGRF_DEFAULT                             :NewGRF 设施
 STR_ERROR_NO_RAIL_WAYPOINT                                      :{WHITE}没有铁路路点
 STR_ERROR_NO_ROAD_WAYPOINT                                      :{WHITE}没有道路路点
 STR_ERROR_NO_BUOY                                               :{WHITE}没有浮标

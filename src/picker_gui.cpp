@@ -59,6 +59,41 @@ PickerCallbacks::~PickerCallbacks()
 	callbacks.erase(std::ranges::find(callbacks, this));
 }
 
+/* virtual */ std::string PickerCallbacks::GetClassNameString(int id) const
+{
+	return GetString(this->GetClassName(id));
+}
+
+/** Read a single decimal field of a favourite key. */
+template <typename T>
+static bool ParsePickerNumber(std::string_view field, T &value)
+{
+	auto [ptr, err] = std::from_chars(field.data(), field.data() + field.size(), value);
+	return err == std::errc{} && ptr == field.data() + field.size();
+}
+
+/** Read a sprite key and, if present, its source location. */
+static std::optional<PickerItem> ParsePickerItem(std::string_view key)
+{
+	std::array<std::string_view, 7> fields;
+	size_t count = 0;
+	for (auto field : std::views::split(key, '|')) {
+		if (count == fields.size() || field.empty()) return std::nullopt;
+		fields[count++] = std::string_view(field.begin(), field.end());
+	}
+	if (count != 2 && count != fields.size()) return std::nullopt;
+
+	PickerItem item{};
+	if (!ConvertHexToBytes(fields[0], item.grfid) || !ParsePickerNumber(fields[1], item.local_id)) return std::nullopt;
+	if (count == 2) return item;
+
+	auto &source = item.source.emplace();
+	if (!ConvertHexToBytes(fields[2], source.grfid) || !ParsePickerNumber(fields[3], source.local_id) ||
+			!ParsePickerNumber(fields[4], source.layout) || !ParsePickerNumber(fields[5], source.position) ||
+			!ParsePickerNumber(fields[6], source.rotation)) return std::nullopt;
+	return item;
+}
+
 /**
  * Load favourites of a picker from config.
  * @param ini IniFile to load to.
@@ -80,23 +115,7 @@ static void PickerLoadConfig(const IniFile &ini, PickerCallbacks &callbacks)
 		}
 
 		for (const IniItem &item : group.items) {
-			GrfID grfid;
-			std::string_view str = item.name;
-
-			/* Try reading "<grfid>|<localid>" */
-			auto grfid_pos = str.find('|');
-			if (grfid_pos == std::string_view::npos) continue;
-
-			std::string_view grfid_str = str.substr(0, grfid_pos);
-			if (!ConvertHexToBytes(grfid_str, grfid)) continue;
-
-			str = str.substr(grfid_pos + 1);
-			uint16_t localid;
-			auto [ptr, err] = std::from_chars(str.data(), str.data() + str.size(), localid);
-
-			if (err == std::errc{} && ptr == str.data() + str.size()) {
-				callbacks.saved[collection].emplace(grfid, localid, 0, 0);
-			}
+			if (auto parsed = ParsePickerItem(item.name); parsed.has_value()) callbacks.saved[collection].insert(*parsed);
 		}
 	}
 }
@@ -118,6 +137,10 @@ static void PickerSaveConfig(IniFile &ini, const PickerCallbacks &callbacks)
 		group.Clear();
 		for (const PickerItem &item : collection.second) {
 			std::string key = fmt::format("{}|{}", FormatArrayAsHex(item.grfid), item.local_id);
+			if (const auto &source = item.source; source.has_value()) {
+				key += fmt::format("|{}|{}|{}|{}|{}", FormatArrayAsHex(source->grfid), source->local_id,
+						source->layout, source->position, source->rotation);
+			}
 			group.CreateItem(key);
 		}
 	}
@@ -151,7 +174,7 @@ static bool ClassIDSorter(int const &a, int const &b)
 static bool ClassTagNameFilter(int const *item, PickerFilterData &filter)
 {
 	filter.ResetState();
-	filter.AddLine(GetString(filter.callbacks->GetClassName(*item)));
+	filter.AddLine(filter.callbacks->GetClassNameString(*item));
 	return filter.GetState();
 }
 
@@ -413,7 +436,7 @@ void PickerWindow::DrawWidget(const Rect &r, WidgetID widget) const
 			const int y_step = this->GetWidget<NWidgetResizeBase>(widget)->resize_y;
 			auto [first, last] = vscroll->GetVisibleRangeIterators(this->classes);
 			for (auto it = first; it != last; ++it) {
-				DrawString(ir, this->callbacks.GetClassName(*it), *it == selected ? TextColour::White : TextColour::Black);
+				DrawString(ir, this->callbacks.GetClassNameString(*it), *it == selected ? TextColour::White : TextColour::Black);
 				ir.top += y_step;
 			}
 			break;

@@ -15,6 +15,7 @@
 
 #include "string_type.h"
 
+#include "airport.h"
 #include "bridge.h"
 #include "direction_type.h"
 #include "map_type.h"
@@ -238,10 +239,13 @@ struct BlueprintBuoy {
 struct BlueprintAirportTile {
 	TileIndexDiffC offset; ///< Tile offset relative to the blueprint origin.
 	uint8_t m4;            ///< Raw m4 of the airport tile (airtype gfx id).
-	uint8_t m5;            ///< Raw m5 of the airport tile (gfx + airport tile type).
+	uint8_t m5;            ///< Raw m5 of the airport tile (ground state + airport tile type).
 	uint8_t m6;            ///< Raw m6 of the airport tile (airtype gfx flag + ground counter).
-	uint16_t m8;           ///< Raw m8 of the airport tile, with reservation bits cleared.
+	uint16_t m8;           ///< Raw m8 (tracks/directions or infrastructure fallback), without reservations.
+	std::optional<AirportTileGraphics> graphics{}; ///< Stable, independent material; m4 holds the built-in fallback.
 };
+
+void NormalizeLegacyBlueprintAirportTile(BlueprintAirportTile &tile);
 
 /** An airport (anchored at its northern tile). */
 struct BlueprintAirport {

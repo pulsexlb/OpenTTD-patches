@@ -740,6 +740,9 @@ struct Airport : public TileArea {
 	uint64_t flags = 0;    ///< Stores some data of the airport.
 	uint8_t type = 0;      ///< Type of this airport, @see AirportTypes
 	uint8_t layout = 0;    ///< Airport layout number.
+	uint8_t source_type = AT_INVALID; ///< Legacy savegame field for NewGRF tile migration.
+	uint8_t source_layout = 0;        ///< Legacy layout of #source_type.
+	std::map<TileIndex, AirportTileGraphics> tile_graphics; ///< NewGRF graphics on individual infrastructure tiles.
 	Direction rotation = Direction::Invalid; ///< How this airport is rotated.
 	AirType air_type = INVALID_AIRTYPE; ///< NOSAVE: airport type.
 	Depot *hangar = nullptr;   ///< The corresponding hangar of this airport, if any.

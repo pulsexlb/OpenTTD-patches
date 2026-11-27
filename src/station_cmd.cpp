@@ -3448,11 +3448,12 @@ static void DrawTile_Airport(TileInfo *ti)
 			AirportTiles at = GetTileAirportGfx(ti->tile);
 			DiagDirection dir = GetAirportTileRotation(ti->tile);
 			switch (at) {
+				/* A missing NewGRF may leave a frame outside the built-in sequence. */
 				case ATTG_NO_CATCH_FLAG:
-					t = &_airtype_display_datas_flags[to_underlying(dir)][GetAnimationFrame(ti->tile)];
+					t = &_airtype_display_datas_flags[to_underlying(dir)][std::min<size_t>(GetAnimationFrame(ti->tile), std::size(_airtype_display_datas_flag_NE) - 1)];
 					break;
 				case ATTG_NO_CATCH_RADAR:
-					t = &_airtype_display_datas_radar[GetAnimationFrame(ti->tile)];
+					t = &_airtype_display_datas_radar[std::min<size_t>(GetAnimationFrame(ti->tile), std::size(_airtype_display_datas_radar) - 1)];
 					break;
 				case ATTG_NO_CATCH_TOWER:
 					total_offset = ati->base_sprites.ground[0] + (HasAirportGroundSnow(ti->tile) ? 4 : 0);
@@ -3522,9 +3523,15 @@ static void DrawTile_Airport(TileInfo *ti)
 /** @copydoc DrawTileProc */
 static void DrawTile_Station(TileInfo *ti, DrawTileProcParams params)
 {
-	if (IsAirportTile(ti->tile) && HasAirtypeGfx(ti->tile)) {
-		DrawTile_Airport(ti);
-		return;
+	if (IsAirportTile(ti->tile)) {
+		if (const AirportTileGraphics *graphics = GetAirportTileGraphics(ti->tile); graphics != nullptr) {
+			const StationGfx gfx = ResolveAirportTileGraphics(*graphics);
+			if (gfx != INVALID_AIRPORTTILE && DrawNewAirportTile(ti, Station::GetByTile(ti->tile), AirportTileSpec::Get(gfx))) return;
+		}
+		if (HasAirtypeGfx(ti->tile)) {
+			DrawTile_Airport(ti);
+			return;
+		}
 	}
 
 	const NewGRFSpriteLayout *layout = nullptr;

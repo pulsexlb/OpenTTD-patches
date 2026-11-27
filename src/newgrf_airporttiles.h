@@ -11,6 +11,9 @@
 #define NEWGRF_AIRPORTTILES_H
 
 #include "airport.h"
+#include "air_type.h"
+#include "newgrf_airport.h"
+#include "table/airporttile_ids.h"
 #include "station_map.h"
 #include "newgrf_animation_type.h"
 #include "newgrf_badge_type.h"
@@ -21,24 +24,18 @@
 
 /** Scope resolver for handling the tiles of an airport. */
 struct AirportTileScopeResolver : public ScopeResolver {
-	struct Station *st;  ///< %Station of the airport for which the callback is run, or \c nullptr for build gui.
-	uint8_t airport_id;  ///< Type of airport for which the callback is run.
-	TileIndex tile;      ///< Tile for the callback, only valid for airporttile callbacks.
-	const AirportTileSpec *ats;
+	Station *st;                ///< Destination station, or nullptr in the build GUI.
+	TileIndex tile;             ///< Destination tile, or INVALID_TILE in the build GUI.
+	const AirportTileSpec *ats; ///< Graphics specification for this tile.
+	const AirportTileGraphics *graphics; ///< Per-tile graphics record, if active.
+	const AirportSpec *source_spec = nullptr; ///< Source airport, if still available.
+	const AirportTileLayout *source_layout = nullptr; ///< Source layout, if still available.
+	TileIndexDiffC source_offset{}; ///< Position of the source tile in the rotated layout.
 
-	/**
-	 * Constructor of the scope resolver specific for airport tiles.
-	 * @param ro Surrounding resolver.
-	 * @param ats Specification of the airport tiles.
-	 * @param tile %Tile for the callback, only valid for airporttile callbacks.
-	 * @param st Station of the airport for which the callback is run, or \c nullptr for build gui.
-	 */
-	AirportTileScopeResolver(ResolverObject &ro, const AirportTileSpec *ats, TileIndex tile, Station *st)
-		: ScopeResolver(ro), st(st), tile(tile), ats(ats)
-	{
-		assert(st != nullptr);
-		this->airport_id = st->airport.type;
-	}
+	AirportTileScopeResolver(ResolverObject &ro, const AirportTileSpec *ats, TileIndex tile, Station *st, const AirportTileGraphics *graphics);
+	const AirportSpec *GetAirportSpec() const;
+	uint8_t GetAirportLayout() const;
+	const AirportTileTable *GetSourceTileAtOffset(uint8_t parameter) const;
 
 	uint32_t GetRandomBits() const override;
 	uint32_t GetVariable(uint16_t variable, uint32_t parameter, GetVariableExtra &extra) const override;
@@ -50,7 +47,8 @@ struct AirportTileResolverObject : public ResolverObject {
 	AirportScopeResolver airport_scope;   ///< Scope resolver for the airport owning the tile.
 
 	AirportTileResolverObject(const AirportTileSpec *ats, TileIndex tile, Station *st,
-			CallbackID callback = CBID_NO_CALLBACK, uint32_t callback_param1 = 0, uint32_t callback_param2 = 0);
+			CallbackID callback = CBID_NO_CALLBACK, uint32_t callback_param1 = 0, uint32_t callback_param2 = 0,
+			const AirportTileGraphics *graphics = nullptr);
 
 	ScopeResolver *GetScope(VarSpriteGroupScope scope = VarSpriteGroupScope::Self, VarSpriteGroupScopeOffset relative = 0) override
 	{
@@ -88,10 +86,24 @@ private:
 	friend void AirportTileOverrideManager::SetEntitySpec(AirportTileSpec &&airpts);
 };
 
+/** One source tile, with the NewGRF graphics it defines for each rotation. */
+struct AirportTileGfxSet {
+	std::array<std::optional<AirportTileGraphics>, static_cast<size_t>(DiagDirection::End)> variants;
+};
+
+std::optional<AirportTileGraphics> MakeAirportTileGraphics(uint8_t airport_type, uint8_t layout, uint16_t pos, DiagDirection rotation);
+std::optional<AirportTileGraphics> MakeAirportTileGraphics(GrfID source_grfid, uint16_t source_airport, uint8_t layout, uint16_t pos, DiagDirection rotation);
+const AirportTileGraphics *GetAirportTileGraphics(TileIndex tile);
+const AirportTileTable *GetAirportTileGraphicsSource(const AirportTileGraphics &graphics);
+StationGfx ResolveAirportTileGraphics(const AirportTileGraphics &graphics);
+bool DrawAirportTileGraphicsInGUI(int x, int y, const AirportTileGraphics &graphics, PaletteID palette);
+
 void AnimateAirportTile(TileIndex tile);
 bool TriggerAirportTileAnimation(Station *st, TileIndex tile, AirportAnimationTrigger trigger);
 bool TriggerAirportAnimation(Station *st, AirportAnimationTrigger trigger, CargoType cargo_type = INVALID_CARGO);
 uint8_t GetAirportTileAnimationSpeed(TileIndex tile);
 bool DrawNewAirportTile(TileInfo *ti, Station *st, const AirportTileSpec *airts);
+
+void GetGRFAirportTileCandidates(AirportTileType type, std::vector<AirportTileGfxSet> &candidates);
 
 #endif /* NEWGRF_AIRPORTTILES_H */

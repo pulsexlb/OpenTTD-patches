@@ -157,8 +157,8 @@ static ChangeInfoResult AirportChangeInfo(uint first, uint last, int prop, const
 						DiagDirection rotation = (DiagDirection)(buf.ReadByte() / 2); // rotation
 
 						for (;;) {
-							uint8_t x = buf.ReadByte(); // Offsets from northermost tile
-							uint8_t y = buf.ReadByte();
+							int x = buf.ReadByte(); // Offsets from northernmost tile.
+							int y = buf.ReadByte();
 
 							if (x == 0 && y == 0x80) break;
 
@@ -182,16 +182,24 @@ static ChangeInfoResult AirportChangeInfo(uint first, uint last, int prop, const
 									NOT_REACHED();
 							}
 
-							uint16_t table_index = as->layouts[0].size_x * y + x;
-							assert(table_index < as->layouts[0].size_x * as->layouts[0].size_y);
+							/* A NewGRF may describe tiles outside the layout of the airport it
+							 * substitutes, for example when it was written for a larger airport.
+							 * Such tiles have nowhere to go, so drop them instead of taking down
+							 * the game. Their sprite data still has to be consumed to keep the
+							 * rest of the layout in sync. */
+							const bool in_layout = x >= 0 && x < layout.size_x && y >= 0 && y < layout.size_y;
+							const uint table_index = in_layout ? layout.size_x * y + x : 0;
+							if (!in_layout) {
+								GrfMsg(1, "AirportChangeInfo: Tile ({}, {}) is outside the {}x{} layout of airport {}, ignoring it", x, y,
+										as->layouts[0].size_x, as->layouts[0].size_y, id);
+							}
 
 							// Only keep track of first layout.
-							if (j == 0) defined_tiles[table_index] = true;
-							auto &tile = layout.tiles[table_index];
+							if (j == 0 && in_layout) defined_tiles[table_index] = true;
 
-							tile.gfx[static_cast<size_t>(rotation)] = (AirportTiles)buf.ReadByte();
+							AirportTiles gfx = (AirportTiles)buf.ReadByte();
 
-							if (tile.gfx[static_cast<size_t>(rotation)] == 0xFE) { // gfx
+							if (gfx == 0xFE) { // gfx
 								int local_tile_id = buf.ReadWord(); // use a new tile for this GRFC
 								/* Read the ID from the _airporttile_mngr. */
 								uint16_t tempid = _airporttile_mngr.GetID(local_tile_id, _cur_gps.grffile->grfid);
@@ -200,9 +208,11 @@ static ChangeInfoResult AirportChangeInfo(uint first, uint last, int prop, const
 									GrfMsg(2, "AirportChangeInfo: Attempt to use airport tile {} with airport id {}, not yet defined. Ignoring.", local_tile_id, id);
 								} else {
 									/* Declared as been valid, can be used */
-									tile.gfx[static_cast<size_t>(rotation)] = (AirportTiles)tempid;
+									gfx = (AirportTiles)tempid;
 								}
 							}
+
+							if (in_layout) layout.tiles[table_index].gfx[static_cast<size_t>(rotation)] = gfx;
 						}
 					}
 

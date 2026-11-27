@@ -3026,7 +3026,9 @@ STR_BUILD_DEPOT_TRAIN_ORIENTATION_TOOLTIP                       :{BLACK}Select r
 STR_BUILD_HELIPORT_CAPTION                                      :{WHITE}Heliport Orientation
 STR_BUILD_AIRPORT_INFRA_NO_CATCH_CAPTION                    :{WHITE}Infrastructure without cargo catchment
 STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION                  :{WHITE}Infrastructure with cargo catchment
-STR_BUILD_AIRPORT_INFRA_TOOLTIP                             :{BLACK}Select a piece of infrastructre and its orientation
+STR_BUILD_AIRPORT_INFRA_TOOLTIP                             :{BLACK}Select the orientation of this infrastructure tile
+STR_BUILD_AIRPORT_INFRA_UNAVAILABLE_DIRECTION               :{BLACK}These graphics are not available in this direction
+STR_ERROR_AIRPORT_NEWGRF_SINGLE_TILE                        :{WHITE}NewGRF infrastructure graphics can only be placed one tile at a time
 STR_BUILD_HANGAR_CAPTION                                    :{WHITE}Hangar Orientation
 STR_BUILD_HELIPORT_ORIENTATION_TOOLTIP                          :{BLACK}Select heliport orientation
 STR_BUILD_HANGAR_ORIENTATION_TOOLTIP                        :{BLACK}Select hangar orientation
@@ -3034,6 +3036,25 @@ STR_SELECT_GFX_AIRPORT_TRACKS_CAPTION                       :{WHITE}Selection of
 STR_SELECT_GFX_AIRPORT_TRACKS_TOOLTIP                       :{BLACK}Select the graphics for airport track tiles and click on airport track tiles.
 STR_SELECT_GFX_AIRPORT_TRACKS_DETECT                           :{BLACK}Automatic
 STR_SELECT_GFX_AIRPORT_TRACKS_DEFAULT                       :{BLACK}Default
+STR_SELECT_AIRPORT_TILE_GFX_DEFAULT                         :{BLACK}Built-in graphics
+STR_AIRPORT_TILE_CLASS_BUILTIN                              :Built-in graphics
+STR_AIRPORT_TILE_CLASS_NEWGRF                               :NewGRF airports
+STR_PICKER_AIRPORT_TILE_CLASS_TOOLTIP                       :{BLACK}Select the source of the infrastructure graphics
+STR_PICKER_AIRPORT_TILE_TYPE_TOOLTIP                        :{BLACK}Select the graphics to build
+STR_PICKER_AIRPORT_TILE_COLLECTION_TOOLTIP                  :{BLACK}Select a saved collection of graphics
+STR_PICKER_AIRPORT_TILE_RANDOM_TOOLTIP                      :{BLACK}Random graphics
+STR_AIRPORT_TILE_BUILDING_1                                 :Building 1
+STR_AIRPORT_TILE_BUILDING_2                                 :Building 2
+STR_AIRPORT_TILE_BUILDING_3                                 :Building 3
+STR_AIRPORT_TILE_BUILDING_FLAT                              :Flat building
+STR_AIRPORT_TILE_BUILDING_TERMINAL                          :Terminal
+STR_AIRPORT_TILE_FLAG                                       :Flag
+STR_AIRPORT_TILE_TRANSMITTER                                :Transmitter
+STR_AIRPORT_TILE_TOWER                                      :Tower
+STR_AIRPORT_TILE_RADAR                                      :Radar
+STR_AIRPORT_TILE_PIER                                       :Pier
+STR_AIRPORT_TILE_EMPTY                                      :Empty
+STR_AIRPORT_TILE_NEWGRF_DEFAULT                             :NewGRF infrastructure
 
 # Rail waypoint construction window
 STR_WAYPOINT_CAPTION                                            :{WHITE}Waypoint

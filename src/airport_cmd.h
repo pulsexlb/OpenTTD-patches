@@ -14,6 +14,7 @@
 #include "air.h"
 #include "air_type.h"
 #include "direction_type.h"
+#include "newgrf_type.h"
 #include "station_type.h"
 #include "track_type.h"
 #include "table/airporttile_ids.h"
@@ -29,6 +30,7 @@ CommandCost CmdAddRemoveTracksToAirport(DoCommandFlags flags, TileIndex start_ti
 CommandCost CmdChangeAirType(DoCommandFlags flags, TileIndex tile, AirType air_type);
 CommandCost CmdAirportChangeTrackGFX(DoCommandFlags flags, TileIndex start_tile, TileIndex end_tile, AirType air_type, uint8_t gfx_index, bool diagonal);
 CommandCost CmdAirportToggleGround(DoCommandFlags flags, TileIndex start_tile, TileIndex end_tile, AirType air_type, bool diagonal);
+CommandCost CmdSetAirportTileGfx(DoCommandFlags flags, TileIndex tile, AirportTileType type, GrfID source_grfid, uint16_t source_airport, uint8_t layout, uint16_t pos, DiagDirection source_rotation);
 
 CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airport_type, uint8_t layout, AirType air_type, DiagDirection rotation, StationID station_to_join, bool allow_adjacent);
 CommandCost CmdOpenCloseAirport(DoCommandFlags flags, StationID station_id);
@@ -39,6 +41,7 @@ DEF_CMD_TUPLE(Commands::AddRemoveTracksAirport, CmdAddRemoveTracksToAirport, CMD
 DEF_CMD_TUPLE(Commands::ChangeAirType,          CmdChangeAirType,            CMD_AUTO,                CommandType::LandscapeConstruction, CmdDataT<AirType>)
 DEF_CMD_TUPLE(Commands::AirportChangeTrackGfx,  CmdAirportChangeTrackGFX,    CMD_AUTO,                CommandType::LandscapeConstruction, CmdDataT<TileIndex, AirType, uint8_t, bool>)
 DEF_CMD_TUPLE(Commands::AirportToggleGround,    CmdAirportToggleGround,      CMD_AUTO,                CommandType::LandscapeConstruction, CmdDataT<TileIndex, AirType, bool>)
+DEF_CMD_TUPLE(Commands::SetAirportTileGfx,      CmdSetAirportTileGfx,        CMD_AUTO,                CommandType::LandscapeConstruction, CmdDataT<AirportTileType, GrfID, uint16_t, uint8_t, uint16_t, DiagDirection>)
 
 DEF_CMD_TUPLE(Commands::BuildAirport,           CmdBuildAirport,             CMD_AUTO | CMD_NO_WATER, CommandType::LandscapeConstruction, CmdDataT<uint8_t, uint8_t, AirType, DiagDirection, StationID, bool>)
 DEF_CMD_TUPLE_NT(Commands::OpenCloseAirport,    CmdOpenCloseAirport,         {},                      CommandType::RouteManagement,       CmdDataT<StationID>)

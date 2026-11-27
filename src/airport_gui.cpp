@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include "economy_func.h"
+#include "error.h"
 #include "widget_type.h"
 #include "window_gui.h"
 #include "station_gui.h"
@@ -20,13 +21,19 @@
 #include "viewport_func.h"
 #include "company_func.h"
 #include "command_func.h"
+#include "sprite.h"
+#include "gfx_func.h"
 #include "tilehighlight_func.h"
 #include "company_base.h"
 #include "station_type.h"
 #include "newgrf_airport.h"
+#include "newgrf_config.h"
+#include "newgrf_airporttiles.h"
 #include "newgrf_callbacks.h"
 #include "dropdown_type.h"
 #include "dropdown_func.h"
+#include "picker_gui.h"
+#include "core/backup_type.hpp"
 #include "core/geometry_func.hpp"
 #include "hotkeys.h"
 #include "vehicle_func.h"
@@ -56,11 +63,17 @@ static AirportClassID _selected_airport_class;   ///< the currently visible airp
 static int _selected_airport_index;              ///< the index of the selected airport in the current class or -1
 static uint8_t _selected_airport_layout;         ///< selected airport layout number.
 static DiagDirection _selected_rotation;         ///< selected rotation for airport.
-static uint8_t _selected_infra_catch_rotation;   ///< selected rotation for infrastructure.
-static AirportTiles _selected_infra_catch;       ///< selected infrastructure type.
-static uint8_t _selected_infra_nocatch_rotation; ///< selected rotation for infrastructure.
-static AirportTiles _selected_infra_nocatch;     ///< selected infrastructure type.
 static uint8_t _selected_track_gfx_index;        ///< selected track gfx index.
+
+/** The exact variant (or built-in graphic) chosen in the infrastructure picker. */
+struct AirportInfraSelection {
+	AirportTiles builtin;
+	DiagDirection direction;
+	std::optional<AirportTileGraphics> graphics;
+};
+
+static AirportInfraSelection GetAirportInfraSelection(AirportTileType type);
+static constexpr int CLOSE_INFRA_PICKER_ON_TOOL_ABORT = 1;
 
 static void ShowBuildAirportPicker(Window *parent);
 static void ShowHangarPicker(Window *parent);
@@ -126,6 +139,17 @@ static void PlaceAirport(TileIndex tile)
 struct BuildAirToolbarWindow : Window {
 	const bool allow_by_tile;
 	int last_user_action; // Last started user action.
+
+	struct InfraPlacement {
+		AirportInfraSelection selection;
+		TileIndex start;
+		AirportTileType type;
+		bool removing;
+		bool dragged = false; ///< The cursor left the first tile at any point during sizing.
+
+		bool IsNewGRFPlacement() const { return !this->removing && this->selection.graphics.has_value(); }
+	};
+	std::optional<InfraPlacement> infra_placement;
 
 	BuildAirToolbarWindow(bool allow_by_tile, WindowDesc &desc, AirType airtype) : Window(desc), allow_by_tile(allow_by_tile)
 	{
@@ -418,7 +442,13 @@ struct BuildAirToolbarWindow : Window {
 				break;
 
 			case WID_AT_INFRASTRUCTURE_CATCH:
-			case WID_AT_INFRASTRUCTURE_NO_CATCH:
+			case WID_AT_INFRASTRUCTURE_NO_CATCH: {
+				const auto type = this->last_user_action == WID_AT_INFRASTRUCTURE_CATCH ? ATT_INFRASTRUCTURE_WITH_CATCH : ATT_INFRASTRUCTURE_NO_CATCH;
+				this->infra_placement = InfraPlacement{GetAirportInfraSelection(type), tile, type, _remove_button_clicked};
+				VpStartPlaceSizing(tile, VPM_X_AND_Y, DDSP_BUILD_STATION);
+				break;
+			}
+
 			case WID_AT_APRON:
 			case WID_AT_HELIPAD:
 			case WID_AT_HELIPORT:
@@ -447,13 +477,19 @@ struct BuildAirToolbarWindow : Window {
 		}
 	}
 
-	void OnPlaceDrag(ViewportPlaceMethod select_method, [[maybe_unused]] ViewportDragDropSelectionProcess select_proc, [[maybe_unused]] Point pt) override
+	void OnPlaceDrag(ViewportPlaceMethod select_method, [[maybe_unused]] ViewportDragDropSelectionProcess select_proc, Point pt) override
 	{
+		if (this->infra_placement.has_value() && this->infra_placement->IsNewGRFPlacement()) {
+			/* Keep the highlight to one tile, but remember a drag even if it returns to the start. */
+			if (pt.x == -1 || TileVirtXY(pt.x, pt.y) != this->infra_placement->start) this->infra_placement->dragged = true;
+			return;
+		}
 		VpSelectTilesWithMethod(pt.x, pt.y, select_method);
 	}
 
-	void OnPlaceMouseUp([[maybe_unused]] ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, [[maybe_unused]] Point pt, TileIndex start_tile, TileIndex end_tile) override
+	void OnPlaceMouseUp([[maybe_unused]] ViewportPlaceMethod select_method, ViewportDragDropSelectionProcess select_proc, Point pt, TileIndex start_tile, TileIndex end_tile) override
 	{
+		const auto infra = std::exchange(this->infra_placement, std::nullopt);
 		if (pt.x == -1) return;
 
 		switch (this->last_user_action) {
@@ -485,7 +521,27 @@ struct BuildAirToolbarWindow : Window {
 			case WID_AT_CONVERT:
 				NOT_REACHED();
 			case WID_AT_INFRASTRUCTURE_CATCH:
-			case WID_AT_INFRASTRUCTURE_NO_CATCH:
+			case WID_AT_INFRASTRUCTURE_NO_CATCH: {
+				if (!infra.has_value()) break;
+				const auto &selection = infra->selection;
+				if (infra->IsNewGRFPlacement()) {
+					const Point cursor = GetTileBelowCursor();
+					if (cursor.x == -1) break;
+					if (infra->dragged || TileVirtXY(cursor.x, cursor.y) != infra->start) {
+						ShowErrorMessage(GetEncodedString(STR_ERROR_CAN_T_DO_THIS), GetEncodedString(STR_ERROR_AIRPORT_NEWGRF_SINGLE_TILE), WarningLevel::Error);
+						break;
+					}
+					const auto &graphics = *selection.graphics;
+					Command<Commands::SetAirportTileGfx>::Post(STR_ERROR_CAN_T_DO_THIS, infra->start, infra->type,
+							graphics.source_grfid, graphics.source_airport, graphics.source_layout, graphics.source_pos, graphics.source_rotation);
+					break;
+				}
+
+				const AirportTiles gfx = infra->removing ? (infra->type == ATT_INFRASTRUCTURE_WITH_CATCH ? ATTG_DEFAULT_GFX : ATTG_NO_CATCH_FLAG) : selection.builtin;
+				Command<Commands::ChangeAirport>::Post(STR_ERROR_CAN_T_DO_THIS, start_tile, end_tile, _cur_airtype, infra->type, gfx, selection.direction, !infra->removing, _ctrl_pressed);
+				break;
+			}
+
 			case WID_AT_APRON:
 			case WID_AT_HELIPAD:
 			case WID_AT_HELIPORT:
@@ -493,17 +549,9 @@ struct BuildAirToolbarWindow : Window {
 			case WID_AT_HANGAR_EXTENDED:
 			case WID_AT_RUNWAY_LANDING:
 			case WID_AT_RUNWAY_NO_LANDING: {
-				DiagDirection dir = _rotation_dir;
-				AirportTiles gfx = _selected_infra_catch;
 				bool diagonal = _ctrl_pressed &&
 						(this->last_user_action != WID_AT_HANGAR_EXTENDED && this->last_user_action != WID_AT_HANGAR_STANDARD);
-				if (this->last_user_action == WID_AT_INFRASTRUCTURE_CATCH) {
-					dir = (DiagDirection)_selected_infra_catch_rotation;
-				} else if (this->last_user_action == WID_AT_INFRASTRUCTURE_NO_CATCH) {
-					dir = (DiagDirection)_selected_infra_nocatch_rotation;
-					gfx = (AirportTiles)(ATTG_NO_CATCH_FLAG + _selected_infra_nocatch);
-				}
-				bool ret = Command<Commands::ChangeAirport>::Post(STR_ERROR_CAN_T_DO_THIS, start_tile, end_tile, _cur_airtype, _airport_tile_type, gfx, dir, !_remove_button_clicked, diagonal);
+				bool ret = Command<Commands::ChangeAirport>::Post(STR_ERROR_CAN_T_DO_THIS, start_tile, end_tile, _cur_airtype, _airport_tile_type, ATTG_DEFAULT_GFX, _rotation_dir, !_remove_button_clicked, diagonal);
 				if (ret && _remove_button_clicked &&
 						(this->last_user_action == WID_AT_RUNWAY_LANDING || this->last_user_action == WID_AT_RUNWAY_NO_LANDING)) {
 					VpStartPlaceSizing(start_tile, VPM_X_OR_Y, DDSP_BUILD_STATION);
@@ -533,10 +581,14 @@ struct BuildAirToolbarWindow : Window {
 
 	void OnPlaceObjectAbort() override
 	{
+		this->infra_placement.reset();
 		if (this->IsWidgetLowered(WID_AT_AIRPORT)) SetViewportCatchmentStation(nullptr, true);
 
 		this->RaiseButtons();
 
+		if (Window *picker = this->FindChildWindow(WindowClass::BuildAirportInfrastructure); picker != nullptr) {
+			picker->Close(CLOSE_INFRA_PICKER_ON_TOOL_ABORT);
+		}
 		CloseWindowById(WindowClass::BuildStation, TransportType::Air);
 		CloseWindowById(WindowClass::JoinStation, 0);
 	}
@@ -1395,267 +1447,474 @@ static void ShowHeliportPicker(Window *parent)
 	new BuildHeliportWindow(_build_heliport_desc, parent);
 }
 
-struct BuildAirportInfraNoCatchWindow : public PickerWindowBase {
-	BuildAirportInfraNoCatchWindow(WindowDesc &desc, Window *parent) : PickerWindowBase(desc, parent)
+/** One selectable built-in graphic or NewGRF source tile. */
+struct AirportInfraEntry {
+	AirportTiles builtin = INVALID_AIRPORTTILE;
+	AirportTileGfxSet gfx{};
+	StringID name = INVALID_STRING_ID;
+
+	bool HasDirection(DiagDirection dir) const
 	{
-		this->CreateNestedTree();
-		this->LowerWidget(WID_BAINC_FLAG + (BuildAirportInfrastructureNoCatchmentWidgets)_selected_infra_nocatch);
-		this->FinishInitNested(TransportType::Air);
+		return this->builtin != INVALID_AIRPORTTILE || this->gfx.variants[to_underlying(dir)].has_value();
 	}
 
-	uint GetHeliportSpriteHeight() const { return 97; }
-
-	void UpdateWidgetSize(int widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
+	DiagDirection GetAvailableDirection(DiagDirection preferred) const
 	{
-		if (!IsInsideMM(widget, WID_BAINC_FLAG, WID_BAINC_EMPTY + 1)) return;
-
-		size.width  = ScaleGUITrad(64) + 2;
-		size.height = ScaleGUITrad(GetHeliportSpriteHeight()) + 2;
-	}
-
-	void DrawWidget(const Rect &r, int widget) const override
-	{
-		if (!IsInsideMM(widget, WID_BAINC_FLAG, WID_BAINC_EMPTY + 1)) return;
-
-		int x = r.left + 1 + ScaleGUITrad(TILE_PIXELS - 1);
-		int y = r.bottom - ScaleGUITrad(TILE_PIXELS - 1);
-
-		SpriteID ground = GetAirTypeInfo(_cur_airtype)->base_sprites.ground[0];
-		PaletteID palette = GetCompanyPalette(_local_company);
-		extern const DrawTileSpriteSpan _airtype_display_datas[];
-		extern const DrawTileSpriteSpan _airtype_display_datas_radar[];
-		extern const DrawTileSpriteSpan _airtype_display_datas_tower[];
-		extern const DrawTileSpriteSpan _airtype_display_datas_transmitter[];
-		const DrawTileSpriteSpan *dts = nullptr;
-		DrawSprite(ground, PAL_NONE, x, y);
-
-		switch (widget) {
-			case WID_BAINC_FLAG: {
-				extern const DrawTileSpriteSpan _airtype_display_datas_flag_NE[];
-				extern const DrawTileSpriteSpan _airtype_display_datas_flag_SE[];
-				extern const DrawTileSpriteSpan _airtype_display_datas_flag_SW[];
-				extern const DrawTileSpriteSpan _airtype_display_datas_flag_NW[];
-
-				const DrawTileSpriteSpan *flags[4] = {
-						_airtype_display_datas_flag_NE,
-						_airtype_display_datas_flag_SE,
-						_airtype_display_datas_flag_SW,
-						_airtype_display_datas_flag_NW,
-				};
-
-				ground = 0;
-				dts = flags[_selected_infra_nocatch_rotation];
-				break;
-			}
-			case WID_BAINC_RADAR:
-				ground = 0;
-				dts = &_airtype_display_datas_radar[2];
-				break;
-			case WID_BAINC_TOWER:
-				dts = &_airtype_display_datas_tower[_selected_infra_nocatch_rotation];
-				break;
-			case WID_BAINC_TRANSMITTER:
-				dts = &_airtype_display_datas_transmitter[_selected_infra_nocatch_rotation];
-				break;
-
-			case WID_BAINC_EMPTY:
-			case WID_BAINC_PIER:
-				dts = &_airtype_display_datas[(widget - WID_BAINC_FLAG + ATTG_NO_CATCH_FLAG) * 4 + _selected_infra_nocatch_rotation];
-				break;
-			default:
-				NOT_REACHED();
+		if (this->HasDirection(preferred)) return preferred;
+		for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
+			if (this->HasDirection(dir)) return dir;
 		}
-		if (dts != nullptr) DrawRailTileSeqInGUI(x, y, dts, ground, 0, palette);
+		NOT_REACHED();
 	}
 
-	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
+	const AirportTileGraphics &GetRepresentative() const
 	{
-		if (widget == WID_BAINC_ROTATION) {
-			return GetString(STR_AIRPORT_ROTATION_0 + static_cast<uint>(_selected_infra_nocatch_rotation));
-		}
-		return Window::GetWidgetString(widget, stringid);
-	}
-
-	void OnClick([[maybe_unused]] Point pt, int widget, [[maybe_unused]] int click_count) override
-	{
-		switch (widget) {
-			case WID_BAINC_FLAG:
-			case WID_BAINC_TRANSMITTER:
-			case WID_BAINC_TOWER:
-			case WID_BAINC_RADAR:
-			case WID_BAINC_PIER:
-			case WID_BAINC_EMPTY:
-				this->RaiseWidget(WID_BAINC_FLAG + (BuildAirportInfrastructureNoCatchmentWidgets)_selected_infra_nocatch);
-				_selected_infra_nocatch = (AirportTiles)(widget - WID_BAINC_FLAG);
-				this->LowerWidget(WID_BAINC_FLAG + (BuildAirportInfrastructureNoCatchmentWidgets)_selected_infra_nocatch);
-				if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
-				this->SetDirty();
-				break;
-
-			case WID_BAINC_ROTATION_DECREASE:
-				_selected_infra_nocatch_rotation = ((int)_selected_infra_nocatch_rotation + 3) % 4;
-				this->SetDirty();
-				break;
-
-			case WID_BAINC_ROTATION_INCREASE:
-				_selected_infra_nocatch_rotation = (_selected_infra_nocatch_rotation + 1) % 4;
-				this->SetDirty();
-				break;
-
-			default:
-				break;
-		}
+		return *this->gfx.variants[to_underlying(this->GetAvailableDirection(DiagDirection::NE))];
 	}
 };
 
-static const NWidgetPart _nested_build_airport_infra_no_catch_widgets[] = {
+/** Built-in graphics, or the graphics provided by one NewGRF. */
+struct AirportInfraClass {
+	std::string name;
+	std::vector<AirportInfraEntry> entries;
+};
+
+/**
+ * Get the tile sequence of a built-in air type infrastructure graphic.
+ * @param at The air type graphic.
+ * @param dir The direction.
+ * @param ground Receives the ground sprite the sequence expects, or 0 when it has none.
+ * @return The tile sequence, or nullptr when there is none.
+ */
+static const DrawTileSpriteSpan *GetBuiltinInfraSpan(AirportTiles at, uint dir, SpriteID &ground)
+{
+	extern const DrawTileSpriteSpan _airtype_display_datas[];
+	extern const DrawTileSpriteSpan _airtype_display_datas_radar[];
+	extern const DrawTileSpriteSpan _airtype_display_datas_tower[];
+	extern const DrawTileSpriteSpan _airtype_display_datas_transmitter[];
+	extern const DrawTileSpriteSpan _airtype_display_datas_flag_NE[];
+	extern const DrawTileSpriteSpan _airtype_display_datas_flag_SE[];
+	extern const DrawTileSpriteSpan _airtype_display_datas_flag_SW[];
+	extern const DrawTileSpriteSpan _airtype_display_datas_flag_NW[];
+
+	static const DrawTileSpriteSpan *const flag_spans[] = {
+		_airtype_display_datas_flag_NE, _airtype_display_datas_flag_SE,
+		_airtype_display_datas_flag_SW, _airtype_display_datas_flag_NW,
+	};
+
+	switch (at) {
+		case ATTG_NO_CATCH_FLAG:
+			ground = 0;
+			return flag_spans[dir];
+
+		case ATTG_NO_CATCH_TRANSMITTER:
+			return &_airtype_display_datas_transmitter[dir];
+
+		case ATTG_NO_CATCH_TOWER:
+			return &_airtype_display_datas_tower[dir];
+
+		case ATTG_NO_CATCH_RADAR:
+			ground = 0;
+			return &_airtype_display_datas_radar[2];
+
+		default:
+			return &_airtype_display_datas[static_cast<uint>(at) * 4 + dir];
+	}
+}
+
+/** Draw one tile in the requested direction, with no substitute for a missing direction. */
+static void DrawInfraGraphic(int x, int y, const AirportInfraEntry &entry, DiagDirection dir)
+{
+	const PaletteID palette = GetCompanyPalette(_local_company);
+	AirportTiles builtin = entry.builtin;
+	if (builtin == INVALID_AIRPORTTILE) {
+		const auto &graphics = entry.gfx.variants[to_underlying(dir)];
+		if (!graphics.has_value() || DrawAirportTileGraphicsInGUI(x, y, *graphics, palette)) return;
+
+		const AirportTileTable *source = GetAirportTileGraphicsSource(*graphics);
+		if (source == nullptr || source->at_gfx >= ATTG_END) return;
+		builtin = source->at_gfx;
+		if (IsValidDiagDirection(source->dir)) dir = RotateDiagDir(source->dir, dir);
+	}
+
+	const SpriteID airtype_ground = GetAirTypeInfo(_cur_airtype)->base_sprites.ground[0];
+	SpriteID seq_ground = airtype_ground;
+	const DrawTileSpriteSpan *dts = GetBuiltinInfraSpan(builtin, to_underlying(dir), seq_ground);
+	DrawSprite(airtype_ground, PAL_NONE, x, y);
+	DrawRailTileSeqInGUI(x, y, dts, seq_ground, 0, palette);
+}
+
+static PickerItem GetAirportTilePickerItem(const AirportTileGraphics &graphics, int cls_id, int id)
+{
+	return {graphics.tile_grfid, graphics.tile_id, cls_id, id,
+			PickerItemSource{graphics.source_grfid, graphics.source_airport, graphics.source_layout, graphics.source_pos, to_underlying(graphics.source_rotation)}};
+}
+
+/** Shared picker callbacks and in-session selection for one type of airport infrastructure. */
+class AirportInfraPickerCallbacks : public PickerCallbacks {
+private:
+	using EntryIndex = std::pair<int, int>;
+
+	const AirportTileType tile_type;
+	std::vector<AirportInfraClass> classes;
+	std::map<PickerItem, EntryIndex> entries_by_variant;
+	mutable int sel_class = 0;
+	mutable int sel_type = 0;
+	DiagDirection preferred_rotation = DiagDirection::NE;
+
+	void AddBuiltinEntries()
+	{
+		static const StringID catch_names[] = {
+			STR_AIRPORT_TILE_BUILDING_1, STR_AIRPORT_TILE_BUILDING_2, STR_AIRPORT_TILE_BUILDING_3,
+			STR_AIRPORT_TILE_BUILDING_FLAT, STR_AIRPORT_TILE_BUILDING_TERMINAL,
+		};
+		static const StringID nocatch_names[] = {
+			STR_AIRPORT_TILE_FLAG, STR_AIRPORT_TILE_TRANSMITTER, STR_AIRPORT_TILE_TOWER,
+			STR_AIRPORT_TILE_RADAR, STR_AIRPORT_TILE_PIER, STR_AIRPORT_TILE_EMPTY,
+		};
+
+		const bool nocatch = this->tile_type == ATT_INFRASTRUCTURE_NO_CATCH;
+		const StringID *names = nocatch ? nocatch_names : catch_names;
+		const uint first = nocatch ? ATTG_NO_CATCH_FLAG : ATTG_WITH_CATCH_BUILDING_1;
+		const uint count = nocatch ? lengthof(nocatch_names) : lengthof(catch_names);
+
+		auto &entries = this->classes.emplace_back().entries;
+		for (uint i = 0; i < count; i++) {
+			AirportTiles gfx = static_cast<AirportTiles>(first + i);
+			entries.push_back({.builtin = gfx, .name = names[i]});
+			this->entries_by_variant.emplace(PickerItem{GrfID{}, static_cast<uint16_t>(gfx), 0, static_cast<int>(i)}, EntryIndex{0, static_cast<int>(i)});
+		}
+	}
+
+	void AddNewGRFEntries()
+	{
+		std::vector<AirportTileGfxSet> sets;
+		GetGRFAirportTileCandidates(this->tile_type, sets);
+		std::map<GrfID, int> classes_by_grfid;
+
+		for (const auto &set : sets) {
+			AirportInfraEntry entry{.gfx = set, .name = STR_AIRPORT_TILE_NEWGRF_DEFAULT};
+			const auto &graphics = entry.GetRepresentative();
+			const StationGfx gfx = ResolveAirportTileGraphics(graphics);
+			if (gfx == INVALID_AIRPORTTILE) continue;
+			const AirportTileSpec *spec = AirportTileSpec::Get(gfx);
+			if (spec->name != STR_NULL && spec->name != INVALID_STRING_ID) entry.name = spec->name;
+
+			const auto [it, inserted] = classes_by_grfid.try_emplace(graphics.tile_grfid, static_cast<int>(this->classes.size()));
+			if (inserted) {
+				const GRFConfig *config = GetGRFConfig(graphics.tile_grfid);
+				std::string_view name = config != nullptr ? config->GetName() : std::string_view{};
+				if (name.empty() && spec->grf_prop.grffile != nullptr) name = spec->grf_prop.grffile->filename;
+				this->classes.emplace_back().name = name.empty() ? graphics.tile_grfid.AsString() : std::string(name);
+			}
+
+			const int cls_id = it->second;
+			auto &entries = this->classes[cls_id].entries;
+			const int id = static_cast<int>(entries.size());
+			for (const auto &variant : set.variants) {
+				if (!variant.has_value()) continue;
+				this->entries_by_variant.emplace(GetAirportTilePickerItem(*variant, cls_id, id), EntryIndex{cls_id, id});
+			}
+			entries.push_back(std::move(entry));
+		}
+	}
+
+	const AirportInfraEntry &GetEntry(int cls_id, int id) const { return this->classes[cls_id].entries[id]; }
+	const AirportInfraEntry &GetSelectedEntry() const { return this->GetEntry(this->sel_class, this->sel_type); }
+
+public:
+	AirportInfraPickerCallbacks(const std::string &ini_group, AirportTileType tile_type) : PickerCallbacks(ini_group), tile_type(tile_type) {}
+
+	void RefreshEntries()
+	{
+		std::optional<PickerItem> previous;
+		if (!this->classes.empty()) previous = this->GetPickerItem(this->sel_class, this->sel_type);
+
+		this->classes.clear();
+		this->entries_by_variant.clear();
+		this->AddBuiltinEntries();
+		this->AddNewGRFEntries();
+
+		this->sel_class = this->sel_type = 0;
+		if (previous.has_value()) {
+			if (auto it = this->entries_by_variant.find(*previous); it != this->entries_by_variant.end()) {
+				std::tie(this->sel_class, this->sel_type) = it->second;
+			}
+		}
+	}
+
+	void ResetSelection()
+	{
+		this->sel_class = this->sel_type = 0;
+		this->preferred_rotation = DiagDirection::NE;
+	}
+
+	AirportTileType GetTileType() const { return this->tile_type; }
+	DiagDirection GetRotation() const { return this->GetSelectedEntry().GetAvailableDirection(this->preferred_rotation); }
+	bool HasDirection(DiagDirection dir) const { return this->GetSelectedEntry().HasDirection(dir); }
+	void SetRotation(DiagDirection dir) { this->preferred_rotation = dir; }
+	void DrawDirection(int x, int y, DiagDirection dir) const { DrawInfraGraphic(x, y, this->GetSelectedEntry(), dir); }
+
+	AirportInfraSelection GetSelection() const
+	{
+		const auto &entry = this->GetSelectedEntry();
+		const auto dir = this->GetRotation();
+		return {entry.builtin, dir, entry.gfx.variants[to_underlying(dir)]};
+	}
+
+	GrfSpecFeature GetFeature() const override { return GrfSpecFeature::AirportTiles; }
+	bool IsActive() const override { return true; }
+	bool HasClassChoice() const override { return this->classes.size() > 1; }
+
+	StringID GetClassTooltip() const override { return STR_PICKER_AIRPORT_TILE_CLASS_TOOLTIP; }
+	int GetClassCount() const override { return static_cast<int>(this->classes.size()); }
+	int GetSelectedClass() const override { return this->sel_class; }
+
+	void SetSelectedClass(int id) const override
+	{
+		if (this->sel_class == id) return;
+		this->sel_class = id;
+		this->sel_type = 0;
+	}
+
+	StringID GetClassName(int id) const override { return id == 0 ? STR_AIRPORT_TILE_CLASS_BUILTIN : STR_AIRPORT_TILE_CLASS_NEWGRF; }
+	std::string GetClassNameString(int id) const override { return id == 0 ? PickerCallbacks::GetClassNameString(id) : this->classes[id].name; }
+
+	StringID GetTypeTooltip() const override { return STR_PICKER_AIRPORT_TILE_TYPE_TOOLTIP; }
+	StringID GetRandomTooltip() const override { return STR_PICKER_AIRPORT_TILE_RANDOM_TOOLTIP; }
+	StringID GetCollectionTooltip() const override { return STR_PICKER_AIRPORT_TILE_COLLECTION_TOOLTIP; }
+
+	int GetTypeCount(int cls_id) const override { return static_cast<int>(this->classes[cls_id].entries.size()); }
+	int GetSelectedType() const override { return this->sel_type; }
+	void SetSelectedType(int id) const override { this->sel_type = id; }
+
+	PickerItem GetPickerItem(int cls_id, int id) const override
+	{
+		const auto &entry = this->GetEntry(cls_id, id);
+		if (entry.builtin != INVALID_AIRPORTTILE) return {GrfID{}, static_cast<uint16_t>(entry.builtin), cls_id, id};
+		return GetAirportTilePickerItem(entry.GetRepresentative(), cls_id, id);
+	}
+
+	StringID GetTypeName(int cls_id, int id) const override
+	{
+		if (!IsInsideMM(cls_id, 0, this->GetClassCount()) || !IsInsideMM(id, 0, this->GetTypeCount(cls_id))) return INVALID_STRING_ID;
+		return this->GetEntry(cls_id, id).name;
+	}
+
+	std::span<const BadgeID> GetTypeBadges(int cls_id, int id) const override
+	{
+		const auto &entry = this->GetEntry(cls_id, id);
+		if (entry.builtin != INVALID_AIRPORTTILE) return {};
+		const StationGfx gfx = ResolveAirportTileGraphics(entry.GetRepresentative());
+		if (gfx == INVALID_AIRPORTTILE) return {};
+		return AirportTileSpec::Get(gfx)->badges;
+	}
+
+	bool IsTypeAvailable(int cls_id, int id) const override { return this->GetTypeName(cls_id, id) != INVALID_STRING_ID; }
+
+	void DrawType(int x, int y, int cls_id, int id) const override
+	{
+		const auto &entry = this->GetEntry(cls_id, id);
+		/* Grid thumbnails use an available variant. Only the direction buttons select a rotation. */
+		DrawInfraGraphic(x, y, entry, entry.GetAvailableDirection(this->preferred_rotation));
+	}
+
+	void SetSelectedCollection([[maybe_unused]] const btree::btree_set<PickerItem> &items) const override { /* Random placement is not supported. */ }
+
+	void FillUsedItems(btree::btree_set<PickerItem> &items) override
+	{
+		for (const Station *st : Station::Iterate()) {
+			if (st->owner != _local_company || st->airport.tile == INVALID_TILE) continue;
+
+			for (TileIndex tile : st->airport) {
+				if (!st->TileBelongsToAirport(tile) || GetAirportTileType(tile) != this->tile_type) continue;
+
+				PickerItem key;
+				if (const AirportTileGraphics *graphics = GetAirportTileGraphics(tile); graphics != nullptr) {
+					key = GetAirportTilePickerItem(*graphics, 0, 0);
+				} else if (HasAirtypeGfx(tile)) {
+					key = {GrfID{}, static_cast<uint16_t>(GetTileAirportGfx(tile)), 0, 0};
+				} else {
+					continue;
+				}
+				if (auto it = this->entries_by_variant.find(key); it != this->entries_by_variant.end()) {
+					items.insert(this->GetPickerItem(it->second.first, it->second.second));
+				}
+			}
+		}
+	}
+
+	PickerItemsCollection UpdateSavedItems(const PickerItemsCollection &src) override
+	{
+		if (src.empty()) return {};
+
+		/* A legacy sprite-only key can be migrated only if it identifies a unique source tile. */
+		std::map<std::pair<GrfID, uint16_t>, EntryIndex> legacy_entries;
+		for (const auto &[key, index] : this->entries_by_variant) {
+			if (!key.source.has_value()) continue;
+			auto [it, inserted] = legacy_entries.try_emplace(std::pair{key.grfid, key.local_id}, index);
+			if (!inserted && it->second != index) it->second = {-1, -1};
+		}
+
+		PickerItemsCollection dst;
+		for (const auto &[name, items] : src) {
+			auto &dst_items = dst[name];
+			for (const auto &item : items) {
+				EntryIndex index{-1, -1};
+				if (!item.source.has_value() && !item.grfid.Empty()) {
+					if (auto it = legacy_entries.find({item.grfid, item.local_id}); it != legacy_entries.end()) index = it->second;
+				} else {
+					if (auto it = this->entries_by_variant.find(item); it != this->entries_by_variant.end()) index = it->second;
+				}
+
+				if (index.first >= 0) {
+					dst_items.insert(this->GetPickerItem(index.first, index.second));
+				} else {
+					dst_items.emplace(item.grfid, item.local_id, -1, -1, item.source);
+				}
+			}
+		}
+		return dst;
+	}
+};
+
+/* Register both pickers before the favourites configuration is loaded. */
+static AirportInfraPickerCallbacks _airport_infra_catch_callbacks("fav_airport_infra_catch", ATT_INFRASTRUCTURE_WITH_CATCH);
+static AirportInfraPickerCallbacks _airport_infra_nocatch_callbacks("fav_airport_infra_nocatch", ATT_INFRASTRUCTURE_NO_CATCH);
+
+static AirportInfraSelection GetAirportInfraSelection(AirportTileType type)
+{
+	return (type == ATT_INFRASTRUCTURE_WITH_CATCH ? _airport_infra_catch_callbacks : _airport_infra_nocatch_callbacks).GetSelection();
+}
+
+/**
+ * Build airport infrastructure: pick the graphics like in the rail station window.
+ */
+struct BuildAirportInfraWindow : public PickerWindow {
+	AirportInfraPickerCallbacks &infra_callbacks;
+
+	BuildAirportInfraWindow(WindowDesc &desc, Window *parent, AirportInfraPickerCallbacks &callbacks) :
+			PickerWindow(desc, parent, static_cast<int>(callbacks.GetTileType()), callbacks), infra_callbacks(callbacks)
+	{
+		this->infra_callbacks.RefreshEntries();
+		this->ConstructWindow();
+	}
+
+	void Close(int data = 0) override
+	{
+		/* Unlink first so resetting the toolbar does not close this picker again. */
+		this->infra_callbacks.Close(data);
+		this->Window::Close(data);
+		if (data != CLOSE_INFRA_PICKER_ON_TOOL_ABORT) ResetObjectToPlace();
+	}
+
+	void UpdateDirections()
+	{
+		const auto selected = this->infra_callbacks.GetRotation();
+		for (DiagDirection dir = DiagDirection::Begin; dir < DiagDirection::End; dir++) {
+			const WidgetID widget = WID_BAI_DIR_NE + to_underlying(dir);
+			const bool available = this->infra_callbacks.HasDirection(dir);
+			this->SetWidgetDisabledState(widget, !available);
+			this->SetWidgetLoweredState(widget, dir == selected);
+			this->GetWidget<NWidgetCore>(widget)->SetToolTip(available ? STR_BUILD_AIRPORT_INFRA_TOOLTIP : STR_BUILD_AIRPORT_INFRA_UNAVAILABLE_DIRECTION);
+		}
+	}
+
+	void OnInit() override
+	{
+		this->GetWidget<NWidgetCore>(WID_BAI_CAPTION)->SetString(
+				this->infra_callbacks.GetTileType() == ATT_INFRASTRUCTURE_NO_CATCH ? STR_BUILD_AIRPORT_INFRA_NO_CATCH_CAPTION : STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION);
+		this->PickerWindow::OnInit();
+		this->UpdateDirections();
+	}
+
+	void OnInvalidateData(int data = 0, bool gui_scope = true) override
+	{
+		this->PickerWindow::OnInvalidateData(data, gui_scope);
+		if (gui_scope) this->UpdateDirections();
+	}
+
+	void UpdateWidgetSize(WidgetID widget, Dimension &size, const Dimension &padding, Dimension &fill, Dimension &resize) override
+	{
+		if (IsInsideMM(widget, WID_BAI_DIR_NE, WID_BAI_DIR_NW + 1)) {
+			size.width = ScaleGUITrad(64);
+			size.height = ScaleGUITrad(64);
+			return;
+		}
+		this->PickerWindow::UpdateWidgetSize(widget, size, padding, fill, resize);
+	}
+
+	void DrawWidget(const Rect &r, WidgetID widget) const override
+	{
+		if (!IsInsideMM(widget, WID_BAI_DIR_NE, WID_BAI_DIR_NW + 1)) {
+			this->PickerWindow::DrawWidget(r, widget);
+			return;
+		}
+
+		const int x = r.left + 1 + ScaleGUITrad(TILE_PIXELS - 1);
+		const int y = r.bottom - ScaleGUITrad(TILE_PIXELS - 1);
+		this->infra_callbacks.DrawDirection(x, y, static_cast<DiagDirection>(widget - WID_BAI_DIR_NE));
+	}
+
+	void OnClick(Point pt, WidgetID widget, int click_count) override
+	{
+		if (IsInsideMM(widget, WID_BAI_DIR_NE, WID_BAI_DIR_NW + 1)) {
+			const auto dir = static_cast<DiagDirection>(widget - WID_BAI_DIR_NE);
+			if (!this->infra_callbacks.HasDirection(dir)) return;
+			this->infra_callbacks.SetRotation(dir);
+			this->UpdateDirections();
+			if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
+			this->SetDirty();
+			return;
+		}
+
+		this->PickerWindow::OnClick(pt, widget, click_count);
+	}
+};
+
+static constexpr std::initializer_list<NWidgetPart> _nested_build_airport_infra_widgets = {
 	NWidget(NWID_HORIZONTAL),
 		NWidget(WWT_CLOSEBOX, Colours::DarkGreen),
-		NWidget(WWT_CAPTION, Colours::DarkGreen, WID_BAINC_CAPTION), SetStringTip(STR_BUILD_AIRPORT_INFRA_NO_CATCH_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
+		NWidget(WWT_CAPTION, Colours::DarkGreen, WID_BAI_CAPTION), SetStringTip(STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
+		NWidget(WWT_SHADEBOX, Colours::DarkGreen),
+		NWidget(WWT_DEFSIZEBOX, Colours::DarkGreen),
 	EndContainer(),
-	NWidget(WWT_PANEL, Colours::DarkGreen),
-		/* Graphics */
-		NWidget(NWID_HORIZONTAL_LTR), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0), SetPIPRatio(1, 0, 1), SetPadding(WidgetDimensions::unscaled.picker),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAINC_FLAG), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAINC_TRANSMITTER), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAINC_TOWER), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAINC_RADAR), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAINC_PIER), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAINC_EMPTY), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
+	NWidget(NWID_HORIZONTAL),
+		NWidget(NWID_VERTICAL),
+			NWidgetFunction(MakePickerClassWidgets),
+			NWidget(WWT_PANEL, Colours::DarkGreen),
+				NWidget(NWID_VERTICAL), SetPIP(0, WidgetDimensions::unscaled.vsep_picker, 0), SetPadding(WidgetDimensions::unscaled.picker),
+					NWidget(WWT_LABEL, Colours::Invalid, WID_BAI_ROTATION_LABEL), SetMinimalSize(144, 11), SetFill(1, 0), SetStringTip(STR_STATION_BUILD_ORIENTATION),
+					NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0), SetPIPRatio(1, 0, 1),
+						NWidget(WWT_PANEL, Colours::Grey, WID_BAI_DIR_NE), SetFill(0, 0), SetToolTip(STR_BUILD_AIRPORT_INFRA_TOOLTIP), EndContainer(),
+						NWidget(WWT_PANEL, Colours::Grey, WID_BAI_DIR_SE), SetFill(0, 0), SetToolTip(STR_BUILD_AIRPORT_INFRA_TOOLTIP), EndContainer(),
+					EndContainer(),
+					NWidget(NWID_HORIZONTAL), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0), SetPIPRatio(1, 0, 1),
+						NWidget(WWT_PANEL, Colours::Grey, WID_BAI_DIR_SW), SetFill(0, 0), SetToolTip(STR_BUILD_AIRPORT_INFRA_TOOLTIP), EndContainer(),
+						NWidget(WWT_PANEL, Colours::Grey, WID_BAI_DIR_NW), SetFill(0, 0), SetToolTip(STR_BUILD_AIRPORT_INFRA_TOOLTIP), EndContainer(),
+					EndContainer(),
+				EndContainer(),
+			EndContainer(),
 		EndContainer(),
-		/* Rotation */
-		NWidget(NWID_HORIZONTAL),
-			NWidget(NWID_SPACER), SetMinimalSize(3, 0), SetFill(1, 0),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BAINC_ROTATION_DECREASE), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_NULL),
-			NWidget(WWT_LABEL, Colours::Grey, WID_BAINC_ROTATION), SetResize(1, 0), SetFill(1, 0), SetStringTip(STR_JUST_STRING, STR_NULL),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BAINC_ROTATION_INCREASE), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_NULL),
-			NWidget(NWID_SPACER), SetMinimalSize(3, 0), SetFill(1, 0),
-		EndContainer(),
-		NWidget(NWID_SPACER), SetMinimalSize(0, 3), SetFill(1, 0),
+		NWidgetFunction(MakePickerTypeWidgets),
 	EndContainer(),
 };
 
-static WindowDesc _build_airport_infra_no_catch_desc(__FILE__, __LINE__,
-	WindowPosition::AlignToolbar, nullptr, 0, 0,
+static WindowDesc _build_airport_infra_desc(__FILE__, __LINE__,
+	WindowPosition::Automatic, "build_airport_infra", 0, 0,
 	WindowClass::BuildAirportInfrastructure, WindowClass::BuildToolbar,
 	WindowDefaultFlag::Construction,
-	_nested_build_airport_infra_no_catch_widgets
+	_nested_build_airport_infra_widgets
 );
 
 static void ShowAirportInfraNoCatchPicker(Window *parent)
 {
-	new BuildAirportInfraNoCatchWindow(_build_airport_infra_no_catch_desc, parent);
+	new BuildAirportInfraWindow(_build_airport_infra_desc, parent, _airport_infra_nocatch_callbacks);
 }
-
-struct BuildAirportInfraWithCatchWindow : public PickerWindowBase {
-	BuildAirportInfraWithCatchWindow(WindowDesc &desc, Window *parent) : PickerWindowBase(desc, parent)
-	{
-		this->CreateNestedTree();
-		this->LowerWidget(WID_BAIWC_BUILDING_1 + (BuildAirportInfrastructureNoCatchmentWidgets)_selected_infra_catch);
-		this->FinishInitNested(TransportType::Air);
-	}
-
-	uint GetHeliportSpriteHeight() const { return 91; }
-
-	void UpdateWidgetSize(int widget, Dimension &size, [[maybe_unused]] const Dimension &padding, [[maybe_unused]] Dimension &fill, [[maybe_unused]] Dimension &resize) override
-	{
-		if (!IsInsideMM(widget, WID_BAIWC_BUILDING_1, WID_BAIWC_BUILDING_TERMINAL + 1)) return;
-
-		size.width  = ScaleGUITrad(64) + 2;
-		size.height = ScaleGUITrad(GetHeliportSpriteHeight()) + 2;
-	}
-
-	void DrawWidget(const Rect &r, int widget) const override
-	{
-		if (!IsInsideMM(widget, WID_BAIWC_BUILDING_1, WID_BAIWC_BUILDING_TERMINAL + 1)) return;
-
-		int x = r.left + 1 + ScaleGUITrad(TILE_PIXELS - 1);
-		int y = r.bottom - ScaleGUITrad(TILE_PIXELS - 1);
-
-		SpriteID ground = GetAirTypeInfo(_cur_airtype)->base_sprites.ground[0];
-		PaletteID palette = GetCompanyPalette(_local_company);
-		extern const DrawTileSpriteSpan _airtype_display_datas[];
-		const DrawTileSpriteSpan *dts = &_airtype_display_datas[
-				(widget - WID_BAIWC_BUILDING_1 + ATTG_WITH_CATCH_BUILDING_1) * 4 + _selected_infra_catch_rotation];
-		DrawSprite(ground, PAL_NONE, x, y);
-		DrawRailTileSeqInGUI(x, y, dts, ground, 0, palette);
-	}
-
-	std::string GetWidgetString(WidgetID widget, StringID stringid) const override
-	{
-		if (widget == WID_BAIWC_ROTATION) {
-			return GetString(STR_AIRPORT_ROTATION_0 + static_cast<uint>(_selected_infra_catch_rotation));
-		}
-		return Window::GetWidgetString(widget, stringid);
-	}
-
-	void OnClick([[maybe_unused]] Point pt, int widget, [[maybe_unused]] int click_count) override
-	{
-		switch (widget) {
-			case WID_BAIWC_BUILDING_1:
-			case WID_BAIWC_BUILDING_2:
-			case WID_BAIWC_BUILDING_3:
-			case WID_BAIWC_BUILDING_FLAT:
-			case WID_BAIWC_BUILDING_TERMINAL:
-				this->RaiseWidget(WID_BAIWC_BUILDING_1 + (BuildAirportInfrastructureNoCatchmentWidgets)_selected_infra_catch);
-				_selected_infra_catch = (AirportTiles)(widget - WID_BAIWC_BUILDING_1);
-				this->LowerWidget(WID_BAIWC_BUILDING_1 + (BuildAirportInfrastructureNoCatchmentWidgets)_selected_infra_catch);
-				if (_settings_client.sound.click_beep) SndPlayFx(SND_15_BEEP);
-				this->SetDirty();
-				break;
-
-			case WID_BAIWC_ROTATION_DECREASE:
-				_selected_infra_catch_rotation = (_selected_infra_catch_rotation + 3) % 4;
-				this->SetDirty();
-				break;
-
-			case WID_BAIWC_ROTATION_INCREASE:
-				_selected_infra_catch_rotation = (_selected_infra_catch_rotation + 1) % 4;
-				this->SetDirty();
-				break;
-
-			default:
-				break;
-		}
-	}
-};
-
-static const NWidgetPart _nested_build_airport_infra_with_catch_widgets[] = {
-	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_CLOSEBOX, Colours::DarkGreen),
-		NWidget(WWT_CAPTION, Colours::DarkGreen, WID_BAIWC_CAPTION), SetStringTip(STR_BUILD_AIRPORT_INFRA_WITH_CATCH_CAPTION, STR_TOOLTIP_WINDOW_TITLE_DRAG_THIS),
-	EndContainer(),
-	NWidget(WWT_PANEL, Colours::DarkGreen),
-		/* Graphics */
-		NWidget(NWID_HORIZONTAL_LTR), SetPIP(0, WidgetDimensions::unscaled.hsep_normal, 0), SetPIPRatio(1, 0, 1), SetPadding(WidgetDimensions::unscaled.picker),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAIWC_BUILDING_1), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAIWC_BUILDING_2), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAIWC_BUILDING_3), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAIWC_BUILDING_FLAT), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-			NWidget(WWT_TEXTBTN, Colours::Grey, WID_BAIWC_BUILDING_TERMINAL), SetStringTip(STR_NULL, STR_BUILD_AIRPORT_INFRA_TOOLTIP),
-		EndContainer(),
-		/* Rotation */
-		NWidget(NWID_HORIZONTAL),
-			NWidget(NWID_SPACER), SetMinimalSize(3, 0), SetFill(1, 0),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BAIWC_ROTATION_DECREASE), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Decrease, STR_NULL),
-			NWidget(WWT_LABEL, Colours::Grey, WID_BAIWC_ROTATION), SetResize(1, 0), SetFill(1, 0), SetStringTip(STR_JUST_STRING, STR_NULL),
-			NWidget(WWT_PUSHARROWBTN, Colours::Grey, WID_BAIWC_ROTATION_INCREASE), SetMinimalSize(12, 0), SetArrowWidgetTypeTip(ArrowWidgetType::Increase, STR_NULL),
-			NWidget(NWID_SPACER), SetMinimalSize(3, 0), SetFill(1, 0),
-		EndContainer(),
-		NWidget(NWID_SPACER), SetMinimalSize(0, 3), SetFill(1, 0),
-	EndContainer(),
-};
-
-static WindowDesc _build_airport_infra_with_catch_desc(__FILE__, __LINE__,
-	WindowPosition::AlignToolbar, nullptr, 0, 0,
-	WindowClass::BuildAirportInfrastructure, WindowClass::BuildToolbar,
-	WindowDefaultFlag::Construction,
-	_nested_build_airport_infra_with_catch_widgets
-);
 
 static void ShowAirportInfraWithCatchPicker(Window *parent)
 {
-	new BuildAirportInfraWithCatchWindow(_build_airport_infra_with_catch_desc, parent);
+	new BuildAirportInfraWindow(_build_airport_infra_desc, parent, _airport_infra_catch_callbacks);
 }
 
 
@@ -1752,9 +2011,7 @@ void InitializeAirportGui()
 
 	_selected_airport_class = APC_BEGIN;
 	_selected_airport_index = -1;
-	_selected_infra_catch_rotation = 0;
-	_selected_infra_catch = ATTG_DEFAULT_GFX;
-	_selected_infra_nocatch_rotation = 0;
-	_selected_infra_nocatch = ATTG_DEFAULT_GFX;
+	_airport_infra_catch_callbacks.ResetSelection();
+	_airport_infra_nocatch_callbacks.ResetSelection();
 }
 

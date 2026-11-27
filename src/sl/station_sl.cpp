@@ -764,6 +764,48 @@ struct StationCargoHistoryStructHandler final : public TypedSaveLoadStructHandle
 
 static OldPersistentStorage _old_st_persistent_storage;
 
+struct SavedAirportTileGraphics {
+	TileIndex tile;
+	AirportTileGraphics graphics;
+};
+
+class AirportTileGraphicsStructHandler final : public TypedSaveLoadStructHandler<AirportTileGraphicsStructHandler, Station> {
+public:
+	NamedSaveLoadTable GetDescription() const override
+	{
+		static const NamedSaveLoad desc[] = {
+			NSLT("tile",            SLE_VAR(SavedAirportTileGraphics, tile,                     SLE_UINT32)),
+			NSLT("tile_grfid",      SLE_VAR(SavedAirportTileGraphics, graphics.tile_grfid,      SLE_LABEL)),
+			NSLT("tile_id",         SLE_VAR(SavedAirportTileGraphics, graphics.tile_id,        SLE_UINT16)),
+			NSLT("source_grfid",    SLE_VAR(SavedAirportTileGraphics, graphics.source_grfid,    SLE_LABEL)),
+			NSLT("source_airport",  SLE_VAR(SavedAirportTileGraphics, graphics.source_airport,  SLE_UINT16)),
+			NSLT("source_layout",   SLE_VAR(SavedAirportTileGraphics, graphics.source_layout,   SLE_UINT8)),
+			NSLT("source_pos",      SLE_VAR(SavedAirportTileGraphics, graphics.source_pos,      SLE_UINT16)),
+			NSLT("source_rotation", SLE_VAR(SavedAirportTileGraphics, graphics.source_rotation, SLE_UINT8)),
+		};
+		return desc;
+	}
+
+	void Save(Station *st) const override
+	{
+		SlSetStructListLength(st->airport.tile_graphics.size());
+		for (const auto &[tile, graphics] : st->airport.tile_graphics) {
+			SavedAirportTileGraphics entry{tile, graphics};
+			SlObjectSaveFiltered(&entry, this->GetLoadDescription());
+		}
+	}
+
+	void Load(Station *st) const override
+	{
+		const size_t count = SlGetStructListLength(Map::Size());
+		for (size_t i = 0; i < count; ++i) {
+			SavedAirportTileGraphics entry{};
+			SlObjectLoadFiltered(&entry, this->GetLoadDescription());
+			if (!st->airport.tile_graphics.emplace(entry.tile, entry.graphics).second) SlErrorCorrupt("Duplicate airport tile graphics entry");
+		}
+	}
+};
+
 static const NamedSaveLoad _station_desc[] = {
 	NSL("", SLE_WRITEBYTE(Station, facilities)),
 	NSL("", SLE_INCLUDE(IncludeBaseStationDescription)),
@@ -793,6 +835,9 @@ static const NamedSaveLoad _station_desc[] = {
 	NSL("airport.flags",                          SLE_VAR(Station, airport.flags,                SLE_UINT64)),
 	NSL("",                                SLE_CONDNULL_X(8,                                                                   SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_SPRINGPP, 1, 6))),
 	NSL("airport.rotation",                   SLE_CONDVAR(Station, airport.rotation,              SLE_UINT8,                   SLV_145,               SL_MAX_VERSION)),
+	NSL("airport.source_type",              SLE_CONDVAR_X(Station, airport.source_type,             SLE_UINT8,                   SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRPORT_GRF_TILES, 1, 1))),
+	NSL("airport.source_layout",            SLE_CONDVAR_X(Station, airport.source_layout,           SLE_UINT8,                   SL_MIN_VERSION,        SL_MAX_VERSION,      SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRPORT_GRF_TILES, 1, 1))),
+	NSLT_STRUCTLIST<AirportTileGraphicsStructHandler>("airport.tile_graphics", SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_AIRPORT_GRF_TILES, 2)),
 	NSL("",                                  SLEG_CONDARR(_old_st_persistent_storage.storage,     SLE_UINT32, 16,              SLV_145,               SLV_161)),
 	NSL("irport.psa",                         SLE_CONDREF(Station, airport.psa,                   REF_STORAGE,                 SLV_161,               SL_MAX_VERSION)),
 

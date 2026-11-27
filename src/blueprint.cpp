@@ -12,6 +12,7 @@
 #include <set>
 #include "air.h"
 #include "airport_cmd.h"
+#include "animated_tile_func.h"
 #include "blueprint.h"
 #include "blueprint_cmd.h"
 #include "bridge_map.h"
@@ -20,6 +21,7 @@
 #include "core/math_func.hpp"
 #include "direction_func.h"
 #include "landscape_cmd.h"
+#include "newgrf_airporttiles.h"
 #include "newgrf_roadstop.h"
 #include "newgrf_station.h"
 #include "newgrf_newsignals.h"
@@ -243,6 +245,17 @@ static void CopyWaterTile(Blueprint &blueprint, TileIndex tile, TileIndexDiffC o
 	}
 }
 
+/** Snapshot an airport tile with its independent graphics and without transient reservations. */
+static BlueprintAirportTile CaptureBlueprintAirportTile(Tile tile, TileIndexDiffC offset)
+{
+	BlueprintAirportTile captured{offset, static_cast<uint8_t>(tile.m4()), static_cast<uint8_t>(tile.m5()),
+			static_cast<uint8_t>(tile.m6()), tile.m8()};
+	if (const auto *graphics = GetAirportTileGraphics(tile); graphics != nullptr) captured.graphics = *graphics;
+	NormalizeLegacyBlueprintAirportTile(captured);
+	ClearBlueprintAirportReservations(captured);
+	return captured;
+}
+
 /**
  * Copy a station tile (rail station/waypoint, road stop, dock, buoy or airport).
  * @param blueprint Blueprint to copy into.
@@ -315,10 +328,7 @@ static void CopyStationTile(Blueprint &blueprint, TileIndex tile, TileIndexDiffC
 					if (GetTileOwner(t) != _local_company) continue;
 					TileIndexDiffC rel = BlueprintOffset(t, st->airport.tile);
 					TileIndexDiffC toff{static_cast<int16_t>(anchor.x + rel.x), static_cast<int16_t>(anchor.y + rel.y)};
-					BlueprintAirportTile captured{toff, static_cast<uint8_t>(Tile(t).m4()),
-							static_cast<uint8_t>(Tile(t).m5()), static_cast<uint8_t>(Tile(t).m6()), Tile(t).m8()};
-					ClearBlueprintAirportReservations(captured);
-					airport.tiles.push_back(captured);
+					airport.tiles.push_back(CaptureBlueprintAirportTile(t, toff));
 				}
 			}
 
@@ -631,6 +641,33 @@ static void SortBlueprintOffsets(TileIndexDiffC &a, TileIndexDiffC &b)
 	if (b.y < a.y || (b.y == a.y && b.x < a.x)) std::swap(a, b);
 }
 
+static AirportTileType GetBlueprintAirportTileType(const BlueprintAirportTile &tile)
+{
+	return static_cast<AirportTileType>(GB(tile.m5, 4, ATT_NUM_BITS));
+}
+
+static bool IsBlueprintAirportInfrastructure(AirportTileType type)
+{
+	return type == ATT_INFRASTRUCTURE_WITH_CATCH || type == ATT_INFRASTRUCTURE_NO_CATCH;
+}
+
+/** Legacy blueprints have no map ID mapping. Only recover the built-in fallback. */
+void NormalizeLegacyBlueprintAirportTile(BlueprintAirportTile &tile)
+{
+	if (HasBit(tile.m6, 7)) return;
+
+	const AirportTileType type = GetBlueprintAirportTileType(tile);
+	const uint8_t old_fallback = GB(tile.m8, 0, 8);
+	tile.m4 = ATTG_DEFAULT_GFX;
+	if (type == ATT_INFRASTRUCTURE_WITH_CATCH) {
+		tile.m4 = old_fallback <= ATTG_WITH_CATCH_BUILDING_TERMINAL ? old_fallback : static_cast<uint8_t>(ATTG_WITH_CATCH_BUILDING_1);
+	} else if (type == ATT_INFRASTRUCTURE_NO_CATCH) {
+		tile.m4 = IsInsideMM(old_fallback, ATTG_NO_CATCH_FLAG, ATTG_END) ? old_fallback : static_cast<uint8_t>(ATTG_NO_CATCH_FLAG);
+	}
+	if (IsBlueprintAirportInfrastructure(type)) SB(tile.m8, 0, 8, tile.m4);
+	SetBit(tile.m6, 7);
+}
+
 /** Validate raw custom airport geometry before it can change terrain or enter the map. */
 bool IsBlueprintAirportLayoutValid(const BlueprintAirport &airport)
 {
@@ -640,8 +677,10 @@ bool IsBlueprintAirportLayoutValid(const BlueprintAirport &airport)
 	static constexpr uint8_t direction_masks[] = {9, 1, 3, 2, 6, 4, 12, 8};
 	for (const auto &tile : airport.tiles) {
 		if (!tiles.emplace(Offset{tile.offset.x, tile.offset.y}, &tile).second) return false;
-		const uint type = GB(tile.m5, 4, ATT_NUM_BITS);
+		const AirportTileType type = GetBlueprintAirportTileType(tile);
 		if (type == ATT_WAITING_POINT || type == 9 || type == 11) return false;
+		if (tile.graphics && (!IsBlueprintAirportInfrastructure(type) || tile.graphics->tile_grfid.Empty() ||
+				tile.graphics->tile_id >= NUM_AIRPORTTILES_PER_GRF || !IsValidDiagDirection(tile.graphics->source_rotation))) return false;
 		if (!HasBit(tile.m6, 7)) continue;
 		if (type == ATT_SIMPLE_TRACK && tile.m4 > lengthof(GetAirTypeInfo(AIRTYPE_BEGIN)->base_sprites.ground)) return false;
 		if (type == ATT_INFRASTRUCTURE_WITH_CATCH && tile.m4 > ATTG_WITH_CATCH_BUILDING_TERMINAL) return false;
@@ -687,10 +726,13 @@ bool IsBlueprintAirportLayoutValid(const BlueprintAirport &airport)
 /** Remove transient ground and runway reservations without changing tile orientation. */
 void ClearBlueprintAirportReservations(BlueprintAirportTile &apt)
 {
+	const AirportTileType type = GetBlueprintAirportTileType(apt);
+	/* Infrastructure uses the low byte for its fallback graphic, not tracks or reservations. */
+	if (IsBlueprintAirportInfrastructure(type)) return;
 	apt.m8 &= ~(0x3F << 6);
 	/* On runways bit 15 is a separate flight reservation; on hangars and
 	 * aprons it is part of the orientation and must remain untouched. */
-	if (GB(apt.m5, 8 - ATT_RUNWAY_LAYOUT_NUM_BITS, ATT_RUNWAY_LAYOUT_NUM_BITS) == ATT_RUNWAY_LAYOUT_BITS) ClrBit(apt.m8, 15);
+	if (type >= ATT_RUNWAY_MIDDLE) ClrBit(apt.m8, 15);
 }
 
 /**
@@ -708,15 +750,18 @@ void ClearBlueprintAirportReservations(BlueprintAirportTile &apt)
  */
 void TransformBlueprintAirportTile(BlueprintAirportTile &apt, uint8_t rotation, bool reflected)
 {
-	/* m8 bits 0-5: one bit per track that is laid on the tile. */
-	uint8_t tracks = apt.m8 & TRACK_BIT_MASK;
-	uint8_t transformed_tracks = 0;
-	for (Track track = TRACK_BEGIN; track < TRACK_END; track++) {
-		if (HasBit(tracks, to_underlying(track))) SetBit(transformed_tracks, to_underlying(TransformBlueprintTrack(track, rotation, reflected)));
+	const AirportTileType type = GetBlueprintAirportTileType(apt);
+	if (!IsBlueprintAirportInfrastructure(type)) {
+		/* On track-bearing tiles, m8 bits 0-5 are one bit per laid track. */
+		const uint8_t tracks = apt.m8 & TRACK_BIT_MASK;
+		uint8_t transformed_tracks = 0;
+		for (Track track = TRACK_BEGIN; track < TRACK_END; track++) {
+			if (HasBit(tracks, to_underlying(track))) SetBit(transformed_tracks, to_underlying(TransformBlueprintTrack(track, rotation, reflected)));
+		}
+		apt.m8 = (apt.m8 & ~static_cast<uint16_t>(TRACK_BIT_MASK)) | transformed_tracks;
 	}
-	apt.m8 = (apt.m8 & ~static_cast<uint16_t>(TRACK_BIT_MASK)) | transformed_tracks;
 
-	switch (static_cast<AirportTileType>(GB(apt.m5, 4, ATT_NUM_BITS))) {
+	switch (type) {
 		case ATT_RUNWAY_MIDDLE:
 			/* m8 bits 12-14: the packed direction(s) of the runway. */
 			SB(apt.m8, 12, 3, to_underlying(TransformBlueprintDirection(static_cast<Direction>(GB(apt.m8, 12, 3)), rotation, reflected)));
@@ -745,6 +790,18 @@ void TransformBlueprintAirportTile(BlueprintAirportTile &apt, uint8_t rotation, 
 			/* Flat tiles have no direction of their own; the tracks above are all they carry. */
 			break;
 	}
+
+	if (!apt.graphics || (!reflected && rotation % 4 == 0)) return;
+	const AirportTileGraphics original = *apt.graphics;
+	apt.graphics.reset();
+	/* A rotated layout can supply a real variant, but there are no mirrored
+	 * layouts or directional variants for material whose source is unknown. */
+	if (reflected) return;
+	const AirportTileTable *source = GetAirportTileGraphicsSource(original);
+	if (source == nullptr || source->type != type || ResolveAirportTileGraphics(original) == INVALID_AIRPORTTILE) return;
+	const auto direction = TransformBlueprintDiagDir(original.source_rotation, rotation, false);
+	const auto candidate = MakeAirportTileGraphics(original.source_grfid, original.source_airport, original.source_layout, original.source_pos, direction);
+	if (candidate && ResolveAirportTileGraphics(*candidate) != INVALID_AIRPORTTILE) apt.graphics = candidate;
 }
 
 /**
@@ -1499,23 +1556,23 @@ void RecordBlueprintUndoAirport(TileIndex tile, uint8_t type, uint8_t layout, ui
 
 void RecordBlueprintUndoCustomAirportTile(TileIndex tile, AirType air_type)
 {
-	if (!_undo_group_open) return;
-
-	StationID station = IsAirportTile(tile) ? GetStationIndex(tile) : StationID::Invalid();
+	if (!_undo_group_open || !IsAirportTile(tile)) return;
+	const StationID station = GetStationIndex(tile);
+	auto captured = CaptureBlueprintAirportTile(tile, UndoGroupPos(tile));
 	for (BlueprintAirport &v : _undo_group.airports) {
-		if (v.type != AT_CUSTOM || v.station != station) continue;
-		for (const BlueprintAirportTile &apt : v.tiles) {
-			if (apt.offset == UndoGroupPos(tile)) return; // already recorded
+		if (v.station != station || v.type != AT_CUSTOM) continue;
+		for (BlueprintAirportTile &apt : v.tiles) {
+			if (apt.offset.x == captured.offset.x && apt.offset.y == captured.offset.y) {
+				apt = std::move(captured);
+				return;
+			}
 		}
-		v.tiles.push_back({UndoGroupPos(tile), static_cast<uint8_t>(Tile(tile).m4()),
-				static_cast<uint8_t>(Tile(tile).m5()), static_cast<uint8_t>(Tile(tile).m6()),
-				static_cast<uint16_t>(Tile(tile).m8() & ~(0x3F << 6))});
+		v.tiles.push_back(std::move(captured));
 		return;
 	}
-	_undo_group.airports.push_back({UndoGroupPos(tile), AT_CUSTOM, 0,
-			static_cast<uint8_t>(to_underlying(Direction::N)), static_cast<uint8_t>(air_type), 1, 1, station,
-			{{UndoGroupPos(tile), static_cast<uint8_t>(Tile(tile).m4()), static_cast<uint8_t>(Tile(tile).m5()),
-					static_cast<uint8_t>(Tile(tile).m6()), static_cast<uint16_t>(Tile(tile).m8() & ~(0x3F << 6))}}});
+	_undo_group.airports.push_back({captured.offset, AT_CUSTOM, 0,
+			static_cast<uint8_t>(to_underlying(DiagDirection::NE)), static_cast<uint8_t>(air_type), 1, 1, station,
+			{std::move(captured)}});
 }
 
 /**
@@ -2370,31 +2427,40 @@ CommandCost CmdPasteBlueprint(DoCommandFlags flags, TileIndex origin, const Blue
 			/* Pass 2: now that all neighbours exist, restore each tile's captured state
 			 * (gfx, tile type, rotation, tracks). Reservations start unset. */
 			if (flags.Test(DoCommandFlag::Execute) && built) {
+				std::set<StationID> affected;
 				for (const BlueprintAirportTile &apt : ordered) {
 					if (!tile_valid(apt.offset)) continue;
 					TileIndex tile = target_tile(apt.offset);
 					if (!IsAirportTile(tile) || !IsTileOwner(tile, _current_company)) continue;
-					Tile(tile).m4() = apt.m4;
-					Tile(tile).m5() = apt.m5;
-					/* Preserve the station type nibble (m6 bits 3-6); the rest is the
-					 * airtype gfx flag and the ground counter. */
-					Tile(tile).m6() = (Tile(tile).m6() & 0x78) | (apt.m6 & 0x87);
+					Station *st = Station::GetByTile(tile);
+					if (st->airport.type != AT_CUSTOM) continue;
 					BlueprintAirportTile clean = apt;
+					NormalizeLegacyBlueprintAirportTile(clean);
 					ClearBlueprintAirportReservations(clean);
+					Tile(tile).m4() = clean.m4;
+					Tile(tile).m5() = clean.m5;
+					/* Only copy the airtype gfx flag and the ground counter. */
+					Tile(tile).m6() = (Tile(tile).m6() & 0x78) | (clean.m6 & 0x87);
 					Tile(tile).m8() = clean.m8;
+					/* Replace anything previously recorded at this position. Keep exact
+					 * descriptions even if this game cannot resolve the NewGRF. */
+					if (clean.graphics) {
+						st->airport.tile_graphics.insert_or_assign(tile, *clean.graphics);
+					} else {
+						st->airport.tile_graphics.erase(tile);
+					}
+					SetAnimationFrame(tile, 0);
+					if (AirportTileSpec::GetByTile(tile)->animation.status != AnimationStatus::NoAnimation) {
+						AddAnimatedTile(tile, false);
+					} else {
+						DeleteAnimatedTile(tile);
+					}
 					RecordBlueprintUndoCustomAirportTile(tile, airtype);
 					MarkTileDirtyByTile(tile);
+					affected.insert(st->index);
 				}
-				/* Rebuild the apron/runway/hangar structures and normalise tracks; the
-				 * hangar Depot is created here, so no EnsureFreeHangar is needed. */
-				std::set<StationID> affected;
-				for (const BlueprintAirportTile &apt : ordered) {
-					if (!tile_valid(apt.offset)) continue;
-					TileIndex t = target_tile(apt.offset);
-					if (IsAirportTile(t) && IsTileOwner(t, _current_company)) affected.insert(GetStationIndex(t));
-				}
-				/* A disconnected layout may fall back to several adjacent stations.
-				 * Rebuild all of them, in ID order, just as a joining client will. */
+				/* Rebuild apron/runway/hangar structures and normalise tracks. A disconnected
+				 * layout can create several stations; rebuild them in station ID order. */
 				for (StationID id : affected) Station::Get(id)->UpdateAirportDataStructure();
 			}
 			if (built) register_new_station(airport.station, airport.offset);

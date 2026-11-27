@@ -215,6 +215,9 @@ void AirportOverrideManager::SetEntitySpec(AirportSpec &&as)
 {
 	switch (variable) {
 		case 0x40: return this->layout;
+		case 0xF1:
+			if (!this->allow_psa && this->spec != nullptr) return this->spec->ttd_airport_type;
+			break;
 	}
 
 	if (this->st == nullptr) {
@@ -224,7 +227,7 @@ void AirportOverrideManager::SetEntitySpec(AirportSpec &&as)
 
 	switch (variable) {
 		/* Get a variable from the persistent storage */
-		case 0x7C: return (this->st->airport.psa != nullptr) ? this->st->airport.psa->GetValue(parameter) : 0;
+		case 0x7C: return (this->allow_psa && this->st->airport.psa != nullptr) ? this->st->airport.psa->GetValue(parameter) : 0;
 
 		case 0xF0: return this->st->facilities.base();
 		case 0xFA: return ClampTo<uint16_t>(this->st->build_date - CalTime::DAYS_TILL_ORIGINAL_BASE_YEAR);
@@ -255,7 +258,7 @@ uint32_t AirportResolverObject::GetDebugID() const
  */
 /* virtual */ void AirportScopeResolver::StorePSA(uint pos, int32_t value)
 {
-	if (this->st == nullptr) return;
+	if (this->st == nullptr || !this->allow_psa) return;
 
 	if (this->st->airport.psa == nullptr) {
 		/* There is no need to create a storage if the value is zero. */
@@ -317,7 +320,7 @@ SpriteID GetCustomAirportSprite(const AirportSpec *as, uint8_t layout)
 
 uint16_t GetAirportCallback(CallbackID callback, uint32_t param1, uint32_t param2, Station *st, TileIndex tile)
 {
-	AirportResolverObject object(tile, st, AirportSpec::Get(st->airport.type), st->airport.layout, callback, param1, param2);
+	AirportResolverObject object(tile, st, st->airport.GetSpec(), st->airport.layout, callback, param1, param2);
 	return object.ResolveCallback();
 }
 

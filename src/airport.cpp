@@ -11,6 +11,8 @@
 #include "station_base.h"
 #include "depot_base.h"
 #include "air_map.h"
+#include "animated_tile_func.h"
+#include "newgrf_airporttiles.h"
 #include "order_backup.h"
 #include "order_func.h"
 #include "settings_type.h"
@@ -438,15 +440,28 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 			continue;
 		}
 
+		const bool was_airtype_gfx = HasAirtypeGfx(t);
+		const AirportTiles old_gfx = GetTileAirportGfx(t);
+		const StationGfx old_translated_gfx = was_airtype_gfx ? INVALID_AIRPORTTILE : GetTranslatedAirportTileID(old_gfx);
+		this->airport.tile_graphics.erase(t);
+
 		t.m5() = 0;
 
 		SB(_me[t].m6, 3, 3, to_underlying(StationType::Airport));
 		SetAirType(t, airtype);
 		SetAirportTileType(t, airport_tile_desc->type);
 
-		bool airtype_gfx = force_airtype_gfx || airtype != as->airtype || airport_tile_desc->gfx[static_cast<size_t>(rotation)] == INVALID_AIRPORTTILE;
+		const AirportTiles gfx = airport_tile_desc->gfx[to_underlying(rotation)];
+		const bool airtype_gfx = force_airtype_gfx || airtype != as->airtype || gfx == INVALID_AIRPORTTILE;
 		SetAirGfxType(t, airtype_gfx);
-		SetTileAirportGfx(t, airtype_gfx ? airport_tile_desc->at_gfx : airport_tile_desc->gfx[static_cast<size_t>(rotation)]);
+		SetTileAirportGfx(t, airtype_gfx ? airport_tile_desc->at_gfx : gfx);
+
+		/* Only the appearance of infrastructure is carried over to a custom airport. */
+		std::optional<AirportTileGraphics> graphics;
+		if (force_airtype_gfx && IsInfrastructure(t)) {
+			graphics = MakeAirportTileGraphics(this->airport.type, this->airport.layout, static_cast<uint16_t>(pos), rotation);
+			if (graphics.has_value()) this->airport.tile_graphics.emplace(t, *graphics);
+		}
 
 		switch (GetAirportTileType(t)) {
 			case ATT_INFRASTRUCTURE_WITH_CATCH:
@@ -485,6 +500,14 @@ void Station::LoadAirportTilesFromSpec(TileArea ta, DiagDirection rotation, AirT
 
 		if (!IsInfrastructure(t)) {
 			SetAirportTileTracks(t, RotateTrackBits(airport_tile_desc->trackbits, rotation));
+		}
+
+		if (force_airtype_gfx) {
+			const bool same_graphics = graphics.has_value() ? old_translated_gfx == ResolveAirportTileGraphics(*graphics) :
+					was_airtype_gfx && old_gfx == airport_tile_desc->at_gfx;
+			if (!same_graphics) SetAnimationFrame(t, 0);
+			DeleteAnimatedTile(t);
+			if (AirportTileSpec::GetByTile(t)->animation.status != AnimationStatus::NoAnimation) AddAnimatedTile(t);
 		}
 
 		written_tiles++;
@@ -627,8 +650,7 @@ bool Station::ConvertAirportToCustom(bool verify_tiles)
 	}
 	if (airtype == INVALID_AIRTYPE || airtype >= AIRTYPE_END) airtype = as->GetCustomAirType();
 
-	/* Rebuild the tiles with the air type graphics, i.e. without the (NewGRF) graphics of
-	 * the layout, and then turn the airport into a custom airport. */
+	/* Rebuild the tiles with AirType graphics, keeping NewGRF infrastructure as appearance only. */
 	this->airport.layout = layout;
 	this->airport.rotation = static_cast<Direction>(rotation);
 	this->LoadAirportTilesFromSpec(this->airport, static_cast<DiagDirection>(rotation), airtype, true);
@@ -864,6 +886,10 @@ StationGfx GetAirportGfx(TileIndex t)
 	assert(IsTileType(t, TileType::Station));
 	assert(IsAirport(t));
 
+	if (const AirportTileGraphics *graphics = GetAirportTileGraphics(t); graphics != nullptr) {
+		StationGfx gfx = ResolveAirportTileGraphics(*graphics);
+		if (gfx != INVALID_AIRPORTTILE) return gfx;
+	}
 	if (!HasAirtypeGfx(t)) return GetTranslatedAirportTileID(GetTileAirportGfx(t));
 
 	switch (GetAirportTileType(t)) {
