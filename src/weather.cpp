@@ -91,8 +91,8 @@ void WeatherTick()
 
 		if (_state_ticks - StateTicks{_weather_state.period_start} >= RAIN_PERIOD_TICKS) {
 			_weather_state.period_start = _state_ticks.base();
-			/* Rain chance per period: 20% when clear, 50% chance to clear when raining. */
-			uint32_t chance = _weather_state.auto_raining ? 50 : 20;
+			/* Rain chance per period: 10% when clear, 50% chance to clear when raining. */
+			uint32_t chance = _weather_state.auto_raining ? 50 : 10;
 			if ((RainNextRandom() % 100) < chance) {
 				_weather_state.auto_raining = !_weather_state.auto_raining;
 			}
