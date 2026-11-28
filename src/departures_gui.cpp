@@ -33,6 +33,7 @@
 #include "departures_func.h"
 #include "cargotype.h"
 #include "zoom_func.h"
+#include "depot_base.h"
 #include "depot_map.h"
 #include "tilehighlight_func.h"
 #include "viewport_func.h"
@@ -167,6 +168,7 @@ static std::string GetDepartureBoardServiceNumber(const Departure &d, Departures
 struct DeparturesWindow : public Window {
 protected:
 	DepartureSourceType source_type{};          ///< Source type.
+	VehicleType depot_type = VehicleType::Invalid; ///< Vehicle type of the source depot, independent of list filters.
 	DepartureOrderDestinationDetector source{}; ///< Source order detector.
 	DepartureList departures{};                 ///< The current list of departures and/or arrivals from this station.
 	bool departures_invalid = true;             ///< The departures/arrivals list is currently invalid.
@@ -466,15 +468,34 @@ public:
 		return tile.base() | DEPARTURE_WINDOW_NUMBER_DEPOT_TAG;
 	}
 
+	static std::optional<DestinationID> GetDepotSource(TileIndex tile, VehicleType vt)
+	{
+		if (!IsValidTile(tile) || !IsDepotTile(tile) || GetDepotVehicleType(tile) != vt) return std::nullopt;
+		if (vt == VehicleType::Aircraft) {
+			const Station *st = Station::GetIfValid(GetStationIndex(tile));
+			if (st == nullptr || !st->facilities.Test(StationFacility::Airport) || !st->airport.HasHangar() || !st->airport.Contains(tile)) return std::nullopt;
+			return DestinationID(st->index);
+		}
+		const Depot *depot = Depot::GetIfValid(GetDepotIndex(tile));
+		if (depot == nullptr || depot->xy != (vt == VehicleType::Ship ? GetShipDepotNorthTile(tile) : tile)) return std::nullopt;
+		return DestinationID(depot->index);
+	}
+
+	bool MatchesDepotSource(VehicleType vt, DestinationID destination) const
+	{
+		return this->source_type == DST_DEPOT && this->depot_type == vt && this->source.destination == destination;
+	}
+
 	struct DepotTag{};
-	DeparturesWindow(WindowDesc &desc, DepotTag tag, TileIndex tile, VehicleType vt) : Window(desc)
+	DeparturesWindow(WindowDesc &desc, DepotTag, TileIndex tile, VehicleType vt, DestinationID destination) : Window(desc)
 	{
 		this->invalidation_policy = WindowInvalidationPolicy::NoQueueZero;
 		this->ConstructWidgetLayout(DeparturesWindow::GetDepotWindowNumber(tile));
 
 		this->source_type = DST_DEPOT;
+		this->depot_type = vt;
 		SetBit(this->source.order_type_mask, OT_GOTO_DEPOT);
-		this->source.destination = (vt == VehicleType::Aircraft) ? DestinationID(GetStationIndex(tile)) : DestinationID(GetDepotIndex(tile));
+		this->source.destination = destination;
 		this->title_params[0] = STR_DEPOT_NAME;
 		this->title_params[1] = vt;
 		this->title_params[2] = this->source.destination;
@@ -985,16 +1006,16 @@ public:
 	void CloneWindow() const
 	{
 		if (this->source_type == DST_DEPOT) {
-			VehicleType vt{};
-			for (VehicleType i = VehicleType::Begin; i < VehicleType::CompanyEnd; i++) {
-				if (this->show_types[i]) {
-					vt = i;
-					break;
-				}
+			const TileIndex tile(this->window_number & (Map::Size() - 1));
+			const auto destination = GetDepotSource(tile, this->depot_type);
+			if (destination.has_value() && *destination == this->source.destination) {
+				new DeparturesWindow(_departures_desc, DepotTag{}, tile, this->depot_type, *destination);
 			}
-			new DeparturesWindow(_departures_desc, DeparturesWindow::DepotTag{}, TileIndex(this->window_number & (Map::Size() - 1)), vt);
 		} else {
-			new DeparturesWindow(_departures_desc, (StationID)this->window_number);
+			const StationID station = (StationID)this->window_number;
+			if (this->source_type == DST_WAYPOINT ? Waypoint::IsValidID(station) : Station::IsValidID(station)) {
+				new DeparturesWindow(_departures_desc, station);
+			}
 		}
 	}
 
@@ -1016,17 +1037,28 @@ public:
  */
 void ShowDeparturesWindow(StationID station)
 {
+	if (!BaseStation::IsValidID(station)) return;
 	AllocateWindowDescFront<DeparturesWindow>(_departures_desc, station);
 }
 
 /**
- * Shows a window of scheduled departures for a station.
- * @param station the station to show a departures window for
+ * Shows a window of scheduled departures for a depot or hangar.
+ * @param tile The actual depot or hangar tile.
+ * @param vt The vehicle type expected at the depot.
  */
 void ShowDepotDeparturesWindow(TileIndex tile, VehicleType vt)
 {
-	if (BringWindowToFrontById(_departures_desc.cls, DeparturesWindow::GetDepotWindowNumber(tile)) != nullptr) return;
-	new DeparturesWindow(_departures_desc, DeparturesWindow::DepotTag{}, tile, vt);
+	const auto destination = DeparturesWindow::GetDepotSource(tile, vt);
+	if (!destination.has_value()) return;
+	const auto number = DeparturesWindow::GetDepotWindowNumber(tile);
+	if (const Window *existing = FindWindowById(_departures_desc.cls, number); existing != nullptr) {
+		if (static_cast<const DeparturesWindow *>(existing)->MatchesDepotSource(vt, *destination)) {
+			BringWindowToFrontById(_departures_desc.cls, number);
+			return;
+		}
+		CloseDepotDeparturesWindow(tile);
+	}
+	new DeparturesWindow(_departures_desc, DeparturesWindow::DepotTag{}, tile, vt, *destination);
 }
 
 void CloseStationDeparturesWindow(StationID station)

@@ -210,6 +210,11 @@ bool IsCoupleApproachPathClearTo(const Train *v, const Train *tgt);
 bool IsCoupleApproachPathClear(const Train *v);
 
 bool TryClearUnsignalledRailTunnelBridgeReservationAfterWreck(TileIndex tile, const Train *remaining_wreck);
+using TrainHoldReservation = std::vector<std::pair<TileIndex, Trackdir>>;
+/** Read the forward path only if the moving front is its unique physical anchor. */
+bool GetTrainHoldReservation(const Train *v, TrainHoldReservation &path);
+/** Release a proven path ahead of the body. A just-detached sibling may only be behind a previously proven front. */
+bool TryReleaseTrainReservationForHold(const Train *v, const TrainHoldReservation *before_split = nullptr, const Train *sibling = nullptr);
 bool HasExclusiveSplitDepartureReservation(const Train *v, TileIndex exit_tile);
 Train *GetTrainForReservation(TileIndex tile, Track track);
 CommandCost CheckTrainReservationPreventsTrackModification(TileIndex tile, Track track);

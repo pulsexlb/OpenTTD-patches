@@ -7,7 +7,9 @@ struct CouplingTrialCallbackObserver final : SpriteGroup {
  mutable std::vector<bool> seen_flipped;
  mutable uint starts=0;
  CallbackResultSpriteGroup allow{0x400};
+ CallbackResultSpriteGroup deny{0};
  CallbackResultSpriteGroup unspecified{CALLBACK_FAILED};
+ bool reject=false;
  CouplingTrialCallbackObserver():SpriteGroup(SpriteGroupID::Invalid(),SGT_CALLBACK){}
  const SpriteGroup *Resolve(ResolverObject &object) const override {
   if(object.callback==CBID_VEHICLE_START_STOP_CHECK){
@@ -20,7 +22,7 @@ struct CouplingTrialCallbackObserver final : SpriteGroup {
    }
    GetVariableExtra extra{};extra.mask=UINT32_MAX;
    self->GetVariable(0x40,0,extra); // Real callback position cache must also roll back.
-   return &allow;
+   return reject?&deny:&allow;
   }
   return &unspecified;
  }
@@ -89,4 +91,25 @@ TEST_CASE_METHOD(TrainDecoupleFixture,"Couple - trial callback observes the real
   CHECK(base->Primary()==base);CHECK(a->Primary()==base);CHECK(b->Primary()==base);
   CHECK(waiting->Primary()==waiting);CHECK(wagon->Primary()==waiting);
  }
+
+ observer.reject=true;
+ base->current_order.MakeGoToCouple();
+ waiting->current_order.MakeWaitCouple();
+ base->cur_speed=12;
+ base->current_order_time=73;
+ base->x_pos=TileX(tile)*TILE_SIZE+8;
+ base->y_pos=TileY(tile)*TILE_SIZE+8;
+ wagon->x_pos=base->x_pos-VEHICLE_LENGTH;
+ wagon->y_pos=base->y_pos;
+ const uint starts=observer.starts;
+ GameRandomSeedChecker random;
+ CHECK_FALSE(HandleTrainCouplingContact(base,wagon));
+ CHECK(observer.starts==starts+1);
+ CHECK(base->current_order.IsType(OT_GOTO_COUPLE));
+ CHECK(waiting->current_order.IsType(OT_WAIT_COUPLE));
+ CHECK(base->cur_speed==12);
+ CHECK(base->current_order_time==73);
+ CHECK(base->Next()==a);
+ CHECK(waiting->Next()==wagon);
+ CHECK(random.Check());
 }

@@ -109,6 +109,8 @@ TEST_CASE("Aircraft - state transitions refresh callback caches even when stoppe
 	_engine_pool.CleanPool();
 }
 
+extern bool CheckTrainCollision(Train *moving_front);
+
 class TrainDecoupleFixture {
 protected:
 	Engine *engine;
@@ -746,7 +748,10 @@ TEST_CASE_METHOD(TrainStatisticsFixture, "External markets - loading refreshes t
 	market->owner = city->owner;
 	market->external_city = city->index.base();
 	city->market_station = market->index;
-	auto cleanup = scope_guard([] {
+	auto cleanup = scope_guard([&] {
+		head->cargo.Truncate();
+		tail->cargo.Truncate();
+		if (market->goods[cargo].data != nullptr) market->goods[cargo].data->cargo.Truncate();
 		_station_pool.CleanPool();
 		_external_city_pool.CleanPool();
 	});
@@ -6945,9 +6950,15 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - the physical contact de
 	REQUIRE(waiting_end->Primary() == waiting);
 
 	SECTION("the nearby end is coupled even when the primaries face differently") {
+		station->train_station = TileArea(waiting_end->tile, 2, 1);
+		station->rect.BeforeAddTile(waiting_end->tile, StationRect::ADD_FORCE);
+		MakeRailStation(waiting_end->tile, _current_company, station->index, Axis::X, 0, RAILTYPE_RAIL);
+		moving->couple_target = waiting_end->index;
+		ClaimCoupleTarget(moving, waiting, 0);
+		REQUIRE(GetCoupleClaimant(waiting) == moving);
 		GroupStatistics::CountVehicle(moving, 1);
 		GroupStatistics::CountVehicle(waiting, 1);
-		REQUIRE(HandleTrainCouplingContact(moving_end, waiting_end));
+		REQUIRE(CheckTrainCollision(moving_end));
 		CHECK(moving_end->Next() == waiting_end);
 		CHECK(waiting_end->Previous() == moving_end);
 		CHECK(waiting_end->direction == Direction::NE);
@@ -7093,6 +7104,135 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple - coupling holds keep t
 	CHECK(HasReservedTracks(front_exit, TRACK_BIT_X) == !front_holds);
 	CHECK(HasStationReservation(station->xy));
 	CHECK(HasStationReservation(rear_platform));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple PBS hold - proves a long platform and retries without changing an ambiguous prefix")
+{
+	const TileIndex signal = TileXY(11, 10);
+	SB(_m[signal].m5, 6, 2, to_underlying(RailTileType::Signals));
+	SetPresentSignals(signal, SignalAlongTrackdir(TRACKDIR_X_SW));
+	SetSignalType(signal, TRACK_X, SignalType::Path);
+	SetSignalStateByTrackdir(signal, TRACKDIR_X_SW, SignalState::Green);
+	REQUIRE(TryReserveRailTrack(signal, TRACK_X));
+	station->train_station = TileArea(station->xy, 9, 1);
+	station->rect.BeforeAddTile(TileXY(20, 10), StationRect::ADD_FORCE);
+	for (uint x = 13; x <= 20; ++x) {
+		MakeRailStation(TileXY(x, 10), _current_company, station->index, Axis::X, 0, RAILTYPE_RAIL);
+		REQUIRE(TryReserveRailTrack(TileXY(x, 10), TRACK_X));
+	}
+	Order wait;
+	wait.MakeWaitCouple();
+	moving->orders = OrderList::Create(std::vector<Order>{wait}, moving);
+	moving->current_order = wait;
+	SECTION("foreign train on a skipped tile") { Place(waiting, 17); }
+	SECTION("foreign anchor behind the train") {
+		REQUIRE(TryReserveRailTrack(TileXY(9, 10), TRACK_X));
+		Place(waiting, 9);
+	}
+
+	REQUIRE(moving->Tick());
+	CHECK_FALSE(moving->couple_body_hold);
+	CHECK(GetSignalStateByTrackdir(signal, TRACKDIR_X_SW) == SignalState::Green);
+	for (uint x = 10; x <= 20; ++x) CHECK(HasReservedTracks(TileXY(x, 10), TRACK_BIT_X));
+
+	Place(waiting, 25);
+	REQUIRE(moving->Tick());
+	CHECK(moving->couple_body_hold);
+	CHECK(HasReservedTracks(moving->tile, TRACK_BIT_X));
+	CHECK(GetSignalStateByTrackdir(signal, TRACKDIR_X_SW) == SignalState::Red);
+	for (uint x = 11; x <= 20; ++x) CHECK_FALSE(HasReservedTracks(TileXY(x, 10), TRACK_BIT_X));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple PBS hold - unrelated parallel rail on the same tile is not occupancy")
+{
+	const TileIndex curves = TileXY(11, 10);
+	const Trackdir routed = TrackEnterdirToTrackdir(TRACK_UPPER, DiagDirection::SW);
+	REQUIRE(IsValidTrackdir(routed));
+	const TileIndex end = TileAddByDiagDir(curves, TrackdirToExitdir(routed));
+	MakeRailNormal(curves, _current_company, TRACK_BIT_HORZ, RAILTYPE_RAIL);
+	MakeRailNormal(end, _current_company, TRACK_BIT_Y, RAILTYPE_RAIL);
+	REQUIRE(TryReserveRailTrack(curves, TRACK_LOWER));
+	REQUIRE(TryReserveRailTrack(curves, TRACK_UPPER));
+	REQUIRE(TryReserveRailTrack(end, TRACK_Y));
+	Place(waiting, 11);
+	waiting->track = TRACK_BIT_LOWER;
+	CHECK(TryReleaseTrainReservationForHold(moving));
+	CHECK(GetReservedTrackbits(curves) == TRACK_BIT_LOWER);
+	CHECK_FALSE(HasReservedTracks(end, TRACK_BIT_Y));
+	CHECK(HasReservedTracks(moving->tile, TRACK_BIT_X));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple PBS hold - proves both bridge ramps and preserves occupied spans")
+{
+	AutoRestoreBackup braking(_settings_game.vehicle.train_braking_model, uint8_t{TBM_REALISTIC});
+	const TileIndex entrance = TileXY(12, 10), exit = TileXY(17, 10), beyond = TileXY(18, 10);
+	Place(waiting, 25);
+	MakeRailBridgeRamp(entrance, _current_company, 0, DiagDirection::SW, RAILTYPE_RAIL, false);
+	MakeRailBridgeRamp(exit, _current_company, 0, DiagDirection::NE, RAILTYPE_RAIL, false);
+	for (uint x = 13; x < 17; ++x) SetBridgeMiddle(TileXY(x, 10), Axis::X);
+	MakeRailNormal(beyond, _current_company, TRACK_BIT_X, RAILTYPE_RAIL);
+	const bool simulated = GENERATE(false, true);
+	if (simulated) {
+		SetTunnelBridgeSignalSimulationEntrance(entrance);
+		SetTunnelBridgeSignalSimulationExit(exit);
+		SetTunnelBridgePBS(exit, true);
+		SetTunnelBridgeEntranceSignalState(entrance, SignalState::Green);
+		SetTunnelBridgeExitSignalState(exit, SignalState::Green);
+	}
+	for (TileIndex tile : {TileXY(11, 10), entrance, exit, beyond}) REQUIRE(TryReserveRailTrack(tile, TRACK_X));
+
+	SECTION("the reservation is free of foreign trains") {
+		CHECK(TryReleaseTrainReservationForHold(moving));
+		for (TileIndex tile : {TileXY(11, 10), entrance, exit, beyond}) CHECK_FALSE(HasReservedTracks(tile, TRACK_BIT_X));
+		if (simulated) {
+			CHECK(GetTunnelBridgeEntranceSignalState(entrance) == SignalState::Green);
+			CHECK(GetTunnelBridgeExitSignalState(exit) == SignalState::Red);
+		}
+	}
+	SECTION("a train indexed at the entrance occupies the middle of the span") {
+		Place(waiting, 12);
+		waiting->track = TRACK_BIT_WORMHOLE;
+		waiting->x_pos = 15 * TILE_SIZE + 8;
+		CHECK_FALSE(TryReleaseTrainReservationForHold(moving));
+		for (TileIndex tile : {TileXY(11, 10), entrance, exit, beyond}) CHECK(HasReservedTracks(tile, TRACK_BIT_X));
+		if (simulated) CHECK(GetTunnelBridgeExitSignalState(exit) == SignalState::Green);
+	}
+	CHECK(HasReservedTracks(moving->tile, TRACK_BIT_X));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple PBS hold - a waypoint successor holds before moving or reserving")
+{
+	AutoRestoreBackup braking(_settings_game.vehicle.train_braking_model, uint8_t{TBM_ORIGINAL});
+	AutoRestoreBackup reserve_paths(_settings_game.pf.reserve_paths, true);
+	Place(waiting, 25);
+	SetRailStationReservation(station->xy, false);
+	Waypoint *waypoint = Waypoint::Create(moving->tile);
+	waypoint->owner = _current_company;
+	waypoint->facilities = {StationFacility::Train};
+	waypoint->train_station = TileArea(waypoint->xy, 1, 1);
+	waypoint->rect.BeforeAddTile(waypoint->xy, StationRect::ADD_FORCE);
+	MakeRailWaypoint(waypoint->xy, _current_company, waypoint->index, Axis::X, 0, RAILTYPE_RAIL);
+	const TileIndex exit = TileXY(11, 10);
+	REQUIRE(TryReserveRailTrack(moving->tile, TRACK_X));
+	REQUIRE(TryReserveRailTrack(exit, TRACK_X));
+	Order arrival;
+	arrival.MakeGoToWaypoint(waypoint->index);
+	const bool stopping = GENERATE(false, true);
+	if (stopping) arrival.SetWaypointFlags({OrderWaypointFlag::Stop});
+	Order wait;
+	wait.MakeWaitCouple();
+	moving->orders = OrderList::Create(std::vector<Order>{arrival, wait}, moving);
+	moving->current_order = arrival;
+	if (stopping) moving->current_order.MakeWaiting();
+	moving->dest_tile = waypoint->xy;
+	const int original_x = moving->x_pos;
+	REQUIRE(moving->Tick());
+	CHECK(moving->current_order.IsType(OT_WAIT_COUPLE));
+	CHECK(moving->x_pos == original_x);
+	CHECK(moving->cur_speed == 0);
+	CHECK_FALSE(moving->flags.Test(VehicleRailFlag::LeavingStation));
+	CHECK_FALSE(HasReservedTracks(exit, TRACK_BIT_X));
+	CHECK(HasReservedTracks(waypoint->xy, TRACK_BIT_X));
 }
 
 TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - goto couple claims a waiting partner blocking the line")
@@ -7286,6 +7426,18 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail bridge release uses real oc
 	CHECK_FALSE(HasReservedTracks(entrance, TRACK_BIT_X));
 	CHECK_FALSE(HasReservedTracks(exit, TRACK_BIT_X));
 	CHECK(HasStationReservation(station->xy));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail wrecks do not release a path from an invalid moving track")
+{
+	UnreserveRailTrack(moving->tile, TRACK_X);
+	moving->track = TRACK_BIT_Y;
+	moving->direction = Direction::SE;
+	const TileIndex other = TileXY(10, 11);
+	MakeRailNormal(other, _current_company, TRACK_BIT_Y, RAILTYPE_RAIL);
+	REQUIRE(TryReserveRailTrack(other, TRACK_Y));
+	CHECK(moving->Crash() >= 2);
+	CHECK(HasReservedTracks(other, TRACK_BIT_Y));
 }
 
 TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail wrecks ignore a vehicle track missing from the map")

@@ -25,6 +25,7 @@
 #include "company_base.h"
 #include "company_gui.h"
 #include "depot_base.h"
+#include "departures_gui.h"
 #include "industry.h"
 #include "landscape.h"
 #include "landscape_cmd.h"
@@ -430,7 +431,7 @@ CommandCost AircraftInAirport(const Station *st)
 			return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 
 		/* Aircraft can be hidden inside depots with no associated reservation. */
-		if (IsStandardHangarTile(tile)) {
+		if (IsHangarTile(tile)) {
 			CommandCost ret = EnsureFreeHangar(tile);
 			if (ret.Failed()) return ret;
 		}
@@ -857,6 +858,7 @@ static void CloseRemovedHangarWindows(TileIndex tile)
 	OrderBackup::Reset(tile, false);
 	CloseWindowById(WindowClass::VehicleDepot, tile.base());
 	CloseWindowById(WindowClass::BuildVehicle, tile.base());
+	CloseDepotDeparturesWindow(tile);
 }
 
 /**
@@ -973,7 +975,7 @@ static CommandCost ChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile
 		if (GetTileOwner(tile_iter) != _current_company) return CMD_ERROR;
 		if (air_type != GetAirType(tile_iter)) continue;
 
-		if (IsStandardHangarTile(tile_iter)) {
+		if (IsHangarTile(tile_iter)) {
 			CommandCost ret = EnsureFreeHangar(tile_iter);
 			if (ret.Failed()) return ret;
 		}
@@ -1423,7 +1425,7 @@ CommandCost RemoveAirportTiles(DoCommandFlags flags, TileIndex start_tile, TileI
 			if (ret.Failed()) continue;
 		}
 
-		if (IsStandardHangarTile(tile)) {
+		if (IsHangarTile(tile)) {
 			CommandCost ret = EnsureFreeHangar(tile);
 			if (ret.Failed()) continue;
 		}

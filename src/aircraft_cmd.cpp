@@ -502,35 +502,43 @@ static StationID FindClosestHangar(const Aircraft *v)
  */
 CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine *e, Vehicle **ret)
 {
+	assert(ret != nullptr);
+	*ret = nullptr;
+	if (!IsValidTile(tile) || !IsHangarTile(tile)) return CMD_ERROR;
 	const AircraftVehicleInfo *avi = &e->VehInfo<AircraftVehicleInfo>();
-	const Station *st = Station::GetByTile(tile);
+	const Station *st = Station::GetIfValid(GetStationIndex(tile));
 
-	/* Prevent building aircraft types at places which can't handle them */
-	if (!CanVehicleUseStation(e->index, st)) return CMD_ERROR;
+	/* Prevent building aircraft types at places which can't handle them. */
+	if (st == nullptr || !st->airport.HasHangar() || !CanVehicleUseStation(e->index, st)) return CMD_ERROR;
 
-	if (!st->airport.HasHangar()) return CMD_ERROR;
-
-	bool extended_hangar = IsExtendedHangar(tile);
+	const bool extended_hangar = IsExtendedHangar(tile);
+	const DiagDirection exit = GetHangarDirection(tile);
+	const Trackdir td = DiagDirToDiagTrackdir(exit);
+	if (extended_hangar && !CanBuildAircraftInExtendedHangar(tile, td)) return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		Aircraft *v = Aircraft::Create(); // aircraft
-		Aircraft *u = Aircraft::Create(); // shadow
-		*ret = v;
-
-		/* Set the subtype and state before anything else uses them; UpdateDeltaXY() and the
-		 * position updates below depend on them being valid. */
+		/* Reserve before allocating the rest of the chain or consuming random bits. */
 		v->subtype = (avi->subtype & AIR_CTOL ? AIR_AIRCRAFT : AIR_HELICOPTER);
 		v->state = AS_HANGAR;
-		u->subtype = AIR_SHADOW;
-
 		v->tile = tile;
-		v->dest_tile = TileIndex{};
+		v->owner = _current_company;
+		v->trackdir = td;
 		v->next_trackdir = INVALID_TRACKDIR;
-		v->direction = u->direction = DiagDirToDir(GetHangarDirection(tile));
-		v->trackdir = DiagDirToDiagTrackdir(GetHangarDirection(tile));
-		v->wait_counter = 0;
+		if (extended_hangar && !TryReserveAircraftTile(v, tile, TrackToTrackBits(TrackdirToTrack(td)), TrackdirToTrackdirBits(td))) {
+			ReleaseAircraftTaxiPath(v, false);
+			/* This vehicle was never registered in the company's engine counts. */
+			v->subtype = AIR_SHADOW;
+			delete v;
+			return CommandCost(STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
+		}
 
-		v->owner = u->owner = _current_company;
+		Aircraft *u = Aircraft::Create(); // shadow
+		u->subtype = AIR_SHADOW;
+		u->owner = v->owner;
+		v->dest_tile = TileIndex{};
+		v->direction = u->direction = DiagDirToDir(exit);
+		v->wait_counter = 0;
 		v->SetNext(u);
 
 		v->UpdateDeltaXY();
@@ -554,9 +562,6 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
 		if (!extended_hangar) {
 			v->vehstatus.Set(VehState::Hidden);
 			u->vehstatus.Set(VehState::Hidden);
-		} else {
-			assert(IsValidTrackdir(v->trackdir));
-			if (!TryReserveAircraftTile(v, tile, TrackToTrackBits(TrackdirToTrack(v->trackdir)), TrackdirToTrackdirBits(v->trackdir))) NOT_REACHED();
 		}
 
 		v->spritenum = avi->image_index;
@@ -647,6 +652,7 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
 		 * to _tick_aircraft_front_cache and its Tick() is never called (it appears
 		 * stuck). */
 		InvalidateVehicleTickCaches();
+		*ret = v;
 	}
 
 	return CommandCost();
@@ -3048,8 +3054,12 @@ static TileIndex FindLandingTileAtAirport(const Aircraft *v, const Station *st, 
 
 	if (v->IsHelicopter()) {
 		const auto consider_stands = [&](const auto &tiles) {
+			const Trackdir preferred = DiagDirToDiagTrackdir(DirToDiagDir(v->direction));
 			for (TileIndex tile : tiles) {
-				if (IsAircraftLandingTarget(v, st, tile)) consider(tile, IsAircraftGroundTileAvailable(v, tile));
+				if (!IsAircraftLandingTarget(v, st, tile)) continue;
+				/* A virtual body route or edge sweep can make an otherwise empty
+				 * stand unclaimable. Prefer a stand we could actually land on. */
+				consider(tile, CanClaimAircraftTerminal(v, tile) && IsValidTrackdir(GetFreeAirportTrackdir(tile, preferred, v)));
 			}
 		};
 		consider_stands(st->airport.helipads);
@@ -3512,12 +3522,12 @@ bool TryReservePath(Aircraft *v)
 	return true;
 }
 
-static void StopTaxiAircraft(Aircraft *v)
+static void StopTaxiAircraft(Aircraft *v, uint16_t retry_ticks = AIRCRAFT_WAIT_FREE_PATH_TICKS)
 {
 	v->cur_speed = 0;
 	v->taxi_progress = 0;
 	v->pushback_progress = 0;
-	v->SetWaitTime(AIRCRAFT_WAIT_FREE_PATH_TICKS);
+	v->SetWaitTime(retry_ticks);
 	SetWindowWidgetDirty(WindowClass::VehicleView, v->index, WID_VV_START_STOP);
 }
 
@@ -3873,7 +3883,10 @@ bool HandleAircraftMovement(Aircraft *v)
 		v->ClearWaitTime();
 	}
 	if (ShouldReplanAircraftApronTransit(v)) {
-		UpdatePath(v);
+		/* Drop the whole route but retain the actual body track. Wait longer
+		 * than a normal retry so even a same-tick waiter can try first. */
+		StopAircraftTaxiTraffic(v);
+		StopTaxiAircraft(v, 2 * AIRCRAFT_WAIT_FREE_PATH_TICKS);
 		return true;
 	}
 	if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile ||
@@ -3887,6 +3900,7 @@ bool HandleAircraftMovement(Aircraft *v)
 	 * Obtain it before rotating, aligning at the destination, or moving. */
 	if (v->state == AS_RUNNING && v->reserved_path.empty() && !ExtendAircraftTaxiReservation(v)) {
 		StopTaxiAircraft(v);
+		UpdateAircraftTaxiTraffic(v, false);
 		return true;
 	}
 

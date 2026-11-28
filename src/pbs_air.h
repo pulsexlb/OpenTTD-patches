@@ -48,6 +48,7 @@ bool CanClaimAircraftTerminal(const Aircraft *v, TileIndex tile);
 bool TryClaimAircraftTerminal(Aircraft *v, TileIndex tile);
 void ReleaseAircraftTerminal(Aircraft *v);
 bool HasAircraftTileReservation(const Aircraft *v, TileIndex tile, TrackBits tracks);
+bool CanBuildAircraftInExtendedHangar(TileIndex tile, Trackdir td);
 bool TryReserveAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks, TrackdirBits travel = TRACKDIR_BIT_NONE);
 void ReleaseAircraftTile(Aircraft *v, TileIndex tile, TrackBits tracks);
 void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current, bool keep_request = false);

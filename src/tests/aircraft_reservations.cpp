@@ -9,21 +9,26 @@
 #include "../aircraft_cmd.h"
 #include "../air_map.h"
 #include "../airport.h"
+#include "../airport_cmd.h"
 #include "../company_base.h"
 #include "../company_func.h"
 #include "../core/backup_type.hpp"
 #include "../date_func.h"
+#include "../departures_gui.h"
 #include "../depot_base.h"
 #include "../depot_map.h"
 #include "../engine_base.h"
+#include "../engine_func.h"
 #include "../network/network.h"
 #include "../pbs_air.h"
 #include "../settings_type.h"
 #include "../sl/extended_ver_sl.h"
 #include "../station_base.h"
 #include "../scope.h"
+#include "../vehicle_cmd.h"
 #include "../vehicle_func.h"
 #include "../vehiclelist.h"
+#include "../table/strings.h"
 
 #include "../safeguards.h"
 
@@ -104,6 +109,7 @@ TEST_CASE("Aircraft rolling reservations - gate claim survives until release")
 	REQUIRE(TryClaimAircraftTerminal(a, gate));
 	CHECK_FALSE(TryClaimAircraftTerminal(b, gate));
 	CHECK(GetReservedAirportTracks(gate) == TRACK_BIT_NONE); // Claim is not a remote taxi reservation.
+	AutoRestoreBackup version(_sl_xv_feature_versions[XSLFI_AIRCRAFT_ROLLING_RESERVATION], uint16_t{9});
 	AfterLoadAircraftReservations(false); // New snapshot: rebuild indexes, never change reservations.
 	CHECK_FALSE(TryClaimAircraftTerminal(b, gate));
 	ReleaseAircraftTerminal(a);
@@ -177,6 +183,7 @@ TEST_CASE("Aircraft stand claims cannot strand virtual routes beyond the stand")
 		parking->reserved_path = {{stand, TRACK_BIT_X}};
 		SetAirportTrackReservation(stand, TRACK_X);
 		parking->allocated_terminal = stand; // State produced by the old permissive claim rule.
+		AutoRestoreBackup version(_sl_xv_feature_versions[XSLFI_AIRCRAFT_ROLLING_RESERVATION], uint16_t{9});
 		AfterLoadAircraftReservations(false);
 		REQUIRE(HasAircraftVirtualTileReservation(transit, stand, TRACKDIR_BIT_X_SW));
 		CHECK_FALSE(IsAircraftVirtualTileAvailable(parking, stand, TRACKDIR_X_NE));
@@ -192,6 +199,59 @@ TEST_CASE("Aircraft stand claims cannot strand virtual routes beyond the stand")
 		CHECK(HasAircraftTileReservation(parking, stand, TRACK_BIT_X));
 		CHECK(parking->allocated_terminal == stand);
 	}
+}
+
+TEST_CASE("Aircraft blocked behind another releases an empty remote stand")
+{
+	extern bool HandleAircraftMovement(Aircraft *v);
+	const uint16_t version = GENERATE(uint16_t{5}, uint16_t{6}, uint16_t{7}, uint16_t{8}, uint16_t{9});
+	CAPTURE(version);
+	AutoRestoreBackup feature(_sl_xv_feature_versions[XSLFI_AIRCRAFT_ROLLING_RESERVATION], version);
+	AllocateMap(64, 64);
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([] { ClearAircraftReservationIndexes(); _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	MakeReservationAirport(TRACK_BIT_X);
+	const TileIndex origin = TileXY(10, 11);
+	const TileIndex ahead = TileXY(11, 11);
+	const TileIndex stand = TileXY(13, 11);
+	const TileIndex goal = TileXY(14, 11);
+	SetAirportTileType(stand, ATT_APRON_NORMAL);
+	Aircraft *rear = MakeReservationAircraft(origin);
+	Aircraft *front = MakeReservationAircraft(ahead);
+	REQUIRE(TryReserveAircraftTile(rear, origin, TRACK_BIT_X));
+	REQUIRE(TryReserveAircraftTile(front, ahead, TRACK_BIT_X));
+	for (uint x = TileX(origin); x <= TileX(goal); ++x) rear->planned_path.push_back({TileXY(x, 11), TRACKDIR_X_SW, false});
+	REQUIRE(TryReserveAircraftTaxiPath(rear));
+	rear->state = AS_RUNNING;
+	rear->x_pos = TileX(origin) * TILE_SIZE + 7;
+	rear->y_pos = TileY(origin) * TILE_SIZE + 8;
+	rear->UpdateNextTile(goal);
+
+	AfterLoadAircraftReservations(false);
+	CHECK(rear->junction_legacy == (version < 9));
+	REQUIRE(HasAircraftVirtualTileReservation(rear, stand, TRACKDIR_BIT_X_SW));
+	CHECK(IsAircraftTerminalAvailable(front, stand));
+	CHECK_FALSE(CanClaimAircraftTerminal(front, stand));
+	CHECK_FALSE(ShouldReplanAircraftApronTransit(rear));
+	for (int i = 0; i < 64 && !ShouldReplanAircraftApronTransit(rear); ++i) REQUIRE(HandleAircraftMovement(rear));
+	REQUIRE(ShouldReplanAircraftApronTransit(rear));
+	rear->next_trackdir = TRACKDIR_X_NE;
+	CHECK_FALSE(ShouldReplanAircraftApronTransit(rear));
+	rear->next_trackdir = INVALID_TRACKDIR;
+	SetBit(rear->flags, VAF_PUSHBACK);
+	CHECK_FALSE(ShouldReplanAircraftApronTransit(rear));
+	ClrBit(rear->flags, VAF_PUSHBACK);
+
+	REQUIRE(HandleAircraftMovement(rear));
+	CHECK(rear->state == AS_IDLE);
+	CHECK(rear->IsWaiting());
+	CHECK_FALSE(rear->junction_legacy);
+	CHECK(rear->planned_path.empty());
+	CHECK(GetAircraftVirtualBookedTracks(goal) == TRACK_BIT_NONE);
+	CHECK(GetAircraftVirtualBookedTracks(stand) == TRACK_BIT_NONE);
+	CHECK(HasAircraftTileReservation(rear, origin, TRACK_BIT_X));
+	CHECK(HasAircraftTileReservation(front, ahead, TRACK_BIT_X));
+	CHECK(TryClaimAircraftTerminal(front, stand));
 }
 
 TEST_CASE("Aircraft rolling reservations - turns reserve complete tile groups")
@@ -210,6 +270,7 @@ TEST_CASE("Aircraft rolling reservations - turns reserve complete tile groups")
 	CHECK(GetReservedAirportTracks(TileXY(11,11)) == TRACK_BIT_NONE);
 	const auto original = a->planned_path;
 	const auto occupancy = GetReservedAirportTracks(TileXY(11,10));
+	AutoRestoreBackup version(_sl_xv_feature_versions[XSLFI_AIRCRAFT_ROLLING_RESERVATION], uint16_t{9});
 	AfterLoadAircraftReservations(false);
 	CHECK(a->planned_path.size() == original.size());
 	CHECK(GetReservedAirportTracks(TileXY(11,10)) == occupancy);
@@ -311,6 +372,7 @@ TEST_CASE("Aircraft rolling reservations - old load discards orphan taxi reserva
 	SetAirportTrackReservation(TileXY(10,10), TRACK_X);
 	SetAirportTrackReservation(TileXY(11,10), TRACK_X);
 	SetAirportTrackReservation(TileXY(12,10), TRACK_X);
+	AutoRestoreBackup version(_sl_xv_feature_versions[XSLFI_AIRCRAFT_ROLLING_RESERVATION], uint16_t{0});
 	AfterLoadAircraftReservations(true);
 	CHECK(a->state == AS_IDLE);
 	CHECK(a->reserved_path.size() == 1);
@@ -489,6 +551,44 @@ TEST_CASE("Aircraft outside the map can still select a landing tile")
 	CHECK(v->targetairport == st->index);
 }
 
+TEST_CASE("A holding helicopter selects a claimable alternate stand")
+{
+	extern void HandleAircraftFlying(Aircraft *v);
+	REQUIRE(Engine::GetNumItems() == 0);
+	AllocateMap(64, 64);
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([] { ClearAircraftReservationIndexes(); _vehicle_pool.CleanPool(); _engine_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	Station *st = MakeReservationAirport(TRACK_BIT_X);
+	const TileIndex near = TileXY(11, 10);
+	const TileIndex far = TileXY(15, 10);
+	SetAirportTileType(near, ATT_APRON_HELIPAD);
+	SetAirportTileType(far, ATT_APRON_HELIPAD);
+	st->airport.helipads = {near, far};
+	Aircraft *transit = MakeReservationAircraft(TileXY(10, 10));
+	transit->planned_path = {{transit->tile, TRACKDIR_X_SW, false}, {near, TRACKDIR_X_SW, false}, {TileXY(12, 10), TRACKDIR_X_SW, false}};
+	REQUIRE(TryReserveAircraftTaxiPath(transit));
+
+	Engine *engine = Engine::Create(VehicleType::Aircraft, 0);
+	engine->VehInfo<AircraftVehicleInfo>().subtype = AIR_HELICOPTER;
+	Aircraft *heli = MakeReservationAircraft(near);
+	heli->subtype = AIR_HELICOPTER;
+	heli->engine_type = heli->Next()->engine_type = engine->index;
+	heli->current_order.MakeGoToStation(st->index);
+	heli->state = AS_ON_HOLD_WAITING;
+	heli->x_pos = TileX(near) * TILE_SIZE + 8;
+	heli->y_pos = TileY(near) * TILE_SIZE + 8;
+	heli->targetairport = st->index;
+	CHECK(IsAircraftGroundTileAvailable(heli, near));
+	CHECK_FALSE(CanClaimAircraftTerminal(heli, near));
+	CHECK(FindClosestLandingTile(heli) == far);
+	HandleAircraftFlying(heli);
+	CHECK(heli->state == AS_ON_HOLD_APPROACHING);
+	CHECK(heli->GetNextTile() == far);
+	CHECK(heli->allocated_terminal == far);
+	CHECK(HasAircraftTileReservation(heli, far, TRACK_BIT_X));
+	CHECK(HasAircraftVirtualTileReservation(transit, near, TRACKDIR_BIT_X_SW));
+}
+
 TEST_CASE("Aircraft without a destination repairs an invalid holding anchor and keeps moving")
 {
 	extern bool HandleAircraftMovement(Aircraft *v);
@@ -664,6 +764,7 @@ TEST_CASE("External aircraft resumes its schedule after return hangar service")
 		v->vehstatus.Set(VehState::Hidden);
 		v->current_order.MakeDummy();
 		v->UpdateNextTile(INVALID_TILE);
+		AutoRestoreBackup version(_sl_xv_feature_versions[XSLFI_AIRCRAFT_ROLLING_RESERVATION], uint16_t{9});
 		AfterLoadAircraftReservations(false);
 	}
 	SECTION("an apron is still occupied and the return order is live") {
@@ -742,47 +843,96 @@ TEST_CASE("Aircraft hangars - construction and occupancy use the physical hangar
 	engine->VehInfo<AircraftVehicleInfo>().subtype = AIR_CTOL;
 	Vehicle *a = nullptr;
 	Vehicle *b = nullptr;
-	REQUIRE(CmdBuildAircraft(first, DoCommandFlag::Execute, engine, &a).Succeeded());
-	REQUIRE(a->tile == first);
-	REQUIRE(CmdBuildAircraft(second, DoCommandFlag::Execute, engine, &b).Succeeded());
-	REQUIRE(b->tile == second);
 
-	VehicleList list;
-	const auto check_hangar = [&](TileIndex tile, const Vehicle *occupant) {
-		BuildDepotVehicleList(VehicleType::Aircraft, tile, &list, nullptr);
-		if (occupant == nullptr) {
-			CHECK(list.empty());
-		} else {
-			REQUIRE(list.size() == 1);
-			CHECK(list.front() == occupant);
-		}
-	};
-	check_hangar(first, a);
-	check_hangar(second, b);
+	SECTION("an occupied extended hangar rejects builds and refit quotes without side effects") {
+		SetExtendedHangar(first, true);
+		engine->company_avail.Set(_current_company);
+		REQUIRE(IsEngineBuildable(engine->index, VehicleType::Aircraft, _current_company));
+		REQUIRE(CmdBuildAircraft(first, DoCommandFlag::QueryCost, engine, &a).Succeeded());
+		CHECK(a == nullptr);
+		CHECK(Aircraft::GetNumItems() == 0);
+		CHECK(GetReservedAirportTracks(first) == TRACK_BIT_NONE);
+		auto *occupant = MakeReservationAircraft(first);
+		occupant->owner = _current_company;
+		occupant->state = AS_HANGAR;
+		a = occupant;
+		REQUIRE(TryReserveAircraftTile(occupant, first, TRACK_BIT_X, TRACKDIR_BIT_X_SW));
+		const auto count = Aircraft::GetNumItems();
+		SavedRandomSeeds before, after;
+		SaveRandomSeeds(&before);
+		CHECK(CmdBuildAircraft(first, DoCommandFlag::QueryCost, engine, &b).GetErrorMessage() == STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
+		CHECK(CmdBuildAircraft(first, DoCommandFlag::Execute, engine, &b).GetErrorMessage() == STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
+		CHECK(b == nullptr);
+		CHECK(CmdBuildVehicle(DoCommandFlag::QueryCost, first, engine->index, false, CargoType{1}, ClientID::Invalid).GetErrorMessage() == STR_ERROR_AIRPORT_PRESENT_AIRCRAFT);
+		SaveRandomSeeds(&after);
+		CHECK(after.random.state[0] == before.random.state[0]);
+		CHECK(after.random.state[1] == before.random.state[1]);
+		CHECK(Aircraft::GetNumItems() == count);
+		CHECK(HasAircraftTileReservation(Aircraft::From(a), first, TRACK_BIT_X));
+		CHECK(GetReservedAirportTracks(second) == TRACK_BIT_NONE);
+		return;
+	}
 
-	Aircraft *v = Aircraft::From(a);
-	v->sprite_seq.Clear(); // No sprites are loaded by the unit test runner.
-	v->vehstatus.Reset({VehState::Stopped, VehState::Hidden});
-	v->state = AS_RUNNING;
-	v->trackdir = TRACKDIR_X_NE; // Approach the door of the non-representative hangar.
-	v->dest_tile = second;
-	v->current_order.MakeGoToDepot(st->index, {});
-	v->current_order.SetDepotExtraFlags(OrderDepotExtraFlag::Specific);
-	v->UpdateNextTile(first);
-	check_hangar(first, nullptr);
-	REQUIRE(HandleAircraftState(v));
-	REQUIRE(v->vehstatus.Test(VehState::Hidden));
-	CHECK(v->current_order.IsType(OT_DUMMY));
-	check_hangar(first, v);
-	check_hangar(second, b);
+	SECTION("removal cannot change the use of an extended hangar with a hidden aircraft") {
+		REQUIRE(CmdBuildAircraft(first, DoCommandFlag::Execute, engine, &a).Succeeded());
+		REQUIRE(a->vehstatus.Test(VehState::Hidden));
+		SetExtendedHangar(first, true); // A hidden aircraft restored inside an extended hangar.
+		REQUIRE(GetReservedAirportTracks(first) == TRACK_BIT_NONE);
+		AutoRestoreBackup modify(_settings_game.station.allow_modify_airports, true);
+		const AirType air_type = GetAirType(first);
+		CHECK(CmdChangeAirportTiles({}, first, first, air_type, ATT_HANGAR_EXTENDED, ATTG_DEFAULT_GFX, DiagDirection::SW, false, false).GetErrorMessage() == STR_ERROR_AIRCRAFT_IN_THE_WAY);
+		CHECK(CmdAddRemoveAirportTiles({}, first, first, false, air_type, StationID::Invalid(), false).Failed());
+		return;
+	}
 
-	v->vehstatus.Reset(VehState::Stopped);
-	v->current_order.MakeGoToStation(st->index);
-	REQUIRE(TryReservePath(v));
-	CHECK(v->GetNextTile() == apron);
-	CHECK_FALSE(v->vehstatus.Test(VehState::Hidden));
-	check_hangar(first, nullptr);
-	check_hangar(second, b);
+	SECTION("standard hangars keep independent aircraft lists") {
+		/* Stale depot UI actions must not read station fields from a non-hangar. */
+		ShowDepotDeparturesWindow(INVALID_TILE, VehicleType::Aircraft);
+		ShowDepotDeparturesWindow(apron, VehicleType::Aircraft);
+		ShowDepotDeparturesWindow(first, VehicleType::Train);
+
+		REQUIRE(CmdBuildAircraft(first, DoCommandFlag::Execute, engine, &a).Succeeded());
+		REQUIRE(a->tile == first);
+		REQUIRE(CmdBuildAircraft(second, DoCommandFlag::Execute, engine, &b).Succeeded());
+		REQUIRE(b->tile == second);
+
+		VehicleList list;
+		const auto check_hangar = [&](TileIndex tile, const Vehicle *occupant) {
+			BuildDepotVehicleList(VehicleType::Aircraft, tile, &list, nullptr);
+			if (occupant == nullptr) {
+				CHECK(list.empty());
+			} else {
+				REQUIRE(list.size() == 1);
+				CHECK(list.front() == occupant);
+			}
+		};
+		check_hangar(first, a);
+		check_hangar(second, b);
+
+		Aircraft *v = Aircraft::From(a);
+		v->sprite_seq.Clear(); // No sprites are loaded by the unit test runner.
+		v->vehstatus.Reset({VehState::Stopped, VehState::Hidden});
+		v->state = AS_RUNNING;
+		v->trackdir = TRACKDIR_X_NE; // Approach the door of the non-representative hangar.
+		v->dest_tile = second;
+		v->current_order.MakeGoToDepot(st->index, {});
+		v->current_order.SetDepotExtraFlags(OrderDepotExtraFlag::Specific);
+		v->UpdateNextTile(first);
+		check_hangar(first, nullptr);
+		REQUIRE(HandleAircraftState(v));
+		REQUIRE(v->vehstatus.Test(VehState::Hidden));
+		CHECK(v->current_order.IsType(OT_DUMMY));
+		check_hangar(first, v);
+		check_hangar(second, b);
+
+		v->vehstatus.Reset(VehState::Stopped);
+		v->current_order.MakeGoToStation(st->index);
+		REQUIRE(TryReservePath(v));
+		CHECK(v->GetNextTile() == apron);
+		CHECK_FALSE(v->vehstatus.Test(VehState::Hidden));
+		check_hangar(first, nullptr);
+		check_hangar(second, b);
+	}
 }
 
 TEST_CASE("Aircraft runway-end reachability is static and requires a connected exit")

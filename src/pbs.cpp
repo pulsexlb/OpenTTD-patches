@@ -1515,68 +1515,193 @@ Train *GetTrainForReservation(TileIndex tile, Track track)
 	return nullptr;
 }
 
-/**
- * Recover an older split's already reserved exit only when its moving front
- * is the sole physical anchor of an unambiguous, continuous reserved path.
- * Reservation bits have no owner. Looking up the first train at one end
- * can report this train even when a foreign train holds the other end.
- */
-bool HasExclusiveSplitDepartureReservation(const Train *v, TileIndex exit_tile)
+/** Follow the actual rail geometry, but do not jump over platform reservation or occupancy. */
+static bool FollowHoldReservationStep(CFollowTrackRail &ft, TileIndex tile, Trackdir td, PBSTileInfo &next)
 {
-	const Train *front = v->GetMovingFront();
-	const Trackdir front_td = front->GetVehicleTrackdir();
-	if (!IsValidTrackdir(front_td) || !HasReservedTracks(front->tile, TrackToTrackBits(TrackdirToTrack(front_td)))) return false;
-
-	/* Work one physical tile at a time, including platform tiles skipped by
-	 * the ordinary follower. Reject both forks and merges, including a fork
-	 * visible only when following a candidate step backwards. */
-	auto reserved_next = [](TileIndex tile, Trackdir td, TileIndex &next) {
-		const DiagDirection dir = TrackdirToExitdir(td);
-		const TileIndexDiffC delta = TileIndexDiffCByDiagDir(dir);
-		next = TileAddWrap(tile, delta.x, delta.y);
-		if (!IsValidTile(next)) return TRACKDIR_BIT_NONE;
-		return DiagdirReachesTrackdirs(dir) & TrackBitsToTrackdirBits(GetReservedTrackbits(next));
-	};
-
-	bool reached_exit = false;
-	for (bool forwards : {true, false}) {
-		TileIndex tile = front->tile;
-		Trackdir td = forwards ? front_td : ReverseTrackdir(front_td);
-		/* Exceptional recovery, not a general reservation ownership lookup.
-		 * Wormholes and depots can join or hide paths; never infer ownership
-		 * through them. Bound the work and reject loops. */
-		constexpr uint max_steps = 2048;
-		for (uint step = 0;; ++step) {
-			if (step == max_steps || !(IsPlainRailTile(tile) || HasStationTileRail(tile) || IsLevelCrossingTile(tile))) return false;
-			const Track track = TrackdirToTrack(td);
-			for (const Train *part : VehiclesOnTile<VehicleType::Train>(tile)) {
-				if (part->Primary() != v && (part->track & TrackToTrackBits(track)) != TRACK_BIT_NONE) return false;
-			}
-			if (forwards) {
-				reached_exit |= tile == exit_tile;
-				if (step != 0 && HasPbsSignalOnTrackdir(tile, td) &&
-						(GetSignalStateByTrackdir(tile, td) == SignalState::Red || IsNoEntrySignal(tile, track))) return false;
-			}
-
-			TileIndex next;
-			const TrackdirBits candidates = reserved_next(tile, td, next);
-			if (candidates == TRACKDIR_BIT_NONE) break;
-			if (KillFirstBit(candidates) != TRACKDIR_BIT_NONE) return false;
-			const Trackdir next_td = FindFirstTrackdir(candidates);
-			TileIndex previous;
-			if (reserved_next(next, ReverseTrackdir(next_td), previous) != TrackdirToTrackdirBits(ReverseTrackdir(td)) || previous != tile) return false;
-			tile = next;
-			td = next_td;
+	next = {};
+	const DiagDirection dir = TrackdirToExitdir(td);
+	const auto delta = TileIndexDiffCByDiagDir(dir);
+	const TileIndex adjacent = TileAddWrap(tile, delta.x, delta.y);
+	const bool crossing = IsRailTunnelBridgeTile(tile) && TrackdirEntersTunnelBridge(tile, td);
+	if (!crossing && !IsValidTile(adjacent)) return true;
+	TrackdirBits directions;
+	if (IsRailStationTile(tile) && IsCompatibleTrainStationTile(adjacent, tile)) {
+		/* Avoid asking the follower to rescan the rest of a long platform at each tile. */
+		next.tile = adjacent;
+		directions = TrackdirToTrackdirBits(DiagDirToDiagTrackdir(dir));
+	} else {
+		if (!ft.Follow(tile, td)) {
+			/* An incompatible piece of rail can still link us to a foreign
+			 * reservation. Only a missing physical continuation is an end. */
+			const TileIndex neighbour = crossing ? GetOtherTunnelBridgeEnd(tile) : adjacent;
+			return !HasReservedTracks(neighbour, DiagdirReachesTracks(dir));
 		}
-		if (forwards) {
-			if (!reached_exit) return false;
-			/* Prove that the normal directed follower sees exactly this path's
-			 * end, not a different continuation through a signal/platform. */
-			const auto end = FollowTrainReservation(v, nullptr, {FollowTrainReservationFlag::IgnoreLookahead, FollowTrainReservationFlag::OkayUnused});
-			if (end.tile != tile || end.trackdir != td) return false;
+		next.tile = ft.is_station ? adjacent : ft.new_tile;
+		directions = ft.new_td_bits;
+	}
+
+	const TrackdirBits reserved = directions & TrackBitsToTrackdirBits(GetReservedTrackbits(next.tile));
+	if (reserved == TRACKDIR_BIT_NONE) {
+		if (IsRailStationTile(next.tile)) {
+			/* The normal follower can jump a hole in the platform bits. Do not
+			 * release anything if we cannot account for that continuation. */
+			for (TileIndex t = TileAddWrap(next.tile, delta.x, delta.y); IsValidTile(t) && IsCompatibleTrainStationTile(t, next.tile);
+					t = TileAddWrap(t, delta.x, delta.y)) {
+				if (HasStationReservation(t)) return false;
+			}
+		}
+		next = {};
+		return true;
+	}
+	if (KillFirstBit(reserved) != TRACKDIR_BIT_NONE) return false;
+	next.trackdir = FindFirstTrackdir(reserved);
+	return true;
+}
+
+/** Inspect the real span and ramps, not projected surface tiles. */
+static bool HoldCrossingIsClear(TileIndex tile, TileIndex far, const Train *keep_body)
+{
+	if (keep_body == nullptr) return TunnelBridgeIsFree(tile, far, nullptr, TBIFM_ACROSS_ONLY).Succeeded();
+
+	for (TileIndex portal : {tile, far}) {
+		for (const Train *part : VehiclesOnTile<VehicleType::Train>(portal)) {
+			if (part->Primary() == keep_body) continue;
+			if (!IsBridge(portal) || (part->track & (TRACK_BIT_WORMHOLE | GetAcrossBridgePossibleTrackBits(portal))) != TRACK_BIT_NONE) return false;
 		}
 	}
 	return true;
+}
+
+/**
+ * Prove the complete continuous reservation in both directions from the
+ * moving front. The map has no reservation owner, so a first matching train
+ * (or a cached lookahead) is not proof. Do not change the map while walking.
+ */
+static bool ProveTrainHoldReservation(const Train *v, TrainHoldReservation &path, const Train *sibling = nullptr)
+{
+	const Train *front = v->GetMovingFront();
+	if (!IsValidTile(front->tile) || front->IsVirtualOrCarried() || front->vehstatus.Test(VehState::Crashed) ||
+			(front->track & (TRACK_BIT_WORMHOLE | TRACK_BIT_DEPOT)) != TRACK_BIT_NONE || (front->track & TRACK_BIT_ALL) == TRACK_BIT_NONE) return false;
+	const Trackdir front_td = front->GetVehicleTrackdir();
+	if (!IsValidTrackdir(front_td) || !HasTrackdir(GetTileTrackdirBits(front->tile, TransportType::Rail, 0), front_td) ||
+			!HasReservedTracks(front->tile, TrackToTrackBits(TrackdirToTrack(front_td)))) return false;
+
+	path.emplace_back(front->tile, front_td);
+	btree::btree_set<std::pair<TileIndex, Track>> visited;
+	CFollowTrackRail ft(v->owner, v->GetIndirectCompatibleRailTypes());
+	for (const bool forwards : {true, false}) {
+		TileIndex tile = front->tile;
+		Trackdir td = forwards ? front_td : ReverseTrackdir(front_td);
+		bool at_front = true;
+		bool kept_crossing_exit = false;
+		for (;;) {
+			const Track track = TrackdirToTrack(td);
+			if ((forwards || !at_front) && !visited.emplace(tile, track).second) return false;
+			if (TracksOverlap(GetReservedTrackbits(tile) | TrackToTrackBits(track))) return false;
+			for (const Train *part : VehiclesOnTile<VehicleType::Train>(tile)) {
+				if (part->IsVirtualOrCarried()) continue;
+				if (part->Primary() == v && (at_front || !forwards || kept_crossing_exit)) continue;
+				if (sibling != nullptr && !forwards && !at_front && part->Primary() == sibling) continue;
+				const bool uses_portal = IsRailTunnelBridgeTile(tile) && IsTrackAcrossTunnelBridge(tile, track);
+				if ((part->track & TRACK_BIT_WORMHOLE) != TRACK_BIT_NONE ? uses_portal :
+						IsRailDepotTile(tile) || TrackOverlapsTracks(part->track & TRACK_BIT_ALL, track)) return false;
+			}
+			if (forwards && !at_front) {
+				const Trackdir opposing = ReverseTrackdir(td);
+				if (HasOnewaySignalBlockingTrackdir(tile, td) ||
+						(HasPbsSignalOnTrackdir(tile, td) && GetSignalStateByTrackdir(tile, td) == SignalState::Red) ||
+						(HasPbsSignalOnTrackdir(tile, opposing) && GetSignalStateByTrackdir(tile, opposing) == SignalState::Green)) return false;
+			}
+			if (IsRailDepotTile(tile)) break;
+
+			PBSTileInfo next;
+			if (!FollowHoldReservationStep(ft, tile, td, next)) return false;
+			bool crossing = IsRailTunnelBridgeTile(tile) && TrackdirEntersTunnelBridge(tile, td);
+			if (crossing) {
+				const TileIndex far = GetOtherTunnelBridgeEnd(tile);
+				const bool simulated = IsTunnelBridgeWithSignalSimulation(tile) || IsTunnelBridgeWithSignalSimulation(far);
+				if (!HoldCrossingIsClear(tile, far, at_front ? v : nullptr)) return false;
+				if (!IsValidTrackdir(next.trackdir)) {
+					/* Unlike an unsignalled crossing, a simulated entrance can
+					 * own just its local bit, with no reservation at the far end. */
+					if (!simulated || HasAcrossTunnelBridgeReservation(far) ||
+							!(forwards ? IsTunnelBridgeSignalSimulationEntrance(tile) : IsTunnelBridgeSignalSimulationExit(tile))) return false;
+					break;
+				}
+				if (next.tile != far || !TrackdirExitsTunnelBridge(far, next.trackdir)) return false;
+				if (simulated) {
+					const TileIndex entrance = forwards ? tile : far;
+					const TileIndex exit = forwards ? far : tile;
+					if (_settings_game.vehicle.train_braking_model != TBM_REALISTIC ||
+							!IsTunnelBridgeSignalSimulationEntrance(entrance) || !IsTunnelBridgeSignalSimulationExit(exit) ||
+							GetTunnelBridgeExitSignalState(exit) != SignalState::Green ||
+							(IsTunnelBridgeSignalSimulationExit(entrance) && GetTunnelBridgeExitSignalState(entrance) == SignalState::Green)) return false;
+				}
+			}
+			if (!IsValidTrackdir(next.trackdir)) break;
+			if (forwards && !at_front && HasBlockSignalOnTrackdir(tile, td)) return false;
+
+			/* A unique forward choice can still merge with another reserved
+			 * approach. Require the exact same link when followed backwards. */
+			PBSTileInfo previous;
+			if (!FollowHoldReservationStep(ft, next.tile, ReverseTrackdir(next.trackdir), previous) ||
+					previous.tile != tile || previous.trackdir != ReverseTrackdir(td)) return false;
+			kept_crossing_exit = at_front && crossing;
+			at_front = false;
+			tile = next.tile;
+			td = next.trackdir;
+			if (forwards) path.emplace_back(tile, td);
+		}
+	}
+	return true;
+}
+
+bool GetTrainHoldReservation(const Train *v, TrainHoldReservation &path)
+{
+	path.clear();
+	if (ProveTrainHoldReservation(v, path)) return true;
+	path.clear();
+	return false;
+}
+
+bool TryReleaseTrainReservationForHold(const Train *v, const TrainHoldReservation *before_split, const Train *sibling)
+{
+	if (v->flags.Test(VehicleRailFlag::SameDirDecouplePending)) return false;
+	TrainHoldReservation path;
+	if (!ProveTrainHoldReservation(v, path, before_split != nullptr ? sibling : nullptr) ||
+			(before_split != nullptr && path != *before_split)) return false;
+
+	/* Leave the occupied origin, including both ends of a crossing it holds.
+	 * An unoccupied crossing is released only after both ramps and the entire
+	 * suffix were proven above. Use the native signal and redraw handling. */
+	const auto [front_tile, front_td] = path.front();
+	size_t index = 1;
+	if (path.size() > 1 && IsRailTunnelBridgeTile(front_tile) && TrackdirEntersTunnelBridge(front_tile, front_td) &&
+			path[1].first == GetOtherTunnelBridgeEnd(front_tile)) ++index;
+	for (; index < path.size(); ++index) {
+		const auto [tile, td] = path[index];
+		if (IsRailTunnelBridgeTile(tile) && TrackdirEntersTunnelBridge(tile, td) && !IsTunnelBridgeWithSignalSimulation(tile)) {
+			const bool cleared = TryClearUnsignalledRailTunnelBridgeReservation(tile);
+			assert(cleared);
+			++index;
+			continue;
+		}
+		if (HasPbsSignalOnTrackdir(tile, td) && GetSignalType(tile, TrackdirToTrack(td)) == SignalType::Block) {
+			UnreserveRailTrack(tile, TrackdirToTrack(td));
+			AddSideToSignalBuffer(tile, TrackdirToExitdir(td), GetTileOwner(tile));
+			UpdateSignalsInBuffer();
+		} else {
+			UnreserveRailTrackdir(tile, td);
+		}
+	}
+	return true;
+}
+
+/** Recover an older split's already reserved exit only from a unique physical anchor. */
+bool HasExclusiveSplitDepartureReservation(const Train *v, TileIndex exit_tile)
+{
+	TrainHoldReservation path;
+	return GetTrainHoldReservation(v, path) && std::ranges::any_of(path, [&](const auto &step) { return step.first == exit_tile; });
 }
 
 CommandCost CheckTrainReservationPreventsTrackModification(TileIndex tile, Track track)

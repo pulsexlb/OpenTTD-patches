@@ -13,6 +13,7 @@
 #include "network_internal.h"
 #include "core/tcp_listen.h"
 #include "../core/pool_type.hpp"
+#include <optional>
 
 class ServerNetworkGameSocketHandler;
 /** Make the code look slightly nicer/simpler. */
@@ -74,7 +75,7 @@ public:
 		Authorized,   ///< The client is authorized.
 		MapWait,      ///< The client is waiting as someone else is downloading the map.
 		Map,          ///< The client is downloading the map.
-		DoneMap,      ///< The client has downloaded the map.
+		DoneMap,      ///< The map is queued for sending; the server is waiting for the client to load it.
 		PreActive,    ///< The client is catching up the delayed frames.
 		Active,       ///< The client is active within in the game.
 		ClosePending, ///< The client connection is pending closure.
@@ -107,6 +108,7 @@ public:
 	std::unique_ptr<Packet> ReceivePacket() override;
 	NetworkRecvStatus CloseConnection(NetworkRecvStatus status) override;
 	std::string GetClientName() const;
+	bool CheckJoinTimeout();
 
 	void CheckNextClientToSendMap(NetworkClientSocket *ignore_cs = nullptr);
 
@@ -165,6 +167,10 @@ public:
 	std::string_view GetPeerPublicKey() const { return this->peer_public_key; }
 
 	static ServerNetworkGameSocketHandler *GetByClientID(ClientID client_id);
+
+private:
+	std::optional<uint32_t> map_download_start_frame; ///< Set until the queued map has been sent to the socket.
+	uint32_t join_phase_start_frame = 0; ///< Start of map processing or of catch-up, whichever is current.
 };
 
 void NetworkServer_Tick(bool send_frame);

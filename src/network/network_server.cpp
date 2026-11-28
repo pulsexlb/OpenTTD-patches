@@ -129,7 +129,7 @@ struct PacketWriter : SaveFilter {
 	/**
 	 * Transfer all packets from here to the network's queue while holding
 	 * the lock on our mutex.
-	 * @return True iff the last packet of the map has been sent.
+	 * @return True iff the last packet of the map has been queued.
 	 */
 	bool TransferToNetworkQueue()
 	{
@@ -379,9 +379,18 @@ NetworkRecvStatus ServerNetworkGameSocketHandler::CloseConnection(NetworkRecvSta
 				} else if (send_state != SendPacketsState::PartlySent && send_state != SendPacketsState::NoneSent) {
 					ShutdownSocket(cs->sock, true, false, 2);
 				}
-			} else if (cs->SendPackets() != SendPacketsState::Closed && cs->status == ClientStatus::Map) {
-				/* This client is in the middle of a map-send, call the function for that */
-				cs->SendMap();
+			} else {
+				SendPacketsState send_state = cs->SendPackets();
+				if (send_state == SendPacketsState::Closed) continue;
+
+				if (cs->status == ClientStatus::Map) {
+					/* This client is in the middle of a map-send, call the function for that */
+					cs->SendMap();
+				} else if (cs->status >= ClientStatus::DoneMap && send_state == SendPacketsState::AllSent && cs->map_download_start_frame.has_value()) {
+					/* ServerMapDone was queued on an earlier pass and has now been sent. */
+					cs->map_download_start_frame.reset();
+					if (cs->status == ClientStatus::DoneMap) cs->join_phase_start_frame = _frame_counter;
+				}
 			}
 		}
 	}
@@ -697,7 +706,7 @@ NetworkRecvStatus ServerNetworkGameSocketHandler::SendMap()
 
 		NetworkSyncCommandQueue(this);
 		this->status = ClientStatus::Map;
-		/* Mark the start of download */
+		this->map_download_start_frame = _frame_counter;
 		this->last_frame = _frame_counter;
 		this->last_frame_server = _frame_counter;
 
@@ -714,8 +723,7 @@ NetworkRecvStatus ServerNetworkGameSocketHandler::SendMap()
 			this->savegame->Destroy();
 			this->savegame = nullptr;
 
-			/* Set the status to DONE_MAP, no we will wait for the client
-			 *  to send it is ready (maybe that happens like never ;)) */
+			/* Release the map writer now, but keep the download budget until the send queue drains. */
 			this->status = ClientStatus::DoneMap;
 
 			this->CheckNextClientToSendMap();
@@ -1245,9 +1253,9 @@ NetworkRecvStatus ServerNetworkGameSocketHandler::ReceiveClientMapOk(Packet &)
 		Debug(net, 3, "[{}] Client #{} ({}) joined as {}, pubkey: {}",
 				ServerNetworkGameSocketHandler::GetName(), this->client_id, this->GetClientIP(), client_name, this->GetPeerPublicKey());
 
-		/* Mark the client as pre-active, and wait for an ACK
-		 *  so we know it is done loading and in sync with us */
+		/* The map is loaded; start a fresh budget for catching up and acknowledging sync. */
 		this->status = ClientStatus::PreActive;
+		this->join_phase_start_frame = _frame_counter;
 		NetworkHandleCommandQueue(this);
 		this->SendFrame();
 		this->SendSync();
@@ -2095,6 +2103,33 @@ static void NetworkHandleCommandQueue(NetworkClientSocket *cs)
 }
 
 /**
+ * Check the current join phase's tick budget and disconnect the client if it has expired.
+ * @return True if the client timed out.
+ */
+bool ServerNetworkGameSocketHandler::CheckJoinTimeout()
+{
+	/* DoneMap is set when ServerMapDone is queued, not when the socket accepts it.
+	 * Keep using the download budget while that data is still pending, even if a
+	 * premature ClientMapOk has already moved the client to PreActive. */
+	if (this->map_download_start_frame.has_value()) {
+		uint max_time = _settings_client.network.max_download_time;
+		if (_frame_counter - *this->map_download_start_frame <= max_time) return false;
+
+		IConsolePrint(CC_ERROR, "Client #{} is dropped because it took longer than {} ticks to download the map", this->client_id, max_time);
+		this->SendError(NetworkErrorCode::TimeoutMap);
+		return true;
+	}
+
+	uint max_time = _settings_client.network.max_join_time;
+	if (_frame_counter - this->join_phase_start_frame <= max_time) return false;
+
+	IConsolePrint(CC_ERROR, "Client #{} is dropped because it took longer than {} ticks to {}", this->client_id, max_time,
+			this->status == ClientStatus::DoneMap ? "load the map" : "acknowledge sync");
+	this->SendError(NetworkErrorCode::TimeoutJoin);
+	return true;
+}
+
+/**
  * This is called every tick if this is a _network_server
  * @param send_frame Whether to send the frame to the clients.
  */
@@ -2184,22 +2219,9 @@ void NetworkServer_Tick(bool send_frame)
 				break;
 
 			case NetworkClientSocket::ClientStatus::Map:
-				/* Downloading the map... this is the amount of time since starting the saving. */
-				if (lag > _settings_client.network.max_download_time) {
-					IConsolePrint(CC_ERROR, "Client #{} is dropped because it took longer than {} ticks to download the map", cs->client_id, _settings_client.network.max_download_time);
-					cs->SendError(NetworkErrorCode::TimeoutMap);
-					continue;
-				}
-				break;
-
 			case NetworkClientSocket::ClientStatus::DoneMap:
 			case NetworkClientSocket::ClientStatus::PreActive:
-				/* The map has been sent, so this is for loading the map and syncing up. */
-				if (lag > _settings_client.network.max_join_time) {
-					IConsolePrint(CC_ERROR, "Client #{} is dropped because it took longer than {} ticks to join", cs->client_id, _settings_client.network.max_join_time);
-					cs->SendError(NetworkErrorCode::TimeoutJoin);
-					continue;
-				}
+				if (cs->CheckJoinTimeout()) continue;
 				break;
 
 			case NetworkClientSocket::ClientStatus::AuthGame:

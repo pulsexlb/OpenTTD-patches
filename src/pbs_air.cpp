@@ -253,7 +253,7 @@ static AircraftTaxiBlock MergeAircraftBlock(AircraftTaxiBlock a, AircraftTaxiBlo
 
 static bool IsAircraftTaxiSharingAllowed(const Aircraft *v, TileIndex tile, const Aircraft *other)
 {
-	return !IsApron(tile) && !IsHangar(tile) && !v->vehstatus.Test(VehState::Hidden) &&
+	return !IsApron(tile) && !IsHangar(tile) && v != nullptr && !v->vehstatus.Test(VehState::Hidden) &&
 			other != nullptr && !other->vehstatus.Test(VehState::Crashed) &&
 			(other->state == AS_RUNNING || other->state == AS_IDLE);
 }
@@ -265,7 +265,7 @@ static AircraftTaxiBlock CheckAircraftTaxiTile(const Aircraft *v, TileIndex tile
 		AircraftJunctionUse junction_use = AircraftJunctionUse::Body)
 {
 	if (!IsTaxiTile(tile)) return AircraftTaxiBlock::Protected;
-	if (v->ignore_airport_reservations) return AircraftTaxiBlock::None;
+	if (v != nullptr && v->ignore_airport_reservations) return AircraftTaxiBlock::None;
 	/* Recovery from a jam never bypasses real ownership, a runway lock, or
 	 * a physical aircraft. Only the explicit manual override can do so. */
 	if (junction_use != AircraftJunctionUse::Ignore && !CheckAircraftJunctionAccess(v, tile,
@@ -274,7 +274,7 @@ static AircraftTaxiBlock CheckAircraftTaxiTile(const Aircraft *v, TileIndex tile
 		return AircraftTaxiBlock::Protected;
 	}
 	auto runway = _aircraft_runway_owners.find(tile);
-	if (check_runway && ((runway != _aircraft_runway_owners.end() && runway->second != v->index) ||
+	if (check_runway && ((runway != _aircraft_runway_owners.end() && (v == nullptr || runway->second != v->index)) ||
 			(IsRunway(tile) && GetReservationAsRunway(tile) && runway == _aircraft_runway_owners.end()))) {
 		return AircraftTaxiBlock::Protected;
 	}
@@ -306,7 +306,7 @@ static AircraftTaxiBlock CheckAircraftTaxiTile(const Aircraft *v, TileIndex tile
 static AircraftTaxiBlock CheckIncomingAircraftEnvelopes(const Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL)
 {
 	AircraftTaxiBlock block = AircraftTaxiBlock::None;
-	if (v->ignore_airport_reservations) return block;
+	if (v != nullptr && v->ignore_airport_reservations) return block;
 	for (Track track = TRACK_UPPER; track < TRACK_END; ++track) {
 		if (!HasTrack(tracks, TrackToOppositeTrack(track))) continue;
 		TileIndex neighbour = TileAddByDir(tile, ReverseDir(_aircraft_envelope_directions[track]));
@@ -315,7 +315,7 @@ static AircraftTaxiBlock CheckIncomingAircraftEnvelopes(const Aircraft *v, TileI
 			return AircraftTaxiBlock::Protected;
 		}
 		for (const auto &[id, tracks] : _aircraft_tile_owners.at(neighbour)) {
-			if (id == v->index || !HasTrack(tracks, track)) continue;
+			if ((v != nullptr && id == v->index) || !HasTrack(tracks, track)) continue;
 			const Vehicle *vehicle = Vehicle::GetIfValid(id);
 			const Aircraft *other = vehicle != nullptr && vehicle->type == VehicleType::Aircraft ? Aircraft::From(vehicle) : nullptr;
 			if (other != nullptr && other->ignore_airport_reservations) continue;
@@ -334,7 +334,7 @@ static AircraftTaxiBlock CheckAircraftAssociatedTrack(const Aircraft *v, TileInd
 	if (!IsTaxiTile(neighbour) || !IsAirportTileOfStation(neighbour, GetStationIndex(tile)) || IsHangar(neighbour)) {
 		return AircraftTaxiBlock::Protected;
 	}
-	if (v->ignore_airport_reservations) return AircraftTaxiBlock::None;
+	if (v != nullptr && v->ignore_airport_reservations) return AircraftTaxiBlock::None;
 	if (!CheckAircraftJunctionAccess(v, neighbour, TRACK_BIT_NONE, TrackToTrackBits(TrackToOppositeTrack(track)))) {
 		return AircraftTaxiBlock::Protected;
 	}
@@ -388,6 +388,14 @@ static AircraftTaxiBlock CheckAircraftTaxiTracks(const Aircraft *v, TileIndex ti
 		block = MergeAircraftBlock(block, CheckAircraftAssociatedTrack(v, tile, track));
 	}
 	return block;
+}
+
+bool CanBuildAircraftInExtendedHangar(TileIndex tile, Trackdir td)
+{
+	if (!IsValidTile(tile) || !IsExtendedHangarTile(tile) || !IsValidTrackdir(td)) return false;
+	/* A new aircraft has no prior reservation, route or junction priority.
+	 * Hangars themselves are not junctions or runways. */
+	return CheckAircraftTaxiTracks(nullptr, tile, TrackToTrackBits(TrackdirToTrack(td))) == AircraftTaxiBlock::None;
 }
 
 static bool RecordAircraftTaxiBlock(Aircraft *v, AircraftTaxiBlock block, TileIndex tile)
@@ -776,20 +784,36 @@ static bool CanTrimAircraftTaxiWindow(const Aircraft *v)
 			!HasBit(v->flags, VAF_PUSHBACK) && IsTaxiTile(v->tile) && IsValidTrackdir(v->trackdir);
 }
 
+/* A legacy route has no per-junction entered marker. Keep its clearance
+ * while the aircraft is turning, pushing back, crossing a junction or on a
+ * runway. Its diagonal body track is enough on ordinary taxiway tiles. */
+static bool CanReleaseAircraftLegacyTaxiClearance(const Aircraft *v)
+{
+	return v->state <= AS_RUNNING && CanTrimAircraftTaxiWindow(v) && !IsRunway(v->tile) &&
+			v->taxi_runways.empty() && IsDiagonalTrackdir(v->trackdir) &&
+			!GetAircraftJunctionGeometry(GetStationIndex(v->tile)).regions.contains(v->tile);
+}
+
 bool ShouldReplanAircraftApronTransit(const Aircraft *v)
 {
 	if (v->state != AS_RUNNING || v->cur_speed != 0 || v->ignore_airport_reservations ||
-			v->junction_legacy || v->junction_entered || !CanTrimAircraftTaxiWindow(v)) return false;
+			v->junction_entered || !CanTrimAircraftTaxiWindow(v) || IsRunway(v->tile) || !v->taxi_runways.empty() ||
+			(v->junction_legacy && !CanReleaseAircraftLegacyTaxiClearance(v))) return false;
 
-	/* A route admitted before the stand checks may retain a body or sweep
-	 * booking on an occupied stand. A transient look-ahead reservation alone
-	 * is not a reason to abandon the route. */
+	/* Routes admitted under older rules can block a parked plane immediately.
+	 * An empty stand can cause the same cycle: the plane in front cannot taxi
+	 * to it while this route is booked, and prevents the booking holder from
+	 * advancing. Give up the complete route after persistent blockage, never
+	 * just the individual directions on the stand. */
+	static constexpr uint16_t APRON_TRANSIT_YIELD_RETRIES = 16;
+	const bool stalled = v->taxi_jam_ticks >= APRON_TRANSIT_YIELD_RETRIES;
 	for (const auto &record : v->virtual_path) {
 		const TileIndex tile = record.tile;
 		if (tile == v->tile || !IsTaxiTile(tile) || !IsApron(tile)) continue;
 		auto claim = _aircraft_terminal_owners.find(tile);
 		if (claim != _aircraft_terminal_owners.end() && claim->second != v->index) return true;
 		if (FindForeignAircraftOnApron(v, tile, true) != nullptr) return true;
+		if (stalled && IsAircraftTerminalAvailable(v, tile) && FindForeignAircraftOnApron(v, tile) == nullptr) return true;
 	}
 	return false;
 }
@@ -862,6 +886,8 @@ void UpdateAircraftTaxiTraffic(Aircraft *v, bool moved)
 
 void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current, bool keep_request)
 {
+	const bool finish_legacy = v->junction_legacy && !keep_request && v->reserved_runway == INVALID_TILE &&
+			(!keep_current || CanReleaseAircraftLegacyTaxiClearance(v));
 	for (size_t i = 0; i < v->reserved_path.size();) {
 		const auto r = v->reserved_path[i];
 		if (keep_current && r.tile == v->tile) { ++i; continue; }
@@ -886,10 +912,8 @@ void ReleaseAircraftTaxiPath(Aircraft *v, bool keep_current, bool keep_request)
 		ReleaseAircraftTile(v, v->tile, TRACK_BIT_ALL & ~keep);
 	}
 	if (v->junction_legacy) {
-		RefreshAircraftLegacyJunctionFootprint(v);
-		if (!keep_request && v->reserved_runway == INVALID_TILE && v->planned_path.empty() &&
-				(!keep_current || v->state != AS_RUNNING || v->Next()->state != AS_START_TAKEOFF) &&
-				(v->next_trackdir == INVALID_TRACKDIR || !keep_current) && !HasBit(v->flags, VAF_PUSHBACK)) FinishAircraftLegacyJunctionAction(v);
+		if (finish_legacy) FinishAircraftLegacyJunctionAction(v);
+		else RefreshAircraftLegacyJunctionFootprint(v);
 	}
 	PruneAircraftJunctions(v, keep_current);
 	if (!keep_request) CancelAircraftJunctionRequest(v);
@@ -1321,8 +1345,8 @@ static bool YieldAircraftJunctionCycle(Aircraft *v)
 
 static bool CheckAircraftJunctionAccess(const Aircraft *v, TileIndex tile, TrackBits tracks, TrackBits swept)
 {
-	if (v->ignore_airport_reservations) return true;
-	if (!v->junction_legacy) {
+	if (v != nullptr && v->ignore_airport_reservations) return true;
+	if (v == nullptr || !v->junction_legacy) {
 		for (VehicleID id : _aircraft_junction_legacy) {
 			const Aircraft *other = Aircraft::GetIfValid(id);
 			if (other != nullptr && other != v && !other->ignore_airport_reservations &&
@@ -1676,8 +1700,7 @@ bool EnsureAircraftJunctionAdmission(Aircraft *v)
 {
 	if (v->junction_legacy) {
 		RefreshAircraftLegacyJunctionFootprint(v);
-		if (v->planned_path.empty() && v->reserved_runway == INVALID_TILE && v->state != AS_START_TAKEOFF &&
-				v->next_trackdir == INVALID_TRACKDIR && !HasBit(v->flags, VAF_PUSHBACK)) FinishAircraftLegacyJunctionAction(v);
+		if (v->planned_path.empty() && CanReleaseAircraftLegacyTaxiClearance(v)) FinishAircraftLegacyJunctionAction(v);
 		else return true;
 	}
 	/* Edge turns are admitted before their old route node is removed. No
