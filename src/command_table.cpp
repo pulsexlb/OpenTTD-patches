@@ -214,23 +214,33 @@ const EnumIndexArray<CommandInfo, Commands, Commands::End> _command_proc_table =
  */
 void SetPreCheckedCommandPayloadClientID(Commands cmd, CommandPayloadBase &payload, ClientID client_id)
 {
-	static_assert(ClientID::Invalid == (ClientID)0);
+static_assert(ClientID::Invalid == (ClientID)0);
 
-	auto cmd_check = [&]<Commands Tcmd>() -> bool {
-		if constexpr (CommandTraits<Tcmd>::flags.Test(CommandFlag::ClientID)) {
-			if (cmd == Tcmd) {
-				SetCommandPayloadClientID(static_cast<CmdPayload<Tcmd> &>(payload), client_id);
-				return true;
-			}
-		}
-		return false;
-	};
+template <Commands Tcmd>
+static void SetPayloadClientIDIfFlag(CommandPayloadBase &payload, ClientID client_id)
+{
+	if constexpr (CommandTraits<Tcmd>::flags.Test(CommandFlag::ClientID)) {
+		SetCommandPayloadClientID(static_cast<CmdPayload<Tcmd> &>(payload), client_id);
+	}
+}
 
-	using Tseq = std::underlying_type_t<Commands>;
-	auto cmd_loop = [&]<Tseq... Tindices>(std::integer_sequence<Tseq, Tindices...>) {
-		(cmd_check.template operator()<static_cast<Commands>(Tindices)>() || ...);
-	};
-	cmd_loop(std::make_integer_sequence<Tseq, static_cast<Tseq>(Commands::End)>{});
+template <typename T, T... i>
+inline constexpr auto MakeClientIDSetters(std::integer_sequence<T, i...>) noexcept
+{
+	return std::array<void (*)(CommandPayloadBase &, ClientID), sizeof...(i)>{{ &SetPayloadClientIDIfFlag<static_cast<Commands>(i)>... }};
+}
+
+/**
+ * Set client ID for this command payload using the field returned by Payload::GetClientIDField().
+ * This provided payload must have already been type-checked as valid for cmd.
+ * Not many commands set CMD_CLIENT_ID; use a generated table instead of a fold
+ * expression, which exceeds Clang's nesting limit for large command sets.
+ */
+void SetPreCheckedCommandPayloadClientID(Commands cmd, CommandPayloadBase &payload, ClientID client_id)
+{
+	static const auto setters = MakeClientIDSetters(std::make_integer_sequence<std::underlying_type_t<Commands>, to_underlying(Commands::End)>{});
+	auto setter = setters[to_underlying(cmd)];
+	if (setter != nullptr) setter(payload, client_id);
 }
 
 void TupleCmdDataDetail::FmtSimpleTupleArgs(format_target &output, size_t count, fmt::format_args args)

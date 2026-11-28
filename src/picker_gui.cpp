@@ -79,7 +79,8 @@ static std::optional<PickerItem> ParsePickerItem(std::string_view key)
 	size_t count = 0;
 	for (auto field : std::views::split(key, '|')) {
 		if (count == fields.size() || field.empty()) return std::nullopt;
-		fields[count++] = std::string_view(field.begin(), field.end());
+		/* GCC 11's split_view inner iterator does not model contiguous_iterator, so construct from pointers. */
+		fields[count++] = std::string_view(&*field.begin(), std::ranges::distance(field));
 	}
 	if (count != 2 && count != fields.size()) return std::nullopt;
 
