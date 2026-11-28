@@ -806,14 +806,15 @@ bool ShouldReplanAircraftApronTransit(const Aircraft *v)
 	 * advancing. Give up the complete route after persistent blockage, never
 	 * just the individual directions on the stand. */
 	static constexpr uint16_t APRON_TRANSIT_YIELD_RETRIES = 16;
-	const bool stalled = v->taxi_jam_ticks >= APRON_TRANSIT_YIELD_RETRIES;
+	const bool stalled = v->taxi_block_reason != AircraftTaxiBlock::None && v->taxi_jam_ticks >= APRON_TRANSIT_YIELD_RETRIES;
 	for (const auto &record : v->virtual_path) {
 		const TileIndex tile = record.tile;
 		if (tile == v->tile || !IsTaxiTile(tile) || !IsApron(tile)) continue;
 		auto claim = _aircraft_terminal_owners.find(tile);
 		if (claim != _aircraft_terminal_owners.end() && claim->second != v->index) return true;
 		if (FindForeignAircraftOnApron(v, tile, true) != nullptr) return true;
-		if (stalled && IsAircraftTerminalAvailable(v, tile) && FindForeignAircraftOnApron(v, tile) == nullptr) return true;
+		/* A stand this route is actually parking at is not a transit booking. */
+		if (stalled && tile != v->allocated_terminal && IsAircraftTerminalAvailable(v, tile) && FindForeignAircraftOnApron(v, tile) == nullptr) return true;
 	}
 	return false;
 }
@@ -1635,7 +1636,14 @@ static bool TryReserveAircraftJunctions(Aircraft *v, TileIndex tile, TrackBits t
 		});
 		if (!held) desired.push_back(std::move(action));
 	}
-	if (desired.empty()) return true;
+	if (desired.empty()) {
+		/* A routed window that no longer needs a grant must not retain FIFO
+		 * priority from another route if its real track acquisition fails. */
+		if (runway == INVALID_TILE && !v->planned_path.empty() && !v->junction_requests.empty()) {
+			CancelAircraftJunctionRequest(v);
+		}
+		return true;
+	}
 	if (desired.size() > 64 || v->junction_actions.size() + desired.size() > 64) return RecordAircraftTaxiBlock(v, AircraftTaxiBlock::Protected, origin);
 	/* Replanning the same local action keeps its queue position. An unrelated
 	 * crossing starts a new request; there is no remote route-wide priority. */

@@ -3509,7 +3509,9 @@ bool TryReservePath(Aircraft *v)
 	v->Next()->state = dest_state;
 	v->next_pos.pos = AP_DEFAULT;
 	v->UpdateNextTile(destination.tile);
-	v->taxi_blocked_ticks = 0;
+	/* A newly admitted route has not been blocked yet. Do not let an older
+	 * attempt trigger a yield before this aircraft can take its first step. */
+	v->taxi_blocked_ticks = v->taxi_jam_ticks = 0;
 
 	if (pushback) {
 		SetBit(v->flags, VAF_PUSHBACK);

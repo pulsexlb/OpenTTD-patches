@@ -235,6 +235,15 @@ TEST_CASE("Aircraft blocked behind another releases an empty remote stand")
 	CHECK_FALSE(ShouldReplanAircraftApronTransit(rear));
 	for (int i = 0; i < 64 && !ShouldReplanAircraftApronTransit(rear); ++i) REQUIRE(HandleAircraftMovement(rear));
 	REQUIRE(ShouldReplanAircraftApronTransit(rear));
+	{
+		AutoRestoreBackup no_block(rear->taxi_block_reason, AircraftTaxiBlock::None);
+		CHECK_FALSE(ShouldReplanAircraftApronTransit(rear));
+	}
+	REQUIRE(TryClaimAircraftTerminal(rear, stand));
+	CHECK_FALSE(ShouldReplanAircraftApronTransit(rear));
+	CHECK(HasAircraftVirtualTileReservation(rear, stand, TRACKDIR_BIT_X_SW));
+	ReleaseAircraftTerminal(rear);
+	CHECK(ShouldReplanAircraftApronTransit(rear));
 	rear->next_trackdir = TRACKDIR_X_NE;
 	CHECK_FALSE(ShouldReplanAircraftApronTransit(rear));
 	rear->next_trackdir = INVALID_TRACKDIR;
@@ -523,6 +532,48 @@ TEST_CASE("Aircraft runway-head admission uses the runway axis without a built t
 		waiting->junction_actions = {taxi};
 		CHECK_THROWS(AfterLoadAircraftReservations(false));
 	}
+}
+
+TEST_CASE("Aircraft replanning drops old FIFO priority even when traffic blocks the new window")
+{
+	AllocateMap(64, 64);
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([] { ClearAircraftReservationIndexes(); _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	MakeReservationAirport(TRACK_BIT_X);
+	const TileIndex origin = TileXY(10, 10);
+	const TileIndex ahead = TileXY(11, 10);
+	const TileIndex goal = TileXY(12, 10);
+	const TileIndex head = TileXY(14, 11);
+	SetAirportTileType(head, ATT_RUNWAY_START_ALLOW_LANDING);
+	SetAirportTileType(TileXY(15, 11), ATT_RUNWAY_END);
+	SetRunwayExtremeDirection(head, DiagDirection::SW);
+	SetRunwayExtremeDirection(TileXY(15, 11), DiagDirection::SW);
+	SetAirportTileTracks(head, TRACK_BIT_CROSS);
+	SetAirportTileTracks(TileXY(14, 12), TRACK_BIT_Y);
+	Aircraft *waiting = MakeReservationAircraft(origin);
+	Aircraft *blocker = MakeReservationAircraft(ahead);
+	Aircraft *departure = MakeReservationAircraft(TileXY(16, 11));
+	REQUIRE(TryReserveAircraftTile(waiting, origin, TRACK_BIT_X));
+	REQUIRE(TryReserveAircraftTile(blocker, ahead, TRACK_BIT_X));
+	const AircraftJunctionAction old_action{head, head, head, TRACKDIR_X_SW, TRACKDIR_X_SW, false, {head}, {TRACK_BIT_X}, {TRACK_BIT_NONE}};
+	waiting->junction_requests = {old_action};
+	waiting->junction_request_tick = StateTicks{20};
+	AutoRestoreBackup version(_sl_xv_feature_versions[XSLFI_AIRCRAFT_ROLLING_RESERVATION], uint16_t{9});
+	AutoRestoreBackup ticks(_state_ticks, StateTicks{30});
+	AfterLoadAircraftReservations(false);
+	REQUIRE(std::ranges::find(waiting->junction_request_regions, head) != waiting->junction_request_regions.end());
+	CHECK_FALSE(TryReserveAircraftRunway(departure, head));
+
+	/* The replacement path has no crossings but still needs an occupied tile. */
+	waiting->planned_path = {{origin, TRACKDIR_X_SW, false}, {ahead, TRACKDIR_X_SW, false}, {goal, TRACKDIR_X_SW, false}};
+	REQUIRE(TryReserveAircraftTaxiPath(waiting));
+	CHECK_FALSE(ExtendAircraftTaxiReservation(waiting));
+	CHECK(waiting->junction_requests.empty());
+	CHECK(waiting->junction_request_regions.empty());
+	CHECK(waiting->junction_request_tick == INVALID_STATE_TICKS);
+	CHECK(HasAircraftTileReservation(waiting, origin, TRACK_BIT_X));
+	CHECK(HasAircraftTileReservation(blocker, ahead, TRACK_BIT_X));
+	CHECK(TryReserveAircraftRunway(departure, head));
 }
 
 TEST_CASE("Aircraft outside the map can still select a landing tile")
@@ -927,7 +978,11 @@ TEST_CASE("Aircraft hangars - construction and occupancy use the physical hangar
 
 		v->vehstatus.Reset(VehState::Stopped);
 		v->current_order.MakeGoToStation(st->index);
+		v->taxi_blocked_ticks = 12;
+		v->taxi_jam_ticks = 58;
 		REQUIRE(TryReservePath(v));
+		CHECK(v->taxi_blocked_ticks == 0);
+		CHECK(v->taxi_jam_ticks == 0);
 		CHECK(v->GetNextTile() == apron);
 		CHECK_FALSE(v->vehstatus.Test(VehState::Hidden));
 		check_hangar(first, nullptr);
