@@ -6907,6 +6907,131 @@ protected:
 	}
 };
 
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple - coupling holds keep the platform but do not reserve an exit")
+{
+	/* A real split allocates another train identity; the test does not load game settings. */
+	AutoRestoreBackup max_trains(_settings_game.vehicle.max_trains, UnitID{8});
+	AutoRestoreBackup braking(_settings_game.vehicle.train_braking_model, uint8_t{TBM_ORIGINAL});
+	AutoRestoreBackup reserve_paths(_settings_game.pf.reserve_paths, true);
+	AutoRestoreBackup service_at_station(_settings_game.vehicle.train_service_at_station, false);
+	SavedRandomSeeds seeds;
+	SaveRandomSeeds(&seeds);
+	auto restore_random = scope_guard([&]() { RestoreRandomSeeds(seeds); });
+
+	/* Two occupied platform tiles, with a free PBS exit in each direction. */
+	const TileIndex rear_exit = TileXY(10, 10);
+	const TileIndex front_exit = TileXY(13, 10);
+	UnreserveRailTrack(rear_exit, TRACK_X);
+	for (uint x = 13; x <= 16; ++x) MakeRailNormal(TileXY(x, 10), _current_company, TRACK_BIT_X, RAILTYPE_RAIL);
+	for (const auto &[tile, td] : {std::pair{TileXY(9, 10), TRACKDIR_X_NE}, std::pair{TileXY(15, 10), TRACKDIR_X_SW}}) {
+		SB(_m[tile].m5, 6, 2, to_underlying(RailTileType::Signals));
+		SetPresentSignals(tile, SignalAlongTrackdir(td));
+		SetSignalType(tile, TRACK_X, SignalType::Path);
+	}
+	const TileIndex rear_platform = TileXY(11, 10);
+	station->train_station = TileArea(rear_platform, 2, 1);
+	station->rect.BeforeAddTile(rear_platform, StationRect::ADD_FORCE);
+	station->had_vehicle_of_type.Set(StationVehicleType::Train);
+	MakeRailStation(rear_platform, _current_company, station->index, Axis::X, 0, RAILTYPE_RAIL);
+	REQUIRE(TryReserveRailTrack(rear_platform, TRACK_X));
+
+	Station *away = Station::Create(TileXY(16, 10));
+	away->owner = _current_company;
+	away->facilities = {StationFacility::Train};
+	away->train_station = TileArea(away->xy, 1, 1);
+	away->rect.BeforeAddTile(away->xy, StationRect::ADD_FORCE);
+	MakeRailStation(away->xy, _current_company, away->index, Axis::X, 0, RAILTYPE_RAIL);
+
+	Train *front = moving;
+	Train *rear = waiting;
+	Place(front, 12);
+	Place(rear, 11);
+	front->x_pos -= 4;
+	rear->x_pos += 4;
+	rear->last_station_visited = StationID::Invalid();
+	rear->current_order.Free();
+	front->SetNext(rear);
+	BindTrainPrimary(front, front);
+	front->ConsistChanged(CCF_COUPLE);
+	GroupStatistics::UpdateAfterLoad();
+
+	Order arrival;
+	arrival.MakeGoToStation(station->index);
+	arrival.SetDecouple(ODF_DECOUPLE);
+	arrival.SetWaitTimetabled(true);
+	arrival.SetStopLocation(OrderStopLocation::FarEnd);
+	Order split;
+	split.MakeDecouple();
+	split.SetNumDecouple(1);
+	split.SetDecoupleFirstOrdersType(ODOF_KEEP_ORDERS_NO_LOAD);
+	split.SetDecoupleSecondOrdersType(ODOF_LOAD_AND_WAIT);
+	Order next;
+	bool front_holds = false;
+	SECTION("authored bare wait releases the old path and cannot reserve it again") {
+		next.MakeWaitCouple();
+		front_holds = true;
+		for (uint x = 13; x <= 16; ++x) REQUIRE(TryReserveRailTrack(TileXY(x, 10), TRACK_X));
+		SetSignalStateByTrackdir(TileXY(15, 10), TRACKDIR_X_SW, SignalState::Green);
+	}
+	SECTION("authored wait for another station can reserve the outbound path") {
+		next.MakeWaitCouple();
+		next.SetWaitCoupleStation(away->index);
+	}
+	SECTION("ordinary station order can reserve the outbound path") {
+		next.MakeGoToStation(away->index);
+	}
+
+	OrderList *original = OrderList::Create(std::vector<Order>{arrival, split, next}, front);
+	front->orders = original;
+	front->primary_order = original->index;
+	front->current_order = arrival;
+	front->dest_tile = station->xy;
+	REQUIRE(TrainFitStation(front));
+	REQUIRE(GetDecoupleVehicleForCount(front, split.GetNumDecouple()) == rear);
+	REQUIRE(GetFreeUnitNumber(VehicleType::Train, front->owner) != UINT16_MAX);
+	REQUIRE(front->Tick()); // Synthetic arrival drives the actual split and starts loading.
+	REQUIRE(front->Next() == nullptr);
+	REQUIRE(front->Primary() == front);
+	REQUIRE(rear->Primary() == rear);
+	CHECK(front->decouple_part == 1);
+	CHECK(rear->decouple_part == 2);
+	CHECK(front->orders == original);
+	REQUIRE(rear->orders != original);
+	REQUIRE(front->current_order.GetType() == next.GetType());
+	CHECK(front->current_order.GetDestination() == next.GetDestination());
+	REQUIRE(rear->current_order.IsType(OT_LOADING));
+	REQUIRE(station->loading_vehicles.size() == 1);
+	CHECK(station->loading_vehicles.front() == rear);
+	CHECK_FALSE(HasReservedTracks(rear_exit, TRACK_BIT_X));
+
+	if (front_holds) {
+		for (uint x = 13; x <= 16; ++x) CHECK_FALSE(HasReservedTracks(TileXY(x, 10), TRACK_BIT_X));
+		CHECK(GetSignalStateByTrackdir(TileXY(15, 10), TRACKDIR_X_SW) == SignalState::Red);
+		CHECK(TryPathReserveWithResultFlags(front, true, false) == TPRRF_NONE);
+		CHECK_FALSE(front->flags.Test(VehicleRailFlag::Stuck));
+	} else {
+		CHECK((TryPathReserveWithResultFlags(front, true, false) & TPRRF_RESERVATION_OK) != 0);
+	}
+	CHECK(HasReservedTracks(front_exit, TRACK_BIT_X) == !front_holds);
+
+	REQUIRE(rear->Tick());
+	REQUIRE(rear->current_order.IsType(OT_LOADING));
+	CHECK_FALSE(HasReservedTracks(rear_exit, TRACK_BIT_X));
+	LoadUnloadStation(station);
+	REQUIRE(rear->vehicle_flags.Test(VehicleFlag::LoadingFinished));
+	REQUIRE(rear->Tick());
+	REQUIRE(rear->current_order.IsType(OT_WAIT_COUPLE));
+	CHECK_FALSE(rear->current_order.HasWaitCoupleStation());
+	CHECK(rear->cur_implicit_order_index == 2); // The private inserted wait, not part 1's next order.
+	CHECK(station->loading_vehicles.empty());
+	CHECK(TryPathReserveWithResultFlags(rear, true, false) == TPRRF_NONE);
+	CHECK_FALSE(rear->flags.Test(VehicleRailFlag::Stuck));
+	CHECK_FALSE(HasReservedTracks(rear_exit, TRACK_BIT_X));
+	CHECK(HasReservedTracks(front_exit, TRACK_BIT_X) == !front_holds);
+	CHECK(HasStationReservation(station->xy));
+	CHECK(HasStationReservation(rear_platform));
+}
+
 TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - goto couple claims a waiting partner blocking the line")
 {
 	GameRandomSeedChecker random_checker;

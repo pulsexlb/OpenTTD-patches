@@ -128,6 +128,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse = true); // Also us
 static TileIndex TrainApproachingCrossingTile(const Train *v);
 static void CheckIfTrainNeedsService(Train *v);
 static void CheckNextTrainTile(Train *moving_front);
+static bool IsHoldingForCouple(const Train *train);
 extern TileIndex VehiclePosTraceRestrictPreviousSignalCallback(const Train *v, const void *, TraceRestrictPBSEntrySignalAuxField mode);
 static void TrainEnterStation(Train *v, StationID station);
 static void UnreserveBridgeTunnelTile(TileIndex tile);
@@ -1339,9 +1340,6 @@ static void AdvanceLookAheadPosition(Train *v)
 static const uint16_t _breakdown_speeds[16] = {
 	225, 210, 195, 180, 165, 150, 135, 120, 105, 90, 75, 60, 45, 30, 15, 15
 };
-
-
-static bool IsHoldingForCouple(const Train *train);
 
 /** Whether full flipping should restore a driving cab before normal travel. */
 bool Train::NeedsCabFlip() const
@@ -4203,7 +4201,7 @@ static void RecheckSignalsAndTryReserve(Train *consist)
 	 * existing body/braking reservation intact, but do not acquire a new path
 	 * in the old direction. The completed turnaround re-enters here after
 	 * clearing Reversing and reserves from the new moving front. */
-	if (consist->flags.Any({VehicleRailFlag::Reversing, VehicleRailFlag::SameDirDecouplePending})) return;
+	if (consist->flags.Any({VehicleRailFlag::Reversing, VehicleRailFlag::SameDirDecouplePending}) || IsHoldingForCouple(consist)) return;
 
 	Train *moving_front = consist->GetMovingFront();
 
@@ -4463,9 +4461,8 @@ static void ReverseTrainDirection(Train *consist, bool no_swap = false)
 		}
 	}
 
-	/* Re-check the signal segment and rebuild the reservation in the new
-	 * direction, like after any other consist-changing operation. */
-	RecheckSignalsAndTryReserve(consist);
+	/* A split trailer has not been assigned its post-split orders yet. */
+	if (!no_swap) RecheckSignalsAndTryReserve(consist);
 }
 
 /**
@@ -4652,8 +4649,8 @@ static void CheckNextTrainTile(Train *moving_front)
 
 	Train *consist = moving_front->Primary();
 
-	/* Do not extend a split trailer's shared, unattributed path. */
-	if (consist->current_order.IsType(OT_WAITING) || consist->flags.Test(VehicleRailFlag::SameDirDecouplePending)) return;
+	/* Do not extend a parked train's path, or a split trailer's shared path. */
+	if (consist->current_order.IsType(OT_WAITING) || consist->flags.Test(VehicleRailFlag::SameDirDecouplePending) || IsHoldingForCouple(consist)) return;
 
 	/* Exit if we are on a station tile and are going to stop. */
 	if (HasStationTileRail(moving_front->tile) && consist->current_order.ShouldStopAtStation(consist, GetStationIndex(moving_front->tile), IsRailWaypoint(moving_front->tile))) return;
@@ -5207,6 +5204,64 @@ void FreeTrainTrackReservation(Train *consist, TileIndex origin, Trackdir orig_t
 static Train *GetValidCoupleClaimant(const Train *carrier);
 static Train *GetClaimedCoupleTarget(const Train *moving);
 
+/* On a shared or ambiguous path, stop at the first signal, track choice, or body. */
+static void ReleaseWaitingTrainPathPrefix(const Train *consist, TileIndex tile, Trackdir td)
+{
+	const Train *end = consist->GetMovingFront();
+	CFollowTrackRail ft(consist, consist->GetIndirectCompatibleRailTypes());
+	while (ft.Follow(tile, td)) {
+		if (KillFirstBit(ft.new_td_bits) != TRACKDIR_BIT_NONE) break;
+		Trackdir ntd = FindFirstTrackdir(ft.new_td_bits);
+		TileIndex ntile = ft.new_tile;
+		if (!HasReservedTracks(ntile, TrackToTrackBits(TrackdirToTrack(ntd)))) break;
+		/* Do not lift a reservation that approaches a signal from the
+		 * other side, or one beyond a closed entrance. */
+		if (IsTileType(ntile, TileType::Railway) &&
+				((HasSignalOnTrackdir(ntile, ReverseTrackdir(ntd)) && !HasSignalOnTrackdir(ntile, ntd)) ||
+				(HasPbsSignalOnTrackdir(ntile, ntd) && GetSignalStateByTrackdir(ntile, ntd) == SignalState::Red))) break;
+		if (IsTileType(ntile, TileType::TunnelBridge) && IsTrackAcrossTunnelBridge(ntile, TrackdirToTrack(ntd))) {
+			/* Simulated entrances/exits are directional reservation boundaries.
+			 * An unsignalled span instead has one reservation over both ends. */
+			if (IsTunnelBridgeWithSignalSimulation(ntile)) break;
+			if (TrackdirEntersTunnelBridge(ntile, ntd)) {
+				if (!ReleaseUnsignalledCrossing(consist, ntile, ntd)) break;
+			} else {
+				/* Started on our own reserved mouth. Retain both ends
+				 * under the body, and do not walk past any other occupant. */
+				if (!(ft.is_tunnel || ft.is_bridge) || tile != end->tile ||
+						!HasReservedTracks(tile, TrackToTrackBits(TrackdirToTrack(td))) ||
+						TunnelBridgeIsFree(tile, ntile, end, TBIFM_ACROSS_ONLY).Failed()) break;
+			}
+			tile = ntile;
+			td = ntd;
+			continue;
+		}
+		auto occupied = [](TileIndex tile) {
+			auto vehicles = VehiclesOnTile<VehicleType::Train>(tile);
+			return vehicles.begin() != vehicles.end();
+		};
+		if (occupied(ntile)) break;
+		if (IsRailStationTile(ntile)) {
+			/* Check skipped tiles before changing any reservation on this strip. */
+			const TileIndexDiff step = TileOffsByDiagDir(ft.exitdir);
+			const TileIndex first = ntile - step * ft.tiles_skipped;
+			bool skipped_occupied = false;
+			for (TileIndex t = first; t != ntile; t += step) skipped_occupied |= occupied(t);
+			if (skipped_occupied) break;
+			for (TileIndex t = ntile;; t -= step) {
+				if (!HasStationReservation(t)) break;
+				SetRailStationReservation(t, false);
+				if (t == first) break;
+			}
+		} else {
+			UnreserveRailTrackdir(ntile, ntd);
+		}
+		tile = ntile;
+		td = ntd;
+		if (IsTileType(ntile, TileType::Railway) && HasSignalOnTrackdir(ntile, ntd)) break;
+	}
+}
+
 /**
  * A train waiting to be coupled holds only the reservation of the tiles its
  * body occupies. Everything beyond its moving front (its drive-away
@@ -5220,16 +5275,23 @@ static Train *GetClaimedCoupleTarget(const Train *moving);
  * any vehicle (including station/bridge tiles the track follower would skip
  * across), so it can never eat into another train's reservation.
  * @param consist %Train waiting for its coupling partner.
+ * @param release_ahead Whether this train may have owned a path in this direction.
  */
-static void HoldWaitingTrainBody(Train *consist)
+static void HoldWaitingTrainBody(Train *consist, bool release_ahead = true)
 {
 	assert(consist->IsPrimaryVehicle());
+	if (consist->flags.Test(VehicleRailFlag::Stuck)) SetWindowWidgetDirty(WindowClass::VehicleView, consist->index, WID_VV_START_STOP);
+	consist->flags.Reset({VehicleRailFlag::Stuck, VehicleRailFlag::LeavingStation});
+	consist->wait_counter = 0;
 
 	if (!consist->couple_body_hold) {
-		/* Only release when nobody is homing in on us yet: afterwards the
-		 * approaching partner's own reservation may be adjacent to ours and
-		 * must not be touched. */
-		if (const Train *claimant = GetValidCoupleClaimant(consist); claimant != nullptr && claimant->current_order.IsType(OT_GOTO_COUPLE)) return;
+		/* A deferred trailer has no path of its own. In particular, its
+		 * current moving front can point into the other part's reservation. */
+		release_ahead &= !consist->flags.Test(VehicleRailFlag::SameDirDecouplePending);
+		if (release_ahead) {
+			/* The approaching partner's own path can be adjacent to ours. */
+			if (const Train *claimant = GetValidCoupleClaimant(consist); claimant != nullptr && claimant->current_order.IsType(OT_GOTO_COUPLE)) return;
+		}
 		consist->couple_body_hold = true;
 
 		consist->lookahead.reset();
@@ -5239,69 +5301,17 @@ static void HoldWaitingTrainBody(Train *consist)
 		 * decoupled partner part (the original consist's forward reservation
 		 * is always ahead of its former front), which must not be touched:
 		 * eating it strands that train in front of the next signal. */
-		Train *end = consist->GetMovingFront();
-		if (end->track != TRACK_BIT_WORMHOLE && end->track != TRACK_BIT_DEPOT) {
-			Trackdir outward = end->GetVehicleTrackdir();
-			CFollowTrackRail ft(consist, consist->GetIndirectCompatibleRailTypes());
-			TileIndex tile = end->tile;
-			Trackdir td = outward;
-			while (ft.Follow(tile, td)) {
-				if (KillFirstBit(ft.new_td_bits) != TRACKDIR_BIT_NONE) break;
-				Trackdir ntd = FindFirstTrackdir(ft.new_td_bits);
-				TileIndex ntile = ft.new_tile;
-				if (!HasReservedTracks(ntile, TrackToTrackBits(TrackdirToTrack(ntd)))) break;
-				if (IsTileType(ntile, TileType::TunnelBridge) && IsTrackAcrossTunnelBridge(ntile, TrackdirToTrack(ntd))) {
-					/* Simulated entrances/exits are directional reservation boundaries.
-					 * An unsignalled span instead has one reservation over both ends. */
-					if (IsTunnelBridgeWithSignalSimulation(ntile)) break;
-					if (TrackdirEntersTunnelBridge(ntile, ntd)) {
-						if (!ReleaseUnsignalledCrossing(consist, ntile, ntd)) break;
-					} else {
-						/* Started on our own reserved mouth. Retain both ends
-						 * under the body, and do not walk past any other occupant. */
-						if (!(ft.is_tunnel || ft.is_bridge) || tile != end->tile ||
-								!HasReservedTracks(tile, TrackToTrackBits(TrackdirToTrack(td))) ||
-								TunnelBridgeIsFree(tile, ntile, end, TBIFM_ACROSS_ONLY).Failed()) break;
-					}
-					tile = ntile;
-					td = ntd;
-					continue;
-				}
-				bool occupied = false;
-				for (Train *w : VehiclesOnTile<VehicleType::Train>(ntile)) occupied = true;
-				if (occupied) break;
-				/* Only skipped platform tiles are real rail at the coordinates
-				 * visited by the follower. Wormholes are handled as a pair above. */
-				bool skipped_occupied = false;
-				if (ft.is_station && ft.tiles_skipped != 0) {
-					TileIndexDiff sdiff = TileOffsByDiagDir(ft.exitdir);
-					for (TileIndex st = ntile - sdiff * ft.tiles_skipped; st != ntile; st += sdiff) {
-						for (Train *w : VehiclesOnTile<VehicleType::Train>(st)) skipped_occupied = true;
-					}
-					if (skipped_occupied) break;
-				}
-				if (IsRailStationTile(ntile)) {
-					/* The follower jumped across the platform: clear the strip
-					 * back towards the entry, then continue from the far end. */
-					TileIndex t = ntile;
-					TileIndexDiff back = TileOffsByDiagDir(ReverseDiagDir(TrackdirToExitdir(ntd)));
-					for (;;) {
-						bool strip_occupied = false;
-						for (Train *w : VehiclesOnTile<VehicleType::Train>(t)) strip_occupied = true;
-						if (strip_occupied) break;
-						if (!HasStationReservation(t)) break;
-						SetRailStationReservation(t, false);
-						TileIndex prev = t + back;
-						if (!IsCompatibleTrainStationTile(prev, ntile)) break;
-						t = prev;
-					}
-				} else {
-					UnreserveRailTrack(ntile, TrackdirToTrack(ntd));
-				}
-				tile = ntile;
-				td = ntd;
-				/* The chain ends at a signal facing our direction. */
-				if (IsTileType(ntile, TileType::Railway) && HasSignalOnTrackdir(ntile, ntd)) break;
+		const Train *end = consist->GetMovingFront();
+		const Trackdir outward = end->GetVehicleTrackdir();
+		if (release_ahead && end->track != TRACK_BIT_WORMHOLE && end->track != TRACK_BIT_DEPOT && IsValidTrackdir(outward)) {
+			/* The native release can follow a route through junctions and green
+			 * PBS signals, but only if this end is its sole physical anchor. */
+			const auto step = TileIndexDiffCByDiagDir(TrackdirToExitdir(outward));
+			const TileIndex next = TileAddWrap(end->tile, step.x, step.y);
+			if (IsValidTile(next) && HasExclusiveSplitDepartureReservation(consist, next)) {
+				FreeTrainTrackReservation(consist);
+			} else {
+				ReleaseWaitingTrainPathPrefix(consist, end->tile, outward);
 			}
 		}
 	}
@@ -6176,6 +6186,7 @@ static void TryLongReserveChooseTrainTrackFromReservationEnd(Train *v, bool no_r
 	 * run in between; they must not extend the old forward reservation. Keep
 	 * existing body/braking protection, including while a moving train brakes
 	 * for reversal. ReverseTrainDirection reserves again after turning. */
+	if (v->flags.Test(VehicleRailFlag::SameDirDecouplePending) || IsHoldingForCouple(v)) return;
 	if (v->cur_speed == 0 && (v->current_order.IsType(OT_LEAVESTATION) || v->flags.Test(VehicleRailFlag::Reversing))) return;
 
 	ClearLookAheadIfInvalid(v);
@@ -6775,7 +6786,7 @@ TryPathReserveResultFlags TryPathReserveWithResultFlags(Train *consist, bool mar
 {
 	dbg_assert(consist->IsPrimaryVehicle());
 
-	if (consist->flags.Test(VehicleRailFlag::SameDirDecouplePending)) return TPRRF_NONE;
+	if (consist->flags.Test(VehicleRailFlag::SameDirDecouplePending) || IsHoldingForCouple(consist)) return TPRRF_NONE;
 
 	/* Do not let a PBS retry decide the old direction before station
 	 * departure has resolved its next order, or while a stopped reversal is
@@ -9607,6 +9618,11 @@ static void TrainEnterStation(Train *consist, StationID station)
 		StringID decouple_failure_reason;
 		/* Arrival bookkeeping may just have selected this stop's dispatch slot. */
 		if (station_service_uses_dispatch) station_service_number = consist->GetActiveServiceNumber();
+		const Train *arrival_front = consist->GetMovingFront();
+		const TileIndex arrival_tile = arrival_front->tile;
+		const Trackdir arrival_td = arrival_front->GetVehicleTrackdir();
+		const bool arrival_path_anchored = IsValidTrackdir(arrival_td) && !consist->flags.Test(VehicleRailFlag::Stuck) &&
+				HasReservedTracks(arrival_tile, TrackToTrackBits(TrackdirToTrack(arrival_td))) && FindForeignTrainOnReservation(consist) == nullptr;
 		u = DecoupleTrain(consist, consist_in_rear, decouple_failure_reason);
 		/* All further handling of the rear part (orders, loading, windows)
 		 * must operate on its primary vehicle, not the physical chain head. */
@@ -9669,8 +9685,6 @@ static void TrainEnterStation(Train *consist, StationID station)
 			 * assert in FreeTrainTrackReservation only looks at the flag. */
 			if (!u->IsPrimaryVehicle()) u = u->First();
 		}
-		if (consist->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(consist);
-		if (u != nullptr && u->current_order.IsType(OT_WAIT_COUPLE)) FreeTrainTrackReservation(u);
 		/* The split moved vehicles -- and the primary that carries the breakdown
 		 * bookkeeping -- between the two parts, so both have to be recomputed for
 		 * each part; see #RefreshConsistBreakdownState. A failed split (u == consist)
@@ -9692,13 +9706,24 @@ static void TrainEnterStation(Train *consist, StationID station)
 		 * part the usual chance to reverse in the station right away; loading
 		 * parts get the same check again when they depart. */
 		if (decoupled) {
-			if (!consist->flags.Test(VehicleRailFlag::JustDecoupled) && !consist->flags.Test(VehicleRailFlag::SameDirDecouplePending) && CheckReverseTrain(consist)) consist->flags.Set(VehicleRailFlag::Reversing);
-			if (!u->flags.Test(VehicleRailFlag::JustDecoupled) && !u->flags.Test(VehicleRailFlag::SameDirDecouplePending) && CheckReverseTrain(u)) u->flags.Set(VehicleRailFlag::Reversing);
-			/* Recheck ordinary departures now. A reversing part waits for the
-			 * turnaround, and a same-direction trailer waits for its own exit
-			 * rather than claiming the leader's path. */
-			RecheckSignalsAndTryReserve(consist);
-			RecheckSignalsAndTryReserve(u);
+			for (auto [part, load_bit] : {std::pair{consist, DECOUPLE_LOAD_FIRST}, std::pair{u, DECOUPLE_LOAD_SECOND}}) {
+				/* A loading part has not selected its departure order yet. */
+				if (load_trains & load_bit) continue;
+				if (IsHoldingForCouple(part)) {
+					/* The old forward path followed the incoming moving front.
+					 * Never walk the shared platform from the trailer's end. */
+					if (arrival_path_anchored && part->GetMovingFront() == arrival_front &&
+							arrival_front->tile == arrival_tile && arrival_front->GetVehicleTrackdir() == arrival_td) {
+						FreeTrainTrackReservation(part);
+					}
+					part->cur_speed = 0;
+					part->subspeed = 0;
+					HoldWaitingTrainBody(part, false);
+					continue;
+				}
+				if (!part->flags.Any({VehicleRailFlag::JustDecoupled, VehicleRailFlag::SameDirDecouplePending}) && CheckReverseTrain(part)) part->flags.Set(VehicleRailFlag::Reversing);
+				RecheckSignalsAndTryReserve(part);
+			}
 		}
 		if (u == consist && consist->owner == _local_company) {
 			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_DECOUPLE_FAILED_REASON, consist->index, decouple_failure_reason), consist->index);
@@ -11779,9 +11804,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		DiagDirection dir = VehicleExitDir(moving_front->GetMovingDirection(), moving_front->track);
 		if (IsRailDepotTile(moving_front->tile) || IsTileType(moving_front->tile, TileType::TunnelBridge)) dir = DiagDirection::Invalid;
 
-		if (IsHoldingForCouple(consist)) {
-			FreeTrainTrackReservation(consist);
-		} else if (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SigSegState::Path || _settings_game.pf.reserve_paths) {
+		if (!IsHoldingForCouple(consist) && (UpdateSignalsOnSegment(moving_front->tile, dir, consist->owner) == SigSegState::Path || _settings_game.pf.reserve_paths)) {
 			TryPathReserve(consist, true, true);
 		}
 		consist->flags.Reset(VehicleRailFlag::LeavingStation);
@@ -11790,7 +11813,7 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	consist->HandleLoading(mode);
 
 	if (consist->current_order.IsType(OT_LOADING)) return true;
-	if (consist->flags.Test(VehicleRailFlag::SameDirDecouplePending)) {
+	if (split_pending && !consist->current_order.IsType(OT_LEAVESTATION) && !IsHoldingForCouple(consist)) {
 		consist->cur_speed = 0;
 		consist->subspeed = 0;
 		consist->lookahead.reset();
@@ -11823,6 +11846,16 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		if (reverse) return true;
 	}
 
+	/* Holding takes precedence over cab flips and split departure retries. */
+	if (IsHoldingForCouple(consist)) {
+		consist->cur_speed = 0;
+		consist->subspeed = 0;
+		UpdateWaitCoupleSlot(consist);
+		HoldWaitingTrainBody(consist);
+		return true;
+	}
+	consist->couple_body_hold = false;
+
 	/* Keep the requested travel direction, but place a driving cab at the leading
 	 * end when full flipping is allowed. This also recovers already-running saves. */
 	if (consist->NeedsCabFlip() && consist->cur_speed == 0) {
@@ -11854,22 +11887,6 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 	}
 
 	if (consist->cur_speed == 0) RepairStoppedTrainSpacing(consist);
-
-	/* The beyond-body release is redone from scratch whenever the train stops
-	 * waiting for a couple. */
-	if (!consist->current_order.IsType(OT_WAIT_COUPLE)) consist->couple_body_hold = false;
-
-	if (IsHoldingForCouple(consist)) {
-		if (consist->cur_speed > 0) {
-			consist->cur_speed = 0;
-			consist->subspeed = 0;
-		}
-		/* Keep only the body tiles reserved, so the partner can reserve a
-		 * path up to the contact point like for any other order. */
-		UpdateWaitCoupleSlot(consist);
-		HoldWaitingTrainBody(consist);
-		return true;
-	}
 
 	if (CheckTrainStayInDepot(consist)) return true;
 
@@ -11940,6 +11957,12 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		consist->current_order.Free();
 
 		bool may_reverse = ProcessOrders(consist);
+		if (IsHoldingForCouple(consist)) {
+			HoldWaitingTrainBody(consist);
+			UpdateWaitCoupleSlot(consist);
+			SetWindowWidgetDirty(WindowClass::VehicleView, consist->index, WID_VV_START_STOP);
+			return true;
+		}
 
 		Train *moving_front = consist->GetMovingFront();
 		if (IsRailStationTile(moving_front->tile) && GetStationIndex(moving_front->tile) == station_id && Company::Get(consist->owner)->settings.remain_if_next_order_same_station) {
