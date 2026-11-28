@@ -207,13 +207,6 @@ inline constexpr auto MakeCommandsFromTraits(std::integer_sequence<T, i...>) noe
  */
 const EnumIndexArray<CommandInfo, Commands, Commands::End> _command_proc_table = MakeCommandsFromTraits(std::make_integer_sequence<std::underlying_type_t<Commands>, to_underlying(Commands::End)>{});
 
-/**
- * Set client ID for this command payload using the field returned by Payload::GetClientIDField().
- * This provided payload must have already been type-checked as valid for cmd.
- * Not many commands set CMD_CLIENT_ID so a series of ifs is not too onerous.
- */
-void SetPreCheckedCommandPayloadClientID(Commands cmd, CommandPayloadBase &payload, ClientID client_id)
-{
 static_assert(ClientID::Invalid == (ClientID)0);
 
 template <Commands Tcmd>
