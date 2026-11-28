@@ -10,8 +10,11 @@
 #include "../airport.h"
 #include "../core/backup_type.hpp"
 #include "../date_func.h"
+#include "../depot_base.h"
 #include "../engine_base.h"
+#include "../network/network.h"
 #include "../pbs_air.h"
+#include "../settings_type.h"
 #include "../sl/extended_ver_sl.h"
 #include "../station_base.h"
 #include "../scope.h"
@@ -508,6 +511,95 @@ TEST_CASE("External aircraft picks a fallback with a reachable landing exit")
 	CHECK(v->GetNextTile() == far->airport.tile);
 	CHECK(v->targetairport == far->index);
 	CHECK(v->current_order.GetDestination().ToStationID() == far->index);
+}
+
+TEST_CASE("External aircraft resumes its schedule after return hangar service")
+{
+	extern bool HandleAircraftState(Aircraft *v);
+	REQUIRE(Engine::GetNumItems() == 0);
+	AutoRestoreBackup headless(_network_dedicated, true);
+	AllocateMap(64, 64);
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([] {
+		ClearAircraftReservationIndexes();
+		_vehicle_pool.CleanPool();
+		_orderlist_pool.CleanPool();
+		_engine_pool.CleanPool();
+		_station_pool.CleanPool();
+		_depot_pool.CleanPool();
+		DeallocateMap();
+	});
+	Station *st = MakeReservationAirport(TRACK_BIT_X);
+	st->owner = OWNER_BEGIN;
+	const TileIndex hangar = st->airport.tile;
+	const TileIndex apron = TileXY(13, 10);
+	SetAirportTileType(hangar, ATT_HANGAR_STANDARD);
+	SetHangarDirection(hangar, DiagDirection::SW);
+	st->airport.hangar = Depot::Create(hangar);
+	SetAirportTileType(apron, ATT_APRON_NORMAL);
+	st->airport.aprons.push_back(apron);
+	SetBit(st->airport.flags, AFB_LANDING_RUNWAY);
+
+	Aircraft *v = MakeReservationAircraft(hangar);
+	v->sprite_seq.Clear(); // No sprites are loaded by the unit test runner.
+	AutoRestoreBackup<uint16_t> runway_length(_settings_game.vehicle.plane_runway_length_factor, 0);
+	Engine *engine = Engine::Create(VehicleType::Aircraft, 0);
+	engine->VehInfo<AircraftVehicleInfo>().subtype = AIR_CTOL;
+	v->engine_type = v->Next()->engine_type = engine->index;
+	v->owner = OWNER_BEGIN;
+	v->x_pos = v->next_pos.x;
+	v->y_pos = v->next_pos.y;
+	v->state = AS_HANGAR;
+	v->external_landing = true;
+	Order external;
+	external.MakeExternalFlight();
+	v->orders = OrderList::Create(std::move(external), v);
+	v->primary_order = v->orders->index;
+	Order next;
+	next.MakeGoToStation(st->index);
+	v->orders->InsertOrderAt(std::move(next), 1);
+	/* The off-map trip already advanced the schedule to the native stop. */
+	v->cur_real_order_index = v->cur_implicit_order_index = 1;
+
+	SECTION("native depot entry consumes the temporary service order") {
+		v->targetairport = st->index;
+		v->trackdir = TRACKDIR_X_NE; // Arrive through the door, opposite the exit direction.
+		v->current_order.MakeGoToDepot(st->index, {});
+		REQUIRE(HandleAircraftState(v));
+		REQUIRE(v->vehstatus.Test(VehState::Hidden));
+		REQUIRE(v->current_order.IsType(OT_DUMMY));
+		/* The vehicle loop releases the temporary autoreplace stop. */
+		v->vehstatus.Reset(VehState::Stopped);
+	}
+	SECTION("a snapshot already contains the completed service order") {
+		v->vehstatus.Set(VehState::Hidden);
+		v->current_order.MakeDummy();
+		v->UpdateNextTile(INVALID_TILE);
+		AfterLoadAircraftReservations(false);
+	}
+	SECTION("an apron is still occupied and the return order is live") {
+		v->targetairport = st->index;
+		v->vehstatus.Set(VehState::Hidden);
+		v->current_order.MakeGoToStation(st->index);
+		v->UpdateNextTile(INVALID_TILE);
+		Aircraft *blocker = MakeReservationAircraft(apron);
+		REQUIRE(TryClaimAircraftTerminal(blocker, apron));
+		REQUIRE(v->Tick());
+		CHECK(v->external_landing);
+		CHECK(v->vehstatus.Test(VehState::Hidden));
+		CHECK(v->current_order.IsType(OT_GOTO_STATION));
+		CHECK(v->cur_real_order_index == 1);
+		return;
+	}
+
+	REQUIRE(v->Tick());
+	CHECK_FALSE(v->external_landing);
+	CHECK(v->current_order.IsType(OT_GOTO_STATION));
+	CHECK(v->current_order.GetDestination().ToStationID() == st->index);
+	CHECK(v->cur_real_order_index == 1);
+	CHECK_FALSE(v->vehstatus.Test(VehState::Hidden));
+	CHECK(v->state == AS_RUNNING);
+	CHECK(v->GetNextTile() == apron);
 }
 
 TEST_CASE("Aircraft runway-end reachability is static and requires a connected exit")

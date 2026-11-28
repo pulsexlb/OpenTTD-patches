@@ -4022,6 +4022,13 @@ static bool AircraftController(Aircraft *v, bool mode)
 		UpdateAircraftState(v);
 	}
 
+	/* Hangar service can consume the temporary depot order without reaching a
+	 * terminal. Resume the schedule, including for saves already stuck here.
+	 * A hangar diversion with a live return station order still needs a stand. */
+	if (v->external_landing && v->IsInDepot() && v->vehstatus.Test(VehState::Hidden) &&
+			(v->current_order.IsType(OT_DUMMY) || v->current_order.IsType(OT_NOTHING))) {
+		v->external_landing = false;
+	}
 	if (!v->external_landing) ProcessOrders(v);
 	else if (!mode && CanRetargetExternalReturnFlight(v) && !v->IsAircraftFalling() &&
 			(!IsExternalReturnTargetValid(v) || v->state == AS_FLYING_NO_DEST) &&
