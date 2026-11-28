@@ -945,8 +945,11 @@ public:
 
 	inline Trackdir ChooseRailTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
 	{
-		if (target != nullptr) target->tile = INVALID_TILE;
+		if (target != nullptr) *target = PBSTileInfo();
 		if (dest != nullptr) *dest = INVALID_TILE;
+		path_found = false;
+		Yapf().SetDestination(v);
+		if (!Yapf().HasDestination()) return INVALID_TRACKDIR;
 
 		/* set origin and destination nodes */
 		PBSTileInfo origin = FollowTrainReservation(v, nullptr, FollowTrainReservationFlag::OkayUnused);
@@ -956,7 +959,6 @@ public:
 		if (AutoYieldHasNativeRoute(v)) Yapf().SetRailRouteFilter([v](TileIndex here, Trackdir td) { return AutoYieldNativeRouteAllows(v, here, td); });
 		Yapf().SetOrigin(origin.tile, origin.trackdir, INVALID_TILE, INVALID_TRACKDIR, 1);
 		Yapf().SetTreatFirstRedTwoWaySignalAsEOL(true);
-		Yapf().SetDestination(v);
 
 		/* find the best path */
 		path_found = Yapf().FindPath(v);
@@ -1020,19 +1022,20 @@ public:
 		return next_trackdir;
 	}
 
-	static bool stCheckReverseTrain(const Train *v, TileIndex t1, Trackdir td1, TileIndex t2, Trackdir td2, int reverse_penalty, TraceRestrictProgramInputFlags tracerestrict_flags)
+	static std::optional<bool> stCheckReverseTrain(const Train *v, TileIndex t1, Trackdir td1, TileIndex t2, Trackdir td2, int reverse_penalty, TraceRestrictProgramInputFlags tracerestrict_flags)
 	{
 		Tpf pf1;
-		bool result1 = pf1.CheckReverseTrain(v, t1, td1, t2, td2, reverse_penalty, tracerestrict_flags);
+		const auto result1 = pf1.CheckReverseTrain(v, t1, td1, t2, td2, reverse_penalty, tracerestrict_flags);
+		if (!result1.has_value()) return std::nullopt;
 
 		if (GetDebugLevel(DebugLevelID::yapfdesync) > 0 || GetDebugLevel(DebugLevelID::desync) >= 2) {
 			Tpf pf2;
 			pf2.DisableCache(true);
-			bool result2 = pf2.CheckReverseTrain(v, t1, td1, t2, td2, reverse_penalty, tracerestrict_flags);
-			if (result1 != result2) {
-				Debug(desync, 2, "CACHE ERROR: CheckReverseTrain() = [{}, {}]", result1 ? "T" : "F", result2 ? "T" : "F");
+			const bool result2 = pf2.CheckReverseTrain(v, t1, td1, t2, td2, reverse_penalty, tracerestrict_flags).value_or(false);
+			if (*result1 != result2) {
+				Debug(desync, 2, "CACHE ERROR: CheckReverseTrain() = [{}, {}]", *result1, result2);
 				DumpState(pf1, pf2);
-			} else if (result1) {
+			} else if (*result1) {
 				CYapfFollowRailT::stDesyncCheck(pf1, pf2, "CACHE ERROR: CheckReverseTrain()", false);
 			}
 		}
@@ -1040,7 +1043,7 @@ public:
 		return result1;
 	}
 
-	inline bool CheckReverseTrain(const Train *v, TileIndex t1, Trackdir td1, TileIndex t2, Trackdir td2, int reverse_penalty, TraceRestrictProgramInputFlags tracerestrict_flags)
+	inline std::optional<bool> CheckReverseTrain(const Train *v, TileIndex t1, Trackdir td1, TileIndex t2, Trackdir td2, int reverse_penalty, TraceRestrictProgramInputFlags tracerestrict_flags)
 	{
 		/* create pathfinder instance
 		 * set origin and destination nodes */
@@ -1048,6 +1051,7 @@ public:
 		Yapf().SetTreatFirstRedTwoWaySignalAsEOL(false);
 		Yapf().SetTraceRestrictProgramInputFlags(tracerestrict_flags);
 		Yapf().SetDestination(v);
+		if (!Yapf().HasDestination()) return std::nullopt;
 
 		/* find the best path */
 		if (!Yapf().FindPath(v)) return false;
@@ -1160,6 +1164,10 @@ static bool YapfCanReachStation(const Train *v, TileIndex tile, Trackdir td, Sta
 	 * Actual departure still requires the normal PBS reservation checks. */
 	pf.SetTreatFirstRedTwoWaySignalAsEOL(!admission_probe);
 	pf.SetDestinationStation(v, station, tile);
+	if (!pf.HasDestination()) {
+		if (nodes_used != nullptr) *nodes_used = 0;
+		return false;
+	}
 	pf.SetMaxSearchNodes(max_nodes);
 	pf.DisableCache(admission_probe);
 	const bool found = pf.FindPath(v);
@@ -1313,6 +1321,10 @@ static YapfRailRoute YapfPlanRailRoute(const Train *v, TileIndex origin, Trackdi
 			pf.SetDestination(v);
 		}
 	}
+	if (!pf.HasDestination()) {
+		result.reason = YapfRailRouteReason::NoPath;
+		return result;
+	}
 	pf.SetRailRouteFilter(filter);
 	/* A bounded result must never depend on a client's segment cache history.
 	 * This also keeps query-specific filters and endpoints out of that cache. */
@@ -1430,11 +1442,11 @@ static bool YapfTrainCheckReverse(const Train *v, TileIndex tile, Trackdir td, T
 		return reverse != swapped;
 	}
 
-	bool reverse = _settings_game.pf.forbid_90_deg
+	const auto reverse = _settings_game.pf.forbid_90_deg
 		? CYapfRailNo90::stCheckReverseTrain(v, tile, td, tile_rev, td_rev, reverse_penalty, input_flags)
 		: CYapfRail::stCheckReverseTrain(v, tile, td, tile_rev, td_rev, reverse_penalty, input_flags);
 
-	return reverse != swapped;
+	return reverse.has_value() && *reverse != swapped;
 }
 
 constexpr int DRIVING_BACKWARDS_PENALTY = 100 * YAPF_TILE_LENGTH;

@@ -69,6 +69,11 @@ static bool IsTaxiTile(TileIndex tile)
 	return IsValidTile(tile) && IsAirportTile(tile) && MayHaveAirTracks(tile);
 }
 
+TrackBits GetAircraftLandingExitTracks(TileIndex tile)
+{
+	return IsTaxiTile(tile) && IsRunway(tile) ? GetAirportTileTracks(tile) & TRACK_BIT_CROSS : TRACK_BIT_NONE;
+}
+
 static TrackBits AircraftReservedTracks(TileIndex tile)
 {
 	TrackBits tracks = TRACK_BIT_NONE;
@@ -337,14 +342,14 @@ static AircraftTaxiBlock CheckAircraftAssociatedTrack(const Aircraft *v, TileInd
 	return block;
 }
 
-static AircraftTaxiBlock CheckAircraftTaxiTracks(const Aircraft *v, TileIndex tile, TrackBits tracks)
+static AircraftTaxiBlock CheckAircraftTaxiTracks(const Aircraft *v, TileIndex tile, TrackBits tracks, bool runway_head = false)
 {
 	if (!IsTaxiTile(tile)) return AircraftTaxiBlock::Protected;
 	AircraftTaxiBlock block = MergeAircraftBlock(CheckAircraftTaxiTile(v, tile, true, tracks == TRACK_BIT_NONE ? TRACK_BIT_ALL : tracks),
 		CheckIncomingAircraftEnvelopes(v, tile, tracks == TRACK_BIT_NONE ? TRACK_BIT_ALL : tracks));
 	/* TRACK_BIT_NONE requests a tile-level-only check (runway acquisition). */
 	if (tracks == TRACK_BIT_NONE) return block;
-	if ((GetAirportTileTracks(tile) & tracks) != tracks) return AircraftTaxiBlock::Protected;
+	if (!runway_head && (GetAirportTileTracks(tile) & tracks) != tracks) return AircraftTaxiBlock::Protected;
 	while (tracks != TRACK_BIT_NONE) {
 		Track track = RemoveFirstTrack(&tracks);
 		if (IsDiagonalTrack(track)) continue;
@@ -905,14 +910,14 @@ static std::vector<TileIndex> RunwayTiles(TileIndex extreme)
 	std::vector<TileIndex> result;
 	if (!IsTaxiTile(extreme) || !IsRunwayExtreme(extreme)) return result;
 	const StationID station = GetStationIndex(extreme);
-	const Track axis = DiagDirToDiagTrack(GetRunwayExtremeDirection(extreme));
-	DiagDirection dir = GetRunwayExtremeDirection(extreme);
-	if (IsRunwayEnd(extreme)) dir = ReverseDiagDir(dir);
-	for (TileIndex tile = extreme; IsTaxiTile(tile) && IsAirportTileOfStation(tile, station) && IsRunway(tile) && HasTrack(GetRunwayTracks(tile), axis);
+	const DiagDirection runway_dir = GetRunwayExtremeDirection(extreme);
+	const Trackdir runway_td = DiagDirToDiagTrackdir(runway_dir);
+	const DiagDirection dir = IsRunwayEnd(extreme) ? ReverseDiagDir(runway_dir) : runway_dir;
+	for (TileIndex tile = extreme; IsTaxiTile(tile) && IsAirportTileOfStation(tile, station) && IsRunway(tile) && HasTrackdir(GetRunwayTrackdirs(tile), runway_td);
 			tile = AircraftRunwayStep(tile, dir)) {
 		result.push_back(tile);
 		if (tile != extreme && IsRunwayExtreme(tile)) {
-			if (DiagDirToDiagTrack(GetRunwayExtremeDirection(tile)) != axis || IsRunwayEnd(tile) == IsRunwayEnd(extreme)) return {};
+			if (IsRunwayEnd(tile) == IsRunwayEnd(extreme)) return {};
 			return result;
 		}
 	}
@@ -1467,11 +1472,20 @@ static bool CollectAircraftJunctionActions(const Aircraft *v, const AircraftJunc
 	return true;
 }
 
+/* A runway lock's local action uses the runway axis, which need not also
+ * have a taxi track. No other action may claim unbuilt body tracks. */
+static bool IsAircraftRunwayHeadAction(const AircraftJunctionAction &action)
+{
+	const TileIndex head = action.junction;
+	if (action.entry_tile != head || action.exit_tile != head || action.entry_td != action.exit_td ||
+			action.tiles.size() != 1 || action.tracks.size() != 1 || action.swept.size() != 1 ||
+			action.tiles.front() != head || action.swept.front() != TRACK_BIT_NONE || !IsTaxiTile(head) || !IsRunwayExtreme(head)) return false;
+	return action.entry_td == DiagDirToDiagTrackdir(GetRunwayExtremeDirection(head)) && action.tracks.front() == GetRunwayTracks(head);
+}
+
 static bool CheckAircraftJunctionActionPhysical(const Aircraft *v, const AircraftJunctionAction &action)
 {
-	/* Validate geometry, but do not let a manual ignore request rewrite public
-	 * ownership or wait behind a physical aircraft. */
-	if (v->ignore_airport_reservations) return std::all_of(action.tiles.begin(), action.tiles.end(), [](TileIndex tile) { return IsTaxiTile(tile); });
+	const bool runway_head = IsAircraftRunwayHeadAction(action);
 	for (size_t i = 0; i < action.tiles.size(); ++i) {
 		const TileIndex tile = action.tiles[i];
 		if (!IsTaxiTile(tile)) {
@@ -1480,7 +1494,7 @@ static bool CheckAircraftJunctionActionPhysical(const Aircraft *v, const Aircraf
 		/* Body tracks overlap geometrically; a swept half only conflicts with
 		 * its facing half. Diagonal tracks on the neighbour are independent. */
 		if (action.tracks[i] != TRACK_BIT_NONE &&
-				CheckAircraftTaxiTracks(v, tile, action.tracks[i]) != AircraftTaxiBlock::None) {
+				CheckAircraftTaxiTracks(v, tile, action.tracks[i], runway_head) != AircraftTaxiBlock::None) {
 			return false;
 		}
 		if (action.swept[i] == TRACK_BIT_NONE || v->ignore_airport_reservations) continue;
@@ -1932,12 +1946,13 @@ void AfterLoadAircraftReservations(bool migrate, bool migrate_virtual)
 					 * traversal remains valid even if this tile is no longer a junction. */
 					if (!std::binary_search(action.tiles.begin(), action.tiles.end(), action.entry_tile) ||
 							!std::binary_search(action.tiles.begin(), action.tiles.end(), action.exit_tile)) SlErrorCorrupt("Disconnected saved aircraft junction action");
-					for (size_t i = 0; i < action.tiles.size(); ++i) {
-						if (!IsTaxiTile(action.tiles[i]) || !IsAirportTileOfStation(action.tiles[i], station) ||
-								(action.tracks[i] | action.swept[i]) == TRACK_BIT_NONE ||
-								((action.tracks[i] | action.swept[i]) & ~TRACK_BIT_ALL) != TRACK_BIT_NONE ||
-								(GetAirportTileTracks(action.tiles[i]) & action.tracks[i]) != action.tracks[i]) SlErrorCorrupt("Invalid aircraft junction action tracks");
-					}
+						const bool runway_head = IsAircraftRunwayHeadAction(action);
+						for (size_t i = 0; i < action.tiles.size(); ++i) {
+							if (!IsTaxiTile(action.tiles[i]) || !IsAirportTileOfStation(action.tiles[i], station) ||
+									(action.tracks[i] | action.swept[i]) == TRACK_BIT_NONE ||
+									((action.tracks[i] | action.swept[i]) & ~TRACK_BIT_ALL) != TRACK_BIT_NONE ||
+									(!runway_head && (GetAirportTileTracks(action.tiles[i]) & action.tracks[i]) != action.tracks[i])) SlErrorCorrupt("Invalid aircraft junction action tracks");
+						}
 				}
 			};
 			validate(v->junction_actions);

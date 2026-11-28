@@ -28,6 +28,15 @@ CommandCost AddAirportTileTableToBitmapTileArea(const AirportTileLayout &layout,
 Town *AirportGetNearestTown(const BitmapTileArea &area, uint &mindist);
 uint16_t GetAirportNoiseLevelForDistance(uint noise_level, uint distance);
 
+/** One airport's absolute noise contribution after attenuation. */
+struct AirportNoiseContribution {
+	Town *town = nullptr;
+	uint16_t noise = 0;
+};
+AirportNoiseContribution GetAirportNoiseContribution(const Station *st);
+void UpdateNoiseForTowns(AirportNoiseContribution before, AirportNoiseContribution after);
+CommandCost BuildBlueprintHeliport(DoCommandFlags flags, TileIndex tile, AirType airtype, StationID station_to_join);
+
 void UpdateAircraftOnUpdatedAirport(const Station *st);
 void ConvertAllAirportsToCustom();
 

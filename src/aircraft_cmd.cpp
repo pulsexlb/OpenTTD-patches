@@ -386,28 +386,18 @@ static bool IsExternalReturnTargetValid(const Aircraft *v)
 			IsAircraftLandingTarget(v, st, tile);
 }
 
-static Station *FindExternalReturnAirport(const Aircraft *v)
+static bool NeedsHangarAfterLanding(const Aircraft *v, const Station *st)
 {
-	/* Keep a visible return flight on its selected airport while it is usable. */
-	Station *airport = Station::GetIfValid(v->targetairport);
-	if (v->external_landing && v->current_order.IsType(OT_GOTO_STATION) && !v->current_order.IsExternalFlightOrder() &&
-			CanUseExternalReturnAirport(v, airport) && v->current_order.GetDestination().ToStationID() == airport->index) return airport;
-	airport = Station::GetIfValid(v->external_return_airport);
-	if (!CanUseExternalReturnAirport(v, airport) || airport->airport.tile != v->external_return_airport_tile) airport = nullptr;
-	if (airport == nullptr) {
-		airport = Station::GetIfValid(v->external_home_airport);
-		if (!CanUseExternalReturnAirport(v, airport) || airport->airport.tile != v->external_home_tile) airport = nullptr;
-	}
-	if (airport == nullptr) {
-		uint best = UINT_MAX;
-		const TileIndex from = TileVirtXYClampedToMap(v->x_pos, v->y_pos);
-		for (Station *candidate : Station::Iterate()) {
-			if (!CanUseExternalReturnAirport(v, candidate)) continue;
-			const uint distance = DistanceSquare(from, candidate->airport.tile);
-			if (distance < best) { best = distance; airport = candidate; }
-		}
-	}
-	return airport;
+	return st->airport.hangar != nullptr && !v->external_landing &&
+			(v->current_order.IsType(OT_GOTO_DEPOT) || OrderAirportUnusable(v) ||
+			 v->current_order.IsType(OT_NOTHING) || v->current_order.IsType(OT_DUMMY));
+}
+
+/** Check static geometry shared by landing selection and final descent. */
+static bool IsAircraftLandingGeometryValid(const Aircraft *v, const Station *st, TileIndex tile, uint min_runway, bool to_hangar)
+{
+	return IsAircraftLandingTarget(v, st, tile) && (v->IsHelicopter() ||
+			(GetAircraftRunwayLength(tile) >= min_runway && HasAircraftRunwayExit(v, tile, to_hangar)));
 }
 
 TileIndex Aircraft::GetOrderStationLocation(StationID station)
@@ -962,15 +952,11 @@ static int UpdateAircraftSpeed(Aircraft *v)
 						uint required = GetAircraftRequiredRunwayLength(v);
 						uint start_available = v->landing_roll_start_available;
 						uint mark = 0;
-						uint runway_tiles = 0;
-						TileIndex far_end = v->GetNextTile();
-						if (IsValidTile(far_end) && IsRunway(v->tile)) {
-							/* Walk back from the roll's runway end to its landing start. */
-							DiagDirection roll_dir = GetRunwayExtremeDirection(far_end);
-							TileIndex runway_start = GetRunwayExtreme(far_end, ReverseDiagDir(roll_dir));
-							runway_tiles = std::max(TileX(far_end), TileX(runway_start)) - std::min(TileX(far_end), TileX(runway_start))
-									+ std::max(TileY(far_end), TileY(runway_start)) - std::min(TileY(far_end), TileY(runway_start)) + 1;
-							/* The tile that completes the required runway length has its
+							const TileIndex far_end = v->GetNextTile();
+							const uint runway_tiles = IsValidTile(far_end) && IsAirportTile(far_end) && IsRunwayEnd(far_end) ?
+									GetAircraftRunwayLength(far_end) : 0;
+							if (runway_tiles != 0) {
+								/* The tile that completes the required runway length has its
 							 * centre (runway_tiles - required) tiles before the runway-end
 							 * stop position; a runway shorter than the requirement brakes
 							 * over the whole remaining roll. */
@@ -1747,7 +1733,7 @@ void UpdateAircraftState(Aircraft *v)
 				}
 			} else {
 				/* Only take off from a runway long enough for this aircraft. */
-				if (IsRunwayStart(v->tile) && GetAircraftRunwayLength(v->tile) >= GetAircraftRequiredRunwayLength(v)) {
+				if (IsRunwayStart(v->tile) && GetAircraftRunwayLength(v->tile) >= std::max(1u, GetAircraftRequiredRunwayLength(v))) {
 					v->state = AS_START_TAKEOFF;
 					v->UpdateNextTile(v->tile);
 				} else {
@@ -2052,7 +2038,8 @@ bool HandleAircraftReadyToTakeoff(Aircraft *v)
 
 	/* A setting or state-sensitive speed callback may have changed the
 	 * requirement while waiting here. Do not commit to an obsolete runway. */
-	if (GetAircraftRunwayLength(v->tile) < GetAircraftRequiredRunwayLength(v)) {
+	const TileIndex runway_end = GetAircraftRunwayEnd(v->tile);
+	if (!IsValidTile(runway_end) || GetAircraftRunwayLength(v->tile) < GetAircraftRequiredRunwayLength(v)) {
 		v->cur_speed = 0;
 		v->subspeed = 0;
 		v->progress = 0;
@@ -2071,7 +2058,7 @@ bool HandleAircraftReadyToTakeoff(Aircraft *v)
 
 	v->state = AS_TAKEOFF_BEFORE_FLYING;
 	v->next_trackdir = v->Next()->next_trackdir = DiagDirToDiagTrackdir(GetRunwayExtremeDirection(v->tile));
-	v->UpdateNextTile(GetRunwayExtreme(v->tile, GetRunwayExtremeDirection(v->tile)));
+	v->UpdateNextTile(runway_end);
 
 	if (v->trackdir != v->next_trackdir) {
 		/* If plane needs to rotate, rotate first and then play the take off sound. */
@@ -2127,13 +2114,6 @@ void HandleAircraftTakingoff(Aircraft *v)
 			Debug(misc, 0, "Shouldnt be reached, state {}", v->state);
 			break;
 	}
-}
-
-static bool NeedsHangarAfterLanding(const Aircraft *v, const Station *st)
-{
-	return st->airport.hangar != nullptr && !v->external_landing &&
-			(v->current_order.IsType(OT_GOTO_DEPOT) || OrderAirportUnusable(v) ||
-			 v->current_order.IsType(OT_NOTHING) || v->current_order.IsType(OT_DUMMY));
 }
 
 static void AbortAircraftApproach(Aircraft *v)
@@ -2225,8 +2205,7 @@ void HandleAircraftFlying(Aircraft *v)
 				const Station *st = GetTargetAirportIfValid(v);
 				/* The airport may have been edited during the pattern. Validate
 				 * the end-of-roll escape before taking the whole-runway lock. */
-				if (GetAircraftRunwayLength(landing) < GetAircraftRequiredRunwayLength(v) ||
-						!HasAircraftRunwayExit(v, landing, NeedsHangarAfterLanding(v, st))) {
+				if (!IsAircraftLandingGeometryValid(v, st, landing, GetAircraftRequiredRunwayLength(v), NeedsHangarAfterLanding(v, st))) {
 					AbortAircraftApproach(v);
 					break;
 				}
@@ -2245,11 +2224,18 @@ void HandleAircraftFlying(Aircraft *v)
 			break;
 
 		case AS_FLYING_NO_DEST:
-			/* A disconnected airport may become usable after construction. */
-			if (const TileIndex landing = FindClosestLandingTile(v); IsValidTile(landing)) {
-				AssignLandingTile(v, landing);
-			} else if (v->GetNextTile() == TileIndex{} || !IsValidTile(v->GetNextTile())) {
+			/* Visible external returns retry on simulation ticks, not at each waypoint. */
+			if (!v->external_landing) {
+				if (const TileIndex landing = FindClosestLandingTile(v); IsValidTile(landing)) {
+					AssignLandingTile(v, landing);
+					break;
+				}
+			}
+			if (v->GetNextTile() == TileIndex{} || !IsValidTile(v->GetNextTile())) {
 				StartAircraftHoldWithoutDestination(v);
+			} else {
+				/* next_pos.pos already stores the following waypoint. */
+				v->UpdateNextTile(v->GetNextTile());
 			}
 			break;
 
@@ -2335,9 +2321,13 @@ void HandleAircraftLanding(Aircraft *v)
 			if (v->IsHelicopter()) {
 				v->state = AS_FLYING_HELICOPTER_LANDING;
 			} else {
+				const TileIndex end = GetAircraftRunwayEnd(v->GetNextTile());
+				if (!IsValidTile(end)) {
+					AbortAircraftApproach(v);
+					break;
+				}
 				v->state = AS_FLYING_LANDING;
-				TileIndex tile = GetRunwayExtreme(v->tile, GetRunwayExtremeDirection(v->tile));
-				v->UpdateNextTile(tile);
+				v->UpdateNextTile(end);
 			}
 			break;
 
@@ -2367,19 +2357,19 @@ void HandleAircraftLanding(Aircraft *v)
  * @param v Aircraft on its landing roll.
  * @return True iff the aircraft left the landing roll and is taxiing away.
  */
-static bool TryAircraftEarlyRunwayExit(Aircraft *v)
+bool TryAircraftEarlyRunwayExit(Aircraft *v)
 {
 	if (v->state != AS_LANDED || v->IsHelicopter() || v->IsWaiting()) return false;
 	/* Only the armed braking profile defines the required runway length; a roll
 	 * without one (no runway requirement) always rolls to the runway end. */
 	if (v->landing_brake_speed == 0 || v->landing_brake_distance == 0) return false;
 
-	TileIndex far_end = v->GetNextTile();
-	if (!IsValidTile(far_end) || !IsRunwayEnd(far_end)) return false;
+	const TileIndex far_end = v->GetNextTile();
+	if (!IsValidTile(far_end) || !IsAirportTile(far_end) || !IsRunwayEnd(far_end)) return false;
 
 	/* Runway heads are handled by the end-of-roll handoff; only a plain runway
-	 * tile can host an early-exit taxi track. */
-	if (!IsRunway(v->tile) || IsRunwayExtreme(v->tile)) return false;
+	 * tile at this airport can host an early-exit taxi track. */
+	if (!IsValidTile(v->tile) || !IsAirportTileOfStation(v->tile, GetStationIndex(far_end)) || !IsPlainRunway(v->tile)) return false;
 
 	/* The aircraft may leave only once the required runway length is used up,
 	 * i.e. once the braking profile has brought it down to the airport's
@@ -2389,22 +2379,20 @@ static bool TryAircraftEarlyRunwayExit(Aircraft *v)
 	uint rolled = (available < v->landing_roll_start_available) ? v->landing_roll_start_available - available : 0;
 	if (rolled < v->landing_brake_distance) return false;
 
-	/* React exactly when the aircraft is abreast of the tile centre along the
-	 * roll axis, so a turn happens at the centre of the exit tile and not
-	 * half a tile earlier at its edge. */
-	DiagDirection roll_dir = GetRunwayExtremeDirection(far_end);
-	int coord = DiagDirToAxis(roll_dir) == Axis::X ? v->x_pos : v->y_pos;
-	if ((coord & 15) != 8) return false;
+	/* React only at the centre of a tile on this roll's axis. */
+	const DiagDirection roll_dir = GetRunwayExtremeDirection(far_end);
+	if ((v->x_pos & 15) != 8 || (v->y_pos & 15) != 8 ||
+			!HasTrackdir(GetRunwayTrackdirs(v->tile), DiagDirToDiagTrackdir(roll_dir))) return false;
 
-	/* Any taxi track on this tile is an exit. A track perpendicular to the
+	/* Any built diagonal taxi track on this tile is an exit. A track perpendicular to the
 	 * runway axis is a crossing taxiway and is tried first: the aircraft
 	 * leaves the runway sideways. The runway-parallel track (the taxiway the
 	 * runway was built over) is tried last: leaving the roll on it converts
 	 * the remaining runway into ordinary taxiing, which releases its tiles
 	 * again as the aircraft advances. */
-	TrackBits taxi = GetAirportTileTracks(v->tile) & TRACK_BIT_CROSS;
+	const TrackBits taxi = GetAircraftLandingExitTracks(v->tile);
 	if (taxi == TRACK_BIT_NONE) return false;
-	TrackBits runway = GetRunwayTracks(v->tile);
+	const TrackBits runway = GetRunwayTracks(v->tile);
 	const TrackBits passes[2] = { taxi & ~runway, taxi & runway };
 
 	for (const TrackBits *pass = passes; pass != passes + 2; ++pass) {
@@ -3036,7 +3024,14 @@ void AircraftUpdateNextPos(Aircraft *v)
 {
 	assert(v->IsAircraftFreelyFlying());
 	if (v->external_landing) {
-		if (!IsExternalReturnTargetValid(v) || v->state == AS_FLYING_NO_DEST) AssignLandingTile(v, FindClosestLandingTile(v));
+		if (v->state == AS_FLYING_NO_DEST || !IsExternalReturnTargetValid(v) ||
+				!IsAircraftLandingGeometryValid(v, GetTargetAirportIfValid(v), v->GetNextTile(), GetAircraftRequiredRunwayLength(v), false)) {
+			const TileIndex landing = FindClosestLandingTile(v);
+			/* A failed periodic search must not restart an active circuit. */
+			if (IsValidTile(landing) || v->state != AS_FLYING_NO_DEST || !IsValidTile(v->GetNextTile()) || v->GetNextTile() == TileIndex{}) {
+				AssignLandingTile(v, landing);
+			}
+		}
 		return;
 	}
 	if (v->current_order.IsExternalFlightOrder()) {
@@ -3050,29 +3045,14 @@ void AircraftUpdateNextPos(Aircraft *v)
 
 	const TileIndex tile = v->GetNextTile();
 	const Station *st = GetTargetAirportIfValid(v);
-	if (v->targetairport == GetTargetDestination(v->current_order, true).ToStationID() &&
-			IsAircraftLandingTarget(v, st, tile) && (v->IsHelicopter() ||
-			(GetAircraftRunwayLength(tile) >= GetAircraftRequiredRunwayLength(v) &&
-			 HasAircraftRunwayExit(v, tile, NeedsHangarAfterLanding(v, st))))) return;
+	if (v->targetairport == GetTargetDestination(v->current_order, true).ToStationID() && st != nullptr &&
+			IsAircraftLandingGeometryValid(v, st, tile, GetAircraftRequiredRunwayLength(v), NeedsHangarAfterLanding(v, st))) return;
 	AssignLandingTile(v, FindClosestLandingTile(v));
 }
 
-/**
- * Get a tile where aircraft can land. For helicopters, it will check helipads, heliports
- * and aprons, in this ordrer, and finally runways. For normal aircraft, it will check runways.
- * @param v The aircraft trying to land.
- * @return a valid tile where to land, or 0 otherwise.
- */
-TileIndex FindClosestLandingTile(Aircraft *v)
+/** Choose a free landing tile if possible, otherwise a geometrically valid waiting target. */
+static TileIndex FindLandingTileAtAirport(const Aircraft *v, const Station *st, bool to_hangar)
 {
-	Station *st = v->external_landing ? FindExternalReturnAirport(v) :
-			Station::GetIfValid(GetTargetDestination(v->current_order, true).ToStationID());
-	if (!v->external_landing && (st == nullptr || !CanAircraftUseAirport(v, st) ||
-			(v->current_order.IsType(OT_GOTO_DEPOT) && st->airport.hangar == nullptr))) {
-		st = Station::GetIfValid(FindClosestHangar(v));
-	}
-	if (st == nullptr || !CanAircraftUseAirport(v, st)) return INVALID_TILE;
-
 	TileIndex landing = INVALID_TILE;
 	TileIndex free_landing = INVALID_TILE;
 	uint best_dist = UINT_MAX;
@@ -3101,22 +3081,74 @@ TileIndex FindClosestLandingTile(Aircraft *v)
 		if (free_landing == INVALID_TILE) consider_stands(st->airport.aprons);
 	} else {
 		const uint min_runway = GetAircraftRequiredRunwayLength(v);
-		const bool to_hangar = NeedsHangarAfterLanding(v, st);
 		for (TileIndex tile : st->airport.runways) {
-			if (!IsAircraftLandingTarget(v, st, tile) || GetAircraftRunwayLength(tile) < min_runway ||
-					!HasAircraftRunwayExit(v, tile, to_hangar)) continue;
+			if (!IsAircraftLandingGeometryValid(v, st, tile, min_runway, to_hangar)) continue;
 			consider(tile, IsAircraftRunwayAvailable(v, tile));
 		}
 	}
 
-	if (free_landing != INVALID_TILE) landing = free_landing;
-	if (!IsAircraftLandingTarget(v, st, landing)) return INVALID_TILE;
-	if (v->external_landing && (!v->current_order.IsType(OT_GOTO_STATION) || v->current_order.IsExternalFlightOrder() ||
-			v->current_order.GetDestination().ToStationID() != st->index)) {
+	return free_landing != INVALID_TILE ? free_landing : landing;
+}
+
+/** Find the return airport and its landing tile together, without changing the flight. */
+static std::pair<const Station *, TileIndex> FindExternalReturnLanding(const Aircraft *v)
+{
+	const Station *selected = Station::GetIfValid(v->targetairport);
+	if (v->external_landing && v->current_order.IsType(OT_GOTO_STATION) && !v->current_order.IsExternalFlightOrder() &&
+			CanUseExternalReturnAirport(v, selected) && v->current_order.GetDestination().ToStationID() == selected->index) {
+		if (const TileIndex tile = FindLandingTileAtAirport(v, selected, false); IsValidTile(tile)) return {selected, tile};
+	}
+
+	for (const auto &[id, saved_tile] : {std::pair{v->external_return_airport, v->external_return_airport_tile},
+			std::pair{v->external_home_airport, v->external_home_tile}}) {
+		const Station *airport = Station::GetIfValid(id);
+		if (!CanUseExternalReturnAirport(v, airport) || airport->airport.tile != saved_tile) continue;
+		if (const TileIndex tile = FindLandingTileAtAirport(v, airport, false); IsValidTile(tile)) return {airport, tile};
+	}
+
+	std::pair<const Station *, TileIndex> best{nullptr, INVALID_TILE};
+	uint best_dist = UINT_MAX;
+	const TileIndex from = TileVirtXYClampedToMap(v->x_pos, v->y_pos);
+	for (const Station *airport : Station::Iterate()) {
+		if (!CanUseExternalReturnAirport(v, airport)) continue;
+		const uint distance = DistanceSquare(from, airport->airport.tile);
+		if (distance >= best_dist) continue;
+		const TileIndex tile = FindLandingTileAtAirport(v, airport, false);
+		if (!IsValidTile(tile)) continue;
+		best = {airport, tile};
+		best_dist = distance;
+	}
+	return best;
+}
+
+static void SetExternalReturnAirport(Aircraft *v, const Station *st)
+{
+	if (!v->current_order.IsType(OT_GOTO_STATION) || v->current_order.IsExternalFlightOrder() ||
+			v->current_order.GetDestination().ToStationID() != st->index) {
 		v->current_order.Free();
 		v->current_order.MakeGoToStation(st->index);
 	}
 	v->targetairport = st->index;
+}
+
+/** Select a landing tile, committing the target only once a usable tile has been found. */
+TileIndex FindClosestLandingTile(Aircraft *v)
+{
+	if (v->external_landing) {
+		const auto [st, tile] = FindExternalReturnLanding(v);
+		if (st != nullptr) SetExternalReturnAirport(v, st);
+		return tile;
+	}
+
+	const Station *st = Station::GetIfValid(GetTargetDestination(v->current_order, true).ToStationID());
+	if (st == nullptr || !CanAircraftUseAirport(v, st) ||
+			(v->current_order.IsType(OT_GOTO_DEPOT) && st->airport.hangar == nullptr)) {
+		st = Station::GetIfValid(FindClosestHangar(v));
+	}
+	if (st == nullptr || !CanAircraftUseAirport(v, st)) return INVALID_TILE;
+
+	const TileIndex landing = FindLandingTileAtAirport(v, st, NeedsHangarAfterLanding(v, st));
+	if (IsValidTile(landing)) v->targetairport = st->index;
 	return landing;
 }
 
@@ -3850,7 +3882,9 @@ bool HandleAircraftMovement(Aircraft *v)
 		return true;
 	}
 
-	if (v->state == AS_ON_HOLD_APPROACHING && !IsAircraftApproachTargetValid(v)) {
+	if ((v->state == AS_ON_HOLD_APPROACHING && !IsAircraftApproachTargetValid(v)) ||
+			(v->state == AS_DESCENDING && !v->IsHelicopter() &&
+			 !IsAircraftLandingTarget(v, GetTargetAirportIfValid(v), v->GetNextTile()))) {
 		AbortAircraftApproach(v);
 		return true;
 	}
@@ -4050,14 +4084,12 @@ void Aircraft::BeginExternalFlight()
 
 bool Aircraft::ResumeExternalFlight()
 {
-	Station *airport = FindExternalReturnAirport(this);
+	const auto [airport, landing] = FindExternalReturnLanding(this);
 	if (airport == nullptr) return false;
-	this->current_order.Free();
-	this->current_order.MakeGoToStation(airport->index);
-	this->targetairport = airport->index;
+	SetExternalReturnAirport(this, airport);
 	this->state = AS_FLYING;
 	this->external_landing = true;
-	AssignLandingTile(this, FindClosestLandingTile(this));
+	AssignLandingTile(this, landing);
 	this->cur_speed = std::min<uint>(this->external_cruise_speed, this->vcache.cached_max_speed);
 	for (Aircraft *part = this; part != nullptr; part = part->Next()) {
 		part->vehstatus.Reset(VehState::Hidden);

@@ -9,8 +9,11 @@
 
 #include "../stdafx.h"
 #include "../3rdparty/catch2/catch.hpp"
+#include "../aircraft.h"
 #include "../company_base.h"
 #include "../company_func.h"
+#include "../network/network_type.h"
+#include "../order_backup.h"
 #include "../order_base.h"
 #include "../order_cmd.h"
 #include "../order_func.h"
@@ -27,6 +30,7 @@
 #include "../scope.h"
 #include "../station_base.h"
 #include "../tracerestrict.h"
+#include "../waypoint_base.h"
 
 class ScheduleGroupFixture {
 protected:
@@ -540,6 +544,249 @@ TEST_CASE_METHOD(ScheduleGroupFixture, "Station removal fixes dormant lists, jum
 	REQUIRE(v->execute_schedule_stack.size() == 2);
 	CHECK((v->execute_schedule_stack[0] >> 16) == 2);
 	CHECK((v->execute_schedule_stack[1] >> 16) == 1);
+}
+
+TEST_CASE_METHOD(ScheduleGroupFixture, "PBS order lookahead leaves an executed schedule and its shared chain intact")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	const StationID unavailable{123};
+	if (GENERATE(false, true)) Station::CreateAtIndex(unavailable, TileXY(10, 10)); // Station, but no rail facilities.
+	Order reached;
+	reached.MakeGoToStation(StationID{124});
+	Order missing;
+	missing.MakeGoToStation(unavailable);
+	OrderList *detour = Create("Shared detour", OrderListID::Invalid(), false);
+	detour->GetOrderVector() = {reached, missing};
+	detour->RecalculateDerivedCounters();
+	OrderList *home = OrderList::Create();
+	home->GetOrderVector() = {reached};
+	home->RecalculateDerivedCounters();
+	Train *v = AttachTrain(detour);
+	Train *peer = AttachTrain(detour);
+	v->primary_order = home->index;
+	v->primary_order_index = 0;
+	v->execute_schedule_stack.push_back(home->index.base());
+	v->cur_implicit_order_index = v->cur_real_order_index = v->cur_timetable_order_index = 0;
+	v->current_order = reached;
+	v->current_order.MakeLoading(true);
+	v->last_station_visited = reached.GetDestination().ToStationID();
+	v->dest_tile = TileXY(12, 12);
+	REQUIRE(v->IsExecutingSchedule());
+
+	CHECK(v->StopFoundAtVehiclePosition());
+	REQUIRE(v->orders == detour);
+	CHECK(detour->GetFirstSharedVehicle() == v);
+	CHECK(v->NextShared() == peer);
+	CHECK(peer->PreviousShared() == v);
+	CHECK(home->GetNumVehicles() == 0);
+	CHECK(v->primary_order == home->index);
+	CHECK(v->primary_order_index == 0);
+	CHECK(v->execute_schedule_stack.size() == 1);
+	CHECK_FALSE(detour->GetFirstOrder()->IsTravelTimetabled());
+	CHECK(v->current_order.IsType(OT_LOADING));
+	CHECK(v->dest_tile == TileXY(12, 12));
+	CHECK(v->last_station_visited == reached.GetDestination().ToStationID());
+	CHECK(v->cur_implicit_order_index == 0);
+	CHECK(v->cur_real_order_index == 0);
+	CHECK(v->cur_timetable_order_index == 0);
+
+	Order execute;
+	execute.MakeExecuteSchedule();
+	execute.SetDestination(home->index);
+	CHECK_FALSE(UpdateOrderDest(v, &execute, 0, true));
+	CHECK(v->orders == detour);
+	CHECK(v->current_order.IsType(OT_LOADING));
+}
+
+TEST_CASE_METHOD(ScheduleGroupFixture, "Skipping a waiting detour never applies the old selection to the home list")
+{
+	const auto home_count = GENERATE(1u, 3u);
+	Order stop;
+	stop.MakeGoToStation(StationID{123});
+	OrderList *home = OrderList::Create();
+	home->GetOrderVector().resize(home_count, stop);
+	home->RecalculateDerivedCounters();
+	OrderList *detour = Create("Waiting detour", OrderListID::Invalid(), false);
+	detour->GetOrderVector() = {stop, stop, stop, stop};
+	detour->RecalculateDerivedCounters();
+	Train *v = AttachTrain(detour);
+	const VehicleOrderID resume = home_count == 1 ? 0 : 1;
+	v->primary_order = home->index;
+	v->primary_order_index = resume;
+	v->cur_implicit_order_index = v->cur_real_order_index = v->cur_timetable_order_index = 3;
+	v->current_order = stop;
+	v->current_order.MakeWaiting();
+	REQUIRE(v->IsExecutingSchedule());
+
+	/* Index 2 belongs to the detour, even if the home list also has one. */
+	CHECK(CmdSkipToOrder({}, v->index, 2).Succeeded());
+	CHECK(v->orders == detour);
+	REQUIRE(CmdSkipToOrder(DoCommandFlag::Execute, v->index, 2).Succeeded());
+	CHECK(v->orders == home);
+	CHECK_FALSE(v->IsExecutingSchedule());
+	CHECK(v->cur_implicit_order_index == resume);
+	CHECK(v->cur_real_order_index == resume);
+	CHECK(v->cur_timetable_order_index == resume);
+}
+
+TEST_CASE_METHOD(ScheduleGroupFixture, "Station removal clears optional coupling and flight destinations in order copies")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { _order_backup_pool.CleanPool(); _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	const StationID removed{123};
+	const StationID market{124};
+	Order wait;
+	wait.MakeWaitCouple();
+	wait.SetWaitCoupleStation(removed);
+	wait.SetWaitCoupleTraction(2);
+	Order flight;
+	flight.MakeExternalFlight(market);
+	flight.SetExternalReturnAirport(removed);
+	Order surface_trip;
+	surface_trip.MakeGoToDepot(DepotID{17}, OrderDepotTypeFlag::PartOfOrders);
+	surface_trip.SetDepotExtraFlags(OrderDepotExtraFlag::ExternalTrip);
+	surface_trip.SetExternalReturnDepot(DepotID{removed.base()});
+	OrderList *list = Create("Optional order destinations", OrderListID::Invalid(), false);
+	list->GetOrderVector() = {wait, flight, surface_trip};
+	list->RecalculateDerivedCounters();
+	Train *v = AttachTrain(list);
+	v->tile = TileXY(11, 11);
+	v->current_order = wait;
+	v->dest_tile = TileXY(10, 10);
+	OrderBackup::Backup(v, ClientID::Server);
+	REQUIRE(OrderBackup::GetNumItems() == 1);
+	Aircraft *a = Aircraft::Create();
+	a->subtype = AIR_AIRCRAFT;
+	a->current_order = flight;
+	a->current_order.MakeWaiting();
+	a->external_return_airport = removed;
+	a->external_return_airport_tile = v->dest_tile;
+
+	RemoveOrderFromAllVehicles(OT_GOTO_STATION, removed);
+	Station::CreateAtIndex(removed, TileXY(10, 10)); // Reuse the ID, even at the same tile.
+	CHECK(v->current_order.IsType(OT_WAIT_COUPLE));
+	CHECK_FALSE(v->current_order.HasWaitCoupleStation());
+	CHECK(v->dest_tile == INVALID_TILE);
+	CHECK(v->current_order.GetWaitCoupleTraction() == 2);
+	CHECK(a->current_order.IsType(OT_WAITING));
+	CHECK(a->current_order.HasExternalFlightPolicy());
+	CHECK(a->current_order.GetExternalReturnAirport() == StationID::Invalid());
+	CHECK(a->external_return_airport == StationID::Invalid());
+	CHECK(a->external_return_airport_tile == INVALID_TILE);
+	CHECK(list->GetOrderAt(1)->IsExternalFlightOrder());
+	CHECK(list->GetOrderAt(1)->GetDestination() == market);
+	CHECK(list->GetOrderAt(1)->GetExternalReturnAirport() == StationID::Invalid());
+	CHECK_FALSE(list->GetOrderAt(0)->HasWaitCoupleStation());
+	CHECK(list->GetOrderAt(0)->GetWaitCoupleTraction() == 2);
+	CHECK(list->GetOrderAt(2)->GetExternalReturnDepot() == DepotID{removed.base()});
+	REQUIRE(OrderBackup::GetNumItems() == 1);
+	for (const Order *order : (*OrderBackup::Iterate().begin())->Orders()) {
+		if (order->IsType(OT_WAIT_COUPLE)) CHECK_FALSE(order->HasWaitCoupleStation());
+		if (order->IsExternalFlightOrder()) CHECK(order->GetExternalReturnAirport() == StationID::Invalid());
+	}
+}
+
+TEST_CASE_METHOD(ScheduleGroupFixture, "Afterload repairs only dormant order station references")
+{
+	AllocateMap(64, 64);
+	auto cleanup = scope_guard([] { _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	Station *station = Station::Create(TileXY(10, 10));
+	station->facilities.Set(StationFacility::Train);
+	Station *airport = Station::Create(TileXY(20, 20));
+	airport->facilities.Set(StationFacility::Airport);
+	const Waypoint *waypoint = Waypoint::Create(TileXY(30, 30));
+	const StationID vacant{123};
+
+	Order bad_stop;
+	bad_stop.MakeGoToStation(waypoint->index);
+	bad_stop.SetWaitTime(10);
+	bad_stop.SetWaitTimetabled(true);
+	bad_stop.SetTravelTime(20);
+	bad_stop.SetTravelTimetabled(true);
+	Order implicit;
+	implicit.MakeImplicit(vacant);
+	Order stop;
+	stop.MakeGoToStation(station->index);
+	Order waypoint_order;
+	waypoint_order.MakeGoToWaypoint(waypoint->index);
+	Order bad_waypoint;
+	bad_waypoint.MakeGoToWaypoint(station->index);
+	Order amount;
+	amount.MakeConditional(4);
+	amount.SetConditionVariable(OrderConditionVariable::CargoWaitingAmount);
+	amount.SetConditionStationID(station->index);
+	amount.SetConditionViaStationID(vacant);
+	Order percentage = amount;
+	percentage.SetConditionVariable(OrderConditionVariable::CargoWaitingAmountPercentage);
+	percentage.SetConditionStationID(waypoint->index);
+	percentage.SetConditionViaStationID(waypoint->index);
+	Order flight;
+	flight.MakeExternalFlight(vacant);
+	flight.SetExternalReturnAirport(station->index); // Valid station, but not an airport.
+	Order wait;
+	wait.MakeWaitCouple();
+	wait.SetWaitCoupleStation(airport->index); // Valid station, but not a rail station.
+	Order label;
+	label.MakeLabel(OLST_DEPARTURES_VIA);
+	label.SetDestination(vacant);
+	Order valid_amount = amount;
+	valid_amount.SetConditionViaStationID(airport->index);
+	Order valid_flight = flight;
+	valid_flight.SetExternalReturnAirport(airport->index);
+	Order valid_wait = wait;
+	valid_wait.SetWaitCoupleStation(station->index);
+	OrderList *home = OrderList::Create();
+	home->GetOrderVector() = {bad_stop, implicit, amount, percentage, stop, waypoint_order, bad_waypoint, flight, wait, label, valid_amount, valid_flight, valid_wait};
+	home->RecalculateDerivedCounters();
+	OrderList *active = Create("Active orders untouched", OrderListID::Invalid(), false);
+	active->GetOrderVector() = {bad_stop, amount};
+	active->RecalculateDerivedCounters();
+	Train *v = AttachTrain(active);
+	v->primary_order = home->index;
+	v->primary_order_index = 4;
+	v->current_order = bad_stop;
+	GoodsEntry &goods = station->goods[static_cast<CargoType>(0)];
+	goods.CreateData().flows.AddFlow(station->index, vacant, 100);
+
+	for (int pass = 0; pass < 2; ++pass) {
+		RepairDormantOrderStationReferences();
+		REQUIRE(home->GetNumOrders() == 12);
+		CHECK(home->GetOrderAt(0)->IsType(OT_DUMMY));
+		CHECK(home->GetOrderAt(0)->GetWaitTime() == 0);
+		CHECK(home->GetOrderAt(0)->GetTimetabledTravel() == 20);
+		CHECK(home->GetTotalDuration() == 20);
+		CHECK(home->GetOrderAt(1)->GetConditionSkipToOrder() == 3);
+		CHECK(home->GetOrderAt(1)->GetConditionStationID() == station->index);
+		CHECK(home->GetOrderAt(1)->HasConditionViaStation());
+		CHECK(home->GetOrderAt(1)->GetConditionViaStationID() == StationID::Invalid());
+		CHECK(home->GetOrderAt(2)->GetConditionStationID() == StationID::Invalid());
+		CHECK(home->GetOrderAt(2)->HasConditionViaStation());
+		CHECK(home->GetOrderAt(2)->GetConditionViaStationID() == StationID::Invalid());
+		CHECK(home->GetOrderAt(3)->IsType(OT_GOTO_STATION));
+		CHECK(home->GetOrderAt(3)->GetDestination() == station->index);
+		CHECK(home->GetOrderAt(4)->IsType(OT_GOTO_WAYPOINT));
+		CHECK(home->GetOrderAt(5)->IsType(OT_DUMMY));
+		CHECK(home->GetOrderAt(6)->IsExternalFlightOrder());
+		CHECK(home->GetOrderAt(6)->GetDestination() == vacant);
+		CHECK(home->GetOrderAt(6)->GetExternalReturnAirport() == StationID::Invalid());
+		CHECK(home->GetOrderAt(7)->IsType(OT_WAIT_COUPLE));
+		CHECK_FALSE(home->GetOrderAt(7)->HasWaitCoupleStation());
+		CHECK(home->GetOrderAt(8)->IsType(OT_DUMMY));
+		CHECK(home->GetOrderAt(9)->GetConditionViaStationID() == airport->index);
+		CHECK(home->GetOrderAt(10)->GetExternalReturnAirport() == airport->index);
+		CHECK(home->GetOrderAt(11)->GetWaitCoupleStation() == station->index);
+		CHECK(v->primary_order_index == 3);
+		CHECK(v->orders == active);
+		CHECK(active->GetOrderAt(0)->IsType(OT_GOTO_STATION));
+		CHECK(active->GetOrderAt(1)->GetConditionViaStationID() == vacant);
+		CHECK(v->current_order.IsType(OT_GOTO_STATION));
+		CHECK(v->current_order.GetDestination() == waypoint->index);
+		const auto &flows = goods.data->flows;
+		const auto flow = flows.find(station->index);
+		REQUIRE(flow != flows.end());
+		CHECK(flow->GetShare(vacant) == 100);
+	}
 }
 
 TEST_CASE_METHOD(ScheduleGroupFixture, "Depot removal sweeps unmounted schedules in both single and batch mode")

@@ -20,6 +20,8 @@ void InvalidateAircraftJunctionGeometry(const Station *st);
 bool EnsureAircraftJunctionAdmission(Aircraft *v);
 
 bool IsAircraftTaxiTrackGeometryValid(TileIndex origin, TileIndex tile, Trackdir td);
+/** Built taxi tracks usable from the centre of a runway exit tile. */
+TrackBits GetAircraftLandingExitTracks(TileIndex tile);
 bool HasAircraftRunwayExit(const Aircraft *v, TileIndex start, bool to_hangar);
 bool IsAircraftVirtualTileAvailable(const Aircraft *v, TileIndex tile, Trackdir td);
 bool IsAircraftVirtualDestinationAvailable(const Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL);

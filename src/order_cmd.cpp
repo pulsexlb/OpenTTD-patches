@@ -2714,6 +2714,7 @@ CommandCost CmdSkipToOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 	if (ret.Failed()) return ret;
 
 	if (flags.Test(DoCommandFlag::Execute)) {
+		const OrderListID selected_list = v->orders->index;
 		if (v->current_order.IsAnyLoadingType()) v->LeaveStation();
 		if (v->current_order.IsType(OT_WAITING)) v->HandleWaiting(true);
 
@@ -2723,9 +2724,14 @@ CommandCost CmdSkipToOrder(DoCommandFlags flags, VehicleID veh_id, VehicleOrderI
 			}
 		}
 
-		v->cur_implicit_order_index = v->cur_real_order_index = sel_ord;
-		v->UpdateRealOrderIndex();
-		v->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+		/* Ending the wait can finish an executed schedule. The selection is
+		 * an index into the old list, not the home list; keep the normal resume
+		 * position (including its timetable index) if the list changed. */
+		if (v->orders != nullptr && v->orders->index == selected_list) {
+			v->cur_implicit_order_index = v->cur_real_order_index = sel_ord;
+			v->UpdateRealOrderIndex();
+			v->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+		}
 
 		/* Unbunching data is no longer valid. */
 		v->ResetDepotUnbunching();
@@ -5376,21 +5382,61 @@ static OrderDepotDestinationKind GetOrderDepotDestinationKind(VehicleType type)
 	return type == VehicleType::Aircraft ? OrderDepotDestinationKind::Hangar : OrderDepotDestinationKind::Depot;
 }
 
-/** Invalidate both station references of a conditional order, without turning a via test into an unrestricted one. */
-bool Order::ClearConditionalStationReferences(StationID station)
+/** Invalidate matching station references without turning a via test into an unrestricted one. */
+static bool ClearConditionalStationReferencesIf(Order &order, auto invalid)
 {
-	if (station == StationID::Invalid() || !this->IsType(OT_CONDITIONAL)) return false;
-	const auto condition = this->GetConditionVariable();
+	if (!order.IsType(OT_CONDITIONAL)) return false;
+	const auto condition = order.GetConditionVariable();
 	bool changed = false;
-	if (ConditionVariableTestsCargoWaitingAmount(condition) && this->HasConditionViaStation() && this->GetConditionViaStationID() == station) {
-		this->SetConditionViaStationID(StationID::Invalid());
+	if (ConditionVariableTestsCargoWaitingAmount(condition) && order.HasConditionViaStation() && invalid(order.GetConditionViaStationID())) {
+		order.SetConditionViaStationID(StationID::Invalid());
 		changed = true;
 	}
-	if (ConditionVariableHasStationID(condition) && this->GetConditionStationID() == station) {
-		this->SetConditionStationID(StationID::Invalid());
+	if (ConditionVariableHasStationID(condition) && invalid(order.GetConditionStationID())) {
+		order.SetConditionStationID(StationID::Invalid());
 		changed = true;
 	}
 	return changed;
+}
+
+bool Order::ClearConditionalStationReferences(StationID station)
+{
+	return station != StationID::Invalid() && ClearConditionalStationReferencesIf(*this, [station](StationID id) { return id == station; });
+}
+
+/** Clear optional destinations in place, retaining the rest of the order's policy. */
+static bool ClearOptionalOrderStationsIf(Order &order, auto invalid_wait_station, auto invalid_return_airport)
+{
+	if (order.HasWaitCoupleStation() && invalid_wait_station(order.GetWaitCoupleStation())) {
+		order.SetWaitCoupleStation(StationID::Invalid());
+		return true;
+	}
+	if (order.HasExternalFlightReturnAirportField()) {
+		const StationID airport = order.GetExternalReturnAirport();
+		if (airport != StationID::Invalid() && invalid_return_airport(airport)) {
+			order.SetExternalReturnAirport(StationID::Invalid());
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool ClearRemovedOptionalOrderStations(Order &order, StationID removed)
+{
+	if (removed == StationID::Invalid()) return false;
+	const auto matches = [removed](StationID id) { return id == removed; };
+	return ClearOptionalOrderStationsIf(order, matches, matches);
+}
+
+/** Keep a void explicit entry and its travel time, but remove its stop and wait time. */
+static void VoidDeletedOrderDestination(Order &order)
+{
+	order.InvalidateGuiOnRemove();
+	const bool travel_timetabled = !order.HasNoTimetableTimes() && order.IsTravelTimetabled();
+	order.SetWaitTimetabled(false);
+	order.SetWaitTime(0);
+	order.MakeDummy();
+	order.SetTravelTimetabled(travel_timetabled);
 }
 
 /** Clean active snapshots separately, then visit every list exactly once, including unattached lists. */
@@ -5403,8 +5449,19 @@ static void RemoveOrderDestinations(Match match, StationID removed_station = Sta
 		if (match(v->current_order, OrderDepotDestinationKinds{kind}, true)) {
 			v->current_order.MakeDummy();
 			InvalidateWindowData(WindowClass::VehicleView, v->index);
+		} else if (ClearRemovedOptionalOrderStations(v->current_order, removed_station)) {
+			if (v->current_order.IsType(OT_WAIT_COUPLE)) v->SetDestTile(INVALID_TILE);
+			InvalidateWindowData(WindowClass::VehicleView, v->index);
 		} else if (v->current_order.ClearConditionalStationReferences(removed_station)) {
 			InvalidateWindowData(WindowClass::VehicleView, v->index);
+		}
+
+		if (removed_station != StationID::Invalid() && v->type == VehicleType::Aircraft) {
+			Aircraft *a = Aircraft::From(v);
+			if (a->external_return_airport == removed_station) {
+				a->external_return_airport = StationID::Invalid();
+				a->external_return_airport_tile = INVALID_TILE;
+			}
 		}
 
 		if (v->orders != nullptr) depot_kinds[v->orders->index].Set(kind);
@@ -5436,14 +5493,8 @@ static void RemoveOrderDestinations(Match match, StationID removed_station = Sta
 					continue;
 				}
 
-				order->InvalidateGuiOnRemove();
-				/* Keep the entry and its travel time, but remove the stop and its wait time. */
-				const bool travel_timetabled = !order->HasNoTimetableTimes() && order->IsTravelTimetabled();
-				order->SetWaitTimetabled(false);
-				order->SetWaitTime(0);
-				order->MakeDummy();
-				order->SetTravelTimetabled(travel_timetabled);
-			} else if (order->ClearConditionalStationReferences(removed_station)) {
+				VoidDeletedOrderDestination(*order);
+			} else if (ClearRemovedOptionalOrderStations(*order, removed_station) || order->ClearConditionalStationReferences(removed_station)) {
 				changed = true;
 			}
 			++id;
@@ -5497,6 +5548,15 @@ void RemoveOrderFromAllVehicles(OrderType type, DestinationID destination, bool 
 
 	OrderBackup::RemoveOrder(type, destination, hangar);
 
+	const StationID removed_station = type == OT_GOTO_STATION ? destination.ToStationID() : StationID::Invalid();
+	if (removed_station != StationID::Invalid()) {
+		/* Backups without a shared vehicle hold their own order copies. Keep
+		 * those backups if only an optional destination was removed. */
+		for (OrderBackup *backup : OrderBackup::Iterate()) {
+			for (Order *order : backup->Orders()) ClearRemovedOptionalOrderStations(*order, removed_station);
+		}
+	}
+
 	if (_remove_order_from_all_vehicles_batch && type == OT_GOTO_DEPOT && !hangar) {
 		std::vector<uint32_t> &ids = _remove_order_from_all_vehicles_depots;
 		uint32_t word_idx = destination.base() / 32;
@@ -5505,7 +5565,6 @@ void RemoveOrderFromAllVehicles(OrderType type, DestinationID destination, bool 
 		return;
 	}
 
-	const StationID removed_station = type == OT_GOTO_STATION ? destination.ToStationID() : StationID::Invalid();
 	const Station *airport = (hangar || type == OT_GOTO_STATION) ? Station::GetIfValid(destination.ToStationID()) : nullptr;
 	const DepotID legacy_hangar = airport != nullptr && airport->airport.hangar != nullptr ? airport->airport.hangar->index : DepotID::Invalid();
 	const Depot *colliding_depot = removed_station != StationID::Invalid() && legacy_hangar == DepotID::Invalid() ? Depot::GetIfValid(destination.ToDepotID()) : nullptr;
@@ -5530,6 +5589,71 @@ void RemoveOrderFromAllVehicles(OrderType type, DestinationID destination, bool 
 		if (order_type == OT_LABEL && IsDestinationOrderLabelSubType(order.GetLabelSubType())) return type == OT_GOTO_STATION || type == OT_GOTO_WAYPOINT;
 		return (order_type == OT_IMPLICIT ? OT_GOTO_STATION : order_type) == type;
 	}, removed_station);
+}
+
+/**
+ * Repair stale station references in unattached lists from saves made before
+ * station deletion covered those lists. Once an ID has already been reused by
+ * a valid target of the same kind, the save cannot distinguish it from the
+ * original target. Do not revisit active lists, live orders or cargo routing.
+ */
+void RepairDormantOrderStationReferences()
+{
+	const auto invalid_station = [](StationID id) { return id != StationID::Invalid() && !Station::IsValidID(id); };
+	const auto invalid_wait_station = [](StationID id) {
+		const Station *st = Station::GetIfValid(id);
+		return st == nullptr || !st->facilities.Test(StationFacility::Train);
+	};
+	const auto invalid_return_airport = [](StationID id) {
+		const Station *st = Station::GetIfValid(id);
+		return st == nullptr || !st->facilities.Test(StationFacility::Airport);
+	};
+	bool any_changed = false;
+	for (OrderList *list : OrderList::Iterate()) {
+		if (list->IsScheduleGroup() || list->GetFirstSharedVehicle() != nullptr) continue;
+
+		bool changed = false;
+		bool removed_destination = false;
+		for (VehicleOrderID id = 0; id < list->GetNumOrders();) {
+			Order *order = list->GetOrderAt(id);
+			const StationID dest = order->GetDestination().ToStationID();
+			bool invalid_destination = false;
+			switch (order->GetType()) {
+				case OT_GOTO_STATION:
+					/* External flights encode a pseudo-destination, not a regular stop. */
+					invalid_destination = !order->IsExternalFlightOrder() && !Station::IsValidID(dest);
+					break;
+				case OT_IMPLICIT:
+					invalid_destination = !Station::IsValidID(dest);
+					break;
+				case OT_GOTO_WAYPOINT:
+					invalid_destination = !Waypoint::IsValidID(dest);
+					break;
+				case OT_LABEL:
+					invalid_destination = IsDestinationOrderLabelSubType(order->GetLabelSubType()) && !BaseStation::IsValidID(dest);
+					break;
+				default:
+					break;
+			}
+
+			if (invalid_destination) {
+				changed = removed_destination = true;
+				if (order->IsType(OT_IMPLICIT)) {
+					DeleteOrderFromList(list, id, false);
+					continue;
+				}
+				VoidDeletedOrderDestination(*order);
+			} else if (ClearConditionalStationReferencesIf(*order, invalid_station) || ClearOptionalOrderStationsIf(*order, invalid_wait_station, invalid_return_airport)) {
+				changed = true;
+			}
+			++id;
+		}
+		if (!changed) continue;
+		if (removed_destination) ClearDanglingCoupleCheckPoints(list);
+		list->RecalculateDerivedCounters();
+		any_changed = true;
+	}
+	if (any_changed) ClearOrderDestinationRefcountMap();
 }
 
 /**
@@ -6399,16 +6523,44 @@ void Vehicle::ReturnFromExecuteSchedule()
 	InvalidatePrimaryOrderSharingWindows(this->primary_order);
 }
 
+/** Resolve a train station for a temporary order without advancing the live order list. */
+static bool UpdatePBSStationDestination(Vehicle *v, StationID station)
+{
+	if (station == v->last_station_visited) v->last_station_visited = StationID::Invalid();
+	const Station *st = Station::GetIfValid(station);
+	const bool valid = st != nullptr && st->facilities.Test(StationFacility::Train);
+	v->SetDestTile(valid ? st->xy : INVALID_TILE);
+	return valid;
+}
+
 /**
  * Update the vehicle's destination tile from an order.
  * @param order the order the vehicle currently has
  * @param v the vehicle to update
  * @param conditional_depth the depth (amount of steps) to go with conditional orders. This to prevent infinite loops.
- * @param pbs_look_ahead Whether we are forecasting orders for pbs reservations in advance. If true, the order indices must not be modified.
+ * @param pbs_look_ahead Whether we are forecasting train orders for PBS reservations; only the temporary destination/order may change.
  * @return \c true iff the order is suitable for reversing.
  */
 bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool pbs_look_ahead)
 {
+	if (pbs_look_ahead) {
+		/* A probe must never reach the order executor, even in release builds.
+		 * In particular, advancing a real index can return from a detour and
+		 * detach the train from its current shared-order chain. */
+		if (v->type != VehicleType::Train) return false;
+		switch (order->GetType()) {
+			case OT_GOTO_STATION:
+				if (order->IsExternalFlightOrder()) return false;
+				return UpdatePBSStationDestination(v, order->GetDestination().ToStationID());
+			case OT_WAIT_COUPLE:
+			case OT_GOTO_DEPOT:
+			case OT_GOTO_WAYPOINT:
+				break;
+			default:
+				return false;
+		}
+	}
+
 	if (conditional_depth > std::min<int>(64, v->GetNumOrders())) {
 		v->current_order.Free();
 		v->SetDestTile(INVALID_TILE);
@@ -6447,6 +6599,7 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 					v->SetDestTile(INVALID_TILE);
 					return false;
 				}
+				if (pbs_look_ahead) return UpdatePBSStationDestination(v, order->GetWaitCoupleStation());
 				v->SetDestTile(v->GetOrderStationLocation(order->GetWaitCoupleStation()));
 				return true;
 			}
@@ -6455,7 +6608,7 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 
 		case OT_GOTO_DEPOT:
 			if (order->GetDepotOrderType().Test(OrderDepotTypeFlag::Service) && !v->NeedsServicing()) {
-				assert(!pbs_look_ahead);
+				if (pbs_look_ahead) return false;
 				UpdateVehicleTimetable(v, true);
 				v->IncrementRealOrderIndex();
 				break;
@@ -6464,7 +6617,10 @@ bool UpdateOrderDest(Vehicle *v, const Order *order, int conditional_depth, bool
 			if (v->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) {
 				/* If the vehicle can't find its destination, delay its next search.
 				 * In case many vehicles are in this state, use the vehicle index to spread out pathfinder calls. */
-				if (v->dest_tile == INVALID_TILE && (_state_ticks.base() & 0x3F) != (v->index.base() & 0x3F)) break;
+				if (v->dest_tile == INVALID_TILE && (_state_ticks.base() & 0x3F) != (v->index.base() & 0x3F)) {
+					if (pbs_look_ahead) return false;
+					break;
+				}
 
 				/* We need to search for the nearest depot (hangar). */
 				ClosestDepot closest_depot = v->FindClosestDepot();

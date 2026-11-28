@@ -5716,6 +5716,7 @@ class VehicleOrderSaver {
 private:
 	Train          *v;
 	Order          old_order;
+	OrderListID    old_list;
 	TileIndex      old_dest_tile;
 	StationID      old_last_station_visited;
 	VehicleOrderID old_index;
@@ -5729,6 +5730,7 @@ public:
 	VehicleOrderSaver(Train *_v) :
 		v(_v),
 		old_order(_v->current_order),
+		old_list(_v->orders == nullptr ? OrderListID::Invalid() : _v->orders->index),
 		old_dest_tile(_v->dest_tile),
 		old_last_station_visited(_v->last_station_visited),
 		old_index(_v->cur_real_order_index),
@@ -5758,6 +5760,11 @@ public:
 	 */
 	void Restore()
 	{
+		if (this->clear_saved_order_ptr) _choose_train_track_saved_current_order = nullptr;
+		this->restored = true;
+		/* These snapshots only make sense for the list they came from. */
+		if ((this->v->orders == nullptr ? OrderListID::Invalid() : this->v->orders->index) != this->old_list) return;
+
 		this->v->current_order = std::move(this->old_order);
 		this->v->dest_tile = this->old_dest_tile;
 		this->v->last_station_visited = this->old_last_station_visited;
@@ -5765,8 +5772,6 @@ public:
 		this->v->cur_implicit_order_index = this->old_impl_index;
 		this->v->cur_timetable_order_index = this->old_tt_index;
 		this->v->gv_flags.Set(GroundVehicleFlag::SuppressImplicitOrders, suppress_implicit_orders);
-		if (this->clear_saved_order_ptr) _choose_train_track_saved_current_order = nullptr;
-		this->restored = true;
 	}
 
 	/**
@@ -6742,8 +6747,8 @@ static bool IsOtherConsistOnSplitPlatform(const Train *consist)
 	return false;
 }
 
-/** An empty platform does not prove that its exit reservation belongs to us. */
-static bool SplitDepartureHasReservedExit(const Train *front, Trackdir td)
+/** A reserved exit blocks departure unless the actual moving front can prove it owns the path. */
+static bool SplitDepartureHasReservedExit(const Train *front, Trackdir td, bool allow_owned_path = false)
 {
 	if (!IsValidTrackdir(td)) return true;
 	TileIndex tile = front->tile;
@@ -6754,7 +6759,8 @@ static bool SplitDepartureHasReservedExit(const Train *front, Trackdir td)
 	}
 	const TileIndex next = IsTileType(tile, TileType::TunnelBridge) && GetTunnelBridgeDirection(tile) == dir
 			? GetOtherTunnelBridgeEnd(tile) : tile + step;
-	return IsValidTile(next) && HasReservedTracks(next, DiagdirReachesTracks(dir));
+	return IsValidTile(next) && HasReservedTracks(next, DiagdirReachesTracks(dir)) &&
+			(!allow_owned_path || !HasExclusiveSplitDepartureReservation(front->Primary(), next));
 }
 
 /**
@@ -9915,10 +9921,10 @@ uint Train::Crash(bool flooded)
 		victims += 2; // driver
 
 		/* Remove the reserved path in front of the train if it is not stuck.
-		 * Also clear all reserved tracks the train is currently on. */
+		 * Keep unsignalled crossing reservations while the wreck occupies them. */
 		if (!consist->flags.Test(VehicleRailFlag::Stuck)) FreeTrainTrackReservation(consist);
 		for (const Train *v = this->First(); v != nullptr; v = v->Next()) {
-			ClearPathReservation(v, v->tile, v->GetVehicleTrackdir(), true);
+			ClearPathReservation(v, v->tile, v->GetVehicleTrackdir());
 		}
 
 		/* we may need to update crossing we were approaching,
@@ -11333,15 +11339,24 @@ static void DeleteLastWagon(Train *v)
 
 	/* 'v' shouldn't be accessed after it has been deleted */
 	const TrackBits orig_trackbits = v->track;
-	TrackBits trackbits = GetTrackbitsFromCrashedVehicle(v);
+	const TrackBits trackbits = GetTrackbitsFromCrashedVehicle(v);
 	const TileIndex tile = v->tile;
 	const Owner owner = v->owner;
+	const Train *remaining_wreck = first == v ? nullptr : first;
+	const bool across_unsignalled = IsRailTunnelBridgeTile(tile) && !IsTunnelBridgeWithSignalSimulation(tile) &&
+			((orig_trackbits & TRACK_BIT_WORMHOLE) || (trackbits & GetAcrossTunnelBridgeTrackBits(tile)));
 
 	delete v;
 	v = nullptr; // make sure nobody will try to read 'v' anymore
 
 	Track track = TrackBitsToTrack(trackbits);
-	if (HasReservedTracks(tile, trackbits)) {
+	if (across_unsignalled) {
+		/* Never unreserve just this end: another part can still be in the
+		 * crossing, indexed at either portal. */
+		if (TryClearUnsignalledRailTunnelBridgeReservationAfterWreck(tile, remaining_wreck)) {
+			UpdateSignalsOnSegment(GetOtherTunnelBridgeEnd(tile), DiagDirection::Invalid, owner);
+		}
+	} else if (HasReservedTracks(tile, trackbits)) {
 		UnreserveRailTrack(tile, track);
 
 		/* If there are still crashed vehicles on the tile, give the track reservation to them */
@@ -11786,7 +11801,10 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		const bool reverse = consist->flags.Test(VehicleRailFlag::Reversing) || CheckReverseTrain(consist);
 		const Train *departure = reverse ? consist->GetMovingBack() : consist->GetMovingFront();
 		const Trackdir td = departure->GetVehicleTrackdir();
-		if (SplitDepartureHasReservedExit(departure, reverse ? ReverseTrackdir(td) : td)) {
+		/* Old saves can already have a path in the actual departure direction.
+		 * Keep proven bits for the normal reservation check; never adopt a
+		 * reserved path from the hypothetical front of a turnaround. */
+		if (SplitDepartureHasReservedExit(departure, reverse ? ReverseTrackdir(td) : td, !reverse)) {
 			MarkTrainAsStuck(consist);
 			return true;
 		}

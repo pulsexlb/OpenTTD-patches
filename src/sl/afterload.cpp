@@ -5110,6 +5110,11 @@ bool AfterLoadGame()
 
 	AfterLoadVehiclesRemoveAnyFoundInvalid();
 
+	/* Shared chains and stations have been reconstructed. Repair only lists
+	 * nobody is following, without running the runtime station-removal path.
+	 * A joining client must keep the live server's authoritative orders. */
+	if (!_networking || _network_server) RepairDormantOrderStationReferences();
+
 	GamelogPrintDebug(1);
 
 	InitializeWindowsAndCaches();

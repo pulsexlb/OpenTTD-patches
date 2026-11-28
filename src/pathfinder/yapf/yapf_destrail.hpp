@@ -12,6 +12,7 @@
 
 #include "../../train.h"
 #include "../../depot_base.h"
+#include "../../depot_map.h"
 #include "../../pbs.h"
 #include "../../tracerestrict.h"
 #include "../../vehicle_func.h"
@@ -147,33 +148,33 @@ public:
 	/** Explicit endpoint for a read-only route query; never changes the train. */
 	void SetDestinationTile(const Train *v, TileIndex tile, Trackdir td)
 	{
-		this->dest_tile = tile;
+		this->dest_tile = IsValidTile(tile) ? tile : INVALID_TILE;
 		this->dest_station_id = StationID::Invalid();
-		this->dest_trackdirs = td == INVALID_TRACKDIR ? GetTileTrackdirBits(tile, TransportType::Rail, 0) : TrackdirToTrackdirBits(td);
+		this->dest_trackdirs = this->dest_tile == INVALID_TILE ? TRACKDIR_BIT_NONE :
+				(td == INVALID_TRACKDIR ? GetTileTrackdirBits(tile, TransportType::Rail, 0) : TrackdirToTrackdirBits(td));
 		this->any_depot = false;
 		this->couple_dest = false;
 		this->couple_station_dest = false;
 		this->CYapfDestinationRailBase::SetDestination(v);
 	}
 
-	/** Set the destination to a specific rail station (used by the vehicle-transport platform probe). */
+	/** Set the destination to a specific station or waypoint with rail facilities. */
 	void SetDestinationStation(const Train *v, StationID station, TileIndex near_tile, StationType station_type = StationType::Rail)
 	{
-		this->dest_tile = CalcClosestStationTile(station, near_tile, station_type);
+		const BaseStation *st = BaseStation::GetIfValid(station);
+		if (st == nullptr || (station_type == StationType::Rail ? !Station::IsValidID(station) : !Waypoint::IsValidID(station)) ||
+				st->GetTileArea(station_type).IsEmpty()) {
+			this->SetDestinationTile(v, INVALID_TILE, INVALID_TRACKDIR);
+			return;
+		}
+		this->SetDestinationTile(v, CalcClosestStationTile(station, near_tile, station_type), INVALID_TRACKDIR);
 		this->dest_station_id = station;
-		this->dest_trackdirs = INVALID_TRACKDIR_BIT;
-		this->any_depot = false;
-		this->couple_dest = false;
-		this->couple_station_dest = false;
-		/* The compatible rail types must be set as well, otherwise the track follower
-		 * cannot follow anything and every probe fails. */
-		this->CYapfDestinationRailBase::SetDestination(v);
 	}
+
+	bool HasDestination() const { return this->any_depot || this->dest_tile != INVALID_TILE; }
 
 	void SetDestination(const Train *v)
 	{
-		this->any_depot = false;
-		this->couple_station_dest = false;
 		switch (v->current_order.GetType()) {
 			case OT_GOTO_WAYPOINT:
 				if (const Waypoint *wp = Waypoint::GetIfValid(v->current_order.GetDestination().ToStationID()); wp != nullptr && !wp->IsSingleTile()) {
@@ -187,54 +188,44 @@ public:
 				[[fallthrough]];
 
 			case OT_GOTO_STATION:
-				this->dest_tile = CalcClosestStationTile(v->current_order.GetDestination().ToStationID(), v->GetMovingFront()->tile, v->current_order.IsType(OT_GOTO_STATION) ? StationType::Rail : StationType::RailWaypoint);
-				this->dest_station_id = v->current_order.GetDestination().ToStationID();
-				this->dest_trackdirs = INVALID_TRACKDIR_BIT;
+				this->SetDestinationStation(v, v->current_order.GetDestination().ToStationID(), v->GetMovingFront()->tile,
+						v->current_order.IsType(OT_GOTO_STATION) ? StationType::Rail : StationType::RailWaypoint);
 				break;
 
 			case OT_GOTO_COUPLE: {
-				/* The destination is the claimed partner's position. When the
-				 * partner stands on a station, only its own continuous
-				 * platform strip counts as the destination — another platform
-				 * of the same station (compatible but a separate strip) must
-				 * not be accepted; this is checked in PfDetectDestination via
-				 * IsCouplePartnerTile. On plain track the partner is detected
-				 * anywhere in the segment. */
-				this->dest_tile = (v->dest_tile == INVALID_TILE) ? TileIndex{} : v->dest_tile;
+				/* Only the claimed partner (or its continuous platform strip)
+				 * may satisfy a coupling destination. */
 				const Train *tgt = Train::GetIfValid(v->Primary()->couple_target);
-				if (tgt != nullptr && IsRailStationTile(tgt->tile)) {
+				this->SetDestinationTile(v, tgt != nullptr && IsValidTile(tgt->tile) ? v->dest_tile : INVALID_TILE, INVALID_TRACKDIR);
+				if (!this->HasDestination()) break;
+				if (IsRailStationTile(tgt->tile)) {
 					this->dest_station_id = GetStationIndex(tgt->tile);
-					this->dest_trackdirs = INVALID_TRACKDIR_BIT;
-					this->couple_dest = false;
 					this->couple_station_dest = true;
 				} else {
-					this->dest_station_id = StationID::Invalid();
-					this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TransportType::Rail, 0);
 					this->couple_dest = true;
 				}
 				break;
 			}
 
-			case OT_GOTO_DEPOT:
-				if (v->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) {
-					this->any_depot = true;
-				}
-				[[fallthrough]];
+			case OT_GOTO_DEPOT: {
+				const bool any_depot = (v->current_order.GetDepotActionType() & ODATFB_NEAREST_DEPOT) != 0;
+				const TileIndex tile = v->dest_tile;
+				this->SetDestinationTile(v, IsValidTile(tile) && IsRailDepotTile(tile) &&
+						GetDepotIndex(tile) == v->current_order.GetDestination().ToDepotID() ? tile : INVALID_TILE, INVALID_TRACKDIR);
+				this->any_depot = any_depot;
+				break;
+			}
 
 			default:
-				this->dest_tile = (v->dest_tile == INVALID_TILE) ? TileIndex{} : v->dest_tile;
-				this->dest_station_id = StationID::Invalid();
-				this->dest_trackdirs = GetTileTrackdirBits(this->dest_tile, TransportType::Rail, 0);
-				this->couple_dest = false;
+				this->SetDestinationTile(v, v->dest_tile, INVALID_TRACKDIR);
 				break;
 		}
-		this->CYapfDestinationRailBase::SetDestination(v);
 	}
 
 	/** @copydoc CYapfBaseT::PfDetectDestinationFunc */
 	inline bool PfDetectDestination(Node &n)
 	{
-		if (!Yapf().RailRouteRequiredPointSatisfied(n)) return false;
+		if (!this->HasDestination() || !Yapf().RailRouteRequiredPointSatisfied(n)) return false;
 		if (this->couple_dest) {
 			/* Plain-track couple partner: it stands mid-block, so the
 			 * destination must be detected on any tile of the segment. */
@@ -255,6 +246,7 @@ public:
 	/** @copydoc CYapfBaseT::PfDetectDestinationTileFunc */
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
+		if (!this->HasDestination()) return false;
 		if (this->dest_station_id != StationID::Invalid()) {
 			if (!HasStationTileRail(tile) || GetStationIndex(tile) != this->dest_station_id) return false;
 			if (GetRailStationTrack(tile) != TrackdirToTrack(td)) return false;
@@ -277,7 +269,8 @@ public:
 	{
 		/* The cheap tile-based check only: the segment-scanning couple
 		 * detection runs when the node is evaluated as the best node. */
-		if (this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir())) {
+		if (!this->HasDestination()) return false;
+		if (this->dest_tile == INVALID_TILE || this->PfDetectDestination(n.GetLastTile(), n.GetLastTrackdir())) {
 			n.estimate = n.cost;
 			return true;
 		}
@@ -289,6 +282,7 @@ public:
 
 	inline int TeleportCost(TileIndex cur_tile, TileIndex prev_tile)
 	{
+		if (this->any_depot || this->dest_tile == INVALID_TILE) return 0;
 		auto calculate_distance_cost = [&](TileIndex t, int d_adjust) -> int {
 			int x1 = 2 * TileX(t);
 			int y1 = 2 * TileY(t);

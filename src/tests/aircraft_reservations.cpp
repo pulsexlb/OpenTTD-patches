@@ -9,6 +9,7 @@
 #include "../air_map.h"
 #include "../airport.h"
 #include "../core/backup_type.hpp"
+#include "../date_func.h"
 #include "../engine_base.h"
 #include "../pbs_air.h"
 #include "../sl/extended_ver_sl.h"
@@ -34,11 +35,12 @@ static Aircraft *MakeReservationAircraft(TileIndex tile)
 	return v;
 }
 
-static Station *MakeReservationAirport(TrackBits tracks = TRACK_BIT_CROSS)
+static Station *MakeReservationAirport(TrackBits tracks = TRACK_BIT_CROSS, uint x = 10, uint y = 10)
 {
-	Station *st = Station::Create(TileXY(10, 10));
+	const TileIndex origin = TileXY(x, y);
+	Station *st = Station::Create(origin);
 	st->facilities = {StationFacility::Airport};
-	st->airport.tile = TileXY(10, 10);
+	st->airport.tile = origin;
 	st->airport.w = 12;
 	st->airport.h = 4;
 	for (TileIndex tile : st->airport) {
@@ -319,6 +321,56 @@ TEST_CASE("Aircraft yields a mutual junction lock only when real occupancy permi
 	CHECK(b->junction_request_tick == StateTicks{20});
 }
 
+TEST_CASE("Aircraft runway-head admission uses the runway axis without a built taxi track")
+{
+	AllocateMap(64, 64);
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([] { ClearAircraftReservationIndexes(); _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	MakeReservationAirport();
+	const TileIndex head = TileXY(12, 11);
+	const TileIndex end = TileXY(13, 11);
+	SetAirportTileType(head, ATT_RUNWAY_START_ALLOW_LANDING);
+	SetAirportTileType(end, ATT_RUNWAY_END);
+	SetRunwayExtremeDirection(head, DiagDirection::SW);
+	SetRunwayExtremeDirection(end, DiagDirection::SW);
+	/* A taxi junction on the head, but without a taxi track on the runway axis. */
+	SetAirportTileTracks(head, TRACK_BIT_ALL & ~TRACK_BIT_X);
+	Aircraft *waiting = MakeReservationAircraft(TileXY(10, 10));
+	Aircraft *a = MakeReservationAircraft(TileXY(16, 11));
+	const AircraftJunctionAction action{head, head, head, TRACKDIR_X_SW, TRACKDIR_X_SW, false, {head}, {TRACK_BIT_X}, {TRACK_BIT_NONE}};
+	AutoRestoreBackup version(_sl_xv_feature_versions[XSLFI_AIRCRAFT_ROLLING_RESERVATION], uint16_t{9});
+
+	SECTION("the saved FIFO request still blocks newer admission") {
+		waiting->junction_requests = {action};
+		waiting->junction_request_tick = StateTicks{0};
+		/* Equal timestamps are broken by vehicle ID (waiting was allocated first). */
+		AutoRestoreBackup ticks(_state_ticks, StateTicks{0});
+		AfterLoadAircraftReservations(false);
+		CHECK(waiting->junction_request_tick == StateTicks{0});
+		REQUIRE_FALSE(TryReserveAircraftRunway(a, head));
+		CHECK(a->junction_requests == std::vector{action});
+		StopAircraftTaxiTraffic(waiting);
+		CHECK_FALSE(TryReserveAircraftTile(a, head, TRACK_BIT_X));
+		REQUIRE(TryReserveAircraftRunway(a, head));
+		CHECK(GetReservationAsRunway(head));
+		CHECK(GetReservationAsRunway(end));
+	}
+	SECTION("real occupancy still blocks the runway") {
+		REQUIRE(TryReserveAircraftTile(waiting, head, TRACK_BIT_Y));
+		CHECK_FALSE(TryReserveAircraftRunway(a, head));
+		CHECK(HasAircraftTileReservation(waiting, head, TRACK_BIT_Y));
+	}
+	SECTION("a saved taxi traversal cannot use the exception for an unbuilt track") {
+		auto taxi = action;
+		taxi.exit_tile = end;
+		taxi.tiles.push_back(end);
+		taxi.tracks.push_back(TRACK_BIT_X);
+		taxi.swept.push_back(TRACK_BIT_NONE);
+		waiting->junction_actions = {taxi};
+		CHECK_THROWS(AfterLoadAircraftReservations(false));
+	}
+}
+
 TEST_CASE("Aircraft outside the map can still select a landing tile")
 {
 	REQUIRE(Engine::GetNumItems() == 0);
@@ -378,6 +430,86 @@ TEST_CASE("Aircraft without a destination repairs an invalid holding anchor and 
 	CHECK((v->next_pos.x != v->x_pos || v->next_pos.y != v->y_pos));
 }
 
+TEST_CASE("External aircraft keeps its holding waypoint on a failed retry")
+{
+	extern void HandleAircraftFlying(Aircraft *v);
+	AllocateMap(64, 64);
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([] { ClearAircraftReservationIndexes(); _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	Aircraft *v = MakeReservationAircraft(INVALID_TILE);
+	v->state = AS_FLYING;
+	v->external_landing = true;
+	v->x_pos = 160;
+	v->y_pos = -24;
+	AssignLandingTile(v, INVALID_TILE);
+	const TileIndex anchor = v->GetNextTile();
+	v->x_pos = v->next_pos.x;
+	v->y_pos = v->next_pos.y;
+	HandleAircraftFlying(v);
+	const auto next = v->next_pos;
+	REQUIRE((next.x != v->x_pos || next.y != v->y_pos));
+	AircraftUpdateNextPos(v); // The deterministic retry's destination refresh.
+	CHECK(v->state == AS_FLYING_NO_DEST);
+	CHECK(v->GetNextTile() == anchor);
+	CHECK(v->next_pos.pos == next.pos);
+	CHECK(v->next_pos.x == next.x);
+	CHECK(v->next_pos.y == next.y);
+}
+
+TEST_CASE("External aircraft picks a fallback with a reachable landing exit")
+{
+	REQUIRE(Engine::GetNumItems() == 0);
+	AllocateMap(64, 64);
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([] { ClearAircraftReservationIndexes(); _vehicle_pool.CleanPool(); _engine_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	const auto make_airport = [](uint x, bool connected) {
+		Station *st = MakeReservationAirport(TRACK_BIT_NONE, x, 10);
+		st->owner = OWNER_BEGIN;
+		const TileIndex start = TileXY(x, 10);
+		const TileIndex end = TileXY(x + 3, 10);
+		const TileIndex apron = TileXY(x + 4, 10);
+		SetAirportTileType(start, ATT_RUNWAY_START_ALLOW_LANDING);
+		SetAirportTileType(end, ATT_RUNWAY_END);
+		SetRunwayExtremeDirection(start, DiagDirection::SW);
+		SetRunwayExtremeDirection(end, DiagDirection::SW);
+		for (uint i = 1; i < 3; ++i) {
+			const TileIndex middle = TileXY(x + i, 10);
+			SetAirportTileType(middle, ATT_RUNWAY_MIDDLE);
+			AddPlainRunwayDirections(middle, DiagDirection::SW, true);
+		}
+		SetAirportTileTracks(end, TRACK_BIT_X);
+		SetAirportTileType(apron, ATT_APRON_NORMAL);
+		SetAirportTileTracks(apron, connected ? TRACK_BIT_X : TRACK_BIT_Y);
+		st->airport.runways.push_back(start);
+		st->airport.aprons.push_back(apron);
+		SetBit(st->airport.flags, AFB_LANDING_RUNWAY);
+		return st;
+	};
+	Station *near = make_airport(10, true);
+	Station *far = make_airport(32, true);
+	Aircraft *v = MakeReservationAircraft(near->airport.tile);
+	Engine *engine = Engine::Create(VehicleType::Aircraft, 0);
+	engine->VehInfo<AircraftVehicleInfo>().subtype = AIR_CTOL;
+	v->engine_type = v->Next()->engine_type = engine->index;
+	v->owner = OWNER_BEGIN;
+	v->external_landing = true;
+	v->external_return_airport = v->external_home_airport = near->index;
+	v->external_return_airport_tile = v->external_home_tile = near->airport.tile;
+	v->targetairport = near->index;
+	v->current_order.MakeGoToStation(near->index);
+	v->state = AS_FLYING;
+	v->UpdateNextTile(near->airport.tile);
+	REQUIRE(FindClosestLandingTile(v) == near->airport.tile);
+
+	/* The start tile and length did not change, but the edit cut its taxi exit. */
+	SetAirportTileTracks(near->airport.aprons.front(), TRACK_BIT_Y);
+	AircraftUpdateNextPos(v);
+	CHECK(v->state == AS_FLYING);
+	CHECK(v->GetNextTile() == far->airport.tile);
+	CHECK(v->targetairport == far->index);
+	CHECK(v->current_order.GetDestination().ToStationID() == far->index);
+}
+
 TEST_CASE("Aircraft runway-end reachability is static and requires a connected exit")
 {
 	AllocateMap(64, 64);
@@ -396,6 +528,10 @@ TEST_CASE("Aircraft runway-end reachability is static and requires a connected e
 	Aircraft *a = MakeReservationAircraft(TileXY(10, 12));
 	Aircraft *blocker = MakeReservationAircraft(apron);
 	REQUIRE(TryReserveAircraftTile(blocker, apron, TRACK_BIT_X));
+	SetRunwayExtremeDirection(end, DiagDirection::NE);
+	CHECK(GetAircraftRunwayEnd(start) == INVALID_TILE);
+	CHECK(GetAircraftRunwayLength(start) == 0);
+	SetRunwayExtremeDirection(end, DiagDirection::SW);
 	REQUIRE(GetAircraftRunwayEnd(start) == end);
 	CHECK_FALSE(HasAircraftRunwayExit(a, start, false));
 	SetAirportTileTracks(TileXY(12, 10), TRACK_BIT_CROSS);
@@ -404,6 +540,73 @@ TEST_CASE("Aircraft runway-end reachability is static and requires a connected e
 	CHECK_FALSE(HasAircraftRunwayExit(a, start, true));
 	CHECK(HasAircraftTileReservation(blocker, apron, TRACK_BIT_X));
 	CHECK(a->planned_path.empty());
+}
+
+TEST_CASE("Aircraft can exit a braked landing roll through a connected intermediate taxiway")
+{
+	extern bool TryAircraftEarlyRunwayExit(Aircraft *v);
+	REQUIRE(Engine::GetNumItems() == 0);
+	AllocateMap(64, 64);
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([] { ClearAircraftReservationIndexes(); _vehicle_pool.CleanPool(); _engine_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	Station *st = MakeReservationAirport(TRACK_BIT_NONE);
+	const TileIndex start = TileXY(10, 10);
+	const TileIndex middle = TileXY(11, 10);
+	const TileIndex end = TileXY(12, 10);
+	const TileIndex apron = TileXY(11, 11);
+	SetAirportTileType(start, ATT_RUNWAY_START_ALLOW_LANDING);
+	SetAirportTileType(middle, ATT_RUNWAY_MIDDLE);
+	SetAirportTileType(end, ATT_RUNWAY_END);
+	SetRunwayExtremeDirection(start, DiagDirection::SW);
+	AddPlainRunwayDirections(middle, DiagDirection::SW, true);
+	SetRunwayExtremeDirection(end, DiagDirection::SW);
+	SetAirportTileTracks(middle, TRACK_BIT_CROSS);
+	SetAirportTileTracks(end, TRACK_BIT_X);
+	SetAirportTileType(apron, ATT_APRON_NORMAL);
+	SetAirportTileTracks(apron, TRACK_BIT_Y);
+	st->airport.aprons.push_back(apron);
+
+	Aircraft *a = MakeReservationAircraft(middle);
+	a->engine_type = a->Next()->engine_type = Engine::Create(VehicleType::Aircraft, 0)->index;
+	a->targetairport = st->index;
+	a->current_order.MakeGoToStation(st->index);
+	REQUIRE(TryReserveAircraftRunway(a, start));
+	a->state = AS_LANDED;
+	a->UpdateNextTile(end);
+	a->x_pos = TileX(middle) * TILE_SIZE + TILE_SIZE / 2;
+	a->y_pos = TileY(middle) * TILE_SIZE + TILE_SIZE / 2;
+	a->landing_brake_speed = 20;
+	a->landing_roll_start_available = 2 * TILE_SIZE;
+	a->landing_brake_distance = TILE_SIZE;
+
+	/* The far end can taxi back to the same connection, but only if the
+	 * parallel taxi track actually exists. A geometric shortcut is not enough. */
+	REQUIRE(HasAircraftRunwayExit(a, start, false));
+	SetAirportTileTracks(middle, TRACK_BIT_Y);
+	CHECK_FALSE(HasAircraftRunwayExit(a, start, false));
+	SetAirportTileTracks(middle, TRACK_BIT_CROSS);
+
+	SECTION("the full side exit is available") {
+		a->landing_brake_distance++;
+		CHECK_FALSE(TryAircraftEarlyRunwayExit(a));
+		a->landing_brake_distance--;
+		REQUIRE(TryAircraftEarlyRunwayExit(a));
+		CHECK(a->state == AS_RUNNING);
+		CHECK(a->GetNextTile() == apron);
+		CHECK(a->allocated_terminal == apron);
+		CHECK(a->reserved_runway == INVALID_TILE);
+		CHECK_FALSE(GetReservationAsRunway(end));
+	}
+	SECTION("a denied taxi route leaves the roll aimed at the far end") {
+		Aircraft *blocking = MakeReservationAircraft(TileXY(14, 10));
+		REQUIRE(TryClaimAircraftTerminal(blocking, apron));
+		CHECK_FALSE(TryAircraftEarlyRunwayExit(a));
+		CHECK(a->state == AS_LANDED);
+		CHECK(a->GetNextTile() == end);
+		CHECK(a->reserved_runway == start);
+		CHECK(GetReservationAsRunway(end));
+		CHECK(a->planned_path.empty());
+	}
 }
 
 TEST_CASE("Aircraft landing exit rollback keeps the runway, real occupancy and queued intent")

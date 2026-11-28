@@ -298,16 +298,48 @@ bool TryClearUnsignalledRailTunnelBridgeReservation(TileIndex tile, const Train 
 {
 	const TileIndex end = GetOtherTunnelBridgeEnd(tile);
 	if (IsTunnelBridgeWithSignalSimulation(tile) || IsTunnelBridgeWithSignalSimulation(end)) return false;
-	if (!HasAcrossTunnelBridgeReservation(tile) && !HasAcrossTunnelBridgeReservation(end)) return true;
 	/* Wormhole vehicles are indexed at their entrance. Test the real crossing
 	 * and both ramps, not surface tiles along its projected map coordinates. */
 	if (TunnelBridgeIsFree(tile, end, leaving, TBIFM_ACROSS_ONLY).Failed()) return false;
+	if (!HasAcrossTunnelBridgeReservation(tile) && !HasAcrossTunnelBridgeReservation(end)) return true;
 
 	UnreserveAcrossRailTunnelBridge(tile);
 	UnreserveAcrossRailTunnelBridge(end);
 	MarkBridgeOrTunnelDirtyOnReservationChange(tile, VMDF_NOT_MAP_MODE);
 	MarkBridgeOrTunnelDirtyOnReservationChange(end, VMDF_NOT_MAP_MODE);
 	return true;
+}
+
+/** Release a wreck's crossing without swallowing an attached approach reservation. */
+bool TryClearUnsignalledRailTunnelBridgeReservationAfterWreck(TileIndex tile, const Train *remaining_wreck)
+{
+	const TileIndex end = GetOtherTunnelBridgeEnd(tile);
+	for (TileIndex portal : {tile, end}) {
+		for (Track track : SetTrackBitIterator(GetAcrossTunnelBridgeReservationTrackBits(portal))) {
+			const Trackdir into = TrackExitdirToTrackdir(track, GetTunnelBridgeDirection(portal));
+			const DiagDirection out = TrackdirToExitdir(ReverseTrackdir(into));
+			const TileIndexDiffC delta = TileIndexDiffCByDiagDir(out);
+			const TileIndex approach = TileAddWrap(portal, delta.x, delta.y);
+			if (!IsValidTile(approach)) continue;
+			const TrackBits attached = GetReservedTrackbits(approach) & DiagdirReachesTracks(out);
+			if (attached == TRACK_BIT_NONE) continue;
+
+			/* With no live ownership metadata, keep any attached reservation
+			 * unless it is physically blocked by the rest of this wreck. */
+			TrackBits wreck_tracks = TRACK_BIT_NONE;
+			if (remaining_wreck != nullptr) {
+				for (const Train *part : VehiclesOnTile<VehicleType::Train>(approach)) {
+					if (part->First() == remaining_wreck) {
+						wreck_tracks |= part->track;
+					} else if ((part->track & (attached | TRACK_BIT_WORMHOLE)) != TRACK_BIT_NONE) {
+						return false;
+					}
+				}
+			}
+			if ((attached & ~wreck_tracks) != TRACK_BIT_NONE) return false;
+		}
+	}
+	return TryClearUnsignalledRailTunnelBridgeReservation(tile);
 }
 
 /** Flags for FollowReservation */
@@ -1481,6 +1513,70 @@ Train *GetTrainForReservation(TileIndex tile, Track track)
 	}
 
 	return nullptr;
+}
+
+/**
+ * Recover an older split's already reserved exit only when its moving front
+ * is the sole physical anchor of an unambiguous, continuous reserved path.
+ * Reservation bits have no owner. Looking up the first train at one end
+ * can report this train even when a foreign train holds the other end.
+ */
+bool HasExclusiveSplitDepartureReservation(const Train *v, TileIndex exit_tile)
+{
+	const Train *front = v->GetMovingFront();
+	const Trackdir front_td = front->GetVehicleTrackdir();
+	if (!IsValidTrackdir(front_td) || !HasReservedTracks(front->tile, TrackToTrackBits(TrackdirToTrack(front_td)))) return false;
+
+	/* Work one physical tile at a time, including platform tiles skipped by
+	 * the ordinary follower. Reject both forks and merges, including a fork
+	 * visible only when following a candidate step backwards. */
+	auto reserved_next = [](TileIndex tile, Trackdir td, TileIndex &next) {
+		const DiagDirection dir = TrackdirToExitdir(td);
+		const TileIndexDiffC delta = TileIndexDiffCByDiagDir(dir);
+		next = TileAddWrap(tile, delta.x, delta.y);
+		if (!IsValidTile(next)) return TRACKDIR_BIT_NONE;
+		return DiagdirReachesTrackdirs(dir) & TrackBitsToTrackdirBits(GetReservedTrackbits(next));
+	};
+
+	bool reached_exit = false;
+	for (bool forwards : {true, false}) {
+		TileIndex tile = front->tile;
+		Trackdir td = forwards ? front_td : ReverseTrackdir(front_td);
+		/* Exceptional recovery, not a general reservation ownership lookup.
+		 * Wormholes and depots can join or hide paths; never infer ownership
+		 * through them. Bound the work and reject loops. */
+		constexpr uint max_steps = 2048;
+		for (uint step = 0;; ++step) {
+			if (step == max_steps || !(IsPlainRailTile(tile) || HasStationTileRail(tile) || IsLevelCrossingTile(tile))) return false;
+			const Track track = TrackdirToTrack(td);
+			for (const Train *part : VehiclesOnTile<VehicleType::Train>(tile)) {
+				if (part->Primary() != v && (part->track & TrackToTrackBits(track)) != TRACK_BIT_NONE) return false;
+			}
+			if (forwards) {
+				reached_exit |= tile == exit_tile;
+				if (step != 0 && HasPbsSignalOnTrackdir(tile, td) &&
+						(GetSignalStateByTrackdir(tile, td) == SignalState::Red || IsNoEntrySignal(tile, track))) return false;
+			}
+
+			TileIndex next;
+			const TrackdirBits candidates = reserved_next(tile, td, next);
+			if (candidates == TRACKDIR_BIT_NONE) break;
+			if (KillFirstBit(candidates) != TRACKDIR_BIT_NONE) return false;
+			const Trackdir next_td = FindFirstTrackdir(candidates);
+			TileIndex previous;
+			if (reserved_next(next, ReverseTrackdir(next_td), previous) != TrackdirToTrackdirBits(ReverseTrackdir(td)) || previous != tile) return false;
+			tile = next;
+			td = next_td;
+		}
+		if (forwards) {
+			if (!reached_exit) return false;
+			/* Prove that the normal directed follower sees exactly this path's
+			 * end, not a different continuation through a signal/platform. */
+			const auto end = FollowTrainReservation(v, nullptr, {FollowTrainReservationFlag::IgnoreLookahead, FollowTrainReservationFlag::OkayUnused});
+			if (end.tile != tile || end.trackdir != td) return false;
+		}
+	}
+	return true;
 }
 
 CommandCost CheckTrainReservationPreventsTrackModification(TileIndex tile, Track track)

@@ -18,6 +18,7 @@
 void StartRemoveOrderFromAllVehiclesBatch();
 void StopRemoveOrderFromAllVehiclesBatch();
 void RemoveOrderFromAllVehicles(OrderType type, DestinationID destination, bool hangar = false);
+void RepairDormantOrderStationReferences();
 void InvalidateVehicleOrder(const Vehicle *v, int data);
 void InvalidatePrimaryOrderSharingWindows(OrderListID home);
 void InvalidateVehicleOrderOnMove(const Vehicle *v, VehicleOrderID from, VehicleOrderID to, uint16_t count);

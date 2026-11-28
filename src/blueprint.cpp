@@ -2017,12 +2017,12 @@ static const CommandCost &BlueprintCmdCost(const T &result)
  * out are skipped without error spam.
  * @return Whether this part succeeded (or would succeed, when only testing).
  */
-template <Commands Tcmd, typename... Targs>
-static bool BlueprintDoCommand(BlueprintCommandState &state, DoCommandFlags flags, Targs... args)
+template <typename Build>
+static bool BlueprintDoPart(BlueprintCommandState &state, DoCommandFlags flags, Build build)
 {
 	if (state.out_of_money) return false;
 
-	auto test_result = Command<Tcmd>::Do(DoCommandFlags{flags}.Reset(DoCommandFlag::Execute), args...);
+	auto test_result = build(DoCommandFlags{flags}.Reset(DoCommandFlag::Execute));
 	const CommandCost &test_cost = BlueprintCmdCost(test_result);
 	if (test_cost.Failed()) return false;
 
@@ -2037,7 +2037,7 @@ static bool BlueprintDoCommand(BlueprintCommandState &state, DoCommandFlags flag
 		return false;
 	}
 
-	auto result = Command<Tcmd>::Do(flags, args...);
+	auto result = build(flags);
 	const CommandCost &cost = BlueprintCmdCost(result);
 	if (cost.Failed()) return false;
 
@@ -2045,6 +2045,12 @@ static bool BlueprintDoCommand(BlueprintCommandState &state, DoCommandFlags flag
 	state.total.AddCost(cost.GetCost());
 	state.any_success = true;
 	return true;
+}
+
+template <Commands Tcmd, typename... Targs>
+static bool BlueprintDoCommand(BlueprintCommandState &state, DoCommandFlags flags, Targs... args)
+{
+	return BlueprintDoPart(state, flags, [&](DoCommandFlags child_flags) { return Command<Tcmd>::Do(child_flags, args...); });
 }
 
 /** Resolve a stable signal identity against the current game's style slots. */
@@ -2439,15 +2445,24 @@ CommandCost CmdPasteBlueprint(DoCommandFlags flags, TileIndex origin, const Blue
 			 *
 			 * Joining uses the explicit station id (distant join, on by default) rather than
 			 * adjacency, so a split airport (disjoint groups of tiles) still becomes one station. */
+			/* Build a standalone heliport in its final form, so the child preflight
+			 * never checks the noise of a temporary bare pavement tile. */
+			const bool standalone_heliport = ordered.size() == 1 && GetBlueprintAirportTileType(ordered.front()) == ATT_APRON_HELIPORT;
+			auto build_tile = [&](TileIndex tile, StationID join_id) {
+				if (standalone_heliport) {
+					return BlueprintDoPart(state, flags, [&](DoCommandFlags child_flags) { return BuildBlueprintHeliport(child_flags, tile, airtype, join_id); });
+				}
+				return BlueprintDoCommand<Commands::AddRemoveAirportTiles>(state, flags, tile, tile, true, airtype, join_id, false);
+			};
 			bool built = true;
 			StationID station = airport_join;
 			for (const BlueprintAirportTile &apt : ordered) {
 				if (!tile_valid(apt.offset)) { built = false; continue; }
 				TileIndex tile = target_tile(apt.offset);
-				bool ok = BlueprintDoCommand<Commands::AddRemoveAirportTiles>(state, flags, tile, tile, true, airtype, station, false);
+				bool ok = build_tile(tile, station);
 				if (!ok && station != StationID::Invalid()) {
 					/* Distant join refused (setting off); fall back to adjacency/new station. */
-					ok = BlueprintDoCommand<Commands::AddRemoveAirportTiles>(state, flags, tile, tile, true, airtype, StationID::Invalid(), false);
+					ok = build_tile(tile, StationID::Invalid());
 				}
 				if (!ok) { built = false; continue; }
 				/* The first tile creates the station; join the rest onto it. */
@@ -2487,7 +2502,9 @@ CommandCost CmdPasteBlueprint(DoCommandFlags flags, TileIndex origin, const Blue
 				 * layout can create several stations; rebuild them in station ID order. */
 				for (StationID id : affected) {
 					Station *st = Station::Get(id);
+					const auto before = GetAirportNoiseContribution(st);
 					st->UpdateAirportDataStructure();
+					UpdateNoiseForTowns(before, GetAirportNoiseContribution(st));
 					st->AfterStationTileSetChange(true, StationType::Airport);
 				}
 				std::sort(built_tiles.begin(), built_tiles.end());

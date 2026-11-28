@@ -43,6 +43,7 @@
 #include "../rail_cmd.h"
 #include "../signal_func.h"
 #include "../bridge_map.h"
+#include "../tunnel_base.h"
 #include "../depot_base.h"
 #include "../external_city.h"
 #include "../external_city_cmd.h"
@@ -6989,6 +6990,47 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - a failing first blocker
 	CHECK(HasStationReservation(station->xy));
 }
 
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail YAPF - stale destinations fail without reserving a fallback")
+{
+	const TileIndex next = TileXY(11, 10);
+	const StationID missing{123};
+	REQUIRE_FALSE(BaseStation::IsValidID(missing));
+	moving->dest_tile = station->xy;
+	SECTION("removed station") { moving->current_order.MakeGoToStation(missing); }
+	SECTION("station with no rail facilities") {
+		moving->current_order.MakeGoToStation(station->index);
+		station->train_station = {};
+	}
+	SECTION("removed waypoint") { moving->current_order.MakeGoToWaypoint(missing); }
+	SECTION("a cached depot tile now contains a station") { moving->current_order.MakeGoToDepot(DepotID{123}, {}); }
+	SECTION("fixed depot has no tile") {
+		moving->current_order.MakeGoToDepot(DepotID{123}, {});
+		moving->dest_tile = INVALID_TILE;
+	}
+
+	bool found = true;
+	PBSTileInfo target(next, TRACKDIR_X_SW, true);
+	TileIndex dest = next;
+	/* The caller may get a first-track fallback, but no found path or target. */
+	YapfTrainChooseTrack(moving, next, DiagDirection::SW, TRACK_BIT_X, found, true, &target, &dest);
+	CHECK_FALSE(found);
+	CHECK(target.tile == INVALID_TILE);
+	CHECK_FALSE(target.okay);
+	CHECK(dest == INVALID_TILE);
+	CHECK_FALSE(HasReservedTracks(next, TRACK_BIT_X));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail YAPF - station probes reject missing rail destinations before searching")
+{
+	const StationID missing{123};
+	REQUIRE_FALSE(Station::IsValidID(missing));
+	CHECK_FALSE(YapfTrainCanReachStation(moving, moving->tile, TRACKDIR_X_SW, missing));
+	station->train_station = {};
+	uint nodes = 17;
+	CHECK_FALSE(YapfTrainCanReachStationBounded(moving, moving->tile, TRACKDIR_X_SW, station->index, 64, nodes));
+	CHECK(nodes == 0);
+}
+
 TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple - a pending trailer cannot adopt or release a shared reservation")
 {
 	moving->flags.Set(VehicleRailFlag::SameDirDecouplePending);
@@ -6997,6 +7039,35 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple - a pending trailer can
 	FreeTrainTrackReservation(moving);
 	CHECK(HasReservedTracks(TileXY(11, 10), TRACK_BIT_X));
 	CHECK(HasStationReservation(station->xy));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple - older reserved exits need a unique occupied anchor")
+{
+	for (uint x = 13; x <= 16; ++x) MakeRailNormal(TileXY(x, 10), _current_company, TRACK_BIT_X, RAILTYPE_RAIL);
+	Place(moving, 12);
+	UnreserveRailTrack(TileXY(10, 10), TRACK_X);
+	const TileIndex exit = TileXY(13, 10);
+	const TileIndex end = TileXY(15, 10);
+	Place(waiting, 16);
+	moving->flags.Set(VehicleRailFlag::SameDirDecouplePending);
+	for (uint x = 13; x <= 15; ++x) REQUIRE(TryReserveRailTrack(TileXY(x, 10), TRACK_X));
+
+	bool exclusively_ours = true;
+	SECTION("the path is continuous and the other train is beyond it") {}
+	SECTION("the first-direction lookup misses a foreign train on the other end") {
+		Place(waiting, 15);
+		waiting->direction = Direction::NE;
+		REQUIRE(GetTrainForReservation(exit, TRACK_X) == moving);
+		exclusively_ours = false;
+	}
+	SECTION("a reservation disconnected from our platform is not ours") {
+		SetRailStationReservation(station->xy, false);
+		exclusively_ours = false;
+	}
+
+	CHECK(HasExclusiveSplitDepartureReservation(moving, exit) == exclusively_ours);
+	CHECK(HasReservedTracks(exit, TRACK_BIT_X));
+	CHECK(HasReservedTracks(end, TRACK_BIT_X));
 }
 
 TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail bridge release uses real occupancy and keeps both ends together")
@@ -7026,6 +7097,59 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail bridge release uses real oc
 	}
 	CHECK_FALSE(HasReservedTracks(entrance, TRACK_BIT_X));
 	CHECK_FALSE(HasReservedTracks(exit, TRACK_BIT_X));
+	CHECK(HasStationReservation(station->xy));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail wrecks release unsignalled tunnel and bridge ends together")
+{
+	const bool tunnel = GENERATE(false, true);
+	const TileIndex entrance = TileXY(11, 10), exit = TileXY(14, 10);
+	auto clear_tunnels = scope_guard([&]() { if (tunnel) _tunnel_pool.CleanPool(); });
+	if (tunnel) {
+		const Tunnel *span = Tunnel::Create(entrance, exit, 0, false);
+		MakeRailTunnel(entrance, _current_company, span->index, DiagDirection::SW, RAILTYPE_RAIL);
+		MakeRailTunnel(exit, _current_company, span->index, DiagDirection::NE, RAILTYPE_RAIL);
+	} else {
+		MakeRailBridgeRamp(entrance, _current_company, 0, DiagDirection::SW, RAILTYPE_RAIL, false);
+		MakeRailBridgeRamp(exit, _current_company, 0, DiagDirection::NE, RAILTYPE_RAIL, false);
+		SetBridgeMiddle(TileXY(12, 10), Axis::X);
+		SetBridgeMiddle(TileXY(13, 10), Axis::X);
+	}
+	/* The initial fixture train stands immediately outside the entrance;
+	 * remove its reservation so this crossing has no attached approach. */
+	UnreserveRailTrack(moving->tile, TRACK_X);
+	Train *wreck = MakeTrain();
+	wreck->owner = _current_company;
+	wreck->track = TRACK_BIT_WORMHOLE;
+	wreck->vehstatus.Set(VehState::Crashed);
+	wreck->crash_anim_pos = 4439;
+	wreck->tick_counter = 0;
+	Place(wreck, 11);
+	wreck->x_pos += TILE_SIZE;
+
+	bool keep = false;
+	bool near_reserved = true;
+	SECTION("both ends are clear even with a train on the projected surface tile") {}
+	SECTION("a legacy reservation remains only at the opposite end") { near_reserved = false; }
+	SECTION("another train still occupies the opposite end of the crossing") {
+		Place(waiting, 14);
+		waiting->track = TRACK_BIT_WORMHOLE;
+		waiting->x_pos -= TILE_SIZE;
+		keep = true;
+	}
+	SECTION("an attached foreign approach still reserves the crossing") {
+		MakeRailNormal(TileXY(15, 10), _current_company, TRACK_BIT_X, RAILTYPE_RAIL);
+		Place(waiting, 15);
+		waiting->direction = Direction::NE;
+		REQUIRE(TryReserveRailTrack(waiting->tile, TRACK_X));
+		keep = true;
+	}
+	if (near_reserved) REQUIRE(TryReserveRailTrack(entrance, TRACK_X));
+	REQUIRE(TryReserveRailTrack(exit, TRACK_X));
+
+	CHECK_FALSE(wreck->Tick());
+	CHECK(HasReservedTracks(entrance, TRACK_BIT_X) == (keep && near_reserved));
+	CHECK(HasReservedTracks(exit, TRACK_BIT_X) == keep);
 	CHECK(HasStationReservation(station->xy));
 }
 

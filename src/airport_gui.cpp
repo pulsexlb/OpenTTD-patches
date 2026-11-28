@@ -130,7 +130,8 @@ static void PlaceAirport(TileIndex tile)
 		AirportTileType att = GetAirportTileType(tile);
 		DiagDirection dir = GetRunwayExtremeDirection(tile);
 		if (att == ATT_RUNWAY_END) dir = ReverseDiagDir(dir);
-		return GetRunwayExtreme(tile, dir);
+		const TileIndex other = GetRunwayExtreme(tile, dir);
+		if (IsValidTile(other)) return other;
 	}
 	return tile;
 }

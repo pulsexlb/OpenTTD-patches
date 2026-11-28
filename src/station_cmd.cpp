@@ -3590,21 +3590,24 @@ static void DrawTile_Station(TileInfo *ti, DrawTileProcParams params)
 			assert(ats->grf_prop.subst_id != INVALID_AIRPORTTILE);
 			gfx = ats->grf_prop.subst_id;
 		}
+		const auto animation_frame = [ti](const auto &frames) {
+			return &frames[std::min<size_t>(GetAnimationFrame(ti->tile), std::size(frames) - 1)];
+		};
 		switch (gfx) {
 			case APT_RADAR_GRASS_FENCE_SW:
-				t = &_station_display_datas_airport_radar_grass_fence_sw[GetAnimationFrame(ti->tile)];
+				t = animation_frame(_station_display_datas_airport_radar_grass_fence_sw);
 				break;
 			case APT_GRASS_FENCE_NE_FLAG:
-				t = &_station_display_datas_airport_flag_grass_fence_ne[GetAnimationFrame(ti->tile)];
+				t = animation_frame(_station_display_datas_airport_flag_grass_fence_ne);
 				break;
 			case APT_RADAR_FENCE_SW:
-				t = &_station_display_datas_airport_radar_fence_sw[GetAnimationFrame(ti->tile)];
+				t = animation_frame(_station_display_datas_airport_radar_fence_sw);
 				break;
 			case APT_RADAR_FENCE_NE:
-				t = &_station_display_datas_airport_radar_fence_ne[GetAnimationFrame(ti->tile)];
+				t = animation_frame(_station_display_datas_airport_radar_fence_ne);
 				break;
 			case APT_GRASS_FENCE_NE_FLAG_2:
-				t = &_station_display_datas_airport_flag_grass_fence_ne_2[GetAnimationFrame(ti->tile)];
+				t = animation_frame(_station_display_datas_airport_flag_grass_fence_ne_2);
 				break;
 		}
 	}

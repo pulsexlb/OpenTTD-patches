@@ -251,101 +251,70 @@ void UpdateTracks(TileIndex tile)
 }
 
 /**
- * Get the start or end of a runway.
- * @param tile Tile belonging a runway.
+ * Find a runway extremity in the given direction, without crossing a gap or station boundary.
+ * @param tile Tile belonging to the runway.
  * @param dir Direction to follow.
- * @return a runway extreme.
+ * @return The extreme, or INVALID_TILE if the runway is incomplete in that direction.
  */
 TileIndex GetRunwayExtreme(TileIndex tile, DiagDirection dir)
 {
-	assert(IsAirportTile(tile) && IsRunway(tile));
+	if (!IsValidTile(tile) || !IsAirportTile(tile) || !IsRunway(tile) || !IsValidDiagDirection(dir)) return INVALID_TILE;
 
-	TileIndexDiff delta = TileOffsByDiagDir(dir);
-	TileIndex t = tile;
-
-	for (;;) {
-		assert(IsAirportTile(t));
-		assert(IsRunway(t));
-		if (IsRunwayExtreme(t)) {
-			DiagDirection last_dir = GetRunwayExtremeDirection(t);
-			if (IsRunwayEnd(t)) {
-				if (last_dir == dir) return t;
-				assert(last_dir == ReverseDiagDir(dir));
-			} else {
-				assert(IsRunwayStart(t));
-				if (last_dir == ReverseDiagDir(dir)) return t;
-				assert(last_dir == dir);
-			}
-		}
-		t += delta;
+	DiagDirection runway_dir = dir;
+	if (IsRunwayExtreme(tile)) {
+		runway_dir = GetRunwayExtremeDirection(tile);
+		if (dir != runway_dir && dir != ReverseDiagDir(runway_dir)) return INVALID_TILE;
+	} else if (!HasTrackdir(GetRunwayTrackdirs(tile), DiagDirToDiagTrackdir(dir))) {
+		runway_dir = ReverseDiagDir(dir);
 	}
-}
 
-/**
- * Check if a tile is a valid continuation of a runway.
- * The tile \a test_tile is a valid continuation to \a runway, if all of the following are true:
- * \li \a test_tile is an airport tile
- * \li \a test_tile and \a start_tile are in the same station
- * \li the tracks on \a test_tile and \a start_tile are in the same direction
- * @param test_tile Tile to test
- * @param start_tile Depot tile to compare with
- * @pre IsAirport && IsRunwayStart(start_tile)
- * @return true if the two tiles are compatible
- */
-inline bool IsCompatibleRunwayTile(TileIndex test_tile, TileIndex start_tile)
-{
-	assert(IsAirportTile(start_tile) && IsRunwayStart(start_tile));
-	return IsAirportTile(test_tile) &&
-			GetStationIndex(test_tile) == GetStationIndex(start_tile) &&
-			(GetRunwayTrackdirs(start_tile) & GetRunwayTrackdirs(test_tile)) != TRACKDIR_BIT_NONE;
+	const StationID station = GetStationIndex(tile);
+	const Trackdir runway_td = DiagDirToDiagTrackdir(runway_dir);
+	const TileIndexDiffC step = TileIndexDiffCByDiagDir(dir);
+	const bool towards_end = dir == runway_dir;
+	for (TileIndex t = tile; IsValidTile(t) && IsAirportTileOfStation(t, station) && IsRunway(t); t = TileAddWrap(t, step.x, step.y)) {
+		if (IsPlainRunway(t)) {
+			if (!HasTrackdir(GetRunwayTrackdirs(t), runway_td)) break;
+		} else {
+			if (GetRunwayExtremeDirection(t) != runway_dir) break;
+			if (IsRunwayEnd(t) == towards_end) return t;
+			if (t != tile) break;
+		}
+	}
+	return INVALID_TILE;
 }
 
 /**
  * Get the runway length.
- * @param tile Runway start tile
- * @return the length of the runway.
+ * @param tile Runway start tile.
+ * @return The length of the runway, or zero if it is incomplete.
  */
 uint GetRunwayLength(TileIndex tile)
 {
-	assert(IsAirport(tile) && IsRunwayStart(tile));
-	DiagDirection dir = GetRunwayExtremeDirection(tile);
-	assert(IsValidDiagDirection(dir));
-
-	uint length = 1;
-	[[maybe_unused]] TileIndex start_tile = tile;
-
-	do {
-		length++;
-		tile += TileOffsByDiagDir(dir);
-		assert(IsCompatibleRunwayTile(tile, start_tile));
-	} while (!IsRunwayEnd(tile));
-
-	return length;
+	if (!IsValidTile(tile) || !IsAirportTile(tile) || !IsRunwayStart(tile)) return 0;
+	const TileIndex end = GetRunwayExtreme(tile, GetRunwayExtremeDirection(tile));
+	return IsValidTile(end) ? DistanceManhattan(tile, end) + 1 : 0;
 }
 
-/**
- * Set the reservation for a complete station platform.
- * @pre IsRailStationTile(start)
- * @param tile starting tile of the platform
- * @param b the state the reservation should be set to
- */
+/** Set the reservation for a complete runway. */
 void SetRunwayReservation(TileIndex tile, bool b)
 {
-	assert(IsRunwayExtreme(tile));
-	DiagDirection runway_dir = GetRunwayExtremeDirection(tile);
-	if (IsRunwayEnd(tile)) runway_dir = ReverseDiagDir(runway_dir);
-	TileIndexDiff diff = TileOffsByDiagDir(runway_dir);
+	if (!IsValidTile(tile) || !IsAirportTile(tile) || !IsRunwayExtreme(tile)) return;
+	DiagDirection dir = GetRunwayExtremeDirection(tile);
+	if (IsRunwayEnd(tile)) dir = ReverseDiagDir(dir);
+	const TileIndex end = GetRunwayExtreme(tile, dir);
+	if (!IsValidTile(end)) return;
 
-	do {
-		assert(IsAirportTile(tile));
-		assert(!HasAirportTrackReserved(tile));
-		SetReservationAsRunway(tile, b);
-		if (_show_airport_tracks) MarkTileDirtyByTile(tile);
-		tile = TileAdd(tile, diff);
-	} while (!IsRunwayExtreme(tile));
-
-	SetReservationAsRunway(tile, b);
-	if (_show_airport_tracks) MarkTileDirtyByTile(tile);
+	const TileArea area(tile, end);
+	if (b) {
+		for (TileIndex t : area) {
+			if (HasAirportTrackReserved(t)) return;
+		}
+	}
+	for (TileIndex t : area) {
+		SetReservationAsRunway(t, b);
+		if (_show_airport_tracks) MarkTileDirtyByTile(t);
+	}
 }
 
 /**

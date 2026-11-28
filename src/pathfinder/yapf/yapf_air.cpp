@@ -281,7 +281,8 @@ public:
 	{
 		this->dest_state = dest_state;
 		this->is_helicopter = is_helicopter;
-		this->min_runway = min_runway;
+		/* Zero required tiles disables the length limit, not the need for a complete runway. */
+		this->min_runway = std::max(1u, min_runway);
 	}
 
 	/** Called by YAPF to detect if node ends in the desired destination */
@@ -429,14 +430,14 @@ Trackdir YapfAircraftFindPath(Aircraft *v, PBSTileInfo &best_dest, bool &path_fo
 	return CYapfAircraft::ChooseAircraftPath(v, &best_dest, path_found, dest_state, path_cache);
 }
 
-/** Check the guaranteed end-of-roll exit, without booking or testing any traffic. */
+/** Check for a static fallback from the end of the roll, even if an earlier exit is blocked. */
 bool HasAircraftRunwayExit(const Aircraft *v, TileIndex start, bool to_hangar)
 {
 	const TileIndex end = GetAircraftRunwayEnd(start);
-	if (end == INVALID_TILE) return false;
-	/* The normal handoff stops at the centre and may select either direction
-	 * on any built diagonal track before it starts taxiing. */
-	const TrackBits origins = GetAirportTileTracks(end) & TRACK_BIT_CROSS;
+	/* A rollout can try a connected intermediate taxiway once it has braked,
+	 * but it cannot stop there on a denied reservation. Check that the end
+	 * itself has a route, which may lead back via built taxiway to that exit. */
+	const TrackBits origins = GetAircraftLandingExitTracks(end);
 	if (origins == TRACK_BIT_NONE) return false;
 	CYapfAircraft pf;
 	pf.SetGeometryOnly(end);

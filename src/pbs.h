@@ -209,6 +209,8 @@ bool IsCouplePartnerTile(const Train *v, TileIndex tile);
 bool IsCoupleApproachPathClearTo(const Train *v, const Train *tgt);
 bool IsCoupleApproachPathClear(const Train *v);
 
+bool TryClearUnsignalledRailTunnelBridgeReservationAfterWreck(TileIndex tile, const Train *remaining_wreck);
+bool HasExclusiveSplitDepartureReservation(const Train *v, TileIndex exit_tile);
 Train *GetTrainForReservation(TileIndex tile, Track track);
 CommandCost CheckTrainReservationPreventsTrackModification(TileIndex tile, Track track);
 CommandCost CheckTrainReservationPreventsTrackModification(const Train *v);

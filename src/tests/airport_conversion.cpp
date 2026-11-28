@@ -17,17 +17,21 @@
 #include "../airport_cmd.h"
 #include "../animated_tile.h"
 #include "../blueprint_cmd.h"
+#include "../clear_map.h"
+#include "../company_base.h"
 #include "../company_func.h"
 #include "../core/backup_type.hpp"
 #include "../core/random_func.hpp"
 #include "../depot_base.h"
 #include "../map_func.h"
+#include "../network/network.h"
 #include "../newgrf.h"
 #include "../newgrf_airport.h"
 #include "../newgrf_airporttiles.h"
 #include "../scope.h"
 #include "../settings_type.h"
 #include "../station_base.h"
+#include "../station_func.h"
 #include "../station_map.h"
 #include "../script/api/script_airport.hpp"
 #include "../town.h"
@@ -107,6 +111,75 @@ static uint CheckAirtypeDrawnTiles(const Station *st, AirType airtype)
 		CHECK(GetAirType(t) == airtype);
 	}
 	return tiles;
+}
+
+TEST_CASE("Airport - spec construction validates complete directed runways")
+{
+	AllocateMap(64, 64);
+	AirportSpec::ResetAirports();
+	auto cleanup = scope_guard([] { DeallocateMap(); });
+	const TileIndex tile = TileXY(10, 10);
+	const auto check_layout = [&](const AirportTileLayout &layout, DiagDirection rotation) {
+		const bool swap_axes = (to_underlying(rotation) % 2) != 0;
+		BitmapTileArea occupied;
+		occupied.Initialize(TileArea(tile, swap_axes ? layout.size_y : layout.size_x, swap_axes ? layout.size_x : layout.size_y));
+		return AddAirportTileTableToBitmapTileArea(layout, &occupied, rotation, 1);
+	};
+	for (uint8_t type = AT_SMALL; type < NEW_AIRPORT_OFFSET; type++) {
+		for (const auto &layout : AirportSpec::Get(type)->layouts) {
+			for (DiagDirection rotation = DiagDirection::Begin; rotation < DiagDirection::End; ++rotation) {
+				CAPTURE(type, to_underlying(rotation));
+				CHECK(check_layout(layout, rotation).Succeeded());
+			}
+		}
+	}
+
+	AirportTileLayout broken = AirportSpec::Get(AT_SMALL)->layouts[0];
+	auto middle = std::ranges::find(broken.tiles, ATT_RUNWAY_MIDDLE, &AirportTileTable::type);
+	REQUIRE(middle != broken.tiles.end());
+	SECTION("gap") { middle->type = ATT_INVALID; }
+	SECTION("wrong direction") { middle->runway_directions = ReverseDir(middle->runway_directions); }
+	SECTION("unmatched crossing branch") { middle->runway_directions = Direction::N; }
+	CHECK(check_layout(broken, DiagDirection::NE).Failed());
+}
+
+TEST_CASE("Airport - an incomplete runway has no length and its remnant can be cleared")
+{
+	AllocateMap(64, 64);
+	AirportSpec::ResetAirports();
+	ResetAirTypes();
+	auto cleanup = scope_guard([] { _station_pool.CleanPool(); _depot_pool.CleanPool(); DeallocateMap(); });
+	AutoRestoreBackup current(_current_company, OWNER_BEGIN);
+	AutoRestoreBackup headless(_network_dedicated, true);
+	AutoRestoreBackup enabled(_settings_game.station.allow_modify_airports, true);
+	Station *st = CreateSpecAirport(TileXY(10, 10), AT_SMALL, 0, DiagDirection::NE, INVALID_AIRTYPE);
+	st->owner = OWNER_BEGIN;
+	REQUIRE_FALSE(st->airport.runways.empty());
+	const TileIndex start = st->airport.runways.front();
+	const DiagDirection dir = GetRunwayExtremeDirection(start);
+	const TileIndex middle = TileAddByDiagDir(start, dir);
+	const TileIndex end = GetRunwayExtreme(start, dir);
+	REQUIRE(IsValidTile(end));
+	REQUIRE(IsPlainRunway(middle));
+	CHECK(GetRunwayLength(start) > 2);
+	CHECK(GetRunwayExtreme(end, ReverseDiagDir(dir)) == start);
+	const auto clear_start = [&](DoCommandFlags flags) {
+		return CmdAddRemoveAirportTiles(flags, start, start, false, GetAirType(start), StationID::Invalid(), false);
+	};
+	CHECK(clear_start({}).Failed());
+
+	SetAirportTileType(middle, ATT_SIMPLE_TRACK);
+	CHECK(GetRunwayExtreme(start, dir) == INVALID_TILE);
+	CHECK(GetRunwayExtreme(end, ReverseDiagDir(dir)) == INVALID_TILE);
+	CHECK(GetRunwayLength(start) == 0);
+	SetRunwayReservation(start, true);
+	CHECK_FALSE(GetReservationAsRunway(start));
+	CHECK(clear_start({}).Succeeded());
+	CHECK(IsAirportTile(start));
+	CHECK(clear_start(DoCommandFlag::Execute).Succeeded());
+	CHECK_FALSE(IsAirportTile(start));
+	CHECK(st->TileBelongsToAirport(middle));
+	CHECK(st->TileBelongsToAirport(end));
 }
 
 TEST_CASE("Airport - converting a stock airport to a custom airport keeps its air type")
@@ -470,4 +543,174 @@ TEST_CASE("Airport - script noise and nearest town are safe on maps without town
 	uint distance = 0;
 	CHECK(AirportGetNearestTown(BitmapTileArea{}, distance) == nullptr);
 	CHECK(distance == UINT_MAX - 1);
+}
+
+extern AirTypeInfo _airtypes[AIRTYPE_END];
+
+/** Flat test map with deterministic air type noise and two town centres. */
+class AirportNoiseFixture {
+protected:
+	AutoRestoreBackup<bool> headless{_network_dedicated, true};
+	AutoRestoreBackup<CompanyID> current{_current_company, AutoRestoreBackupNoNewValueTag{}};
+	AutoRestoreBackup<CompanyID> local{_local_company, CompanyID::Invalid()};
+	AutoRestoreBackup<uint8_t> tolerance{_settings_game.difficulty.town_council_tolerance, TOWN_COUNCIL_LENIENT};
+	AutoRestoreBackup<uint8_t> divisor{_settings_game.economy.custom_airport_noise_divisor, 1};
+	AutoRestoreBackup<uint8_t> spread{_settings_game.station.station_spread, 32};
+	AutoRestoreBackup<bool> custom{_settings_game.station.allow_modify_airports, true};
+	AutoRestoreBackup<bool> distant_join{_settings_game.station.distant_join_stations, true};
+	AutoRestoreBackup<bool> enforce{_settings_game.economy.station_noise_level, false};
+	AutoRestoreBackup<bool> no_expiry{_settings_game.station.never_expire_airports, true};
+	AutoRestoreBackup<AirTypeInfo> asphalt{_airtypes[AIRTYPE_ASPHALT], AutoRestoreBackupNoNewValueTag{}};
+	AutoRestoreBackup<AirTypeInfo> gravel{_airtypes[AIRTYPE_GRAVEL], AutoRestoreBackupNoNewValueTag{}};
+	Town *west = nullptr;
+	Town *east = nullptr;
+	SavedRandomSeeds saved_seeds;
+
+	AirportNoiseFixture()
+	{
+		SaveRandomSeeds(&saved_seeds);
+		AllocateMap(64, 64);
+		AirportSpec::ResetAirports();
+		for (uint y = 1; y < 63; y++) {
+			for (uint x = 1; x < 63; x++) MakeClear(TileXY(x, y), ClearGround::Grass, 0);
+		}
+		Company *company = Company::Create();
+		_current_company = company->index;
+		company->money = 1000000;
+		company->clear_limit = 64U << 16; // Raw Company::Create leaves the landscaping allowance at zero.
+		west = Town::Create(TileXY(5, 10));
+		east = Town::Create(TileXY(40, 10));
+		RebuildTownKdtree();
+		_airtypes[AIRTYPE_ASPHALT].base_noise_level = 8;
+		_airtypes[AIRTYPE_GRAVEL].base_noise_level = 3;
+		for (AirType type : {AIRTYPE_ASPHALT, AIRTYPE_GRAVEL}) {
+			_airtypes[type].runway_noise_level = 0;
+			_airtypes[type].build_on_water = false;
+			_airtypes[type].heliport_availability = true;
+		}
+	}
+
+	~AirportNoiseFixture()
+	{
+		_station_pool.CleanPool();
+		_depot_pool.CleanPool();
+		_town_pool.CleanPool();
+		_company_pool.CleanPool();
+		RebuildStationKdtree();
+		RebuildTownKdtree();
+		DeallocateMap();
+		RestoreRandomSeeds(saved_seeds);
+	}
+
+	void CheckNoise(uint expected_west, uint expected_east)
+	{
+		CHECK(west->noise_reached == expected_west);
+		CHECK(east->noise_reached == expected_east);
+		/* Simulate rebuilding airport caches and recomputing town noise on load. */
+		for (Station *st : Station::Iterate()) st->UpdateAirportDataStructure();
+		UpdateAirportsNoise();
+		CHECK(west->noise_reached == expected_west);
+		CHECK(east->noise_reached == expected_east);
+	}
+};
+
+TEST_CASE_METHOD(AirportNoiseFixture, "Airport noise - standalone spec heliport is silent in both build modes")
+{
+	const TileIndex pavement = TileXY(7, 10);
+	REQUIRE(CmdAddRemoveAirportTiles(DoCommandFlag::Execute, pavement, pavement, true, AIRTYPE_ASPHALT, StationID::Invalid(), false).Succeeded());
+	CheckNoise(8, 0);
+	_settings_game.economy.station_noise_level = true;
+	REQUIRE(west->MaxTownNoise() == 0);
+	for (bool modifiable : {false, true}) {
+		_settings_game.station.allow_modify_airports = modifiable;
+		const TileIndex tile = TileXY(10, modifiable ? 14 : 10);
+		AirportSpec *spec = AirportSpec::GetWithoutOverride(AT_HELIPORT);
+		AutoRestoreBackup year(spec->min_year, CalTime::MIN_YEAR);
+		const auto test = CmdBuildAirport({}, tile, AT_HELIPORT, 0, AIRTYPE_ASPHALT, DiagDirection::NE, StationID::Invalid(), true);
+		REQUIRE(test.Succeeded());
+		CHECK(west->noise_reached == 8);
+		const auto execute = CmdBuildAirport(DoCommandFlag::Execute, tile, AT_HELIPORT, 0, AIRTYPE_ASPHALT, DiagDirection::NE, StationID::Invalid(), true);
+		REQUIRE(execute.Succeeded());
+		CHECK(test.GetCost() == execute.GetCost());
+		CHECK(Station::GetByTile(tile)->airport.type == (modifiable ? AT_CUSTOM : AT_HELIPORT));
+		CheckNoise(8, 0);
+	}
+}
+
+TEST_CASE_METHOD(AirportNoiseFixture, "Airport noise - conversion and footprint edits replace exact town contributions")
+{
+	const TileIndex first = TileXY(19, 10);
+	const TileIndex extension = TileXY(39, 10);
+	REQUIRE(CmdAddRemoveAirportTiles(DoCommandFlag::Execute, first, first, true, AIRTYPE_ASPHALT, StationID::Invalid(), false).Succeeded());
+	CheckNoise(7, 0); // 8 minus one distance step.
+
+	_settings_game.economy.station_noise_level = true;
+	const auto change = [&](DoCommandFlags flags, AirType type) { return CmdChangeAirType(flags, first, type); };
+	const auto quieter = change({}, AIRTYPE_GRAVEL);
+	REQUIRE(quieter.Succeeded()); // The town is still over the limit, but the change is quieter.
+	CHECK(west->noise_reached == 7);
+	const auto changed = change(DoCommandFlag::Execute, AIRTYPE_GRAVEL);
+	REQUIRE(changed.Succeeded());
+	CHECK(changed.GetCost() == quieter.GetCost());
+	CheckNoise(2, 0);
+	for (DoCommandFlags flags : {DoCommandFlags{}, DoCommandFlags{DoCommandFlag::Execute}}) {
+		const auto louder = change(flags, AIRTYPE_ASPHALT);
+		REQUIRE(louder.Failed());
+		CHECK(louder.GetErrorMessage() == STR_ERROR_TOWN_AIRPORT_NOISE);
+	}
+	CheckNoise(2, 0);
+
+	const StationID station = GetStationIndex(first);
+	const auto extend = [&](DoCommandFlags flags) {
+		return CmdAddRemoveAirportTiles(flags, extension, extension, true, AIRTYPE_GRAVEL, station, false);
+	};
+	REQUIRE(extend({}).Failed()); // The second town has no noise allowance.
+	CHECK(west->noise_reached == 2);
+	_settings_game.economy.station_noise_level = false;
+	const auto estimate = extend({});
+	REQUIRE(estimate.Succeeded());
+	const auto added = extend(DoCommandFlag::Execute);
+	REQUIRE(added.Succeeded());
+	CHECK(estimate.GetCost() == added.GetCost());
+	REQUIRE(GetStationIndex(extension) == station);
+	CheckNoise(0, 3);
+	REQUIRE(CmdAddRemoveAirportTiles({}, extension, extension, false, AIRTYPE_GRAVEL, StationID::Invalid(), false).Succeeded());
+	CHECK(east->noise_reached == 3);
+	REQUIRE(CmdAddRemoveAirportTiles(DoCommandFlag::Execute, extension, extension, false, AIRTYPE_GRAVEL, StationID::Invalid(), false).Succeeded());
+	REQUIRE(IsAirportTileOfStation(first, station));
+	CheckNoise(2, 0);
+}
+
+TEST_CASE_METHOD(AirportNoiseFixture, "Airport noise - custom blueprint tests final heliport noise and accounts for partial placement")
+{
+	BlueprintPasteData data;
+	data.blueprint.width = data.blueprint.height = 1;
+	BlueprintAirport airport{{0, 0}, AT_CUSTOM, 0, 0, AIRTYPE_ASPHALT, 1, 1, StationID{0}, {}};
+	airport.tiles.push_back({{0, 0}, ATTG_DEFAULT_GFX, uint8_t(ATT_APRON_HELIPORT << 4), 0x80, TRACK_BIT_CROSS});
+	data.blueprint.airports.push_back(airport);
+	_settings_game.economy.station_noise_level = true;
+	const TileIndex heliport = TileXY(10, 10);
+	const auto test = CmdPasteBlueprint({}, heliport, data);
+	REQUIRE(test.Succeeded());
+	CHECK_FALSE(IsAirportTile(heliport));
+	const auto pasted = CmdPasteBlueprint(DoCommandFlag::Execute, heliport, data);
+	REQUIRE(pasted.Succeeded());
+	CHECK(pasted.GetCost() == test.GetCost());
+	REQUIRE(IsHeliportTile(heliport));
+	CheckNoise(0, 0);
+
+	/* A second target outside the map leaves the accepted tile as bare pavement. */
+	_settings_game.economy.station_noise_level = false;
+	data.blueprint.width = 5;
+	data.blueprint.airports.front().w = 5;
+	data.blueprint.airports.front().tiles.push_back({{4, 0}, ATTG_DEFAULT_GFX, uint8_t(ATT_SIMPLE_TRACK << 4), 0x80, 0});
+	const TileIndex partial = TileXY(61, 10);
+	const auto partial_test = CmdPasteBlueprint({}, partial, data);
+	REQUIRE(partial_test.Succeeded());
+	const auto partial_execute = CmdPasteBlueprint(DoCommandFlag::Execute, partial, data);
+	REQUIRE(partial_execute.Succeeded());
+	CHECK(partial_execute.GetCost() == partial_test.GetCost());
+	REQUIRE(IsAirportTile(partial));
+	CHECK(GetAirportTileType(partial) == ATT_SIMPLE_TRACK);
+	CheckNoise(0, 6);
 }
