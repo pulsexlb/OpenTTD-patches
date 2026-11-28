@@ -120,7 +120,8 @@ void GetTrainSpriteSize(EngineID engine, uint &width, uint &height, int &xoffs, 
 bool TrainFitStation(const Train *v);
 StationID GetTrainCouplingStation(const Train *v);
 void TrainMoveToPosition(Train *v, int x, int y);
-bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys);
+bool IsCoupleArrangementValid(Train *moving, Train *waiting, Train *waiting_contact = nullptr);
+bool HandleTrainCouplingContact(Train *moving_contact, Train *waiting_contact);
 bool IsDecoupledPartBehindDeparture(const Train *consist, const Train *part);
 
 /** First rule which rejects a train as a coupling candidate. */

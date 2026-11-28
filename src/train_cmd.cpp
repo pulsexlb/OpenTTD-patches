@@ -8631,41 +8631,28 @@ static void TrialReverseChainOrder(Train *head)
 	ResetChainNonFrontMarkers(new_first);
 }
 
-/**
- * Mirror Couple()'s orientation phase on the trial chains: decide from the
- * same inputs (the moving primary's driving direction and the primaries'
- * directions) which sides a real couple would flip, and flip the trial chain
- * order accordingly, so the arrangement the NewGRF start/stop check evaluates
- * here is the one the actual couple produces.
- */
-static void TrialApplyCoupleOrientation(Train **v_phys, Train **u_phys)
+static bool ShouldFlipMovingForCouple(const Train *contact)
 {
-	Train *v_prim = (*v_phys)->Primary();
-	Train *u_prim = (*u_phys)->Primary();
-
-	/* v's own driving state decides whether it must be turned around. */
-	Direction v_dir = v_prim->direction;
-	if (!v_prim->IsDrivingBackwards()) {
-		TrialReverseChainOrder(*v_phys);
-		*v_phys = (*v_phys)->First();
-		v_dir = v_prim->direction;
-	}
-
-	/* u couples as-is when it faces the (possibly flipped) v within 45 degrees. */
-	DirDiff dir_diff = DirDifference(v_dir, u_prim->direction);
-	if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
-		TrialReverseChainOrder(*u_phys);
-		*u_phys = (*u_phys)->First();
-	}
+	return contact == contact->First() && (contact != contact->Last() || !contact->IsDrivingBackwards());
 }
 
-bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
+static bool ShouldFlipWaitingForCouple(const Train *moving_contact, const Train *waiting_contact, bool flip_moving)
 {
-	/* The pathfinder operates on the Primary, which may be in the middle of
-	 * the physical chain. Back up and arrange complete consists only; otherwise
-	 * RestoreTrainBackup would detach every vehicle preceding the Primary. */
-	v_phys = v_phys->First();
-	u_phys = u_phys->First();
+	if (waiting_contact->First() != waiting_contact->Last()) return waiting_contact == waiting_contact->Last();
+
+	/* Either end of a one-part train is the same vehicle. Match its facing to the joint. */
+	const Direction moving_dir = flip_moving ? ReverseDir(moving_contact->direction) : moving_contact->direction;
+	const DirDiff diff = DirDifference(moving_dir, waiting_contact->direction);
+	return diff != DirDiff::Same && diff != DirDiff::Right45 && diff != DirDiff::Left45;
+}
+
+/** Evaluate the NewGRF callbacks on the arrangement that these contact ends produce. */
+static bool IsCoupleArrangementValidAtContact(Train *moving_contact, Train *waiting_contact)
+{
+	Train *v_phys = moving_contact->First();
+	Train *u_phys = waiting_contact->First();
+	const bool flip_moving = ShouldFlipMovingForCouple(moving_contact);
+	const bool flip_waiting = ShouldFlipWaitingForCouple(moving_contact, waiting_contact, flip_moving);
 
 	TrainList original_src;
 	TrainList original_dst;
@@ -8677,15 +8664,12 @@ bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 	trial_guard.SnapshotChain(original_src);
 	trial_guard.SnapshotChain(original_dst);
 
-	/* A real couple flips one or both consists before merging (see Couple())
-	 * so the trial must evaluate the flipped arrangement, not the current one. */
-	TrialApplyCoupleOrientation(&v_phys, &u_phys);
+	if (flip_moving) TrialReverseChainOrder(v_phys);
+	if (flip_waiting) TrialReverseChainOrder(u_phys);
 
-	Train *u_head = u_phys;
-	Train *v = v_phys;
-	Train *v_last = v_phys->Last();
-
-	ArrangeTrains(&v, v_last, &u_head, u_phys, true, false);
+	Train *u_head = waiting_contact;
+	Train *v = moving_contact->First();
+	ArrangeTrains(&v, moving_contact, &u_head, waiting_contact, true, false);
 
 	/* The NewGRF caches still hold values of the two pre-couple consists;
 	 * invalidate them so the start/stop check sees the merged consist. */
@@ -8706,6 +8690,18 @@ bool IsCoupleArrangementValid(Train *v_phys, Train *u_phys)
 	RestoreChainFromList(original_dst);
 
 	return ok;
+}
+
+/** Before contact, either physical end of the waiting train may be approached. */
+bool IsCoupleArrangementValid(Train *moving, Train *waiting, Train *waiting_contact)
+{
+	Train *moving_contact = moving->Primary()->GetMovingFront();
+	Train *first = waiting->First();
+	Train *last = waiting->Last();
+	if (waiting_contact != nullptr) {
+		return (waiting_contact == first || waiting_contact == last) && IsCoupleArrangementValidAtContact(moving_contact, waiting_contact);
+	}
+	return IsCoupleArrangementValidAtContact(moving_contact, first) || (last != first && IsCoupleArrangementValidAtContact(moving_contact, last));
 }
 
 /**
@@ -8768,8 +8764,10 @@ static bool ChainOnRail(Train *head)
 /**
  * Try to couple the two consists together.
  */
-static bool TryTrainCouple(Train *v, Train *u)
+static bool TryTrainCouple(Train *moving_contact, Train *waiting_contact)
 {
+	Train *v = moving_contact->First();
+	Train *u = waiting_contact;
 	TrainList original_src;
 	TrainList original_dst;
 
@@ -8781,9 +8779,7 @@ static bool TryTrainCouple(Train *v, Train *u)
 	trial_guard.SnapshotChain(original_dst);
 
 	Train *u_head = u;
-	Train *v_last = v->Last();
-
-	ArrangeTrains(&v, v_last, &u_head, u, true, false);
+	ArrangeTrains(&v, moving_contact, &u_head, u, true, false);
 
 	/* The NewGRF caches still hold values of the two pre-couple consists;
 	 * invalidate them so the start/stop check sees the merged consist. */
@@ -8791,7 +8787,8 @@ static bool TryTrainCouple(Train *v, Train *u)
 	RefreshTrainUserDefData(v);
 
 	CommandCost ret = CheckTrainAttachment(v);
-	bool ok = v->CanConsistChange(CCF_ARRANGE_CHECK);
+	bool ok = moving_contact->Next() == waiting_contact;
+	ok &= v->CanConsistChange(CCF_ARRANGE_CHECK);
 	/* Geometric safety net: the arranged chain must stand on actual track. */
 	ok &= ChainOnRail(v);
 
@@ -9083,18 +9080,24 @@ static void AdoptCoupleWaitingSchedule(Train *v, Train *u)
 }
 
 /**
- * Couple the train \a u onto the train \a v.
+ * Handle contact with a claimed coupling partner. Return false for contacts
+ * which must still be considered by the normal collision check.
  */
-static void Couple(Train *v, Train *u)
+bool HandleTrainCouplingContact(Train *moving_contact, Train *waiting_contact)
 {
-	/* v may arrive as the physical moving front (Last() when driving backwards,
-	 * which for an articulated train is a non-primary part). All order handling
-	 * (IncrementImplicitOrderIndex / ProcessOrders) and NormaliseTrainHead must
-	 * run on the primary vehicle, so normalise to the chain heads first. */
-	v = v->Primary();
-	u = u->Primary();
-	if (!IsTrainCouplingAllowed(v->owner, u->owner)) return;
+	Train *v = moving_contact->Primary();
+	Train *u = waiting_contact->Primary();
+	if (v == u || !IsTrainCouplingAllowed(v->owner, u->owner)) return false;
+	if (moving_contact != v->GetMovingFront()) return false;
+	if (waiting_contact != u->First() && waiting_contact != u->Last()) return false;
 
+	const int offset = CoupleJointOffset(moving_contact->gcache.cached_veh_length, waiting_contact->gcache.cached_veh_length, moving_contact->IsDrivingBackwards());
+	const int dx = std::abs(moving_contact->x_pos - waiting_contact->x_pos);
+	const int dy = std::abs(moving_contact->y_pos - waiting_contact->y_pos);
+	if (dx > offset || dy > offset || dx * dx + dy * dy > offset * offset || std::abs(moving_contact->z_pos - waiting_contact->z_pos) > 5) return false;
+
+	const bool flip_moving = ShouldFlipMovingForCouple(moving_contact);
+	const bool flip_waiting = ShouldFlipWaitingForCouple(moving_contact, waiting_contact, flip_moving);
 
 	/* Stop the order/speed carrier before processing successor orders. The
 	 * moving endpoint can be a wagon, especially after a previous coupling.
@@ -9123,34 +9126,12 @@ static void Couple(Train *v, Train *u)
 	const bool moving_has_service_number = !v->service_number_suppressed && !v->GetActiveServiceNumber().empty();
 	bool adopt_waiting_schedule = v->current_order.IsType(OT_GOTO_COUPLE) && v->current_order.GetCoupleUseWaitingSchedule();
 
-	/*
-	 * Orientation phase: v will stay the front of the merged consist
-	 * (ClearFrontWagon/ClearFrontEngine + NormaliseTrainHead below), so both
-	 * trains must face the same way BEFORE the merge. All reversals here are
-	 * full physical flips (direction + position + tile, via
-	 * ReverseTrainForCouple); no direction adjustments happen after this
-	 * point.
-	 */
-
-	/* Which end of v reaches the joint: v is the moving train and u is
-	 * stationary, so v's own driving state decides it. If v is driving
-	 * backwards its tail meets u (no flip needed); otherwise its head meets
-	 * u, so v must be turned around and approach tail-first. */
-	if (!v->IsDrivingBackwards()) {
-		/* Its tail meets the waiting consist after the flip. */
-		ReverseTrainForCouple(v, true);
-		v = v->Primary();
-	}
-
-	/* u must face the (possibly reversed) v within 45 degrees to couple as-is. */
-	DirDiff dir_diff = DirDifference(v->direction, u->direction);
-	if (dir_diff != DirDiff::Same && dir_diff != DirDiff::Right45 && dir_diff != DirDiff::Left45) {
-		/* The waiting consist's head is the end that meets the partner. */
-		ReverseTrainForCouple(u, false);
-		u = u->Primary();
-	} else {
-		u = u->Primary();
-	}
+	/* Preserve the contact positions: each flip anchors the end that will form the joint. */
+	if (flip_moving) ReverseTrainForCouple(v, true);
+	if (flip_waiting) ReverseTrainForCouple(u, false);
+	v = moving_contact->Primary();
+	u = waiting_contact->Primary();
+	if (moving_contact != v->Last() || waiting_contact != u->First()) return false;
 
 
 	/* The couple happened at the station of the GOTO_COUPLE order; record it
@@ -9192,14 +9173,6 @@ static void Couple(Train *v, Train *u)
 		ProcessOrders(v);
 	}
 
-	/* TryTrainCouple performs chain surgery (MakeTrainBackup/ArrangeTrains) and
-	 * needs the physical chain head; the primary vehicle is only the identity
-	 * for user-facing messages below. */
-	Train *v_phys = v->First();
-	Train *u_phys = u->First();
-
-	Train *v_last = v_phys->Last();
-
 	/* Preserve each part's last-loading-station attribution across the merge:
 	 * after coupling, VehicleIncreaseStats can keep attributing every wagon's
 	 * links to the station it actually loaded at, even though the two parts
@@ -9207,7 +9180,7 @@ static void Couple(Train *v, Train *u)
 	PropagateLastLoadingStation(v);
 	PropagateLastLoadingStation(u);
 
-	if (!TryTrainCouple(v_phys, u_phys)) {
+	if (!TryTrainCouple(moving_contact, waiting_contact)) {
 		if (v->owner == _local_company) {
 			AddVehicleAdviceNewsItem(AdviceType::Order, GetEncodedString(STR_NEWS_ORDER_COUPLE_FAILED, v->index, u->index), v->index);
 		}
@@ -9217,7 +9190,7 @@ static void Couple(Train *v, Train *u)
 			v->vehicle_flags.Reset(VehicleFlag::HaveSlot);
 			u->vehicle_flags.Set(VehicleFlag::HaveSlot);
 		}
-		return;
+		return true;
 	}
 
 	/* Chain merge succeeded. Release only the acquired waiting membership;
@@ -9309,7 +9282,7 @@ static void Couple(Train *v, Train *u)
 	 * drop the stale entry: it can never leave the queue by itself anymore
 	 * and its load_unload_ticks would eventually hit zero and assert. */
 	u->RemoveFromLoadingQueues();
-	AdvanceWagonsAfterCouple(v_last);
+	AdvanceWagonsAfterCouple(moving_contact);
 
 	/* Stale look-ahead/reservations from before the flip: rebuild them for
 	 * the combined train's new position and direction, otherwise it drives
@@ -9342,7 +9315,7 @@ static void Couple(Train *v, Train *u)
 	if (IsHoldingForCouple(consist)) {
 		FreeTrainTrackReservation(consist);
 		HoldWaitingTrainBody(consist);
-		return;
+		return true;
 	}
 	if (CheckReverseTrain(consist)) {
 		consist->flags.Set(VehicleRailFlag::Reversing);
@@ -9351,6 +9324,7 @@ static void Couple(Train *v, Train *u)
 		 * consist's reservation now, exactly like a completed turnaround does. */
 		RecheckSignalsAndTryReserve(consist);
 	}
+	return true;
 }
 
 /**
@@ -9912,6 +9886,11 @@ static TrainMovedChangeSignalEnum TrainMovedChangeSignal(Train *consist, TileInd
 	return CHANGED_NOTHING;
 }
 
+static TrackBits GetRailReservationTracks(TileIndex tile)
+{
+	return TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0));
+}
+
 /** Tries to reserve track under whole train consist. */
 void Train::ReserveTrackUnderConsist() const
 {
@@ -9926,7 +9905,7 @@ void Train::ReserveTrackUnderConsist() const
 			} else {
 				TryReserveRailTrack(u->tile, DiagDirToDiagTrack(GetTunnelBridgeDirection(u->tile)));
 			}
-		} else if (u->track != TRACK_BIT_DEPOT) {
+		} else if (u->track != TRACK_BIT_DEPOT && (GetRailReservationTracks(u->tile) & u->track) != TRACK_BIT_NONE) {
 			TryReserveRailTrack(u->tile, TrackBitsToTrack(u->track));
 		}
 	}
@@ -9949,7 +9928,11 @@ uint Train::Crash(bool flooded)
 		 * Keep unsignalled crossing reservations while the wreck occupies them. */
 		if (!consist->flags.Test(VehicleRailFlag::Stuck)) FreeTrainTrackReservation(consist);
 		for (const Train *v = this->First(); v != nullptr; v = v->Next()) {
-			ClearPathReservation(v, v->tile, v->GetVehicleTrackdir());
+			const Trackdir td = v->GetVehicleTrackdir();
+			const TrackBits available = GetRailReservationTracks(v->tile);
+			/* A stale vehicle track does not give us a claim to another track's reservation. */
+			if (!IsValidTrackdir(td) || (available & TrackToTrackBits(TrackdirToTrack(td))) == TRACK_BIT_NONE) continue;
+			ClearPathReservation(v, v->tile, td);
 		}
 
 		/* we may need to update crossing we were approaching,
@@ -10075,23 +10058,7 @@ static uint CheckTrainCollision(Train *v, Train *moving_front)
 			&& !carrier->vehstatus.Test(VehState::Crashed)
 			&& GetValidCoupleClaimant(carrier) == moving_front->Primary();
 
-	if (waiting_for_us) {
-		/* The claim is still valid, which means the couple order's conditions
-		 * (路签/cargo/load/...) hold right now, so couple unconditionally.
-		 *
-		 * A partner that stopped qualifying mid-approach (lost its 路签 to
-		 * another consist, filled up, ...) has its claim dropped by
-		 * #GetValidCoupleClaimant above, so it is no longer ours here and falls
-		 * through to the normal crash check below - just like any other train
-		 * that happens to be in the way. */
-		Couple(moving_front, carrier);
-		/* Coupling may change the physical front; motion belongs to the primary. */
-		Train *consist = moving_front->Primary();
-		consist->cur_speed = 0;
-		consist->subspeed = 0;
-		consist->progress = 0;
-		return 0;
-	}
+	if (waiting_for_us && HandleTrainCouplingContact(moving_front, v)) return 0;
 
 	/* Exactly touching but not a valid couple: bumpers meet, nothing overlaps,
 	 * so this is still not a crash (same semantics as the vanilla check). */
@@ -11269,7 +11236,7 @@ static TrackBits GetTrackbitsFromCrashedVehicle(const Train *t)
 	} else if (train_tbits == TRACK_BIT_DEPOT) {
 		return TRACK_BIT_NONE;
 	} else {
-		return train_tbits;
+		return train_tbits & GetRailReservationTracks(t->tile);
 	}
 }
 
@@ -11374,7 +11341,7 @@ static void DeleteLastWagon(Train *v)
 	delete v;
 	v = nullptr; // make sure nobody will try to read 'v' anymore
 
-	Track track = TrackBitsToTrack(trackbits);
+	const Track track = trackbits == TRACK_BIT_NONE ? INVALID_TRACK : TrackBitsToTrack(trackbits);
 	if (across_unsignalled) {
 		/* Never unreserve just this end: another part can still be in the
 		 * crossing, indexed at either portal. */
@@ -11414,7 +11381,7 @@ static void DeleteLastWagon(Train *v)
 	}
 	if ((orig_trackbits & TRACK_BIT_WORMHOLE) || IsRailDepotTile(tile)) {
 		UpdateSignalsOnSegment(tile, DiagDirection::Invalid, owner);
-	} else {
+	} else if (IsValidTrack(track)) {
 		SetSignalsOnBothDir(tile, track, owner);
 	}
 }

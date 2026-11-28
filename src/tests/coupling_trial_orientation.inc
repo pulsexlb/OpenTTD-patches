@@ -65,14 +65,13 @@ TEST_CASE_METHOD(TrainDecoupleFixture,"Couple - trial callback observes the real
   mixed_sprite_directions,false,mixed_sprite_directions,false,mixed_sprite_directions
  };
  for(size_t i=0;i<all.size();i++)all[i]->flags.Set(VehicleRailFlag::Flipped,original_flipped[i]);
- // Real coupling now reverses the physical chain, while unit_main keeps
- // articulated membership. Both sides reverse for these approaching directions.
+ // The moving front meets the waiting tail; both chains reverse in the trial.
  const std::vector<uint32_t> expected{b->index.base(),a->index.base(),base->index.base(),wagon->index.base(),waiting->index.base()};
  const std::vector<bool> expected_flipped{
   !original_flipped[2],!original_flipped[1],!original_flipped[0],!original_flipped[4],!original_flipped[3]
  };
  for(uint repeat=0;repeat<2;repeat++){
-  REQUIRE(IsCoupleArrangementValid(base,waiting));
+  REQUIRE(IsCoupleArrangementValid(base,waiting,wagon));
   REQUIRE(observer.starts>repeat);
   CHECK(observer.seen==expected);
   CHECK(observer.seen_flipped==expected_flipped);

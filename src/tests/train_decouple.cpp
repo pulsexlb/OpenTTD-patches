@@ -6907,6 +6907,69 @@ protected:
 	}
 };
 
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Couple - the physical contact determines the joined ends")
+{
+	AutoRestoreBackup braking(_settings_game.vehicle.train_braking_model, uint8_t{TBM_ORIGINAL});
+	auto add_wagon = [&]() {
+		Train *wagon = MakeTrain();
+		wagon->ClearEngine();
+		wagon->SetWagon();
+		wagon->owner = _current_company;
+		wagon->track = TRACK_BIT_X;
+		return wagon;
+	};
+	const bool waiting_tail_first = GENERATE(false, true);
+	Train *moving_end = add_wagon();
+	moving->SetNext(moving_end);
+	Train *waiting_end = add_wagon();
+	Train *waiting_far = add_wagon();
+	Train *waiting_head = waiting_tail_first ? waiting_far : waiting_end;
+	Train *waiting_tail = waiting_tail_first ? waiting_end : waiting_far;
+	waiting_head->SetNext(waiting);
+	waiting->SetNext(waiting_tail);
+	for (Train *part = waiting_head; part != nullptr; part = part->Next()) part->SetPrimary(waiting);
+	for (Train *part = moving; part != nullptr; part = part->Next()) part->vehicle_flags.Set(VehicleFlag::DrivingBackwards);
+
+	auto place = [&](Train *part, int x, Direction direction) {
+		Place(part, x / TILE_SIZE);
+		part->x_pos = x;
+		part->direction = direction;
+	};
+	place(moving, 168, Direction::SW);
+	place(moving_end, 176, Direction::NE);
+	place(waiting_end, 184, waiting_tail_first ? Direction::SW : Direction::NE);
+	place(waiting, 192, Direction::NE);
+	place(waiting_far, 200, waiting_end->direction);
+	REQUIRE(moving_end->Primary() == moving);
+	REQUIRE(moving->GetMovingFront() == moving_end);
+	REQUIRE(waiting_end->Primary() == waiting);
+
+	SECTION("the nearby end is coupled even when the primaries face differently") {
+		GroupStatistics::CountVehicle(moving, 1);
+		GroupStatistics::CountVehicle(waiting, 1);
+		REQUIRE(HandleTrainCouplingContact(moving_end, waiting_end));
+		CHECK(moving_end->Next() == waiting_end);
+		CHECK(waiting_end->Previous() == moving_end);
+		CHECK(waiting_end->direction == Direction::NE);
+		CHECK(waiting_end->x_pos == 184);
+		CHECK(waiting_end->x_pos - moving_end->x_pos == VEHICLE_LENGTH);
+		CHECK(waiting_far->Primary() == moving);
+		CHECK(moving->Last() == waiting_far);
+	}
+	SECTION("far or middle contact does not move the trains or complete the order") {
+		CHECK_FALSE(HandleTrainCouplingContact(moving_end, waiting_far));
+		place(waiting, 184, Direction::NE);
+		CHECK_FALSE(HandleTrainCouplingContact(moving_end, waiting));
+		CHECK(moving_end->Next() == nullptr);
+		CHECK(waiting_head->Next() == waiting);
+		CHECK(waiting->Next() == waiting_tail);
+		CHECK(moving_end->x_pos == 176);
+		CHECK(waiting_end->x_pos == 184);
+		CHECK(waiting_far->x_pos == 200);
+		CHECK(moving->current_order.IsType(OT_GOTO_COUPLE));
+	}
+}
+
 TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Decouple - coupling holds keep the platform but do not reserve an exit")
 {
 	/* A real split allocates another train identity; the test does not load game settings. */
@@ -7223,6 +7286,60 @@ TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail bridge release uses real oc
 	CHECK_FALSE(HasReservedTracks(entrance, TRACK_BIT_X));
 	CHECK_FALSE(HasReservedTracks(exit, TRACK_BIT_X));
 	CHECK(HasStationReservation(station->xy));
+}
+
+TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail wrecks ignore a vehicle track missing from the map")
+{
+	const TileIndex junction = TileXY(11, 10);
+	MakeRailNormal(junction, _current_company, TRACK_BIT_X | TRACK_BIT_LOWER | TRACK_BIT_RIGHT, RAILTYPE_RAIL);
+	Train *stale = MakeTrain();
+	stale->owner = moving->owner;
+	stale->track = TRACK_BIT_Y;
+	stale->direction = Direction::SE;
+	moving->SetNext(stale);
+	Place(stale, 11);
+
+	TrackBits retained = TRACK_BIT_LOWER;
+	bool valid_tail = false;
+	SECTION("an unrelated reservation is left alone") {
+		REQUIRE(TryReserveRailTrack(junction, TRACK_LOWER));
+	}
+	SECTION("removing a valid wagon does not re-reserve a stale neighbour's track") {
+		Train *tail = MakeTrain();
+		tail->owner = moving->owner;
+		tail->track = TRACK_BIT_X;
+		tail->direction = Direction::SW;
+		stale->SetNext(tail);
+		Place(tail, 11);
+		REQUIRE(TryReserveRailTrack(junction, TRACK_X));
+		retained = TRACK_BIT_NONE;
+		valid_tail = true;
+	}
+
+	CHECK(moving->Crash() >= 2);
+	REQUIRE(stale->vehstatus.Test(VehState::Crashed));
+	CHECK(GetReservedTrackbits(junction) == retained);
+	CHECK_FALSE(HasReservedTracks(moving->tile, TRACK_BIT_X));
+
+	moving->ReserveTrackUnderConsist();
+	CHECK(GetReservedTrackbits(junction) == (valid_tail ? TRACK_BIT_X : retained));
+	CHECK(HasReservedTracks(moving->tile, TRACK_BIT_X));
+
+	moving->crash_anim_pos = 4439;
+	moving->tick_counter = 0;
+	if (valid_tail) {
+		REQUIRE(moving->Tick());
+		CHECK(stale->Next() == nullptr);
+		CHECK(GetReservedTrackbits(junction) == retained);
+	}
+	REQUIRE(moving->Tick());
+	CHECK(moving->Next() == nullptr);
+	CHECK(GetReservedTrackbits(junction) == retained);
+
+	const TileIndex front_tile = moving->tile;
+	CHECK_FALSE(moving->Tick());
+	CHECK_FALSE(HasReservedTracks(front_tile, TRACK_BIT_X));
+	CHECK(GetReservedTrackbits(junction) == retained);
 }
 
 TEST_CASE_METHOD(CoupleBlockingPartnerFixture, "Rail wrecks release unsignalled tunnel and bridge ends together")
