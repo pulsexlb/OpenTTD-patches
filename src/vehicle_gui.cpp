@@ -2469,7 +2469,9 @@ void BaseVehicleListWindow::DrawVehicleListItems(VehicleID selected_vehicle, int
 				if (show_orderlist) DrawSmallOrderList(v, olr.left, olr.right, ir.top + GetCharacterHeight(FontSize::Small), this->order_arrow_width, v->cur_real_order_index);
 
 				TextColour tc;
-				if (v->IsChainInDepot()) {
+				/* Vehicles on an external route are parked on the external connection depot
+				 * tile, so IsChainInDepot() would report them as depot-dwelling. */
+				if (v->IsChainInDepot() && v->GetExternalTripPhase() == ExternalTripPhase::None) {
 					tc = TextColour::Blue;
 				} else {
 					tc = (v->age > v->max_age - DAYS_IN_LEAP_YEAR) ? TextColour::Red : TextColour::Black;
@@ -4673,6 +4675,7 @@ public:
 		if (v->IsInExternalTrip() || v->Primary()->external_return_pending) {
 			const auto remaining = v->IsInExternalTrip() ? std::max<int64_t>(0, (v->Primary()->external_return_tick - _state_ticks).base()) : 0;
 			const int64_t seconds = CeilDiv(remaining * 60, int64_t(std::max<uint>(1, _settings_game.game_time.ticks_per_minute)));
+			text_colour = TextColour::LightBlue;
 			return GetString(STR_EXTERNAL_STATUS_TIME, GetExternalTripStatus(v), seconds / 60, seconds % 60);
 		}
 
@@ -4795,9 +4798,11 @@ public:
 						 * evaluating the string in the status bar. */
 						/* empty */
 					} else if (v->current_order.IsExternalTripOrder()) {
+						/* Off-map journeys are normal running, not depot-bound. */
+						text_colour = TextColour::LightBlue;
 						const Depot *portal = Depot::GetIfValid(v->current_order.GetDestination().ToDepotID());
 						const ExternalCity *city = portal == nullptr ? nullptr : ExternalCity::GetIfValid(GetExternalCityForEntrance(portal->xy));
-						if (city != nullptr) append(v->vehicle_flags.Test(VehicleFlag::PathfinderLost) ? STR_EXTERNAL_CANNOT_REACH_CITY : STR_EXTERNAL_GO_TO_CITY, city->name);
+						if (city != nullptr) append(v->vehicle_flags.Test(VehicleFlag::PathfinderLost) ? STR_EXTERNAL_CANNOT_REACH_CITY : STR_EXTERNAL_GO_TO_CITY_VEL, city->name, PackVelocity(v->GetDisplaySpeed(), v->type));
 						else append(STR_EXTERNAL_GO_TO_UNASSIGNED);
 					} else if (v->current_order.GetDepotActionType() & ODATFB_SELL) {
 						append_args(STR_VEHICLE_STATUS_HEADING_FOR_DEPOT_SELL_VEL, params);

@@ -2862,6 +2862,7 @@ STR_EXTERNAL_BOUNDARY_OVERVIEW_HELP :{BLACK}Colours match the map edges. Click a
 STR_EXTERNAL_BOUNDARY_SHOW :Show city names and boundaries
 STR_EXTERNAL_BOUNDARY_LOCATE :Locate selected segment
 STR_EXTERNAL_GO_TO_CITY :Go to external city: {RAW_STRING}
+STR_EXTERNAL_GO_TO_CITY_VEL :Go to external city: {RAW_STRING} | {VELOCITY}
 STR_EXTERNAL_GO_TO_UNASSIGNED :Go outside the map (no city assigned)
 STR_EXTERNAL_CANNOT_REACH_CITY :Cannot reach external city: {RAW_STRING}
 
