@@ -94,25 +94,6 @@ static StationSpec::TileFlags GetStationTileFlags(StationGfx gfx, const StationS
 bool _town_noise_no_update = false;
 
 /**
- * Check whether the given tile is a hangar.
- * @param t the tile to of whether it is a hangar.
- * @pre IsTileType(t, TileType::Station)
- * @return true if and only if the tile is a hangar.
- */
-bool IsHangar(TileIndex t)
-{
-	assert_tile(IsTileType(t, TileType::Station), t);
-
-	/* If the tile isn't an airport there's no chance it's a hangar. */
-	if (!IsAirport(t)) return false;
-
-	const Station *st = Station::GetByTile(t);
-	const AirportSpec *as = st->airport.GetSpec();
-
-	return st->airport.hangar != nullptr && st->airport.hangar->xy == TileIndex(t);
-}
-
-/**
  * Look for a station owned by the given company around the given tile area.
  * @param ta the area to search over
  * @param closest_station the closest owned station found so far
@@ -3941,7 +3922,7 @@ static void GetTileDesc_Station(TileIndex tile, TileDesc &td)
 					break;
 				}
 			}
-			str = (IsHangar(tile) ? STR_LAI_STATION_DESCRIPTION_AIRCRAFT_HANGAR : STR_LAI_STATION_DESCRIPTION_AIRPORT);
+			str = IsHangarTile(tile) ? STR_LAI_STATION_DESCRIPTION_AIRCRAFT_HANGAR : STR_LAI_STATION_DESCRIPTION_AIRPORT;
 			break;
 		}
 		case StationType::Truck:    str = STR_LAI_STATION_DESCRIPTION_TRUCK_LOADING_AREA; break;
@@ -4132,8 +4113,7 @@ static bool ClickTile_Station(TileIndex tile)
 	if (bst->facilities.Test(StationFacility::Waypoint)) {
 		ShowWaypointWindow(Waypoint::From(bst));
 	} else if (IsHangarTile(tile)) {
-		const Station *st = Station::From(bst);
-		ShowDepotWindow(st->airport.hangar != nullptr ? st->airport.hangar->xy : tile, VehicleType::Aircraft);
+		ShowDepotWindow(tile, VehicleType::Aircraft);
 	} else {
 		ShowStationViewWindow(bst->index);
 	}

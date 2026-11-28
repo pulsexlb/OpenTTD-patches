@@ -849,6 +849,16 @@ static void SetGfxByAirtypeTile(TileIndex tile, AirportTiles at)
 	ResetAirportTileAnimation(tile, true);
 }
 
+/** Close windows and clear order backups before changing a hangar tile. */
+static void CloseRemovedHangarWindows(TileIndex tile)
+{
+	if (!IsHangarTile(tile)) return;
+
+	OrderBackup::Reset(tile, false);
+	CloseWindowById(WindowClass::VehicleDepot, tile.base());
+	CloseWindowById(WindowClass::BuildVehicle, tile.base());
+}
+
 /**
  * Redefine use of airport tiles.
  * @param flags operation to perform
@@ -1041,6 +1051,7 @@ static CommandCost ChangeAirportTiles(DoCommandFlags flags, TileIndex start_tile
 				SetTileAirportGfx(tile_iter, infra_type);
 				InstallAirportTileGraphics(st, tile_iter, graphics);
 			} else {
+				CloseRemovedHangarWindows(tile_iter);
 				tile_iter.m8() = 0;
 				SetAirportTileType(tile_iter, ATT_SIMPLE_TRACK);
 				SetGfxByAirtypeTile(tile_iter, ATTG_DEFAULT_GFX);
@@ -1165,7 +1176,6 @@ CommandCost CmdChangeAirType(DoCommandFlags flags, TileIndex tile, AirType air_t
 		st->airport.air_type = air_type;
 		st->UpdateAirportDataStructure();
 		st->AfterStationTileSetChange(true, StationType::Airport);
-		if (st->airport.HasHangar()) InvalidateWindowData(WindowClass::BuildVehicle, st->airport.hangar->index);
 
 		UpdateNoiseForTowns(before, after);
 		UpdateAircraftOnUpdatedAirport(st);
@@ -1380,6 +1390,7 @@ CommandCost CmdAirportToggleGround(DoCommandFlags flags, TileIndex start_tile, T
  */
 static void ClearAirportTileToWater(TileIndex tile, Station *st)
 {
+	CloseRemovedHangarWindows(tile);
 	st->airport.tile_graphics.erase(tile);
 	DeleteAnimatedTile(tile);
 	WaterClass wc = HasTileWaterClass(tile) ? GetWaterClass(tile) : WaterClass::Invalid;
@@ -1868,14 +1879,8 @@ CommandCost RemoveAirport(TileIndex tile, DoCommandFlags flags)
 	CommandCost cost(ExpensesType::Construction);
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		if (st->airport.HasHangar()) {
-			CloseWindowById(WindowClass::VehicleDepot, st->airport.hangar->index);
-			OrderBackup::Reset(st->airport.hangar->xy, false);
-		}
-
 		UpdateNoiseForTowns(GetAirportNoiseContribution(st), {});
 	}
-
 
 	uint tiles = 0;
 	for (TileIndex tile_cur : st->airport) {

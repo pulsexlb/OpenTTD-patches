@@ -6,11 +6,15 @@
 #include "../stdafx.h"
 #include "../3rdparty/catch2/catch.hpp"
 #include "../aircraft.h"
+#include "../aircraft_cmd.h"
 #include "../air_map.h"
 #include "../airport.h"
+#include "../company_base.h"
+#include "../company_func.h"
 #include "../core/backup_type.hpp"
 #include "../date_func.h"
 #include "../depot_base.h"
+#include "../depot_map.h"
 #include "../engine_base.h"
 #include "../network/network.h"
 #include "../pbs_air.h"
@@ -18,6 +22,8 @@
 #include "../sl/extended_ver_sl.h"
 #include "../station_base.h"
 #include "../scope.h"
+#include "../vehicle_func.h"
+#include "../vehiclelist.h"
 
 #include "../safeguards.h"
 
@@ -683,6 +689,100 @@ TEST_CASE("External aircraft resumes its schedule after return hangar service")
 	CHECK_FALSE(v->vehstatus.Test(VehState::Hidden));
 	CHECK(v->state == AS_RUNNING);
 	CHECK(v->GetNextTile() == apron);
+}
+
+TEST_CASE("Aircraft hangars - construction and occupancy use the physical hangar")
+{
+	extern bool HandleAircraftState(Aircraft *v);
+	extern bool TryReservePath(Aircraft *v);
+	extern CargoType _cargo_id_passengers;
+	REQUIRE(Engine::GetNumItems() == 0);
+	REQUIRE(Company::GetNumItems() == 0);
+	AutoRestoreBackup headless(_network_dedicated, true);
+	AutoRestoreBackup current_company(_current_company, OWNER_BEGIN);
+	AutoRestoreBackup passenger_cargo(_cargo_id_passengers, CargoType{0});
+	SavedRandomSeeds saved_seeds;
+	SaveRandomSeeds(&saved_seeds);
+	AllocateMap(64, 64);
+	ResetVehicleHash();
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([&] {
+		ClearAircraftReservationIndexes();
+		_vehicle_pool.CleanPool();
+		ResetVehicleHash();
+		_engine_pool.CleanPool();
+		_station_pool.CleanPool();
+		_depot_pool.CleanPool();
+		_company_pool.CleanPool();
+		DeallocateMap();
+		RestoreRandomSeeds(saved_seeds);
+	});
+	REQUIRE(Company::Create()->index == _current_company);
+	Station *st = MakeReservationAirport(TRACK_BIT_X);
+	st->owner = _current_company;
+	st->airport.type = AT_CUSTOM;
+	st->rect.BeforeAddRect(st->airport.tile, st->airport.w, st->airport.h, StationRect::ADD_FORCE);
+	const TileIndex first = TileXY(10, 10);
+	const TileIndex second = TileXY(10, 12);
+	const TileIndex apron = TileXY(13, 10);
+	for (TileIndex hangar : {first, second}) {
+		SetAirportTileType(hangar, ATT_HANGAR_STANDARD);
+		SetHangarDirection(hangar, DiagDirection::SW);
+	}
+	SetAirportTileType(apron, ATT_APRON_NORMAL);
+	st->UpdateAirportDataStructure();
+	REQUIRE(st->airport.HasHangar());
+	REQUIRE(st->airport.hangar->xy == second);
+	SetBit(st->airport.flags, AFB_LANDING_RUNWAY);
+	CHECK(GetDepotDestinationIndex(first) == st->index);
+	CHECK(GetDepotDestinationIndex(second) == st->index);
+
+	Engine *engine = Engine::Create(VehicleType::Aircraft, 0);
+	engine->info.cargo_type = CargoType{0};
+	engine->VehInfo<AircraftVehicleInfo>().subtype = AIR_CTOL;
+	Vehicle *a = nullptr;
+	Vehicle *b = nullptr;
+	REQUIRE(CmdBuildAircraft(first, DoCommandFlag::Execute, engine, &a).Succeeded());
+	REQUIRE(a->tile == first);
+	REQUIRE(CmdBuildAircraft(second, DoCommandFlag::Execute, engine, &b).Succeeded());
+	REQUIRE(b->tile == second);
+
+	VehicleList list;
+	const auto check_hangar = [&](TileIndex tile, const Vehicle *occupant) {
+		BuildDepotVehicleList(VehicleType::Aircraft, tile, &list, nullptr);
+		if (occupant == nullptr) {
+			CHECK(list.empty());
+		} else {
+			REQUIRE(list.size() == 1);
+			CHECK(list.front() == occupant);
+		}
+	};
+	check_hangar(first, a);
+	check_hangar(second, b);
+
+	Aircraft *v = Aircraft::From(a);
+	v->sprite_seq.Clear(); // No sprites are loaded by the unit test runner.
+	v->vehstatus.Reset({VehState::Stopped, VehState::Hidden});
+	v->state = AS_RUNNING;
+	v->trackdir = TRACKDIR_X_NE; // Approach the door of the non-representative hangar.
+	v->dest_tile = second;
+	v->current_order.MakeGoToDepot(st->index, {});
+	v->current_order.SetDepotExtraFlags(OrderDepotExtraFlag::Specific);
+	v->UpdateNextTile(first);
+	check_hangar(first, nullptr);
+	REQUIRE(HandleAircraftState(v));
+	REQUIRE(v->vehstatus.Test(VehState::Hidden));
+	CHECK(v->current_order.IsType(OT_DUMMY));
+	check_hangar(first, v);
+	check_hangar(second, b);
+
+	v->vehstatus.Reset(VehState::Stopped);
+	v->current_order.MakeGoToStation(st->index);
+	REQUIRE(TryReservePath(v));
+	CHECK(v->GetNextTile() == apron);
+	CHECK_FALSE(v->vehstatus.Test(VehState::Hidden));
+	check_hangar(first, nullptr);
+	check_hangar(second, b);
 }
 
 TEST_CASE("Aircraft runway-end reachability is static and requires a connected exit")

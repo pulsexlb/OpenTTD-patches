@@ -493,24 +493,6 @@ static StationID FindClosestHangar(const Aircraft *v)
 }
 
 /**
- * Return a tile for placing a newly bought aircraft.
- * @param depot a depot.
- * @return a hangar tile where the new aircraft can be placed, or INVALID_TILE if no hangar available.
- */
-TileIndex GetHangarTileForNewAircraft(const Depot *depot)
-{
-	assert(depot->xy != INVALID_TILE);
-	assert(IsAirportTile(depot->xy) && IsHangar(depot->xy));
-
-	/* Only standard hangars can be entered by new aircraft. */
-	if (IsStandardHangar(depot->xy) && !HasAirportTileAnyReservation(depot->xy)) return depot->xy;
-	/* Extended hangars (if any) are not supported in this patch pack; treat all hangars as standard. */
-	return depot->xy;
-
-	return INVALID_TILE;
-}
-
-/**
  * Build an aircraft.
  * @param flags    type of operation.
  * @param tile     tile of the depot where aircraft is built.
@@ -527,12 +509,6 @@ CommandCost CmdBuildAircraft(TileIndex tile, DoCommandFlags flags, const Engine 
 	if (!CanVehicleUseStation(e->index, st)) return CMD_ERROR;
 
 	if (!st->airport.HasHangar()) return CMD_ERROR;
-
-	/* Make sure all aircraft ends up in an appropriate hangar. */
-	if (!flags.Test(DoCommandFlag::AutoReplace)) {
-		tile = GetHangarTileForNewAircraft(st->airport.hangar);
-		if (tile == INVALID_TILE) return CommandCost(STR_ERROR_CAN_T_BUY_AIRCRAFT);
-	}
 
 	bool extended_hangar = IsExtendedHangar(tile);
 

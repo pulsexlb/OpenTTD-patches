@@ -349,7 +349,10 @@ struct DepotWindow : Window {
 	void Close([[maybe_unused]] int data = 0) override
 	{
 		CloseWindowById(WindowClass::BuildVehicle, this->window_number);
-		CloseWindowById(GetWindowClassForVehicleType(this->type), VehicleListIdentifier(VehicleListType::Depot, this->type, this->owner, this->GetDestinationIndex()).ToWindowNumber(), false);
+		/* Aircraft depot orders belong to the airport, not to this hangar. */
+		if (this->type != VehicleType::Aircraft) {
+			CloseWindowById(GetWindowClassForVehicleType(this->type), VehicleListIdentifier(VehicleListType::Depot, this->type, this->owner, this->GetDestinationIndex()).ToWindowNumber(), false);
+		}
 		OrderBackup::Reset(TileIndex(this->window_number));
 		this->Window::Close();
 	}

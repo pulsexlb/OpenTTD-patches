@@ -703,10 +703,9 @@ void Station::UpdateAirportDataStructure()
 			OrderBackup::Reset(this->airport.hangar->xy, false);
 			RemoveOrderFromAllVehicles(OT_GOTO_DEPOT, DestinationID(this->index), true);
 			TraceRestrictRemoveDestinationID(TROCAF_DEPOT, this->airport.hangar->index);
-			CloseWindowById(WindowClass::VehicleDepot, this->airport.hangar->xy.base());
 			if (this->owner < CompanyID::End() || this->owner == OWNER_NONE) {
 				CloseWindowById(GetWindowClassForVehicleType(VehicleType::Aircraft),
-						VehicleListIdentifier(VehicleListType::Depot, VehicleType::Aircraft, this->owner, this->airport.hangar->index).ToWindowNumber());
+						VehicleListIdentifier(VehicleListType::Depot, VehicleType::Aircraft, this->owner, this->index).ToWindowNumber());
 			}
 			delete this->airport.hangar;
 			this->airport.hangar = nullptr;
@@ -739,6 +738,7 @@ void Station::UpdateAirportDataStructure()
 			case ATT_HANGAR_EXTENDED:
 				assert(this->airport.HasHangar());
 				this->airport.hangar->xy = t;
+				InvalidateWindowData(WindowClass::BuildVehicle, t.base());
 				break;
 
 			case ATT_APRON_NORMAL:
@@ -762,8 +762,6 @@ void Station::UpdateAirportDataStructure()
 			default: break;
 		}
 	}
-
-	if (this->airport.hangar != nullptr) InvalidateWindowData(WindowClass::BuildVehicle, this->airport.hangar->index);
 
 	if (this->airport.HasLandingRunway() != allow_landing) {
 		ToggleBit(this->airport.flags, AFB_LANDING_RUNWAY);
