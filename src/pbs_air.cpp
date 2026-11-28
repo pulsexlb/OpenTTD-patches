@@ -177,9 +177,41 @@ bool IsAircraftTerminalAvailable(const Aircraft *v, TileIndex tile)
 	return IsTaxiTile(tile);
 }
 
+static const Aircraft *FindForeignAircraftOnApron(const Aircraft *v, TileIndex tile, bool parked_only = false)
+{
+	for (const Aircraft *other : VehiclesOnTile<VehicleType::Aircraft>(tile)) {
+		if (other == v || !other->IsNormalAircraft() || other->tile != tile || other->IsAircraftFlying() ||
+				other->vehstatus.Test(VehState::Hidden) || other->ignore_airport_reservations) continue;
+		if (!parked_only || IsTerminalState(other->state) || other->vehstatus.Any({VehState::Stopped, VehState::Crashed})) return other;
+	}
+	return nullptr;
+}
+
+/* The full virtual footprint includes the neighbour swept by an edge turn. */
+static bool IsAircraftApronFootprintAvailable(const Aircraft *v, TileIndex tile)
+{
+	if (!IsApron(tile) || tile == v->tile) return true;
+	if (!IsAircraftTerminalAvailable(v, tile)) return false;
+	return FindForeignAircraftOnApron(v, tile) == nullptr;
+}
+
+/** A new stand claim must not obstruct an already admitted route or edge turn. */
+bool CanClaimAircraftTerminal(const Aircraft *v, TileIndex tile)
+{
+	if (!IsAircraftTerminalAvailable(v, tile)) return false;
+	if (v->ignore_airport_reservations || !IsApron(tile) || v->allocated_terminal == tile) return true;
+	if (FindForeignAircraftOnApron(v, tile) != nullptr) return false;
+	/* A plane that already reached this stand must be able to finish parking. */
+	if (v->tile == tile && !v->IsAircraftFlying() && !v->vehstatus.Test(VehState::Hidden)) return true;
+
+	auto booking = _aircraft_virtual_bookings.find(tile);
+	if (booking == _aircraft_virtual_bookings.end()) return true;
+	return std::none_of(booking->second.begin(), booking->second.end(), [&](const auto &entry) { return entry.first != v->index; });
+}
+
 bool TryClaimAircraftTerminal(Aircraft *v, TileIndex tile)
 {
-	if (!IsAircraftTerminalAvailable(v, tile)) {
+	if (!CanClaimAircraftTerminal(v, tile)) {
 		return false;
 	}
 	if (v->allocated_terminal != tile) ReleaseAircraftTerminal(v);
@@ -587,6 +619,7 @@ static AircraftTaxiBlock CheckAircraftVirtualTile(const Aircraft *v, TileIndex t
 	if (GetReservedAirportTracks(tile) != AircraftReservedTracks(tile)) return AircraftTaxiBlock::Protected;
 
 	if (v->ignore_airport_reservations) return AircraftTaxiBlock::None;
+	if (!IsAircraftApronFootprintAvailable(v, tile)) return AircraftTaxiBlock::Protected;
 	TrackdirBits others = TRACKDIR_BIT_NONE;
 	auto booking = _aircraft_virtual_bookings.find(tile);
 	if (booking != _aircraft_virtual_bookings.end()) {
@@ -741,6 +774,24 @@ static bool CanTrimAircraftTaxiWindow(const Aircraft *v)
 	return !v->IsAircraftFlying() && v->state != AS_LANDED && v->reserved_runway == INVALID_TILE &&
 			!v->vehstatus.Test(VehState::Crashed) && v->next_trackdir == INVALID_TRACKDIR &&
 			!HasBit(v->flags, VAF_PUSHBACK) && IsTaxiTile(v->tile) && IsValidTrackdir(v->trackdir);
+}
+
+bool ShouldReplanAircraftApronTransit(const Aircraft *v)
+{
+	if (v->state != AS_RUNNING || v->cur_speed != 0 || v->ignore_airport_reservations ||
+			v->junction_legacy || v->junction_entered || !CanTrimAircraftTaxiWindow(v)) return false;
+
+	/* A route admitted before the stand checks may retain a body or sweep
+	 * booking on an occupied stand. A transient look-ahead reservation alone
+	 * is not a reason to abandon the route. */
+	for (const auto &record : v->virtual_path) {
+		const TileIndex tile = record.tile;
+		if (tile == v->tile || !IsTaxiTile(tile) || !IsApron(tile)) continue;
+		auto claim = _aircraft_terminal_owners.find(tile);
+		if (claim != _aircraft_terminal_owners.end() && claim->second != v->index) return true;
+		if (FindForeignAircraftOnApron(v, tile, true) != nullptr) return true;
+	}
+	return false;
 }
 
 static void TrimAircraftTaxiWindow(Aircraft *v)

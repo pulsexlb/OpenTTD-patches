@@ -105,6 +105,89 @@ TEST_CASE("Aircraft rolling reservations - gate claim survives until release")
 	ReleaseAircraftTerminal(b);
 }
 
+TEST_CASE("Aircraft stand claims cannot strand virtual routes beyond the stand")
+{
+	extern bool HandleAircraftMovement(Aircraft *v);
+	AllocateMap(64, 64);
+	ClearAircraftReservationIndexes();
+	auto cleanup = scope_guard([] { ClearAircraftReservationIndexes(); _vehicle_pool.CleanPool(); _station_pool.CleanPool(); DeallocateMap(); });
+	MakeReservationAirport(TRACK_BIT_X);
+	const TileIndex approach = TileXY(10, 11);
+	const TileIndex stand = TileXY(13, 11);
+	const TileIndex junction = TileXY(14, 11);
+	const TileIndex goal = TileXY(15, 11);
+	SetAirportTileType(stand, ATT_APRON_NORMAL);
+	SetAirportTileTracks(junction, TRACK_BIT_CROSS);
+	SetAirportTileTracks(TileXY(14, 12), TRACK_BIT_Y);
+	Aircraft *transit = MakeReservationAircraft(approach);
+	Aircraft *parking = MakeReservationAircraft(TileXY(13, 10));
+	for (uint x = TileX(approach); x <= TileX(goal); ++x) {
+		transit->planned_path.push_back({TileXY(x, TileY(approach)), TRACKDIR_X_SW, false});
+	}
+
+	SECTION("a claimed stand prevents booking the junction beyond it") {
+		REQUIRE(TryClaimAircraftTerminal(parking, stand));
+		CHECK_FALSE(IsAircraftVirtualTileAvailable(transit, stand, TRACKDIR_X_SW));
+		CHECK_FALSE(TryReserveAircraftTaxiPath(transit));
+		CHECK(transit->virtual_path.empty());
+		CHECK(GetAircraftVirtualBookedTracks(junction) == TRACK_BIT_NONE);
+		ReleaseAircraftTerminal(parking);
+		REQUIRE(TryReserveAircraftTaxiPath(transit));
+		CHECK(HasAircraftVirtualTileReservation(transit, junction, TRACKDIR_BIT_X_SW));
+	}
+	SECTION("an admitted body route prevents a new parking claim") {
+		REQUIRE(TryReserveAircraftTaxiPath(transit));
+		CHECK(IsAircraftTerminalAvailable(parking, stand)); // Real entry is a different check.
+		CHECK_FALSE(CanClaimAircraftTerminal(parking, stand));
+		CHECK_FALSE(TryClaimAircraftTerminal(parking, stand));
+		ReleaseAircraftTaxiPath(transit, false);
+		CHECK(TryClaimAircraftTerminal(parking, stand));
+	}
+	SECTION("edge-turn sweeps and new stand claims exclude each other") {
+		const TileIndex turn = TileXY(12, 11);
+		transit->tile = turn;
+		transit->planned_path = {{turn, TRACKDIR_X_SW, false}, {turn, TRACKDIR_X_NE, false}};
+		REQUIRE(TryClaimAircraftTerminal(parking, stand));
+		CHECK_FALSE(TryReserveAircraftTaxiPath(transit));
+		CHECK(transit->virtual_path.empty());
+		ReleaseAircraftTerminal(parking);
+
+		REQUIRE(TryReserveAircraftTaxiPath(transit));
+		CHECK(HasAircraftVirtualTileReservation(transit, stand, TRACKDIR_BIT_X_SW));
+		CHECK_FALSE(TryClaimAircraftTerminal(parking, stand));
+		ReleaseAircraftTaxiPath(transit, false);
+		CHECK(TryClaimAircraftTerminal(parking, stand));
+	}
+	SECTION("an older sweep is dropped at a safe stop so the parked plane can leave") {
+		const TileIndex turn = TileXY(12, 11);
+		transit->tile = turn;
+		transit->planned_path = {{turn, TRACKDIR_X_SW, false}, {turn, TRACKDIR_X_NE, false}};
+		REQUIRE(TryReserveAircraftTaxiPath(transit));
+		transit->state = AS_RUNNING;
+		transit->reserved_path = {{turn, TRACK_BIT_X}};
+		SetAirportTrackReservation(turn, TRACK_X);
+		parking->tile = stand;
+		parking->state = AS_APRON;
+		parking->reserved_path = {{stand, TRACK_BIT_X}};
+		SetAirportTrackReservation(stand, TRACK_X);
+		parking->allocated_terminal = stand; // State produced by the old permissive claim rule.
+		AfterLoadAircraftReservations(false);
+		REQUIRE(HasAircraftVirtualTileReservation(transit, stand, TRACKDIR_BIT_X_SW));
+		CHECK_FALSE(IsAircraftVirtualTileAvailable(parking, stand, TRACKDIR_X_NE));
+		transit->next_trackdir = TRACKDIR_X_NE;
+		CHECK_FALSE(ShouldReplanAircraftApronTransit(transit));
+		transit->next_trackdir = INVALID_TRACKDIR;
+		REQUIRE(ShouldReplanAircraftApronTransit(transit));
+		REQUIRE(HandleAircraftMovement(transit));
+		CHECK(transit->state == AS_IDLE);
+		CHECK(GetAircraftVirtualBookedTracks(stand) == TRACK_BIT_NONE);
+		CHECK(IsAircraftVirtualTileAvailable(parking, stand, TRACKDIR_X_NE));
+		CHECK(HasAircraftTileReservation(transit, turn, TRACK_BIT_X));
+		CHECK(HasAircraftTileReservation(parking, stand, TRACK_BIT_X));
+		CHECK(parking->allocated_terminal == stand);
+	}
+}
+
 TEST_CASE("Aircraft rolling reservations - turns reserve complete tile groups")
 {
 	AllocateMap(64, 64);

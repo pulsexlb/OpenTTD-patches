@@ -306,9 +306,9 @@ public:
 				   so better try finding another hangar tile. */
 				return IsHangar(tile) && (IsStandardHangar(tile) || IsAircraftVirtualDestinationAvailable(Yapf().GetVehicle(), tile));
 			case AS_HELIPAD:
-				return (IsHelipadTile(tile) || IsPlaneApronTile(tile)) && IsAircraftTerminalAvailable(Yapf().GetVehicle(), tile);
+				return (IsHelipadTile(tile) || IsPlaneApronTile(tile)) && CanClaimAircraftTerminal(Yapf().GetVehicle(), tile);
 			case AS_APRON:
-				return IsPlaneApronTile(tile) && IsAircraftTerminalAvailable(Yapf().GetVehicle(), tile);
+				return IsPlaneApronTile(tile) && CanClaimAircraftTerminal(Yapf().GetVehicle(), tile);
 			case AS_ON_HOLD_APPROACHING:
 			case AS_DESCENDING:
 				/* Only runway starts whose runway is long enough for this aircraft. */
@@ -365,8 +365,9 @@ public:
 		/* Is current trackdir a diagonal one? */
 		c += IsDiagonalTrackdir(n.GetTrackdir()) ? YAPF_TILE_LENGTH : YAPF_TILE_CORNER_LENGTH;
 
-		/* Virtual route search checks geometry and direction, not the future
-		 * real window. Destination occupancy is checked separately. */
+		/* Virtual route search checks geometry and direction, and keeps body
+		 * paths and edge turns out of occupied stands. Other real-window checks
+		 * are deferred until the aircraft approaches. */
 		if (!Yapf().IsTaxiPathTileAvailable(n.GetTile(), n.GetTrackdir())) return false;
 
 		/* Add cost to avoid vehicles going over aprons and other special tiles as much as possible. */

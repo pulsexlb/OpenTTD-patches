@@ -24,6 +24,7 @@ bool IsAircraftTaxiTrackGeometryValid(TileIndex origin, TileIndex tile, Trackdir
 TrackBits GetAircraftLandingExitTracks(TileIndex tile);
 bool HasAircraftRunwayExit(const Aircraft *v, TileIndex start, bool to_hangar);
 bool IsAircraftVirtualTileAvailable(const Aircraft *v, TileIndex tile, Trackdir td);
+bool ShouldReplanAircraftApronTransit(const Aircraft *v);
 bool IsAircraftVirtualDestinationAvailable(const Aircraft *v, TileIndex tile, TrackBits tracks = TRACK_BIT_ALL);
 bool HasAircraftVirtualTileReservation(const Aircraft *v, TileIndex tile, TrackdirBits travel);
 bool TryReserveAircraftTaxiPath(Aircraft *v);
@@ -43,6 +44,7 @@ Trackdir GetFreeAirportTrackdir(TileIndex tile, Trackdir preferred_trackdir, con
 void LiftAirportPathReservation(Aircraft *v, bool skip_first_track);
 bool IsAirportTileFree(TileIndex tile, Trackdir trackdir);
 bool IsAircraftTerminalAvailable(const Aircraft *v, TileIndex tile);
+bool CanClaimAircraftTerminal(const Aircraft *v, TileIndex tile);
 bool TryClaimAircraftTerminal(Aircraft *v, TileIndex tile);
 void ReleaseAircraftTerminal(Aircraft *v);
 bool HasAircraftTileReservation(const Aircraft *v, TileIndex tile, TrackBits tracks);

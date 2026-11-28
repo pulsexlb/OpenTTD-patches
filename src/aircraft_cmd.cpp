@@ -1599,7 +1599,7 @@ bool AirportHasFreeApron(const Aircraft *v)
 	if (st == nullptr) return false;
 	for (TileIndex tile : st->airport.aprons) {
 		if (!IsValidTile(tile) || !IsAirportTileOfStation(tile, st->index) || !IsPlaneApronTile(tile)) continue;
-		if (IsAircraftTerminalAvailable(v, tile)) return true;
+		if (CanClaimAircraftTerminal(v, tile)) return true;
 	}
 	return false;
 }
@@ -2517,7 +2517,7 @@ AircraftState GetNextAircraftState(const Aircraft &a)
 		const Airport *airport = &target->airport;
 		bool free_terminal = false;
 		for (TileIndex tile : airport->aprons) {
-			if (!IsAircraftTerminalAvailable(&a, tile)) continue;
+			if (!CanClaimAircraftTerminal(&a, tile)) continue;
 			free_terminal = true;
 			break;
 		}
@@ -3896,6 +3896,10 @@ bool HandleAircraftMovement(Aircraft *v)
 		v->cur_speed = 0;
 		v->ClearWaitTime();
 	}
+	if (ShouldReplanAircraftApronTransit(v)) {
+		UpdatePath(v);
+		return true;
+	}
 	if (v->state == AS_RUNNING && (v->planned_path.empty() || v->planned_path.front().tile != v->tile ||
 			!HasAircraftVirtualTileReservation(v, v->tile, TrackdirToTrackdirBits(v->planned_path.front().td)))) {
 		 
@@ -3997,7 +4001,7 @@ static bool AircraftController(Aircraft *v, bool mode)
 	if (v->vehstatus.Test(VehState::Stopped) && v->cur_speed == 0) {
 		/* Also normalize old snapshots and stops not initiated by the command. */
 		if (!mode && (v->taxi_jam_ticks != 0 || !v->junction_requests.empty() ||
-				HasBit(v->flags, VAF_TAXI_PHASING))) StopAircraftTaxiTraffic(v);
+				HasBit(v->flags, VAF_TAXI_PHASING) || ShouldReplanAircraftApronTransit(v))) StopAircraftTaxiTraffic(v);
 		return true;
 	}
 
